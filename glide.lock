@@ -1,0 +1,87 @@
+hash: 549c13023ae32b4ac76fd77e25649e4ea2d28b3bc105d33086fec3e91861688f
+updated: 2017-04-28T12:52:22.77043599+02:00
+imports:
+- name: github.com/beorn7/perks
+  version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
+  subpackages:
+  - quantile
+- name: github.com/golang/protobuf
+  version: 2bba0603135d7d7f5cb73b2125beeda19c09f4ef
+  subpackages:
+  - proto
+- name: github.com/golang/snappy
+  version: 553a641470496b2327abcac10b36396bd98e45c9
+- name: github.com/matttproud/golang_protobuf_extensions
+  version: c12348ce28de40eed0136aa2b644d0ee0650e56c
+  subpackages:
+  - pbutil
+- name: github.com/prometheus/client_golang
+  version: 7d9484283ebefa862b5b7727d4344cfdf9a0d138
+  subpackages:
+  - prometheus
+- name: github.com/prometheus/client_model
+  version: 6f3806018612930941127f2a7c6c453ba2c527d2
+  subpackages:
+  - go
+- name: github.com/prometheus/common
+  version: 13ba4ddd0caa9c28ca7b7bffe1dfa9ed8d5ef207
+  subpackages:
+  - expfmt
+  - internal/bitbucket.org/ww/goautoneg
+  - log
+  - model
+- name: github.com/prometheus/procfs
+  version: 6ac8c5d890d415025dd5aae7595bcb2a6e7e2fad
+  subpackages:
+  - xfs
+- name: github.com/prometheus/prometheus
+  version: 4666df502c0e239ed4aa1d80abbbfb54f61b23c3
+  subpackages:
+  - config
+  - relabel
+  - storage
+  - storage/local
+  - storage/local/chunk
+  - storage/local/codable
+  - storage/local/index
+  - storage/metric
+  - storage/remote
+  - util/flock
+  - util/httputil
+  - util/testutil
+- name: github.com/Sirupsen/logrus
+  version: 10f801ebc38b33738c9d17d50860f484a0988ff5
+- name: github.com/syndtr/goleveldb
+  version: 8c81ea47d4c41a385645e133e15510fc6a2a74b4
+  subpackages:
+  - leveldb
+  - leveldb/cache
+  - leveldb/comparer
+  - leveldb/errors
+  - leveldb/filter
+  - leveldb/iterator
+  - leveldb/journal
+  - leveldb/memdb
+  - leveldb/opt
+  - leveldb/storage
+  - leveldb/table
+  - leveldb/util
+- name: golang.org/x/net
+  version: da118f7b8e5954f39d0d2130ab35d4bf0e3cb344
+  subpackages:
+  - context
+  - context/ctxhttp
+- name: golang.org/x/sys
+  version: 9ccfe848b9db8435a24c424abbc07a921adf1df5
+  subpackages:
+  - unix
+  - windows
+  - windows/registry
+  - windows/svc/eventlog
+- name: golang.org/x/time
+  version: 8be79e1e0910c292df4e79c241bb7e8f7e725959
+  subpackages:
+  - rate
+- name: gopkg.in/yaml.v2
+  version: cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b
+testImports: []

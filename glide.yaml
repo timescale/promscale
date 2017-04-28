@@ -1,0 +1,9 @@
+package: github.com/timescale/prometheus-timescaledb-adapter
+import:
+- package: github.com/prometheus/common
+  subpackages:
+  - model
+- package: github.com/prometheus/prometheus
+  version: ^1.6.1
+  subpackages:
+  - storage/remote
