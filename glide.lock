@@ -1,22 +1,32 @@
-hash: 549c13023ae32b4ac76fd77e25649e4ea2d28b3bc105d33086fec3e91861688f
-updated: 2017-04-28T12:52:22.77043599+02:00
+hash: 7d68424426a463270d3c15ab50b5f8373acf8c70df75c9b6863bbc38ff17a501
+updated: 2017-04-28T15:31:38.822117341+02:00
 imports:
 - name: github.com/beorn7/perks
   version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
   subpackages:
   - quantile
+- name: github.com/gogo/protobuf
+  version: 100ba4e885062801d56799d78530b73b178a78f3
+  subpackages:
+  - proto
 - name: github.com/golang/protobuf
   version: 2bba0603135d7d7f5cb73b2125beeda19c09f4ef
   subpackages:
   - proto
 - name: github.com/golang/snappy
   version: 553a641470496b2327abcac10b36396bd98e45c9
+- name: github.com/influxdata/influxdb
+  version: a736f186f0b1ba494943f9c778fee9ddfd2c2761
+  subpackages:
+  - client/v2
+  - models
+  - pkg/escape
 - name: github.com/matttproud/golang_protobuf_extensions
   version: c12348ce28de40eed0136aa2b644d0ee0650e56c
   subpackages:
   - pbutil
 - name: github.com/prometheus/client_golang
-  version: 7d9484283ebefa862b5b7727d4344cfdf9a0d138
+  version: c5b7fccd204277076155f10851dad72b76a49317
   subpackages:
   - prometheus
 - name: github.com/prometheus/client_model
@@ -38,6 +48,9 @@ imports:
   version: 4666df502c0e239ed4aa1d80abbbfb54f61b23c3
   subpackages:
   - config
+  - documentation/examples/remote_storage/remote_storage_adapter/graphite
+  - documentation/examples/remote_storage/remote_storage_adapter/influxdb
+  - documentation/examples/remote_storage/remote_storage_adapter/opentsdb
   - relabel
   - storage
   - storage/local

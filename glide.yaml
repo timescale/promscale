@@ -7,3 +7,10 @@ import:
   version: ^1.6.1
   subpackages:
   - storage/remote
+- package: github.com/gogo/protobuf
+  version: ^0.4.0
+  subpackages:
+  - proto
+- package: github.com/golang/snappy
+- package: github.com/prometheus/client_golang
+  version: ^0.8.0
