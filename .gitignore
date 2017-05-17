@@ -1,3 +1,5 @@
 *~
 /prometheus-postgresql-adapter
 /vendor
+/version.properties
+/.target_os
