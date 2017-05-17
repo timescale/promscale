@@ -14,3 +14,4 @@ import:
 - package: github.com/golang/snappy
 - package: github.com/prometheus/client_golang
   version: ^0.8.0
+- package: github.com/lib/pq

@@ -1,5 +1,5 @@
-hash: 7d68424426a463270d3c15ab50b5f8373acf8c70df75c9b6863bbc38ff17a501
-updated: 2017-04-28T15:31:38.822117341+02:00
+hash: a04ad62c6ffa957a78eaadc0a119c8258a3962a0a6c9665a50fbdbd6541227fe
+updated: 2017-05-03T15:50:49.803037023+02:00
 imports:
 - name: github.com/beorn7/perks
   version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
@@ -10,17 +10,13 @@ imports:
   subpackages:
   - proto
 - name: github.com/golang/protobuf
-  version: 2bba0603135d7d7f5cb73b2125beeda19c09f4ef
+  version: 18c9bb3261723cd5401db4d0c9fbc5c3b6c70fe8
   subpackages:
   - proto
 - name: github.com/golang/snappy
   version: 553a641470496b2327abcac10b36396bd98e45c9
-- name: github.com/influxdata/influxdb
-  version: a736f186f0b1ba494943f9c778fee9ddfd2c2761
-  subpackages:
-  - client/v2
-  - models
-  - pkg/escape
+- name: github.com/lib/pq
+  version: 2704adc878c21e1329f46f6e56a1c387d788ff94
 - name: github.com/matttproud/golang_protobuf_extensions
   version: c12348ce28de40eed0136aa2b644d0ee0650e56c
   subpackages:
@@ -41,16 +37,13 @@ imports:
   - log
   - model
 - name: github.com/prometheus/procfs
-  version: 6ac8c5d890d415025dd5aae7595bcb2a6e7e2fad
+  version: d098ca18df8bc825079013daf7bacefbb1ee877e
   subpackages:
   - xfs
 - name: github.com/prometheus/prometheus
   version: 4666df502c0e239ed4aa1d80abbbfb54f61b23c3
   subpackages:
   - config
-  - documentation/examples/remote_storage/remote_storage_adapter/graphite
-  - documentation/examples/remote_storage/remote_storage_adapter/influxdb
-  - documentation/examples/remote_storage/remote_storage_adapter/opentsdb
   - relabel
   - storage
   - storage/local
@@ -80,7 +73,7 @@ imports:
   - leveldb/table
   - leveldb/util
 - name: golang.org/x/net
-  version: da118f7b8e5954f39d0d2130ab35d4bf0e3cb344
+  version: feeb485667d1fdabe727840fe00adc22431bc86e
   subpackages:
   - context
   - context/ctxhttp

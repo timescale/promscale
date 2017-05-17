@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
 	"sync"
 	"time"
 
@@ -32,16 +31,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/prometheus-postgresql-adapter/postgresql"
 
 	"github.com/prometheus/prometheus/storage/remote"
 )
 
 type config struct {
-	timescaledbPassword string
-	timescaledbURL      string
-	remoteTimeout       time.Duration
-	listenAddr          string
-	telemetryPath       string
+	remoteTimeout     time.Duration
+	listenAddr        string
+	telemetryPath     string
+	timescaleDbConfig timescaledb.Config
 }
 
 var (
@@ -91,11 +90,11 @@ func main() {
 }
 
 func parseFlags() *config {
-	cfg := &config{
-		timescaledbPassword: os.Getenv("TIMESCALEDB_PASSWORD"),
-	}
 
-	flag.StringVar(&cfg.timescaledbURL, "timescaldb-url", "", "The TimescaleDB connect URL")
+	cfg := &config{}
+
+	timescaledb.ParseFlags(&cfg.timescaleDbConfig)
+
 	flag.DurationVar(&cfg.remoteTimeout, "send-timeout", 30*time.Second,
 		"The timeout to use when sending samples to the remote storage.",
 	)
@@ -120,6 +119,10 @@ type reader interface {
 func buildClients(cfg *config) ([]writer, []reader) {
 	var writers []writer
 	var readers []reader
+
+	tsdbClient := timescaledb.NewClient(&cfg.timescaleDbConfig)
+	writers = append(writers, tsdbClient)
+	readers = append(readers, tsdbClient)
 
 	return writers, readers
 }
