@@ -114,6 +114,7 @@ type writer interface {
 type reader interface {
 	Read(req *remote.ReadRequest) (*remote.ReadResponse, error)
 	Name() string
+	HealthCheck() error
 }
 
 func buildClients(cfg *config) ([]writer, []reader) {
@@ -194,6 +195,18 @@ func serve(addr string, writers []writer, readers []reader) error {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+	})
+
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		// Only supports one reader at this point
+		reader := readers[0]
+		err := reader.HealthCheck()
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Length", "0")
 	})
 
 	return http.ListenAndServe(addr, nil)

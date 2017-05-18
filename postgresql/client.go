@@ -55,7 +55,7 @@ type Client struct {
 
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config) *Client {
-	db, err := sql.Open("postgres", fmt.Sprintf("host=%v port=%v user=%v password=%v dbname=%v sslmode=disable",
+	db, err := sql.Open("postgres", fmt.Sprintf("host=%v port=%v user=%v password=%v dbname=%v sslmode=disable connect_timeout=10",
 		cfg.host, cfg.port, cfg.user, cfg.password, cfg.database))
 
 	if err != nil {
@@ -317,6 +317,19 @@ func (c *Client) Read(req *remote.ReadRequest) (*remote.ReadResponse, error) {
 	log.Debugf("Returned response with %v timeseries", len(labelsToSeries))
 
 	return &resp, nil
+}
+
+// HealthCheck implements the healtcheck interface
+func (c *Client) HealthCheck() error {
+	rows, err := c.db.Query("SELECT 1")
+
+	if err != nil {
+		log.Debug("Health check error ", err)
+		return err
+	}
+
+	rows.Close()
+	return nil
 }
 
 func toTimestamp(milliseconds int64) time.Time {
