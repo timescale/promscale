@@ -17,7 +17,7 @@ TEST_SOURCES:=
 
 TARGET:=prometheus-postgresql-adapter
 
-.PHONY: all clean docker test prepare-for-docker-build
+.PHONY: all clean docker-image docker-push test prepare-for-docker-build
 
 all: $(TARGET) version.properties
 
@@ -36,7 +36,7 @@ ifneq ($(shell cat .target_os 2>/dev/null),linux)
 	rm -f $(TARGET) .target_os
 endif
 
-docker: prepare-for-docker-build prometheus-postgresql-adapter version.properties
+docker-image: prepare-for-docker-build prometheus-postgresql-adapter version.properties
 	docker build -t $(ORGANIZATION)/$(TARGET):latest .
 	docker tag $(ORGANIZATION)/$(TARGET):latest $(ORGANIZATION)/$(TARGET):${VERSION}
 	docker tag $(ORGANIZATION)/$(TARGET):latest $(ORGANIZATION)/$(TARGET):${BRANCH}
@@ -44,7 +44,7 @@ docker: prepare-for-docker-build prometheus-postgresql-adapter version.propertie
 	docker tag $(ORGANIZATION)/$(TARGET):latest ${REGISTRY}/$(ORGANIZATION)/$(TARGET):${VERSION}
 	docker tag $(ORGANIZATION)/$(TARGET):latest ${REGISTRY}/$(ORGANIZATION)/$(TARGET):${BRANCH}
 
-push: docker
+docker-push: docker
 	docker push $(ORGANIZATION)/$(TARGET):latest
 	docker push $(ORGANIZATION)/$(TARGET):${VERSION}
 	docker push $(ORGANIZATION)/$(TARGET):${BRANCH}
