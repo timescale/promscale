@@ -37,10 +37,10 @@ import (
 )
 
 type config struct {
-	remoteTimeout     time.Duration
-	listenAddr        string
-	telemetryPath     string
-	timescaleDbConfig timescaledb.Config
+	remoteTimeout      time.Duration
+	listenAddr         string
+	telemetryPath      string
+	pgPrometheusConfig pgprometheus.Config
 }
 
 var (
@@ -93,7 +93,7 @@ func parseFlags() *config {
 
 	cfg := &config{}
 
-	timescaledb.ParseFlags(&cfg.timescaleDbConfig)
+	pgprometheus.ParseFlags(&cfg.pgPrometheusConfig)
 
 	flag.DurationVar(&cfg.remoteTimeout, "send-timeout", 30*time.Second,
 		"The timeout to use when sending samples to the remote storage.",
@@ -121,9 +121,9 @@ func buildClients(cfg *config) ([]writer, []reader) {
 	var writers []writer
 	var readers []reader
 
-	tsdbClient := timescaledb.NewClient(&cfg.timescaleDbConfig)
-	writers = append(writers, tsdbClient)
-	readers = append(readers, tsdbClient)
+	pgClient := pgprometheus.NewClient(&cfg.pgPrometheusConfig)
+	writers = append(writers, pgClient)
+	readers = append(readers, pgClient)
 
 	return writers, readers
 }
@@ -209,7 +209,14 @@ func serve(addr string, writers []writer, readers []reader) error {
 		w.Header().Set("Content-Length", "0")
 	})
 
-	return http.ListenAndServe(addr, nil)
+	log.Info("Listening on ", addr)
+
+	err := http.ListenAndServe(addr, nil)
+
+	if err != nil {
+		log.Error("Listen failure ", err)
+	}
+	return err
 }
 
 func protoToSamples(req *remote.WriteRequest) model.Samples {

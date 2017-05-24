@@ -44,7 +44,7 @@ docker-image: prepare-for-docker-build prometheus-postgresql-adapter version.pro
 	docker tag $(ORGANIZATION)/$(TARGET):latest ${REGISTRY}/$(ORGANIZATION)/$(TARGET):${VERSION}
 	docker tag $(ORGANIZATION)/$(TARGET):latest ${REGISTRY}/$(ORGANIZATION)/$(TARGET):${BRANCH}
 
-docker-push: docker
+docker-push: docker-image
 	docker push $(ORGANIZATION)/$(TARGET):latest
 	docker push $(ORGANIZATION)/$(TARGET):${VERSION}
 	docker push $(ORGANIZATION)/$(TARGET):${BRANCH}
