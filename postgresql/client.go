@@ -31,6 +31,7 @@ type Config struct {
 	pgPrometheusNormalizedTable string
 	pgPrometheusKeepSamples     bool
 	pgPrometheusLogSamples      bool
+	pgPrometheusChunkInterval   time.Duration
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -46,6 +47,7 @@ func ParseFlags(cfg *Config) *Config {
 	flag.StringVar(&cfg.pgPrometheusNormalizedTable, "pg-prometheus-normalized-table-name", "metrics", "Name of the metrics table when using a normalized pg_prometheus schema")
 	flag.BoolVar(&cfg.pgPrometheusKeepSamples, "pg-prometheus-keep-samples", true, "Keep raw samples when using normalized pg_prometheus schema")
 	flag.BoolVar(&cfg.pgPrometheusLogSamples, "pg-prometheus-log-samples", false, "Log raw samples to stdout")
+	flag.DurationVar(&cfg.pgPrometheusChunkInterval, "pg-prometheus-chunk-interval", time.Hour*12, "The size of a time-partition chunk in TimescaleDB")
 	return cfg
 }
 
@@ -97,23 +99,17 @@ func (c *Client) setupPgPrometheus() error {
 
 	if err != nil {
 		log.Info("Could not enable TimescaleDB extension", err)
-	} else {
-		_, err = tx.Exec("SELECT setup_timescaledb()")
-
-		if err != nil {
-			return err
-		}
 	}
 
 	var rows *sql.Rows
-	rows, err = tx.Query("SELECT create_prometheus_table($1, $2, normalized_tables => $3, keep_samples => $4)",
-		c.cfg.table, c.cfg.pgPrometheusNormalizedTable, c.cfg.pgPrometheusNormalize, c.cfg.pgPrometheusKeepSamples)
+	rows, err = tx.Query("SELECT create_prometheus_table($1, $2, normalized_tables => $3, keep_samples => $4, chunk_time_interval => $5)",
+		c.cfg.table, c.cfg.pgPrometheusNormalizedTable, c.cfg.pgPrometheusNormalize, c.cfg.pgPrometheusKeepSamples, c.cfg.pgPrometheusChunkInterval.String())
 
 	if err != nil {
-		if !strings.Contains(err.Error(), "already exists") {
-			return err
+		if strings.Contains(err.Error(), "already exists") {
+			return nil
 		}
-		return nil
+		return err
 	}
 	rows.Close()
 
