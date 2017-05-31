@@ -157,6 +157,8 @@ func (c *Client) Write(samples model.Samples) error {
 		return err
 	}
 
+	defer tx.Rollback()
+
 	stmt, err := tx.Prepare(fmt.Sprintf("COPY \"%s\" FROM STDIN", c.cfg.table))
 
 	if err != nil {
