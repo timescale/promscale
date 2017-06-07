@@ -27,6 +27,8 @@ type Config struct {
 	database                    string
 	schema                      string
 	table                       string
+	maxOpenConns                int
+	maxIdleConns                int
 	pgPrometheusNormalize       bool
 	pgPrometheusNormalizedTable string
 	pgPrometheusKeepSamples     bool
@@ -36,13 +38,15 @@ type Config struct {
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
 func ParseFlags(cfg *Config) *Config {
-	flag.StringVar(&cfg.host, "postgres-host", "localhost", "The PostgreSQL host")
-	flag.IntVar(&cfg.port, "postgres-port", 5432, "The PostgreSQL port")
-	flag.StringVar(&cfg.user, "postgres-user", "postgres", "The PostgreSQL user")
-	flag.StringVar(&cfg.password, "postgres-password", "", "The PostgreSQL password")
-	flag.StringVar(&cfg.database, "postgres-database", "postgres", "The PostgreSQL database")
-	flag.StringVar(&cfg.schema, "postgres-schema", "", "The PostgreSQL schema")
-	flag.StringVar(&cfg.table, "postgres-table", "samples", "The PostgreSQL table")
+	flag.StringVar(&cfg.host, "pg-host", "localhost", "The PostgreSQL host")
+	flag.IntVar(&cfg.port, "pg-port", 5432, "The PostgreSQL port")
+	flag.StringVar(&cfg.user, "pg-user", "postgres", "The PostgreSQL user")
+	flag.StringVar(&cfg.password, "pg-password", "", "The PostgreSQL password")
+	flag.StringVar(&cfg.database, "pg-database", "postgres", "The PostgreSQL database")
+	flag.StringVar(&cfg.schema, "pg-schema", "", "The PostgreSQL schema")
+	flag.StringVar(&cfg.table, "pg-table", "samples", "The PostgreSQL table")
+	flag.IntVar(&cfg.maxOpenConns, "pg-max-open-conns", 50, "The max number of open connections to the database")
+	flag.IntVar(&cfg.maxIdleConns, "pg-max-idle-conns", 10, "The max number of idle connections to the database")
 	flag.BoolVar(&cfg.pgPrometheusNormalize, "pg-prometheus-normalized-schema", false, "Insert metric samples into normalized schema")
 	flag.StringVar(&cfg.pgPrometheusNormalizedTable, "pg-prometheus-normalized-table-name", "metrics", "Name of the metrics table when using a normalized pg_prometheus schema")
 	flag.BoolVar(&cfg.pgPrometheusKeepSamples, "pg-prometheus-keep-samples", true, "Keep raw samples when using normalized pg_prometheus schema")
@@ -65,6 +69,9 @@ func NewClient(cfg *Config) *Client {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	db.SetMaxOpenConns(cfg.maxOpenConns)
+	db.SetMaxIdleConns(cfg.maxIdleConns)
 
 	client := &Client{
 		db:  db,
