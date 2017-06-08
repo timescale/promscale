@@ -1,6 +1,7 @@
 package pgprometheus
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"flag"
@@ -158,9 +159,11 @@ func metricString(m model.Metric) string {
 
 // Write implements the Writer interface and writes metric samples to the database
 func (c *Client) Write(samples model.Samples) error {
+	begin := time.Now()
 	tx, err := c.db.Begin()
 
 	if err != nil {
+		log.Error("Error on Begin when writing samples", err)
 		return err
 	}
 
@@ -169,28 +172,47 @@ func (c *Client) Write(samples model.Samples) error {
 	stmt, err := tx.Prepare(fmt.Sprintf("COPY \"%s\" FROM STDIN", c.cfg.table))
 
 	if err != nil {
+		log.Error("Error on Prepare when writing samples", err)
 		return err
 	}
+
+	var buffer bytes.Buffer
 
 	for _, sample := range samples {
 		milliseconds := sample.Timestamp.UnixNano() / 1000000
 		line := fmt.Sprintf("%v %v %v\n", metricString(sample.Metric), sample.Value, milliseconds)
+
 		if c.cfg.pgPrometheusLogSamples {
 			fmt.Print(line)
 		}
-		stmt.Exec(line)
+		buffer.WriteString(line)
+	}
+
+	_, err = stmt.Exec(buffer.String())
+
+	if err != nil {
+		log.Errorf("Error executing statement '%s'", buffer.String())
+		return err
 	}
 
 	err = stmt.Close()
+
 	if err != nil {
+		log.Error("Error on Close when writing samples", err)
 		return err
 	}
 
 	err = tx.Commit()
 
 	if err != nil {
+		log.Error("Error on Commit when writing samples", err)
 		return err
 	}
+
+	duration := time.Since(begin).Seconds()
+
+	log.Debugf("Wrote %v samples in %v seconds", len(samples), duration)
+
 	return nil
 }
 
