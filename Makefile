@@ -2,7 +2,6 @@ VERSION=$(shell git describe --always | sed 's|v\(.*\)|\1|')
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 OS:=$(shell uname -s | awk '{ print tolower($$1) }')
 ARCH=amd64
-REGISTRY=registry.iobeam.com
 ORGANIZATION=timescale
 
 ifeq ($(shell uname -m), i386)
@@ -40,9 +39,6 @@ docker-image: prepare-for-docker-build prometheus-postgresql-adapter version.pro
 	docker build -t $(ORGANIZATION)/$(TARGET):latest .
 	docker tag $(ORGANIZATION)/$(TARGET):latest $(ORGANIZATION)/$(TARGET):${VERSION}
 	docker tag $(ORGANIZATION)/$(TARGET):latest $(ORGANIZATION)/$(TARGET):${BRANCH}
-	docker tag $(ORGANIZATION)/$(TARGET):latest ${REGISTRY}/$(ORGANIZATION)/$(TARGET):latest
-	docker tag $(ORGANIZATION)/$(TARGET):latest ${REGISTRY}/$(ORGANIZATION)/$(TARGET):${VERSION}
-	docker tag $(ORGANIZATION)/$(TARGET):latest ${REGISTRY}/$(ORGANIZATION)/$(TARGET):${BRANCH}
 
 docker-push: docker-image
 	docker push $(ORGANIZATION)/$(TARGET):latest
