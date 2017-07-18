@@ -13,7 +13,7 @@ Then build as follows:
 
 ```bash
 # Install dependencies (only required once)
-glide install
+glide install --strip-vendor --strip-vcs
 
 # Build binary
 make

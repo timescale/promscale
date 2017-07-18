@@ -1,7 +1,6 @@
 package pgprometheus
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"flag"
@@ -21,20 +20,21 @@ import (
 
 // Config for the database
 type Config struct {
-	host                        string
-	port                        int
-	user                        string
-	password                    string
-	database                    string
-	schema                      string
-	table                       string
-	maxOpenConns                int
-	maxIdleConns                int
-	pgPrometheusNormalize       bool
-	pgPrometheusNormalizedTable string
-	pgPrometheusKeepSamples     bool
-	pgPrometheusLogSamples      bool
-	pgPrometheusChunkInterval   time.Duration
+	host                      string
+	port                      int
+	user                      string
+	password                  string
+	database                  string
+	schema                    string
+	sslMode                   string
+	table                     string
+	copyTable                 string
+	maxOpenConns              int
+	maxIdleConns              int
+	pgPrometheusNormalize     bool
+	pgPrometheusLogSamples    bool
+	pgPrometheusChunkInterval time.Duration
+	useTimescaleDb            bool
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -45,14 +45,15 @@ func ParseFlags(cfg *Config) *Config {
 	flag.StringVar(&cfg.password, "pg-password", "", "The PostgreSQL password")
 	flag.StringVar(&cfg.database, "pg-database", "postgres", "The PostgreSQL database")
 	flag.StringVar(&cfg.schema, "pg-schema", "", "The PostgreSQL schema")
-	flag.StringVar(&cfg.table, "pg-table", "samples", "The PostgreSQL table")
+	flag.StringVar(&cfg.sslMode, "pg-ssl-mode", "disable", "The PostgreSQL connection ssl mode")
+	flag.StringVar(&cfg.table, "pg-table", "metrics", "The PostgreSQL table")
+	flag.StringVar(&cfg.copyTable, "pg-copy-table", "metrics_copy", "The PostgreSQL table")
 	flag.IntVar(&cfg.maxOpenConns, "pg-max-open-conns", 50, "The max number of open connections to the database")
 	flag.IntVar(&cfg.maxIdleConns, "pg-max-idle-conns", 10, "The max number of idle connections to the database")
-	flag.BoolVar(&cfg.pgPrometheusNormalize, "pg-prometheus-normalized-schema", false, "Insert metric samples into normalized schema")
-	flag.StringVar(&cfg.pgPrometheusNormalizedTable, "pg-prometheus-normalized-table-name", "metrics", "Name of the metrics table when using a normalized pg_prometheus schema")
-	flag.BoolVar(&cfg.pgPrometheusKeepSamples, "pg-prometheus-keep-samples", true, "Keep raw samples when using normalized pg_prometheus schema")
+	flag.BoolVar(&cfg.pgPrometheusNormalize, "pg-prometheus-normalized-schema", true, "Insert metric samples into normalized schema")
 	flag.BoolVar(&cfg.pgPrometheusLogSamples, "pg-prometheus-log-samples", false, "Log raw samples to stdout")
 	flag.DurationVar(&cfg.pgPrometheusChunkInterval, "pg-prometheus-chunk-interval", time.Hour*12, "The size of a time-partition chunk in TimescaleDB")
+	flag.BoolVar(&cfg.useTimescaleDb, "pg-use-timescaledb", true, "Use timescaleDB")
 	return cfg
 }
 
@@ -64,8 +65,11 @@ type Client struct {
 
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config) *Client {
-	db, err := sql.Open("postgres", fmt.Sprintf("host=%v port=%v user=%v password=%v dbname=%v sslmode=disable connect_timeout=10",
-		cfg.host, cfg.port, cfg.user, cfg.password, cfg.database))
+	connStr := fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
+		cfg.host, cfg.port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
+	db, err := sql.Open("postgres", connStr)
+
+	fmt.Println(connStr)
 
 	if err != nil {
 		log.Fatal(err)
@@ -103,15 +107,16 @@ func (c *Client) setupPgPrometheus() error {
 		return err
 	}
 
-	_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
-
+	if c.cfg.useTimescaleDb {
+		_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+	}
 	if err != nil {
 		log.Info("Could not enable TimescaleDB extension", err)
 	}
 
 	var rows *sql.Rows
-	rows, err = tx.Query("SELECT create_prometheus_table($1, $2, normalized_tables => $3, keep_samples => $4, chunk_time_interval => $5)",
-		c.cfg.table, c.cfg.pgPrometheusNormalizedTable, c.cfg.pgPrometheusNormalize, c.cfg.pgPrometheusKeepSamples, c.cfg.pgPrometheusChunkInterval.String())
+	rows, err = tx.Query("SELECT create_prometheus_table($1, normalized_tables => $2, chunk_time_interval => $3,  use_timescaledb=> $4)",
+		c.cfg.table, c.cfg.pgPrometheusNormalize, c.cfg.pgPrometheusChunkInterval.String(), c.cfg.useTimescaleDb)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
@@ -169,29 +174,32 @@ func (c *Client) Write(samples model.Samples) error {
 
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(fmt.Sprintf("COPY \"%s\" FROM STDIN", c.cfg.table))
+	stmt, err := tx.Prepare(fmt.Sprintf("COPY \"%s\" FROM STDIN", c.cfg.copyTable))
 
 	if err != nil {
 		log.Error("Error on Prepare when writing samples", err)
 		return err
 	}
 
-	var buffer bytes.Buffer
-
 	for _, sample := range samples {
 		milliseconds := sample.Timestamp.UnixNano() / 1000000
-		line := fmt.Sprintf("%v %v %v\n", metricString(sample.Metric), sample.Value, milliseconds)
+		line := fmt.Sprintf("%v %v %v", metricString(sample.Metric), sample.Value, milliseconds)
 
 		if c.cfg.pgPrometheusLogSamples {
-			fmt.Print(line)
+			fmt.Println(line)
 		}
-		buffer.WriteString(line)
+
+		_, err = stmt.Exec(line)
+		if err != nil {
+			log.Errorf("Error executing statement '%s'", line)
+			return err
+		}
+
 	}
 
-	_, err = stmt.Exec(buffer.String())
-
+	_, err = stmt.Exec()
 	if err != nil {
-		log.Errorf("Error executing statement '%s'", buffer.String())
+		log.Errorf("Error executing close of copy")
 		return err
 	}
 
@@ -383,7 +391,7 @@ func toTimestamp(milliseconds int64) time.Time {
 	return time.Unix(sec, nsec)
 }
 
-func (c *Client) buildQuery(q *remote.Query, timeField string, metricNameField string, valueField string, labelsField string, from string) (string, error) {
+func (c *Client) buildQuery(q *remote.Query) (string, error) {
 	matchers := make([]string, 0, len(q.Matchers))
 	// If we don't find a metric name matcher, query all metrics
 
@@ -393,13 +401,13 @@ func (c *Client) buildQuery(q *remote.Query, timeField string, metricNameField s
 		if m.Name == model.MetricNameLabel {
 			switch m.Type {
 			case remote.MatchType_EQUAL:
-				matchers = append(matchers, fmt.Sprintf("%s = '%s'", metricNameField, escapeSingleQuotes(m.Value)))
+				matchers = append(matchers, fmt.Sprintf("name = '%s'", escapeSingleQuotes(m.Value)))
 			case remote.MatchType_NOT_EQUAL:
-				matchers = append(matchers, fmt.Sprintf("%s != '%s'", metricNameField, escapeSingleQuotes(m.Value)))
+				matchers = append(matchers, fmt.Sprintf("name != '%s'", escapeSingleQuotes(m.Value)))
 			case remote.MatchType_REGEX_MATCH:
-				matchers = append(matchers, fmt.Sprintf("%s ~ '^%s$'", metricNameField, escapeSingleQuotes(m.Value)))
+				matchers = append(matchers, fmt.Sprintf("name ~ '^%s$'", escapeSingleQuotes(m.Value)))
 			case remote.MatchType_REGEX_NO_MATCH:
-				matchers = append(matchers, fmt.Sprintf("%s !~ '^%s$'", metricNameField, escapeSingleQuotes(m.Value)))
+				matchers = append(matchers, fmt.Sprintf("name !~ '^%s$'", escapeSingleQuotes(m.Value)))
 			default:
 				return "", fmt.Errorf("unknown metric name match type %v", m.Type)
 			}
@@ -410,11 +418,11 @@ func (c *Client) buildQuery(q *remote.Query, timeField string, metricNameField s
 		case remote.MatchType_EQUAL:
 			labelEqualPredicates[m.Name] = m.Value
 		case remote.MatchType_NOT_EQUAL:
-			matchers = append(matchers, fmt.Sprintf("%s->>'%s' != '%q'", labelsField, m.Name, escapeSingleQuotes(m.Value)))
+			matchers = append(matchers, fmt.Sprintf("labels->>'%s' != '%q'", m.Name, escapeSingleQuotes(m.Value)))
 		case remote.MatchType_REGEX_MATCH:
-			matchers = append(matchers, fmt.Sprintf("%s->>'%s' ~ '^%s$'", labelsField, m.Name, escapeSingleQuotes(m.Value)))
+			matchers = append(matchers, fmt.Sprintf("labels->>'%s' ~ '^%s$'", m.Name, escapeSingleQuotes(m.Value)))
 		case remote.MatchType_REGEX_NO_MATCH:
-			matchers = append(matchers, fmt.Sprintf("%s->>'%s' !~ '^%s$'", labelsField, m.Name, escapeSingleQuotes(m.Value)))
+			matchers = append(matchers, fmt.Sprintf("labels->>'%s' !~ '^%s$'", m.Name, escapeSingleQuotes(m.Value)))
 		default:
 			return "", fmt.Errorf("unknown match type %v", m.Type)
 		}
@@ -427,22 +435,18 @@ func (c *Client) buildQuery(q *remote.Query, timeField string, metricNameField s
 		if err != nil {
 			return "", err
 		}
-		equalsPredicate = fmt.Sprintf(" AND %s @> '%s'", labelsField, labelsJSON)
+		equalsPredicate = fmt.Sprintf(" AND labels @> '%s'", labelsJSON)
 	}
 
-	matchers = append(matchers, fmt.Sprintf("%s >= '%v'", timeField, toTimestamp(q.StartTimestampMs).Format(time.RFC3339)))
-	matchers = append(matchers, fmt.Sprintf("%s <= '%v'", timeField, toTimestamp(q.EndTimestampMs).Format(time.RFC3339)))
+	matchers = append(matchers, fmt.Sprintf("time  >= '%v'", toTimestamp(q.StartTimestampMs).Format(time.RFC3339)))
+	matchers = append(matchers, fmt.Sprintf("time <= '%v'", toTimestamp(q.EndTimestampMs).Format(time.RFC3339)))
 
-	return fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s WHERE %s %s",
-		timeField, metricNameField, valueField, labelsField, from, strings.Join(matchers, " AND "), equalsPredicate), nil
+	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s",
+		c.cfg.table, strings.Join(matchers, " AND "), equalsPredicate), nil
 }
 
 func (c *Client) buildCommand(q *remote.Query) (string, error) {
-	if c.cfg.pgPrometheusNormalize {
-		return c.buildQuery(q, "time", "metric_name", "value", "labels",
-			fmt.Sprintf("%[1]s s INNER JOIN %[1]s_labels l ON (s.labels_id = l.id)", c.cfg.pgPrometheusNormalizedTable))
-	}
-	return c.buildQuery(q, "prom_time(sample)", "prom_name(sample)", "prom_value(sample)", "prom_labels(sample)", c.cfg.table)
+	return c.buildQuery(q)
 }
 
 func escapeSingleQuotes(str string) string {
