@@ -1,8 +1,11 @@
 # Prometheus remote storage adapter for PostgreSQL
 
 With this remote storage adapter, Prometheus can use PostgreSQL as a long-term store for time-series metrics. 
-The adapter currently requires the `pg_prometheus` extension for PostgreSQL and optionally supports [TimescaleDB](https://github.com/timescale/timescaledb) 
-for better performance and scalability.
+
+Related packages to install:
+- [pg_prometheus extension for PostgreSQL](https://github.com/timescale/pg_prometheus) (required)
+- [TimescaleDB](https://github.com/timescale/timescaledb) (optional
+for better performance and scalability)
 
 ## Docker instructions
 
@@ -68,3 +71,7 @@ make docker
 # Push to Docker registry
 make push
 ```
+
+## Contributing
+
+We welcome contributions to this adaptor, which like TimescaleDB is released under the Apache2 Open Source License.  The same [Contributors Agreement](//github.com/timescale/timescaledb/blob/master/CONTRIBUTING.md) applies; please sign the [Contributor License Agreement](https://cla-assistant.io/timescale/prometheus-postgresql-adapter) (CLA) if you're a new contributor.
