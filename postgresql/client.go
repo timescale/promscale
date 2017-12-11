@@ -393,38 +393,49 @@ func toTimestamp(milliseconds int64) time.Time {
 
 func (c *Client) buildQuery(q *remote.Query) (string, error) {
 	matchers := make([]string, 0, len(q.Matchers))
-	// If we don't find a metric name matcher, query all metrics
-
 	labelEqualPredicates := make(map[string]string)
 
 	for _, m := range q.Matchers {
+		escapedValue := escapeValue(m.Value)
+
 		if m.Name == model.MetricNameLabel {
 			switch m.Type {
 			case remote.MatchType_EQUAL:
-				matchers = append(matchers, fmt.Sprintf("name = '%s'", escapeSingleQuotes(m.Value)))
+				if len(escapedValue) == 0 {
+					matchers = append(matchers, fmt.Sprintf("(name IS NULL OR name = '')"))
+				} else {
+					matchers = append(matchers, fmt.Sprintf("name = '%s'", escapedValue))
+				}
 			case remote.MatchType_NOT_EQUAL:
-				matchers = append(matchers, fmt.Sprintf("name != '%s'", escapeSingleQuotes(m.Value)))
+				matchers = append(matchers, fmt.Sprintf("name != '%s'", escapedValue))
 			case remote.MatchType_REGEX_MATCH:
-				matchers = append(matchers, fmt.Sprintf("name ~ '^%s$'", escapeSingleQuotes(m.Value)))
+				matchers = append(matchers, fmt.Sprintf("name ~ '%s'", anchorValue(escapedValue)))
 			case remote.MatchType_REGEX_NO_MATCH:
-				matchers = append(matchers, fmt.Sprintf("name !~ '^%s$'", escapeSingleQuotes(m.Value)))
+				matchers = append(matchers, fmt.Sprintf("name !~ '%s'", anchorValue(escapedValue)))
 			default:
 				return "", fmt.Errorf("unknown metric name match type %v", m.Type)
 			}
-			continue
-		}
-
-		switch m.Type {
-		case remote.MatchType_EQUAL:
-			labelEqualPredicates[m.Name] = m.Value
-		case remote.MatchType_NOT_EQUAL:
-			matchers = append(matchers, fmt.Sprintf("labels->>'%s' != '%q'", m.Name, escapeSingleQuotes(m.Value)))
-		case remote.MatchType_REGEX_MATCH:
-			matchers = append(matchers, fmt.Sprintf("labels->>'%s' ~ '^%s$'", m.Name, escapeSingleQuotes(m.Value)))
-		case remote.MatchType_REGEX_NO_MATCH:
-			matchers = append(matchers, fmt.Sprintf("labels->>'%s' !~ '^%s$'", m.Name, escapeSingleQuotes(m.Value)))
-		default:
-			return "", fmt.Errorf("unknown match type %v", m.Type)
+		} else {
+			switch m.Type {
+			case remote.MatchType_EQUAL:
+				if len(escapedValue) == 0 {
+					// From the PromQL docs: "Label matchers that match
+					// empty label values also select all time series that
+					// do not have the specific label set at all."
+					matchers = append(matchers, fmt.Sprintf("((labels ? '%s') = false OR (labels->>'%s' = ''))",
+						m.Name, m.Name))
+				} else {
+					labelEqualPredicates[m.Name] = m.Value
+				}
+			case remote.MatchType_NOT_EQUAL:
+				matchers = append(matchers, fmt.Sprintf("labels->>'%s' != '%s'", m.Name, escapedValue))
+			case remote.MatchType_REGEX_MATCH:
+				matchers = append(matchers, fmt.Sprintf("labels->>'%s' ~ '%s'", m.Name, anchorValue(escapedValue)))
+			case remote.MatchType_REGEX_NO_MATCH:
+				matchers = append(matchers, fmt.Sprintf("labels->>'%s' !~ '%s'", m.Name, anchorValue(escapedValue)))
+			default:
+				return "", fmt.Errorf("unknown match type %v", m.Type)
+			}
 		}
 	}
 	equalsPredicate := ""
@@ -438,7 +449,7 @@ func (c *Client) buildQuery(q *remote.Query) (string, error) {
 		equalsPredicate = fmt.Sprintf(" AND labels @> '%s'", labelsJSON)
 	}
 
-	matchers = append(matchers, fmt.Sprintf("time  >= '%v'", toTimestamp(q.StartTimestampMs).Format(time.RFC3339)))
+	matchers = append(matchers, fmt.Sprintf("time >= '%v'", toTimestamp(q.StartTimestampMs).Format(time.RFC3339)))
 	matchers = append(matchers, fmt.Sprintf("time <= '%v'", toTimestamp(q.EndTimestampMs).Format(time.RFC3339)))
 
 	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s",
@@ -449,8 +460,28 @@ func (c *Client) buildCommand(q *remote.Query) (string, error) {
 	return c.buildQuery(q)
 }
 
-func escapeSingleQuotes(str string) string {
+func escapeValue(str string) string {
 	return strings.Replace(str, `'`, `\'`, -1)
+}
+
+// anchorValue adds anchors to values in regexps since PromQL docs
+// states that "Regex-matches are fully anchored."
+func anchorValue(str string) string {
+	l := len(str)
+
+	if l == 0 || (str[0] == '^' && str[l-1] == '$') {
+		return str
+	}
+
+	if str[0] == '^' {
+		return fmt.Sprintf("%s$", str)
+	}
+
+	if str[l-1] == '$' {
+		return fmt.Sprintf("^%s", str)
+	}
+
+	return fmt.Sprintf("^%s$", str)
 }
 
 // Name identifies the client as a PostgreSQL client.
