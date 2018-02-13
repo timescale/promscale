@@ -5,17 +5,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
 
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/remote"
+	"github.com/prometheus/prometheus/prompb"
 )
 
 // Config for the database
@@ -59,34 +61,43 @@ func ParseFlags(cfg *Config) *Config {
 
 // Client sends Prometheus samples to PostgreSQL
 type Client struct {
-	db  *sql.DB
-	cfg *Config
+	logger log.Logger
+	db     *sql.DB
+	cfg    *Config
 }
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config) *Client {
+func NewClient(logger log.Logger, cfg *Config) *Client {
 	connStr := fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
 		cfg.host, cfg.port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
+
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	db, err := sql.Open("postgres", connStr)
 
-	fmt.Println(connStr)
+	level.Info(logger).Log("msg", connStr)
 
 	if err != nil {
-		log.Fatal(err)
+		level.Error(logger).Log("err", err)
+		os.Exit(1)
 	}
 
 	db.SetMaxOpenConns(cfg.maxOpenConns)
 	db.SetMaxIdleConns(cfg.maxIdleConns)
 
 	client := &Client{
-		db:  db,
-		cfg: cfg,
+		logger: log.With(logger, "storage", "PostgreSQL"),
+		db:     db,
+		cfg:    cfg,
 	}
 
 	err = client.setupPgPrometheus()
 
 	if err != nil {
-		log.Fatal(err)
+		level.Error(logger).Log("err", err)
+		os.Exit(1)
 	}
 
 	return client
@@ -111,7 +122,7 @@ func (c *Client) setupPgPrometheus() error {
 		_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
 	}
 	if err != nil {
-		log.Info("Could not enable TimescaleDB extension", err)
+		level.Info(c.logger).Log("msg", "Could not enable TimescaleDB extension", "err", err)
 	}
 
 	var rows *sql.Rows
@@ -132,7 +143,7 @@ func (c *Client) setupPgPrometheus() error {
 		return err
 	}
 
-	log.Infoln("Initialized pg_prometheus extension")
+	level.Info(c.logger).Log("msg", "Initialized pg_prometheus extension")
 
 	return nil
 }
@@ -168,7 +179,7 @@ func (c *Client) Write(samples model.Samples) error {
 	tx, err := c.db.Begin()
 
 	if err != nil {
-		log.Error("Error on Begin when writing samples", err)
+		level.Error(c.logger).Log("msg", "Error on Begin when writing samples", "err", err)
 		return err
 	}
 
@@ -177,7 +188,7 @@ func (c *Client) Write(samples model.Samples) error {
 	stmt, err := tx.Prepare(fmt.Sprintf("COPY \"%s\" FROM STDIN", c.cfg.copyTable))
 
 	if err != nil {
-		log.Error("Error on Prepare when writing samples", err)
+		level.Error(c.logger).Log("msg", "Error on Prepare when writing samples", "err", err)
 		return err
 	}
 
@@ -191,7 +202,7 @@ func (c *Client) Write(samples model.Samples) error {
 
 		_, err = stmt.Exec(line)
 		if err != nil {
-			log.Errorf("Error executing statement '%s'", line)
+			level.Error(c.logger).Log("msg", "Error executing statement", "stmt", line, "err", err)
 			return err
 		}
 
@@ -199,27 +210,27 @@ func (c *Client) Write(samples model.Samples) error {
 
 	_, err = stmt.Exec()
 	if err != nil {
-		log.Errorf("Error executing close of copy")
+		level.Error(c.logger).Log("msg", "Error executing close of copy", "err", err)
 		return err
 	}
 
 	err = stmt.Close()
 
 	if err != nil {
-		log.Error("Error on Close when writing samples", err)
+		level.Error(c.logger).Log("msg", "Error on Close when writing samples", "err", err)
 		return err
 	}
 
 	err = tx.Commit()
 
 	if err != nil {
-		log.Error("Error on Commit when writing samples", err)
+		level.Error(c.logger).Log("msg", "Error on Commit when writing samples", "err", err)
 		return err
 	}
 
 	duration := time.Since(begin).Seconds()
 
-	log.Debugf("Wrote %v samples in %v seconds", len(samples), duration)
+	level.Debug(c.logger).Log("msg", "Wrote samples", "count", len(samples), "duration", duration)
 
 	return nil
 }
@@ -286,8 +297,8 @@ func (l *sampleLabels) len() int {
 }
 
 // Read implements the Reader interface and reads metrics samples from the database
-func (c *Client) Read(req *remote.ReadRequest) (*remote.ReadResponse, error) {
-	labelsToSeries := map[string]*remote.TimeSeries{}
+func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
+	labelsToSeries := map[string]*prompb.TimeSeries{}
 
 	for _, q := range req.Queries {
 		command, err := c.buildCommand(q)
@@ -296,7 +307,7 @@ func (c *Client) Read(req *remote.ReadRequest) (*remote.ReadResponse, error) {
 			return nil, err
 		}
 
-		log.Debugf("Query '%v'", command)
+		level.Debug(c.logger).Log("msg", "Executed query", "query", command)
 
 		rows, err := c.db.Query(command)
 
@@ -323,29 +334,29 @@ func (c *Client) Read(req *remote.ReadRequest) (*remote.ReadResponse, error) {
 			ts, ok := labelsToSeries[key]
 
 			if !ok {
-				labelPairs := make([]*remote.LabelPair, 0, labels.len()+1)
-				labelPairs = append(labelPairs, &remote.LabelPair{
+				labelPairs := make([]*prompb.Label, 0, labels.len()+1)
+				labelPairs = append(labelPairs, &prompb.Label{
 					Name:  model.MetricNameLabel,
 					Value: name,
 				})
 
 				for _, k := range labels.OrderedKeys {
-					labelPairs = append(labelPairs, &remote.LabelPair{
+					labelPairs = append(labelPairs, &prompb.Label{
 						Name:  k,
 						Value: labels.Map[k],
 					})
 				}
 
-				ts = &remote.TimeSeries{
+				ts = &prompb.TimeSeries{
 					Labels:  labelPairs,
-					Samples: make([]*remote.Sample, 0, 100),
+					Samples: make([]*prompb.Sample, 0, 100),
 				}
 				labelsToSeries[key] = ts
 			}
 
-			ts.Samples = append(ts.Samples, &remote.Sample{
-				TimestampMs: time.UnixNano() / 1000000,
-				Value:       value,
+			ts.Samples = append(ts.Samples, &prompb.Sample{
+				Timestamp: time.UnixNano() / 1000000,
+				Value:     value,
 			})
 		}
 
@@ -356,10 +367,10 @@ func (c *Client) Read(req *remote.ReadRequest) (*remote.ReadResponse, error) {
 		}
 	}
 
-	resp := remote.ReadResponse{
-		Results: []*remote.QueryResult{
+	resp := prompb.ReadResponse{
+		Results: []*prompb.QueryResult{
 			{
-				Timeseries: make([]*remote.TimeSeries, 0, len(labelsToSeries)),
+				Timeseries: make([]*prompb.TimeSeries, 0, len(labelsToSeries)),
 			},
 		},
 	}
@@ -367,7 +378,7 @@ func (c *Client) Read(req *remote.ReadRequest) (*remote.ReadResponse, error) {
 		resp.Results[0].Timeseries = append(resp.Results[0].Timeseries, ts)
 	}
 
-	log.Debugf("Returned response with %v timeseries", len(labelsToSeries))
+	level.Debug(c.logger).Log("msg", "Returned response", "#timeseries", len(labelsToSeries))
 
 	return &resp, nil
 }
@@ -377,7 +388,7 @@ func (c *Client) HealthCheck() error {
 	rows, err := c.db.Query("SELECT 1")
 
 	if err != nil {
-		log.Debug("Health check error ", err)
+		level.Debug(c.logger).Log("msg", "Health check error", "err", err)
 		return err
 	}
 
@@ -391,7 +402,7 @@ func toTimestamp(milliseconds int64) time.Time {
 	return time.Unix(sec, nsec)
 }
 
-func (c *Client) buildQuery(q *remote.Query) (string, error) {
+func (c *Client) buildQuery(q *prompb.Query) (string, error) {
 	matchers := make([]string, 0, len(q.Matchers))
 	labelEqualPredicates := make(map[string]string)
 
@@ -400,24 +411,24 @@ func (c *Client) buildQuery(q *remote.Query) (string, error) {
 
 		if m.Name == model.MetricNameLabel {
 			switch m.Type {
-			case remote.MatchType_EQUAL:
+			case prompb.LabelMatcher_EQ:
 				if len(escapedValue) == 0 {
 					matchers = append(matchers, fmt.Sprintf("(name IS NULL OR name = '')"))
 				} else {
 					matchers = append(matchers, fmt.Sprintf("name = '%s'", escapedValue))
 				}
-			case remote.MatchType_NOT_EQUAL:
+			case prompb.LabelMatcher_NEQ:
 				matchers = append(matchers, fmt.Sprintf("name != '%s'", escapedValue))
-			case remote.MatchType_REGEX_MATCH:
+			case prompb.LabelMatcher_RE:
 				matchers = append(matchers, fmt.Sprintf("name ~ '%s'", anchorValue(escapedValue)))
-			case remote.MatchType_REGEX_NO_MATCH:
+			case prompb.LabelMatcher_NRE:
 				matchers = append(matchers, fmt.Sprintf("name !~ '%s'", anchorValue(escapedValue)))
 			default:
 				return "", fmt.Errorf("unknown metric name match type %v", m.Type)
 			}
 		} else {
 			switch m.Type {
-			case remote.MatchType_EQUAL:
+			case prompb.LabelMatcher_EQ:
 				if len(escapedValue) == 0 {
 					// From the PromQL docs: "Label matchers that match
 					// empty label values also select all time series that
@@ -427,11 +438,11 @@ func (c *Client) buildQuery(q *remote.Query) (string, error) {
 				} else {
 					labelEqualPredicates[m.Name] = m.Value
 				}
-			case remote.MatchType_NOT_EQUAL:
+			case prompb.LabelMatcher_NEQ:
 				matchers = append(matchers, fmt.Sprintf("labels->>'%s' != '%s'", m.Name, escapedValue))
-			case remote.MatchType_REGEX_MATCH:
+			case prompb.LabelMatcher_RE:
 				matchers = append(matchers, fmt.Sprintf("labels->>'%s' ~ '%s'", m.Name, anchorValue(escapedValue)))
-			case remote.MatchType_REGEX_NO_MATCH:
+			case prompb.LabelMatcher_NRE:
 				matchers = append(matchers, fmt.Sprintf("labels->>'%s' !~ '%s'", m.Name, anchorValue(escapedValue)))
 			default:
 				return "", fmt.Errorf("unknown match type %v", m.Type)
@@ -456,7 +467,7 @@ func (c *Client) buildQuery(q *remote.Query) (string, error) {
 		c.cfg.table, strings.Join(matchers, " AND "), equalsPredicate), nil
 }
 
-func (c *Client) buildCommand(q *remote.Query) (string, error) {
+func (c *Client) buildCommand(q *prompb.Query) (string, error) {
 	return c.buildQuery(q)
 }
 

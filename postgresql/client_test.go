@@ -5,12 +5,13 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/remote"
+	"github.com/prometheus/prometheus/prompb"
 )
 
 var (
-	database = flag.Bool("database", false, "run database integration tests")
+	database = flag.Bool("database", true, "run database integration tests")
 )
 
 func TestBuildCommand(t *testing.T) {
@@ -21,22 +22,22 @@ func TestBuildCommand(t *testing.T) {
 		},
 	}
 
-	q := &remote.Query{
+	q := &prompb.Query{
 		StartTimestampMs: 0,
 		EndTimestampMs:   20000,
-		Matchers: []*remote.LabelMatcher{
-			&remote.LabelMatcher{
-				Type:  remote.MatchType_EQUAL,
+		Matchers: []*prompb.LabelMatcher{
+			&prompb.LabelMatcher{
+				Type:  prompb.LabelMatcher_EQ,
 				Name:  "__name__",
 				Value: "cpu_usage",
 			},
-			&remote.LabelMatcher{
-				Type:  remote.MatchType_EQUAL,
+			&prompb.LabelMatcher{
+				Type:  prompb.LabelMatcher_EQ,
 				Name:  "job",
 				Value: "nginx",
 			},
-			&remote.LabelMatcher{
-				Type:  remote.MatchType_REGEX_MATCH,
+			&prompb.LabelMatcher{
+				Type:  prompb.LabelMatcher_RE,
 				Name:  "host",
 				Value: "local.*",
 			},
@@ -84,7 +85,8 @@ func TestWriteCommand(t *testing.T) {
 	}
 
 	c := &Client{
-		db: db,
+		logger: log.NewNopLogger(),
+		db:     db,
 		cfg: &Config{
 			table:                 "metrics",
 			copyTable:             "metrics_copy",
