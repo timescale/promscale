@@ -53,23 +53,28 @@ remote_read:
 
 Before building, make sure the following prerequisites are installed:
 
-* [Glide](https://glide.sh/) for dependency management.
+* [Dep](https://golang.github.io/dep/) for dependency management.
 * [Go](https://golang.org/dl/)
 
 Then build as follows:
 
 ```bash
 # Install dependencies (only required once)
-glide install --strip-vendor --strip-vcs
+dep ensure
 
 # Build binary
 make
+```
+
+## Building new Docker images
+
+```bash
 
 # Build Docker image
 make docker
 
-# Push to Docker registry
-make push
+# Push to Docker registry (requires permission)
+make push ORGANIZATION=myorg 
 ```
 
 ## Contributing
