@@ -71,10 +71,10 @@ make
 ```bash
 
 # Build Docker image
-make docker
+make docker-image
 
 # Push to Docker registry (requires permission)
-make push ORGANIZATION=myorg 
+make docker-push ORGANIZATION=myorg 
 ```
 
 ## Contributing
