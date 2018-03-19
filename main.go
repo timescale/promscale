@@ -103,7 +103,7 @@ func parseFlags() *config {
 
 	pgprometheus.ParseFlags(&cfg.pgPrometheusConfig)
 
-	flag.DurationVar(&cfg.remoteTimeout, "send-timeout", 30*time.Second, "The timeout to use when sending samples to the remote storage.")
+	flag.DurationVar(&cfg.remoteTimeout, "adapter.send-timeout", 30*time.Second, "The timeout to use when sending samples to the remote storage.")
 	flag.StringVar(&cfg.listenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web.telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.logLevel, "log.level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
