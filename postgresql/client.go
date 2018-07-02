@@ -463,7 +463,7 @@ func (c *Client) buildQuery(q *prompb.Query) (string, error) {
 	matchers = append(matchers, fmt.Sprintf("time >= '%v'", toTimestamp(q.StartTimestampMs).Format(time.RFC3339)))
 	matchers = append(matchers, fmt.Sprintf("time <= '%v'", toTimestamp(q.EndTimestampMs).Format(time.RFC3339)))
 
-	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s",
+	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s ORDER BY time ASC",
 		c.cfg.table, strings.Join(matchers, " AND "), equalsPredicate), nil
 }
 
