@@ -112,8 +112,12 @@ func (c *Client) setupPgPrometheus() error {
 
 	defer tx.Rollback()
 
-	_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS pg_prometheus")
+	_, err = tx.Exec("SET lc_messages TO 'en_US.UTF-8'")
+	if err != nil {
+		return err
+	}
 
+	_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS pg_prometheus")
 	if err != nil {
 		return err
 	}
