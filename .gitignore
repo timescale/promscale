@@ -3,3 +3,6 @@
 /vendor
 /version.properties
 /.target_os
+/.history
+/.vscode
+

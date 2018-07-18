@@ -19,22 +19,23 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
-	"sync"
+	"os"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/timescale/prometheus-postgresql-adapter/log"
+
+	"github.com/timescale/prometheus-postgresql-adapter/postgresql"
+	"github.com/timescale/prometheus-postgresql-adapter/util"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promlog"
-	"github.com/timescale/prometheus-postgresql-adapter/postgresql"
 
+	"github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -44,7 +45,12 @@ type config struct {
 	telemetryPath      string
 	pgPrometheusConfig pgprometheus.Config
 	logLevel           string
+	readOnly           bool
 }
+
+const (
+	tickInterval = time.Second
+)
 
 var (
 	receivedSamples = prometheus.NewCounter(
@@ -75,6 +81,15 @@ var (
 		},
 		[]string{"remote"},
 	)
+	httpRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_ms",
+			Help:    "Duration of HTTP request in milliseconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"path"},
+	)
+	writeThroughtput = util.NewThroughputCalc(tickInterval)
 )
 
 func init() {
@@ -82,19 +97,30 @@ func init() {
 	prometheus.MustRegister(sentSamples)
 	prometheus.MustRegister(failedSamples)
 	prometheus.MustRegister(sentBatchDuration)
+	prometheus.MustRegister(httpRequestDuration)
+	writeThroughtput.Start()
 }
 
 func main() {
 	cfg := parseFlags()
 	http.Handle(cfg.telemetryPath, prometheus.Handler())
-	logLevel := promlog.AllowedLevel{}
-	logLevel.Set(cfg.logLevel)
-	logger := promlog.New(logLevel)
+	log.Init(cfg.logLevel)
 
-	writers, readers := buildClients(logger, cfg)
+	writer, reader := buildClients(cfg)
 
-	level.Info(logger).Log("msg", "Starting up...")
-	serve(logger, cfg.listenAddr, writers, readers)
+	http.Handle("/write", timeHandler("write", write(writer)))
+	http.Handle("/read", timeHandler("read", read(reader)))
+	http.Handle("/healthz", health(reader))
+
+	log.Info("msg", "Starting up...")
+	log.Info("msg", "Listening", "addr", cfg.listenAddr)
+
+	err := http.ListenAndServe(cfg.listenAddr, nil)
+
+	if err != nil {
+		log.Error("msg", "Listen failure", "err", err)
+		os.Exit(1)
+	}
 }
 
 func parseFlags() *config {
@@ -107,6 +133,7 @@ func parseFlags() *config {
 	flag.StringVar(&cfg.listenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web.telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.logLevel, "log.level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
+	flag.BoolVar(&cfg.readOnly, "read.only", false, "Read-only mode. Don't write to database.")
 
 	flag.Parse()
 
@@ -118,42 +145,50 @@ type writer interface {
 	Name() string
 }
 
+type noOpWriter struct{}
+
+func (no *noOpWriter) Write(samples model.Samples) error {
+	log.Debug("msg", "Noop writer", "num_samples", len(samples))
+	return nil
+}
+
+func (no *noOpWriter) Name() string {
+	return "noopWriter"
+}
+
 type reader interface {
 	Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error)
 	Name() string
 	HealthCheck() error
 }
 
-func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
-	var writers []writer
-	var readers []reader
-
-	pgClient := pgprometheus.NewClient(logger, &cfg.pgPrometheusConfig)
-	writers = append(writers, pgClient)
-	readers = append(readers, pgClient)
-
-	return writers, readers
+func buildClients(cfg *config) (writer, reader) {
+	pgClient := pgprometheus.NewClient(&cfg.pgPrometheusConfig)
+	if cfg.readOnly {
+		return &noOpWriter{}, pgClient
+	}
+	return pgClient, pgClient
 }
 
-func serve(logger log.Logger, addr string, writers []writer, readers []reader) error {
-	http.HandleFunc("/write", func(w http.ResponseWriter, r *http.Request) {
+func write(writer writer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Read error", "err", err.Error())
+			log.Error("msg", "Read error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
-			level.Error(logger).Log("msg", "Decode error", "err", err.Error())
+			log.Error("msg", "Decode error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		var req prompb.WriteRequest
 		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			level.Error(logger).Log("msg", "Unmarshal error", "err", err.Error())
+			log.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -161,50 +196,60 @@ func serve(logger log.Logger, addr string, writers []writer, readers []reader) e
 		samples := protoToSamples(&req)
 		receivedSamples.Add(float64(len(samples)))
 
-		var wg sync.WaitGroup
-		for _, w := range writers {
-			wg.Add(1)
-			go func(rw writer) {
-				sendSamples(logger, rw, samples)
-				wg.Done()
-			}(w)
+		err = sendSamples(writer, samples)
+		if err != nil {
+			log.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
 		}
-		wg.Wait()
-	})
 
-	http.HandleFunc("/read", func(w http.ResponseWriter, r *http.Request) {
+		counter, err := sentSamples.GetMetricWithLabelValues(writer.Name())
+		if err != nil {
+			log.Warn("msg", "Couldn't get a counter", "labelValue", writer.Name(), "err", err)
+		}
+		writeThroughtput.SetCurrent(getCounterValue(counter))
+
+		select {
+		case d := <-writeThroughtput.Values:
+			log.Info("msg", "Samples write throughput", "samples/sec", d)
+		default:
+		}
+	})
+}
+
+func getCounterValue(counter prometheus.Counter) float64 {
+	dtoMetric := &io_prometheus_client.Metric{}
+	if err := counter.Write(dtoMetric); err != nil {
+		log.Warn("msg", "Error reading counter value", "err", err, "sentSamples", sentSamples)
+	}
+	return dtoMetric.GetCounter().GetValue()
+}
+
+func read(reader reader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Read error", "err", err.Error())
+			log.Error("msg", "Read error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
-			level.Error(logger).Log("msg", "Decode error", "err", err.Error())
+			log.Error("msg", "Decode error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		var req prompb.ReadRequest
 		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			level.Error(logger).Log("msg", "Unmarshal error", "err", err.Error())
+			log.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// TODO: Support reading from more than one reader and merging the results.
-		if len(readers) != 1 {
-			http.Error(w, fmt.Sprintf("expected exactly one reader, found %d readers", len(readers)), http.StatusInternalServerError)
-			return
-		}
-		reader := readers[0]
-
 		var resp *prompb.ReadResponse
 		resp, err = reader.Read(&req)
 		if err != nil {
-			level.Warn(logger).Log("msg", "Error executing query", "query", req, "storage", reader.Name(), "err", err)
+			log.Warn("msg", "Error executing query", "query", req, "storage", reader.Name(), "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -224,27 +269,17 @@ func serve(logger log.Logger, addr string, writers []writer, readers []reader) e
 			return
 		}
 	})
+}
 
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		// Only supports one reader at this point
-		reader := readers[0]
+func health(reader reader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := reader.HealthCheck()
-
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Length", "0")
 	})
-
-	level.Info(logger).Log("msg", "Listening", "addr", addr)
-
-	err := http.ListenAndServe(addr, nil)
-
-	if err != nil {
-		level.Error(logger).Log("msg", "Listen failure", "err", err)
-	}
-	return err
 }
 
 func protoToSamples(req *prompb.WriteRequest) model.Samples {
@@ -266,14 +301,26 @@ func protoToSamples(req *prompb.WriteRequest) model.Samples {
 	return samples
 }
 
-func sendSamples(logger log.Logger, w writer, samples model.Samples) {
+func sendSamples(w writer, samples model.Samples) error {
 	begin := time.Now()
 	err := w.Write(samples)
 	duration := time.Since(begin).Seconds()
 	if err != nil {
-		level.Warn(logger).Log("msg", "Error sending samples to remote storage", "err", err, "storage", w.Name(), "num_samples", len(samples))
 		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
+		return err
 	}
 	sentSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
 	sentBatchDuration.WithLabelValues(w.Name()).Observe(duration)
+	return nil
+}
+
+// timeHandler uses Prometheus histogram to track request time
+func timeHandler(path string, handler http.Handler) http.Handler {
+	f := func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		handler.ServeHTTP(w, r)
+		elapsedMs := time.Since(start).Nanoseconds() / int64(time.Millisecond)
+		httpRequestDuration.WithLabelValues(path).Observe(float64(elapsedMs))
+	}
+	return http.HandlerFunc(f)
 }

@@ -9,11 +9,12 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/timescale/prometheus-postgresql-adapter/log"
+
+	"github.com/timescale/prometheus-postgresql-adapter/util"
+
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -37,6 +38,7 @@ type Config struct {
 	pgPrometheusLogSamples    bool
 	pgPrometheusChunkInterval time.Duration
 	useTimescaleDb            bool
+	dbConnectRetries          int
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -56,47 +58,46 @@ func ParseFlags(cfg *Config) *Config {
 	flag.BoolVar(&cfg.pgPrometheusLogSamples, "pg.prometheus-log-samples", false, "Log raw samples to stdout")
 	flag.DurationVar(&cfg.pgPrometheusChunkInterval, "pg.prometheus-chunk-interval", time.Hour*12, "The size of a time-partition chunk in TimescaleDB")
 	flag.BoolVar(&cfg.useTimescaleDb, "pg.use-timescaledb", true, "Use timescaleDB")
+	flag.IntVar(&cfg.dbConnectRetries, "pg.db-connect-retries", 0, "How many times to retry connecting to the database")
 	return cfg
 }
 
 // Client sends Prometheus samples to PostgreSQL
 type Client struct {
-	logger log.Logger
-	db     *sql.DB
-	cfg    *Config
+	db  *sql.DB
+	cfg *Config
 }
 
 // NewClient creates a new PostgreSQL client
-func NewClient(logger log.Logger, cfg *Config) *Client {
+func NewClient(cfg *Config) *Client {
 	connStr := fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
 		cfg.host, cfg.port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
 
-	if logger == nil {
-		logger = log.NewNopLogger()
-	}
+	wrappedDb, err := util.RetryWithFixedDelay(uint(cfg.dbConnectRetries), time.Second, func() (interface{}, error) {
+		return sql.Open("postgres", connStr)
+	})
 
-	db, err := sql.Open("postgres", connStr)
-
-	level.Info(logger).Log("msg", connStr)
+	log.Info("msg", connStr)
 
 	if err != nil {
-		level.Error(logger).Log("err", err)
+		log.Error("err", err)
 		os.Exit(1)
 	}
+
+	db := wrappedDb.(*sql.DB)
 
 	db.SetMaxOpenConns(cfg.maxOpenConns)
 	db.SetMaxIdleConns(cfg.maxIdleConns)
 
 	client := &Client{
-		logger: log.With(logger, "storage", "PostgreSQL"),
-		db:     db,
-		cfg:    cfg,
+		db:  db,
+		cfg: cfg,
 	}
 
 	err = client.setupPgPrometheus()
 
 	if err != nil {
-		level.Error(logger).Log("err", err)
+		log.Error("err", err)
 		os.Exit(1)
 	}
 
@@ -112,12 +113,8 @@ func (c *Client) setupPgPrometheus() error {
 
 	defer tx.Rollback()
 
-	_, err = tx.Exec("SET lc_messages TO 'en_US.UTF-8'")
-	if err != nil {
-		return err
-	}
-
 	_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS pg_prometheus")
+
 	if err != nil {
 		return err
 	}
@@ -126,7 +123,7 @@ func (c *Client) setupPgPrometheus() error {
 		_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
 	}
 	if err != nil {
-		level.Info(c.logger).Log("msg", "Could not enable TimescaleDB extension", "err", err)
+		log.Info("msg", "Could not enable TimescaleDB extension", "err", err)
 	}
 
 	var rows *sql.Rows
@@ -147,7 +144,7 @@ func (c *Client) setupPgPrometheus() error {
 		return err
 	}
 
-	level.Info(c.logger).Log("msg", "Initialized pg_prometheus extension")
+	log.Info("msg", "Initialized pg_prometheus extension")
 
 	return nil
 }
@@ -183,7 +180,7 @@ func (c *Client) Write(samples model.Samples) error {
 	tx, err := c.db.Begin()
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "Error on Begin when writing samples", "err", err)
+		log.Error("msg", "Error on Begin when writing samples", "err", err)
 		return err
 	}
 
@@ -192,7 +189,7 @@ func (c *Client) Write(samples model.Samples) error {
 	stmt, err := tx.Prepare(fmt.Sprintf("COPY \"%s\" FROM STDIN", c.cfg.copyTable))
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "Error on Prepare when writing samples", "err", err)
+		log.Error("msg", "Error on Prepare when writing samples", "err", err)
 		return err
 	}
 
@@ -206,7 +203,7 @@ func (c *Client) Write(samples model.Samples) error {
 
 		_, err = stmt.Exec(line)
 		if err != nil {
-			level.Error(c.logger).Log("msg", "Error executing statement", "stmt", line, "err", err)
+			log.Error("msg", "Error executing statement", "stmt", line, "err", err)
 			return err
 		}
 
@@ -214,27 +211,27 @@ func (c *Client) Write(samples model.Samples) error {
 
 	_, err = stmt.Exec()
 	if err != nil {
-		level.Error(c.logger).Log("msg", "Error executing close of copy", "err", err)
+		log.Error("msg", "Error executing close of copy", "err", err)
 		return err
 	}
 
 	err = stmt.Close()
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "Error on Close when writing samples", "err", err)
+		log.Error("msg", "Error on Close when writing samples", "err", err)
 		return err
 	}
 
 	err = tx.Commit()
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "Error on Commit when writing samples", "err", err)
+		log.Error("msg", "Error on Commit when writing samples", "err", err)
 		return err
 	}
 
 	duration := time.Since(begin).Seconds()
 
-	level.Debug(c.logger).Log("msg", "Wrote samples", "count", len(samples), "duration", duration)
+	log.Debug("msg", "Wrote samples", "count", len(samples), "duration", duration)
 
 	return nil
 }
@@ -311,7 +308,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 			return nil, err
 		}
 
-		level.Debug(c.logger).Log("msg", "Executed query", "query", command)
+		log.Debug("msg", "Executed query", "query", command)
 
 		rows, err := c.db.Query(command)
 
@@ -382,7 +379,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 		resp.Results[0].Timeseries = append(resp.Results[0].Timeseries, ts)
 	}
 
-	level.Debug(c.logger).Log("msg", "Returned response", "#timeseries", len(labelsToSeries))
+	log.Debug("msg", "Returned response", "#timeseries", len(labelsToSeries))
 
 	return &resp, nil
 }
@@ -392,7 +389,7 @@ func (c *Client) HealthCheck() error {
 	rows, err := c.db.Query("SELECT 1")
 
 	if err != nil {
-		level.Debug(c.logger).Log("msg", "Health check error", "err", err)
+		log.Debug("msg", "Health check error", "err", err)
 		return err
 	}
 
@@ -467,7 +464,7 @@ func (c *Client) buildQuery(q *prompb.Query) (string, error) {
 	matchers = append(matchers, fmt.Sprintf("time >= '%v'", toTimestamp(q.StartTimestampMs).Format(time.RFC3339)))
 	matchers = append(matchers, fmt.Sprintf("time <= '%v'", toTimestamp(q.EndTimestampMs).Format(time.RFC3339)))
 
-	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s ORDER BY time ASC",
+	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s",
 		c.cfg.table, strings.Join(matchers, " AND "), equalsPredicate), nil
 }
 
