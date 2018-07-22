@@ -8,15 +8,14 @@ ifeq ($(shell uname -m), i386)
 	ARCH=386
 endif
 
-SOURCES:= \
-	postgresql/client.go \
-	main.go
+# Packages for running tests
+PKGS:= $(shell go list ./... | grep -v /vendor)
 
-TEST_SOURCES:=
+SOURCES:=$(shell find . -name '*.go'  | grep -v './vendor')
 
 TARGET:=prometheus-postgresql-adapter
 
-.PHONY: all clean docker-image docker-push test prepare-for-docker-build
+.PHONY: all clean build docker-image docker-push test prepare-for-docker-build
 
 all: $(TARGET) version.properties
 
@@ -26,8 +25,12 @@ version.properties:
 .target_os:
 	@echo $(OS) > .target_os
 
+build: $(TARGET)
+
 $(TARGET): .target_os $(SOURCES)
-	GOOS=$(OS) GOARCH=${ARCH} CGO_ENABLED=0 go build -a -installsuffix cgo --ldflags '-w' -o $@ main.go
+	$(if $(shell command -v dep 2> /dev/null),$(info Found golang/dep),$(error Please install golang/dep))
+	dep ensure
+	GOOS=$(OS) GOARCH=${ARCH} CGO_ENABLED=0 go build -a -installsuffix cgo --ldflags '-w' -o $@ 
 
 prepare-for-docker-build:
 	$(eval OS=linux)
@@ -45,8 +48,8 @@ docker-push: docker-image
 	docker push $(ORGANIZATION)/$(TARGET):${VERSION}
 	docker push $(ORGANIZATION)/$(TARGET):${BRANCH}
 
-test: ${TEST_SOURCE}
-	go test -race ./postgresql
+test:
+	GOCACHE=off go test -v -race $(PKGS) -args -database=false
 
 clean:
 	go clean
