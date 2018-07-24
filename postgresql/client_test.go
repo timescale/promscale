@@ -5,13 +5,12 @@ import (
 	"flag"
 	"testing"
 
-	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 )
 
 var (
-	database = flag.Bool("database", true, "run database integration tests")
+	database = flag.Bool("database", false, "run database integration tests")
 )
 
 func TestBuildCommand(t *testing.T) {
@@ -85,8 +84,7 @@ func TestWriteCommand(t *testing.T) {
 	}
 
 	c := &Client{
-		logger: log.NewNopLogger(),
-		db:     db,
+		db: db,
 		cfg: &Config{
 			table:                 "metrics",
 			copyTable:             "metrics_copy",

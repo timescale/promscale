@@ -49,7 +49,7 @@ docker-push: docker-image
 	docker push $(ORGANIZATION)/$(TARGET):${BRANCH}
 
 test:
-	GOCACHE=off go test -v -race $(PKGS) -args -database=false
+	GOCACHE=off go test -v -race $(PKGS)
 
 clean:
 	go clean
