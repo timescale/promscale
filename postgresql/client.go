@@ -331,6 +331,8 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 				return nil, err
 			}
 
+			log.Debug("time", time, "labels", labels, "name", name, "value", value)
+
 			key := labels.key(name)
 			ts, ok := labelsToSeries[key]
 
@@ -464,7 +466,7 @@ func (c *Client) buildQuery(q *prompb.Query) (string, error) {
 	matchers = append(matchers, fmt.Sprintf("time >= '%v'", toTimestamp(q.StartTimestampMs).Format(time.RFC3339)))
 	matchers = append(matchers, fmt.Sprintf("time <= '%v'", toTimestamp(q.EndTimestampMs).Format(time.RFC3339)))
 
-	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s",
+	return fmt.Sprintf("SELECT time, name, value, labels FROM %s WHERE %s %s ORDER BY time",
 		c.cfg.table, strings.Join(matchers, " AND "), equalsPredicate), nil
 }
 
