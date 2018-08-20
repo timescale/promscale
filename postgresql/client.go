@@ -331,7 +331,9 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 				return nil, err
 			}
 
-			log.Debug("time", time, "labels", labels, "name", name, "value", value)
+			if c.cfg.pgPrometheusLogSamples {
+				log.Debug("time", time, "labels", labels, "name", name, "value", value)
+			}
 
 			key := labels.key(name)
 			ts, ok := labelsToSeries[key]
