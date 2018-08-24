@@ -3,15 +3,20 @@ package pgprometheus
 import (
 	"database/sql"
 	"flag"
-	"testing"
-
+	"fmt"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/prometheus-postgresql-adapter/log"
+	"testing"
 )
 
 var (
-	database = flag.Bool("database", false, "run database integration tests")
+	database = flag.String("database", "", "database to run integration tests on")
 )
+
+func init() {
+	log.Init("debug")
+}
 
 func TestBuildCommand(t *testing.T) {
 	c := &Client{
@@ -54,7 +59,7 @@ func TestBuildCommand(t *testing.T) {
 
 func TestWriteCommand(t *testing.T) {
 	flag.Parse()
-	if !*database {
+	if len(*database) == 0 {
 		t.Skip()
 	}
 
@@ -63,12 +68,12 @@ func TestWriteCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = db.Exec("DROP DATABASE IF EXISTS metrics_test")
+	_, err = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", *database))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = db.Exec("CREATE DATABASE metrics_test")
+	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE %s", *database))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,21 +83,11 @@ func TestWriteCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err = sql.Open("postgres", "host=localhost user=postgres dbname=metrics_test sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := &Config{}
+	ParseFlags(cfg)
+	cfg.database = *database
 
-	c := &Client{
-		db: db,
-		cfg: &Config{
-			table:                 "metrics",
-			copyTable:             "metrics_copy",
-			pgPrometheusNormalize: true,
-		},
-	}
-
-	c.setupPgPrometheus()
+	c := NewClient(cfg)
 
 	sample := []*model.Sample{
 		&model.Sample{
@@ -129,6 +124,11 @@ func TestWriteCommand(t *testing.T) {
 	}
 
 	c.Write(sample)
+
+	db, err = sql.Open("postgres", fmt.Sprintf("host=localhost dbname=%s user=postgres sslmode=disable", *database))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var cnt int
 	err = db.QueryRow("SELECT count(*) FROM metrics").Scan(&cnt)

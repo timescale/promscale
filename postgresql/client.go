@@ -51,7 +51,7 @@ func ParseFlags(cfg *Config) *Config {
 	flag.StringVar(&cfg.schema, "pg.schema", "", "The PostgreSQL schema")
 	flag.StringVar(&cfg.sslMode, "pg.ssl-mode", "disable", "The PostgreSQL connection ssl mode")
 	flag.StringVar(&cfg.table, "pg.table", "metrics", "The PostgreSQL table")
-	flag.StringVar(&cfg.copyTable, "pg.copy-table", "metrics_copy", "The PostgreSQL table")
+	flag.StringVar(&cfg.copyTable, "pg.copy-table", "", "The PostgreSQL table")
 	flag.IntVar(&cfg.maxOpenConns, "pg.max-open-conns", 50, "The max number of open connections to the database")
 	flag.IntVar(&cfg.maxIdleConns, "pg.max-idle-conns", 10, "The max number of idle connections to the database")
 	flag.BoolVar(&cfg.pgPrometheusNormalize, "pg.prometheus-normalized-schema", true, "Insert metric samples into normalized schema")
@@ -67,6 +67,15 @@ type Client struct {
 	db  *sql.DB
 	cfg *Config
 }
+
+const sqlCreateTmpTable = "CREATE TEMPORARY TABLE IF NOT EXISTS %s_tmp(sample prom_sample) ON COMMIT DELETE ROWS;"
+const sqlCopyTable = "COPY \"%s\" FROM STDIN"
+const sqlInsertLabels = "INSERT INTO %s_labels (metric_name, labels) SELECT prom_name(tmp.sample), prom_labels(tmp.sample) FROM %s_tmp tmp ON CONFLICT (metric_name, labels) DO NOTHING;"
+const sqlInsertValues = "INSERT INTO %s_values SELECT tmp.prom_time, tmp.prom_value, l.id FROM (SELECT prom_time(sample), prom_value(sample), prom_name(sample), prom_labels(sample) FROM %s_tmp) tmp INNER JOIN %s_labels l on tmp.prom_name=l.metric_name AND  tmp.prom_labels=l.labels;"
+
+var (
+	createTmpTableStmt *sql.Stmt
+)
 
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config) *Client {
@@ -101,6 +110,7 @@ func NewClient(cfg *Config) *Client {
 		os.Exit(1)
 	}
 
+	createTmpTableStmt, err = db.Prepare(fmt.Sprintf(sqlCreateTmpTable, cfg.table))
 	return client
 }
 
@@ -186,10 +196,24 @@ func (c *Client) Write(samples model.Samples) error {
 
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(fmt.Sprintf("COPY \"%s\" FROM STDIN", c.cfg.copyTable))
+	_, err = tx.Stmt(createTmpTableStmt).Exec()
+	if err != nil {
+		log.Error("msg", "Error executing create tmp table", "err", err)
+		return err
+	}
+
+	var copyTable string
+	if len(c.cfg.copyTable) > 0 {
+		copyTable = c.cfg.copyTable
+	} else if c.cfg.pgPrometheusNormalize {
+		copyTable = fmt.Sprintf("%s_tmp", c.cfg.table)
+	} else {
+		copyTable = fmt.Sprintf("%s_sample", c.cfg.table)
+	}
+	copyStmt, err := tx.Prepare(fmt.Sprintf(sqlCopyTable, copyTable))
 
 	if err != nil {
-		log.Error("msg", "Error on Prepare when writing samples", "err", err)
+		log.Error("msg", "Error on COPY prepare", "err", err)
 		return err
 	}
 
@@ -201,24 +225,44 @@ func (c *Client) Write(samples model.Samples) error {
 			fmt.Println(line)
 		}
 
-		_, err = stmt.Exec(line)
+		_, err = copyStmt.Exec(line)
 		if err != nil {
-			log.Error("msg", "Error executing statement", "stmt", line, "err", err)
+			log.Error("msg", "Error executing COPY statement", "stmt", line, "err", err)
 			return err
 		}
-
 	}
 
-	_, err = stmt.Exec()
+	_, err = copyStmt.Exec()
 	if err != nil {
-		log.Error("msg", "Error executing close of copy", "err", err)
+		log.Error("msg", "Error executing COPY statement", "err", err)
 		return err
 	}
 
-	err = stmt.Close()
-
+	stmtLabels, err := tx.Prepare(fmt.Sprintf(sqlInsertLabels, c.cfg.table, c.cfg.table))
 	if err != nil {
-		log.Error("msg", "Error on Close when writing samples", "err", err)
+		log.Error("msg", "Error on preparing labels statement", "err", err)
+		return err
+	}
+	_, err = stmtLabels.Exec()
+	if err != nil {
+		log.Error("msg", "Error executing labels statement", "err", err)
+		return err
+	}
+
+	stmtValues, err := tx.Prepare(fmt.Sprintf(sqlInsertValues, c.cfg.table, c.cfg.table, c.cfg.table))
+	if err != nil {
+		log.Error("msg", "Error on preparing values statement", "err", err)
+		return err
+	}
+	_, err = stmtValues.Exec()
+	if err != nil {
+		log.Error("msg", "Error executing values statement", "err", err)
+		return err
+	}
+
+	err = copyStmt.Close()
+	if err != nil {
+		log.Error("msg", "Error on COPY Close when writing samples", "err", err)
 		return err
 	}
 
@@ -273,7 +317,7 @@ func (l *sampleLabels) Scan(value interface{}) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("Invalid labels value %s", reflect.TypeOf(value))
+	return fmt.Errorf("invalid labels value %s", reflect.TypeOf(value))
 }
 
 func (l sampleLabels) String() string {

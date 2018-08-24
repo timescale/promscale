@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"fmt"
 	"github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -103,8 +104,10 @@ func init() {
 
 func main() {
 	cfg := parseFlags()
-	http.Handle(cfg.telemetryPath, prometheus.Handler())
 	log.Init(cfg.logLevel)
+	log.Info("config", fmt.Sprintf("%+v", cfg))
+
+	http.Handle(cfg.telemetryPath, prometheus.Handler())
 
 	writer, reader := buildClients(cfg)
 
