@@ -50,8 +50,8 @@ func ParseFlags(cfg *Config) *Config {
 	flag.StringVar(&cfg.database, "pg.database", "postgres", "The PostgreSQL database")
 	flag.StringVar(&cfg.schema, "pg.schema", "", "The PostgreSQL schema")
 	flag.StringVar(&cfg.sslMode, "pg.ssl-mode", "disable", "The PostgreSQL connection ssl mode")
-	flag.StringVar(&cfg.table, "pg.table", "metrics", "The PostgreSQL table")
-	flag.StringVar(&cfg.copyTable, "pg.copy-table", "", "The PostgreSQL table")
+	flag.StringVar(&cfg.table, "pg.table", "metrics", "Override prefix for internal tables. It is also a view name used for querying")
+	flag.StringVar(&cfg.copyTable, "pg.copy-table", "", "Override default table to COPY data to")
 	flag.IntVar(&cfg.maxOpenConns, "pg.max-open-conns", 50, "The max number of open connections to the database")
 	flag.IntVar(&cfg.maxIdleConns, "pg.max-idle-conns", 10, "The max number of idle connections to the database")
 	flag.BoolVar(&cfg.pgPrometheusNormalize, "pg.prometheus-normalized-schema", true, "Insert metric samples into normalized schema")
@@ -68,10 +68,12 @@ type Client struct {
 	cfg *Config
 }
 
-const sqlCreateTmpTable = "CREATE TEMPORARY TABLE IF NOT EXISTS %s_tmp(sample prom_sample) ON COMMIT DELETE ROWS;"
-const sqlCopyTable = "COPY \"%s\" FROM STDIN"
-const sqlInsertLabels = "INSERT INTO %s_labels (metric_name, labels) SELECT prom_name(tmp.sample), prom_labels(tmp.sample) FROM %s_tmp tmp ON CONFLICT (metric_name, labels) DO NOTHING;"
-const sqlInsertValues = "INSERT INTO %s_values SELECT tmp.prom_time, tmp.prom_value, l.id FROM (SELECT prom_time(sample), prom_value(sample), prom_name(sample), prom_labels(sample) FROM %s_tmp) tmp INNER JOIN %s_labels l on tmp.prom_name=l.metric_name AND  tmp.prom_labels=l.labels;"
+const (
+	sqlCreateTmpTable = "CREATE TEMPORARY TABLE IF NOT EXISTS %s_tmp(sample prom_sample) ON COMMIT DELETE ROWS;"
+	sqlCopyTable      = "COPY \"%s\" FROM STDIN"
+	sqlInsertLabels   = "INSERT INTO %s_labels (metric_name, labels) SELECT prom_name(tmp.sample), prom_labels(tmp.sample) FROM %s_tmp tmp ON CONFLICT (metric_name, labels) DO NOTHING;"
+	sqlInsertValues   = "INSERT INTO %s_values SELECT tmp.prom_time, tmp.prom_value, l.id FROM (SELECT prom_time(sample), prom_value(sample), prom_name(sample), prom_labels(sample) FROM %s_tmp) tmp INNER JOIN %s_labels l on tmp.prom_name=l.metric_name AND  tmp.prom_labels=l.labels;"
+)
 
 var (
 	createTmpTableStmt *sql.Stmt
@@ -111,6 +113,10 @@ func NewClient(cfg *Config) *Client {
 	}
 
 	createTmpTableStmt, err = db.Prepare(fmt.Sprintf(sqlCreateTmpTable, cfg.table))
+	if err != nil {
+		log.Error("msg", "Error on preparing create tmp table statement", "err", err)
+		os.Exit(1)
+	}
 	return client
 }
 
