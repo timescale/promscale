@@ -9,7 +9,7 @@ for better performance and scalability)
 
 ## Quick start
 
-You can download pre-built binaries here [https://github.com/timescale/prometheus-postgresql-adapter/releases/] 
+You can download pre-built binaries [here](https://github.com/timescale/prometheus-postgresql-adapter/releases) 
 
 ## Docker instructions
 
