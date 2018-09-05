@@ -7,6 +7,10 @@ Related packages to install:
 - [TimescaleDB](https://github.com/timescale/timescaledb) (optional
 for better performance and scalability)
 
+## Quick start
+
+You can download pre-built binaries here [https://github.com/timescale/prometheus-postgresql-adapter/releases/] 
+
 ## Docker instructions
 
 A docker image for the prometheus-postgreSQL storage adapter is available 
