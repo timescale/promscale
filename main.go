@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"database/sql"
 	"fmt"
 	"github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
@@ -47,6 +48,8 @@ type config struct {
 	pgPrometheusConfig pgprometheus.Config
 	logLevel           string
 	readOnly           bool
+	haGroupLockId      int
+	restElection       bool
 }
 
 const (
@@ -90,7 +93,8 @@ var (
 		},
 		[]string{"path"},
 	)
-	writeThroughtput = util.NewThroughputCalc(tickInterval)
+	writeThroughput = util.NewThroughputCalc(tickInterval)
+	elector         *util.Elector
 )
 
 func init() {
@@ -99,7 +103,7 @@ func init() {
 	prometheus.MustRegister(failedSamples)
 	prometheus.MustRegister(sentBatchDuration)
 	prometheus.MustRegister(httpRequestDuration)
-	writeThroughtput.Start()
+	writeThroughput.Start()
 }
 
 func main() {
@@ -110,6 +114,12 @@ func main() {
 	http.Handle(cfg.telemetryPath, prometheus.Handler())
 
 	writer, reader := buildClients(cfg)
+	pgClient, ok := writer.(*pgprometheus.Client)
+	if ok {
+		elector = initElector(cfg, pgClient.DB)
+	} else {
+		log.Info("msg", "Running in read-only mode. This instance can't participate in leader election")
+	}
 
 	http.Handle("/write", timeHandler("write", write(writer)))
 	http.Handle("/read", timeHandler("read", read(reader)))
@@ -137,7 +147,8 @@ func parseFlags() *config {
 	flag.StringVar(&cfg.telemetryPath, "web.telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.logLevel, "log.level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
 	flag.BoolVar(&cfg.readOnly, "read.only", false, "Read-only mode. Don't write to database.")
-
+	flag.IntVar(&cfg.haGroupLockId, "leader-election.pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock")
+	flag.BoolVar(&cfg.restElection, "leader-election.rest", false, "Enable REST interface for the leader election")
 	flag.Parse()
 
 	return cfg
@@ -171,6 +182,28 @@ func buildClients(cfg *config) (writer, reader) {
 		return &noOpWriter{}, pgClient
 	}
 	return pgClient, pgClient
+}
+
+func initElector(cfg *config, db *sql.DB) *util.Elector {
+	if cfg.restElection && cfg.haGroupLockId != 0 {
+		log.Error("msg", "Use either REST or PgAdvisoryLock for the leader election")
+		os.Exit(1)
+	}
+	if cfg.restElection {
+		return util.NewElector(util.NewRestElection(), false)
+	}
+	if cfg.haGroupLockId != 0 {
+		lock, err := util.NewPgAdvisoryLock(cfg.haGroupLockId, db)
+		if err != nil {
+			log.Error("msg", "Error creating advisory lock", "haGroupLockId", cfg.haGroupLockId, "err", err)
+			os.Exit(1)
+		}
+		log.Info("msg", "Initialized leader election based on PostgreSQL advisory lock")
+		return util.NewElector(lock, true)
+	} else {
+		log.Warn("msg", "No adapter leader election. Group lock id is not set. Possible duplicate write load if running adapter in high-availability mode")
+		return nil
+	}
 }
 
 func write(writer writer) http.Handler {
@@ -208,10 +241,10 @@ func write(writer writer) http.Handler {
 		if err != nil {
 			log.Warn("msg", "Couldn't get a counter", "labelValue", writer.Name(), "err", err)
 		}
-		writeThroughtput.SetCurrent(getCounterValue(counter))
+		writeThroughput.SetCurrent(getCounterValue(counter))
 
 		select {
-		case d := <-writeThroughtput.Values:
+		case d := <-writeThroughput.Values:
 			log.Info("msg", "Samples write throughput", "samples/sec", d)
 		default:
 		}
@@ -306,7 +339,21 @@ func protoToSamples(req *prompb.WriteRequest) model.Samples {
 
 func sendSamples(w writer, samples model.Samples) error {
 	begin := time.Now()
-	err := w.Write(samples)
+	shouldWrite := true
+	var err error
+	if elector != nil {
+		shouldWrite, err = elector.IsLeader()
+		if err != nil {
+			log.Error("msg", "IsLeader check failed", "err", err)
+			return err
+		}
+	}
+	if shouldWrite {
+		err = w.Write(samples)
+	} else {
+		log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.Id()))
+		return nil
+	}
 	duration := time.Since(begin).Seconds()
 	if err != nil {
 		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))

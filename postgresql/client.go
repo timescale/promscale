@@ -64,7 +64,7 @@ func ParseFlags(cfg *Config) *Config {
 
 // Client sends Prometheus samples to PostgreSQL
 type Client struct {
-	db  *sql.DB
+	DB  *sql.DB
 	cfg *Config
 }
 
@@ -101,7 +101,7 @@ func NewClient(cfg *Config) *Client {
 	db.SetMaxIdleConns(cfg.maxIdleConns)
 
 	client := &Client{
-		db:  db,
+		DB:  db,
 		cfg: cfg,
 	}
 
@@ -121,7 +121,7 @@ func NewClient(cfg *Config) *Client {
 }
 
 func (c *Client) setupPgPrometheus() error {
-	tx, err := c.db.Begin()
+	tx, err := c.DB.Begin()
 
 	if err != nil {
 		return err
@@ -193,7 +193,7 @@ func metricString(m model.Metric) string {
 // Write implements the Writer interface and writes metric samples to the database
 func (c *Client) Write(samples model.Samples) error {
 	begin := time.Now()
-	tx, err := c.db.Begin()
+	tx, err := c.DB.Begin()
 
 	if err != nil {
 		log.Error("msg", "Error on Begin when writing samples", "err", err)
@@ -376,7 +376,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 
 		log.Debug("msg", "Executed query", "query", command)
 
-		rows, err := c.db.Query(command)
+		rows, err := c.DB.Query(command)
 
 		if err != nil {
 			return nil, err
@@ -455,7 +455,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 
 // HealthCheck implements the healtcheck interface
 func (c *Client) HealthCheck() error {
-	rows, err := c.db.Query("SELECT 1")
+	rows, err := c.DB.Query("SELECT 1")
 
 	if err != nil {
 		log.Debug("msg", "Health check error", "err", err)

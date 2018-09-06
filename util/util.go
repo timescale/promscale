@@ -8,8 +8,8 @@ import (
 	"github.com/timescale/prometheus-postgresql-adapter/log"
 )
 
-//ThroughtputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
-type ThroughtputCalc struct {
+//ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
+type ThroughputCalc struct {
 	tickInterval time.Duration
 	previous     float64
 	current      chan float64
@@ -18,18 +18,18 @@ type ThroughtputCalc struct {
 	lock         sync.Mutex
 }
 
-func NewThroughputCalc(interval time.Duration) *ThroughtputCalc {
-	return &ThroughtputCalc{tickInterval: interval, current: make(chan float64, 1), Values: make(chan float64, 1)}
+func NewThroughputCalc(interval time.Duration) *ThroughputCalc {
+	return &ThroughputCalc{tickInterval: interval, current: make(chan float64, 1), Values: make(chan float64, 1)}
 }
 
-func (dt *ThroughtputCalc) SetCurrent(value float64) {
+func (dt *ThroughputCalc) SetCurrent(value float64) {
 	select {
 	case dt.current <- value:
 	default:
 	}
 }
 
-func (dt *ThroughtputCalc) Start() {
+func (dt *ThroughputCalc) Start() {
 	dt.lock.Lock()
 	defer dt.lock.Unlock()
 	if !dt.running {
