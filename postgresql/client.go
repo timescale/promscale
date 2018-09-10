@@ -214,7 +214,7 @@ func (c *Client) Write(samples model.Samples) error {
 	} else if c.cfg.pgPrometheusNormalize {
 		copyTable = fmt.Sprintf("%s_tmp", c.cfg.table)
 	} else {
-		copyTable = fmt.Sprintf("%s_sample", c.cfg.table)
+		copyTable = fmt.Sprintf("%s_samples", c.cfg.table)
 	}
 	copyStmt, err := tx.Prepare(fmt.Sprintf(sqlCopyTable, copyTable))
 
@@ -244,27 +244,43 @@ func (c *Client) Write(samples model.Samples) error {
 		return err
 	}
 
-	stmtLabels, err := tx.Prepare(fmt.Sprintf(sqlInsertLabels, c.cfg.table, c.cfg.table))
-	if err != nil {
-		log.Error("msg", "Error on preparing labels statement", "err", err)
-		return err
-	}
-	_, err = stmtLabels.Exec()
-	if err != nil {
-		log.Error("msg", "Error executing labels statement", "err", err)
-		return err
+
+	if copyTable == fmt.Sprintf("%s_tmp", c.cfg.table) {
+		stmtLabels, err := tx.Prepare(fmt.Sprintf(sqlInsertLabels, c.cfg.table, c.cfg.table))
+		if err != nil {
+			log.Error("msg", "Error on preparing labels statement", "err", err)
+			return err
+		}
+		_, err = stmtLabels.Exec()
+		if err != nil {
+			log.Error("msg", "Error executing labels statement", "err", err)
+			return err
+		}
+
+		stmtValues, err := tx.Prepare(fmt.Sprintf(sqlInsertValues, c.cfg.table, c.cfg.table, c.cfg.table))
+		if err != nil {
+			log.Error("msg", "Error on preparing values statement", "err", err)
+			return err
+		}
+		_, err = stmtValues.Exec()
+		if err != nil {
+			log.Error("msg", "Error executing values statement", "err", err)
+			return err
+		}
+
+		err = stmtLabels.Close()
+		if err != nil {
+			log.Error("msg", "Error on closing labels statement", "err", err)
+			return err
+		}
+
+		err = stmtValues.Close()
+		if err != nil {
+			log.Error("msg", "Error on closing values statement", "err", err)
+			return err
+		}
 	}
 
-	stmtValues, err := tx.Prepare(fmt.Sprintf(sqlInsertValues, c.cfg.table, c.cfg.table, c.cfg.table))
-	if err != nil {
-		log.Error("msg", "Error on preparing values statement", "err", err)
-		return err
-	}
-	_, err = stmtValues.Exec()
-	if err != nil {
-		log.Error("msg", "Error executing values statement", "err", err)
-		return err
-	}
 
 	err = copyStmt.Close()
 	if err != nil {
