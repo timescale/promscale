@@ -39,6 +39,7 @@ type Config struct {
 	pgPrometheusChunkInterval time.Duration
 	useTimescaleDb            bool
 	dbConnectRetries          int
+	readOnly                  bool
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -59,6 +60,7 @@ func ParseFlags(cfg *Config) *Config {
 	flag.DurationVar(&cfg.pgPrometheusChunkInterval, "pg.prometheus-chunk-interval", time.Hour*12, "The size of a time-partition chunk in TimescaleDB")
 	flag.BoolVar(&cfg.useTimescaleDb, "pg.use-timescaledb", true, "Use timescaleDB")
 	flag.IntVar(&cfg.dbConnectRetries, "pg.db-connect-retries", 0, "How many times to retry connecting to the database")
+	flag.BoolVar(&cfg.readOnly, "pg.read-only", false, "Read-only mode. Don't write to database. Useful when pointing adapter to read replica")
 	return cfg
 }
 
@@ -105,18 +107,23 @@ func NewClient(cfg *Config) *Client {
 		cfg: cfg,
 	}
 
-	err = client.setupPgPrometheus()
+	if !cfg.readOnly {
+		err = client.setupPgPrometheus()
 
-	if err != nil {
-		log.Error("err", err)
-		os.Exit(1)
+		if err != nil {
+			log.Error("err", err)
+			os.Exit(1)
+		}
+
+		createTmpTableStmt, err = db.Prepare(fmt.Sprintf(sqlCreateTmpTable, cfg.table))
+		if err != nil {
+			log.Error("msg", "Error on preparing create tmp table statement", "err", err)
+			os.Exit(1)
+		}
+	} else {
+		log.Info("msg", "Running in read-only mode. Skipping schema/extension setup (should already be present)")
 	}
 
-	createTmpTableStmt, err = db.Prepare(fmt.Sprintf(sqlCreateTmpTable, cfg.table))
-	if err != nil {
-		log.Error("msg", "Error on preparing create tmp table statement", "err", err)
-		os.Exit(1)
-	}
 	return client
 }
 
@@ -163,6 +170,10 @@ func (c *Client) setupPgPrometheus() error {
 	log.Info("msg", "Initialized pg_prometheus extension")
 
 	return nil
+}
+
+func (c *Client) ReadOnly() bool {
+	return c.cfg.readOnly
 }
 
 func metricString(m model.Metric) string {

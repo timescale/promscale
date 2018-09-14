@@ -48,7 +48,6 @@ type config struct {
 	telemetryPath      string
 	pgPrometheusConfig pgprometheus.Config
 	logLevel           string
-	readOnly           bool
 	haGroupLockId      int
 	restElection       bool
 	prometheusTimeout  time.Duration
@@ -150,11 +149,11 @@ func parseFlags() *config {
 	flag.StringVar(&cfg.listenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web.telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.logLevel, "log.level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
-	flag.BoolVar(&cfg.readOnly, "read.only", false, "Read-only mode. Don't write to database.")
 	flag.IntVar(&cfg.haGroupLockId, "leader-election.pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
 	flag.DurationVar(&cfg.prometheusTimeout, "leader-election.pg-advisory-lock.prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
 	flag.BoolVar(&cfg.restElection, "leader-election.rest", false, "Enable REST interface for the leader election")
+
 	flag.Parse()
 
 	return cfg
@@ -184,7 +183,7 @@ type reader interface {
 
 func buildClients(cfg *config) (writer, reader) {
 	pgClient := pgprometheus.NewClient(&cfg.pgPrometheusConfig)
-	if cfg.readOnly {
+	if pgClient.ReadOnly() {
 		return &noOpWriter{}, pgClient
 	}
 	return pgClient, pgClient
