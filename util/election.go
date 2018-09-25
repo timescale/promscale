@@ -10,9 +10,7 @@ import (
 	"time"
 )
 
-const (
-	electionInterval = time.Millisecond * 300
-)
+const electionInterval = time.Millisecond * 300
 
 // Election defines an interface for adapter leader election.
 // If you are running Prometheus in HA mode where each Prometheus instance sends data to corresponding adapter you probably
@@ -28,20 +26,11 @@ type Election interface {
 
 // Elector is `Election` wrapper that provides cross-cutting concerns(eg. logging) and some common features shared among all election implementations.
 type Elector struct {
-	election  Election
-	scheduled bool
-	ticker    *time.Ticker
+	election Election
 }
 
-func NewElector(election Election, scheduled bool) *Elector {
-	var t *time.Ticker
-	if scheduled {
-		t = time.NewTicker(electionInterval)
-	}
-	elector := &Elector{election: election, ticker: t, scheduled: scheduled}
-	if scheduled {
-		go elector.scheduledElection()
-	}
+func NewElector(election Election) *Elector {
+	elector := &Elector{election: election}
 	return elector
 }
 
@@ -69,26 +58,79 @@ func (e *Elector) Resign() error {
 	if err != nil {
 		log.Error("err", "Failed to resign", "err", err)
 	} else {
-		log.Info("msg", "Instance is not a leader anymore")
+		log.Info("msg", "Instance is no longer a leader")
 	}
 	return err
 }
 
-func (e *Elector) scheduledElection() {
-	for {
-		select {
-		case <-e.ticker.C:
-			e.Elect()
+// ScheduledElector triggers election on scheduled interval. Currently used in combination with PgAdvisoryLock
+type ScheduledElector struct {
+	Elector
+	ticker                  *time.Ticker
+	pausedScheduledElection bool
+}
+
+func NewScheduledElector(election Election) *ScheduledElector {
+	scheduledElector := &ScheduledElector{Elector: Elector{election}, ticker: time.NewTicker(electionInterval)}
+	go scheduledElector.scheduledElection()
+	return scheduledElector
+}
+
+func (se *ScheduledElector) pauseScheduledElection() {
+	se.pausedScheduledElection = true
+}
+
+func (se *ScheduledElector) resumeScheduledElection() {
+	se.pausedScheduledElection = false
+}
+
+func (se *ScheduledElector) IsPausedScheduledElection() bool {
+	return se.pausedScheduledElection
+}
+
+func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, timeout time.Duration) {
+	elapsed := time.Now().Sub(time.Unix(0, lastRequestUnixNano))
+	leader, err := se.IsLeader()
+	if err != nil {
+		log.Error("msg", err.Error())
+	}
+	if leader {
+		if elapsed > timeout {
+			log.Warn("msg", "Prometheus timeout exceeded", "timeout", timeout)
+			se.pauseScheduledElection()
+			log.Warn("msg", "Scheduled election is paused. Instance is removed from election pool.")
+			err := se.Resign()
+			if err != nil {
+				log.Error("msg", err.Error())
+			}
+		}
+	} else {
+		if se.IsPausedScheduledElection() && elapsed < timeout {
+			log.Info("msg", "Prometheus seems alive. Resuming scheduled election.")
+			se.resumeScheduledElection()
 		}
 	}
 }
 
-func (e *Elector) Elect() (bool, error) {
-	leader, err := e.IsLeader()
+func (se *ScheduledElector) scheduledElection() {
+	for {
+		select {
+		case <-se.ticker.C:
+			if !se.pausedScheduledElection {
+				se.Elect()
+			} else {
+				log.Debug("msg", "Scheduled election is paused. Instance can't become a leader until scheduled election is resumed (Prometheus comes up again)")
+			}
+		}
+	}
+}
+
+func (se *ScheduledElector) Elect() (bool, error) {
+	leader, err := se.IsLeader()
 	if err != nil {
 		log.Error("msg", "Leader check failed", "err", err)
 	} else if !leader {
-		leader, err = e.BecomeLeader()
+		leader, err = se.BecomeLeader()
 		if err != nil {
 			log.Error("msg", "Failed while becoming a leader", "err", err)
 		}
@@ -98,6 +140,8 @@ func (e *Elector) Elect() (bool, error) {
 
 // RestElection is a REST interface allowing to plug in any external leader election mechanism.
 // Remote service can use REST endpoints to manage leader election thus block or allow writes.
+// Using RestElection over PgAdvisoryLock is encouraged as it is more robust and gives more control over
+// the election process, however it does require additional engineering effort.
 type RestElection struct {
 	leader bool
 	mutex  sync.RWMutex
@@ -113,6 +157,7 @@ func (r *RestElection) handleLeader() http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		switch request.Method {
 		case http.MethodGet:
+			// leader check
 			leader, err := r.IsLeader()
 			if err != nil {
 				log.Error("msg", "Failed on leader check", "err", err)
@@ -135,6 +180,7 @@ func (r *RestElection) handleLeader() http.HandlerFunc {
 			}
 			switch flag {
 			case 0:
+				// resign
 				err = r.Resign()
 				if err != nil {
 					log.Error("err", err)
@@ -143,6 +189,7 @@ func (r *RestElection) handleLeader() http.HandlerFunc {
 				}
 				fmt.Fprintf(response, "%v", true)
 			case 1:
+				// become a leader
 				leader, err := r.BecomeLeader()
 				if err != nil {
 					log.Error("msg", "Failed to become a leader", "err", err)

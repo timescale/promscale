@@ -244,7 +244,6 @@ func (c *Client) Write(samples model.Samples) error {
 		return err
 	}
 
-
 	if copyTable == fmt.Sprintf("%s_tmp", c.cfg.table) {
 		stmtLabels, err := tx.Prepare(fmt.Sprintf(sqlInsertLabels, c.cfg.table, c.cfg.table))
 		if err != nil {
@@ -281,7 +280,6 @@ func (c *Client) Write(samples model.Samples) error {
 		}
 	}
 
-
 	err = copyStmt.Close()
 	if err != nil {
 		log.Error("msg", "Error on COPY Close when writing samples", "err", err)
@@ -315,6 +313,14 @@ func createOrderedKeys(m *map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func (c *Client) Close() {
+	if c.DB != nil {
+		if err := c.DB.Close(); err != nil {
+			log.Error("msg", err.Error())
+		}
+	}
 }
 
 func (l *sampleLabels) Scan(value interface{}) error {
