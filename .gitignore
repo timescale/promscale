@@ -1,8 +1,9 @@
 *~
-/prometheus-postgresql-adapter
+/prometheus-postgresql-adapter*
 /vendor
 /version.properties
 /.target_os
 /.history
 /.vscode
+/.idea
 

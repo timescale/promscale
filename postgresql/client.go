@@ -73,7 +73,7 @@ type Client struct {
 const (
 	sqlCreateTmpTable = "CREATE TEMPORARY TABLE IF NOT EXISTS %s_tmp(sample prom_sample) ON COMMIT DELETE ROWS;"
 	sqlCopyTable      = "COPY \"%s\" FROM STDIN"
-	sqlInsertLabels   = "INSERT INTO %s_labels (metric_name, labels) SELECT prom_name(tmp.sample), prom_labels(tmp.sample) FROM %s_tmp tmp ON CONFLICT (metric_name, labels) DO NOTHING;"
+	sqlInsertLabels   = "INSERT INTO %s_labels (metric_name, labels) SELECT tmp.prom_name, tmp.prom_labels FROM (SELECT prom_time(sample), prom_value(sample), prom_name(sample), prom_labels(sample) FROM %s_tmp) tmp LEFT JOIN %s_labels l ON tmp.prom_name=l.metric_name AND tmp.prom_labels=l.labels WHERE l.metric_name IS NULL ON CONFLICT (metric_name, labels) DO NOTHING;"
 	sqlInsertValues   = "INSERT INTO %s_values SELECT tmp.prom_time, tmp.prom_value, l.id FROM (SELECT prom_time(sample), prom_value(sample), prom_name(sample), prom_labels(sample) FROM %s_tmp) tmp INNER JOIN %s_labels l on tmp.prom_name=l.metric_name AND  tmp.prom_labels=l.labels;"
 )
 
@@ -256,7 +256,7 @@ func (c *Client) Write(samples model.Samples) error {
 	}
 
 	if copyTable == fmt.Sprintf("%s_tmp", c.cfg.table) {
-		stmtLabels, err := tx.Prepare(fmt.Sprintf(sqlInsertLabels, c.cfg.table, c.cfg.table))
+		stmtLabels, err := tx.Prepare(fmt.Sprintf(sqlInsertLabels, c.cfg.table, c.cfg.table, c.cfg.table))
 		if err != nil {
 			log.Error("msg", "Error on preparing labels statement", "err", err)
 			return err
