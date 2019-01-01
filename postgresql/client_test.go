@@ -16,6 +16,12 @@ var (
 	database = flag.String("database", "", "database to run integration tests on")
 )
 
+func assertEqual(t *testing.T, s1 string, s2 string) {
+	if s1 != s2 {
+		t.Errorf("Assertion failure: expected %s, got %s", s1, s2)
+	}
+}
+
 func init() {
 	log.Init("debug")
 }
@@ -23,7 +29,7 @@ func init() {
 func TestBuildCommand(t *testing.T) {
 	c := &Client{
 		cfg: &Config{
-			table: "metrics",
+			table:                 "metrics",
 			pgPrometheusNormalize: true,
 		},
 	}
@@ -55,6 +61,51 @@ func TestBuildCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Log(cmd)
+}
+
+func TestEscaping(t *testing.T) {
+	c := &Client{
+		cfg: &Config{
+			table:                 "metrics",
+			pgPrometheusNormalize: true,
+		},
+	}
+
+	assertEqual(t, "foobar", escapeValue("foobar"))
+	assertEqual(t, "foo''bar", escapeValue("foo'bar"))
+	assertEqual(t, "foo''''bar", escapeValue("foo''bar"))
+	assertEqual(t, `foo\bar`, escapeValue(`foo\bar`))
+
+	q := &prompb.Query{
+		StartTimestampMs: 0,
+		EndTimestampMs:   20000,
+		Matchers: []*prompb.LabelMatcher{
+			{
+				Type:  prompb.LabelMatcher_EQ,
+				Name:  "__name__",
+				Value: "cpu'_usage",
+			},
+			{
+				Type:  prompb.LabelMatcher_EQ,
+				Name:  "j'ob",
+				Value: "ng'inx",
+			},
+			{
+				Type:  prompb.LabelMatcher_RE,
+				Name:  "ho'st",
+				Value: "lo'cal.*",
+			},
+		},
+	}
+
+	cmd, err := c.buildCommand(q)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEqual(t, `SELECT time, name, value, labels FROM metrics WHERE name = 'cpu''_usage' AND labels->>'ho''st' ~ '^lo''cal.*$' AND time >= '1970-01-01T00:00:00Z' AND time <= '1970-01-01T00:00:20Z'  AND labels @> '{"j''ob":"ng''inx"}' ORDER BY time`, cmd)
 
 	t.Log(cmd)
 }
@@ -180,7 +231,7 @@ func TestElector(t *testing.T) {
 	})
 }
 
-func TestPromethuesLivenessCheck(t *testing.T) {
+func TestPrometheusLivenessCheck(t *testing.T) {
 	withDB(t, func(db *sql.DB, t *testing.T) {
 		lock1, err := util.NewPgAdvisoryLock(3, db)
 		if err != nil {

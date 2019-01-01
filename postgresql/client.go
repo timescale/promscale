@@ -494,6 +494,7 @@ func (c *Client) buildQuery(q *prompb.Query) (string, error) {
 	labelEqualPredicates := make(map[string]string)
 
 	for _, m := range q.Matchers {
+		escapedName := escapeValue(m.Name)
 		escapedValue := escapeValue(m.Value)
 
 		if m.Name == model.MetricNameLabel {
@@ -521,16 +522,16 @@ func (c *Client) buildQuery(q *prompb.Query) (string, error) {
 					// empty label values also select all time series that
 					// do not have the specific label set at all."
 					matchers = append(matchers, fmt.Sprintf("((labels ? '%s') = false OR (labels->>'%s' = ''))",
-						m.Name, m.Name))
+						escapedName, escapedName))
 				} else {
-					labelEqualPredicates[m.Name] = m.Value
+					labelEqualPredicates[escapedName] = escapedValue
 				}
 			case prompb.LabelMatcher_NEQ:
-				matchers = append(matchers, fmt.Sprintf("labels->>'%s' != '%s'", m.Name, escapedValue))
+				matchers = append(matchers, fmt.Sprintf("labels->>'%s' != '%s'", escapedName, escapedValue))
 			case prompb.LabelMatcher_RE:
-				matchers = append(matchers, fmt.Sprintf("labels->>'%s' ~ '%s'", m.Name, anchorValue(escapedValue)))
+				matchers = append(matchers, fmt.Sprintf("labels->>'%s' ~ '%s'", escapedName, anchorValue(escapedValue)))
 			case prompb.LabelMatcher_NRE:
-				matchers = append(matchers, fmt.Sprintf("labels->>'%s' !~ '%s'", m.Name, anchorValue(escapedValue)))
+				matchers = append(matchers, fmt.Sprintf("labels->>'%s' !~ '%s'", escapedName, anchorValue(escapedValue)))
 			default:
 				return "", fmt.Errorf("unknown match type %v", m.Type)
 			}
@@ -559,7 +560,7 @@ func (c *Client) buildCommand(q *prompb.Query) (string, error) {
 }
 
 func escapeValue(str string) string {
-	return strings.Replace(str, `'`, `\'`, -1)
+	return strings.Replace(str, `'`, `''`, -1)
 }
 
 // anchorValue adds anchors to values in regexps since PromQL docs
