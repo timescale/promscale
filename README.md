@@ -30,7 +30,7 @@ docker run --name pg_prometheus -d -p 5432:5432 timescale/pg_prometheus:latest p
 Then, start the prometheus-postgreSQL storage adapter using:
 ```
  docker run --name prometheus_postgresql_adapter --link pg_prometheus -d -p 9201:9201 \
- timescale/prometheus-postgresql-adapter:master \
+ timescale/prometheus-postgresql-adapter:latest \
  -pg.host=pg_prometheus \
  -pg.prometheus-log-samples
 ```
