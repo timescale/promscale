@@ -23,7 +23,7 @@ docker image.
 
 To run this image use:
 ```
-docker run --name pg_prometheus -d -p 5432:5432 timescale/pg_prometheus:master postgres \
+docker run --name pg_prometheus -d -p 5432:5432 timescale/pg_prometheus:latest postgres \
       -csynchronous_commit=off
 ```
 
