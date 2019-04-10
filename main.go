@@ -33,11 +33,13 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/jamiealquiza/envy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"database/sql"
 	"fmt"
+
 	"github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -154,6 +156,7 @@ func parseFlags() *config {
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
 	flag.BoolVar(&cfg.restElection, "leader-election.rest", false, "Enable REST interface for the leader election")
 
+	envy.Parse("TIMESCALE_PROMPGADAPTER")
 	flag.Parse()
 
 	return cfg
