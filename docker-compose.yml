@@ -1,5 +1,5 @@
 services:
-  postgres:
+  db:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
@@ -16,11 +16,12 @@ services:
     build:
       context: .
     depends_on:
-    - postgres
+    - db
     - prometheus
     environment:
       TIMESCALE_PROMPGADAPTER_LOG_LEVEL: debug
-      TIMESCALE_PROMPGADAPTER_PG_HOST: postgres
+      TIMESCALE_PROMPGADAPTER_PG_DB_CONNECT_RETRIES: 10
+      TIMESCALE_PROMPGADAPTER_PG_HOST: db
       TIMESCALE_PROMPGADAPTER_PG_PASSWORD: postgres
       TIMESCALE_PROMPGADAPTER_PG_SCHEMA: postgres
       TIMESCALE_PROMPGADAPTER_WEB_TELEMETRY_PATH: /metrics-text
