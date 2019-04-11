@@ -1,0 +1,30 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    image: timescale/pg_prometheus:latest
+    ports:
+    - 5432:5432/tcp
+  prometheus:
+    image: prom/prometheus:v2.8.1
+    ports:
+    - 9090:9090/tcp
+    volumes:
+    - ./sample-docker-prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  prometheus_postgresql_adapter:
+    build:
+      context: .
+    depends_on:
+    - postgres
+    - prometheus
+    environment:
+      TIMESCALE_PROMPGADAPTER_LOG_LEVEL: debug
+      TIMESCALE_PROMPGADAPTER_PG_HOST: postgres
+      TIMESCALE_PROMPGADAPTER_PG_PASSWORD: postgres
+      TIMESCALE_PROMPGADAPTER_PG_SCHEMA: postgres
+      TIMESCALE_PROMPGADAPTER_WEB_TELEMETRY_PATH: /metrics-text
+    image: timescale/prometheus-postgresql-adapter:latest
+    ports:
+    - 9201:9201/tcp
+version: '3.0'
