@@ -19,12 +19,12 @@ services:
     - db
     - prometheus
     environment:
-      TIMESCALE_PROMPGADAPTER_LOG_LEVEL: debug
-      TIMESCALE_PROMPGADAPTER_PG_DB_CONNECT_RETRIES: 10
-      TIMESCALE_PROMPGADAPTER_PG_HOST: db
-      TIMESCALE_PROMPGADAPTER_PG_PASSWORD: postgres
-      TIMESCALE_PROMPGADAPTER_PG_SCHEMA: postgres
-      TIMESCALE_PROMPGADAPTER_WEB_TELEMETRY_PATH: /metrics-text
+      TS_PROM_LOG_LEVEL: debug
+      TS_PROM_PG_DB_CONNECT_RETRIES: 10
+      TS_PROM_PG_HOST: db
+      TS_PROM_PG_PASSWORD: postgres
+      TS_PROM_PG_SCHEMA: postgres
+      TS_PROM_WEB_TELEMETRY_PATH: /metrics-text
     image: timescale/prometheus-postgresql-adapter:latest
     ports:
     - 9201:9201/tcp

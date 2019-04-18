@@ -55,14 +55,14 @@ remote_read:
 
 ## Environment variables
 
-All of the CLI flags are also available as environment variables, and begin with the prefix `TIMESCALE_PROMPGADAPTER`.
+All of the CLI flags are also available as environment variables, and begin with the prefix `TS_PROM`.
 For example, the following mappings apply:
 
 ```
--adapter-send-timeout                                => TIMESCALE_PROMPGADAPTER_ADAPTER_SEND_TIMEOUT
--leader-election-pg-advisory-lock-id                 => TIMESCALE_PROMPGADAPTER_LEADER_ELECTION_PG_ADVISORY_LOCK_ID
--leader-election-pg-advisory-lock-prometheus-timeout => TIMESCALE_PROMPGADAPTER_LEADER_ELECTION_PG_ADVISORY_LOCK_PROMETHEUS_TIMEOUT
--leader-election-rest                                => TIMESCALE_PROMPGADAPTER_LEADER_ELECTION_REST
+-adapter-send-timeout => TS_PROM_ADAPTER_SEND_TIMEOUT
+-leader-election-rest => TS_PROM_LEADER_ELECTION_REST
+-pg-host              => TS_PROM_PG_HOST
+-web-telemetry-path   => TS_PROM_WEB_TELEMETRY_PATH
 ...
 ```
 

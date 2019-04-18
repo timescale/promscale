@@ -156,7 +156,7 @@ func parseFlags() *config {
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
 	flag.BoolVar(&cfg.restElection, "leader-election-rest", false, "Enable REST interface for the leader election")
 
-	envy.Parse("TIMESCALE_PROMPGADAPTER")
+	envy.Parse("TS_PROM")
 	flag.Parse()
 
 	return cfg
