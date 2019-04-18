@@ -7,7 +7,7 @@ services:
     ports:
     - 5432:5432/tcp
   prometheus:
-    image: prom/prometheus:v2.8.1
+    image: prom/prometheus:latest
     ports:
     - 9090:9090/tcp
     volumes:
