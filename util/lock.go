@@ -18,7 +18,7 @@ const (
 // to obtain an advisory lock for particular group. The one who holds the lock can write to the database. Due to the fact
 // that Prometheus HA setup provides no consistency guarantees this implementation is best effort in regards
 // to metrics that is written (some duplicates or data loss are possible during fail-over)
-// `leader-election.pg-advisory-lock.prometheus-timeout` config must be set when using PgAdvisoryLock. It will
+// `leader-election-pg-advisory-lock-prometheus-timeout` config must be set when using PgAdvisoryLock. It will
 // trigger leader resign (if instance is a leader) and will prevent an instance to become a leader if there are no requests coming
 // from Prometheus within a given timeout. Make sure to provide a reasonable value for the timeout (should be co-related with
 // Prometheus scrape interval, eg. 2x or 3x more then scrape interval to prevent leader flipping).
