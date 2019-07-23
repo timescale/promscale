@@ -68,6 +68,26 @@ For example, the following mappings apply:
 
 Each CLI flag and equivalent environment variable is also displayed on the help `prometheus-postgresql-adapter -h` command.
 
+## Configuring Prometheus to filter which metrics are sent
+
+You can limit the metrics being sent to the adapter (and thus being stored in your long-term storage) by 
+setting up `write_relabel_configs` in Prometheus, via the `prometheus.yml` file.
+Doing this can reduce the amount of space used by your database and thus increase query performance. 
+
+The example below drops all metrics starting with the prefix `go_`, which matches Golang process information
+exposed by exporters like `node_exporter`:
+
+```
+remote_write:
+ - url: "http://prometheus_postgresql_adapter:9201/write"
+   write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'go_.*'
+        action: drop
+```
+
+Additional information about setting up relabel configs, the `source_labels` field, and the possible actions can be found in the [Prometheus Docs][https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write].
+
 ## Building
 
 Before building, make sure the following prerequisites are installed:
