@@ -26,22 +26,22 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/timescale/prometheus-postgresql-adapter/log"
-
-	"github.com/timescale/prometheus-postgresql-adapter/postgresql"
-	"github.com/timescale/prometheus-postgresql-adapter/util"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/postgresql"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/util"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/jamiealquiza/envy"
+
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 
 	"database/sql"
 	"fmt"
-
-	"github.com/prometheus/client_model/go"
-	"github.com/prometheus/prometheus/prompb"
 )
 
 type config struct {
@@ -116,7 +116,7 @@ func main() {
 	log.Init(cfg.logLevel)
 	log.Info("config", fmt.Sprintf("%+v", cfg))
 
-	http.Handle(cfg.telemetryPath, prometheus.Handler())
+	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
 	writer, reader := buildClients(cfg)
 	pgClient, ok := writer.(*pgprometheus.Client)

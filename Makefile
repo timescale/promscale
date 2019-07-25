@@ -31,9 +31,7 @@ version.properties:
 build: $(TARGET)
 
 $(TARGET): .target_os $(SOURCES)
-	$(if $(shell command -v dep 2> /dev/null),$(info Found golang/dep),$(error Please install golang/dep))
-	dep ensure
-	GOOS=$(OS) GOARCH=${ARCH} CGO_ENABLED=0 go build -a -installsuffix cgo --ldflags '-w' -o $@ 
+	GOOS=$(OS) GOARCH=${ARCH} CGO_ENABLED=0 go build -a --ldflags '-w' -o $@ ./cmd/$@
 
 prepare-for-docker-build:
 	$(eval OS=linux)
@@ -52,8 +50,9 @@ docker-push: docker-image
 	docker push $(ORGANIZATION)/$(TARGET):${BRANCH}
 
 test:
-	GOCACHE=off go test -v -race $(PKGS)
+	go clean -testcache $(PKGS)
+	go test -v -race $(PKGS)
 
 clean:
-	go clean
+	go clean $(PKGS)
 	rm -f *~ $(TARGET) version.properties .target_os

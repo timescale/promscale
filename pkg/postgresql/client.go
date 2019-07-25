@@ -11,9 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timescale/prometheus-postgresql-adapter/log"
-
-	"github.com/timescale/prometheus-postgresql-adapter/util"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/util"
 
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus"
@@ -418,14 +417,14 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 			ts, ok := labelsToSeries[key]
 
 			if !ok {
-				labelPairs := make([]*prompb.Label, 0, labels.len()+1)
-				labelPairs = append(labelPairs, &prompb.Label{
+				labelPairs := make([]prompb.Label, 0, labels.len()+1)
+				labelPairs = append(labelPairs, prompb.Label{
 					Name:  model.MetricNameLabel,
 					Value: name,
 				})
 
 				for _, k := range labels.OrderedKeys {
-					labelPairs = append(labelPairs, &prompb.Label{
+					labelPairs = append(labelPairs, prompb.Label{
 						Name:  k,
 						Value: labels.Map[k],
 					})
@@ -433,12 +432,12 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 
 				ts = &prompb.TimeSeries{
 					Labels:  labelPairs,
-					Samples: make([]*prompb.Sample, 0, 100),
+					Samples: make([]prompb.Sample, 0, 100),
 				}
 				labelsToSeries[key] = ts
 			}
 
-			ts.Samples = append(ts.Samples, &prompb.Sample{
+			ts.Samples = append(ts.Samples, prompb.Sample{
 				Timestamp: time.UnixNano() / 1000000,
 				Value:     value,
 			})
@@ -486,7 +485,7 @@ func (c *Client) HealthCheck() error {
 func toTimestamp(milliseconds int64) time.Time {
 	sec := milliseconds / 1000
 	nsec := (milliseconds - (sec * 1000)) * 1000000
-	return time.Unix(sec, nsec)
+	return time.Unix(sec, nsec).UTC()
 }
 
 func (c *Client) buildQuery(q *prompb.Query) (string, error) {

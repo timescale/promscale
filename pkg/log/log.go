@@ -14,7 +14,13 @@ var (
 func Init(logLevel string) {
 	allowedLevel := promlog.AllowedLevel{}
 	allowedLevel.Set(logLevel)
-	logger = promlog.New(allowedLevel)
+
+    config := promlog.Config{
+        Level: &allowedLevel,
+        Format: &promlog.AllowedFormat{},
+    }
+
+	logger = promlog.New(&config)
 }
 
 func Debug(keyvals ...interface{}) {

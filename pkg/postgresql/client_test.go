@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/timescale/prometheus-postgresql-adapter/log"
-	"github.com/timescale/prometheus-postgresql-adapter/util"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/util"
 	"testing"
 	"time"
 )

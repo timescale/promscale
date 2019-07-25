@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/timescale/prometheus-postgresql-adapter/log"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
 	"strconv"
 	"sync"
 	"time"

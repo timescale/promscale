@@ -1,11 +1,18 @@
 language: go
 
 go:
-  - 1.10.x
+  - 1.11.x
+  - 1.12.x
+
+env:
+  - GO111MODULE=on
 
 before_install:
-  # We need golang/dep installed to resolve our dependencies
-  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-  - dep ensure
+  - go get -v ./...
 
-script: make build test
+script: 
+  - make build test
+  - ./.coverage_tests.sh
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

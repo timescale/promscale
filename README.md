@@ -86,7 +86,7 @@ remote_write:
         action: drop
 ```
 
-Additional information about setting up relabel configs, the `source_labels` field, and the possible actions can be found in the [Prometheus Docs][https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write].
+Additional information about setting up relabel configs, the `source_labels` field, and the possible actions can be found in the [Prometheus Docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
 
 ## Building
 

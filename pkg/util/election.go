@@ -2,7 +2,7 @@ package util
 
 import (
 	"fmt"
-	"github.com/timescale/prometheus-postgresql-adapter/log"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
 	"io/ioutil"
 	"net/http"
 	"strconv"
