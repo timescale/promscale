@@ -92,14 +92,11 @@ Additional information about setting up relabel configs, the `source_labels` fie
 
 Before building, make sure the following prerequisites are installed:
 
-* [Dep](https://golang.github.io/dep/) for dependency management.
 * [Go](https://golang.org/dl/)
 
 Then build as follows:
 
 ```bash
-# Install dependencies (only required once)
-dep ensure
 
 # Build binary
 make
