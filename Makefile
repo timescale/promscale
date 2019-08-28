@@ -18,7 +18,7 @@ SOURCES:=$(shell find . -name '*.go'  | grep -v './vendor')
 
 TARGET:=prometheus-postgresql-adapter
 
-.PHONY: all clean build docker-image docker-push test prepare-for-docker-build
+.PHONY: all clean build docker-image docker-push test
 
 all: $(TARGET) version.properties
 
@@ -33,13 +33,7 @@ build: $(TARGET)
 $(TARGET): .target_os $(SOURCES)
 	GOOS=$(OS) GOARCH=${ARCH} CGO_ENABLED=0 go build -a --ldflags '-w' -o $@ ./cmd/$@
 
-prepare-for-docker-build:
-	$(eval OS=linux)
-ifneq ($(shell cat .target_os 2>/dev/null),linux)
-	rm -f $(TARGET) .target_os
-endif
-
-docker-image: prepare-for-docker-build prometheus-postgresql-adapter version.properties
+docker-image: version.properties
 	docker build -t $(ORGANIZATION)/$(TARGET):latest .
 	docker tag $(ORGANIZATION)/$(TARGET):latest $(ORGANIZATION)/$(TARGET):${VERSION}
 	docker tag $(ORGANIZATION)/$(TARGET):latest $(ORGANIZATION)/$(TARGET):${BRANCH}
