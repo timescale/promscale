@@ -4,16 +4,18 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/util"
-	"testing"
-	"time"
 )
 
 var (
-	database = flag.String("database", "", "database to run integration tests on")
+	database         = flag.String("database", "", "database to run integration tests on")
+	electionInterval = flag.Duration("election-interval", 5*time.Second, "Scheduled election interval")
 )
 
 func assertEqual(t *testing.T, s1 string, s2 string) {
@@ -237,7 +239,7 @@ func TestPrometheusLivenessCheck(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		elector := util.NewScheduledElector(lock1)
+		elector := util.NewScheduledElector(lock1, *electionInterval)
 		leader, _ := elector.Elect()
 		if !leader {
 			t.Error("Failed to become a leader")

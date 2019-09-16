@@ -2,15 +2,14 @@ package util
 
 import (
 	"fmt"
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
-)
 
-const electionInterval = time.Millisecond * 300
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
+)
 
 // Election defines an interface for adapter leader election.
 // If you are running Prometheus in HA mode where each Prometheus instance sends data to corresponding adapter you probably
@@ -18,7 +17,7 @@ const electionInterval = time.Millisecond * 300
 // the database. If leader goes down, another leader is elected. Look at `lock.go` for an implementation based on PostgreSQL
 // advisory locks. Should be easy to plug in different leader election implementations.
 type Election interface {
-	Id() string
+	ID() string
 	BecomeLeader() (bool, error)
 	IsLeader() (bool, error)
 	Resign() error
@@ -34,8 +33,8 @@ func NewElector(election Election) *Elector {
 	return elector
 }
 
-func (e *Elector) Id() string {
-	return e.election.Id()
+func (e *Elector) ID() string {
+	return e.election.ID()
 }
 
 func (e *Elector) BecomeLeader() (bool, error) {
@@ -44,7 +43,7 @@ func (e *Elector) BecomeLeader() (bool, error) {
 		log.Error("msg", "Error while trying to become a leader", "err", err)
 	}
 	if leader {
-		log.Info("msg", "Instance became a leader", "groupId", e.Id())
+		log.Info("msg", "Instance became a leader", "groupID", e.ID())
 	}
 	return leader, err
 }
@@ -70,7 +69,7 @@ type ScheduledElector struct {
 	pausedScheduledElection bool
 }
 
-func NewScheduledElector(election Election) *ScheduledElector {
+func NewScheduledElector(election Election, electionInterval time.Duration) *ScheduledElector {
 	scheduledElector := &ScheduledElector{Elector: Elector{election}, ticker: time.NewTicker(electionInterval)}
 	go scheduledElector.scheduledElection()
 	return scheduledElector
@@ -209,7 +208,7 @@ func (r *RestElection) handleLeader() http.HandlerFunc {
 	}
 }
 
-func (r *RestElection) Id() string {
+func (r *RestElection) ID() string {
 	return ""
 }
 
