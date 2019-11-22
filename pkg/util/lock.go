@@ -161,17 +161,9 @@ func (l *PgAdvisoryLock) Release() error {
 		return fmt.Errorf("can't release while not holding the lock")
 	}
 	defer l.mutex.Unlock()
-	rows, err := l.conn.QueryContext(context.Background(), "SELECT pg_advisory_unlock($1)", l.groupLockID)
+	rows, err := l.conn.QueryContext(context.Background(), "SELECT pg_advisory_unlock_all()")
 	if err != nil {
 		return err
-	}
-	rows.Next()
-	var success bool
-	if err := rows.Scan(&success); err != nil {
-		return err
-	}
-	if !success {
-		return fmt.Errorf("failed to release a lock with group lock id: %v", l.groupLockID)
 	}
 	rows.Close()
 	l.connCleanUp()
