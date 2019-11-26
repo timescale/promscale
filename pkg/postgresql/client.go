@@ -107,7 +107,14 @@ func NewClient(cfg *Config) *Client {
 	}
 
 	if !cfg.readOnly {
-		err = client.setupPgPrometheus()
+		installExtensions, installSchema, err := client.verifyPgPrometheus()
+
+		if err != nil {
+			log.Error("err", err)
+			os.Exit(1)
+		}
+
+		err = client.setupPgPrometheus(installExtensions, installSchema)
 
 		if err != nil {
 			log.Error("err", err)
@@ -126,7 +133,12 @@ func NewClient(cfg *Config) *Client {
 	return client
 }
 
-func (c *Client) setupPgPrometheus() error {
+func (c *Client) setupPgPrometheus(installExtensions, installSchema bool) error {
+	if !installExtensions && !installSchema {
+		log.Info("msg", "Extensions and schema already installed, skipping setup.")
+		return nil
+	}
+
 	tx, err := c.DB.Begin()
 
 	if err != nil {
@@ -135,30 +147,34 @@ func (c *Client) setupPgPrometheus() error {
 
 	defer tx.Rollback()
 
-	_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS pg_prometheus")
+	if installExtensions {
+		_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS pg_prometheus")
 
-	if err != nil {
-		return err
-	}
-
-	if c.cfg.useTimescaleDb {
-		_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
-	}
-	if err != nil {
-		log.Info("msg", "Could not enable TimescaleDB extension", "err", err)
-	}
-
-	var rows *sql.Rows
-	rows, err = tx.Query("SELECT create_prometheus_table($1, normalized_tables => $2, chunk_time_interval => $3,  use_timescaledb=> $4)",
-		c.cfg.table, c.cfg.pgPrometheusNormalize, c.cfg.pgPrometheusChunkInterval.String(), c.cfg.useTimescaleDb)
-
-	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return nil
+		if err != nil {
+			return err
 		}
-		return err
+
+		if c.cfg.useTimescaleDb {
+			_, err = tx.Exec("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+		}
+		if err != nil {
+			log.Info("msg", "Could not enable TimescaleDB extension", "err", err)
+		}
 	}
-	rows.Close()
+
+	if installSchema {
+		var rows *sql.Rows
+		rows, err = tx.Query("SELECT create_prometheus_table($1, normalized_tables => $2, chunk_time_interval => $3,  use_timescaledb=> $4)",
+			c.cfg.table, c.cfg.pgPrometheusNormalize, c.cfg.pgPrometheusChunkInterval.String(), c.cfg.useTimescaleDb)
+
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				return nil
+			}
+			return err
+		}
+		rows.Close()
+	}
 
 	err = tx.Commit()
 
@@ -467,6 +483,55 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	log.Debug("msg", "Returned response", "#timeseries", len(labelsToSeries))
 
 	return &resp, nil
+}
+
+// verifyPgPrometheus checks are the extensions and schema already setup.
+func (c *Client) verifyPgPrometheus() (bool, bool, error) {
+
+	installExtensions, installSchema := true, true
+
+	extCount := 1
+	extensions := "'pg_prometheus'"
+
+	if c.cfg.useTimescaleDb {
+		extCount++
+		extensions += ",'timescaledb'"
+	}
+
+	rows, err := c.DB.Query(fmt.Sprintf("SELECT DISTINCT(e.extname) FROM pg_catalog.pg_extension e WHERE e.extname IN (%s)", extensions))
+
+	if err != nil {
+		log.Debug("msg", "Extension check failed", "err", err)
+		return false, false, err
+	}
+
+	for extCount > 0 && rows.Next() {
+		extCount--
+	}
+
+	// If the extensions are not installed, assume the schema is missing too.
+	if extCount != 0 {
+		return installExtensions, installSchema, nil
+	}
+
+	installExtensions = false
+
+	rows.Close()
+
+	rows, err = c.DB.Query(fmt.Sprintf("SELECT * FROM %s LIMIT 1", c.cfg.table))
+
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return installExtensions, installSchema, nil
+		}
+
+		log.Debug("msg", "Schema check failed", "err", err)
+		return false, false, err
+	}
+
+	installSchema = false
+
+	return installExtensions, installSchema, nil
 }
 
 // HealthCheck implements the healtcheck interface
