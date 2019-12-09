@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -89,7 +90,7 @@ func NewClient(cfg *Config) *Client {
 		return sql.Open("postgres", connStr)
 	})
 
-	log.Info("msg", connStr)
+	log.Info("msg", regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connStr, "password='****'"))
 
 	if err != nil {
 		log.Error("err", err)
