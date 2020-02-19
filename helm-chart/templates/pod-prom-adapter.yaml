@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-adapter
+  labels:
+    app: {{ .Release.Name }}-adapter
+spec:
+  containers:
+    - image: {{ .Values.promadapter.image }}
+      imagePullPolicy: IfNotPresent
+      name: prom-adapter
+      resources:
+        limits:
+          cpu: {{ .Values.promadapter.resources.limits.cpu }}
+          memory: {{ .Values.promadapter.resources.limits.memory }}
+        requests:
+          cpu: {{ .Values.promadapter.resources.requests.cpu }}
+          memory: {{ .Values.promadapter.resources.requests.memory }}
+      ports:
+        - containerPort: 9201
+          name: adapter-port
+      env:
+        - name: PGUSER
+          value: {{ .Values.promadapter.user }}
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-timescaledb-passwords
+              key: {{ .Values.promadapter.user }}
+        {{ if index .Values "timescaledb-single" "enabled" -}}
+        - name: PGHOST
+          value: {{ template "clusterName" . }}.{{ $.Release.Namespace }}.svc.cluster.local
+        {{- else -}}
+        - name: PGHOST
+          value: {{ .Values.promadapter.host }} 
+        {{- end }}
+      args:
+        [
+          -pg-ssl-mode=require,
+          -pg-host=$(PGHOST),
+          -pg-user=$(PGUSER),
+          -pg-password=$(PGPASSWORD)
+        ]

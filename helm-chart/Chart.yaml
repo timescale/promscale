@@ -1,0 +1,8 @@
+name: prom-adapter
+version: 0.1.0
+apiVersion: v2
+description: Deployment of the prometheus adapter with TimescaleDB for deep storage in HA
+dependencies:
+  - name: timescaledb-single
+    version: 0.5.3
+    repository: "https://raw.githubusercontent.com/timescale/timescaledb-kubernetes/master/charts/repo/"
