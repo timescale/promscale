@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/allegro/bigcache v1.2.1
+	github.com/docker/go-connections v0.4.0
 	github.com/go-kit/kit v0.9.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang-migrate/migrate/v4 v4.9.1
@@ -20,4 +21,5 @@ require (
 	github.com/prometheus/procfs v0.0.3 // indirect
 	github.com/prometheus/prometheus v0.0.0-20190710134608-e5b22494857d
 	github.com/spf13/cobra v0.0.5 // indirect
+	github.com/testcontainers/testcontainers-go v0.3.1
 )
