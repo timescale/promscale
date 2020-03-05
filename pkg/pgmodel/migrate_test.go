@@ -3,14 +3,18 @@ package pgmodel
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -47,6 +51,7 @@ func TestMigrate(t *testing.T) {
 
 func TestPGConnection(t *testing.T) {
 	db, err := pgx.Connect(context.Background(), PGConnectURL(t, defaultDB))
+	defer db.Close(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +63,240 @@ func TestPGConnection(t *testing.T) {
 	if res != 1 {
 		t.Errorf("Res is not 1 but %d", res)
 	}
+}
+
+func TestSQLGetOrCreateMetricTableName(t *testing.T) {
+	withDB(t, func(db *pgx.Conn, t *testing.T) {
+		metricName := "test_metric_1"
+		var metricID int
+		var tableName string
+		err := db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if metricName != tableName {
+			t.Errorf("expected metric and table name to be the same unexpected:\ngot\n%v\nwanted\n%v", metricName, tableName)
+		}
+		if metricID <= 0 {
+			t.Errorf("metric_id should be >= 0:\ngot:%v", metricID)
+		}
+		savedMetricID := metricID
+
+		//query for same name should give same result
+		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if metricName != tableName {
+			t.Errorf("expected metric and table name to be the same unexpected:\ngot\n%v\nwanted\n%v", metricName, tableName)
+		}
+		if metricID != savedMetricID {
+			t.Errorf("metric_id should be same:\nexpected:%v\ngot:%v", savedMetricID, metricID)
+		}
+
+		//different metric id should give new result
+		metricName = "test_metric_2"
+		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if metricName != tableName {
+			t.Errorf("expected metric and table name to be the same unexpected:\ngot\n%v\nwanted\n%v", metricName, tableName)
+		}
+		if metricID == savedMetricID {
+			t.Errorf("metric_id should not be same:\nexpected: != %v\ngot:%v", savedMetricID, metricID)
+		}
+		savedMetricID = metricID
+
+		//test long names that don't fit as table names
+		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_1"
+		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if metricName == tableName {
+			t.Errorf("expected metric and table name to not be the same unexpected:\ngot\n%v", tableName)
+		}
+		if metricID == savedMetricID {
+			t.Errorf("metric_id should not be same:\nexpected: != %v\ngot:%v", savedMetricID, metricID)
+		}
+		savedTableName := tableName
+		savedMetricID = metricID
+
+		//another call return same info
+		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if savedTableName != tableName {
+			t.Errorf("expected table name to be the same:\ngot\n%v\nexpected\n%v", tableName, savedTableName)
+		}
+		if metricID != savedMetricID {
+			t.Errorf("metric_id should be same:\nexpected:%v\ngot:%v", savedMetricID, metricID)
+		}
+
+		//changing just ending returns new table
+		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_2"
+		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if savedTableName == tableName {
+			t.Errorf("expected table name to not be the same:\ngot\n%v\nnot =\n%v", tableName, savedTableName)
+		}
+		if metricID == savedMetricID {
+			t.Errorf("metric_id should not be same:\nexpected:%v\ngot:%v", savedMetricID, metricID)
+		}
+	})
+}
+
+func TestSQLJsonLabelArray(t *testing.T) {
+	testCases := []struct {
+		name        string
+		metrics     []*prompb.TimeSeries
+		arrayLength map[string]int
+	}{
+		{
+			name: "One metric",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "metric1"},
+						{Name: "test", Value: "test"},
+					},
+				},
+			},
+			arrayLength: map[string]int{"metric1": 2},
+		},
+		{
+			name: "Long keys and values",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: strings.Repeat("val", 60)},
+						{Name: strings.Repeat("key", 60), Value: strings.Repeat("val2", 60)},
+					},
+				},
+			},
+		},
+		{
+			name: "New keys and values",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "metric1"},
+						{Name: "test", Value: "test"},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "metric1"},
+						{Name: "test1", Value: "test"},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "metric1"},
+						{Name: "test", Value: "test"},
+						{Name: "test1", Value: "test"},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "metric1"},
+						{Name: "test", Value: "val1"},
+						{Name: "test1", Value: "val2"},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "metric1"},
+						{Name: "test", Value: "test"},
+						{Name: "test1", Value: "val2"},
+					},
+				},
+			},
+		},
+		{
+			name: "Multiple metrics",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "m1"},
+						{Name: "test1", Value: "val1"},
+						{Name: "test2", Value: "val1"},
+						{Name: "test3", Value: "val1"},
+						{Name: "test4", Value: "val1"},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "m2"},
+						{Name: "test", Value: "test"},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "m1"},
+						{Name: "test1", Value: "val2"},
+						{Name: "test2", Value: "val2"},
+						{Name: "test3", Value: "val2"},
+						{Name: "test4", Value: "val2"},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "m2"},
+						{Name: "test", Value: "test2"},
+					},
+				},
+			},
+			//make sure each metric's array is compact
+			arrayLength: map[string]int{"m1": 5, "m2": 2},
+		},
+	}
+
+	withDB(t, func(db *pgx.Conn, t *testing.T) {
+		for _, c := range testCases {
+			for _, ts := range c.metrics {
+				labelSet := make(model.LabelSet, len(ts.Labels))
+				metricName := ""
+				for _, l := range ts.Labels {
+					if l.Name == "__name__" {
+						metricName = l.Value
+					}
+					labelSet[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+				}
+				jsonOrig, err := json.Marshal(labelSet)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var labelArray []int
+				err = db.QueryRow(context.Background(), "SELECT * FROM jsonb_to_label_array($1)", jsonOrig).Scan(&labelArray)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if c.arrayLength != nil {
+					expected, ok := c.arrayLength[metricName]
+					if ok && expected != len(labelArray) {
+						t.Fatalf("Unexpected label array length: got\n%v\nexpected\n%v", len(labelArray), expected)
+					}
+				}
+
+				var jsonres []byte
+				err = db.QueryRow(context.Background(), "SELECT * FROM label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
+
+				labelSetRes := make(model.LabelSet, len(ts.Labels))
+				err = json.Unmarshal(jsonres, &labelSetRes)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if labelSet.Fingerprint() != labelSetRes.Fingerprint() {
+					t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonres), string(jsonOrig))
+				}
+			}
+		}
+	})
 }
 
 func TestMain(m *testing.M) {
@@ -113,17 +352,24 @@ func startContainer(ctx context.Context) (testcontainers.Container, error) {
 
 func withDB(t *testing.T, f func(db *pgx.Conn, t *testing.T)) {
 	db := dbSetup(t)
-	performMigrate(t)
 	defer func() {
-		if db != nil {
-			db.Close(context.Background())
+		err := db.Close(context.Background())
+		if err != nil {
+			t.Fatal(err)
 		}
 	}()
+	performMigrate(t)
 	f(db, t)
 }
 
 func performMigrate(t *testing.T) {
 	dbStd, err := sql.Open("pgx", PGConnectURL(t, *database))
+	defer func() {
+		err := dbStd.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,6 +395,10 @@ func dbSetup(t *testing.T) *pgx.Conn {
 	}
 
 	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s", *database))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Close(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

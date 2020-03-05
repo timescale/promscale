@@ -27,5 +27,12 @@ func Migrate(db *sql.DB) error {
 	}
 
 	err = m.Up()
+	sErr, dErr := m.Close()
+	if sErr != nil {
+		return sErr
+	}
+	if dErr != nil {
+		return dErr
+	}
 	return err
 }
