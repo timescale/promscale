@@ -288,8 +288,31 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					var jsonres []byte
 					err = db.QueryRow(context.Background(), "SELECT * FROM label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
-
+					if err != nil {
+						t.Fatal(err)
+					}
 					labelSetRes := make(model.LabelSet, len(ts.Labels))
+					err = json.Unmarshal(jsonres, &labelSetRes)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if labelSet.Fingerprint() != labelSetRes.Fingerprint() {
+						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonres), string(jsonOrig))
+
+					}
+
+					// Check the series_id logic
+					var seriesID int
+					err = db.QueryRow(context.Background(), "SELECT get_series_id_for_label($1)", jsonOrig).Scan(&seriesID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					err = db.QueryRow(context.Background(), "SELECT label_array_to_jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
+						seriesID).Scan(&jsonres)
+					if err != nil {
+						t.Fatal(err)
+					}
+					labelSetRes = make(model.LabelSet, len(ts.Labels))
 					err = json.Unmarshal(jsonres, &labelSetRes)
 					if err != nil {
 						t.Fatal(err)
