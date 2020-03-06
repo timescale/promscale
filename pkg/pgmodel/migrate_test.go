@@ -32,7 +32,7 @@ const (
 )
 
 func TestMigrate(t *testing.T) {
-	withDB(t, func(db *pgx.Conn, t *testing.T) {
+	withDB(t, *database, func(db *pgx.Conn, t *testing.T) {
 		var version int64
 		var dirty bool
 		err := db.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty)
@@ -66,7 +66,7 @@ func TestPGConnection(t *testing.T) {
 }
 
 func TestSQLGetOrCreateMetricTableName(t *testing.T) {
-	withDB(t, func(db *pgx.Conn, t *testing.T) {
+	withDB(t, *database, func(db *pgx.Conn, t *testing.T) {
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
@@ -256,47 +256,52 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		},
 	}
 
-	withDB(t, func(db *pgx.Conn, t *testing.T) {
-		for _, c := range testCases {
-			for _, ts := range c.metrics {
-				labelSet := make(model.LabelSet, len(ts.Labels))
-				metricName := ""
-				for _, l := range ts.Labels {
-					if l.Name == "__name__" {
-						metricName = l.Value
+	for tcIndex, c := range testCases {
+		databaseName := fmt.Sprintf("%s_%d", *database, tcIndex)
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			withDB(t, databaseName, func(db *pgx.Conn, t *testing.T) {
+				for _, ts := range c.metrics {
+					labelSet := make(model.LabelSet, len(ts.Labels))
+					metricName := ""
+					for _, l := range ts.Labels {
+						if l.Name == "__name__" {
+							metricName = l.Value
+						}
+						labelSet[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 					}
-					labelSet[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-				}
-				jsonOrig, err := json.Marshal(labelSet)
-				if err != nil {
-					t.Fatal(err)
-				}
-				var labelArray []int
-				err = db.QueryRow(context.Background(), "SELECT * FROM jsonb_to_label_array($1)", jsonOrig).Scan(&labelArray)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if c.arrayLength != nil {
-					expected, ok := c.arrayLength[metricName]
-					if ok && expected != len(labelArray) {
-						t.Fatalf("Unexpected label array length: got\n%v\nexpected\n%v", len(labelArray), expected)
+					jsonOrig, err := json.Marshal(labelSet)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var labelArray []int
+					err = db.QueryRow(context.Background(), "SELECT * FROM jsonb_to_label_array($1)", jsonOrig).Scan(&labelArray)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if c.arrayLength != nil {
+						expected, ok := c.arrayLength[metricName]
+						if ok && expected != len(labelArray) {
+							t.Fatalf("Unexpected label array length: got\n%v\nexpected\n%v", len(labelArray), expected)
+						}
+					}
+
+					var jsonres []byte
+					err = db.QueryRow(context.Background(), "SELECT * FROM label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
+
+					labelSetRes := make(model.LabelSet, len(ts.Labels))
+					err = json.Unmarshal(jsonres, &labelSetRes)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if labelSet.Fingerprint() != labelSetRes.Fingerprint() {
+						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonres), string(jsonOrig))
+
 					}
 				}
-
-				var jsonres []byte
-				err = db.QueryRow(context.Background(), "SELECT * FROM label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
-
-				labelSetRes := make(model.LabelSet, len(ts.Labels))
-				err = json.Unmarshal(jsonres, &labelSetRes)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if labelSet.Fingerprint() != labelSetRes.Fingerprint() {
-					t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonres), string(jsonOrig))
-				}
-			}
-		}
-	})
+			})
+		})
+	}
 }
 
 func TestMain(m *testing.M) {
@@ -350,20 +355,20 @@ func startContainer(ctx context.Context) (testcontainers.Container, error) {
 	return container, nil
 }
 
-func withDB(t *testing.T, f func(db *pgx.Conn, t *testing.T)) {
-	db := dbSetup(t)
+func withDB(t *testing.T, DBName string, f func(db *pgx.Conn, t *testing.T)) {
+	db := dbSetup(t, DBName)
 	defer func() {
 		err := db.Close(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
-	performMigrate(t)
+	performMigrate(t, DBName)
 	f(db, t)
 }
 
-func performMigrate(t *testing.T) {
-	dbStd, err := sql.Open("pgx", PGConnectURL(t, *database))
+func performMigrate(t *testing.T, DBName string) {
+	dbStd, err := sql.Open("pgx", PGConnectURL(t, DBName))
 	defer func() {
 		err := dbStd.Close()
 		if err != nil {
@@ -379,8 +384,7 @@ func performMigrate(t *testing.T) {
 	}
 }
 
-func dbSetup(t *testing.T) *pgx.Conn {
-	flag.Parse()
+func dbSetup(t *testing.T, DBName string) *pgx.Conn {
 	if len(*database) == 0 {
 		t.Skip()
 	}
@@ -389,12 +393,12 @@ func dbSetup(t *testing.T) *pgx.Conn {
 		t.Fatal(err)
 	}
 
-	_, err = db.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", *database))
+	_, err = db.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", DBName))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s", *database))
+	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s", DBName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +407,7 @@ func dbSetup(t *testing.T) *pgx.Conn {
 		t.Fatal(err)
 	}
 
-	db, err = pgx.Connect(context.Background(), PGConnectURL(t, *database))
+	db, err = pgx.Connect(context.Background(), PGConnectURL(t, DBName))
 	if err != nil {
 		t.Fatal(err)
 	}
