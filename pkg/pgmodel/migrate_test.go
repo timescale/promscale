@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	database           = flag.String("database", "migrate_test", "database to run integration tests on")
+	database           = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 	useDocker          = flag.Bool("use-docker", true, "start database using a docker container")
 	pgHost    string   = "localhost"
 	pgPort    nat.Port = "5432/tcp"
@@ -32,6 +32,9 @@ const (
 )
 
 func TestMigrate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
 	withDB(t, *database, func(db *pgx.Conn, t *testing.T) {
 		var version int64
 		var dirty bool
@@ -50,6 +53,9 @@ func TestMigrate(t *testing.T) {
 }
 
 func TestPGConnection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
 	db, err := pgx.Connect(context.Background(), PGConnectURL(t, defaultDB))
 	defer db.Close(context.Background())
 	if err != nil {
@@ -66,16 +72,19 @@ func TestPGConnection(t *testing.T) {
 }
 
 func TestSQLGetOrCreateMetricTableName(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
 	withDB(t, *database, func(db *pgx.Conn, t *testing.T) {
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
-		err := db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err := db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name(metric_name => $1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if metricName != tableName {
-			t.Errorf("expected metric and table name to be the same unexpected:\ngot\n%v\nwanted\n%v", metricName, tableName)
+			t.Errorf("expected metric and table name to be the same: got %v wanted %v", metricName, tableName)
 		}
 		if metricID <= 0 {
 			t.Errorf("metric_id should be >= 0:\ngot:%v", metricID)
@@ -151,6 +160,10 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 }
 
 func TestSQLJsonLabelArray(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
 	testCases := []struct {
 		name        string
 		metrics     []*prompb.TimeSeries

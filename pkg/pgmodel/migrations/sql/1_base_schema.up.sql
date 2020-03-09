@@ -247,15 +247,15 @@ AS $function$array_unnest$function$;
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
 CREATE OR REPLACE FUNCTION get_or_create_metric_table_name(
-        metric_name_arg text)
+        metric_name text)
     RETURNS TABLE (id int, table_name name)
 AS $func$
    SELECT id, table_name::name 
-   FROM _prom_catalog.metric
-   WHERE metric_name = metric_name_arg
+   FROM _prom_catalog.metric m
+   WHERE m.metric_name = get_or_create_metric_table_name.metric_name
    UNION ALL
    SELECT * 
-   FROM _prom_internal.create_metric_table(metric_name_arg)
+   FROM _prom_internal.create_metric_table(get_or_create_metric_table_name.metric_name)
    LIMIT 1
 $func$
 LANGUAGE sql VOLATILE PARALLEL SAFE;
