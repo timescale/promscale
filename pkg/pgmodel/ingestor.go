@@ -15,12 +15,16 @@ var (
 	errNoMetricName = fmt.Errorf("metric name missing")
 )
 
+// SeriesID represents a globally unique id for the series. This should be equivalent
+// to the PostgreSQL type in the series table (currently BIGINT).
+type SeriesID int64
+
 // Inserter is responsible for inserting label, series and data into the storage.
 type Inserter interface {
 	AddLabel(*prompb.Label)
 	InsertLabels() ([]*prompb.Label, error)
 	AddSeries(fingerprint uint64, series *model.LabelSet)
-	InsertSeries() ([]uint64, []uint64, error)
+	InsertSeries() ([]SeriesID, []uint64, error)
 	InsertData(rows map[string][][]interface{}) (uint64, error)
 }
 
@@ -28,12 +32,12 @@ type Inserter interface {
 type Cache interface {
 	GetLabel(*prompb.Label) (int32, error)
 	SetLabel(*prompb.Label, int32) error
-	GetSeries(fingerprint uint64) (uint64, error)
-	SetSeries(fingerprint uint64, id uint64) error
+	GetSeries(fingerprint uint64) (SeriesID, error)
+	SetSeries(fingerprint uint64, id SeriesID) error
 }
 
 type samplesInfo struct {
-	seriesID    uint64
+	seriesID    SeriesID
 	fingerprint uint64
 	samples     []prompb.Sample
 }
@@ -83,7 +87,7 @@ func (i *DBIngestor) parseData(tts []*prompb.TimeSeries) (map[string][][]interfa
 			}
 		}
 		fingerprint := uint64(metric.Fingerprint())
-		var seriesID uint64
+		var seriesID SeriesID
 		if !newSeries {
 			seriesID, err = i.cache.GetSeries(fingerprint)
 			if err != nil {

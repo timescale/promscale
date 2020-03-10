@@ -32,6 +32,7 @@ type mockPGXConn struct {
 	CopyFromResult    int64
 	CopyFromError     error
 	CopyFromRowsRows  [][]interface{}
+	Batch             []*mockBatch
 }
 
 func (m *mockPGXConn) Close(c context.Context) error {
@@ -64,6 +65,65 @@ func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, co
 func (m *mockPGXConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
 	m.CopyFromRowsRows = rows
 	return pgx.CopyFromRows(rows)
+}
+
+func (m *mockPGXConn) NewBatch() pgxBatch {
+	return &mockBatch{}
+}
+
+func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+	batch := b.(*mockBatch)
+	m.Batch = append(m.Batch, batch)
+	return &mockBatchResult{results: m.QueryResults}, m.QueryErr
+}
+
+type batchItem struct {
+	query     string
+	arguments []interface{}
+}
+
+// Batch queries are a way of bundling multiple queries together to avoid
+// unnecessary network round trips.
+type mockBatch struct {
+	items []*batchItem
+}
+
+func (b *mockBatch) Queue(query string, arguments ...interface{}) {
+	b.items = append(b.items, &batchItem{
+		query:     query,
+		arguments: arguments,
+	})
+}
+
+type mockBatchResult struct {
+	idx     int
+	results []interface{}
+}
+
+// Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
+func (m *mockBatchResult) Exec() (pgconn.CommandTag, error) {
+	panic("not implemented")
+}
+
+// Query reads the results from the next query in the batch as if the query has been sent with Conn.Query.
+func (m *mockBatchResult) Query() (pgx.Rows, error) {
+	panic("not implemented")
+}
+
+// Close closes the batch operation. This must be called before the underlying connection can be used again. Any error
+// that occurred during a batch operation may have made it impossible to resyncronize the connection with the server.
+// In this case the underlying connection will have been closed.
+func (m *mockBatchResult) Close() error {
+	return nil
+}
+
+// QueryRow reads the results from the next query in the batch as if the query has been sent with Conn.QueryRow.
+func (m *mockBatchResult) QueryRow() pgx.Row {
+	res := []interface{}{
+		m.results[m.idx],
+	}
+	m.idx++
+	return &mockRows{results: res, noNext: false}
 }
 
 type mockRows struct {
@@ -108,6 +168,12 @@ func (m *mockRows) Scan(dest ...interface{}) error {
 	}
 
 	switch m.results[m.idx].(type) {
+	case int32:
+		for i := range dest {
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetInt(int64(m.results[m.idx].(int32)))
+		}
 	case uint64:
 		for i := range dest {
 			dv := reflect.ValueOf(dest[i])
@@ -321,9 +387,9 @@ func createSeriesFingerprints(x int) []uint64 {
 	return ret
 }
 
-func createSeriesResults(x uint64) []interface{} {
+func createSeriesResults(x int32) []interface{} {
 	ret := make([]interface{}, 0, x)
-	var i uint64 = 1
+	var i int32 = 1
 	x++
 
 	for i < x {
@@ -431,7 +497,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			}
 
 			if c.queryErr != nil {
-				t.Errorf("expected query error:\ngot\n%s\nwanted\n%s", err, c.queryErr)
+				t.Errorf("expected query error:\ngot\n%v\nwanted\n%v", err, c.queryErr)
 			}
 
 			if len(inserter.seriesToInsert) > 0 {
@@ -450,23 +516,18 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				t.Errorf("unexpected fingerprint result:\ngot\n%+v\nwanted\n%+v", fps, c.seriesFps)
 			}
 
-			seriesResult := make([]string, 0, len(expectedFPs))
-
-			for i, fp := range expectedFPs {
+			for i := range expectedFPs {
 				json, err := json.Marshal(c.series[i])
 
 				if err != nil {
 					t.Fatal("error marshaling series", err)
 				}
-				seriesResult = append(seriesResult, fmt.Sprintf(seriesSQLFormat, fp, json))
-			}
-
-			wantSQL := fmt.Sprintf(insertSeriesSQL, strings.Join(seriesResult, ","))
-
-			gotSQL := mock.QuerySQLs[0]
-
-			if wantSQL != gotSQL {
-				t.Errorf("wrong query argument:\ngot\n%s\nwanted\n%s", gotSQL, wantSQL)
+				if mock.Batch[0].items[i].query != getSeriesIDForLabelSQL {
+					t.Errorf("wrong query sql:\ngot\n%v\nwanted\n%v", mock.Batch[0].items[i].query, getSeriesIDForLabelSQL)
+				}
+				if string(mock.Batch[0].items[i].arguments[0].([]byte)) != string(json) {
+					t.Errorf("wrong query argument:\ngot\n%v\nwanted\n%v", mock.Batch[0].items[i].arguments[0], json)
+				}
 			}
 		})
 	}

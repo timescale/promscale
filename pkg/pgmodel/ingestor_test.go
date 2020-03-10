@@ -10,7 +10,7 @@ import (
 
 type mockCache struct {
 	labelCache   map[string]int32
-	seriesCache  map[uint64]uint64
+	seriesCache  map[uint64]SeriesID
 	getLabelErr  error
 	setLabelErr  error
 	getSeriesErr error
@@ -34,7 +34,7 @@ func (m *mockCache) SetLabel(label *prompb.Label, value int32) error {
 	return m.setLabelErr
 }
 
-func (m *mockCache) GetSeries(fp uint64) (uint64, error) {
+func (m *mockCache) GetSeries(fp uint64) (SeriesID, error) {
 	if m.getSeriesErr != nil {
 		return 0, m.getSeriesErr
 	}
@@ -47,7 +47,7 @@ func (m *mockCache) GetSeries(fp uint64) (uint64, error) {
 	return val, nil
 }
 
-func (m *mockCache) SetSeries(fp uint64, id uint64) error {
+func (m *mockCache) SetSeries(fp uint64, id SeriesID) error {
 	m.seriesCache[fp] = id
 	return m.setSeriesErr
 }
@@ -81,11 +81,12 @@ func (m *mockInserter) AddSeries(fingerprint uint64, series *model.LabelSet) {
 	m.fpToInsert = append(m.fpToInsert, fingerprint)
 }
 
-func (m *mockInserter) InsertSeries() ([]uint64, []uint64, error) {
+func (m *mockInserter) InsertSeries() ([]SeriesID, []uint64, error) {
 	defer func(m *mockInserter) { m.fpToInsert = make([]uint64, 0) }(m)
 	m.insertedSeries = append(m.insertedSeries, m.seriesToInsert...)
 	m.seriesToInsert = make([]*seriesWithFP, 0)
-	return m.fpToInsert, m.fpToInsert, m.insertSeriesErr
+	ids := make([]SeriesID, len(m.fpToInsert))
+	return ids, m.fpToInsert, m.insertSeriesErr
 }
 
 func (m *mockInserter) InsertData(rows map[string][][]interface{}) (uint64, error) {
@@ -362,7 +363,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			cache := &mockCache{
 				labelCache:   make(map[string]int32, 0),
-				seriesCache:  make(map[uint64]uint64, 0),
+				seriesCache:  make(map[uint64]SeriesID, 0),
 				setLabelErr:  c.setLabelErr,
 				getLabelErr:  c.getLabelErr,
 				setSeriesErr: c.setSeriesErr,

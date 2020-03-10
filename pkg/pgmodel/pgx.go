@@ -19,9 +19,8 @@ const (
 	insertLabelBatchSize     = 100
 	insertLabelSQL           = "INSERT INTO labels(name, value) VALUES %s ON CONFLICT DO NOTHING"
 	labelSQLFormat           = "('%s', '%s')"
-	insertSeriesSQL          = "INSERT INTO series(fingerprint, labels) VALUES %s ON CONFLICT DO NOTHING RETURNING id, fingerprint"
-	seriesSQLFormat          = "(%d, '%s')"
 	getCreateMetricsTableSQL = "SELECT get_or_create_metric_table_name($1)"
+	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_label($2)"
 )
 
 var (
@@ -30,6 +29,10 @@ var (
 	errMissingTableName = fmt.Errorf("missing metric table name")
 )
 
+type pgxBatch interface {
+	Queue(query string, arguments ...interface{})
+}
+
 type pgxConn interface {
 	Close(ctx context.Context) error
 	UseDatabase(database string)
@@ -37,6 +40,8 @@ type pgxConn interface {
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
 	CopyFromRows(rows [][]interface{}) pgx.CopyFromSource
+	NewBatch() pgxBatch
+	SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error)
 }
 
 type PgxConnImpl struct {
@@ -112,6 +117,20 @@ func (p *PgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, co
 
 func (p *PgxConnImpl) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
 	return pgx.CopyFromRows(rows)
+}
+
+func (p *PgxConnImpl) NewBatch() pgxBatch {
+	return &pgx.Batch{}
+}
+
+func (p *PgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+	conn, err := p.getConn()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 
 func NewPgxInserter(c *pgx.ConnConfig) *DBIngestor {
@@ -211,11 +230,13 @@ func (p *pgxInserter) InsertLabels() ([]*prompb.Label, error) {
 	return ret, nil
 }
 
-func (p *pgxInserter) InsertSeries() ([]uint64, []uint64, error) {
-	var ids, fps []uint64
+func (p *pgxInserter) InsertSeries() ([]SeriesID, []uint64, error) {
+	var ids []SeriesID
+	var fps []uint64
 	var lastSeenFP uint64
-	insertSeries := make([]string, 0, len(p.seriesToInsert))
 
+	batch := p.conn.NewBatch()
+	numQueries := 0
 	// Sort and remove duplicates.
 	sort.Slice(p.seriesToInsert, func(i, j int) bool { return p.seriesToInsert[i].fingerprint < p.seriesToInsert[j].fingerprint })
 	for _, curr := range p.seriesToInsert {
@@ -229,33 +250,37 @@ func (p *pgxInserter) InsertSeries() ([]uint64, []uint64, error) {
 			return ids, fps, err
 		}
 
+		batch.Queue(getSeriesIDForLabelSQL, json)
+		numQueries++
+		fps = append(fps, curr.fingerprint)
+
 		lastSeenFP = curr.fingerprint
-		insertSeries = append(insertSeries, fmt.Sprintf(seriesSQLFormat, curr.fingerprint, json))
 	}
 
-	res, err := p.conn.Query(
-		context.Background(),
-		fmt.Sprintf(insertSeriesSQL,
-			strings.Join(insertSeries, ",")),
-	)
+	br, err := p.conn.SendBatch(context.Background(), batch)
 	if err != nil {
 		return ids, fps, err
 	}
-	defer res.Close()
+	defer br.Close()
 
-	var id, fp uint64
+	for i := 0; i < numQueries; i++ {
+		row := br.QueryRow()
 
-	for res.Next() {
-		err = res.Scan(&id, &fp)
+		var id SeriesID
+		err = row.Scan(&id)
 		if err != nil {
 			return ids, fps, err
 		}
 
 		ids = append(ids, id)
-		fps = append(fps, fp)
 	}
+
 	// Flushing inserted series.
-	p.seriesToInsert = make([]*seriesWithFP, 0)
+	p.seriesToInsert = p.seriesToInsert[:0]
+
+	if len(ids) != len(fps) {
+		panic("The length of ids and fingerprints should always be equal")
+	}
 
 	return ids, fps, nil
 }

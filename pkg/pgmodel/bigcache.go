@@ -1,6 +1,7 @@
 package pgmodel
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/allegro/bigcache"
@@ -32,7 +33,7 @@ func (b *bCache) SetLabel(label *prompb.Label, id int32) error {
 	return b.labels.Set(label.String(), int32Bytes(id))
 }
 
-func (b *bCache) GetSeries(fingerprint uint64) (uint64, error) {
+func (b *bCache) GetSeries(fingerprint uint64) (SeriesID, error) {
 	result, err := b.series.Get(uint64String(fingerprint))
 	if err != nil {
 		if err == bigcache.ErrEntryNotFound {
@@ -40,38 +41,23 @@ func (b *bCache) GetSeries(fingerprint uint64) (uint64, error) {
 		}
 		return 0, err
 	}
-	return bytesUint64(result), nil
+	return SeriesID(binary.LittleEndian.Uint64(result)), nil
 }
 
-func (b *bCache) SetSeries(fingerprint, id uint64) error {
-	return b.series.Set(uint64String(fingerprint), uint64Bytes(id))
+func (b *bCache) SetSeries(fingerprint uint64, id SeriesID) error {
+	byteID := make([]byte, 8)
+	binary.LittleEndian.PutUint64(byteID, uint64(id))
+	return b.series.Set(uint64String(fingerprint), byteID)
 }
 
 func uint64Bytes(i uint64) []byte {
-	return []byte{byte(0xff & i),
-		byte(0xff & (i >> 8)),
-		byte(0xff & (i >> 16)),
-		byte(0xff & (i >> 24)),
-		byte(0xff & (i >> 32)),
-		byte(0xff & (i >> 40)),
-		byte(0xff & (i >> 48)),
-		byte(0xff & (i >> 56))}
+	byteID := make([]byte, 8)
+	binary.LittleEndian.PutUint64(byteID, i)
+	return byteID
 }
 
 func uint64String(i uint64) string {
 	return string(uint64Bytes(i))
-}
-
-func bytesUint64(b []byte) uint64 {
-	_ = b[7] // bounds check hint to compiler; see golang.org/issue/14808
-	return uint64(b[0]) |
-		uint64(b[1])<<8 |
-		uint64(b[2])<<16 |
-		uint64(b[3])<<24 |
-		uint64(b[4])<<32 |
-		uint64(b[5])<<40 |
-		uint64(b[6])<<48 |
-		uint64(b[7])<<56
 }
 
 func int32Bytes(i int32) []byte {

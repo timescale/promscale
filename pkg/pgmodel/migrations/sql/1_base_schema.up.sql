@@ -10,7 +10,7 @@ CREATE SCHEMA prom; --data tables go here
 -----------------------
 
 CREATE TABLE _prom_catalog.series (
-    id serial,
+    id bigserial,
     metric_id int,
     labels int[],
     UNIQUE(labels) INCLUDE (id)
