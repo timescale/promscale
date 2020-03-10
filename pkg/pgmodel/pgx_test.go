@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
 )
 
 type mockPGXConn struct {
@@ -201,177 +199,6 @@ func (m *mockRows) Values() ([]interface{}, error) {
 // call or the Rows is closed. However, the underlying byte data is safe to retain a reference to and mutate.
 func (m *mockRows) RawValues() [][]byte {
 	panic("not implemented")
-}
-
-func createLabel(name string, value string) *prompb.Label {
-	return &prompb.Label{Name: name, Value: value}
-}
-
-func createLabels(x int) []*prompb.Label {
-	i := 0
-	labels := make([]*prompb.Label, 0, x)
-	for i < x {
-		labels = append(
-			labels,
-			createLabel(
-				fmt.Sprintf("foo%d", i),
-				fmt.Sprintf("bar%d", i),
-			),
-		)
-		i++
-	}
-
-	return labels
-}
-
-func sortLabels(labels []*prompb.Label) []*prompb.Label {
-	sort.Slice(labels, func(i, j int) bool {
-		if labels[i].Name != labels[j].Name {
-			return labels[i].Name < labels[j].Name
-		}
-		return labels[i].Value < labels[j].Value
-	})
-	return labels
-}
-
-func sortAndDedupLabels(labels []*prompb.Label) []*prompb.Label {
-	if len(labels) == 0 {
-		return labels
-	}
-
-	labels = sortLabels(labels)
-
-	ret := make([]*prompb.Label, 0)
-	lastName := labels[0].Name
-	lastValue := labels[0].Value
-	ret = append(ret, labels[0])
-
-	for _, label := range labels {
-		if (lastName == label.Name &&
-			lastValue == label.Value) || label == nil {
-			continue
-		}
-		lastName = label.Name
-		lastValue = label.Value
-		ret = append(ret, label)
-	}
-
-	return ret
-}
-
-func TestPGXInserterInsertLabels(t *testing.T) {
-	testCases := []struct {
-		name    string
-		labels  []*prompb.Label
-		execErr error
-	}{
-		{
-			name:   "Zero label",
-			labels: []*prompb.Label{},
-		},
-		{
-			name:   "One label",
-			labels: createLabels(1),
-		},
-		{
-			name:   "One label",
-			labels: createLabels(1),
-		},
-		{
-			name:   "Exactly one batch",
-			labels: createLabels(insertLabelBatchSize),
-		},
-		{
-			name:   "Over one batch",
-			labels: createLabels(insertLabelBatchSize + 1),
-		},
-		{
-			name:   "Double batch",
-			labels: createLabels(insertLabelBatchSize * 2),
-		},
-		{
-			name:   "Duplicate labels",
-			labels: append(createLabels(insertLabelBatchSize), createLabels(insertLabelBatchSize)...),
-		},
-		{
-			name:    "Exec error",
-			labels:  createLabels(1),
-			execErr: fmt.Errorf("some error"),
-		},
-	}
-
-	for _, c := range testCases {
-		t.Run(c.name, func(t *testing.T) {
-			mock := &mockPGXConn{
-				ExecErr: c.execErr,
-			}
-			inserter := pgxInserter{conn: mock}
-
-			for _, label := range c.labels {
-				inserter.AddLabel(label)
-			}
-
-			labels, err := inserter.InsertLabels()
-
-			if err != nil {
-				if c.execErr == nil || err != c.execErr {
-					t.Errorf("unexpected exec error:\ngot\n%s\nwanted\n%s", err, c.execErr)
-				}
-				return
-			}
-
-			expectedLabels := sortAndDedupLabels(c.labels)
-
-			if c.execErr != nil {
-				t.Errorf("unexpected exec error:\ngot\n%s\nwanted\n%s", err, c.execErr)
-				return
-			}
-
-			if !reflect.DeepEqual(labels, expectedLabels) {
-				t.Errorf("incorrect label values:\ngot\n%+v\nwanted\n%+v", labels, expectedLabels)
-			}
-
-			if len(inserter.labelsToInsert) > 0 {
-				t.Errorf("labels not empty after insertion")
-			}
-
-			if len(expectedLabels) == 0 {
-				return
-			}
-
-			i := 0
-			size := len(labels)
-			sortedLabels := sortLabels(c.labels)
-
-			for i*insertLabelBatchSize < size {
-				lastName, lastValue := "", ""
-				labelsString := make([]string, 0, insertLabelBatchSize)
-				start := i * insertLabelBatchSize
-				end := (i + 1) * insertLabelBatchSize
-
-				if end > size {
-					end = size
-				}
-				for _, label := range sortedLabels[start:end] {
-					if lastName == label.Name && lastValue == label.Value {
-						continue
-					}
-					lastName = label.Name
-					lastValue = label.Value
-					labelsString = append(labelsString, fmt.Sprintf(labelSQLFormat, label.Name, label.Value))
-				}
-
-				sql := fmt.Sprintf(insertLabelSQL, strings.Join(labelsString, ","))
-
-				if mock.ExecSQLs[i] != sql {
-					t.Errorf("unexpected sql string:\ngot\n%s\nwanted\n%s", mock.ExecSQLs[i], sql)
-				}
-
-				i++
-			}
-
-		})
-	}
 }
 
 func createSeriesFingerprints(x int) []uint64 {

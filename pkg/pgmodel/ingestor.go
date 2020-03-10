@@ -21,8 +21,6 @@ type SeriesID int64
 
 // Inserter is responsible for inserting label, series and data into the storage.
 type Inserter interface {
-	AddLabel(*prompb.Label)
-	InsertLabels() ([]*prompb.Label, error)
 	AddSeries(fingerprint uint64, series *model.LabelSet)
 	InsertSeries() ([]SeriesID, []uint64, error)
 	InsertData(rows map[string][][]interface{}) (uint64, error)
@@ -30,8 +28,6 @@ type Inserter interface {
 
 // Cache provides a caching mechanism for labels and series.
 type Cache interface {
-	GetLabel(*prompb.Label) (int32, error)
-	SetLabel(*prompb.Label, int32) error
 	GetSeries(fingerprint uint64) (SeriesID, error)
 	SetSeries(fingerprint uint64, id SeriesID) error
 }
@@ -70,40 +66,30 @@ func (i *DBIngestor) parseData(tts []*prompb.TimeSeries) (map[string][][]interfa
 
 		metricName := ""
 		metric := make(model.LabelSet, len(t.Labels))
-		newSeries := false
 		for _, l := range t.Labels {
-			_, err := i.cache.GetLabel(&l)
-			if err != nil {
-				if err != ErrEntryNotFound {
-					return nil, err
-				}
-				i.db.AddLabel(&l)
-				newSeries = true
-			}
 			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-
 			if l.Name == metricNameLabelName {
 				metricName = l.Name
 			}
 		}
+		if metricName == "" {
+			return nil, errNoMetricName
+		}
+
 		fingerprint := uint64(metric.Fingerprint())
 		var seriesID SeriesID
-		if !newSeries {
-			seriesID, err = i.cache.GetSeries(fingerprint)
-			if err != nil {
-				if err != ErrEntryNotFound {
-					return nil, err
-				}
-				newSeries = true
+		newSeries := false
+
+		seriesID, err = i.cache.GetSeries(fingerprint)
+		if err != nil {
+			if err != ErrEntryNotFound {
+				return nil, err
 			}
+			newSeries = true
 		}
 
 		if newSeries {
 			i.db.AddSeries(fingerprint, &metric)
-		}
-
-		if metricName == "" {
-			return nil, errNoMetricName
 		}
 
 		if _, ok := dataSamples[metricName]; !ok {
@@ -118,10 +104,6 @@ func (i *DBIngestor) parseData(tts []*prompb.TimeSeries) (map[string][][]interfa
 				t.Samples,
 			},
 		)
-	}
-
-	if err = i.insertLabels(); err != nil {
-		return nil, err
 	}
 
 	if err = i.insertSeries(); err != nil {
@@ -153,21 +135,6 @@ func (i *DBIngestor) parseData(tts []*prompb.TimeSeries) (map[string][][]interfa
 	}
 
 	return dataRows, nil
-}
-
-func (i *DBIngestor) insertLabels() error {
-	ll, err := i.db.InsertLabels()
-	if err != nil {
-		return err
-	}
-
-	for _, label := range ll {
-		if err := i.cache.SetLabel(label, 0); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (i *DBIngestor) insertSeries() error {

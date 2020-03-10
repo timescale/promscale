@@ -5,27 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/allegro/bigcache"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
 )
 
 const (
-	insertLabelBatchSize     = 100
-	insertLabelSQL           = "INSERT INTO labels(name, value) VALUES %s ON CONFLICT DO NOTHING"
-	labelSQLFormat           = "('%s', '%s')"
 	getCreateMetricsTableSQL = "SELECT get_or_create_metric_table_name($1)"
 	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_label($2)"
 )
 
 var (
-	copyColumns = []string{"time", "value", "series_id"}
-
+	copyColumns         = []string{"time", "value", "series_id"}
 	errMissingTableName = fmt.Errorf("missing metric table name")
 )
 
@@ -142,11 +136,9 @@ func NewPgxInserter(c *pgx.ConnConfig) *DBIngestor {
 
 	config := bigcache.DefaultConfig(10 * time.Minute)
 
-	labels, _ := bigcache.NewBigCache(config)
 	series, _ := bigcache.NewBigCache(config)
 
 	bc := &bCache{
-		labels: labels,
 		series: series,
 	}
 
@@ -163,71 +155,13 @@ type seriesWithFP struct {
 
 type pgxInserter struct {
 	conn           pgxConn
-	labelsToInsert []*prompb.Label
 	seriesToInsert []*seriesWithFP
 	// TODO: update implementation to match existing caching layer.
 	metricTableNames map[string]string
 }
 
-func (p *pgxInserter) AddLabel(label *prompb.Label) {
-	p.labelsToInsert = append(p.labelsToInsert, label)
-}
-
 func (p *pgxInserter) AddSeries(fingerprint uint64, series *model.LabelSet) {
 	p.seriesToInsert = append(p.seriesToInsert, &seriesWithFP{series, fingerprint})
-}
-
-func (p *pgxInserter) InsertLabels() ([]*prompb.Label, error) {
-	idx, start, end := 0, 0, 0
-	size := len(p.labelsToInsert)
-	ret := make([]*prompb.Label, 0, size)
-
-	sort.Slice(
-		p.labelsToInsert,
-		func(i, j int) bool {
-			if p.labelsToInsert[i].Name != p.labelsToInsert[j].Name {
-				return p.labelsToInsert[i].Name < p.labelsToInsert[j].Name
-			}
-			return p.labelsToInsert[i].Value < p.labelsToInsert[j].Value
-		})
-
-	for idx*insertLabelBatchSize < size {
-		lastSeenLabelName, lastSeenLabelValue := "", ""
-		start = idx * insertLabelBatchSize
-		end = (idx + 1) * insertLabelBatchSize
-		if end >= size {
-			end = size
-		}
-		labelValues := make([]string, 0, insertLabelBatchSize)
-
-		// Remove duplicates.
-		for _, l := range p.labelsToInsert[start:end] {
-			if lastSeenLabelName == l.Name &&
-				lastSeenLabelValue == l.Value {
-				continue
-			}
-			lastSeenLabelName = l.Name
-			lastSeenLabelValue = l.Value
-			labelValues = append(labelValues, fmt.Sprintf(labelSQLFormat, l.Name, l.Value))
-			ret = append(ret, l)
-		}
-
-		_, err := p.conn.Exec(
-			context.Background(),
-			fmt.Sprintf(insertLabelSQL,
-				strings.Join(labelValues, ",")),
-		)
-
-		if err != nil {
-			return nil, err
-		}
-
-		idx++
-	}
-	// Flushing inserted labels.
-	p.labelsToInsert = make([]*prompb.Label, 0)
-
-	return ret, nil
 }
 
 func (p *pgxInserter) InsertSeries() ([]SeriesID, []uint64, error) {

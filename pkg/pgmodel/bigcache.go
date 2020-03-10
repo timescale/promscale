@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/allegro/bigcache"
-	"github.com/prometheus/prometheus/prompb"
 )
 
 var (
@@ -14,23 +13,7 @@ var (
 )
 
 type bCache struct {
-	labels *bigcache.BigCache
 	series *bigcache.BigCache
-}
-
-func (b *bCache) GetLabel(label *prompb.Label) (int32, error) {
-	result, err := b.labels.Get(label.String())
-	if err != nil {
-		if err == bigcache.ErrEntryNotFound {
-			return 0, ErrEntryNotFound
-		}
-		return 0, err
-	}
-	return bytesInt32(result), nil
-}
-
-func (b *bCache) SetLabel(label *prompb.Label, id int32) error {
-	return b.labels.Set(label.String(), int32Bytes(id))
 }
 
 func (b *bCache) GetSeries(fingerprint uint64) (SeriesID, error) {
