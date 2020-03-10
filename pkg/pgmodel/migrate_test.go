@@ -340,6 +340,222 @@ func TestSQLJsonLabelArray(t *testing.T) {
 	}
 }
 
+func TestSQLIngest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	testCases := []struct {
+		name        string
+		metrics     []*prompb.TimeSeries
+		count       uint64
+		countSeries int
+		expectErr   error
+	}{
+		{
+			name:    "Zero metrics",
+			metrics: []*prompb.TimeSeries{},
+		},
+		{
+			name: "One metric",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       1,
+			countSeries: 1,
+		},
+		{
+			name: "One metric, no sample",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+				},
+			},
+		},
+		{
+			name: "Two timeseries",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       2,
+			countSeries: 2,
+		},
+		{
+			name: "Two samples",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+					},
+				},
+			},
+			count:       2,
+			countSeries: 1,
+		},
+		{
+			name: "Two samples that are complete duplicates",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       2,
+			countSeries: 1,
+		},
+		{
+			name: "Two timeseries, one series",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 0.2},
+					},
+				},
+			},
+			count:       2,
+			countSeries: 1,
+		},
+		{
+			name: "Two metric names , one series",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test1"},
+						{Name: "commonkey", Value: "test"},
+						{Name: "key1", Value: "test"},
+						{Name: "key2", Value: "val1"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test2"},
+						{Name: "commonkey", Value: "test"},
+						{Name: "key1", Value: "val2"},
+						{Name: "key3", Value: "val3"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 0.2},
+					},
+				},
+			},
+			count:       2,
+			countSeries: 2,
+		},
+		{
+			name: "Missing metric name",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       0,
+			countSeries: 0,
+			expectErr:   errNoMetricName,
+		},
+	}
+	for tcIndex, c := range testCases {
+		databaseName := fmt.Sprintf("%s_%d", *database, tcIndex)
+		tcase := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			withDB(t, databaseName, func(db *pgx.Conn, t *testing.T) {
+				ingestor := NewPgxInserter(db)
+				cnt, err := ingestor.Ingest(tcase.metrics)
+				if cnt != tcase.count {
+					t.Fatalf("counts not equal: got %v expected %v\n", cnt, tcase.count)
+				}
+				if err != nil && err != tcase.expectErr {
+					t.Fatalf("got an unexpected error %v", err)
+				}
+
+				if err != nil {
+					return
+				}
+
+				tables := make(map[string]bool)
+				for _, ts := range tcase.metrics {
+					for _, l := range ts.Labels {
+						if l.Name == metricNameLabelName {
+							tables[l.Value] = true
+						}
+					}
+				}
+				totalRows := 0
+				for table := range tables {
+					var rowsInTable int
+					db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM prom.%s", table)).Scan(&rowsInTable)
+					totalRows += rowsInTable
+				}
+				if totalRows != int(cnt) {
+					t.Fatalf("counts not equal: got %v expected %v\n", totalRows, cnt)
+				}
+
+				var numberSeries int
+				db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.series").Scan(&numberSeries)
+				if numberSeries != tcase.countSeries {
+					t.Fatalf("unexpected number of series: got %v expected %v\n", numberSeries, tcase.countSeries)
+				}
+			})
+		})
+	}
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()

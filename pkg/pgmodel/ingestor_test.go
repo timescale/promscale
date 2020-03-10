@@ -299,7 +299,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			}
 
 			if count != c.count {
-				t.Errorf("invalid number of metrics inserted (test %v) : got %d, want %d\n", c.name, count, c.count)
+				t.Errorf("invalid number of metrics inserted: got %d, want %d\n", count, c.count)
 			}
 
 			if c.countSeries != len(inserter.insertedSeries) {

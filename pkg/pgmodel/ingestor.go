@@ -69,7 +69,7 @@ func (i *DBIngestor) parseData(tts []*prompb.TimeSeries) (map[string][][]interfa
 		for _, l := range t.Labels {
 			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 			if l.Name == metricNameLabelName {
-				metricName = l.Name
+				metricName = l.Value
 			}
 		}
 		if metricName == "" {

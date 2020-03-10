@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	getCreateMetricsTableSQL = "SELECT get_or_create_metric_table_name($1)"
-	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_label($2)"
+	getCreateMetricsTableSQL = "SELECT table_name FROM get_or_create_metric_table_name($1)"
+	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_label($1)"
+	dataTableSchema          = "prom"
 )
 
 var (
@@ -29,7 +30,6 @@ type pgxBatch interface {
 
 type pgxConn interface {
 	Close(ctx context.Context) error
-	UseDatabase(database string)
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
@@ -39,44 +39,20 @@ type pgxConn interface {
 }
 
 type PgxConnImpl struct {
-	Config *pgx.ConnConfig
-
-	conn       *pgx.Conn
-	activeConn bool
-}
-
-func (p *PgxConnImpl) newConn() (*pgx.Conn, error) {
-	return pgx.ConnectConfig(context.Background(), p.Config)
+	conn *pgx.Conn
 }
 
 func (p *PgxConnImpl) getConn() (*pgx.Conn, error) {
-	if p.activeConn {
-		return p.conn, nil
-	}
-
-	conn, err := p.newConn()
-	p.conn = conn
-
-	if err != nil {
-		p.activeConn = true
-	}
-
-	return conn, err
+	return p.conn, nil
 }
 
 func (p *PgxConnImpl) Close(ctx context.Context) error {
 	conn, err := p.getConn()
-
 	if err != nil {
 		return nil
 	}
-	p.activeConn = false
+	p.conn = nil
 	return conn.Close(ctx)
-}
-
-func (p *PgxConnImpl) UseDatabase(dbName string) {
-	p.Config.Database = dbName
-	p.Close(context.Background())
 }
 
 func (p *PgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
@@ -127,10 +103,10 @@ func (p *PgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 
-func NewPgxInserter(c *pgx.ConnConfig) *DBIngestor {
+func NewPgxInserter(c *pgx.Conn) *DBIngestor {
 	pi := &pgxInserter{
 		conn: &PgxConnImpl{
-			Config: c,
+			conn: c,
 		},
 	}
 
@@ -230,7 +206,7 @@ func (p *pgxInserter) InsertData(rows map[string][][]interface{}) (uint64, error
 		}
 		inserted, err := p.conn.CopyFrom(
 			context.Background(),
-			pgx.Identifier{tableName},
+			pgx.Identifier{dataTableSchema, tableName},
 			copyColumns,
 			p.conn.CopyFromRows(data),
 		)
@@ -238,8 +214,8 @@ func (p *pgxInserter) InsertData(rows map[string][][]interface{}) (uint64, error
 			return result, err
 		}
 		result = result + uint64(inserted)
-		if inserted != int64(len(rows)) {
-			return result, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", len(rows), inserted)
+		if inserted != int64(len(data)) {
+			return result, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", len(data), inserted)
 		}
 	}
 
