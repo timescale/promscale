@@ -16,16 +16,18 @@ import (
 )
 
 const (
-	insertLabelBatchSize = 100
-	insertLabelSQL       = "INSERT INTO labels(name, value) VALUES %s ON CONFLICT DO NOTHING"
-	labelSQLFormat       = "('%s', '%s')"
-	insertSeriesSQL      = "INSERT INTO series(fingerprint, labels) VALUES %s ON CONFLICT DO NOTHING RETURNING id, fingerprint"
-	seriesSQLFormat      = "(%d, '%s')"
-	copyTableName        = "data"
+	insertLabelBatchSize     = 100
+	insertLabelSQL           = "INSERT INTO labels(name, value) VALUES %s ON CONFLICT DO NOTHING"
+	labelSQLFormat           = "('%s', '%s')"
+	insertSeriesSQL          = "INSERT INTO series(fingerprint, labels) VALUES %s ON CONFLICT DO NOTHING RETURNING id, fingerprint"
+	seriesSQLFormat          = "(%d, '%s')"
+	getCreateMetricsTableSQL = "SELECT get_or_create_metric_table_name($1)"
 )
 
 var (
 	copyColumns = []string{"time", "value", "series_id"}
+
+	errMissingTableName = fmt.Errorf("missing metric table name")
 )
 
 type pgxConn interface {
@@ -144,6 +146,8 @@ type pgxInserter struct {
 	conn           pgxConn
 	labelsToInsert []*prompb.Label
 	seriesToInsert []*seriesWithFP
+	// TODO: update implementation to match existing caching layer.
+	metricTableNames map[string]string
 }
 
 func (p *pgxInserter) AddLabel(label *prompb.Label) {
@@ -256,19 +260,71 @@ func (p *pgxInserter) InsertSeries() ([]uint64, []uint64, error) {
 	return ids, fps, nil
 }
 
-func (p *pgxInserter) InsertData(rows [][]interface{}) (uint64, error) {
-	inserted, err := p.conn.CopyFrom(
-		context.Background(),
-		pgx.Identifier{copyTableName},
-		copyColumns,
-		p.conn.CopyFromRows(rows),
-	)
-	if err != nil {
-		return 0, err
-	}
-	if inserted != int64(len(rows)) {
-		return uint64(inserted), fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", len(rows), inserted)
+func (p *pgxInserter) InsertData(rows map[string][][]interface{}) (uint64, error) {
+	var result uint64
+	var err error
+	var tableName string
+	for metricName, data := range rows {
+		tableName, err = p.getMetricTableName(metricName)
+		if err != nil {
+			return result, err
+		}
+		inserted, err := p.conn.CopyFrom(
+			context.Background(),
+			pgx.Identifier{tableName},
+			copyColumns,
+			p.conn.CopyFromRows(data),
+		)
+		if err != nil {
+			return result, err
+		}
+		result = result + uint64(inserted)
+		if inserted != int64(len(rows)) {
+			return result, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", len(rows), inserted)
+		}
 	}
 
-	return uint64(inserted), nil
+	return result, nil
+}
+
+func (p *pgxInserter) createMetricTable(metric string) (string, error) {
+	res, err := p.conn.Query(
+		context.Background(),
+		getCreateMetricsTableSQL,
+		metric,
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	var tableName string
+	defer res.Close()
+	if !res.Next() {
+		return "", errMissingTableName
+	}
+
+	if err := res.Scan(&tableName); err != nil {
+		return "", err
+	}
+
+	return tableName, nil
+}
+
+func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
+	var tableName string
+	var err error
+	var ok bool
+	if tableName, ok = p.metricTableNames[metric]; !ok {
+		if p.metricTableNames == nil {
+			p.metricTableNames = make(map[string]string)
+		}
+		tableName, err = p.createMetricTable(metric)
+		if err != nil {
+			return "", err
+		}
+		p.metricTableNames[metric] = tableName
+	}
+
+	return tableName, nil
 }

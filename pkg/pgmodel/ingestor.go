@@ -1,13 +1,18 @@
 package pgmodel
 
 import (
+	"fmt"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 )
 
 const (
-	// Index of the series ID in the data rows.
-	seriesIdx = 2
+	metricNameLabelName = "__name__"
+)
+
+var (
+	errNoMetricName = fmt.Errorf("metric name missing")
 )
 
 // Inserter is responsible for inserting label, series and data into the storage.
@@ -16,7 +21,7 @@ type Inserter interface {
 	InsertLabels() ([]*prompb.Label, error)
 	AddSeries(fingerprint uint64, series *model.LabelSet)
 	InsertSeries() ([]uint64, []uint64, error)
-	InsertData(rows [][]interface{}) (uint64, error)
+	InsertData(rows map[string][][]interface{}) (uint64, error)
 }
 
 // Cache provides a caching mechanism for labels and series.
@@ -27,6 +32,12 @@ type Cache interface {
 	SetSeries(fingerprint uint64, id uint64) error
 }
 
+type samplesInfo struct {
+	seriesID    uint64
+	fingerprint uint64
+	samples     []prompb.Sample
+}
+
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
 	cache Cache
@@ -35,28 +46,41 @@ type DBIngestor struct {
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
 func (i *DBIngestor) Ingest(tts []*prompb.TimeSeries) (uint64, error) {
-	var rowsIndex uint64
+	data, err := i.parseData(tts)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return i.db.InsertData(data)
+}
+
+func (i *DBIngestor) parseData(tts []*prompb.TimeSeries) (map[string][][]interface{}, error) {
 	var err error
-	dataRows := make([][]interface{}, 0, len(tts))
-	samplesMissingID := make(map[uint64]uint64, 0)
+	dataSamples := make(map[string][]samplesInfo, 0)
 
 	for _, t := range tts {
 		if len(t.Samples) == 0 {
 			continue
 		}
 
+		metricName := ""
 		metric := make(model.LabelSet, len(t.Labels))
 		newSeries := false
 		for _, l := range t.Labels {
 			_, err := i.cache.GetLabel(&l)
 			if err != nil {
 				if err != ErrEntryNotFound {
-					return 0, err
+					return nil, err
 				}
 				i.db.AddLabel(&l)
 				newSeries = true
 			}
 			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+
+			if l.Name == metricNameLabelName {
+				metricName = l.Name
+			}
 		}
 		fingerprint := uint64(metric.Fingerprint())
 		var seriesID uint64
@@ -64,7 +88,7 @@ func (i *DBIngestor) Ingest(tts []*prompb.TimeSeries) (uint64, error) {
 			seriesID, err = i.cache.GetSeries(fingerprint)
 			if err != nil {
 				if err != ErrEntryNotFound {
-					return 0, err
+					return nil, err
 				}
 				newSeries = true
 			}
@@ -74,39 +98,57 @@ func (i *DBIngestor) Ingest(tts []*prompb.TimeSeries) (uint64, error) {
 			i.db.AddSeries(fingerprint, &metric)
 		}
 
-		for _, sample := range t.Samples {
-			samplesMissingID[rowsIndex] = fingerprint
-			dataRows = append(
-				dataRows,
-				[]interface{}{
-					model.Time(sample.Timestamp).Time(),
-					sample.Value,
-					seriesID,
-				},
-			)
-			rowsIndex++
+		if metricName == "" {
+			return nil, errNoMetricName
 		}
+
+		if _, ok := dataSamples[metricName]; !ok {
+			dataSamples[metricName] = make([]samplesInfo, 0)
+		}
+
+		dataSamples[metricName] = append(
+			dataSamples[metricName],
+			samplesInfo{
+				seriesID,
+				fingerprint,
+				t.Samples,
+			},
+		)
 	}
 
 	if err = i.insertLabels(); err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	err = i.insertSeries()
-	if err != nil {
-		return 0, err
+	if err = i.insertSeries(); err != nil {
+		return nil, err
 	}
 
-	// Update missing series IDs.
-	var seriesID uint64
-	for row, fp := range samplesMissingID {
-		if seriesID, err = i.cache.GetSeries(fp); err != nil {
-			return 0, err
+	dataRows := make(map[string][][]interface{}, 0)
+
+	for metricName, infos := range dataSamples {
+		dataRows[metricName] = make([][]interface{}, 0, len(infos))
+		for _, info := range infos {
+			if info.seriesID == 0 {
+				// At this point, all series should be in cache.
+				if info.seriesID, err = i.cache.GetSeries(info.fingerprint); err != nil {
+					return nil, err
+				}
+			}
+			for _, sample := range info.samples {
+				dataRows[metricName] = append(
+					dataRows[metricName],
+					[]interface{}{
+						model.Time(sample.Timestamp).Time(),
+						sample.Value,
+						info.seriesID,
+					},
+				)
+			}
 		}
-		dataRows[row][seriesIdx] = seriesID
 	}
 
-	return i.db.InsertData(dataRows)
+	return dataRows, nil
 }
 
 func (i *DBIngestor) insertLabels() error {

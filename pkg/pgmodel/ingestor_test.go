@@ -11,12 +11,16 @@ import (
 type mockCache struct {
 	labelCache   map[string]int32
 	seriesCache  map[uint64]uint64
+	getLabelErr  error
 	setLabelErr  error
 	getSeriesErr error
 	setSeriesErr error
 }
 
 func (m *mockCache) GetLabel(label *prompb.Label) (int32, error) {
+	if m.getLabelErr != nil {
+		return 0, m.getLabelErr
+	}
 	val, ok := m.labelCache[label.String()]
 	if !ok {
 		return 0, ErrEntryNotFound
@@ -31,12 +35,16 @@ func (m *mockCache) SetLabel(label *prompb.Label, value int32) error {
 }
 
 func (m *mockCache) GetSeries(fp uint64) (uint64, error) {
+	if m.getSeriesErr != nil {
+		return 0, m.getSeriesErr
+	}
+
 	val, ok := m.seriesCache[fp]
 	if !ok {
 		return 0, ErrEntryNotFound
 	}
 
-	return val, m.getSeriesErr
+	return val, nil
 }
 
 func (m *mockCache) SetSeries(fp uint64, id uint64) error {
@@ -50,7 +58,7 @@ type mockInserter struct {
 	seriesToInsert  []*seriesWithFP
 	fpToInsert      []uint64
 	insertedSeries  []*seriesWithFP
-	insertedData    [][]interface{}
+	insertedData    []map[string][][]interface{}
 	insertLabelsErr error
 	insertSeriesErr error
 	insertDataErr   error
@@ -80,13 +88,16 @@ func (m *mockInserter) InsertSeries() ([]uint64, []uint64, error) {
 	return m.fpToInsert, m.fpToInsert, m.insertSeriesErr
 }
 
-func (m *mockInserter) InsertData(rows [][]interface{}) (uint64, error) {
-	m.insertedData = append(m.insertedData, rows...)
-	ret := uint64(len(rows))
+func (m *mockInserter) InsertData(rows map[string][][]interface{}) (uint64, error) {
+	m.insertedData = append(m.insertedData, rows)
+	ret := 0
+	for _, data := range rows {
+		ret = ret + len(data)
+	}
 	if m.insertDataErr != nil {
 		ret = 0
 	}
-	return ret, m.insertDataErr
+	return uint64(ret), m.insertDataErr
 }
 
 func TestDBIngestorIngest(t *testing.T) {
@@ -99,6 +110,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		insertLabelsErr error
 		insertSeriesErr error
 		insertDataErr   error
+		getLabelErr     error
 		setLabelErr     error
 		getSeriesErr    error
 		setSeriesErr    error
@@ -112,7 +124,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
-						{Name: "test", Value: "test"},
+						{Name: metricNameLabelName, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -120,7 +132,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 			},
 			count:       1,
-			countLabels: 1,
+			countLabels: 0,
 			countSeries: 1,
 		},
 		{
@@ -128,6 +140,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -138,6 +151,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -146,6 +160,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -154,7 +169,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 			},
 			count:       2,
-			countLabels: 1,
+			countLabels: 2,
 			countSeries: 2,
 		},
 		{
@@ -162,6 +177,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -179,6 +195,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -187,6 +204,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -203,6 +221,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -220,6 +239,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -237,6 +257,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -254,6 +275,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -267,10 +289,29 @@ func TestDBIngestorIngest(t *testing.T) {
 			setLabelErr: fmt.Errorf("some error"),
 		},
 		{
+			name: "Get label error",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       0,
+			countLabels: 0,
+			countSeries: 0,
+			getLabelErr: fmt.Errorf("some error"),
+		},
+		{
 			name: "Set series error",
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
+						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -288,7 +329,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []*prompb.TimeSeries{
 				&prompb.TimeSeries{
 					Labels: []prompb.Label{
-						{Name: "test", Value: "test"},
+						{Name: metricNameLabelName, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -296,13 +337,26 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 			},
 			count:        0,
-			countLabels:  1,
-			countSeries:  1,
+			countLabels:  0,
+			countSeries:  0,
 			getSeriesErr: fmt.Errorf("some error"),
+		},
+		{
+			name: "Missing metric name",
+			metrics: []*prompb.TimeSeries{
+				&prompb.TimeSeries{
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       0,
+			countLabels: 0,
+			countSeries: 0,
 		},
 	}
 
-	cachedLabel := &prompb.Label{Name: "foo", Value: "bar"}
+	cachedLabel := &prompb.Label{Name: metricNameLabelName, Value: "test"}
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
@@ -310,6 +364,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				labelCache:   make(map[string]int32, 0),
 				seriesCache:  make(map[uint64]uint64, 0),
 				setLabelErr:  c.setLabelErr,
+				getLabelErr:  c.getLabelErr,
 				setSeriesErr: c.setSeriesErr,
 				getSeriesErr: c.getSeriesErr,
 			}
@@ -340,11 +395,23 @@ func TestDBIngestorIngest(t *testing.T) {
 				if c.setLabelErr != nil && err != c.setLabelErr {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.setLabelErr)
 				}
+				if c.getLabelErr != nil && err != c.getLabelErr {
+					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.getLabelErr)
+				}
 				if c.getSeriesErr != nil && err != c.getSeriesErr {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.getSeriesErr)
 				}
 				if c.setSeriesErr != nil && err != c.setSeriesErr {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.setSeriesErr)
+				}
+				if err == errNoMetricName {
+					for _, ts := range c.metrics {
+						for _, label := range ts.Labels {
+							if label.Name == metricNameLabelName {
+								t.Errorf("returning missing metric name when one was found for metric name: %s\n", label.Name)
+							}
+						}
+					}
 				}
 			}
 

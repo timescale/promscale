@@ -343,7 +343,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
-	if *useDocker {
+	if !testing.Short() && *useDocker {
 		container, err := startContainer(ctx)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
