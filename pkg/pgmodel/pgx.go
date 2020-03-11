@@ -38,15 +38,15 @@ type pgxConn interface {
 	SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error)
 }
 
-type PgxConnImpl struct {
+type pgxConnImpl struct {
 	conn *pgx.Conn
 }
 
-func (p *PgxConnImpl) getConn() (*pgx.Conn, error) {
+func (p *pgxConnImpl) getConn() (*pgx.Conn, error) {
 	return p.conn, nil
 }
 
-func (p *PgxConnImpl) Close(ctx context.Context) error {
+func (p *pgxConnImpl) Close(ctx context.Context) error {
 	conn, err := p.getConn()
 	if err != nil {
 		return nil
@@ -55,7 +55,7 @@ func (p *PgxConnImpl) Close(ctx context.Context) error {
 	return conn.Close(ctx)
 }
 
-func (p *PgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+func (p *pgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
 	conn, err := p.getConn()
 
 	if err != nil {
@@ -65,7 +65,7 @@ func (p *PgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interfa
 	return conn.Exec(ctx, sql, arguments...)
 }
 
-func (p *PgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (p *pgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
 	conn, err := p.getConn()
 
 	if err != nil {
@@ -75,7 +75,7 @@ func (p *PgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}
 	return conn.Query(ctx, sql, args...)
 }
 
-func (p *PgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+func (p *pgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	conn, err := p.getConn()
 
 	if err != nil {
@@ -85,15 +85,15 @@ func (p *PgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, co
 	return conn.CopyFrom(ctx, tableName, columnNames, rowSrc)
 }
 
-func (p *PgxConnImpl) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
+func (p *pgxConnImpl) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
 	return pgx.CopyFromRows(rows)
 }
 
-func (p *PgxConnImpl) NewBatch() pgxBatch {
+func (p *pgxConnImpl) NewBatch() pgxBatch {
 	return &pgx.Batch{}
 }
 
-func (p *PgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+func (p *pgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
 	conn, err := p.getConn()
 
 	if err != nil {
@@ -103,9 +103,10 @@ func (p *PgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 
-func NewPgxInserter(c *pgx.Conn) *DBIngestor {
+// NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
+func NewPgxIngestor(c *pgx.Conn) *DBIngestor {
 	pi := &pgxInserter{
-		conn: &PgxConnImpl{
+		conn: &pgxConnImpl{
 			conn: c,
 		},
 	}

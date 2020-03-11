@@ -515,7 +515,7 @@ func TestSQLIngest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			withDB(t, databaseName, func(db *pgx.Conn, t *testing.T) {
-				ingestor := NewPgxInserter(db)
+				ingestor := NewPgxIngestor(db)
 				cnt, err := ingestor.Ingest(tcase.metrics)
 				if cnt != tcase.count {
 					t.Fatalf("counts not equal: got %v expected %v\n", cnt, tcase.count)
