@@ -18,6 +18,7 @@ package main
 // documentation/examples/remote_storage/remote_storage_adapter/main.go
 
 import (
+	"database/sql"
 	"flag"
 	"io/ioutil"
 	"net/http"
@@ -27,7 +28,8 @@ import (
 	"time"
 
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
-	pgprometheus "github.com/timescale/prometheus-postgresql-adapter/pkg/postgresql"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgclient"
+	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgmodel"
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/util"
 
 	"github.com/gogo/protobuf/proto"
@@ -40,20 +42,19 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 
-	"database/sql"
 	"fmt"
 )
 
 type config struct {
-	remoteTimeout      time.Duration
-	listenAddr         string
-	telemetryPath      string
-	pgPrometheusConfig pgprometheus.Config
-	logLevel           string
-	haGroupLockID      int
-	restElection       bool
-	prometheusTimeout  time.Duration
-	electionInterval   time.Duration
+	listenAddr        string
+	telemetryPath     string
+	pgmodelCfg        pgclient.Config
+	logLevel          string
+	haGroupLockID     int
+	restElection      bool
+	prometheusTimeout time.Duration
+	electionInterval  time.Duration
+	migrate           bool
 }
 
 const (
@@ -119,22 +120,24 @@ func main() {
 
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
-	writer, reader := buildClients(cfg)
-	pgClient, ok := writer.(*pgprometheus.Client)
-	if ok {
-		elector = initElector(cfg, pgClient.DB)
-	} else {
-		log.Info("msg", "Running in read-only mode. This instance can't participate in leader election")
+	client, err := pgclient.NewClient(&cfg.pgmodelCfg)
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
 	}
 
-	http.Handle("/write", timeHandler("write", write(writer)))
-	http.Handle("/read", timeHandler("read", read(reader)))
-	http.Handle("/healthz", health(reader))
+	elector = initElector(cfg)
+
+	if cfg.migrate {
+		migrate(&cfg.pgmodelCfg)
+	}
+
+	http.Handle("/write", timeHandler("write", write(client)))
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.listenAddr)
 
-	err := http.ListenAndServe(cfg.listenAddr, nil)
+	err = http.ListenAndServe(cfg.listenAddr, nil)
 
 	if err != nil {
 		log.Error("msg", "Listen failure", "err", err)
@@ -146,9 +149,8 @@ func parseFlags() *config {
 
 	cfg := &config{}
 
-	pgprometheus.ParseFlags(&cfg.pgPrometheusConfig)
+	pgclient.ParseFlags(&cfg.pgmodelCfg)
 
-	flag.DurationVar(&cfg.remoteTimeout, "adapter-send-timeout", 30*time.Second, "The timeout to use when sending samples to the remote storage.")
 	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.logLevel, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
@@ -157,27 +159,11 @@ func parseFlags() *config {
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
 	flag.BoolVar(&cfg.restElection, "leader-election-rest", false, "Enable REST interface for the leader election")
 	flag.DurationVar(&cfg.electionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
-
+	flag.BoolVar(&cfg.migrate, "migrate", true, "Update the Prometheus SQL to the latest version")
 	envy.Parse("TS_PROM")
 	flag.Parse()
 
 	return cfg
-}
-
-type writer interface {
-	Write(samples model.Samples) error
-	Name() string
-}
-
-type noOpWriter struct{}
-
-func (no *noOpWriter) Write(samples model.Samples) error {
-	log.Debug("msg", "Noop writer", "num_samples", len(samples))
-	return nil
-}
-
-func (no *noOpWriter) Name() string {
-	return "noopWriter"
 }
 
 type reader interface {
@@ -186,15 +172,7 @@ type reader interface {
 	HealthCheck() error
 }
 
-func buildClients(cfg *config) (writer, reader) {
-	pgClient := pgprometheus.NewClient(&cfg.pgPrometheusConfig)
-	if pgClient.ReadOnly() {
-		return &noOpWriter{}, pgClient
-	}
-	return pgClient, pgClient
-}
-
-func initElector(cfg *config, db *sql.DB) *util.Elector {
+func initElector(cfg *config) *util.Elector {
 	if cfg.restElection && cfg.haGroupLockID != 0 {
 		log.Error("msg", "Use either REST or PgAdvisoryLock for the leader election")
 		os.Exit(1)
@@ -210,7 +188,7 @@ func initElector(cfg *config, db *sql.DB) *util.Elector {
 		log.Error("msg", "Prometheus timeout configuration must be set when using PG advisory lock")
 		os.Exit(1)
 	}
-	lock, err := util.NewPgAdvisoryLock(cfg.haGroupLockID, db)
+	lock, err := util.NewPgAdvisoryLock(cfg.haGroupLockID, cfg.pgmodelCfg.GetConnectionStr())
 	if err != nil {
 		log.Error("msg", "Error creating advisory lock", "haGroupLockId", cfg.haGroupLockID, "err", err)
 		os.Exit(1)
@@ -232,12 +210,54 @@ func initElector(cfg *config, db *sql.DB) *util.Elector {
 	return &scheduledElector.Elector
 }
 
-func write(writer writer) http.Handler {
+func migrate(cfg *pgclient.Config) {
+	shouldWrite, err := isWriter()
+	if err != nil {
+		log.Error("msg", "IsLeader check failed", "err", err)
+		return
+	}
+	if !shouldWrite {
+		log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Won't update", elector.ID()))
+		return
+	}
+
+	dbStd, err := sql.Open("pgx", cfg.GetConnectionStr())
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	defer func() {
+		err := dbStd.Close()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+	}()
+
+	err = pgmodel.Migrate(dbStd)
+
+	if err != nil {
+		log.Error(err)
+		return
+	}
+}
+
+func write(writer pgmodel.DBInserter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			log.Error("msg", "Read error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		shouldWrite, err := isWriter()
+		if err != nil {
+			log.Error("msg", "IsLeader check failed", "err", err)
+			return
+		}
+		if !shouldWrite {
+			log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
 			return
 		}
 
@@ -255,26 +275,19 @@ func write(writer writer) http.Handler {
 			return
 		}
 
-		samples := protoToSamples(&req)
-		receivedSamples.Add(float64(len(samples)))
-
-		err = sendSamples(writer, samples)
+		num_samples, err := writer.Ingest(req.GetTimeseries())
 		if err != nil {
-			log.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
-		}
-
-		counter, err := sentSamples.GetMetricWithLabelValues(writer.Name())
-		if err != nil {
-			log.Warn("msg", "Couldn't get a counter", "labelValue", writer.Name(), "err", err)
-		}
-		writeThroughput.SetCurrent(getCounterValue(counter))
-
-		select {
-		case d := <-writeThroughput.Values:
-			log.Info("msg", "Samples write throughput", "samples/sec", d)
-		default:
+			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", num_samples)
 		}
 	})
+}
+
+func isWriter() (bool, error) {
+	if elector != nil {
+		shouldWrite, err := elector.IsLeader()
+		return shouldWrite, err
+	}
+	return true, nil
 }
 
 func getCounterValue(counter prometheus.Counter) float64 {
@@ -361,34 +374,6 @@ func protoToSamples(req *prompb.WriteRequest) model.Samples {
 		}
 	}
 	return samples
-}
-
-func sendSamples(w writer, samples model.Samples) error {
-	atomic.StoreInt64(&lastRequestUnixNano, time.Now().UnixNano())
-	begin := time.Now()
-	shouldWrite := true
-	var err error
-	if elector != nil {
-		shouldWrite, err = elector.IsLeader()
-		if err != nil {
-			log.Error("msg", "IsLeader check failed", "err", err)
-			return err
-		}
-	}
-	if shouldWrite {
-		err = w.Write(samples)
-	} else {
-		log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
-		return nil
-	}
-	duration := time.Since(begin).Seconds()
-	if err != nil {
-		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
-		return err
-	}
-	sentSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
-	sentBatchDuration.WithLabelValues(w.Name()).Observe(duration)
-	return nil
 }
 
 // timeHandler uses Prometheus histogram to track request time

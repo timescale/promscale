@@ -2,11 +2,12 @@ package util
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
 	"sync"
 	"time"
+
+	pgx "github.com/jackc/pgx/v4"
 
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
 )
@@ -25,8 +26,8 @@ const (
 // Prometheus scrape interval, eg. 2x or 3x more then scrape interval to prevent leader flipping).
 // Recommended architecture when using PgAdvisoryLock is to have one adapter instance for one Prometheus instance.
 type PgAdvisoryLock struct {
-	conn        *sql.Conn
-	connPool    *sql.DB
+	conn        *pgx.Conn
+	connStr     string
 	groupLockID int
 
 	mutex    sync.RWMutex
@@ -34,9 +35,9 @@ type PgAdvisoryLock struct {
 }
 
 // NewPgAdvisoryLock creates a new instance with specified lock ID, connection pool and lock timeout.
-func NewPgAdvisoryLock(groupLockID int, connPool *sql.DB) (*PgAdvisoryLock, error) {
+func NewPgAdvisoryLock(groupLockID int, connStr string) (*PgAdvisoryLock, error) {
 	lock := &PgAdvisoryLock{
-		connPool:    connPool,
+		connStr:     connStr,
 		obtained:    false,
 		groupLockID: groupLockID,
 	}
@@ -47,20 +48,20 @@ func NewPgAdvisoryLock(groupLockID int, connPool *sql.DB) (*PgAdvisoryLock, erro
 	return lock, nil
 }
 
-func getConn(pool *sql.DB, cur, maxRetries int) (*sql.Conn, error) {
+func getConn(connStr string, cur, maxRetries int) (*pgx.Conn, error) {
 	if maxRetries == cur {
 		return nil, fmt.Errorf("max attempts reached. giving up on getting a db connection")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), waitForConnectionTimeout)
 	defer cancel()
-	lockConn, err := pool.Conn(ctx)
+	lockConn, err := pgx.Connect(ctx, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("error getting DB connection: %v", err)
 	}
 	err = checkConnection(lockConn)
 	if err != nil {
 		log.Error("msg", "Connection pool returned invalid connection", "err", err)
-		return getConn(pool, cur+1, maxRetries)
+		return getConn(connStr, cur+1, maxRetries)
 	}
 	return lockConn, nil
 }
@@ -109,7 +110,7 @@ func (l *PgAdvisoryLock) TryLock() (bool, error) {
 func (l *PgAdvisoryLock) getAdvisoryLock() (bool, error) {
 	var err error
 	if l.conn == nil {
-		l.conn, err = getConn(l.connPool, 0, 10)
+		l.conn, err = getConn(l.connStr, 0, 10)
 	}
 	if err != nil {
 		return false, err
@@ -119,7 +120,7 @@ func (l *PgAdvisoryLock) getAdvisoryLock() (bool, error) {
 			l.connCleanUp()
 		}
 	}()
-	rows, err := l.conn.QueryContext(context.Background(), "SELECT pg_try_advisory_lock($1)", l.groupLockID)
+	rows, err := l.conn.Query(context.Background(), "SELECT pg_try_advisory_lock($1)", l.groupLockID)
 	if err != nil {
 		return false, err
 	}
@@ -140,7 +141,7 @@ func (l *PgAdvisoryLock) getAdvisoryLock() (bool, error) {
 
 func (l *PgAdvisoryLock) connCleanUp() {
 	if l.conn != nil {
-		if err := l.conn.Close(); err != nil {
+		if err := l.conn.Close(context.Background()); err != nil {
 			log.Error("err", err)
 		}
 	}
@@ -161,18 +162,17 @@ func (l *PgAdvisoryLock) Release() error {
 		return fmt.Errorf("can't release while not holding the lock")
 	}
 	defer l.mutex.Unlock()
-	rows, err := l.conn.QueryContext(context.Background(), "SELECT pg_advisory_unlock_all()")
+	rows, err := l.conn.Query(context.Background(), "SELECT pg_advisory_unlock_all()")
 	if err != nil {
 		return err
 	}
 	rows.Close()
-	l.connCleanUp()
 	l.obtained = false
 	return nil
 }
 
-func checkConnection(conn *sql.Conn) error {
-	_, err := conn.ExecContext(context.Background(), "SELECT 1")
+func checkConnection(conn *pgx.Conn) error {
+	_, err := conn.Exec(context.Background(), "SELECT 1")
 	if err != nil {
 		return fmt.Errorf("invalid connection: %v", err)
 	}

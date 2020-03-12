@@ -94,7 +94,7 @@ type DBIngestor struct {
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
-func (i *DBIngestor) Ingest(tts []*prompb.TimeSeries) (uint64, error) {
+func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 	data, totalRows, err := i.parseData(tts)
 
 	if err != nil {
@@ -125,7 +125,7 @@ func labelProtosToLabels(labelPairs []prompb.Label) (labels.Labels, string) {
 	return result, metricName
 }
 
-func (i *DBIngestor) parseData(tts []*prompb.TimeSeries) (map[string]*SampleInfoIterator, int, error) {
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string]*SampleInfoIterator, int, error) {
 	var err error
 	dataSamples := make(map[string]*SampleInfoIterator, 0)
 	rows := 0
