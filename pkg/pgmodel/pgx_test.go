@@ -19,7 +19,8 @@ type mockPGXConn struct {
 	ExecErr           error
 	QuerySQLs         []string
 	QueryArgs         [][]interface{}
-	QueryResults      []interface{}
+	QueryResults      [][]interface{} //Indexed by query number, row number. All columns get the same value
+	QueryResultsIndex int
 	QueryNoRows       bool
 	QueryErr          error
 	CopyFromTableName []pgx.Identifier
@@ -46,9 +47,12 @@ func (m *mockPGXConn) Exec(ctx context.Context, sql string, arguments ...interfa
 }
 
 func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	defer func() {
+		m.QueryResultsIndex++
+	}()
 	m.QuerySQLs = append(m.QuerySQLs, sql)
 	m.QueryArgs = append(m.QueryArgs, args)
-	return &mockRows{results: m.QueryResults, noNext: m.QueryNoRows}, m.QueryErr
+	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr
 }
 
 func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
@@ -68,9 +72,10 @@ func (m *mockPGXConn) NewBatch() pgxBatch {
 }
 
 func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+	defer func() { m.QueryResultsIndex++ }()
 	batch := b.(*mockBatch)
 	m.Batch = append(m.Batch, batch)
-	return &mockBatchResult{results: m.QueryResults}, m.QueryErr
+	return &mockBatchResult{results: m.QueryResults[m.QueryResultsIndex]}, m.QueryErr
 }
 
 type batchItem struct {
@@ -275,7 +280,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			mock := &mockPGXConn{
 				QueryErr:     c.queryErr,
-				QueryResults: c.queryResult,
+				QueryResults: [][]interface{}{c.queryResult},
 			}
 			inserter := pgxInserter{conn: mock}
 
@@ -320,12 +325,12 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	}
 }
 
-func createRows(x int) map[string][][]interface{} {
+func createRows(x int) map[string]*SampleInfoIterator {
 	return createRowsByMetric(x, 1)
 }
 
-func createRowsByMetric(x int, metricCount int) map[string][][]interface{} {
-	ret := make(map[string][][]interface{}, 0)
+func createRowsByMetric(x int, metricCount int) map[string]*SampleInfoIterator {
+	ret := make(map[string]*SampleInfoIterator, 0)
 	i := 0
 
 	metrics := make([]string, 0, metricCount)
@@ -340,9 +345,9 @@ func createRowsByMetric(x int, metricCount int) map[string][][]interface{} {
 	for i < x {
 		metricIndex := i % metricCount
 		if _, ok := ret[metrics[metricIndex]]; !ok {
-			ret[metrics[metricIndex]] = make([][]interface{}, 0)
+			ret[metrics[metricIndex]] = NewSampleInfoIterator()
 		}
-		ret[metrics[metricIndex]] = append(ret[metrics[metricIndex]], []interface{}{i, i * 2, i * 3})
+		ret[metrics[metricIndex]].Append(&samplesInfo{})
 		i++
 	}
 	return ret
@@ -351,7 +356,7 @@ func createRowsByMetric(x int, metricCount int) map[string][][]interface{} {
 func TestPGXInserterInsertData(t *testing.T) {
 	testCases := []struct {
 		name           string
-		rows           map[string][][]interface{}
+		rows           map[string]*SampleInfoIterator
 		queryNoRows    bool
 		queryErr       error
 		copyFromResult int64
@@ -393,7 +398,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			queryNoRows: true,
 		},
 	}
-	for _, c := range testCases {
+	for _, co := range testCases {
+		c := co
 		t.Run(c.name, func(t *testing.T) {
 			mock := &mockPGXConn{
 				QueryNoRows:    c.queryNoRows,
@@ -402,14 +408,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				CopyFromError:  c.copyFromErr,
 			}
 
-			results := []interface{}{}
-
-			for _, metric := range c.rows {
-				results = append(results, interface{}(metric))
+			//The database will be queried for metricNames
+			results := [][]interface{}{}
+			for metricName := range c.rows {
+				results = append(results, []interface{}{metricName})
 
 			}
-
 			mock.QueryResults = results
+
 			inserter := pgxInserter{conn: mock}
 
 			inserted, err := inserter.InsertData(c.rows)
@@ -430,9 +436,13 @@ func TestPGXInserterInsertData(t *testing.T) {
 				if c.copyFromResult == int64(len(c.rows)) {
 					t.Errorf("unexpected error:\ngot\n%s\nwanted\nnil", err)
 				}
-				if err == errMissingTableName && !c.queryNoRows {
-					t.Errorf("got missing table name error but query returned a result")
+				if err == errMissingTableName {
+					if !c.queryNoRows {
+						t.Errorf("got missing table name error but query returned a result")
+					}
+					return
 				}
+				t.Errorf("Unexpected error %v", err)
 				return
 			}
 
@@ -454,7 +464,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			tNames := make([]pgx.Identifier, 0, len(c.rows))
 
 			for tableName := range c.rows {
-				tNames = append(tNames, pgx.Identifier{tableName})
+				tNames = append(tNames, pgx.Identifier{dataTableSchema, tableName})
 			}
 			if !reflect.DeepEqual(mock.CopyFromTableName, tNames) {
 				t.Errorf("unexpected copy table:\ngot\n%s\nwanted\n%s", mock.CopyFromTableName, tNames)
@@ -467,8 +477,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 
 			for i, metric := range mock.CopyFromTableName {
-				name := metric.Sanitize()
-				result := mock.CopyFromRows(c.rows[name])
+				name := metric[1]
+				result := c.rows[name]
 
 				if !reflect.DeepEqual(mock.CopyFromRowSource[i], result) {
 					t.Errorf("unexpected rows:\ngot\n%+v\nwanted\n%+v", mock.CopyFromRowSource[i], result)

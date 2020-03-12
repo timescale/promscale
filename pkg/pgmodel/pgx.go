@@ -202,7 +202,7 @@ func (p *pgxInserter) InsertSeries() error {
 	return nil
 }
 
-func (p *pgxInserter) InsertData(rows map[string][][]interface{}) (uint64, error) {
+func (p *pgxInserter) InsertData(rows map[string]*SampleInfoIterator) (uint64, error) {
 	var result uint64
 	var err error
 	var tableName string
@@ -215,15 +215,12 @@ func (p *pgxInserter) InsertData(rows map[string][][]interface{}) (uint64, error
 			context.Background(),
 			pgx.Identifier{dataTableSchema, tableName},
 			copyColumns,
-			p.conn.CopyFromRows(data),
+			data,
 		)
 		if err != nil {
 			return result, err
 		}
 		result = result + uint64(inserted)
-		if inserted != int64(len(data)) {
-			return result, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", len(data), inserted)
-		}
 	}
 
 	return result, nil
