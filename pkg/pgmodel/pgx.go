@@ -2,7 +2,6 @@ package pgmodel
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -10,7 +9,7 @@ import (
 	"github.com/allegro/bigcache"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const (
@@ -125,54 +124,61 @@ func NewPgxIngestor(c *pgx.Conn) *DBIngestor {
 	}
 }
 
-type seriesWithFP struct {
-	series      *model.LabelSet
-	fingerprint uint64
+type seriesWithCallback struct {
+	series   labels.Labels
+	callback func(id SeriesID) error
 }
 
 type pgxInserter struct {
 	conn           pgxConn
-	seriesToInsert []*seriesWithFP
+	seriesToInsert []*seriesWithCallback
 	// TODO: update implementation to match existing caching layer.
 	metricTableNames map[string]string
 }
 
-func (p *pgxInserter) AddSeries(fingerprint uint64, series *model.LabelSet) {
-	p.seriesToInsert = append(p.seriesToInsert, &seriesWithFP{series, fingerprint})
+func (p *pgxInserter) AddSeries(lset labels.Labels, callback func(id SeriesID) error) {
+	p.seriesToInsert = append(p.seriesToInsert, &seriesWithCallback{lset, callback})
 }
 
-func (p *pgxInserter) InsertSeries() ([]SeriesID, []uint64, error) {
-	var ids []SeriesID
-	var fps []uint64
-	var lastSeenFP uint64
+func (p *pgxInserter) InsertSeries() error {
+	var lastSeenLabel labels.Labels = nil
 
 	batch := p.conn.NewBatch()
 	numQueries := 0
-	// Sort and remove duplicates.
-	sort.Slice(p.seriesToInsert, func(i, j int) bool { return p.seriesToInsert[i].fingerprint < p.seriesToInsert[j].fingerprint })
+	// Sort and remove duplicates. The sort is needed both to prevent DB deadlocks and to remove duplicates
+	sort.Slice(p.seriesToInsert, func(i, j int) bool {
+		return labels.Compare(p.seriesToInsert[i].series, p.seriesToInsert[j].series) < 0
+	})
+
+	batchSeries := make([][]*seriesWithCallback, 0, len(p.seriesToInsert))
 	for _, curr := range p.seriesToInsert {
-		if lastSeenFP == curr.fingerprint {
+		if lastSeenLabel != nil && labels.Equal(lastSeenLabel, curr.series) {
+			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}
 
-		json, err := json.Marshal(curr.series)
+		json, err := curr.series.MarshalJSON()
 
 		if err != nil {
-			return ids, fps, err
+			return err
 		}
 
 		batch.Queue(getSeriesIDForLabelSQL, json)
 		numQueries++
-		fps = append(fps, curr.fingerprint)
+		batchSeries = append(batchSeries, []*seriesWithCallback{curr})
 
-		lastSeenFP = curr.fingerprint
+		lastSeenLabel = curr.series
 	}
 
 	br, err := p.conn.SendBatch(context.Background(), batch)
 	if err != nil {
-		return ids, fps, err
+		return err
 	}
 	defer br.Close()
+
+	if numQueries != len(batchSeries) {
+		return fmt.Errorf("unexpected difference in numQueries and batchSeries")
+	}
 
 	for i := 0; i < numQueries; i++ {
 		row := br.QueryRow()
@@ -180,20 +186,20 @@ func (p *pgxInserter) InsertSeries() ([]SeriesID, []uint64, error) {
 		var id SeriesID
 		err = row.Scan(&id)
 		if err != nil {
-			return ids, fps, err
+			return err
 		}
-
-		ids = append(ids, id)
+		for _, swc := range batchSeries[i] {
+			err := swc.callback(id)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	// Flushing inserted series.
 	p.seriesToInsert = p.seriesToInsert[:0]
 
-	if len(ids) != len(fps) {
-		panic("The length of ids and fingerprints should always be equal")
-	}
-
-	return ids, fps, nil
+	return nil
 }
 
 func (p *pgxInserter) InsertData(rows map[string][][]interface{}) (uint64, error) {

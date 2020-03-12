@@ -2,16 +2,14 @@ package pgmodel
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 type mockPGXConn struct {
@@ -201,19 +199,6 @@ func (m *mockRows) RawValues() [][]byte {
 	panic("not implemented")
 }
 
-func createSeriesFingerprints(x int) []uint64 {
-	ret := make([]uint64, 0, x)
-	i := 1
-	x++
-
-	for i < x {
-		ret = append(ret, uint64(i))
-		i++
-	}
-
-	return ret
-}
-
 func createSeriesResults(x int32) []interface{} {
 	ret := make([]interface{}, 0, x)
 	var i int32 = 1
@@ -227,38 +212,20 @@ func createSeriesResults(x int32) []interface{} {
 	return ret
 }
 
-func createSeries(x int) []*model.LabelSet {
-	ret := make([]*model.LabelSet, 0, x)
+func createSeries(x int) []*labels.Labels {
+	ret := make([]*labels.Labels, 0, x)
 	i := 1
 	x++
 
 	for i < x {
-		var ls model.LabelSet = map[model.LabelName]model.LabelValue{
-			model.LabelName(fmt.Sprintf("name_%d", i)): model.LabelValue(fmt.Sprintf("value_%d", i)),
+		label := labels.Labels{
+			labels.Label{
+				Name:  fmt.Sprintf("name_%d", i),
+				Value: fmt.Sprintf("value_%d", i),
+			},
 		}
-		ret = append(ret, &ls)
+		ret = append(ret, &label)
 		i++
-	}
-
-	return ret
-}
-
-func sortAndDedupFPs(fps []uint64) []uint64 {
-	if len(fps) == 0 {
-		return fps
-	}
-	sort.Slice(fps, func(i, j int) bool { return fps[i] < fps[j] })
-
-	ret := make([]uint64, 0, len(fps))
-	lastFP := fps[0]
-	ret = append(ret, fps[0])
-
-	for _, fp := range fps {
-		if lastFP == fp {
-			continue
-		}
-		lastFP = fp
-		ret = append(ret, fp)
 	}
 
 	return ret
@@ -267,38 +234,40 @@ func sortAndDedupFPs(fps []uint64) []uint64 {
 func TestPGXInserterInsertSeries(t *testing.T) {
 	testCases := []struct {
 		name        string
-		seriesFps   []uint64
-		series      []*model.LabelSet
+		series      []*labels.Labels
 		queryResult []interface{}
 		queryErr    error
+		callbackErr error
 	}{
 		{
 			name: "Zero series",
 		},
 		{
 			name:        "One series",
-			seriesFps:   createSeriesFingerprints(1),
 			series:      createSeries(1),
 			queryResult: createSeriesResults(1),
 		},
 		{
 			name:        "Two series",
-			seriesFps:   createSeriesFingerprints(2),
 			series:      createSeries(2),
 			queryResult: createSeriesResults(2),
 		},
 		{
 			name:        "Double series",
-			seriesFps:   append(createSeriesFingerprints(2), createSeriesFingerprints(1)...),
 			series:      append(createSeries(2), createSeries(1)...),
 			queryResult: createSeriesResults(2),
 		},
 		{
 			name:        "Query err",
-			seriesFps:   createSeriesFingerprints(2),
 			series:      createSeries(2),
 			queryResult: createSeriesResults(2),
-			queryErr:    fmt.Errorf("some error"),
+			queryErr:    fmt.Errorf("some query error"),
+		},
+		{
+			name:        "callback err",
+			series:      createSeries(2),
+			queryResult: createSeriesResults(2),
+			callbackErr: fmt.Errorf("some callback error"),
 		},
 	}
 
@@ -310,17 +279,34 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			}
 			inserter := pgxInserter{conn: mock}
 
-			for i, fp := range c.seriesFps {
-				inserter.AddSeries(fp, c.series[i])
+			calls := 0
+			for _, ser := range c.series {
+				inserter.AddSeries(*ser, func(id SeriesID) error {
+					calls++
+					return c.callbackErr
+				})
 			}
 
-			_, fps, err := inserter.InsertSeries()
+			err := inserter.InsertSeries()
 
 			if err != nil {
-				if c.queryErr == nil || err != c.queryErr {
-					t.Errorf("unexpected exec error:\ngot\n%s\nwanted\n%s", err, c.queryErr)
+				if c.queryErr != nil {
+					if err != c.queryErr {
+						t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, c.queryErr)
+					}
+					return
 				}
-				return
+				if c.callbackErr != nil {
+					if err != c.callbackErr {
+						t.Errorf("unexpected callback error:\ngot\n%s\nwanted\n%s", err, c.callbackErr)
+					}
+					return
+				}
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if calls != len(c.series) {
+				t.Errorf("Callback called wrong number of times: got %v expected %c", calls, len(c.series))
 			}
 
 			if c.queryErr != nil {
@@ -329,32 +315,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if len(inserter.seriesToInsert) > 0 {
 				t.Errorf("series not empty after insertion")
-			}
-
-			if len(c.seriesFps) == 0 {
-				if len(fps) != 0 {
-					t.Errorf("got non-zero result: %v", fps)
-				}
-				return
-			}
-			expectedFPs := sortAndDedupFPs(c.seriesFps)
-
-			if !reflect.DeepEqual(expectedFPs, fps) {
-				t.Errorf("unexpected fingerprint result:\ngot\n%+v\nwanted\n%+v", fps, c.seriesFps)
-			}
-
-			for i := range expectedFPs {
-				json, err := json.Marshal(c.series[i])
-
-				if err != nil {
-					t.Fatal("error marshaling series", err)
-				}
-				if mock.Batch[0].items[i].query != getSeriesIDForLabelSQL {
-					t.Errorf("wrong query sql:\ngot\n%v\nwanted\n%v", mock.Batch[0].items[i].query, getSeriesIDForLabelSQL)
-				}
-				if string(mock.Batch[0].items[i].arguments[0].([]byte)) != string(json) {
-					t.Errorf("wrong query argument:\ngot\n%v\nwanted\n%v", mock.Batch[0].items[i].arguments[0], json)
-				}
 			}
 		})
 	}

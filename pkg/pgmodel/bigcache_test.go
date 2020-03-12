@@ -5,21 +5,10 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-func TestInt32Functions(t *testing.T) {
-	values := []int32{0, 1, 10, 123, 12355, 6000000, 1<<31 - 1}
-	for _, value := range values {
-		if bytesInt32(int32Bytes(value)) != value {
-			t.Errorf("invalid value: got %d, want %d", bytesInt32(int32Bytes(value)), value)
-		}
-	}
-
-}
-
 func TestBigCache(t *testing.T) {
-	ss := []uint64{1, 5, 7, 9, 10}
-
 	config := bigcache.DefaultConfig(10 * time.Minute)
 	series, err := bigcache.NewBigCache(config)
 	if err != nil {
@@ -29,21 +18,92 @@ func TestBigCache(t *testing.T) {
 		series: series,
 	}
 
-	if _, err := cache.GetSeries(5); err == nil {
+	label := labels.Labels{
+		labels.Label{
+			Name:  "name1",
+			Value: "val1",
+		},
+	}
+
+	if _, err := cache.GetSeries(label); err == nil {
 		t.Errorf("found cache for a series that was not stored")
 	}
 
-	for _, series := range ss {
-		if err := cache.SetSeries(series, SeriesID(series)); err != nil {
-			t.Errorf("got unexpected error while storing series: %d", series)
+	testLabels := []labels.Labels{
+		labels.Labels{
+			labels.Label{
+				Name:  "name1",
+				Value: "val1",
+			},
+		},
+		labels.Labels{
+			labels.Label{
+				Name:  "name1",
+				Value: "val2",
+			},
+		},
+		labels.Labels{
+			labels.Label{
+				Name:  "name2",
+				Value: "val2",
+			},
+		},
+		labels.Labels{
+			labels.Label{
+				Name:  "name1",
+				Value: "val1",
+			},
+			labels.Label{
+				Name:  "name1",
+				Value: "val1",
+			},
+		},
+	}
+
+	for i, series := range testLabels {
+		if err := cache.SetSeries(series, SeriesID(i)); err != nil {
+			t.Errorf("got unexpected error while storing series: %d", i)
 
 		}
 	}
 
-	for _, series := range ss {
-		if _, err := cache.GetSeries(series); err != nil {
-			t.Errorf("got unexpected error while getting series: %d", series)
+	for i, series := range testLabels {
+		var res SeriesID
+		if res, err = cache.GetSeries(series); err != nil {
+			t.Errorf("got unexpected error while getting series: %v", series)
+		}
+		if res != SeriesID(i) {
+			t.Errorf("wrong id returned: got %v expected %v", res, i)
 		}
 	}
 
+}
+
+func TestBigCachePanicUnsorted(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Didn't throw panic as expected")
+		}
+	}()
+
+	unsorted := labels.Labels{
+		labels.Label{
+			Name:  "name2",
+			Value: "val1",
+		},
+		labels.Label{
+			Name:  "name1",
+			Value: "val1",
+		},
+	}
+
+	config := bigcache.DefaultConfig(10 * time.Minute)
+	series, err := bigcache.NewBigCache(config)
+	if err != nil {
+		t.Fatal("unable to run test, unable to create labels cache")
+	}
+	cache := bCache{
+		series: series,
+	}
+	cache.SetSeries(unsorted, SeriesID(0))
 }

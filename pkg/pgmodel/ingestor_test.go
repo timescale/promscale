@@ -4,22 +4,22 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 )
 
 type mockCache struct {
-	seriesCache  map[uint64]SeriesID
+	seriesCache  map[string]SeriesID
 	getSeriesErr error
 	setSeriesErr error
 }
 
-func (m *mockCache) GetSeries(fp uint64) (SeriesID, error) {
+func (m *mockCache) GetSeries(lset labels.Labels) (SeriesID, error) {
 	if m.getSeriesErr != nil {
 		return 0, m.getSeriesErr
 	}
 
-	val, ok := m.seriesCache[fp]
+	val, ok := m.seriesCache[lset.String()]
 	if !ok {
 		return 0, ErrEntryNotFound
 	}
@@ -27,31 +27,33 @@ func (m *mockCache) GetSeries(fp uint64) (SeriesID, error) {
 	return val, nil
 }
 
-func (m *mockCache) SetSeries(fp uint64, id SeriesID) error {
-	m.seriesCache[fp] = id
+func (m *mockCache) SetSeries(lset labels.Labels, id SeriesID) error {
+	m.seriesCache[lset.String()] = id
 	return m.setSeriesErr
 }
 
 type mockInserter struct {
-	seriesToInsert  []*seriesWithFP
-	fpToInsert      []uint64
-	insertedSeries  []*seriesWithFP
+	seriesToInsert  []*seriesWithCallback
+	insertedSeries  []*seriesWithCallback
 	insertedData    []map[string][][]interface{}
 	insertSeriesErr error
 	insertDataErr   error
 }
 
-func (m *mockInserter) AddSeries(fingerprint uint64, series *model.LabelSet) {
-	m.seriesToInsert = append(m.seriesToInsert, &seriesWithFP{series, fingerprint})
-	m.fpToInsert = append(m.fpToInsert, fingerprint)
+func (m *mockInserter) AddSeries(lset labels.Labels, callback func(id SeriesID) error) {
+	m.seriesToInsert = append(m.seriesToInsert, &seriesWithCallback{lset, callback})
 }
 
-func (m *mockInserter) InsertSeries() ([]SeriesID, []uint64, error) {
-	defer func(m *mockInserter) { m.fpToInsert = make([]uint64, 0) }(m)
+func (m *mockInserter) InsertSeries() error {
 	m.insertedSeries = append(m.insertedSeries, m.seriesToInsert...)
-	m.seriesToInsert = make([]*seriesWithFP, 0)
-	ids := make([]SeriesID, len(m.fpToInsert))
-	return ids, m.fpToInsert, m.insertSeriesErr
+	for i, sti := range m.seriesToInsert {
+		err := sti.callback(SeriesID(i))
+		if err != nil {
+			return err
+		}
+	}
+	m.seriesToInsert = make([]*seriesWithCallback, 0)
+	return m.insertSeriesErr
 }
 
 func (m *mockInserter) InsertData(rows map[string][][]interface{}) (uint64, error) {
@@ -258,7 +260,7 @@ func TestDBIngestorIngest(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			cache := &mockCache{
-				seriesCache:  make(map[uint64]SeriesID, 0),
+				seriesCache:  make(map[string]SeriesID, 0),
 				setSeriesErr: c.setSeriesErr,
 				getSeriesErr: c.getSeriesErr,
 			}
