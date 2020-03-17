@@ -27,6 +27,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	_ "github.com/jackc/pgx/v4/stdlib"
+
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgclient"
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgmodel"
