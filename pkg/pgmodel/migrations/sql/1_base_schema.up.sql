@@ -101,31 +101,34 @@ LANGUAGE sql VOLATILE PARALLEL SAFE;
 --This uses up some sequences so should only be called 
 --If the table does not yet exist.
 CREATE OR REPLACE FUNCTION _prom_internal.create_metric_table(
-        metric_name_arg text)
-    RETURNS TABLE(id int, table_name name)
+        metric_name_arg text, OUT id int, OUT table_name name)
 AS $func$
-    WITH new_id AS (
-        SELECT nextval(pg_get_serial_sequence('_prom_catalog.metric','id'))::int as id
-    ),
-    ins AS (
-        INSERT INTO _prom_catalog.metric (id, metric_name, table_name)
-        SELECT new_id.id,
-            metric_name_arg, 
-            _prom_internal.new_metric_table_name(metric_name_arg, new_id.id)
-        FROM new_id
-        ON CONFLICT DO NOTHING
-        RETURNING id, table_name
-   )
-   SELECT id, table_name FROM ins
-   UNION ALL
-   --the following select is necessary to guarantee a return
-   --when this is executed concurrently
-   SELECT id, table_name 
-   FROM _prom_catalog.metric
-   WHERE metric_name = metric_name_arg 
-   LIMIT 1
+DECLARE
+  new_id int;
+BEGIN
+new_id = nextval(pg_get_serial_sequence('_prom_catalog.metric','id'))::int;
+LOOP
+    INSERT INTO _prom_catalog.metric (id, metric_name, table_name)
+        SELECT  new_id,
+                metric_name_arg, 
+                _prom_internal.new_metric_table_name(metric_name_arg, new_id)
+    ON CONFLICT DO NOTHING
+    RETURNING _prom_catalog.metric.id, _prom_catalog.metric.table_name
+    INTO id, table_name;
+    -- under high concurrency the insert may not return anything, so try a select and loop
+    -- https://stackoverflow.com/a/15950324
+    EXIT WHEN FOUND;
+
+    SELECT m.id, m.table_name 
+    INTO id, table_name
+    FROM _prom_catalog.metric m
+    WHERE metric_name = metric_name_arg;
+
+    EXIT WHEN FOUND;
+END LOOP;
+END 
 $func$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
 
 -- Get a new label array position for a label key. For any metric,
 -- we want the positions to be as compact as possible.
@@ -199,31 +202,34 @@ END
 $func$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION _prom_internal.get_new_label_id(key_name text, value_name text)
-RETURNS INT AS $$
-    WITH ins AS (
-        INSERT INTO 
-            _prom_catalog.label(key, value)
-        VALUES 
-            (key_name,value_name)
-        ON CONFLICT DO NOTHING
-        RETURNING id
-    )
-    SELECT id FROM ins 
-    UNION ALL 
-    --this select necessary in case of concurrent
-    --insert where the insert does not return an id
-    --since ON CONFLICT DO NOTHING does not return if 
-    --item already exists
+--should only be called after a check that that the label doesn't exist
+CREATE OR REPLACE FUNCTION _prom_internal.get_new_label_id(key_name text, value_name text, OUT id INT)
+AS $func$
+BEGIN
+LOOP
+    INSERT INTO 
+        _prom_catalog.label(key, value)
+    VALUES 
+        (key_name,value_name)
+    ON CONFLICT DO NOTHING
+    RETURNING _prom_catalog.label.id 
+    INTO id;
+
+    EXIT WHEN FOUND;
+
     SELECT 
-        id
-    FROM _prom_catalog.label
+        l.id
+    INTO id
+    FROM _prom_catalog.label l
     WHERE 
         key = key_name AND 
-        value = value_name
-    LIMIT 1
-$$
-LANGUAGE SQL;
+        value = value_name;
+    
+    EXIT WHEN FOUND;
+END LOOP;
+END
+$func$
+LANGUAGE PLPGSQL;
 
 --wrapper around jsonb_each_text to give a better row_estimate
 --for labels (10 not 100)
@@ -353,24 +359,29 @@ LANGUAGE SQL STABLE PARALLEL SAFE;
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION _prom_internal.create_series(
         metric_id int,
-        label_array int[])
-    RETURNS BIGINT
+        label_array int[], 
+        OUT series_id BIGINT)
 AS $func$
-    WITH ins AS (
-        INSERT INTO _prom_catalog.series(metric_id, labels)
-        SELECT metric_id, label_array
-        RETURNING id
-   )
-   SELECT id FROM ins
-   UNION ALL
-   --the following select is necessary to guarantee a return
-   --when this is executed concurrently
-   SELECT id
-   FROM _prom_catalog.series
-   WHERE labels = label_array 
-   LIMIT 1
+BEGIN
+LOOP
+    INSERT INTO _prom_catalog.series(metric_id, labels)
+    SELECT metric_id, label_array
+    ON CONFLICT DO NOTHING
+    RETURNING id
+    INTO series_id;
+
+    EXIT WHEN FOUND;
+   
+    SELECT id
+    INTO series_id
+    FROM _prom_catalog.series
+    WHERE labels = label_array;
+
+    EXIT WHEN FOUND;
+END LOOP;
+END
 $func$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
 
 CREATE OR REPLACE  FUNCTION get_series_id_for_label(label jsonb)
 RETURNS BIGINT AS $$

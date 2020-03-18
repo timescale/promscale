@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -51,6 +52,100 @@ func TestMigrate(t *testing.T) {
 			t.Error("Dirty is true")
 		}
 
+	})
+}
+
+func testConcurrentMetricTable(t *testing.T, db *pgxpool.Pool, metricName string) int64 {
+	var id *int64 = nil
+	var name *string = nil
+	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_internal.create_metric_table($1)", metricName).Scan(&id, &name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == nil || name == nil {
+		t.Fatalf("NULL found")
+	}
+	return *id
+}
+
+func testConcurrentNewLabel(t *testing.T, db *pgxpool.Pool, labelName string) int64 {
+	var id *int64 = nil
+	err := db.QueryRow(context.Background(), "SELECT _prom_internal.get_new_label_id($1, $1)", labelName).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == nil {
+		t.Fatalf("NULL found")
+	}
+	return *id
+}
+
+func testConcurrentCreateSeries(t *testing.T, db *pgxpool.Pool, index int) int64 {
+	var id *int64 = nil
+	err := db.QueryRow(context.Background(), "SELECT _prom_internal.create_series($1, array[$1::int])", index).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == nil {
+		t.Fatalf("NULL found")
+	}
+	return *id
+}
+
+func TestConcurrentSQL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+		for i := 0; i < 10; i++ {
+			name := fmt.Sprintf("metric_%d", i)
+			var id1, id2 int64
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				id1 = testConcurrentMetricTable(t, db, name)
+			}()
+			go func() {
+				defer wg.Done()
+				id2 = testConcurrentMetricTable(t, db, name)
+			}()
+			wg.Wait()
+
+			if id1 != id2 {
+				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
+			}
+
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				id1 = testConcurrentNewLabel(t, db, name)
+			}()
+			go func() {
+				defer wg.Done()
+				id2 = testConcurrentNewLabel(t, db, name)
+			}()
+			wg.Wait()
+
+			if id1 != id2 {
+				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
+			}
+
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				id1 = testConcurrentCreateSeries(t, db, i)
+			}()
+			go func() {
+				defer wg.Done()
+				id2 = testConcurrentCreateSeries(t, db, i)
+			}()
+			wg.Wait()
+
+			if id1 != id2 {
+				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
+			}
+		}
 	})
 }
 
