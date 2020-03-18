@@ -113,6 +113,7 @@ AS $func$
             metric_name_arg, 
             _prom_internal.new_metric_table_name(metric_name_arg, new_id.id)
         FROM new_id
+        ON CONFLICT DO NOTHING
         RETURNING id, table_name
    )
    SELECT id, table_name FROM ins
@@ -353,7 +354,7 @@ LANGUAGE SQL STABLE PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION _prom_internal.create_series(
         metric_id int,
         label_array int[])
-    RETURNS int
+    RETURNS BIGINT
 AS $func$
     WITH ins AS (
         INSERT INTO _prom_catalog.series(metric_id, labels)
@@ -372,7 +373,7 @@ $func$
 LANGUAGE sql VOLATILE PARALLEL SAFE;
 
 CREATE OR REPLACE  FUNCTION get_series_id_for_label(label jsonb)
-RETURNS INT AS $$
+RETURNS BIGINT AS $$
    WITH CTE AS (
        SELECT jsonb_to_label_array(label)
    )
