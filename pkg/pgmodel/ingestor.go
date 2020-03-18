@@ -23,9 +23,12 @@ type SeriesID int64
 
 // Inserter is responsible for inserting label, series and data into the storage.
 type Inserter interface {
-	AddSeries(lset labels.Labels, callback func(id SeriesID) error)
-	InsertSeries() error
-	InsertData(rows map[string]*SampleInfoIterator) (uint64, error)
+	InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error)
+}
+
+type SeriesWithCallback struct {
+	Series   labels.Labels
+	Callback func(l labels.Labels, id SeriesID) error
 }
 
 // Cache provides a caching mechanism for labels and series.
@@ -95,13 +98,13 @@ type DBIngestor struct {
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
-	data, totalRows, err := i.parseData(tts)
+	newSeries, data, totalRows, err := i.parseData(tts)
 
 	if err != nil {
 		return 0, err
 	}
 
-	rowsInserted, err := i.db.InsertData(data)
+	rowsInserted, err := i.db.InsertNewData(newSeries, data)
 	if err == nil && int(rowsInserted) != totalRows {
 		return rowsInserted, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}
@@ -125,8 +128,9 @@ func labelProtosToLabels(labelPairs []prompb.Label) (labels.Labels, string) {
 	return result, metricName
 }
 
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string]*SampleInfoIterator, int, error) {
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, map[string]*SampleInfoIterator, int, error) {
 	var err error
+	var seriesToInsert []SeriesWithCallback
 	dataSamples := make(map[string]*SampleInfoIterator, 0)
 	rows := 0
 
@@ -135,18 +139,18 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string]*SampleInfoI
 			continue
 		}
 
-		labels, metricName := labelProtosToLabels(t.Labels)
+		seriesLabels, metricName := labelProtosToLabels(t.Labels)
 		if metricName == "" {
-			return nil, rows, errNoMetricName
+			return nil, nil, rows, errNoMetricName
 		}
 
 		var seriesID SeriesID
 		newSeries := false
 
-		seriesID, err = i.cache.GetSeries(labels)
+		seriesID, err = i.cache.GetSeries(seriesLabels)
 		if err != nil {
 			if err != ErrEntryNotFound {
-				return nil, rows, err
+				return nil, nil, rows, err
 			}
 			newSeries = true
 		}
@@ -158,9 +162,12 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string]*SampleInfoI
 		rows += len(t.Samples)
 
 		if newSeries {
-			i.db.AddSeries(labels, func(id SeriesID) error {
-				sample.seriesID = id
-				return i.cache.SetSeries(labels, id)
+			seriesToInsert = append(seriesToInsert, SeriesWithCallback{
+				Series: seriesLabels,
+				Callback: func(l labels.Labels, id SeriesID) error {
+					sample.seriesID = id
+					return i.cache.SetSeries(l, id)
+				},
 			})
 		}
 
@@ -171,9 +178,5 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string]*SampleInfoI
 		dataSamples[metricName].Append(&sample)
 	}
 
-	if err = i.db.InsertSeries(); err != nil {
-		return nil, rows, err
-	}
-
-	return dataSamples, rows, nil
+	return seriesToInsert, dataSamples, rows, nil
 }

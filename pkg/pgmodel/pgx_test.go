@@ -284,15 +284,20 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			}
 			inserter := pgxInserter{conn: mock}
 
+			var newSeries []SeriesWithCallback
+
 			calls := 0
 			for _, ser := range c.series {
-				inserter.AddSeries(*ser, func(id SeriesID) error {
-					calls++
-					return c.callbackErr
+				newSeries = append(newSeries, SeriesWithCallback{
+					Series: *ser,
+					Callback: func(l labels.Labels, id SeriesID) error {
+						calls++
+						return c.callbackErr
+					},
 				})
 			}
 
-			err := inserter.InsertSeries()
+			err := inserter.InsertSeries(newSeries)
 
 			if err != nil {
 				if c.queryErr != nil {
@@ -316,10 +321,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if c.queryErr != nil {
 				t.Errorf("expected query error:\ngot\n%v\nwanted\n%v", err, c.queryErr)
-			}
-
-			if len(inserter.seriesToInsert) > 0 {
-				t.Errorf("series not empty after insertion")
 			}
 		})
 	}
