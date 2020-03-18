@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/allegro/bigcache"
@@ -124,40 +125,43 @@ func NewPgxIngestor(c *pgx.Conn) *DBIngestor {
 	}
 }
 
-type seriesWithCallback struct {
-	series   labels.Labels
-	callback func(id SeriesID) error
-}
-
 type pgxInserter struct {
-	conn           pgxConn
-	seriesToInsert []*seriesWithCallback
-	// TODO: update implementation to match existing caching layer.
-	metricTableNames map[string]string
+	conn pgxConn
+	// TODO: update implementation to match existing caching layer?
+	metricTableNames sync.Map
 }
 
-func (p *pgxInserter) AddSeries(lset labels.Labels, callback func(id SeriesID) error) {
-	p.seriesToInsert = append(p.seriesToInsert, &seriesWithCallback{lset, callback})
+func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error) {
+	err := p.InsertSeries(newSeries)
+	if err != nil {
+		return 0, err
+	}
+
+	return p.InsertData(rows)
 }
 
-func (p *pgxInserter) InsertSeries() error {
+func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
+	if len(seriesToInsert) == 0 {
+		return nil
+	}
+
 	var lastSeenLabel labels.Labels = nil
 
 	batch := p.conn.NewBatch()
 	numQueries := 0
 	// Sort and remove duplicates. The sort is needed both to prevent DB deadlocks and to remove duplicates
-	sort.Slice(p.seriesToInsert, func(i, j int) bool {
-		return labels.Compare(p.seriesToInsert[i].series, p.seriesToInsert[j].series) < 0
+	sort.Slice(seriesToInsert, func(i, j int) bool {
+		return labels.Compare(seriesToInsert[i].Series, seriesToInsert[j].Series) < 0
 	})
 
-	batchSeries := make([][]*seriesWithCallback, 0, len(p.seriesToInsert))
-	for _, curr := range p.seriesToInsert {
-		if lastSeenLabel != nil && labels.Equal(lastSeenLabel, curr.series) {
+	batchSeries := make([][]SeriesWithCallback, 0, len(seriesToInsert))
+	for _, curr := range seriesToInsert {
+		if lastSeenLabel != nil && labels.Equal(lastSeenLabel, curr.Series) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}
 
-		json, err := curr.series.MarshalJSON()
+		json, err := curr.Series.MarshalJSON()
 
 		if err != nil {
 			return err
@@ -165,9 +169,9 @@ func (p *pgxInserter) InsertSeries() error {
 
 		batch.Queue(getSeriesIDForLabelSQL, json)
 		numQueries++
-		batchSeries = append(batchSeries, []*seriesWithCallback{curr})
+		batchSeries = append(batchSeries, []SeriesWithCallback{curr})
 
-		lastSeenLabel = curr.series
+		lastSeenLabel = curr.Series
 	}
 
 	br, err := p.conn.SendBatch(context.Background(), batch)
@@ -189,15 +193,12 @@ func (p *pgxInserter) InsertSeries() error {
 			return err
 		}
 		for _, swc := range batchSeries[i] {
-			err := swc.callback(id)
+			err := swc.Callback(swc.Series, id)
 			if err != nil {
 				return err
 			}
 		}
 	}
-
-	// Flushing inserted series.
-	p.seriesToInsert = p.seriesToInsert[:0]
 
 	return nil
 }
@@ -251,18 +252,18 @@ func (p *pgxInserter) createMetricTable(metric string) (string, error) {
 }
 
 func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
-	var tableName string
+	var tableNameI interface{}
 	var err error
 	var ok bool
-	if tableName, ok = p.metricTableNames[metric]; !ok {
-		if p.metricTableNames == nil {
-			p.metricTableNames = make(map[string]string)
-		}
+	var tableName string
+	if tableNameI, ok = p.metricTableNames.Load(metric); !ok {
 		tableName, err = p.createMetricTable(metric)
 		if err != nil {
 			return "", err
 		}
-		p.metricTableNames[metric] = tableName
+		p.metricTableNames.Store(metric, tableName)
+	} else {
+		tableName = tableNameI.(string)
 	}
 
 	return tableName, nil
