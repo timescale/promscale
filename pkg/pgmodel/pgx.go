@@ -11,12 +11,11 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const (
 	getCreateMetricsTableSQL = "SELECT table_name FROM get_or_create_metric_table_name($1)"
-	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_label($1)"
+	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_key_value_array($1, $2, $3)"
 	dataTableSchema          = "prom"
 )
 
@@ -127,29 +126,23 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 		return nil
 	}
 
-	var lastSeenLabel labels.Labels = nil
+	var lastSeenLabel Labels
 
 	batch := p.conn.NewBatch()
 	numQueries := 0
 	// Sort and remove duplicates. The sort is needed both to prevent DB deadlocks and to remove duplicates
 	sort.Slice(seriesToInsert, func(i, j int) bool {
-		return labels.Compare(seriesToInsert[i].Series, seriesToInsert[j].Series) < 0
+		return seriesToInsert[i].Series.Compare(seriesToInsert[j].Series) < 0
 	})
 
 	batchSeries := make([][]SeriesWithCallback, 0, len(seriesToInsert))
 	for _, curr := range seriesToInsert {
-		if lastSeenLabel != nil && labels.Equal(lastSeenLabel, curr.Series) {
+		if !lastSeenLabel.isEmpty() && lastSeenLabel.Equal(curr.Series) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}
 
-		json, err := curr.Series.MarshalJSON()
-
-		if err != nil {
-			return err
-		}
-
-		batch.Queue(getSeriesIDForLabelSQL, json)
+		batch.Queue(getSeriesIDForLabelSQL, curr.Series.metric_name, curr.Series.names, curr.Series.values)
 		numQueries++
 		batchSeries = append(batchSeries, []SeriesWithCallback{curr})
 

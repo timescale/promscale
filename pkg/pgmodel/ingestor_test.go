@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -14,7 +13,7 @@ type mockCache struct {
 	setSeriesErr error
 }
 
-func (m *mockCache) GetSeries(lset labels.Labels) (SeriesID, error) {
+func (m *mockCache) GetSeries(lset Labels) (SeriesID, error) {
 	if m.getSeriesErr != nil {
 		return 0, m.getSeriesErr
 	}
@@ -27,7 +26,7 @@ func (m *mockCache) GetSeries(lset labels.Labels) (SeriesID, error) {
 	return val, nil
 }
 
-func (m *mockCache) SetSeries(lset labels.Labels, id SeriesID) error {
+func (m *mockCache) SetSeries(lset Labels, id SeriesID) error {
 	m.seriesCache[lset.String()] = id
 	return m.setSeriesErr
 }

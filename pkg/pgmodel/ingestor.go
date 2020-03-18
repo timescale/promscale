@@ -2,10 +2,8 @@ package pgmodel
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -27,14 +25,14 @@ type Inserter interface {
 }
 
 type SeriesWithCallback struct {
-	Series   labels.Labels
-	Callback func(l labels.Labels, id SeriesID) error
+	Series   Labels
+	Callback func(l Labels, id SeriesID) error
 }
 
 // Cache provides a caching mechanism for labels and series.
 type Cache interface {
-	GetSeries(lset labels.Labels) (SeriesID, error)
-	SetSeries(lset labels.Labels, id SeriesID) error
+	GetSeries(lset Labels) (SeriesID, error)
+	SetSeries(lset Labels, id SeriesID) error
 }
 
 type samplesInfo struct {
@@ -111,25 +109,7 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 	return rowsInserted, err
 }
 
-//mostly copied from prometheus codec.go, except for the name return
-func labelProtosToLabels(labelPairs []prompb.Label) (labels.Labels, string) {
-	result := make(labels.Labels, 0, len(labelPairs))
-	metricName := ""
-	for _, l := range labelPairs {
-		result = append(result, labels.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-		if l.Name == metricNameLabelName {
-			metricName = l.Value
-		}
-	}
-	sort.Sort(result)
-	return result, metricName
-}
-
 func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, map[string]*SampleInfoIterator, int, error) {
-	var err error
 	var seriesToInsert []SeriesWithCallback
 	dataSamples := make(map[string]*SampleInfoIterator, 0)
 	rows := 0
@@ -139,7 +119,10 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, m
 			continue
 		}
 
-		seriesLabels, metricName := labelProtosToLabels(t.Labels)
+		seriesLabels, metricName, err := labelProtosToLabels(t.Labels)
+		if err != nil {
+			return nil, nil, rows, err
+		}
 		if metricName == "" {
 			return nil, nil, rows, errNoMetricName
 		}
@@ -164,7 +147,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, m
 		if newSeries {
 			seriesToInsert = append(seriesToInsert, SeriesWithCallback{
 				Series: seriesLabels,
-				Callback: func(l labels.Labels, id SeriesID) error {
+				Callback: func(l Labels, id SeriesID) error {
 					sample.seriesID = id
 					return i.cache.SetSeries(l, id)
 				},

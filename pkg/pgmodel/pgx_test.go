@@ -287,9 +287,13 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			calls := 0
 			for _, ser := range c.series {
+				ls, err := LabelsFromSlice(*ser)
+				if err != nil {
+					t.Errorf("invalid labels %+v, %v", ls, err)
+				}
 				newSeries = append(newSeries, SeriesWithCallback{
-					Series: *ser,
-					Callback: func(l labels.Labels, id SeriesID) error {
+					Series: ls,
+					Callback: func(l Labels, id SeriesID) error {
 						calls++
 						return c.callbackErr
 					},

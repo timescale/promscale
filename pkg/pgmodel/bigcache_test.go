@@ -1,6 +1,8 @@
 package pgmodel
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,7 +27,11 @@ func TestBigCache(t *testing.T) {
 		},
 	}
 
-	if _, err := cache.GetSeries(label); err == nil {
+	l, err := LabelsFromSlice(label)
+	if err != nil {
+		t.Errorf("invalid labels %+v: %v", l, err)
+	}
+	if _, err := cache.GetSeries(l); err == nil {
 		t.Errorf("found cache for a series that was not stored")
 	}
 
@@ -54,14 +60,18 @@ func TestBigCache(t *testing.T) {
 				Value: "val1",
 			},
 			labels.Label{
-				Name:  "name1",
-				Value: "val1",
+				Name:  "name2",
+				Value: "val2",
 			},
 		},
 	}
 
 	for i, series := range testLabels {
-		if err := cache.SetSeries(series, SeriesID(i)); err != nil {
+		ls, err := LabelsFromSlice(series)
+		if err != nil {
+			t.Errorf("invalid series %+v, %v", ls, err)
+		}
+		if err := cache.SetSeries(ls, SeriesID(i)); err != nil {
 			t.Errorf("got unexpected error while storing series: %d", i)
 
 		}
@@ -69,7 +79,11 @@ func TestBigCache(t *testing.T) {
 
 	for i, series := range testLabels {
 		var res SeriesID
-		if res, err = cache.GetSeries(series); err != nil {
+		ls, err := LabelsFromSlice(series)
+		if err != nil {
+			t.Errorf("invalid series %+v, %v", ls, err)
+		}
+		if res, err = cache.GetSeries(ls); err != nil {
 			t.Errorf("got unexpected error while getting series: %v", series)
 		}
 		if res != SeriesID(i) {
@@ -79,31 +93,24 @@ func TestBigCache(t *testing.T) {
 
 }
 
-func TestBigCachePanicUnsorted(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Didn't throw panic as expected")
-		}
-	}()
+func TestBigLables(t *testing.T) {
+	builder := strings.Builder{}
+	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
 
-	unsorted := labels.Labels{
+	builder.WriteByte('a')
+	for len(builder.String()) < math.MaxUint16 {
+		builder.WriteString(builder.String())
+	}
+
+	labels := labels.Labels{
 		labels.Label{
-			Name:  "name2",
-			Value: "val1",
-		},
-		labels.Label{
-			Name:  "name1",
-			Value: "val1",
+			Name:  builder.String(),
+			Value: "",
 		},
 	}
 
-	config := bigcache.DefaultConfig(10 * time.Minute)
-	series, err := bigcache.NewBigCache(config)
-	if err != nil {
-		t.Fatal("unable to run test, unable to create labels cache")
+	_, err := LabelsFromSlice(labels)
+	if err == nil {
+		t.Errorf("expected error")
 	}
-	cache := bCache{
-		series: series,
-	}
-	cache.SetSeries(unsorted, SeriesID(0))
 }
