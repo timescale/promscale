@@ -32,8 +32,7 @@ type mockPGXConn struct {
 	Batch             []*mockBatch
 }
 
-func (m *mockPGXConn) Close(c context.Context) error {
-	return nil
+func (m *mockPGXConn) Close() {
 }
 
 func (m *mockPGXConn) UseDatabase(dbName string) {

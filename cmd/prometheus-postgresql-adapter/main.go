@@ -277,9 +277,9 @@ func write(writer pgmodel.DBInserter) http.Handler {
 			return
 		}
 
-		num_samples, err := writer.Ingest(req.GetTimeseries())
+		numSamples, err := writer.Ingest(req.GetTimeseries())
 		if err != nil {
-			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", num_samples)
+			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 		}
 	})
 }

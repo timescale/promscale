@@ -10,6 +10,7 @@ import (
 	"github.com/allegro/bigcache"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -29,7 +30,7 @@ type pgxBatch interface {
 }
 
 type pgxConn interface {
-	Close(ctx context.Context) error
+	Close()
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
@@ -39,48 +40,33 @@ type pgxConn interface {
 }
 
 type pgxConnImpl struct {
-	conn *pgx.Conn
+	conn *pgxpool.Pool
 }
 
-func (p *pgxConnImpl) getConn() (*pgx.Conn, error) {
-	return p.conn, nil
+func (p *pgxConnImpl) getConn() *pgxpool.Pool {
+	return p.conn
 }
 
-func (p *pgxConnImpl) Close(ctx context.Context) error {
-	conn, err := p.getConn()
-	if err != nil {
-		return nil
-	}
+func (p *pgxConnImpl) Close() {
+	conn := p.getConn()
 	p.conn = nil
-	return conn.Close(ctx)
+	conn.Close()
 }
 
 func (p *pgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	conn, err := p.getConn()
-
-	if err != nil {
-		return nil, err
-	}
+	conn := p.getConn()
 
 	return conn.Exec(ctx, sql, arguments...)
 }
 
 func (p *pgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	conn, err := p.getConn()
-
-	if err != nil {
-		return nil, err
-	}
+	conn := p.getConn()
 
 	return conn.Query(ctx, sql, args...)
 }
 
 func (p *pgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	conn, err := p.getConn()
-
-	if err != nil {
-		return 0, err
-	}
+	conn := p.getConn()
 
 	return conn.CopyFrom(ctx, tableName, columnNames, rowSrc)
 }
@@ -94,17 +80,13 @@ func (p *pgxConnImpl) NewBatch() pgxBatch {
 }
 
 func (p *pgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
-	conn, err := p.getConn()
-
-	if err != nil {
-		return nil, err
-	}
+	conn := p.getConn()
 
 	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
-func NewPgxIngestor(c *pgx.Conn) *DBIngestor {
+func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
 	pi := &pgxInserter{
 		conn: &pgxConnImpl{
 			conn: c,

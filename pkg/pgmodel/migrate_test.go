@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v4/pgxpool"
+
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -22,7 +24,7 @@ import (
 var (
 	database           = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 	useDocker          = flag.Bool("use-docker", true, "start database using a docker container")
-	pgHost    string   = "localhost"
+	pgHost             = "localhost"
 	pgPort    nat.Port = "5432/tcp"
 )
 
@@ -35,7 +37,7 @@ func TestMigrate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgx.Conn, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
 		var version int64
 		var dirty bool
 		err := db.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty)
@@ -75,7 +77,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgx.Conn, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
@@ -172,7 +174,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		{
 			name: "One metric",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "metric1"},
 						{Name: "test", Value: "test"},
@@ -184,7 +186,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		{
 			name: "Long keys and values",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: strings.Repeat("val", 60)},
 						{Name: strings.Repeat("key", 60), Value: strings.Repeat("val2", 60)},
@@ -195,33 +197,33 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		{
 			name: "New keys and values",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "metric1"},
 						{Name: "test", Value: "test"},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "metric1"},
 						{Name: "test1", Value: "test"},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "metric1"},
 						{Name: "test", Value: "test"},
 						{Name: "test1", Value: "test"},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "metric1"},
 						{Name: "test", Value: "val1"},
 						{Name: "test1", Value: "val2"},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "metric1"},
 						{Name: "test", Value: "test"},
@@ -233,7 +235,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		{
 			name: "Multiple metrics",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "m1"},
 						{Name: "test1", Value: "val1"},
@@ -242,13 +244,13 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						{Name: "test4", Value: "val1"},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "m2"},
 						{Name: "test", Value: "test"},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "m1"},
 						{Name: "test1", Value: "val2"},
@@ -257,7 +259,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						{Name: "test4", Value: "val2"},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: "__name__", Value: "m2"},
 						{Name: "test", Value: "test2"},
@@ -273,7 +275,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		databaseName := fmt.Sprintf("%s_%d", *database, tcIndex)
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			withDB(t, databaseName, func(db *pgx.Conn, t *testing.T) {
+			withDB(t, databaseName, func(db *pgxpool.Pool, t *testing.T) {
 				for _, ts := range c.metrics {
 					labelSet := make(model.LabelSet, len(ts.Labels))
 					metricName := ""
@@ -359,7 +361,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "One metric",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 					},
@@ -374,7 +376,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "One metric, no sample",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -385,7 +387,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "Two timeseries",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "foo", Value: "bar"},
@@ -394,7 +396,7 @@ func TestSQLIngest(t *testing.T) {
 						{Timestamp: 1, Value: 0.1},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -410,7 +412,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "Two samples",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -427,7 +429,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "Two samples that are complete duplicates",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -444,7 +446,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "Two timeseries, one series",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -453,7 +455,7 @@ func TestSQLIngest(t *testing.T) {
 						{Timestamp: 1, Value: 0.1},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -469,7 +471,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "Two metric names , one series",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test1"},
 						{Name: "commonkey", Value: "test"},
@@ -480,7 +482,7 @@ func TestSQLIngest(t *testing.T) {
 						{Timestamp: 1, Value: 0.1},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test2"},
 						{Name: "commonkey", Value: "test"},
@@ -498,7 +500,7 @@ func TestSQLIngest(t *testing.T) {
 		{
 			name: "Missing metric name",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
 					},
@@ -514,7 +516,7 @@ func TestSQLIngest(t *testing.T) {
 		tcase := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			withDB(t, databaseName, func(db *pgx.Conn, t *testing.T) {
+			withDB(t, databaseName, func(db *pgxpool.Pool, t *testing.T) {
 				ingestor := NewPgxIngestor(db)
 				cnt, err := ingestor.Ingest(tcase.metrics)
 				if cnt != tcase.count {
@@ -607,13 +609,10 @@ func startContainer(ctx context.Context) (testcontainers.Container, error) {
 	return container, nil
 }
 
-func withDB(t *testing.T, DBName string, f func(db *pgx.Conn, t *testing.T)) {
+func withDB(t *testing.T, DBName string, f func(db *pgxpool.Pool, t *testing.T)) {
 	db := dbSetup(t, DBName)
 	defer func() {
-		err := db.Close(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
+		db.Close()
 	}()
 	performMigrate(t, DBName)
 	f(db, t)
@@ -636,7 +635,7 @@ func performMigrate(t *testing.T, DBName string) {
 	}
 }
 
-func dbSetup(t *testing.T, DBName string) *pgx.Conn {
+func dbSetup(t *testing.T, DBName string) *pgxpool.Pool {
 	if len(*database) == 0 {
 		t.Skip()
 	}
@@ -659,9 +658,9 @@ func dbSetup(t *testing.T, DBName string) *pgx.Conn {
 		t.Fatal(err)
 	}
 
-	db, err = pgx.Connect(context.Background(), PGConnectURL(t, DBName))
+	dbPool, err := pgxpool.Connect(context.Background(), PGConnectURL(t, DBName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return db
+	return dbPool
 }

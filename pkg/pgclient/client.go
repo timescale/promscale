@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"regexp"
 
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
+
 	"github.com/prometheus/prometheus/prompb"
 
 	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
@@ -39,7 +40,7 @@ func ParseFlags(cfg *Config) *Config {
 
 // Client sends Prometheus samples to PostgreSQL
 type Client struct {
-	Connection    *pgx.Conn
+	Connection    *pgxpool.Pool
 	ingestor      *pgmodel.DBIngestor
 	cfg           *Config
 	ConnectionStr string
@@ -53,7 +54,7 @@ var (
 func NewClient(cfg *Config) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
 
-	connection, err := pgx.Connect(context.Background(), connectionStr)
+	connection, err := pgxpool.Connect(context.Background(), connectionStr)
 
 	log.Info("msg", regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connectionStr, "password='****'"))
 
