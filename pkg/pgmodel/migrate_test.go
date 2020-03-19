@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 
@@ -253,6 +254,86 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		if metricID == savedMetricID {
 			t.Errorf("metric_id should not be same:\nexpected:%v\ngot:%v", savedMetricID, metricID)
 		}
+	})
+}
+
+func verifyChunkInterval(t *testing.T, db *pgxpool.Pool, tableName string, expectedDuration time.Duration) {
+	var intervalLength int64
+
+	err := db.QueryRow(context.Background(),
+		`SELECT d.interval_length
+	 FROM _timescaledb_catalog.hypertable h
+	 INNER JOIN LATERAL
+	 (SELECT dim.interval_length FROM _timescaledb_catalog.dimension dim WHERE dim.hypertable_id = h.id ORDER BY dim.id LIMIT 1) d
+	    ON (true)
+	 WHERE table_name = $1`,
+		tableName).Scan(&intervalLength)
+	if err != nil {
+		t.Error(err)
+	}
+
+	dur := time.Duration(time.Duration(intervalLength) * time.Microsecond)
+	if dur != expectedDuration {
+		t.Errorf("Unexpected chunk interval for table %v: got %v want %v", tableName, dur, expectedDuration)
+	}
+}
+
+func TestSQLChunkInterval(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+					{Timestamp: 2, Value: 0.2},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test2"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+					{Timestamp: 2, Value: 0.2},
+				},
+			},
+		}
+		ingestor := NewPgxIngestor(db)
+		_, err := ingestor.Ingest(ts)
+		if err != nil {
+			t.Error(err)
+		}
+		verifyChunkInterval(t, db, "test", time.Duration(8*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_chunk_interval('test2', INTERVAL '7 hours')")
+		if err != nil {
+			t.Error(err)
+		}
+		verifyChunkInterval(t, db, "test2", time.Duration(7*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom.set_default_chunk_interval(INTERVAL '6 hours')")
+		if err != nil {
+			t.Error(err)
+		}
+		verifyChunkInterval(t, db, "test", time.Duration(6*time.Hour))
+		verifyChunkInterval(t, db, "test2", time.Duration(7*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom.reset_metric_chunk_interval('test2')")
+		if err != nil {
+			t.Error(err)
+		}
+		verifyChunkInterval(t, db, "test2", time.Duration(6*time.Hour))
+
+		//set on a metric that doesn't exist should create the metric and set the parameter
+		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_chunk_interval('test_new_metric1', INTERVAL '7 hours')")
+		if err != nil {
+			t.Error(err)
+		}
+		verifyChunkInterval(t, db, "test_new_metric1", time.Duration(7*time.Hour))
 	})
 }
 
