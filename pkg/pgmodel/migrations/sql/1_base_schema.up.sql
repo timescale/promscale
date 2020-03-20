@@ -375,6 +375,39 @@ RETURNS INT[] AS $$
 $$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
+RETURNS INT[] AS $$
+    WITH idx_val AS (
+        SELECT
+            -- only call the functions to create new key positions
+            -- and label ids if they don't exist (for performance reasons)
+            coalesce(lkp.pos,
+              get_label_key_pos(metric_name, kv.key)) idx,
+            coalesce(l.id,
+              get_label_id(kv.key, kv.value)) val
+        FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
+            LEFT JOIN _prom_catalog.label l
+               ON (l.key = kv.key AND l.value = kv.value)
+            LEFT JOIN _prom_catalog.label_key_position lkp
+               ON
+               (
+                  lkp.metric = metric_name AND
+                  lkp.key = kv.key
+               )
+        ORDER BY kv.key
+    )
+    SELECT ARRAY(
+        SELECT coalesce(idx_val.val, 0)
+        FROM
+            generate_series(
+                    1,
+                    (SELECT max(idx) FROM idx_val)
+            ) g
+            LEFT JOIN idx_val ON (idx_val.idx = g)
+    )
+$$
+LANGUAGE SQL VOLATILE PARALLEL SAFE;
+
 --Returns the jsonb for a series defined by a label_array
 --Note that this function should be optimized for performance
 CREATE OR REPLACE FUNCTION label_array_to_jsonb(labels int[])
@@ -424,6 +457,20 @@ RETURNS BIGINT AS $$
    WHERE labels = (SELECT * FROM cte)
    UNION ALL
    SELECT _prom_internal.create_series((get_or_create_metric_table_name(label->>'__name__')).id, (SELECT * FROM cte))
+   LIMIT 1
+$$
+LANGUAGE SQL VOLATILE PARALLEL SAFE;
+
+CREATE OR REPLACE  FUNCTION get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
+RETURNS BIGINT AS $$
+   WITH CTE AS (
+       SELECT key_value_array_to_label_array(metric_name, label_keys, label_values)
+   )
+   SELECT id
+   FROM _prom_catalog.series
+   WHERE labels = (SELECT * FROM cte)
+   UNION ALL
+   SELECT _prom_internal.create_series((get_or_create_metric_table_name(metric_name)).id, (SELECT * FROM cte))
    LIMIT 1
 $$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;

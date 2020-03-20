@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -455,12 +456,17 @@ func TestSQLJsonLabelArray(t *testing.T) {
 				for _, ts := range c.metrics {
 					labelSet := make(model.LabelSet, len(ts.Labels))
 					metricName := ""
+					keys := make([]string, 0)
+					values := make([]string, 0)
 					for _, l := range ts.Labels {
 						if l.Name == "__name__" {
 							metricName = l.Value
 						}
 						labelSet[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+						keys = append(keys, l.Name)
+						values = append(values, l.Value)
 					}
+
 					jsonOrig, err := json.Marshal(labelSet)
 					if err != nil {
 						t.Fatal(err)
@@ -475,6 +481,22 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						if ok && expected != len(labelArray) {
 							t.Fatalf("Unexpected label array length: got\n%v\nexpected\n%v", len(labelArray), expected)
 						}
+					}
+
+					var labelArrayKV []int
+					err = db.QueryRow(context.Background(), "SELECT * FROM key_value_array_to_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if c.arrayLength != nil {
+						expected, ok := c.arrayLength[metricName]
+						if ok && expected != len(labelArrayKV) {
+							t.Fatalf("Unexpected label array length: got\n%v\nexpected\n%v", len(labelArrayKV), expected)
+						}
+					}
+
+					if !reflect.DeepEqual(labelArray, labelArrayKV) {
+						t.Fatalf("Expected label arrays to be equal: %v != %v", labelArray, labelArrayKV)
 					}
 
 					var jsonres []byte
@@ -497,6 +519,14 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					err = db.QueryRow(context.Background(), "SELECT get_series_id_for_label($1)", jsonOrig).Scan(&seriesID)
 					if err != nil {
 						t.Fatal(err)
+					}
+					var seriesIDKeyVal int
+					err = db.QueryRow(context.Background(), "SELECT get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if seriesID != seriesIDKeyVal {
+						t.Fatalf("Expected the series ids to be equal: %v != %v", seriesID, seriesIDKeyVal)
 					}
 					err = db.QueryRow(context.Background(), "SELECT label_array_to_jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
 						seriesID).Scan(&jsonres)
