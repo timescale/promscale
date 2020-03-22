@@ -360,6 +360,8 @@ RETURNS INT[] AS $$
                   lkp.metric = js->>'__name__' AND
                   lkp.key = e.key
                )
+        --needs to order by key to prevent deadlocks if get_label_id is creating labels
+        ORDER BY l.key
     )
     SELECT ARRAY(
         SELECT coalesce(idx_val.val, 0)
