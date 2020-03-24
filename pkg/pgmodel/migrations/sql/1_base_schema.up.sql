@@ -526,3 +526,103 @@ AS $func$
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
+
+
+--drop chunks from metrics tables and delete the appropriate series.
+CREATE OR REPLACE FUNCTION _prom_internal.drop_metric_chunks(metric_name TEXT, older_than TIMESTAMPTZ)
+    RETURNS BOOLEAN
+    AS $func$
+DECLARE
+    metric_table NAME;
+    check_time TIMESTAMPTZ;
+    older_than_chunk TIMESTAMPTZ;
+    time_dimension_id INT;
+    label_ids int[];
+BEGIN
+    SELECT table_name
+    INTO STRICT metric_table
+    FROM get_or_create_metric_table_name(metric_name);
+
+    SELECT older_than + INTERVAL '1 hour'
+    INTO check_time;
+
+    --Get the time dimension id for the time dimension
+    SELECT d.id
+    INTO STRICT time_dimension_id
+    FROM _timescaledb_catalog.hypertable h
+    INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
+    WHERE h.schema_name = 'prom' AND h.table_name = metric_table
+    ORDER BY d.id ASC
+    LIMIT 1;
+
+    --Get a tight older_than (EXCLUSIVE) because we want to know the
+    --exact cut-off where things will be dropped
+    SELECT _timescaledb_internal.to_timestamp(range_end)
+    INTO older_than
+    FROM _timescaledb_catalog.chunk c
+    INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
+    INNER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id)
+    --range_end is exclusive so this is everything < older_than (which is also exclusive)
+    WHERE ds.dimension_id = time_dimension_id AND ds.range_end <= _timescaledb_internal.to_unix_microseconds(older_than)
+    ORDER BY range_end DESC
+    LIMIT 1;
+
+    IF older_than IS NULL THEN
+        RETURN false;
+    END IF;
+
+    --chances are that the hour after the drop point will have the most similar
+    --series to what is dropped, so first filter by all series that have been dropped
+    --but that aren't in that first hour and then make sure they aren't in the dataset
+    EXECUTE format(
+    $query$
+        WITH potentially_drop_series AS (
+            SELECT distinct series_id
+            FROM prom.%1$I
+            WHERE time < %2$L
+            EXCEPT
+            SELECT distinct series_id
+            FROM prom.%1$I
+            WHERE time >= %2$L AND time < %3$L
+        ), confirmed_drop_series AS (
+            SELECT series_id
+            FROM potentially_drop_series
+            WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM  prom.%1$I  data_exists
+                 WHERE data_exists.series_id = potentially_drop_series.series_id AND time >= %3$L
+                 --use chunk append + more likely to find something starting at earliest time
+                 ORDER BY time ASC
+                 LIMIT 1
+            )
+        ), deleted_series AS (
+          DELETE from _prom_catalog.series
+          WHERE id IN (SELECT series_id FROM confirmed_drop_series)
+          RETURNING id, labels
+        )
+        SELECT ARRAY(SELECT DISTINCT unnest(labels) as label_id
+        FROM deleted_series)
+    $query$, metric_table, older_than, check_time) INTO label_ids;
+
+    --needs to be a separate query and not a CTE since this needs to "see"
+    --the series rows deleted above as deleted.
+    EXECUTE $query$
+    WITH confirmed_drop_labels AS (
+            SELECT label_id
+            FROM unnest($1) as labels(label_id)
+            WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM  _prom_catalog.series series_exists
+                 WHERE series_exists.labels && ARRAY[labels.label_id]
+                 LIMIT 1
+            )
+        )
+        DELETE FROM _prom_catalog.label
+        WHERE id IN (SELECT * FROM confirmed_drop_labels);
+    $query$ USING label_ids;
+
+   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'prom', older_than=>older_than);
+   RETURN true;
+END
+$func$
+LANGUAGE plpgsql;

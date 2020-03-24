@@ -1277,6 +1277,104 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t *testing.T) {
 	}
 }
 
+func TestSQLDropChunk(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+		//this is the range_end of a chunk boundary (exclusive)
+		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
+
+		ts := []prompb.TimeSeries{
+			{
+				//this series will be deleted along with it's label
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					//this will be dropped (notice the - 1)
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.UnixNano()) - 1), Value: 0.1},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value2"},
+				},
+				Samples: []prompb.Sample{
+					//this will remain after the drop
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.UnixNano())), Value: 0.2},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value3"},
+				},
+				Samples: []prompb.Sample{
+					//this will be dropped (notice the - 1)
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.UnixNano()) - 1), Value: 0.1},
+					//this will not be dropped and is more than an hour newer
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.Add(time.Hour * 5).UnixNano())), Value: 0.1},
+				},
+			},
+		}
+		ingestor := NewPgxIngestor(db)
+		_, err := ingestor.Ingest(ts)
+		if err != nil {
+			t.Error(err)
+		}
+
+		wasDropped := false
+		err = db.QueryRow(context.Background(), "SELECT _prom_internal.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5)).Scan(&wasDropped)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !wasDropped {
+			t.Errorf("Expected chunk to be dropped")
+		}
+
+		count := 0
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom.test`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 2 {
+			t.Errorf("unexpected row count: %v", count)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 2 {
+			t.Errorf("unexpected series count: %v", count)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.label where key='name1'`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 2 {
+			t.Errorf("unexpected labels count: %v", count)
+		}
+
+		//rerun again -- nothing dropped
+		err = db.QueryRow(context.Background(), "SELECT _prom_internal.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5)).Scan(&wasDropped)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wasDropped {
+			t.Errorf("Expected chunk to not be dropped")
+		}
+
+	})
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
