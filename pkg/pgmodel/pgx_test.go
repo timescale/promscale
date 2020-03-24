@@ -114,7 +114,7 @@ type mockBatchResult struct {
 
 // Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
 func (m *mockBatchResult) Exec() (pgconn.CommandTag, error) {
-	panic("not implemented")
+	return nil, nil
 }
 
 // Query reads the results from the next query in the batch as if the query has been sent with Conn.Query.

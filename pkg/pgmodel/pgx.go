@@ -171,8 +171,9 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 	var lastSeenLabel Labels
 
 	batch := p.conn.NewBatch()
-	numQueries := 0
-	// Sort and remove duplicates. The sort is needed both to prevent DB deadlocks and to remove duplicates
+	numSQLFunctionCalls := 0
+	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
+	// in a different transaction, thus deadlocks are not an issue.
 	sort.Slice(seriesToInsert, func(i, j int) bool {
 		return seriesToInsert[i].Series.Compare(seriesToInsert[j].Series) < 0
 	})
@@ -184,8 +185,10 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 			continue
 		}
 
+		batch.Queue("BEGIN;")
 		batch.Queue(getSeriesIDForLabelSQL, curr.Series.metric_name, curr.Series.names, curr.Series.values)
-		numQueries++
+		batch.Queue("COMMIT;")
+		numSQLFunctionCalls++
 		batchSeries = append(batchSeries, []SeriesWithCallback{curr})
 
 		lastSeenLabel = curr.Series
@@ -197,11 +200,15 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 	}
 	defer br.Close()
 
-	if numQueries != len(batchSeries) {
+	if numSQLFunctionCalls != len(batchSeries) {
 		return fmt.Errorf("unexpected difference in numQueries and batchSeries")
 	}
 
-	for i := 0; i < numQueries; i++ {
+	for i := 0; i < numSQLFunctionCalls; i++ {
+		_, err = br.Exec()
+		if err != nil {
+			return err
+		}
 		row := br.QueryRow()
 
 		var id SeriesID
@@ -214,6 +221,10 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 			if err != nil {
 				return err
 			}
+		}
+		_, err = br.Exec()
+		if err != nil {
+			return err
 		}
 	}
 

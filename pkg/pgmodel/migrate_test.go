@@ -309,7 +309,7 @@ func TestSQLChunkInterval(t *testing.T) {
 		ingestor := NewPgxIngestor(db)
 		_, err := ingestor.Ingest(ts)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		verifyChunkInterval(t, db, "test", time.Duration(8*time.Hour))
 		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_chunk_interval('test2', INTERVAL '7 hours')")
