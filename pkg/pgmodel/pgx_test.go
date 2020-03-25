@@ -2,15 +2,23 @@ package pgmodel
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/prompb"
 )
+
+// rowResults represents a collection of a multi-column row result
+type rowResults [][]interface{}
 
 type mockPGXConn struct {
 	DBName            string
@@ -19,10 +27,10 @@ type mockPGXConn struct {
 	ExecErr           error
 	QuerySQLs         []string
 	QueryArgs         [][]interface{}
-	QueryResults      [][]interface{} //Indexed by query number, row number. All columns get the same value
+	QueryResults      []rowResults
 	QueryResultsIndex int
 	QueryNoRows       bool
-	QueryErr          error
+	QueryErr          map[int]error // Mapping query call to error response.
 	CopyFromTableName []pgx.Identifier
 	CopyFromColumns   [][]string
 	CopyFromRowSource []pgx.CopyFromSource
@@ -51,7 +59,11 @@ func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}
 	}()
 	m.QuerySQLs = append(m.QuerySQLs, sql)
 	m.QueryArgs = append(m.QueryArgs, args)
-	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr
+	if len(m.QueryResults) <= m.QueryResultsIndex {
+		return &mockRows{results: nil, noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
+
+	}
+	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
 }
 
 func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
@@ -74,7 +86,7 @@ func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 	defer func() { m.QueryResultsIndex++ }()
 	batch := b.(*mockBatch)
 	m.Batch = append(m.Batch, batch)
-	return &mockBatchResult{results: m.QueryResults[m.QueryResultsIndex]}, m.QueryErr
+	return &mockBatchResult{results: m.QueryResults}, m.QueryErr[m.QueryResultsIndex]
 }
 
 type batchItem struct {
@@ -97,7 +109,7 @@ func (b *mockBatch) Queue(query string, arguments ...interface{}) {
 
 type mockBatchResult struct {
 	idx     int
-	results []interface{}
+	results []rowResults
 }
 
 // Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
@@ -119,17 +131,18 @@ func (m *mockBatchResult) Close() error {
 
 // QueryRow reads the results from the next query in the batch as if the query has been sent with Conn.QueryRow.
 func (m *mockBatchResult) QueryRow() pgx.Row {
-	res := []interface{}{
-		m.results[m.idx],
+	defer func() { m.idx++ }()
+	if len(m.results) <= m.idx {
+		return &mockRows{results: nil, noNext: false}
+
 	}
-	m.idx++
-	return &mockRows{results: res, noNext: false}
+	return &mockRows{results: m.results[m.idx], noNext: false}
 }
 
 type mockRows struct {
 	idx     int
 	noNext  bool
-	results []interface{}
+	results rowResults
 }
 
 // Close closes the rows, making the connection ready for use again. It is safe
@@ -164,27 +177,90 @@ func (m *mockRows) Next() bool {
 // copy the raw bytes received from PostgreSQL. nil will skip the value entirely.
 func (m *mockRows) Scan(dest ...interface{}) error {
 	if m.idx >= len(m.results) {
-		return fmt.Errorf("scanning error")
+		return fmt.Errorf("scanning error, no more results: got %d wanted %d", m.idx, len(m.results))
 	}
 
-	switch m.results[m.idx].(type) {
-	case int32:
-		for i := range dest {
-			dv := reflect.ValueOf(dest[i])
-			dvp := reflect.Indirect(dv)
-			dvp.SetInt(int64(m.results[m.idx].(int32)))
+	if len(dest) > len(m.results[m.idx]) {
+		return fmt.Errorf("scanning error, missing results for scanning: got %d wanted %d", len(m.results[m.idx]), len(dest))
+	}
+
+	for i := range dest {
+		if scanner, ok := dest[i].(sql.Scanner); ok {
+			err := scanner.Scan(m.results[m.idx][i])
+			if err != nil {
+				return err
+			}
+			continue
 		}
-	case uint64:
-		for i := range dest {
+		switch s := m.results[m.idx][i].(type) {
+		case []time.Time:
+			if d, ok := dest[i].(*[]time.Time); ok {
+				*d = s
+			}
+		case []float64:
+			if d, ok := dest[i].(*[]float64); ok {
+				*d = s
+			}
+		case []int64:
+			if d, ok := dest[i].(*[]int64); ok {
+				*d = s
+				continue
+			}
+			if d, ok := dest[i].(*[]SeriesID); ok {
+				for _, id := range s {
+					*d = append(*d, SeriesID(id))
+				}
+				continue
+			}
+			return fmt.Errorf("wrong value type []int64")
+		case time.Time:
+			if d, ok := dest[i].(*time.Time); ok {
+				*d = s
+			}
+		case float64:
+			if _, ok := dest[i].(float64); !ok {
+				return fmt.Errorf("wrong value type float64")
+			}
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
-			dvp.SetUint(m.results[m.idx].(uint64))
-		}
-	case string:
-		for i := range dest {
+			dvp.SetFloat(float64(m.results[m.idx][i].(float64)))
+		case int:
+			if _, ok := dest[i].(int); !ok {
+				return fmt.Errorf("wrong value type int")
+			}
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
-			dvp.SetString(m.results[m.idx].(string))
+			dvp.SetInt(int64(m.results[m.idx][i].(int32)))
+		case int32:
+			if _, ok := dest[i].(int32); !ok {
+				return fmt.Errorf("wrong value type int32")
+			}
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetInt(int64(m.results[m.idx][i].(int32)))
+		case uint64:
+			if _, ok := dest[i].(uint64); !ok {
+				return fmt.Errorf("wrong value type uint64")
+			}
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetUint(m.results[m.idx][i].(uint64))
+		case int64:
+			_, ok1 := dest[i].(int64)
+			_, ok2 := dest[i].(*SeriesID)
+			if !ok1 && !ok2 {
+				return fmt.Errorf("wrong value type int64")
+			}
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetInt(m.results[m.idx][i].(int64))
+		case string:
+			if _, ok := dest[i].(*string); !ok {
+				return fmt.Errorf("wrong value type string")
+			}
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetString(m.results[m.idx][i].(string))
 		}
 	}
 
@@ -203,13 +279,13 @@ func (m *mockRows) RawValues() [][]byte {
 	panic("not implemented")
 }
 
-func createSeriesResults(x int32) []interface{} {
-	ret := make([]interface{}, 0, x)
-	var i int32 = 1
+func createSeriesResults(x int64) []rowResults {
+	ret := make([]rowResults, 0, x)
+	var i int64 = 1
 	x++
 
 	for i < x {
-		ret = append(ret, interface{}(i))
+		ret = append(ret, rowResults{{i}})
 		i++
 	}
 
@@ -237,41 +313,41 @@ func createSeries(x int) []*labels.Labels {
 
 func TestPGXInserterInsertSeries(t *testing.T) {
 	testCases := []struct {
-		name        string
-		series      []*labels.Labels
-		queryResult []interface{}
-		queryErr    error
-		callbackErr error
+		name         string
+		series       []*labels.Labels
+		queryResults []rowResults
+		queryErr     map[int]error
+		callbackErr  error
 	}{
 		{
 			name: "Zero series",
 		},
 		{
-			name:        "One series",
-			series:      createSeries(1),
-			queryResult: createSeriesResults(1),
+			name:         "One series",
+			series:       createSeries(1),
+			queryResults: createSeriesResults(1),
 		},
 		{
-			name:        "Two series",
-			series:      createSeries(2),
-			queryResult: createSeriesResults(2),
+			name:         "Two series",
+			series:       createSeries(2),
+			queryResults: createSeriesResults(2),
 		},
 		{
-			name:        "Double series",
-			series:      append(createSeries(2), createSeries(1)...),
-			queryResult: createSeriesResults(2),
+			name:         "Double series",
+			series:       append(createSeries(2), createSeries(1)...),
+			queryResults: createSeriesResults(2),
 		},
 		{
-			name:        "Query err",
-			series:      createSeries(2),
-			queryResult: createSeriesResults(2),
-			queryErr:    fmt.Errorf("some query error"),
+			name:         "Query err",
+			series:       createSeries(2),
+			queryResults: createSeriesResults(2),
+			queryErr:     map[int]error{0: fmt.Errorf("some query error")},
 		},
 		{
-			name:        "callback err",
-			series:      createSeries(2),
-			queryResult: createSeriesResults(2),
-			callbackErr: fmt.Errorf("some callback error"),
+			name:         "callback err",
+			series:       createSeries(2),
+			queryResults: createSeriesResults(2),
+			callbackErr:  fmt.Errorf("some callback error"),
 		},
 	}
 
@@ -279,7 +355,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			mock := &mockPGXConn{
 				QueryErr:     c.queryErr,
-				QueryResults: [][]interface{}{c.queryResult},
+				QueryResults: c.queryResults,
 			}
 			inserter := pgxInserter{conn: mock}
 
@@ -303,23 +379,26 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			err := inserter.InsertSeries(newSeries)
 
 			if err != nil {
-				if c.queryErr != nil {
-					if err != c.queryErr {
-						t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, c.queryErr)
+				switch {
+				case len(c.queryErr) > 0:
+					for _, qErr := range c.queryErr {
+						if err != qErr {
+							t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, qErr)
+						}
 					}
 					return
-				}
-				if c.callbackErr != nil {
+				case c.callbackErr != nil:
 					if err != c.callbackErr {
 						t.Errorf("unexpected callback error:\ngot\n%s\nwanted\n%s", err, c.callbackErr)
 					}
 					return
+				default:
+					t.Errorf("unexpected error: %v", err)
 				}
-				t.Errorf("unexpected error: %v", err)
 			}
 
 			if calls != len(c.series) {
-				t.Errorf("Callback called wrong number of times: got %v expected %c", calls, len(c.series))
+				t.Errorf("Callback called wrong number of times: got %v expected %d", calls, len(c.series))
 			}
 
 			if c.queryErr != nil {
@@ -362,7 +441,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		name           string
 		rows           map[string]*SampleInfoIterator
 		queryNoRows    bool
-		queryErr       error
+		queryErr       map[int]error
 		copyFromResult int64
 		copyFromErr    error
 	}{
@@ -384,7 +463,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name:     "Create table error",
 			rows:     createRows(5),
-			queryErr: fmt.Errorf("create table error"),
+			queryErr: map[int]error{0: fmt.Errorf("create table error")},
 		},
 		{
 			name:        "Copy from error",
@@ -413,9 +492,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 
 			//The database will be queried for metricNames
-			results := [][]interface{}{}
+			results := make([]rowResults, 0, len(c.rows))
 			for metricName := range c.rows {
-				results = append(results, []interface{}{metricName})
+				results = append(results, rowResults{{metricName}})
 
 			}
 			mock.QueryResults = results
@@ -425,28 +504,23 @@ func TestPGXInserterInsertData(t *testing.T) {
 			inserted, err := inserter.InsertData(c.rows)
 
 			if err != nil {
-				if c.copyFromErr != nil {
-					if err != c.copyFromErr {
-						t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s", err, c.copyFromErr)
+				var expErr error
+
+				switch {
+				case c.copyFromErr != nil:
+					expErr = c.copyFromErr
+				case c.queryErr != nil:
+					for _, qErr := range c.queryErr {
+						expErr = qErr
 					}
-					return
+				case c.queryNoRows:
+					expErr = errMissingTableName
 				}
-				if c.queryErr != nil {
-					if err != c.queryErr {
-						t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s", err, c.copyFromErr)
-					}
-					return
+
+				if err != expErr {
+					t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s", err, expErr)
 				}
-				if c.copyFromResult == int64(len(c.rows)) {
-					t.Errorf("unexpected error:\ngot\n%s\nwanted\nnil", err)
-				}
-				if err == errMissingTableName {
-					if !c.queryNoRows {
-						t.Errorf("got missing table name error but query returned a result")
-					}
-					return
-				}
-				t.Errorf("Unexpected error %v", err)
+
 				return
 			}
 
@@ -470,6 +544,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 			for tableName := range c.rows {
 				tNames = append(tNames, pgx.Identifier{dataTableSchema, tableName})
 			}
+
+			// Sorting because range over a map gives random iteration order.
+			sort.Slice(tNames, func(i, j int) bool { return tNames[i][1] < tNames[j][1] })
+			sort.Slice(mock.CopyFromTableName, func(i, j int) bool { return mock.CopyFromTableName[i][1] < mock.CopyFromTableName[j][1] })
 			if !reflect.DeepEqual(mock.CopyFromTableName, tNames) {
 				t.Errorf("unexpected copy table:\ngot\n%s\nwanted\n%s", mock.CopyFromTableName, tNames)
 			}
@@ -489,6 +567,518 @@ func TestPGXInserterInsertData(t *testing.T) {
 				}
 			}
 
+		})
+	}
+}
+
+func TestPGXQuerierQuery(t *testing.T) {
+	j := sampleLabels{}
+	testCases := []struct {
+		name         string
+		query        *prompb.Query
+		result       []*prompb.TimeSeries
+		err          error
+		sqlQueries   []string
+		sqlArgs      [][]interface{}
+		queryResults []rowResults
+		queryErr     map[int]error
+	}{
+		{
+			name: "Error metric name value",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	GROUP BY m.metric_name`},
+			sqlArgs: [][]interface{}{{metricNameLabelName, "bar"}},
+			queryResults: []rowResults{
+				{{1, []int64{}}},
+			},
+			err: fmt.Errorf("wrong value type int"),
+		},
+		{
+			name: "Error invalid JSON",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."foo" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{metricNameLabelName, "bar"},
+				nil,
+			},
+			queryResults: []rowResults{
+				{{"foo", []int64{1}}},
+				{{[]byte("x"), []time.Time{}, []float64{}}},
+			},
+			err: json.Unmarshal([]byte("x"), &j),
+		},
+		{
+			name: "Error first query",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	GROUP BY m.metric_name`},
+			sqlArgs: [][]interface{}{{"__name__", "bar"}},
+			queryResults: []rowResults{
+				{{"{}", []time.Time{}, []float64{}}},
+			},
+			queryErr: map[int]error{0: fmt.Errorf("some error")},
+		},
+		{
+			name: "Error second query",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_NEQ, Name: "foo", Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."foo" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{"foo", "bar"},
+				nil,
+			},
+			queryResults: []rowResults{
+				{{`foo`, []int64{1}}},
+			},
+			queryErr: map[int]error{1: fmt.Errorf("some error")},
+		},
+		{
+			name: "Error scan values",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	GROUP BY m.metric_name`},
+			sqlArgs: [][]interface{}{{"__name__", "bar"}},
+			queryResults: []rowResults{
+				{{0}},
+			},
+			err: fmt.Errorf("scanning error, missing results for scanning: got 1 wanted 2"),
+		},
+		{
+			name:   "Empty query",
+			result: []*prompb.TimeSeries{},
+		},
+		{
+			name: "Simple query, no result",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: "foo", Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
+	GROUP BY m.metric_name`},
+			sqlArgs:      [][]interface{}{{"foo", "bar"}},
+			result:       []*prompb.TimeSeries{},
+			queryResults: []rowResults{},
+		},
+		{
+			name: "Simple query, exclude matcher",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."foo" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{"__name__", "bar"},
+				nil,
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "foo"}},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			queryResults: []rowResults{
+				{{`foo`, []int64{1}}},
+				{{`{"__name__":"foo"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+			},
+		},
+		{
+			name: "Simple query, metric name matcher",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."bar" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{metricNameLabelName, "bar"},
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "bar"}},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			queryResults: []rowResults{
+				{{`{"__name__":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+			},
+		},
+		{
+			name: "Simple query, empty metric name matcher",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_RE, Name: metricNameLabelName, Value: ""},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value !~ $2)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."foo" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."bar" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{"__name__", ""},
+				nil,
+				nil,
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "foo"}},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+				{
+					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "bar"}},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			queryResults: []rowResults{
+				{{"foo", []int64{1}}, {"bar", []int64{1}}},
+				{{`{"__name__":"foo"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{`{"__name__":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+			},
+		},
+		{
+			name: "Simple query, double metric name matcher",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "foo"},
+					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."foo" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."bar" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{"__name__", "foo", "__name__", "bar"},
+				nil,
+				nil,
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "foo"}},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+				{
+					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "bar"}},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			queryResults: []rowResults{
+				{{"foo", []int64{1}}, {"bar", []int64{1}}},
+				{{`{"__name__":"foo"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{`{"__name__":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+			},
+		},
+		{
+			name: "Simple query, no metric name matcher",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: "foo", Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."metric" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1,99,98)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{"foo", "bar"},
+				nil,
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels:  []prompb.Label{{Name: "foo", Value: "bar"}},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			queryResults: []rowResults{
+				{{"metric", []int64{1, 99, 98}}},
+				{{`{"foo":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+			},
+		},
+		{
+			name: "Complex query, multiple matchers",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: "foo", Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: "foo1", Value: "bar1"},
+					{Type: prompb.LabelMatcher_RE, Name: "foo2", Value: "^bar2"},
+					{Type: prompb.LabelMatcher_NRE, Name: "foo3", Value: "bar3$"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."metric" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1,4,5)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{"foo", "bar", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
+				nil,
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: "foo", Value: "bar"},
+						{Name: "foo2", Value: "bar2"},
+					},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			queryResults: []rowResults{
+				{{"metric", []int64{1, 4, 5}}},
+				{{`{"foo":"bar", "foo2":"bar2"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+			},
+		},
+		{
+			name: "Complex query, empty equal matchers",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: "foo", Value: ""},
+					{Type: prompb.LabelMatcher_NEQ, Name: "foo1", Value: "bar1"},
+					{Type: prompb.LabelMatcher_RE, Name: "foo2", Value: "^bar2$"},
+					{Type: prompb.LabelMatcher_NRE, Name: "foo3", Value: "bar3"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
+	GROUP BY m.metric_name`,
+				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."metric" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (1,2)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{"foo", "", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
+				nil,
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: "foo2", Value: "bar2"},
+					},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			queryResults: []rowResults{
+				{{"metric", []int64{1, 2}}},
+				{{`{"foo2":"bar2"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+			},
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			mock := &mockPGXConn{
+				QueryErr:     c.queryErr,
+				QueryResults: c.queryResults,
+			}
+			querier := pgxQuerier{conn: mock}
+
+			result, err := querier.Query(c.query)
+
+			if err != nil {
+				switch {
+				case len(c.queryErr) > 0:
+					for _, qErr := range c.queryErr {
+						if err != qErr {
+							t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s", err, qErr)
+						}
+					}
+				case c.err != nil:
+					if !reflect.DeepEqual(err, c.err) {
+						t.Errorf("unexpected error:\ngot\n%#v\nwanted\n%#v", err, c.err)
+					}
+				default:
+					t.Errorf("unexpected error:\ngot\n%s\nwanted nil", err)
+				}
+			}
+
+			if !reflect.DeepEqual(result, c.result) {
+				t.Errorf("unexpected result:\ngot\n%v\nwanted\n%v", result, c.result)
+			}
+
+			if len(c.sqlQueries) != 0 {
+				if !reflect.DeepEqual(c.sqlQueries, mock.QuerySQLs) {
+					t.Errorf("incorrect sql queries:\ngot\n%#v\nwanted\n%#v\n", mock.QuerySQLs, c.sqlQueries)
+				}
+			} else if len(mock.QuerySQLs) > 0 {
+				t.Errorf("incorrect sql queries:\ngot\n%#v\nwanted none", mock.QuerySQLs)
+			}
+			if len(c.sqlArgs) != 0 {
+				if !reflect.DeepEqual(c.sqlArgs, mock.QueryArgs) {
+					t.Errorf("incorrect sql arguments:\ngot\n%#v\nwanted\n%#v\n", mock.QueryArgs, c.sqlArgs)
+				}
+			} else if len(mock.QueryArgs) > 0 {
+				t.Errorf("incorrect sql arguments:\ngot\n%#v\nwanted none", mock.QueryArgs)
+			}
 		})
 	}
 }
