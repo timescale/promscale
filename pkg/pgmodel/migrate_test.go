@@ -1088,113 +1088,110 @@ func TestSQLQuery(t *testing.T) {
 				}),
 			},
 		},
-		// TODO: doesn't work correctly, need to test and update SQL queries
-		//		{
-		//			name: "one matcher, match empty value",
-		//			readRequest: prompb.ReadRequest{
-		//				Queries: []*prompb.Query{
-		//					{
-		//						Matchers: []*prompb.LabelMatcher{
-		//							{
-		//								Type:  prompb.LabelMatcher_EQ,
-		//								Name:  "empty",
-		//								Value: "",
-		//							},
-		//							{
-		//								Type:  prompb.LabelMatcher_EQ,
-		//								Name:  "common",
-		//								Value: "tag",
-		//							},
-		//						},
-		//						StartTimestampMs: 1,
-		//						EndTimestampMs:   3,
-		//					},
-		//				},
-		//			},
-		//			expectResponse: prompb.ReadResponse{
-		//				Results: createQueryResult([]*prompb.TimeSeries{
-		//					{
-		//						Labels: []prompb.Label{
-		//							{Name: metricNameLabelName, Value: "firstMetric"},
-		//							{Name: "common", Value: "tag"},
-		//							{Name: "empty", Value: ""},
-		//							{Name: "foo", Value: "bar"},
-		//						},
-		//						Samples: []prompb.Sample{
-		//							{Timestamp: 1, Value: 0.1},
-		//							{Timestamp: 2, Value: 0.2},
-		//							{Timestamp: 3, Value: 0.3},
-		//						},
-		//					},
-		//					{
-		//						Labels: []prompb.Label{
-		//							{Name: metricNameLabelName, Value: "secondMetric"},
-		//							{Name: "common", Value: "tag"},
-		//							{Name: "foo", Value: "baz"},
-		//						},
-		//						Samples: []prompb.Sample{
-		//							{Timestamp: 1, Value: 1.1},
-		//							{Timestamp: 2, Value: 1.2},
-		//							{Timestamp: 3, Value: 1.3},
-		//						},
-		//					},
-		//				}),
-		//			},
-		//		},
-		//
-		// TODO: doesn't work correctly, need to test and update SQL queries
-		//		{
-		//			name: "one matcher, regex match empty value",
-		//			readRequest: prompb.ReadRequest{
-		//				Queries: []*prompb.Query{
-		//					{
-		//						Matchers: []*prompb.LabelMatcher{
-		//							{
-		//								Type:  prompb.LabelMatcher_RE,
-		//								Name:  "empty",
-		//								Value: ".*",
-		//							},
-		//							{
-		//								Type:  prompb.LabelMatcher_EQ,
-		//								Name:  "common",
-		//								Value: "tag",
-		//							},
-		//						},
-		//						StartTimestampMs: 1,
-		//						EndTimestampMs:   3,
-		//					},
-		//				},
-		//			},
-		//			expectResponse: prompb.ReadResponse{
-		//				Results: createQueryResult([]*prompb.TimeSeries{
-		//					{
-		//						Labels: []prompb.Label{
-		//							{Name: metricNameLabelName, Value: "firstMetric"},
-		//							{Name: "common", Value: "tag"},
-		//							{Name: "empty", Value: ""},
-		//							{Name: "foo", Value: "bar"},
-		//						},
-		//						Samples: []prompb.Sample{
-		//							{Timestamp: 1, Value: 0.1},
-		//							{Timestamp: 2, Value: 0.2},
-		//							{Timestamp: 3, Value: 0.3},
-		//						},
-		//					},
-		//					{
-		//						Labels: []prompb.Label{
-		//							{Name: metricNameLabelName, Value: "secondMetric"},
-		//							{Name: "common", Value: "tag"},
-		//							{Name: "foo", Value: "baz"},
-		//						},
-		//						Samples: []prompb.Sample{
-		//							{Timestamp: 1, Value: 1.1},
-		//							{Timestamp: 2, Value: 1.2},
-		//							{Timestamp: 3, Value: 1.3},
-		//						},
-		//					},
-		//				}),
-		//			},
-		//		},
+		{
+			name: "one matcher, match empty value",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "empty",
+								Value: "",
+							},
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "common",
+								Value: "tag",
+							},
+						},
+						StartTimestampMs: 1,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 0.1},
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+						},
+					},
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 1.1},
+							{Timestamp: 2, Value: 1.2},
+							{Timestamp: 3, Value: 1.3},
+						},
+					},
+				}),
+			},
+		},
+		{
+			name: "one matcher, regex match empty value",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  "empty",
+								Value: ".*",
+							},
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "common",
+								Value: "tag",
+							},
+						},
+						StartTimestampMs: 1,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 0.1},
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+						},
+					},
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 1.1},
+							{Timestamp: 2, Value: 1.2},
+							{Timestamp: 3, Value: 1.3},
+						},
+					},
+				}),
+			},
+		},
 	}
 
 	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
@@ -1211,7 +1208,7 @@ func TestSQLQuery(t *testing.T) {
 				}
 
 				if !reflect.DeepEqual(resp, &c.expectResponse) {
-					t.Errorf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, &c.expectResponse)
+					t.Fatalf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, &c.expectResponse)
 				}
 
 			})

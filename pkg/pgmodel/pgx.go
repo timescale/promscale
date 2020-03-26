@@ -24,14 +24,14 @@ const (
 	getCreateMetricsTableSQL = "SELECT table_name FROM get_or_create_metric_table_name($1)"
 	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_key_value_array($1, $2, $3)"
 
-	subQueryEQ            = "labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d)"
-	subQueryEQMatchEmpty  = "NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
-	subQueryNEQ           = "NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d) "
-	subQueryNEQMatchEmpty = "labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
-	subQueryRE            = "labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d) "
-	subQueryREMatchEmpty  = "NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
-	subQueryNRE           = "NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
-	subQueryNREMatchEmpty = "labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
+	subQueryEQ            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d)"
+	subQueryEQMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
+	subQueryNEQ           = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d) "
+	subQueryNEQMatchEmpty = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
+	subQueryRE            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d) "
+	subQueryREMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
+	subQueryNRE           = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
+	subQueryNREMatchEmpty = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
 
 	metricNameSeriesIDSQLFormat = `SELECT m.metric_name, array_agg(s.id)
 	FROM _prom_catalog.series s
