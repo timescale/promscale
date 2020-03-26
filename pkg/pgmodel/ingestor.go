@@ -25,6 +25,7 @@ type SeriesID int64
 // Inserter is responsible for inserting label, series and data into the storage.
 type Inserter interface {
 	InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error)
+	Close()
 }
 
 type SeriesWithCallback struct {
@@ -165,4 +166,8 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, m
 	}
 
 	return seriesToInsert, dataSamples, rows, nil
+}
+
+func (i *DBIngestor) Close() {
+	i.db.Close()
 }

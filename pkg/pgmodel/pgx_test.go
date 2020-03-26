@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 type rowResults [][]interface{}
 
 type mockPGXConn struct {
+	insertLock        sync.Mutex
 	DBName            string
 	ExecSQLs          []string
 	ExecArgs          [][]interface{}
@@ -70,9 +72,14 @@ func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}
 }
 
 func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	m.insertLock.Lock()
+	defer m.insertLock.Unlock()
 	m.CopyFromTableName = append(m.CopyFromTableName, tableName)
 	m.CopyFromColumns = append(m.CopyFromColumns, columnNames)
-	m.CopyFromRowSource = append(m.CopyFromRowSource, rowSrc)
+	src := rowSrc.(*SampleInfoIterator)
+	rows := SampleInfoIterator{sampleIndex: -1}
+	rows.sampleInfos = append(rows.sampleInfos, src.sampleInfos...)
+	m.CopyFromRowSource = append(m.CopyFromRowSource, &rows)
 	return m.CopyFromResult, m.CopyFromError
 }
 
@@ -554,7 +561,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 			inserter := pgxInserter{conn: mock, metricTableNames: mockMetrics}
 
-			inserted, err := inserter.InsertData(c.rows)
+			_, err := inserter.InsertData(c.rows)
 
 			if err != nil {
 				var expErr error
@@ -583,10 +590,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 
 			if c.copyFromErr != nil {
 				t.Errorf("expected error:\ngot\nnil\nwanted\n%s", c.copyFromErr)
-			}
-
-			if inserted != uint64(c.copyFromResult) {
-				t.Errorf("unexpected number of inserted rows:\ngot\n%d\nwanted\n%d", inserted, c.copyFromResult)
 			}
 
 			if len(c.rows) == 0 {

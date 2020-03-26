@@ -41,6 +41,10 @@ type mockInserter struct {
 	insertDataErr   error
 }
 
+func (m *mockInserter) Close() {
+
+}
+
 func (m *mockInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error) {
 
 	err := m.InsertSeries(newSeries)

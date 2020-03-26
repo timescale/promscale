@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/allegro/bigcache"
@@ -169,8 +170,16 @@ func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
 }
 
 type pgxInserter struct {
-	conn             pgxConn
-	metricTableNames MetricCache
+	conn                 pgxConn
+	metricTableNames     MetricCache
+	metricTableInserters sync.Map
+}
+
+func (p *pgxInserter) Close() {
+	p.metricTableInserters.Range(func(key, value interface{}) bool {
+		close(value.(chan insertDataRequest))
+		return true
+	})
 }
 
 func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error) {
@@ -250,28 +259,51 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 	return nil
 }
 
+type insertDataRequest struct {
+	data     *SampleInfoIterator
+	finished *sync.WaitGroup
+	errChan  chan error
+}
+
+type insertDataTask struct {
+	finished *sync.WaitGroup
+	errChan  chan error
+}
+
 func (p *pgxInserter) InsertData(rows map[string]*SampleInfoIterator) (uint64, error) {
-	var result uint64
-	var err error
-	var tableName string
-	for metricName, data := range rows {
-		tableName, err = p.getMetricTableName(metricName)
+	// check that all the metrics are valid, we don't want to deadlock waiting
+	// on an Insert to a metric that does not exist
+	for metricName := range rows {
+		_, err := p.getMetricTableName(metricName)
 		if err != nil {
-			return result, err
+			return 0, err
 		}
-		inserted, err := p.conn.CopyFrom(
-			context.Background(),
-			pgx.Identifier{promSchema, tableName},
-			copyColumns,
-			data,
-		)
-		if err != nil {
-			return result, err
-		}
-		result = result + uint64(inserted)
 	}
 
-	return result, nil
+	var numRows uint64
+	workFinished := &sync.WaitGroup{}
+	workFinished.Add(len(rows))
+	errChan := make(chan error, 1)
+	for metricName, data := range rows {
+		for _, si := range data.sampleInfos {
+			numRows += uint64(len(si.samples))
+		}
+		p.insertMetricData(metricName, data, workFinished, errChan)
+	}
+
+	workFinished.Wait()
+	var err error
+	select {
+	case err = <-errChan:
+	default:
+	}
+
+	return numRows, err
+}
+
+func (p *pgxInserter) insertMetricData(metric string, data *SampleInfoIterator, finished *sync.WaitGroup, errChan chan error) {
+	inserter := p.getMetricTableInserter(metric)
+	inserter <- insertDataRequest{data: data, finished: finished, errChan: errChan}
 }
 
 func (p *pgxInserter) createMetricTable(metric string) (string, error) {
@@ -321,6 +353,78 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	err = p.metricTableNames.Set(metric, tableName)
 
 	return tableName, err
+}
+
+func (p *pgxInserter) getMetricTableInserter(metric string) chan insertDataRequest {
+	var inserterI interface{}
+	var ok bool
+	var inserter chan insertDataRequest
+	if inserterI, ok = p.metricTableInserters.Load(metric); !ok {
+		ch := make(chan insertDataRequest, 1000)
+		ii, loaded := p.metricTableInserters.LoadOrStore(metric, ch)
+		inserterI = ii
+		if !loaded {
+			go p.metricTableInsert(metric, ch)
+		}
+
+	}
+	inserter = inserterI.(chan insertDataRequest)
+
+	return inserter
+}
+
+func (p *pgxInserter) metricTableInsert(metric string, input chan insertDataRequest) {
+	tableName, err := p.getMetricTableName(metric)
+	if err != nil {
+		return
+	}
+
+	batch := SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0}
+
+	const batchSize int = 1000
+
+	var needsResponse []insertDataTask
+
+	for {
+		req, ok := <-input
+		if !ok {
+			return
+		}
+		needsResponse = append(needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
+		batch.sampleInfos = append(batch.sampleInfos, req.data.sampleInfos...)
+
+	TryReadMore:
+		for len(batch.sampleInfos) < batchSize {
+			select {
+			case req := <-input:
+				needsResponse = append(needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
+				batch.sampleInfos = append(batch.sampleInfos, req.data.sampleInfos...)
+			default:
+				break TryReadMore
+			}
+		}
+		_, err := p.conn.CopyFrom(
+			context.Background(),
+			pgx.Identifier{promSchema, tableName},
+			copyColumns,
+			&batch,
+		)
+		for i := 0; i < len(batch.sampleInfos); i++ {
+			batch.sampleInfos[i] = nil
+		}
+		batch = SampleInfoIterator{sampleInfos: batch.sampleInfos[:0], sampleIndex: -1, sampleInfoIndex: 0}
+		for i := 0; i < len(needsResponse); i++ {
+			if err != nil {
+				select {
+				case needsResponse[i].errChan <- err:
+				default:
+				}
+			}
+			needsResponse[i].finished.Done()
+			needsResponse[i] = insertDataTask{}
+		}
+		needsResponse = needsResponse[:0]
+	}
 }
 
 // NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
