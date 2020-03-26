@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -733,6 +734,30 @@ func TestPGXQuerierQuery(t *testing.T) {
 			sqlArgs:      [][]interface{}{{"foo", "bar"}},
 			result:       []*prompb.TimeSeries{},
 			queryResults: []rowResults{},
+		},
+		{
+			name: "Simple query, metric doesn't exist",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	FROM "prom"."bar" m
+	INNER JOIN _prom_catalog.series s
+	ON m.series_id = s.id
+	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
+	AND time >= '1970-01-01T00:00:01Z'
+	AND time <= '1970-01-01T00:00:02Z'
+	GROUP BY s.id`},
+			sqlArgs: [][]interface{}{
+				{metricNameLabelName, "bar"},
+			},
+			result:       []*prompb.TimeSeries{},
+			queryResults: []rowResults{},
+			queryErr:     map[int]error{0: &pgconn.PgError{Code: pgerrcode.UndefinedTable}},
 		},
 		{
 			name: "Simple query, exclude matcher",

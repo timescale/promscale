@@ -13,6 +13,7 @@ import (
 
 	"github.com/allegro/bigcache"
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -297,6 +298,19 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	return tableName, nil
 }
 
+// NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX
+func NewPgxReader(c *pgxpool.Pool) *DBReader {
+	pi := &pgxQuerier{
+		conn: &pgxConnImpl{
+			conn: c,
+		},
+	}
+
+	return &DBReader{
+		db: pi,
+	}
+}
+
 type metricTimeRangeFilter struct {
 	metric    string
 	startTime string
@@ -318,8 +332,8 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 	filter := metricTimeRangeFilter{
 		metric:    metric,
-		startTime: toRFC3339(query.StartTimestampMs),
-		endTime:   toRFC3339(query.EndTimestampMs),
+		startTime: toRFC3339Nano(query.StartTimestampMs),
+		endTime:   toRFC3339Nano(query.EndTimestampMs),
 	}
 
 	if metric != "" {
@@ -327,7 +341,11 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 
 		if err != nil {
-			return nil, err
+			// If we are getting undefined table error, it means the query
+			// is looking for a metric which doesn't exist in the system.
+			if e, ok := err.(*pgconn.PgError); !ok || e.Code != pgerrcode.UndefinedTable {
+				return nil, err
+			}
 		}
 
 		defer rows.Close()
@@ -573,14 +591,20 @@ func (q *pgxQuerier) getSeriesPerMetric(rows pgx.Rows) ([]string, [][]SeriesID, 
 	for rows.Next() {
 		var (
 			metricName string
-			seriesIDs  []SeriesID
+			seriesIDs  []int64
 		)
 		if err := rows.Scan(&metricName, &seriesIDs); err != nil {
 			return nil, nil, err
 		}
 
+		sIDs := make([]SeriesID, 0, len(seriesIDs))
+
+		for _, v := range seriesIDs {
+			sIDs = append(sIDs, SeriesID(v))
+		}
+
 		metrics = append(metrics, metricName)
-		series = append(series, seriesIDs)
+		series = append(series, sIDs)
 	}
 
 	return metrics, series, nil
@@ -671,11 +695,11 @@ func (l *sampleLabels) len() int {
 }
 
 func toMilis(t time.Time) int64 {
-	return t.UnixNano() / 1000
+	return t.UnixNano() / 1e6
 }
 
-func toRFC3339(milliseconds int64) string {
+func toRFC3339Nano(milliseconds int64) string {
 	sec := milliseconds / 1000
 	nsec := (milliseconds - (sec * 1000)) * 1000000
-	return time.Unix(sec, nsec).UTC().Format(time.RFC3339)
+	return time.Unix(sec, nsec).UTC().Format(time.RFC3339Nano)
 }

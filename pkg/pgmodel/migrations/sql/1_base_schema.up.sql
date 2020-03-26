@@ -12,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 -----------------------
 
 CREATE TABLE _prom_catalog.series (
-    id bigserial,
+    id bigserial PRIMARY KEY,
     metric_id int,
     labels int[],
     UNIQUE(labels) INCLUDE (id)

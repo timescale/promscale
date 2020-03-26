@@ -764,6 +764,519 @@ func TestSQLIngest(t *testing.T) {
 	}
 }
 
+func TestSQLQuery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	testCases := []struct {
+		name           string
+		readRequest    prompb.ReadRequest
+		expectResponse prompb.ReadResponse
+		expectErr      error
+	}{
+		{
+			name:        "empty request",
+			readRequest: prompb.ReadRequest{},
+			expectResponse: prompb.ReadResponse{
+				Results: make([]*prompb.QueryResult, 0),
+			},
+		},
+		{
+			name: "empty response",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  metricNameLabelName,
+								Value: "nonExistantMetric",
+							},
+						},
+						StartTimestampMs: 1,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{}),
+			},
+		},
+		{
+			name: "one matcher, exact metric",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  metricNameLabelName,
+								Value: "firstMetric",
+							},
+						},
+						StartTimestampMs: 1,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 0.1},
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+						},
+					},
+				}),
+			},
+		},
+		{
+			name: "one matcher, regex metric",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  metricNameLabelName,
+								Value: "first.*",
+							},
+						},
+						StartTimestampMs: 1,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 0.1},
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+						},
+					},
+				}),
+			},
+		},
+		{
+			name: "one matcher, no exact metric",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_NEQ,
+								Name:  metricNameLabelName,
+								Value: "firstMetric",
+							},
+						},
+						StartTimestampMs: 1,
+						EndTimestampMs:   1,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 1.1},
+						},
+					},
+				}),
+			},
+		},
+		{
+			name: "one matcher, not regex metric",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_NRE,
+								Name:  metricNameLabelName,
+								Value: "first.*",
+							},
+						},
+						StartTimestampMs: 1,
+						EndTimestampMs:   2,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 1.1},
+							{Timestamp: 2, Value: 1.2},
+						},
+					},
+				}),
+			},
+		},
+		{
+			name: "one matcher, both metrics",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "common",
+								Value: "tag",
+							},
+						},
+						StartTimestampMs: 2,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+						},
+					},
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 2, Value: 1.2},
+							{Timestamp: 3, Value: 1.3},
+						},
+					},
+				}),
+			},
+		},
+		{
+			name: "two matchers",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "common",
+								Value: "tag",
+							},
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  metricNameLabelName,
+								Value: ".*Metric",
+							},
+						},
+						StartTimestampMs: 2,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+						},
+					},
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 2, Value: 1.2},
+							{Timestamp: 3, Value: 1.3},
+						},
+					},
+				}),
+			},
+		},
+		{
+			name: "three matchers",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "common",
+								Value: "tag",
+							},
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  "foo",
+								Value: "bar|baz",
+							},
+							{
+								Type:  prompb.LabelMatcher_NRE,
+								Name:  metricNameLabelName,
+								Value: "non-existant",
+							},
+						},
+						StartTimestampMs: 2,
+						EndTimestampMs:   3,
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+						},
+					},
+					{
+						Labels: []prompb.Label{
+							{Name: metricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 2, Value: 1.2},
+							{Timestamp: 3, Value: 1.3},
+						},
+					},
+				}),
+			},
+		},
+		// TODO: doesn't work correctly, need to test and update SQL queries
+		//		{
+		//			name: "one matcher, match empty value",
+		//			readRequest: prompb.ReadRequest{
+		//				Queries: []*prompb.Query{
+		//					{
+		//						Matchers: []*prompb.LabelMatcher{
+		//							{
+		//								Type:  prompb.LabelMatcher_EQ,
+		//								Name:  "empty",
+		//								Value: "",
+		//							},
+		//							{
+		//								Type:  prompb.LabelMatcher_EQ,
+		//								Name:  "common",
+		//								Value: "tag",
+		//							},
+		//						},
+		//						StartTimestampMs: 1,
+		//						EndTimestampMs:   3,
+		//					},
+		//				},
+		//			},
+		//			expectResponse: prompb.ReadResponse{
+		//				Results: createQueryResult([]*prompb.TimeSeries{
+		//					{
+		//						Labels: []prompb.Label{
+		//							{Name: metricNameLabelName, Value: "firstMetric"},
+		//							{Name: "common", Value: "tag"},
+		//							{Name: "empty", Value: ""},
+		//							{Name: "foo", Value: "bar"},
+		//						},
+		//						Samples: []prompb.Sample{
+		//							{Timestamp: 1, Value: 0.1},
+		//							{Timestamp: 2, Value: 0.2},
+		//							{Timestamp: 3, Value: 0.3},
+		//						},
+		//					},
+		//					{
+		//						Labels: []prompb.Label{
+		//							{Name: metricNameLabelName, Value: "secondMetric"},
+		//							{Name: "common", Value: "tag"},
+		//							{Name: "foo", Value: "baz"},
+		//						},
+		//						Samples: []prompb.Sample{
+		//							{Timestamp: 1, Value: 1.1},
+		//							{Timestamp: 2, Value: 1.2},
+		//							{Timestamp: 3, Value: 1.3},
+		//						},
+		//					},
+		//				}),
+		//			},
+		//		},
+		//
+		// TODO: doesn't work correctly, need to test and update SQL queries
+		//		{
+		//			name: "one matcher, regex match empty value",
+		//			readRequest: prompb.ReadRequest{
+		//				Queries: []*prompb.Query{
+		//					{
+		//						Matchers: []*prompb.LabelMatcher{
+		//							{
+		//								Type:  prompb.LabelMatcher_RE,
+		//								Name:  "empty",
+		//								Value: ".*",
+		//							},
+		//							{
+		//								Type:  prompb.LabelMatcher_EQ,
+		//								Name:  "common",
+		//								Value: "tag",
+		//							},
+		//						},
+		//						StartTimestampMs: 1,
+		//						EndTimestampMs:   3,
+		//					},
+		//				},
+		//			},
+		//			expectResponse: prompb.ReadResponse{
+		//				Results: createQueryResult([]*prompb.TimeSeries{
+		//					{
+		//						Labels: []prompb.Label{
+		//							{Name: metricNameLabelName, Value: "firstMetric"},
+		//							{Name: "common", Value: "tag"},
+		//							{Name: "empty", Value: ""},
+		//							{Name: "foo", Value: "bar"},
+		//						},
+		//						Samples: []prompb.Sample{
+		//							{Timestamp: 1, Value: 0.1},
+		//							{Timestamp: 2, Value: 0.2},
+		//							{Timestamp: 3, Value: 0.3},
+		//						},
+		//					},
+		//					{
+		//						Labels: []prompb.Label{
+		//							{Name: metricNameLabelName, Value: "secondMetric"},
+		//							{Name: "common", Value: "tag"},
+		//							{Name: "foo", Value: "baz"},
+		//						},
+		//						Samples: []prompb.Sample{
+		//							{Timestamp: 1, Value: 1.1},
+		//							{Timestamp: 2, Value: 1.2},
+		//							{Timestamp: 3, Value: 1.3},
+		//						},
+		//					},
+		//				}),
+		//			},
+		//		},
+	}
+
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+		// Ingest test dataset.
+		ingestQueryTestDataset(db, t)
+
+		r := NewPgxReader(db)
+		for _, c := range testCases {
+			t.Run(c.name, func(t *testing.T) {
+				resp, err := r.Read(&c.readRequest)
+
+				if err != nil && err != c.expectErr {
+					t.Fatalf("unexpected error returned:\ngot\n%s\nwanted\n%s", err, c.expectErr)
+				}
+
+				if !reflect.DeepEqual(resp, &c.expectResponse) {
+					t.Errorf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, &c.expectResponse)
+				}
+
+			})
+		}
+	})
+}
+
+func createQueryResult(ts []*prompb.TimeSeries) []*prompb.QueryResult {
+	return []*prompb.QueryResult{
+		{
+			Timeseries: ts,
+		},
+	}
+}
+
+func ingestQueryTestDataset(db *pgxpool.Pool, t *testing.T) {
+	metrics := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: metricNameLabelName, Value: "firstMetric"},
+				{Name: "foo", Value: "bar"},
+				{Name: "common", Value: "tag"},
+				{Name: "empty", Value: ""},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 0.1},
+				{Timestamp: 2, Value: 0.2},
+				{Timestamp: 3, Value: 0.3},
+				{Timestamp: 4, Value: 0.4},
+				{Timestamp: 5, Value: 0.5},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: metricNameLabelName, Value: "secondMetric"},
+				{Name: "foo", Value: "baz"},
+				{Name: "common", Value: "tag"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 1.1},
+				{Timestamp: 2, Value: 1.2},
+				{Timestamp: 3, Value: 1.3},
+				{Timestamp: 4, Value: 1.4},
+				{Timestamp: 5, Value: 1.5},
+			},
+		},
+	}
+	ingestor := NewPgxIngestor(db)
+	cnt, err := ingestor.Ingest(metrics)
+
+	if err != nil {
+		t.Fatalf("unexpected error while ingesting test dataset: %s", err)
+	}
+
+	expectedCount := 0
+
+	for _, ts := range metrics {
+		expectedCount = expectedCount + len(ts.Samples)
+	}
+
+	if cnt != uint64(expectedCount) {
+		t.Fatalf("wrong amount of metrics ingested: got %d, wanted %d", cnt, expectedCount)
+	}
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
