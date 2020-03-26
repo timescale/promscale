@@ -310,6 +310,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			},
 		}
 		ingestor := NewPgxIngestor(db)
+		defer ingestor.Close()
 		_, err := ingestor.Ingest(ts)
 		if err != nil {
 			t.Fatal(err)
@@ -392,6 +393,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			},
 		}
 		ingestor := NewPgxIngestor(db)
+		defer ingestor.Close()
 		_, err := ingestor.Ingest(ts)
 		if err != nil {
 			t.Fatal(err)
@@ -821,10 +823,12 @@ func TestSQLIngest(t *testing.T) {
 			t.Parallel()
 			withDB(t, databaseName, func(db *pgxpool.Pool, t *testing.T) {
 				ingestor := NewPgxIngestor(db)
+				defer ingestor.Close()
 				cnt, err := ingestor.Ingest(tcase.metrics)
 				if cnt != tcase.count {
 					t.Fatalf("counts not equal: got %v expected %v\n", cnt, tcase.count)
 				}
+
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
 				}
@@ -850,6 +854,7 @@ func TestSQLIngest(t *testing.T) {
 					}
 					totalRows += rowsInTable
 				}
+
 				if totalRows != int(cnt) {
 					t.Fatalf("counts not equal: got %v expected %v\n", totalRows, cnt)
 				}
@@ -1360,6 +1365,7 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t *testing.T) {
 		},
 	}
 	ingestor := NewPgxIngestor(db)
+	defer ingestor.Close()
 	cnt, err := ingestor.Ingest(metrics)
 
 	if err != nil {
@@ -1421,6 +1427,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 		}
 		ingestor := NewPgxIngestor(db)
+		defer ingestor.Close()
 		_, err := ingestor.Ingest(ts)
 		if err != nil {
 			t.Error(err)
@@ -1505,6 +1512,7 @@ func TestSQLDropChunk(t *testing.T) {
 			},
 		}
 		ingestor := NewPgxIngestor(db)
+		defer ingestor.Close()
 		_, err := ingestor.Ingest(ts)
 		if err != nil {
 			t.Error(err)

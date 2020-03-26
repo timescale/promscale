@@ -135,6 +135,7 @@ func main() {
 		log.Error(err)
 		os.Exit(1)
 	}
+	defer client.Close()
 
 	elector = initElector(cfg)
 
