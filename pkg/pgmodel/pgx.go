@@ -21,8 +21,11 @@ import (
 )
 
 const (
-	getCreateMetricsTableSQL = "SELECT table_name FROM get_or_create_metric_table_name($1)"
-	getSeriesIDForLabelSQL   = "SELECT get_series_id_for_key_value_array($1, $2, $3)"
+	promSchema    = "prom"
+	catalogSchema = "_prom_catalog"
+
+	getCreateMetricsTableSQL = "SELECT table_name FROM " + promSchema + ".get_or_create_metric_table_name($1)"
+	getSeriesIDForLabelSQL   = "SELECT " + promSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
 
 	subQueryEQ            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d)"
 	subQueryEQMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
@@ -40,7 +43,7 @@ const (
 	WHERE %s
 	GROUP BY m.metric_name`
 
-	timeseriesByMetricSQLFormat = `SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesByMetricSQLFormat = `SELECT ` + promSchema + `.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM %s m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -49,7 +52,7 @@ const (
 	AND time <= '%s'
 	GROUP BY s.id`
 
-	timeseriesBySeriesIDsSQLFormat = `SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesBySeriesIDsSQLFormat = `SELECT ` + promSchema + `.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM %s m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -57,8 +60,6 @@ const (
 	AND time >= '%s'
 	AND time <= '%s'
 	GROUP BY s.id`
-
-	dataTableSchema = "prom"
 )
 
 var (
@@ -243,7 +244,7 @@ func (p *pgxInserter) InsertData(rows map[string]*SampleInfoIterator) (uint64, e
 		}
 		inserted, err := p.conn.CopyFrom(
 			context.Background(),
-			pgx.Identifier{dataTableSchema, tableName},
+			pgx.Identifier{promSchema, tableName},
 			copyColumns,
 			data,
 		)
@@ -563,7 +564,7 @@ func (q *pgxQuerier) buildMetricNameSeriesIDQuery(cases []string) string {
 func (q *pgxQuerier) buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string) string {
 	return fmt.Sprintf(
 		timeseriesByMetricSQLFormat,
-		pgx.Identifier{dataTableSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{promSchema, filter.metric}.Sanitize(),
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
@@ -577,7 +578,7 @@ func (q *pgxQuerier) buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter
 	}
 	return fmt.Sprintf(
 		timeseriesBySeriesIDsSQLFormat,
-		pgx.Identifier{dataTableSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{promSchema, filter.metric}.Sanitize(),
 		strings.Join(s, ","),
 		filter.startTime,
 		filter.endTime,

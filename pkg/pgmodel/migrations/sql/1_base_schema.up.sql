@@ -1,25 +1,23 @@
 --NOTES
 --This code assumes that table names can only be 63 chars long
 
-CREATE SCHEMA _prom_catalog;
-CREATE SCHEMA _prom_internal;
-CREATE SCHEMA prom; --data tables go here
+CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
+CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- data tables + public functions
 
-CREATE EXTENSION IF NOT EXISTS timescaledb;
-
+CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 -----------------------
 -- Table definitions --
 -----------------------
 
-CREATE TABLE _prom_catalog.series (
+CREATE TABLE SCHEMA_CATALOG.series (
     id bigserial PRIMARY KEY,
     metric_id int,
     labels int[],
     UNIQUE(labels) INCLUDE (id)
 );
-CREATE INDEX series_labels_id ON _prom_catalog.series USING GIN (labels);
+CREATE INDEX series_labels_id ON SCHEMA_CATALOG.series USING GIN (labels);
 
-CREATE TABLE _prom_catalog.label (
+CREATE TABLE SCHEMA_CATALOG.label (
     id serial,
     key TEXT,
     value text,
@@ -27,15 +25,15 @@ CREATE TABLE _prom_catalog.label (
     UNIQUE (key, value) INCLUDE (id)
 );
 
-CREATE TABLE _prom_catalog.label_key_position (
+CREATE TABLE SCHEMA_CATALOG.label_key_position (
     metric text,
     key TEXT,
     pos int,
     UNIQUE (metric, key) INCLUDE (pos)
 );
-CREATE INDEX ON _prom_catalog.label_key_position(metric, key) INCLUDE (pos);
+CREATE INDEX ON SCHEMA_CATALOG.label_key_position(metric, key) INCLUDE (pos);
 
-CREATE TABLE _prom_catalog.metric (
+CREATE TABLE SCHEMA_CATALOG.metric (
     id SERIAL PRIMARY KEY,
     metric_name text,
     table_name name,
@@ -44,50 +42,50 @@ CREATE TABLE _prom_catalog.metric (
     UNIQUE(table_name)
 );
 
-CREATE TABLE _prom_catalog.default (
+CREATE TABLE SCHEMA_CATALOG.default (
     key TEXT PRIMARY KEY,
     value TEXT
 );
 
-INSERT INTO _prom_catalog.default(key,value) VALUES ('chunk_interval', (INTERVAL '8 hours')::text);
+INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES ('chunk_interval', (INTERVAL '8 hours')::text);
 
-CREATE OR REPLACE FUNCTION _prom_internal.get_default_chunk_interval()
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_chunk_interval()
     RETURNS INTERVAL
 AS $func$
-    SELECT value::INTERVAL FROM _prom_catalog.default WHERE key='chunk_interval';
+    SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='chunk_interval';
 $func$
 LANGUAGE sql STABLE PARALLEL SAFE;
 
 
-CREATE OR REPLACE FUNCTION _prom_internal.make_metric_table()
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
     RETURNS trigger
     AS $func$
 DECLARE
 BEGIN
-   EXECUTE format('CREATE TABLE prom.%I(time TIMESTAMPTZ, value DOUBLE PRECISION, series_id INT)',
+   EXECUTE format('CREATE TABLE SCHEMA_PROM.%I(time TIMESTAMPTZ, value DOUBLE PRECISION, series_id INT)',
                     NEW.table_name);
-   EXECUTE format('CREATE INDEX ON prom.%I (series_id, time) INCLUDE (value)',
+   EXECUTE format('CREATE INDEX ON SCHEMA_PROM.%I (series_id, time) INCLUDE (value)',
                     NEW.table_name);
-   PERFORM create_hypertable(format('prom.%I', NEW.table_name), 'time',
-                             chunk_time_interval=>_prom_internal.get_default_chunk_interval());
+   PERFORM create_hypertable(format('SCHEMA_PROM.%I', NEW.table_name), 'time',
+                             chunk_time_interval=>SCHEMA_CATALOG.get_default_chunk_interval());
    EXECUTE format($$
-     ALTER TABLE prom.%I SET (
+     ALTER TABLE SCHEMA_PROM.%I SET (
         timescaledb.compress,
         timescaledb.compress_segmentby = 'series_id',
         timescaledb.compress_orderby = 'time'
     ); $$, NEW.table_name);
 
    --chunks where the end time is before now()-10 minutes will be compressed
-   PERFORM add_compress_chunks_policy(format('prom.%I', NEW.table_name), INTERVAL '10 minutes');
+   PERFORM add_compress_chunks_policy(format('SCHEMA_PROM.%I', NEW.table_name), INTERVAL '10 minutes');
    RETURN NEW;
 END
 $func$
 LANGUAGE plpgsql;
 
 CREATE TRIGGER make_metric_table_trigger
-    AFTER INSERT ON _prom_catalog.metric
+    AFTER INSERT ON SCHEMA_CATALOG.metric
     FOR EACH ROW
-    EXECUTE PROCEDURE _prom_internal.make_metric_table();
+    EXECUTE PROCEDURE SCHEMA_CATALOG.make_metric_table();
 
 
 
@@ -98,7 +96,7 @@ CREATE TRIGGER make_metric_table_trigger
 
 -- Return a table name built from a metric_name and a suffix.
 -- The metric name is truncated so that the suffix could fit in full.
-CREATE OR REPLACE FUNCTION _prom_internal.metric_table_name_with_suffix(
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_table_name_with_suffix(
         metric_name text, suffix text)
     RETURNS name
 AS $func$
@@ -109,9 +107,9 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 -- Return a new name for a metric table.
 -- This tries to use the metric table in full. But if the
 -- metric name doesn't fit, generates a new unique name.
--- Note that this can use up the next val of _prom_catalog.metric_name_suffx
+-- Note that this can use up the next val of SCHEMA_CATALOG.metric_name_suffx
 -- so it should be called only if a table does not yet exist.
-CREATE OR REPLACE FUNCTION _prom_internal.new_metric_table_name(
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.new_metric_table_name(
         metric_name_arg text, metric_id int)
     RETURNS name
 AS $func$
@@ -119,7 +117,7 @@ AS $func$
         WHEN char_length(metric_name_arg) < 63 THEN
             metric_name_arg::name
         ELSE
-            _prom_internal.metric_table_name_with_suffix(
+            SCHEMA_CATALOG.metric_table_name_with_suffix(
                 metric_name_arg, metric_id::text
             )
         END
@@ -129,20 +127,20 @@ LANGUAGE sql VOLATILE PARALLEL SAFE;
 --Creates a new table for a given metric name.
 --This uses up some sequences so should only be called
 --If the table does not yet exist.
-CREATE OR REPLACE FUNCTION _prom_internal.create_metric_table(
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_table(
         metric_name_arg text, OUT id int, OUT table_name name)
 AS $func$
 DECLARE
   new_id int;
 BEGIN
-new_id = nextval(pg_get_serial_sequence('_prom_catalog.metric','id'))::int;
+new_id = nextval(pg_get_serial_sequence('SCHEMA_CATALOG.metric','id'))::int;
 LOOP
-    INSERT INTO _prom_catalog.metric (id, metric_name, table_name)
+    INSERT INTO SCHEMA_CATALOG.metric (id, metric_name, table_name)
         SELECT  new_id,
                 metric_name_arg,
-                _prom_internal.new_metric_table_name(metric_name_arg, new_id)
+                SCHEMA_CATALOG.new_metric_table_name(metric_name_arg, new_id)
     ON CONFLICT DO NOTHING
-    RETURNING _prom_catalog.metric.id, _prom_catalog.metric.table_name
+    RETURNING SCHEMA_CATALOG.metric.id, SCHEMA_CATALOG.metric.table_name
     INTO id, table_name;
     -- under high concurrency the insert may not return anything, so try a select and loop
     -- https://stackoverflow.com/a/15950324
@@ -150,7 +148,7 @@ LOOP
 
     SELECT m.id, m.table_name
     INTO id, table_name
-    FROM _prom_catalog.metric m
+    FROM SCHEMA_CATALOG.metric m
     WHERE metric_name = metric_name_arg;
 
     EXIT WHEN FOUND;
@@ -162,7 +160,7 @@ LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
 -- Get a new label array position for a label key. For any metric,
 -- we want the positions to be as compact as possible.
 -- This uses some pretty heavy locks so use sparingly.
-CREATE OR REPLACE FUNCTION _prom_internal.get_new_pos_for_key(
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(
         metric_name text, key_name text)
     RETURNS int
 AS $func$
@@ -176,7 +174,7 @@ BEGIN
     SELECT
         pos
     FROM
-        _prom_catalog.label_key_position
+        SCHEMA_CATALOG.label_key_position
     WHERE
         metric = metric_name
         AND KEY = key_name
@@ -187,16 +185,16 @@ BEGIN
     END IF;
 
     SELECT table_name
-    FROM get_or_create_metric_table_name(metric_name)
+    FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)
     INTO metric_table;
     --lock as for ALTER TABLE because we are in effect changing the schema here
     --also makes sure the next_position below is correct in terms of concurrency
-    EXECUTE format('LOCK TABLE prom.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
+    EXECUTE format('LOCK TABLE SCHEMA_PROM.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
     --second check after lock
     SELECT
         pos
     FROM
-        _prom_catalog.label_key_position
+        SCHEMA_CATALOG.label_key_position
     WHERE
         metric = metric_name
         AND KEY = key_name INTO position;
@@ -208,7 +206,7 @@ BEGIN
     SELECT
         max(pos) + 1
     FROM
-        _prom_catalog.label_key_position
+        SCHEMA_CATALOG.label_key_position
     WHERE
         metric = metric_name INTO next_position;
 
@@ -216,7 +214,7 @@ BEGIN
         next_position := 1; -- 1-indexed arrays
     END IF;
 
-    INSERT INTO _prom_catalog.label_key_position
+    INSERT INTO SCHEMA_CATALOG.label_key_position
         VALUES (metric_name, key_name, next_position)
     ON CONFLICT
         DO NOTHING
@@ -232,16 +230,16 @@ $func$
 LANGUAGE plpgsql;
 
 --should only be called after a check that that the label doesn't exist
-CREATE OR REPLACE FUNCTION _prom_internal.get_new_label_id(key_name text, value_name text, OUT id INT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
 AS $func$
 BEGIN
 LOOP
     INSERT INTO
-        _prom_catalog.label(key, value)
+        SCHEMA_CATALOG.label(key, value)
     VALUES
         (key_name,value_name)
     ON CONFLICT DO NOTHING
-    RETURNING _prom_catalog.label.id
+    RETURNING SCHEMA_CATALOG.label.id
     INTO id;
 
     EXIT WHEN FOUND;
@@ -249,7 +247,7 @@ LOOP
     SELECT
         l.id
     INTO id
-    FROM _prom_catalog.label l
+    FROM SCHEMA_CATALOG.label l
     WHERE
         key = key_name AND
         value = value_name;
@@ -262,14 +260,14 @@ LANGUAGE PLPGSQL;
 
 --wrapper around jsonb_each_text to give a better row_estimate
 --for labels (10 not 100)
-CREATE OR REPLACE FUNCTION _prom_internal.label_jsonb_each_text(js jsonb,  OUT key text, OUT value text)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_jsonb_each_text(js jsonb,  OUT key text, OUT value text)
  RETURNS SETOF record
  LANGUAGE internal
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
 AS $function$jsonb_each_text$function$;
 
 --wrapper around unnest to give better row estimate (10 not 100)
-CREATE OR REPLACE FUNCTION _prom_internal.label_unnest(label_array anyarray)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_unnest(label_array anyarray)
  RETURNS SETOF anyelement
  LANGUAGE internal
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
@@ -282,22 +280,22 @@ AS $function$array_unnest$function$;
 
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
-CREATE OR REPLACE FUNCTION get_or_create_metric_table_name(
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_metric_table_name(
         metric_name text)
     RETURNS TABLE (id int, table_name name)
 AS $func$
    SELECT id, table_name::name
-   FROM _prom_catalog.metric m
+   FROM SCHEMA_CATALOG.metric m
    WHERE m.metric_name = get_or_create_metric_table_name.metric_name
    UNION ALL
    SELECT *
-   FROM _prom_internal.create_metric_table(get_or_create_metric_table_name.metric_name)
+   FROM SCHEMA_CATALOG.create_metric_table(get_or_create_metric_table_name.metric_name)
    LIMIT 1
 $func$
 LANGUAGE sql VOLATILE PARALLEL SAFE;
 
 --public function to get the array position for a label key
-CREATE OR REPLACE FUNCTION get_label_key_pos(
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_label_key_pos(
         metric_name text, key_name text)
     RETURNS INT
 AS $$
@@ -305,19 +303,19 @@ AS $$
     SELECT
         pos
     FROM
-        _prom_catalog.label_key_position
+        SCHEMA_CATALOG.label_key_position
     WHERE
         metric = metric_name
         AND KEY = key_name
     UNION ALL
     SELECT
-        _prom_internal.get_new_pos_for_key(metric_name, key_name)
+        SCHEMA_CATALOG.get_new_pos_for_key(metric_name, key_name)
     LIMIT 1
 $$
 LANGUAGE SQL;
 
 --Get the label_id for a key, value pair
-CREATE OR REPLACE FUNCTION get_label_id(
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_label_id(
         key_name text, value_name text)
     RETURNS INT
 AS $$
@@ -325,13 +323,13 @@ AS $$
     --unnecessarily
     SELECT
         id
-    FROM _prom_catalog.label
+    FROM SCHEMA_CATALOG.label
     WHERE
         key = key_name AND
         value = value_name
     UNION ALL
     SELECT
-        _prom_internal.get_new_label_id(key_name, value_name)
+        SCHEMA_CATALOG.get_new_label_id(key_name, value_name)
     LIMIT 1
 $$
 LANGUAGE SQL;
@@ -341,20 +339,20 @@ LANGUAGE SQL;
 --since intarray does not support it).
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
-CREATE OR REPLACE FUNCTION jsonb_to_label_array(js jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb_to_label_array(js jsonb)
 RETURNS INT[] AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              get_label_key_pos(js->>'__name__', e.key)) idx,
+              SCHEMA_PROM.get_label_key_pos(js->>'__name__', e.key)) idx,
             coalesce(l.id,
-              get_label_id(e.key, e.value)) val
-        FROM _prom_internal.label_jsonb_each_text(js) e
-             LEFT JOIN _prom_catalog.label l
+              SCHEMA_PROM.get_label_id(e.key, e.value)) val
+        FROM SCHEMA_CATALOG.label_jsonb_each_text(js) e
+             LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = e.key AND l.value = e.value)
-            LEFT JOIN _prom_catalog.label_key_position lkp
+            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
                ON
                (
                   lkp.metric = js->>'__name__' AND
@@ -375,20 +373,20 @@ RETURNS INT[] AS $$
 $$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS INT[] AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              get_label_key_pos(metric_name, kv.key)) idx,
+              SCHEMA_PROM.get_label_key_pos(metric_name, kv.key)) idx,
             coalesce(l.id,
-              get_label_id(kv.key, kv.value)) val
+              SCHEMA_PROM.get_label_id(kv.key, kv.value)) val
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
-            LEFT JOIN _prom_catalog.label l
+            LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = kv.key AND l.value = kv.value)
-            LEFT JOIN _prom_catalog.label_key_position lkp
+            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
                ON
                (
                   lkp.metric = metric_name AND
@@ -410,25 +408,25 @@ LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
 --Returns the jsonb for a series defined by a label_array
 --Note that this function should be optimized for performance
-CREATE OR REPLACE FUNCTION label_array_to_jsonb(labels int[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_jsonb(labels int[])
 RETURNS jsonb AS $$
     SELECT
         jsonb_object(array_agg(l.key), array_agg(l.value))
     FROM
-      _prom_internal.label_unnest(labels) label_id
-      INNER JOIN _prom_catalog.label l ON (l.id = label_id)
+      SCHEMA_CATALOG.label_unnest(labels) label_id
+      INNER JOIN SCHEMA_CATALOG.label l ON (l.id = label_id)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
 --Do not call before checking that the series does not yet exist
-CREATE OR REPLACE FUNCTION _prom_internal.create_series(
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
         metric_id int,
         label_array int[],
         OUT series_id BIGINT)
 AS $func$
 BEGIN
 LOOP
-    INSERT INTO _prom_catalog.series(metric_id, labels)
+    INSERT INTO SCHEMA_CATALOG.series(metric_id, labels)
     SELECT metric_id, label_array
     ON CONFLICT DO NOTHING
     RETURNING id
@@ -438,7 +436,7 @@ LOOP
 
     SELECT id
     INTO series_id
-    FROM _prom_catalog.series
+    FROM SCHEMA_CATALOG.series
     WHERE labels = label_array;
 
     EXIT WHEN FOUND;
@@ -447,30 +445,30 @@ END
 $func$
 LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
 
-CREATE OR REPLACE  FUNCTION get_series_id_for_label(label jsonb)
+CREATE OR REPLACE  FUNCTION SCHEMA_PROM.get_series_id_for_label(label jsonb)
 RETURNS BIGINT AS $$
    WITH CTE AS (
-       SELECT jsonb_to_label_array(label)
+       SELECT SCHEMA_PROM.jsonb_to_label_array(label)
    )
    SELECT id
-   FROM _prom_catalog.series
+   FROM SCHEMA_CATALOG.series
    WHERE labels = (SELECT * FROM cte)
    UNION ALL
-   SELECT _prom_internal.create_series((get_or_create_metric_table_name(label->>'__name__')).id, (SELECT * FROM cte))
+   SELECT SCHEMA_CATALOG.create_series((SCHEMA_PROM.get_or_create_metric_table_name(label->>'__name__')).id, (SELECT * FROM cte))
    LIMIT 1
 $$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
-CREATE OR REPLACE  FUNCTION get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
+CREATE OR REPLACE  FUNCTION SCHEMA_PROM.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS BIGINT AS $$
    WITH CTE AS (
-       SELECT key_value_array_to_label_array(metric_name, label_keys, label_values)
+       SELECT SCHEMA_PROM.key_value_array_to_label_array(metric_name, label_keys, label_values)
    )
    SELECT id
-   FROM _prom_catalog.series
+   FROM SCHEMA_CATALOG.series
    WHERE labels = (SELECT * FROM cte)
    UNION ALL
-   SELECT _prom_internal.create_series((get_or_create_metric_table_name(metric_name)).id, (SELECT * FROM cte))
+   SELECT SCHEMA_CATALOG.create_series((SCHEMA_PROM.get_or_create_metric_table_name(metric_name)).id, (SELECT * FROM cte))
    LIMIT 1
 $$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
@@ -479,49 +477,49 @@ LANGUAGE SQL VOLATILE PARALLEL SAFE;
 -- Parameter manipulation functions
 --
 
-CREATE OR REPLACE FUNCTION _prom_internal.set_chunk_interval_on_metric_table(metric_name TEXT, new_interval INTERVAL)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name TEXT, new_interval INTERVAL)
 RETURNS void
 AS $func$
     SELECT set_chunk_time_interval(
-        format('prom.%I',(SELECT table_name FROM get_or_create_metric_table_name(metric_name)))::regclass,
+        format('SCHEMA_PROM.%I',(SELECT table_name FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)))::regclass,
         new_interval);
 $func$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION prom.set_default_chunk_interval(chunk_interval INTERVAL)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_chunk_interval(chunk_interval INTERVAL)
 RETURNS BOOLEAN
 AS $$
-    INSERT INTO _prom_catalog.default(key, value) VALUES('chunk_interval', chunk_interval::text)
+    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES('chunk_interval', chunk_interval::text)
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
-    SELECT _prom_internal.set_chunk_interval_on_metric_table(metric_name, chunk_interval)
-    FROM _prom_catalog.metric
+    SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name, chunk_interval)
+    FROM SCHEMA_CATALOG.metric
     WHERE default_chunk_interval;
 
     SELECT true;
 $$
 LANGUAGE sql VOLATILE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION prom.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
 AS $func$
-    UPDATE _prom_catalog.metric SET default_chunk_interval = false
-    WHERE id IN (SELECT id FROM get_or_create_metric_table_name(set_metric_chunk_interval.metric_name));
+    UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = false
+    WHERE id IN (SELECT id FROM SCHEMA_PROM.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name));
 
-    SELECT _prom_internal.set_chunk_interval_on_metric_table(metric_name, chunk_interval);
+    SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name, chunk_interval);
 
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION prom.reset_metric_chunk_interval(metric_name TEXT)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
-    UPDATE _prom_catalog.metric SET default_chunk_interval = true
-    WHERE id = (SELECT id FROM get_or_create_metric_table_name(metric_name));
+    UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = true
+    WHERE id = (SELECT id FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name));
 
-    SELECT _prom_internal.set_chunk_interval_on_metric_table(metric_name,
-        _prom_internal.get_default_chunk_interval());
+    SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name,
+        SCHEMA_CATALOG.get_default_chunk_interval());
 
     SELECT true;
 $func$
@@ -529,7 +527,7 @@ LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
 
 --drop chunks from metrics tables and delete the appropriate series.
-CREATE OR REPLACE FUNCTION _prom_internal.drop_metric_chunks(metric_name TEXT, older_than TIMESTAMPTZ)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunks(metric_name TEXT, older_than TIMESTAMPTZ)
     RETURNS BOOLEAN
     AS $func$
 DECLARE
@@ -541,7 +539,7 @@ DECLARE
 BEGIN
     SELECT table_name
     INTO STRICT metric_table
-    FROM get_or_create_metric_table_name(metric_name);
+    FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name);
 
     SELECT older_than + INTERVAL '1 hour'
     INTO check_time;
@@ -551,7 +549,7 @@ BEGIN
     INTO STRICT time_dimension_id
     FROM _timescaledb_catalog.hypertable h
     INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
-    WHERE h.schema_name = 'prom' AND h.table_name = metric_table
+    WHERE h.schema_name = 'SCHEMA_PROM' AND h.table_name = metric_table
     ORDER BY d.id ASC
     LIMIT 1;
 
@@ -578,25 +576,25 @@ BEGIN
     $query$
         WITH potentially_drop_series AS (
             SELECT distinct series_id
-            FROM prom.%1$I
+            FROM SCHEMA_PROM.%1$I
             WHERE time < %2$L
             EXCEPT
             SELECT distinct series_id
-            FROM prom.%1$I
+            FROM SCHEMA_PROM.%1$I
             WHERE time >= %2$L AND time < %3$L
         ), confirmed_drop_series AS (
             SELECT series_id
             FROM potentially_drop_series
             WHERE NOT EXISTS (
                  SELECT 1
-                 FROM  prom.%1$I  data_exists
+                 FROM  SCHEMA_PROM.%1$I  data_exists
                  WHERE data_exists.series_id = potentially_drop_series.series_id AND time >= %3$L
                  --use chunk append + more likely to find something starting at earliest time
                  ORDER BY time ASC
                  LIMIT 1
             )
         ), deleted_series AS (
-          DELETE from _prom_catalog.series
+          DELETE from SCHEMA_CATALOG.series
           WHERE id IN (SELECT series_id FROM confirmed_drop_series)
           RETURNING id, labels
         )
@@ -612,16 +610,16 @@ BEGIN
             FROM unnest($1) as labels(label_id)
             WHERE NOT EXISTS (
                  SELECT 1
-                 FROM  _prom_catalog.series series_exists
+                 FROM  SCHEMA_CATALOG.series series_exists
                  WHERE series_exists.labels && ARRAY[labels.label_id]
                  LIMIT 1
             )
         )
-        DELETE FROM _prom_catalog.label
+        DELETE FROM SCHEMA_CATALOG.label
         WHERE id IN (SELECT * FROM confirmed_drop_labels);
     $query$ USING label_ids;
 
-   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'prom', older_than=>older_than);
+   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_PROM', older_than=>older_than);
    RETURN true;
 END
 $func$

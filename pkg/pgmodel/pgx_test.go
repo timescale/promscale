@@ -543,7 +543,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			tNames := make([]pgx.Identifier, 0, len(c.rows))
 
 			for tableName := range c.rows {
-				tNames = append(tNames, pgx.Identifier{dataTableSchema, tableName})
+				tNames = append(tNames, pgx.Identifier{promSchema, tableName})
 			}
 
 			// Sorting because range over a map gives random iteration order.
@@ -620,7 +620,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -674,7 +674,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -744,7 +744,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
 				},
 			},
-			sqlQueries: []string{`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+			sqlQueries: []string{`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -774,7 +774,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -806,7 +806,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
 				},
 			},
-			sqlQueries: []string{`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+			sqlQueries: []string{`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -842,7 +842,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value !~ $2)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -850,7 +850,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -895,7 +895,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -903,7 +903,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -947,7 +947,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."metric" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -988,7 +988,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."metric" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -1032,7 +1032,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE NOT labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT array_agg(l.id) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
 	GROUP BY m.metric_name`,
-				`SELECT label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."metric" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id

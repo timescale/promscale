@@ -43,7 +43,7 @@ func TestMigrate(t *testing.T) {
 	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
 		var version int64
 		var dirty bool
-		err := db.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty)
+		err := db.QueryRow(context.Background(), "SELECT version, dirty FROM prom_schema_migrations").Scan(&version, &dirty)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestMigrate(t *testing.T) {
 func testConcurrentMetricTable(t *testing.T, db *pgxpool.Pool, metricName string) int64 {
 	var id *int64 = nil
 	var name *string = nil
-	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_internal.create_metric_table($1)", metricName).Scan(&id, &name)
+	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.create_metric_table($1)", metricName).Scan(&id, &name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func testConcurrentMetricTable(t *testing.T, db *pgxpool.Pool, metricName string
 
 func testConcurrentNewLabel(t *testing.T, db *pgxpool.Pool, labelName string) int64 {
 	var id *int64 = nil
-	err := db.QueryRow(context.Background(), "SELECT _prom_internal.get_new_label_id($1, $1)", labelName).Scan(&id)
+	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.get_new_label_id($1, $1)", labelName).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func testConcurrentNewLabel(t *testing.T, db *pgxpool.Pool, labelName string) in
 
 func testConcurrentCreateSeries(t *testing.T, db *pgxpool.Pool, index int) int64 {
 	var id *int64 = nil
-	err := db.QueryRow(context.Background(), "SELECT _prom_internal.create_series($1, array[$1::int])", index).Scan(&id)
+	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.create_series($1, array[$1::int])", index).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
-		err := db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name(metric_name => $1)", metricName).Scan(&metricID, &tableName)
+		err := db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name(metric_name => $1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,7 +191,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		savedMetricID := metricID
 
 		//query for same name should give same result
-		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,7 +204,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 
 		//different metric id should give new result
 		metricName = "test_metric_2"
-		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -218,7 +218,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 
 		//test long names that don't fit as table names
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_1"
-		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -232,7 +232,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		savedMetricID = metricID
 
 		//another call return same info
-		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -245,7 +245,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 
 		//changing just ending returns new table
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_2"
-		err = db.QueryRow(context.Background(), "SELECT * FROM get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -472,7 +472,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatal(err)
 					}
 					var labelArray []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM jsonb_to_label_array($1)", jsonOrig).Scan(&labelArray)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom.jsonb_to_label_array($1)", jsonOrig).Scan(&labelArray)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -484,7 +484,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var labelArrayKV []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM key_value_array_to_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom.key_value_array_to_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -500,7 +500,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var jsonres []byte
-					err = db.QueryRow(context.Background(), "SELECT * FROM label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -516,19 +516,19 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					// Check the series_id logic
 					var seriesID int
-					err = db.QueryRow(context.Background(), "SELECT get_series_id_for_label($1)", jsonOrig).Scan(&seriesID)
+					err = db.QueryRow(context.Background(), "SELECT prom.get_series_id_for_label($1)", jsonOrig).Scan(&seriesID)
 					if err != nil {
 						t.Fatal(err)
 					}
 					var seriesIDKeyVal int
-					err = db.QueryRow(context.Background(), "SELECT get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					err = db.QueryRow(context.Background(), "SELECT prom.get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
 						t.Fatal(err)
 					}
 					if seriesID != seriesIDKeyVal {
 						t.Fatalf("Expected the series ids to be equal: %v != %v", seriesID, seriesIDKeyVal)
 					}
-					err = db.QueryRow(context.Background(), "SELECT label_array_to_jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
+					err = db.QueryRow(context.Background(), "SELECT prom.label_array_to_jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
 						seriesID).Scan(&jsonres)
 					if err != nil {
 						t.Fatal(err)
@@ -1324,7 +1324,7 @@ func TestSQLDropChunk(t *testing.T) {
 		}
 
 		wasDropped := false
-		err = db.QueryRow(context.Background(), "SELECT _prom_internal.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5)).Scan(&wasDropped)
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5)).Scan(&wasDropped)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1361,7 +1361,7 @@ func TestSQLDropChunk(t *testing.T) {
 		}
 
 		//rerun again -- nothing dropped
-		err = db.QueryRow(context.Background(), "SELECT _prom_internal.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5)).Scan(&wasDropped)
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5)).Scan(&wasDropped)
 		if err != nil {
 			t.Fatal(err)
 		}
