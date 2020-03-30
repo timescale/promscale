@@ -15,9 +15,20 @@ type Querier interface {
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
 }
 
+//HealthChecker allows checking for proper operations
+type HealthChecker interface {
+	HealthCheck() error
+}
+
+// QueryHealthChecker can query and check its own health
+type QueryHealthChecker interface {
+	Querier
+	HealthChecker
+}
+
 // DBReader reads data from the database.
 type DBReader struct {
-	db Querier
+	db QueryHealthChecker
 }
 
 func (r *DBReader) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
@@ -40,4 +51,9 @@ func (r *DBReader) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	}
 
 	return &resp, nil
+}
+
+// HealthCheck checks that the reader is properly connected
+func (r *DBReader) HealthCheck() error {
+	return r.HealthCheck()
 }

@@ -322,6 +322,18 @@ type pgxQuerier struct {
 	conn pgxConn
 }
 
+// HealthCheck implements the healtchecker interface
+func (q *pgxQuerier) HealthCheck() error {
+	rows, err := q.conn.Query(context.Background(), "SELECT 1")
+
+	if err != nil {
+		return err
+	}
+
+	rows.Close()
+	return nil
+}
+
 func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	if query == nil {
 		return []*prompb.TimeSeries{}, nil

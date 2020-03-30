@@ -42,6 +42,7 @@ func ParseFlags(cfg *Config) *Config {
 type Client struct {
 	Connection    *pgxpool.Pool
 	ingestor      *pgmodel.DBIngestor
+	reader        *pgmodel.DBReader
 	cfg           *Config
 	ConnectionStr string
 }
@@ -54,7 +55,7 @@ var (
 func NewClient(cfg *Config) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
 
-	connection, err := pgxpool.Connect(context.Background(), connectionStr)
+	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr)
 
 	log.Info("msg", regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connectionStr, "password='****'"))
 
@@ -63,9 +64,10 @@ func NewClient(cfg *Config) (*Client, error) {
 		return nil, err
 	}
 
-	ingestor := pgmodel.NewPgxIngestor(connection)
+	ingestor := pgmodel.NewPgxIngestor(connectionPool)
+	reader := pgmodel.NewPgxReader(connectionPool)
 
-	return &Client{Connection: connection, ingestor: ingestor, cfg: cfg}, nil
+	return &Client{Connection: connectionPool, ingestor: ingestor, reader: reader, cfg: cfg}, nil
 }
 
 func (cfg *Config) GetConnectionStr() string {
@@ -75,4 +77,14 @@ func (cfg *Config) GetConnectionStr() string {
 
 func (c *Client) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 	return c.ingestor.Ingest(tts)
+}
+
+// Read returns the promQL query results
+func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
+	return c.reader.Read(req)
+}
+
+// HealthCheck checks that the client is properly connected
+func (c *Client) HealthCheck() error {
+	return c.HealthCheck()
 }

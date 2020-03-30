@@ -41,7 +41,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	io_prometheus_client "github.com/prometheus/client_model/go"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 
 	"fmt"
@@ -135,6 +134,8 @@ func main() {
 	}
 
 	http.Handle("/write", timeHandler("write", write(client)))
+	http.Handle("/read", timeHandler("read", read(client)))
+	http.Handle("/healthz", health(client))
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.listenAddr)
@@ -166,12 +167,6 @@ func parseFlags() *config {
 	flag.Parse()
 
 	return cfg
-}
-
-type reader interface {
-	Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error)
-	Name() string
-	HealthCheck() error
 }
 
 func initElector(cfg *config) *util.Elector {
@@ -300,7 +295,7 @@ func getCounterValue(counter prometheus.Counter) float64 {
 	return dtoMetric.GetCounter().GetValue()
 }
 
-func read(reader reader) http.Handler {
+func read(reader pgmodel.Reader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -326,7 +321,7 @@ func read(reader reader) http.Handler {
 		var resp *prompb.ReadResponse
 		resp, err = reader.Read(&req)
 		if err != nil {
-			log.Warn("msg", "Error executing query", "query", req, "storage", reader.Name(), "err", err)
+			log.Warn("msg", "Error executing query", "query", req, "storage", "PostgreSQL", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -348,34 +343,16 @@ func read(reader reader) http.Handler {
 	})
 }
 
-func health(reader reader) http.Handler {
+func health(hc pgmodel.HealthChecker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := reader.HealthCheck()
+		err := hc.HealthCheck()
 		if err != nil {
+			log.Warn("Healthcheck failed", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Length", "0")
 	})
-}
-
-func protoToSamples(req *prompb.WriteRequest) model.Samples {
-	var samples model.Samples
-	for _, ts := range req.Timeseries {
-		metric := make(model.Metric, len(ts.Labels))
-		for _, l := range ts.Labels {
-			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-		}
-
-		for _, s := range ts.Samples {
-			samples = append(samples, &model.Sample{
-				Metric:    metric,
-				Value:     model.SampleValue(s.Value),
-				Timestamp: model.Time(s.Timestamp),
-			})
-		}
-	}
-	return samples
 }
 
 // timeHandler uses Prometheus histogram to track request time
