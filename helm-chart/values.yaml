@@ -1,34 +1,31 @@
-promadapter:
-  image: timescale/prometheus-postgresql-adapter
-  # if another user is wanted, it needs to be specified in timescaledb-single.credentials
-  user: postgres
-  # need to be set only if timescaledb-single.enabled == false
-  pass: some-password 
-  # need to be set only if timescaledb-single.enabled == false
-  host: 127.0.0.1
-  # set your own limits
-  resources:
-    requests:
-      cpu: 7
-      memory: 24Gi
-    limits:
-      cpu: 7
-      memory: 24Gi
+image: timescale/prometheus-postgresql-adapter
+# number of connector pods to spawn
+replicaCount: 1
+# connection options to connect to a target db
+user: postgres
+password:
+  # whether this deployment should create a secret
+  # or use an existing one
+  create: false
+  # the password to for the DB user
+  # used only when secet.create = true
+  value: some-password
+  # if password.create == true 
+  #    this is the name of the secret to create
+  # else
+  #    use the password stored in an existing 
+  #    secret with this name
+  secretName: timescaledb-passwords
+host: timescaledb.default.svc.cluster.local
+port: 5432
 
-timescaledb-single:
-  enabled: true
-  timescaledbTune:
-    enabled: true
-  replicaCount: 1
-  resources:
-    requests:
-      cpu: 7
-      memory: 24Gi
-    limits:
-      cpu: 7
-      memory: 24Gi
-  persistentVolumes:
-    data:
-      size: 100G
-    wal:
-      size: 20G
+# set your own limits
+resources:
+  requests:
+    cpu: 1
+    memory: 1Gi
+  limits:
+    cpu: 1
+    memory: 1Gi
+# https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+nodeSelector: {}

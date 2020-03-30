@@ -1,11 +1,15 @@
 The chart will create:
-    - A pod for the prometheus-postgresql-adapter
+    - A Deployment for the prometheus-connector
+      - number of pods spawned can be controlled with `replicaCount`
     - A LoadBalancer Service for the adapter
-    - If `timescaledb-single.enabled` is set to `true` in `values.yaml`
-        - A timescaledb statefull set with replication 
-        - Replication can be controlled with `timescaledb-single.replicaCount`
-    - Else if `timescaledb-single.enabled` is set to `false`
-        - `promadapter.user` `promadapter.pass` and `promadapter.host` need to be set in order for the adapter to establish a connection to TS
-        - the password will need to be base64 encoded because it's stored in a secret
+    - If `password.create` is set to `true` in the values
+        - A secret named `password.secretName` will be created
+        - It will contain the password provided in `password.value` indexed by the user
+        provided in `user` 
+    - Else if `password.create` is set to `false`
+        - `password.secretName` needs to be set to the identifier of an existing secret
+        (such as the one created by an already deployed TimescaleDB instance)
+        - the key used to query the secret will be the value provided in `user`
 
-Upon installation the adapter will attempt to connect to the database (restarting itself if the db is not ready) and if the metrics tables are missing it will create them.
+Upon installation the adapter will attempt to connect to the database (restarting itself if the db is not ready) 
+and execute the migration scripts.

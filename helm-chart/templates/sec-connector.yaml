@@ -1,0 +1,18 @@
+{{ if eq .Values.password.create true  -}}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.password.secretName }}
+  labels:
+    app: {{ template "connector.fullname" . }}
+    chart: {{ template "connector.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+type: Opaque
+data:
+  {{ .Values.user | quote }}: {{ .Values.password.value | b64enc }}
+...
+{{- else -}}
+# This secret is created only when .Values.password.create is set to true.
+{{- end }}
