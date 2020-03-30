@@ -505,7 +505,7 @@ AS $func$
         format('SCHEMA_PROM.%I',(SELECT table_name FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)))::regclass,
         new_interval);
 $func$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_chunk_interval(chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -519,7 +519,7 @@ AS $$
 
     SELECT true;
 $$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE sql VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -529,13 +529,13 @@ AS $func$
     SELECT SCHEMA_PROM.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name);
 
     UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = false
-    WHERE id IN (SELECT id FROM SCHEMA_PROM.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name));
+    WHERE id IN (SELECT id FROM SCHEMA_PROM.get_metric_table_name_if_exists(set_metric_chunk_interval.metric_name));
 
     SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name, chunk_interval);
 
     SELECT true;
 $func$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name TEXT)
 RETURNS BOOLEAN
@@ -548,7 +548,7 @@ AS $func$
 
     SELECT true;
 $func$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_metric_retention_period(metric_name TEXT)
@@ -561,7 +561,7 @@ AS $$
     SELECT SCHEMA_CATALOG.get_default_retention_period()
     LIMIT 1
 $$
-LANGUAGE sql STABLE PARALLEL SAFE;
+LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_retention_period(retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -570,7 +570,7 @@ AS $$
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
     SELECT true;
 $$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE sql VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -580,11 +580,11 @@ AS $func$
     SELECT SCHEMA_PROM.get_or_create_metric_table_name(set_metric_retention_period.metric_name);
 
     UPDATE SCHEMA_CATALOG.metric SET retention_period = new_retention_period
-    WHERE id IN (SELECT id FROM SCHEMA_PROM.get_or_create_metric_table_name(set_metric_retention_period.metric_name));
+    WHERE id IN (SELECT id FROM SCHEMA_PROM.get_metric_table_name_if_exists(set_metric_retention_period.metric_name));
 
     SELECT true;
 $func$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name TEXT)
 RETURNS BOOLEAN
@@ -593,7 +593,7 @@ AS $func$
     WHERE id = (SELECT id FROM SCHEMA_PROM.get_metric_table_name_if_exists(metric_name));
     SELECT true;
 $func$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 
 --drop chunks from metrics tables and delete the appropriate series.
@@ -694,3 +694,52 @@ BEGIN
 END
 $func$
 LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
+RETURNS SETOF SCHEMA_CATALOG.metric
+AS $$
+        SELECT m.*
+        FROM SCHEMA_CATALOG.metric m
+        WHERE EXISTS (
+            SELECT 1 FROM
+            show_chunks(hypertable=>format('%I.%I', 'SCHEMA_PROM', m.table_name),
+                         older_than=>NOW() - SCHEMA_PROM.get_metric_retention_period(m.metric_name)))
+        --random order also to prevent starvation
+        ORDER BY random()
+$$
+LANGUAGE sql STABLE;
+
+
+--public procedure to be called by cron
+CREATE PROCEDURE SCHEMA_PROM.drop_chunks()
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    r RECORD;
+BEGIN
+    --do one loop with skip locked and then one that blocks to prevent starvation
+    FOR r IN
+        SELECT *
+        FROM SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
+    LOOP
+        --lock prevents concurrent drop_chunks on same table
+        PERFORM m.*
+        FROM SCHEMA_CATALOG.metric m
+        WHERE m.id = r.id
+        FOR NO KEY UPDATE SKIP LOCKED;
+
+        CONTINUE WHEN NOT FOUND;
+
+        PERFORM SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_PROM.get_metric_retention_period(r.metric_name));
+        COMMIT;
+    END LOOP;
+
+    FOR r IN
+        SELECT *
+        FROM SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
+    LOOP
+        PERFORM SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_PROM.get_metric_retention_period(r.metric_name));
+        COMMIT;
+    END LOOP;
+END;
+$$;

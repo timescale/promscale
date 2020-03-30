@@ -1362,7 +1362,7 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t *testing.T) {
 	}
 }
 
-func TestSQLDropChunk(t *testing.T) {
+func TestSQLDropMetricChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -1457,6 +1457,77 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected chunk to not be dropped")
 		}
 
+	})
+}
+
+func TestSQLDropChunk(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+		//a chunk way back in 2009
+		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
+
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.UnixNano()) - 1), Value: 0.1},
+					{Timestamp: int64(model.TimeFromUnixNano(time.Now().UnixNano()) - 1), Value: 0.1},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test2"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: int64(model.TimeFromUnixNano(time.Now().UnixNano()) - 1), Value: 0.1},
+				},
+			},
+		}
+		ingestor := NewPgxIngestor(db)
+		_, err := ingestor.Ingest(ts)
+		if err != nil {
+			t.Error(err)
+		}
+
+		cnt := 0
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom.test')").Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cnt != 2 {
+			t.Errorf("Expected there to be a chunk")
+		}
+
+		_, err = db.Exec(context.Background(), "CALL prom.drop_chunks()")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom.test')").Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cnt != 1 {
+			t.Errorf("Expected the chunk to be dropped")
+		}
+		//noop works fine
+		_, err = db.Exec(context.Background(), "CALL prom.drop_chunks()")
+		if err != nil {
+			t.Fatal(err)
+		}
+		//test2 isn't affected
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom.test2')").Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cnt != 1 {
+			t.Errorf("Expected the chunk to be dropped")
+		}
 	})
 }
 
