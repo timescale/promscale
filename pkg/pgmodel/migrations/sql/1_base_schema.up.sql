@@ -38,6 +38,7 @@ CREATE TABLE SCHEMA_CATALOG.metric (
     metric_name text,
     table_name name,
     default_chunk_interval BOOLEAN DEFAULT true,
+    retention_period INTERVAL DEFAULT NULL, --NULL to use the default retention_period
     UNIQUE (metric_name) INCLUDE (table_name),
     UNIQUE(table_name)
 );
@@ -47,12 +48,22 @@ CREATE TABLE SCHEMA_CATALOG.default (
     value TEXT
 );
 
-INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES ('chunk_interval', (INTERVAL '8 hours')::text);
+INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
+('chunk_interval', (INTERVAL '8 hours')::text),
+('retention_period', (90 * INTERVAL '24 hour')::text);
+
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_chunk_interval()
     RETURNS INTERVAL
 AS $func$
     SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='chunk_interval';
+$func$
+LANGUAGE sql STABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_retention_period()
+    RETURNS INTERVAL
+AS $func$
+    SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='retention_period';
 $func$
 LANGUAGE sql STABLE PARALLEL SAFE;
 
@@ -277,6 +288,16 @@ AS $function$array_unnest$function$;
 ---------------------------------------------------
 ------------------- Public APIs -------------------
 ---------------------------------------------------
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_metric_table_name_if_exists(
+        metric_name text)
+    RETURNS TABLE (id int, table_name name)
+AS $func$
+   SELECT id, table_name::name
+   FROM SCHEMA_CATALOG.metric m
+   WHERE m.metric_name = get_metric_table_name_if_exists.metric_name
+$func$
+LANGUAGE sql VOLATILE PARALLEL SAFE;
 
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
@@ -503,6 +524,10 @@ LANGUAGE sql VOLATILE PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
 AS $func$
+    --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
+    --needs to run before update so row exists before update.
+    SELECT SCHEMA_PROM.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name);
+
     UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = false
     WHERE id IN (SELECT id FROM SCHEMA_PROM.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name));
 
@@ -516,11 +541,56 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name T
 RETURNS BOOLEAN
 AS $func$
     UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = true
-    WHERE id = (SELECT id FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name));
+    WHERE id = (SELECT id FROM SCHEMA_PROM.get_metric_table_name_if_exists(metric_name));
 
     SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name,
         SCHEMA_CATALOG.get_default_chunk_interval());
 
+    SELECT true;
+$func$
+LANGUAGE SQL VOLATILE PARALLEL SAFE;
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_metric_retention_period(metric_name TEXT)
+RETURNS INTERVAL
+AS $$
+    SELECT COALESCE(m.retention_period, SCHEMA_CATALOG.get_default_retention_period())
+    FROM SCHEMA_CATALOG.metric m
+    WHERE id IN (SELECT id FROM SCHEMA_PROM.get_metric_table_name_if_exists(get_metric_retention_period.metric_name))
+    UNION ALL
+    SELECT SCHEMA_CATALOG.get_default_retention_period()
+    LIMIT 1
+$$
+LANGUAGE sql STABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_retention_period(retention_period INTERVAL)
+RETURNS BOOLEAN
+AS $$
+    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES('retention_period', retention_period::text)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+    SELECT true;
+$$
+LANGUAGE sql VOLATILE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
+RETURNS BOOLEAN
+AS $func$
+    --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
+    --needs to run before update so row exists before update.
+    SELECT SCHEMA_PROM.get_or_create_metric_table_name(set_metric_retention_period.metric_name);
+
+    UPDATE SCHEMA_CATALOG.metric SET retention_period = new_retention_period
+    WHERE id IN (SELECT id FROM SCHEMA_PROM.get_or_create_metric_table_name(set_metric_retention_period.metric_name));
+
+    SELECT true;
+$func$
+LANGUAGE SQL VOLATILE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name TEXT)
+RETURNS BOOLEAN
+AS $func$
+    UPDATE SCHEMA_CATALOG.metric SET retention_period = NULL
+    WHERE id = (SELECT id FROM SCHEMA_PROM.get_metric_table_name_if_exists(metric_name));
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;

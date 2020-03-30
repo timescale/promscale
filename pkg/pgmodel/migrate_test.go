@@ -335,6 +335,94 @@ func TestSQLChunkInterval(t *testing.T) {
 			t.Error(err)
 		}
 		verifyChunkInterval(t, db, "test_new_metric1", time.Duration(7*time.Hour))
+
+		_, err = db.Exec(context.Background(), "SELECT prom.set_default_chunk_interval(INTERVAL '2 hours')")
+
+		verifyChunkInterval(t, db, "test_new_metric1", time.Duration(7*time.Hour))
+
+	})
+}
+
+func verifyRetentionPeriod(t *testing.T, db *pgxpool.Pool, metricName string, expectedDuration time.Duration) {
+	var dur time.Duration
+
+	err := db.QueryRow(context.Background(),
+		`SELECT prom.get_metric_retention_period($1)`,
+		metricName).Scan(&dur)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if dur != expectedDuration {
+		t.Fatalf("Unexpected retention period for table %v: got %v want %v", metricName, dur, expectedDuration)
+	}
+}
+
+func TestSQLRetentionPeriod(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+					{Timestamp: 2, Value: 0.2},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "test2"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+					{Timestamp: 2, Value: 0.2},
+				},
+			},
+		}
+		ingestor := NewPgxIngestor(db)
+		_, err := ingestor.Ingest(ts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyRetentionPeriod(t, db, "test", time.Duration(90*24*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_retention_period('test2', INTERVAL '7 hours')")
+		if err != nil {
+			t.Error(err)
+		}
+
+		verifyRetentionPeriod(t, db, "test", time.Duration(90*24*time.Hour))
+		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom.set_default_retention_period(INTERVAL '6 hours')")
+		if err != nil {
+			t.Error(err)
+		}
+		verifyRetentionPeriod(t, db, "test", time.Duration(6*time.Hour))
+		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom.reset_metric_retention_period('test2')")
+		if err != nil {
+			t.Error(err)
+		}
+		verifyRetentionPeriod(t, db, "test2", time.Duration(6*time.Hour))
+
+		//set on a metric that doesn't exist should create the metric and set the parameter
+		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_retention_period('test_new_metric1', INTERVAL '7 hours')")
+		if err != nil {
+			t.Error(err)
+		}
+		verifyRetentionPeriod(t, db, "test_new_metric1", time.Duration(7*time.Hour))
+
+		_, err = db.Exec(context.Background(), "SELECT prom.set_default_retention_period(INTERVAL '2 hours')")
+
+		verifyRetentionPeriod(t, db, "test_new_metric1", time.Duration(7*time.Hour))
+
+		//get on non-existing metric returns default
+		verifyRetentionPeriod(t, db, "test_new_metric2", time.Duration(2*time.Hour))
 	})
 }
 
