@@ -17,6 +17,10 @@ func (q *mockQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	return q.tts, q.err
 }
 
+func (q *mockQuerier) HealthCheck() error {
+	return nil
+}
+
 func TestDBReaderRead(t *testing.T) {
 	testCases := []struct {
 		name string

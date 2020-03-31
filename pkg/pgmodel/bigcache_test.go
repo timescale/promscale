@@ -114,3 +114,72 @@ func TestBigLables(t *testing.T) {
 		t.Errorf("expected error")
 	}
 }
+
+func TestMetricTableNameCache(t *testing.T) {
+	testCases := []struct {
+		name      string
+		metric    string
+		tableName string
+	}{
+		{
+			name:      "empty",
+			metric:    "",
+			tableName: "",
+		},
+		{
+			name:      "simple metric",
+			metric:    "metric",
+			tableName: "metricTableName",
+		},
+		{
+			name:      "metric as table name",
+			metric:    "metric",
+			tableName: "metric",
+		},
+		{
+			name:      "empty table name",
+			metric:    "metric",
+			tableName: "",
+		},
+	}
+	config := bigcache.DefaultConfig(10 * time.Minute)
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			metrics, err := bigcache.NewBigCache(config)
+
+			if err != nil {
+				t.Fatal("unable to run test, unable to create metrics table name cache")
+			}
+			cache := MetricNameCache{
+				Metrics: metrics,
+			}
+
+			missing, err := cache.Get(c.metric)
+
+			if missing != "" {
+				t.Fatal("found cache that should be missing, not stored yet")
+			}
+
+			if err != ErrEntryNotFound {
+				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\n%s\n", err, ErrEntryNotFound)
+			}
+
+			err = cache.Set(c.metric, c.tableName)
+
+			if err != nil {
+				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\nnil\n", err)
+			}
+
+			found, err := cache.Get(c.metric)
+
+			if found != c.tableName {
+				t.Fatalf("found wrong cache value: got %s wanted %s", found, c.tableName)
+			}
+
+			if err != nil {
+				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\nnil\n", err)
+			}
+		})
+	}
+}

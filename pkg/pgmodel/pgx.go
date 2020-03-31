@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/allegro/bigcache"
@@ -24,6 +23,7 @@ const (
 	promSchema    = "prom"
 	catalogSchema = "_prom_catalog"
 
+	getMetricsTableSQL       = "SELECT table_name FROM " + catalogSchema + ".metric m WHERE m.metric_name = $1"
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + promSchema + ".get_or_create_metric_table_name($1)"
 	getSeriesIDForLabelSQL   = "SELECT " + promSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
 
@@ -82,6 +82,12 @@ type pgxConn interface {
 	SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error)
 }
 
+// MetricCache provides a caching mechanism for metric table names.
+type MetricCache interface {
+	Get(metric string) (string, error)
+	Set(metric string, tableName string) error
+}
+
 type pgxConnImpl struct {
 	conn *pgxpool.Pool
 }
@@ -128,16 +134,17 @@ func (p *pgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 
-// NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
-func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
+// NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
+// for caching metric table names.
+func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngestor {
 	pi := &pgxInserter{
 		conn: &pgxConnImpl{
 			conn: c,
 		},
+		metricTableNames: cache,
 	}
 
 	config := bigcache.DefaultConfig(10 * time.Minute)
-
 	series, _ := bigcache.NewBigCache(config)
 
 	bc := &bCache{
@@ -150,10 +157,17 @@ func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
 	}
 }
 
+// NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
+func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
+	config := bigcache.DefaultConfig(10 * time.Minute)
+	metrics, _ := bigcache.NewBigCache(config)
+	cache := &MetricNameCache{metrics}
+	return NewPgxIngestorWithMetricCache(c, cache)
+}
+
 type pgxInserter struct {
-	conn pgxConn
-	// TODO: update implementation to match existing caching layer?
-	metricTableNames sync.Map
+	conn             pgxConn
+	metricTableNames MetricCache
 }
 
 func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error) {
@@ -282,34 +296,51 @@ func (p *pgxInserter) createMetricTable(metric string) (string, error) {
 }
 
 func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
-	var tableNameI interface{}
 	var err error
-	var ok bool
 	var tableName string
-	if tableNameI, ok = p.metricTableNames.Load(metric); !ok {
-		tableName, err = p.createMetricTable(metric)
-		if err != nil {
-			return "", err
-		}
-		p.metricTableNames.Store(metric, tableName)
-	} else {
-		tableName = tableNameI.(string)
+
+	tableName, err = p.metricTableNames.Get(metric)
+
+	if err == nil {
+		return tableName, nil
 	}
 
-	return tableName, nil
+	if err != ErrEntryNotFound {
+		return "", err
+	}
+
+	tableName, err = p.createMetricTable(metric)
+
+	if err != nil {
+		return "", err
+	}
+
+	err = p.metricTableNames.Set(metric, tableName)
+
+	return tableName, err
 }
 
-// NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX
-func NewPgxReader(c *pgxpool.Pool) *DBReader {
+// NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
+// and caches metric table names using the supplied cacher.
+func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBReader {
 	pi := &pgxQuerier{
 		conn: &pgxConnImpl{
 			conn: c,
 		},
+		metricTableNames: cache,
 	}
 
 	return &DBReader{
 		db: pi,
 	}
+}
+
+// NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
+func NewPgxReader(c *pgxpool.Pool) *DBReader {
+	config := bigcache.DefaultConfig(10 * time.Minute)
+	metrics, _ := bigcache.NewBigCache(config)
+	cache := &MetricNameCache{metrics}
+	return NewPgxReaderWithMetricCache(c, cache)
 }
 
 type metricTimeRangeFilter struct {
@@ -319,7 +350,8 @@ type metricTimeRangeFilter struct {
 }
 
 type pgxQuerier struct {
-	conn pgxConn
+	conn             pgxConn
+	metricTableNames MetricCache
 }
 
 // HealthCheck implements the healtchecker interface
@@ -350,6 +382,17 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	if metric != "" {
+		tableName, err := q.getMetricTableName(metric)
+		if err != nil {
+			// If the metric table is missing, there are no results for this query.
+			if err == errMissingTableName {
+				return make([]*prompb.TimeSeries, 0), nil
+			}
+
+			return nil, err
+		}
+		filter.metric = tableName
+
 		sqlQuery := q.buildTimeseriesByLabelClausesQuery(filter, cases)
 		rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 
@@ -382,7 +425,16 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(metrics))
 
 	for i, metric := range metrics {
-		filter.metric = metric
+		tableName, err := q.getMetricTableName(metric)
+		if err != nil {
+			// If the metric table is missing, there are no results for this query.
+			if err == errMissingTableName {
+				continue
+			}
+
+			return nil, err
+		}
+		filter.metric = tableName
 		sqlQuery = q.buildTimeseriesBySeriesIDQuery(filter, series[i])
 		rows, err = q.conn.Query(context.Background(), sqlQuery)
 
@@ -401,6 +453,55 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	return results, nil
+}
+
+func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {
+	var err error
+	var tableName string
+
+	tableName, err = q.metricTableNames.Get(metric)
+
+	if err == nil {
+		return tableName, nil
+	}
+
+	if err != ErrEntryNotFound {
+		return "", err
+	}
+
+	tableName, err = q.queryMetricTableName(metric)
+
+	if err != nil {
+		return "", err
+	}
+
+	err = q.metricTableNames.Set(metric, tableName)
+
+	return tableName, err
+}
+
+func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
+	res, err := q.conn.Query(
+		context.Background(),
+		getMetricsTableSQL,
+		metric,
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	var tableName string
+	defer res.Close()
+	if !res.Next() {
+		return "", errMissingTableName
+	}
+
+	if err := res.Scan(&tableName); err != nil {
+		return "", err
+	}
+
+	return tableName, nil
 }
 
 func (q *pgxQuerier) buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {

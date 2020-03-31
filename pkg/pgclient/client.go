@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"regexp"
+	"time"
 
+	"github.com/allegro/bigcache"
 	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/prometheus/prometheus/prompb"
@@ -60,12 +62,16 @@ func NewClient(cfg *Config) (*Client, error) {
 	log.Info("msg", regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connectionStr, "password='****'"))
 
 	if err != nil {
-		log.Error("err", err)
+		log.Error("err creating connection pool for new client", err)
 		return nil, err
 	}
 
-	ingestor := pgmodel.NewPgxIngestor(connectionPool)
-	reader := pgmodel.NewPgxReader(connectionPool)
+	config := bigcache.DefaultConfig(10 * time.Minute)
+	metrics, _ := bigcache.NewBigCache(config)
+	cache := &pgmodel.MetricNameCache{metrics}
+
+	ingestor := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache)
+	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache)
 
 	return &Client{Connection: connectionPool, ingestor: ingestor, reader: reader, cfg: cfg}, nil
 }

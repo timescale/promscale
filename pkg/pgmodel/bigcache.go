@@ -33,8 +33,24 @@ func (b *bCache) SetSeries(lset Labels, id SeriesID) error {
 	return b.series.Set(lset.String(), byteID)
 }
 
-func uint64Bytes(i uint64) []byte {
-	byteID := make([]byte, 8)
-	binary.LittleEndian.PutUint64(byteID, i)
-	return byteID
+// MetricNameCache stores and retrieves metric table names in a in-memory cache.
+type MetricNameCache struct {
+	Metrics *bigcache.BigCache
+}
+
+// Get fetches the table name for specified metric.
+func (m *MetricNameCache) Get(metric string) (string, error) {
+	result, err := m.Metrics.Get(metric)
+	if err != nil {
+		if err == bigcache.ErrEntryNotFound {
+			return "", ErrEntryNotFound
+		}
+		return "", err
+	}
+	return string(result), nil
+}
+
+// Set stores table name for specified metric.
+func (m *MetricNameCache) Set(metric string, tableName string) error {
+	return m.Metrics.Set(metric, []byte(tableName))
 }

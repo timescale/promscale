@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -88,6 +87,30 @@ func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 	batch := b.(*mockBatch)
 	m.Batch = append(m.Batch, batch)
 	return &mockBatchResult{results: m.QueryResults}, m.QueryErr[m.QueryResultsIndex]
+}
+
+type mockMetricCache struct {
+	metricCache  map[string]string
+	getMetricErr error
+	setMetricErr error
+}
+
+func (m *mockMetricCache) Get(metric string) (string, error) {
+	if m.getMetricErr != nil {
+		return "", m.getMetricErr
+	}
+
+	val, ok := m.metricCache[metric]
+	if !ok {
+		return "", ErrEntryNotFound
+	}
+
+	return val, nil
+}
+
+func (m *mockMetricCache) Set(metric string, tableName string) error {
+	m.metricCache[metric] = tableName
+	return m.setMetricErr
 }
 
 type batchItem struct {
@@ -304,6 +327,10 @@ func createSeries(x int) []*labels.Labels {
 				Name:  fmt.Sprintf("name_%d", i),
 				Value: fmt.Sprintf("value_%d", i),
 			},
+			labels.Label{
+				Name:  fmt.Sprint(metricNameLabelName),
+				Value: fmt.Sprintf("metric_%d", i),
+			},
 		}
 		ret = append(ret, &label)
 		i++
@@ -358,7 +385,11 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				QueryErr:     c.queryErr,
 				QueryResults: c.queryResults,
 			}
-			inserter := pgxInserter{conn: mock}
+			metricCache := map[string]string{"metric_1": "metricTableName_1"}
+			mockMetrics := &mockMetricCache{
+				metricCache: metricCache,
+			}
+			inserter := pgxInserter{conn: mock, metricTableNames: mockMetrics}
 
 			var newSeries []SeriesWithCallback
 
@@ -445,6 +476,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 		queryErr       map[int]error
 		copyFromResult int64
 		copyFromErr    error
+		metricsGetErr  error
+		metricsSetErr  error
 	}{
 		{
 			name: "Zero data",
@@ -481,6 +514,16 @@ func TestPGXInserterInsertData(t *testing.T) {
 			rows:        createRows(5),
 			queryNoRows: true,
 		},
+		{
+			name:          "Metrics get error",
+			rows:          createRows(1),
+			metricsGetErr: fmt.Errorf("some metrics error"),
+		},
+		{
+			name:          "Metrics set error",
+			rows:          createRows(1),
+			metricsSetErr: fmt.Errorf("some metrics error"),
+		},
 	}
 	for _, co := range testCases {
 		c := co
@@ -500,7 +543,13 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 			mock.QueryResults = results
 
-			inserter := pgxInserter{conn: mock}
+			metricCache := map[string]string{"metric_1": "metricTableName_1"}
+			mockMetrics := &mockMetricCache{
+				metricCache:  metricCache,
+				getMetricErr: c.metricsGetErr,
+				setMetricErr: c.metricsSetErr,
+			}
+			inserter := pgxInserter{conn: mock, metricTableNames: mockMetrics}
 
 			inserted, err := inserter.InsertData(c.rows)
 
@@ -508,6 +557,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 				var expErr error
 
 				switch {
+				case c.metricsGetErr != nil:
+					expErr = c.metricsGetErr
+				case c.metricsSetErr != nil:
+					expErr = c.metricsSetErr
 				case c.copyFromErr != nil:
 					expErr = c.copyFromErr
 				case c.queryErr != nil:
@@ -543,7 +596,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			tNames := make([]pgx.Identifier, 0, len(c.rows))
 
 			for tableName := range c.rows {
-				tNames = append(tNames, pgx.Identifier{promSchema, tableName})
+				realTableName, err := mockMetrics.Get(tableName)
+				if err != nil {
+					t.Fatalf("error when fetching metric table name: %s", err)
+				}
+				tNames = append(tNames, pgx.Identifier{promSchema, realTableName})
 			}
 
 			// Sorting because range over a map gives random iteration order.
@@ -561,10 +618,15 @@ func TestPGXInserterInsertData(t *testing.T) {
 
 			for i, metric := range mock.CopyFromTableName {
 				name := metric[1]
+				for metric, tableName := range mockMetrics.metricCache {
+					if tableName == name {
+						name = metric
+					}
+				}
 				result := c.rows[name]
 
 				if !reflect.DeepEqual(mock.CopyFromRowSource[i], result) {
-					t.Errorf("unexpected rows:\ngot\n%+v\nwanted\n%+v", mock.CopyFromRowSource[i], result)
+					t.Errorf("unexpected rows for metric %s:\ngot\n%+v\nwanted\n%+v", metric, mock.CopyFromRowSource[i], result)
 				}
 			}
 
@@ -620,6 +682,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
@@ -630,10 +693,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{metricNameLabelName, "bar"},
+				{"foo"},
 				nil,
 			},
 			queryResults: []rowResults{
 				{{"foo", []int64{1}}},
+				{{"foo"}},
 				{{[]byte("x"), []time.Time{}, []float64{}}},
 			},
 			err: json.Unmarshal([]byte("x"), &j),
@@ -674,6 +739,32 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`},
+			sqlArgs: [][]interface{}{
+				{"foo", "bar"},
+				{"foo"},
+			},
+			queryResults: []rowResults{
+				{{`foo`, []int64{1}}},
+			},
+			queryErr: map[int]error{1: fmt.Errorf("some error")},
+		},
+		{
+			name: "Error third query",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_NEQ, Name: "foo", Value: "bar"},
+				},
+			},
+			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
+	FROM _prom_catalog.series s
+	INNER JOIN _prom_catalog.metric m
+	ON (m.id = s.metric_id)
+	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
@@ -684,12 +775,14 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"foo", "bar"},
+				{"foo"},
 				nil,
 			},
 			queryResults: []rowResults{
 				{{`foo`, []int64{1}}},
+				{{"foo"}},
 			},
-			queryErr: map[int]error{1: fmt.Errorf("some error")},
+			queryErr: map[int]error{2: fmt.Errorf("some error")},
 		},
 		{
 			name: "Error scan values",
@@ -744,20 +837,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
 				},
 			},
-			sqlQueries: []string{`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."bar" m
-	INNER JOIN _prom_catalog.series s
-	ON m.series_id = s.id
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
-	AND time >= '1970-01-01T00:00:01Z'
-	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+			sqlQueries: []string{`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`},
 			sqlArgs: [][]interface{}{
-				{metricNameLabelName, "bar"},
+				{"bar"},
 			},
 			result:       []*prompb.TimeSeries{},
 			queryResults: []rowResults{},
-			queryErr:     map[int]error{0: &pgconn.PgError{Code: pgerrcode.UndefinedTable}},
 		},
 		{
 			name: "Simple query, exclude matcher",
@@ -774,6 +859,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
@@ -784,6 +870,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"__name__", "bar"},
+				{"foo"},
 				nil,
 			},
 			result: []*prompb.TimeSeries{
@@ -794,6 +881,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			queryResults: []rowResults{
 				{{`foo`, []int64{1}}},
+				{{"foo"}},
 				{{`{"__name__":"foo"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 			},
 		},
@@ -806,7 +894,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
 				},
 			},
-			sqlQueries: []string{`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+			sqlQueries: []string{`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
+				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -815,6 +904,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
+				{"bar"},
 				{metricNameLabelName, "bar"},
 			},
 			result: []*prompb.TimeSeries{
@@ -824,6 +914,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				},
 			},
 			queryResults: []rowResults{
+				{{"bar"}},
 				{{`{"__name__":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 			},
 		},
@@ -842,6 +933,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value !~ $2)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
@@ -850,6 +942,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."bar" m
 	INNER JOIN _prom_catalog.series s
@@ -860,7 +953,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"__name__", ""},
+				{"foo"},
 				nil,
+				{"bar"},
 				nil,
 			},
 			result: []*prompb.TimeSeries{
@@ -875,7 +970,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			queryResults: []rowResults{
 				{{"foo", []int64{1}}, {"bar", []int64{1}}},
+				{{"foo"}},
 				{{`{"__name__":"foo"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{"bar"}},
 				{{`{"__name__":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 			},
 		},
@@ -895,6 +992,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."foo" m
 	INNER JOIN _prom_catalog.series s
@@ -903,6 +1001,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."bar" m
 	INNER JOIN _prom_catalog.series s
@@ -913,7 +1012,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"__name__", "foo", "__name__", "bar"},
+				{"foo"},
 				nil,
+				{"bar"},
 				nil,
 			},
 			result: []*prompb.TimeSeries{
@@ -928,7 +1029,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			queryResults: []rowResults{
 				{{"foo", []int64{1}}, {"bar", []int64{1}}},
+				{{"foo"}},
 				{{`{"__name__":"foo"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{"bar"}},
 				{{`{"__name__":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 			},
 		},
@@ -947,6 +1050,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."metric" m
 	INNER JOIN _prom_catalog.series s
@@ -957,6 +1061,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"foo", "bar"},
+				{"metric"},
 				nil,
 			},
 			result: []*prompb.TimeSeries{
@@ -967,6 +1072,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			queryResults: []rowResults{
 				{{"metric", []int64{1, 99, 98}}},
+				{{"metric"}},
 				{{`{"foo":"bar"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 			},
 		},
@@ -988,6 +1094,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."metric" m
 	INNER JOIN _prom_catalog.series s
@@ -998,6 +1105,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"foo", "bar", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
+				{"metric"},
 				nil,
 			},
 			result: []*prompb.TimeSeries{
@@ -1011,6 +1119,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			queryResults: []rowResults{
 				{{"metric", []int64{1, 4, 5}}},
+				{{"metric"}},
 				{{`{"foo":"bar", "foo2":"bar2"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 			},
 		},
@@ -1032,6 +1141,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	ON (m.id = s.metric_id)
 	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
 	GROUP BY m.metric_name`,
+				`SELECT table_name FROM _prom_catalog.metric m WHERE m.metric_name = $1`,
 				`SELECT prom.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom"."metric" m
 	INNER JOIN _prom_catalog.series s
@@ -1042,6 +1152,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"foo", "", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
+				{"metric"},
 				nil,
 			},
 			result: []*prompb.TimeSeries{
@@ -1054,6 +1165,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			queryResults: []rowResults{
 				{{"metric", []int64{1, 2}}},
+				{{"metric"}},
 				{{`{"foo2":"bar2"}`, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 			},
 		},
@@ -1065,7 +1177,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 				QueryErr:     c.queryErr,
 				QueryResults: c.queryResults,
 			}
-			querier := pgxQuerier{conn: mock}
+			metricCache := map[string]string{"metric_1": "metricTableName_1"}
+			mockMetrics := &mockMetricCache{
+				metricCache: metricCache,
+				//getMetricErr: c.metricsGetErr,
+				//setMetricErr: c.metricsSetErr,
+			}
+			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics}
 
 			result, err := querier.Query(c.query)
 
