@@ -1,6 +1,6 @@
 # Prometheus remote storage connector for TimescaleDB
 
-With this remote storage adapter, Prometheus can use TimescaleDB as a compressed,long-term store for time-series metrics.
+With this remote storage connector, Prometheus can use TimescaleDB as a compressed,long-term store for time-series metrics.
 A detailed description and design doc for this project can be found at TODO.
 
 # Quick start with Helm (recommended)
