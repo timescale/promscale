@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 )
 
 // Election defines an interface for adapter leader election.

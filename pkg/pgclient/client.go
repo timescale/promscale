@@ -13,8 +13,8 @@ import (
 
 	"github.com/prometheus/prometheus/prompb"
 
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgmodel"
+	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
 
 // Config for the database

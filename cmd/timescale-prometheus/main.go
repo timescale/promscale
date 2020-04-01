@@ -29,10 +29,10 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgclient"
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgmodel"
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/util"
+	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/pgclient"
+	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	"github.com/timescale/timescale-prometheus/pkg/util"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"

@@ -12,7 +12,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/httpfs"
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/pgmodel/migrations"
+	"github.com/timescale/timescale-prometheus/pkg/pgmodel/migrations"
 )
 
 type mySrc struct {

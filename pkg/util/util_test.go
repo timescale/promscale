@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 )
 
 const (

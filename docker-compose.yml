@@ -25,7 +25,7 @@ services:
       TS_PROM_PG_PASSWORD: postgres
       TS_PROM_PG_SCHEMA: postgres
       TS_PROM_WEB_TELEMETRY_PATH: /metrics-text
-    image: timescale/prometheus-postgresql-adapter:latest
+    image: timescale/timescale-prometheus:latest
     ports:
     - 9201:9201/tcp
 version: '3.0'

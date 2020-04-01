@@ -1,5 +1,5 @@
 *~
-/prometheus-postgresql-adapter*
+/timescale-prometheus*
 /vendor
 /version.properties
 /.target_os

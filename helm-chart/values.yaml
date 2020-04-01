@@ -1,15 +1,15 @@
-image: timescale/prometheus-postgresql-adapter
+image: timescale/timescale-prometheus
 # number of connector pods to spawn
 replicaCount: 1
 # connection options to connect to a target db
 connection:
   # user used to connect to TimescaleDB
   user: postgres
-  # the name of a Secret object containing the 
+  # the name of a Secret object containing the
   # password to connect to TimescaleDB indexed
   # by the user name
   passwordSecret: "some-secret-name"
-  host: 
+  host:
     # For a hardcoded host name from another release set:
     #   nameTemplate: "{{ already-deployed-timescale.default.svc.cluster.local }}"
     # For a host name of a timescaledb instance
@@ -18,7 +18,7 @@ connection:
     nameTemplate: "{{ .Release.Name }}.default.svc.cluster.local"
   port: 5432
 
-# settings for the service to be created that will expose 
+# settings for the service to be created that will expose
 # the timescale-prometheus deployment
 service:
   port: 9201
@@ -29,7 +29,7 @@ service:
     # Read more about the AWS annotations here:
     # https://kubernetes.io/docs/concepts/cluster-administration/cloud-providers/#aws
     # https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html
-    annotations: 
+    annotations:
       # Setting idle-timeout to the maximum allowed value
       service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"
 

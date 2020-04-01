@@ -9,7 +9,7 @@ import (
 
 	pgx "github.com/jackc/pgx/v4"
 
-	"github.com/timescale/prometheus-postgresql-adapter/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 )
 
 const (

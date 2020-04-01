@@ -1,4 +1,4 @@
-module github.com/timescale/prometheus-postgresql-adapter
+module github.com/timescale/timescale-prometheus
 
 go 1.14
 
@@ -9,7 +9,6 @@ require (
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang-migrate/migrate/v4 v4.9.1
 	github.com/golang/snappy v0.0.1
-	github.com/grpc-ecosystem/grpc-gateway v1.9.5 // indirect
 	github.com/jackc/pgconn v1.3.2
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
 	github.com/jackc/pgproto3/v2 v2.0.1
@@ -18,8 +17,7 @@ require (
 	github.com/prometheus/client_golang v1.0.0
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/prometheus/common v0.6.0
-	github.com/prometheus/procfs v0.0.3 // indirect
 	github.com/prometheus/prometheus v0.0.0-20190710134608-e5b22494857d
-	github.com/spf13/cobra v0.0.5 // indirect
+	github.com/spf13/cobra v0.0.7 // indirect
 	github.com/testcontainers/testcontainers-go v0.3.1
 )
