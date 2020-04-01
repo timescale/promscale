@@ -70,27 +70,24 @@ var (
 			Help: "Total number of received samples.",
 		},
 	)
-	sentSamples = prometheus.NewCounterVec(
+	sentSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "sent_samples_total",
 			Help: "Total number of processed samples sent to remote storage.",
 		},
-		[]string{"remote"},
 	)
-	failedSamples = prometheus.NewCounterVec(
+	failedSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "failed_samples_total",
 			Help: "Total number of processed samples which failed on send to remote storage.",
 		},
-		[]string{"remote"},
 	)
-	sentBatchDuration = prometheus.NewHistogramVec(
+	sentBatchDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "sent_batch_duration_seconds",
 			Help:    "Duration of sample batch send calls to the remote storage.",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"remote"},
 	)
 	httpRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -272,10 +269,36 @@ func write(writer pgmodel.DBInserter) http.Handler {
 			return
 		}
 
+		ts := req.GetTimeseries()
+		receivedBatchCount := 0
+
+		for _, t := range ts {
+			receivedBatchCount = receivedBatchCount + len(t.Samples)
+		}
+
+		receivedSamples.Add(float64(receivedBatchCount))
+		begin := time.Now()
+
 		numSamples, err := writer.Ingest(req.GetTimeseries())
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
+			failedSamples.Add(float64(receivedBatchCount))
+			return
 		}
+
+		duration := time.Since(begin).Seconds()
+
+		sentSamples.Add(float64(numSamples))
+		sentBatchDuration.Observe(duration)
+
+		writeThroughput.SetCurrent(getCounterValue(sentSamples))
+
+		select {
+		case d := <-writeThroughput.Values:
+			log.Info("msg", "Samples write throughput", "samples/sec", d)
+		default:
+		}
+
 	})
 }
 
