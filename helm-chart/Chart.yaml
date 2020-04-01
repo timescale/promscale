@@ -1,4 +1,4 @@
-name: prometheus-connector
-version: 0.3.0
+name: timescale-prometheus
+version: 0.1.0
 apiVersion: v2
 description: Timescale Prometheus Connector deployment

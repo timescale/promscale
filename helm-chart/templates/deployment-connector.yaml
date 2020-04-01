@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ template "connector.fullname" . }}
   labels:
     app: {{ template "connector.fullname" . }}
     chart: {{ template "connector.chart" . }}
@@ -39,10 +39,10 @@ spec:
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.password.secretName }}
+                  name: {{ .Values.passwordSecret }}
                   key: {{ .Values.user }}
             - name: PGHOST
-              value: {{ .Values.host }} 
+              value: {{ tpl .Values.host.nameTemplate . }} 
           args:
             [
               -pg-ssl-mode=require,

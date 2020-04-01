@@ -2,21 +2,19 @@ image: timescale/prometheus-postgresql-adapter
 # number of connector pods to spawn
 replicaCount: 1
 # connection options to connect to a target db
+## user used to connect to TimescaleDB
 user: postgres
-password:
-  # whether this deployment should create a secret
-  # or use an existing one
-  create: false
-  # the password to for the DB user
-  # used only when secet.create = true
-  value: some-password
-  # if password.create == true 
-  #    this is the name of the secret to create
-  # else
-  #    use the password stored in an existing 
-  #    secret with this name
-  secretName: timescaledb-passwords
-host: timescaledb.default.svc.cluster.local
+## the name of a Secret object containing the 
+## password to connect to TimescaleDB indexed
+## by the user name
+passwordSecret: "some-secret-name"
+host: 
+  # For a hardcoded host name from another release set:
+  #   nameTemplate: "{{ already-deployed-timescale.default.svc.cluster.local }}"
+  # For a host name of a timescaledb instance
+  # deployed in the same release (without a cluster override) set:
+  #   nameTemplate: "{{ .Release.Name }}".default.svc.cluster.local
+  nameTemplate: "{{ .Release.Name }}.default.svc.cluster.local"
 port: 5432
 
 # set your own limits

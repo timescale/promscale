@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ template "connector.fullname" . }}
   labels:
     app: {{ template "connector.fullname" . }}
     chart: {{ template "connector.chart" . }}
