@@ -1,11 +1,14 @@
-# Prometheus remote storage connector for TimescaleDB
+# Timescale-Prometheus Connector
 
 With this remote storage connector, Prometheus can use TimescaleDB as a compressed, long-term store for time-series metrics.
-A detailed description and design doc for this project can be found at TODO.
+For a detailed description of this architecture, please see [our design doc][design-doc].
 
 # Quick start with Helm (recommended)
 
-The Quickest way to get started is by using the Helm chart from [timescale-observability](https://github.com/timescale/timescale-observability).
+The quickest way to get started is by using the Helm chart from
+[timescale-observability](https://github.com/timescale/timescale-observability),
+which provides a broader framework for installing an end-to-end monitoring
+stack.
 
 The following command will install Prometheus, TimescaleDB, Timescale-Prometheus Connector, and Grafana
 into your Kubernetes cluster:
@@ -15,13 +18,13 @@ helm install <release_name> timescale/timescale-observability
 
 # Configuring Helm Chart
 
-To get a fully-documented configuration file for timescale-observability please run
+To get a fully-documented configuration file for `timescale-observability`, please run:
 
 ```
 helm show values timescale/timescale-observability > my_values.yml
 ```
 
-You can then edit my_values.yml and deploy the release with the following command
+You can then edit `my_values.yml` and deploy the release with the following command:
 
 ```
 helm upgrade --install <release_name> --values my_values.yml timescale/timescale-observability
@@ -36,7 +39,7 @@ database is available at TODO.
 
 A Helm chart for only the Timescale-Prometheus Connector is available in the [helm-chart directory](helm-chart/README.md) of this repository.
 
-This is used as a dependency from the timescale-observability helm chart and can be used as a dependency in your own custom helm chart.
+This is used as a dependency from the `timescale-observability` Helm chart and can be used as a dependency in your own custom Helm chart.
 
 ## Non-Helm installation methods
 
@@ -51,15 +54,15 @@ on Docker Hub at [timescale/timescale-prometheus](https://hub.docker.com/r/times
 
 ## Non-Helm Configuration
 
-### Configuring Prometheus to use this remote storage adapter
+### Configuring Prometheus to use this remote storage connector
 
-You must tell prometheus to use this remote storage adapter by adding the
+You must tell prometheus to use this remote storage connector by adding the
 following lines to `prometheus.yml`:
 ```
 remote_write:
-  - url: "http://<adapter-address>:9201/write"
+  - url: "http://<connector-address>:9201/write"
 remote_read:
-  - url: "http://<adapter-address>:9201/read"
+  - url: "http://<connector-address>:9201/read"
 ```
 
 ### Configuring Prometheus to filter which metrics are sent (optional)
@@ -94,7 +97,7 @@ Before building, make sure the following prerequisites are installed:
 
 * [Go](https://golang.org/dl/)
 
-Timescale-Prometheus is a Go project managed by go modules. You can download it in
+The Timescale-Prometheus Connector is a Go project managed by go modules. You can download it in
 any directory and on the first build it will download it's required dependencies.
 
 ```bash
@@ -111,8 +114,16 @@ $ go install
 $ go build ./...
 ```
 
-You can build the Docker container using the [Dockerfile](Dockerfile)
+You can build the Docker container using the [Dockerfile](Dockerfile).
 
 ## Contributing
 
-We welcome contributions to this adaptor, which like TimescaleDB is released under the Apache2 Open Source License.  The same [Contributors Agreement](//github.com/timescale/timescaledb/blob/master/CONTRIBUTING.md) applies; please sign the [Contributor License Agreement](https://cla-assistant.io/timescale/timeascale-prometheus) (CLA) if you're a new contributor.
+We welcome contributions to the Timescale-Prometheus Connector, which is
+licensed and released under the open-source Apache License, Version 2.  The
+same [Contributor's
+Agreement](//github.com/timescale/timescaledb/blob/master/CONTRIBUTING.md)
+applies as in TimescaleDB; please sign the [Contributor License
+Agreement](https://cla-assistant.io/timescale/timescale-prometheus) (CLA) if
+you're a new contributor.
+
+[design-doc]: https://www.timescale.com/404/
