@@ -70,6 +70,12 @@ var (
 			Help: "Total number of received samples.",
 		},
 	)
+	receivedQueries = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "received_queries_total",
+			Help: "Total number of received queries.",
+		},
+	)
 	sentSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "sent_samples_total",
@@ -82,10 +88,23 @@ var (
 			Help: "Total number of processed samples which failed on send to remote storage.",
 		},
 	)
+	failedQueries = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "failed_queries_total",
+			Help: "Total number of queries which failed on send to remote storage.",
+		},
+	)
 	sentBatchDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "sent_batch_duration_seconds",
 			Help:    "Duration of sample batch send calls to the remote storage.",
+			Buckets: prometheus.DefBuckets,
+		},
+	)
+	queryBatchDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "query_batch_duration_seconds",
+			Help:    "Duration of query batch read calls to the remote storage.",
 			Buckets: prometheus.DefBuckets,
 		},
 	)
@@ -192,12 +211,9 @@ func initElector(cfg *config) *util.Elector {
 	if cfg.prometheusTimeout != 0 {
 		go func() {
 			ticker := time.NewTicker(promLivenessCheck)
-			for {
-				select {
-				case <-ticker.C:
-					lastReq := atomic.LoadInt64(&lastRequestUnixNano)
-					scheduledElector.PrometheusLivenessCheck(lastReq, cfg.prometheusTimeout)
-				}
+			for range ticker.C {
+				lastReq := atomic.LoadInt64(&lastRequestUnixNano)
+				scheduledElector.PrometheusLivenessCheck(lastReq, cfg.prometheusTimeout)
 			}
 		}()
 	}
@@ -341,13 +357,21 @@ func read(reader pgmodel.Reader) http.Handler {
 			return
 		}
 
+		queryCount := float64(len(req.Queries))
+		receivedQueries.Add(queryCount)
+		begin := time.Now()
+
 		var resp *prompb.ReadResponse
 		resp, err = reader.Read(&req)
 		if err != nil {
 			log.Warn("msg", "Error executing query", "query", req, "storage", "PostgreSQL", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			failedQueries.Add(queryCount)
 			return
 		}
+
+		duration := time.Since(begin).Seconds()
+		queryBatchDuration.Observe(duration)
 
 		data, err := proto.Marshal(resp)
 		if err != nil {
