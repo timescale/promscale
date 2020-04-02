@@ -13,4 +13,4 @@ RUN apk update && apk add --no-cache git \
 FROM busybox
 LABEL maintainer="Timescale https://www.timescale.com"
 COPY --from=builder /go/timescale-prometheus /
-ENTRYPOINT ["/timescale-prometheusß"]
+ENTRYPOINT ["/timescale-prometheus"]

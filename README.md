@@ -1,6 +1,6 @@
 # Prometheus remote storage connector for TimescaleDB
 
-With this remote storage connector, Prometheus can use TimescaleDB as a compressed,long-term store for time-series metrics.
+With this remote storage connector, Prometheus can use TimescaleDB as a compressed, long-term store for time-series metrics.
 A detailed description and design doc for this project can be found at TODO.
 
 # Quick start with Helm (recommended)
@@ -34,8 +34,9 @@ database is available at TODO.
 
 ## Helm (sub)chart for Timescale-Prometheus Connector only
 
-A Helm chart for only the Timescale-Prometheus Connector is available in the [helm-chart directory](helm-chart/README.md) of this repository. This is used as a dependency from the timescale-observability helm chart and can be used as a dependency in your own
-custom helm chart.
+A Helm chart for only the Timescale-Prometheus Connector is available in the [helm-chart directory](helm-chart/README.md) of this repository.
+
+This is used as a dependency from the timescale-observability helm chart and can be used as a dependency in your own custom helm chart.
 
 ## Non-Helm installation methods
 
