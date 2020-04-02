@@ -8,12 +8,16 @@ metadata:
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"
+{{ .Values.service.loadBalancer.annotations | toYaml | indent 4 }}
 spec:
   selector:
     app: {{ template "connector.fullname" . }}
+{{- if .Values.service.loadBalancer.enabled }}
   type: LoadBalancer
+{{- else }}
+  type: ClusterIP
+{{- end }}
   ports:
   - name: connector-port
-    port: 9201
+    port: {{ .Values.service.port }}
     protocol: TCP

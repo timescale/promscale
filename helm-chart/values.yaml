@@ -2,28 +2,41 @@ image: timescale/prometheus-postgresql-adapter
 # number of connector pods to spawn
 replicaCount: 1
 # connection options to connect to a target db
-## user used to connect to TimescaleDB
-user: postgres
-## the name of a Secret object containing the 
-## password to connect to TimescaleDB indexed
-## by the user name
-passwordSecret: "some-secret-name"
-host: 
-  # For a hardcoded host name from another release set:
-  #   nameTemplate: "{{ already-deployed-timescale.default.svc.cluster.local }}"
-  # For a host name of a timescaledb instance
-  # deployed in the same release (without a cluster override) set:
-  #   nameTemplate: "{{ .Release.Name }}".default.svc.cluster.local
-  nameTemplate: "{{ .Release.Name }}.default.svc.cluster.local"
-port: 5432
+connection:
+  # user used to connect to TimescaleDB
+  user: postgres
+  # the name of a Secret object containing the 
+  # password to connect to TimescaleDB indexed
+  # by the user name
+  passwordSecret: "some-secret-name"
+  host: 
+    # For a hardcoded host name from another release set:
+    #   nameTemplate: "{{ already-deployed-timescale.default.svc.cluster.local }}"
+    # For a host name of a timescaledb instance
+    # deployed in the same release (without a cluster override) set:
+    #   nameTemplate: "{{ .Release.Name }}".default.svc.cluster.local
+    nameTemplate: "{{ .Release.Name }}.default.svc.cluster.local"
+  port: 5432
+
+# settings for the service to be created that will expose 
+# the timescale-prometheus deployment
+service:
+  port: 9201
+  loadBalancer:
+    # If not enabled, we still expose the primary using a so called Headless Service
+    # https://kubernetes.io/docs/concepts/services-networking/service/#headless-services
+    enabled: true
+    # Read more about the AWS annotations here:
+    # https://kubernetes.io/docs/concepts/cluster-administration/cloud-providers/#aws
+    # https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html
+    annotations: 
+      # Setting idle-timeout to the maximum allowed value
+      service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"
+
+      # service.beta.kubernetes.io/aws-load-balancer-type: nlb            # Use an NLB instead of ELB
+      # service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0  # Internal Load Balancer
 
 # set your own limits
-resources:
-  requests:
-    cpu: 1
-    memory: 1Gi
-  limits:
-    cpu: 1
-    memory: 1Gi
+resources: {}
 # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
 nodeSelector: {}

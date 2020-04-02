@@ -20,29 +20,26 @@ spec:
       containers:
         - image: {{ .Values.image }}
           imagePullPolicy: IfNotPresent
-          name: {{ .Chart.Name }}
-          resources:
-            limits:
-              cpu: {{ .Values.resources.limits.cpu }}
-              memory: {{ .Values.resources.limits.memory }}
-            requests: 
-              cpu: {{ .Values.resources.requests.cpu }}
-              memory: {{ .Values.resources.requests.memory }}
+          name: timescale-prometheus-connector
+          {{- if .Values.resources }}
+          resources: 
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 9201
               name: connector-port
           env:
             - name: PGPORT
-              value: {{ .Values.port | quote }}
+              value: {{ .Values.connection.port | quote }}
             - name: PGUSER
-              value: {{ .Values.user }}
+              value: {{ .Values.connection.user }}
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.passwordSecret }}
-                  key: {{ .Values.user }}
+                  name: {{ .Values.connection.passwordSecret }}
+                  key: {{ .Values.connection.user }}
             - name: PGHOST
-              value: {{ tpl .Values.host.nameTemplate . }} 
+              value: {{ tpl .Values.connection.host.nameTemplate . }} 
           args:
             [
               -pg-ssl-mode=require,
