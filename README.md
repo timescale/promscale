@@ -30,8 +30,9 @@ You can then edit `my_values.yml` and deploy the release with the following comm
 helm upgrade --install <release_name> --values my_values.yml timescale/timescale-observability
 ```
 
-Additional information about how to set up backup/restore and high-availability of the TimescaleDB
-database is available at TODO.
+By default, the `timescale-observability` Helm chart sets up a single-instance of TimescaleDB; if you are
+interested in a replicated setup for high-availabilty with automated backups, please see
+[this github repo](https://github.com/timescale/timescaledb-kubernetes/tree/master/charts/timescaledb-single) for additional instructions.
 
 # Advanced
 
