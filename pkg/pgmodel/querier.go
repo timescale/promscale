@@ -55,5 +55,5 @@ func (r *DBReader) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 
 // HealthCheck checks that the reader is properly connected
 func (r *DBReader) HealthCheck() error {
-	return r.HealthCheck()
+	return r.db.HealthCheck()
 }

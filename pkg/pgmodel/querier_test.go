@@ -9,8 +9,9 @@ import (
 )
 
 type mockQuerier struct {
-	tts []*prompb.TimeSeries
-	err error
+	tts               []*prompb.TimeSeries
+	err               error
+	healthCheckCalled bool
 }
 
 func (q *mockQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
@@ -18,6 +19,7 @@ func (q *mockQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 }
 
 func (q *mockQuerier) HealthCheck() error {
+	q.healthCheckCalled = true
 	return nil
 }
 
@@ -137,4 +139,16 @@ func TestDBReaderRead(t *testing.T) {
 		})
 	}
 
+}
+
+func TestHealthCheck(t *testing.T) {
+	mq := &mockQuerier{}
+
+	r := DBReader{mq}
+
+	r.HealthCheck()
+
+	if !mq.healthCheckCalled {
+		t.Fatal("health check method not called when expected")
+	}
 }
