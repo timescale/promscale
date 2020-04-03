@@ -124,7 +124,7 @@ func (se *ScheduledElector) scheduledElection() {
 	}
 }
 
-func (se *ScheduledElector) Elect() (bool, error) {
+func (se *ScheduledElector) Elect() bool {
 	leader, err := se.IsLeader()
 	if err != nil {
 		log.Error("msg", "Leader check failed", "err", err)
@@ -134,7 +134,7 @@ func (se *ScheduledElector) Elect() (bool, error) {
 			log.Error("msg", "Failed while becoming a leader", "err", err)
 		}
 	}
-	return leader, err
+	return leader
 }
 
 // RestElection is a REST interface allowing to plug in any external leader election mechanism.
