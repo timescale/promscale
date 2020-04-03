@@ -149,7 +149,10 @@ func TestHealthCheck(t *testing.T) {
 
 	r := DBReader{mq}
 
-	r.HealthCheck()
+	err := r.HealthCheck()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if !mq.healthCheckCalled {
 		t.Fatal("health check method not called when expected")

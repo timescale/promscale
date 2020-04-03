@@ -24,8 +24,11 @@ type mySrc struct {
 
 func (t *mySrc) replaceSchemaNames(r io.ReadCloser) (io.ReadCloser, error) {
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(r)
-	err := r.Close()
+	_, err := buf.ReadFrom(r)
+	if err != nil {
+		return r, err
+	}
+	err = r.Close()
 	if err != nil {
 		return r, err
 	}

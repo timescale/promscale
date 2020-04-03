@@ -91,7 +91,7 @@ func (se *ScheduledElector) IsPausedScheduledElection() bool {
 }
 
 func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, timeout time.Duration) {
-	elapsed := time.Now().Sub(time.Unix(0, lastRequestUnixNano))
+	elapsed := time.Since(time.Unix(0, lastRequestUnixNano))
 	leader, err := se.IsLeader()
 	if err != nil {
 		log.Error("msg", err.Error())
@@ -115,14 +115,11 @@ func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, t
 }
 
 func (se *ScheduledElector) scheduledElection() {
-	for {
-		select {
-		case <-se.ticker.C:
-			if !se.pausedScheduledElection {
-				se.Elect()
-			} else {
-				log.Debug("msg", "Scheduled election is paused. Instance can't become a leader until scheduled election is resumed (Prometheus comes up again)")
-			}
+	for range se.ticker.C {
+		if !se.pausedScheduledElection {
+			se.Elect()
+		} else {
+			log.Debug("msg", "Scheduled election is paused. Instance can't become a leader until scheduled election is resumed (Prometheus comes up again)")
 		}
 	}
 }

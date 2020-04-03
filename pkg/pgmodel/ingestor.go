@@ -114,7 +114,7 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 
 func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, map[string]*SampleInfoIterator, int, error) {
 	var seriesToInsert []SeriesWithCallback
-	dataSamples := make(map[string]*SampleInfoIterator, 0)
+	dataSamples := make(map[string]*SampleInfoIterator)
 	rows := 0
 
 	for _, t := range tts {
