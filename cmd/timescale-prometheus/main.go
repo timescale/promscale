@@ -121,7 +121,11 @@ func init() {
 
 func main() {
 	cfg := parseFlags()
-	log.Init(cfg.logLevel)
+	err := log.Init(cfg.logLevel)
+	if err != nil {
+		fmt.Println("Fatal error: cannot start logger", err)
+		os.Exit(1)
+	}
 	log.Info("config", fmt.Sprintf("%+v", cfg))
 
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
