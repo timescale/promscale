@@ -1,0 +1,16 @@
+name: reviewdog - golangci
+on: [pull_request]
+jobs:
+
+  golangci-lint-github-pr-review:
+    name: runner / golangci-lint (github-pr-review)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v1
+      - name: golangci-lint w/ github-pr-review
+        uses: docker://reviewdog/action-golangci-lint:v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          tool_name: "golangci-lint-github-pr-review"
+          reporter: "github-pr-review"
