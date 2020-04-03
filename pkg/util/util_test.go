@@ -16,7 +16,10 @@ const (
 )
 
 func init() {
-	log.Init("debug")
+	err := log.Init("debug")
+	if err != nil {
+		panic(err)
+	}
 }
 
 func TestRetryWithoutError(t *testing.T) {
