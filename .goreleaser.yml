@@ -1,0 +1,54 @@
+# The documentation is at http://goreleaser.com
+# Release instructions
+# 1) git tag -a 0.1.0-alpha.1 -m "Release 0.1.0-alpha-1"
+# 2) goreleaser          //--skip-publish for dry-run
+before:
+  hooks:
+    - go mod download
+    #make sure generate up to date
+    - go generate ./...
+builds:
+- env:
+  - CGO_ENABLED=0
+  main: ./cmd/timescale-prometheus/main.go
+
+#don't publish scoop but overwrite the weird names
+scoop:
+  name: timescale-prometheus
+  commit_author:
+    name: Timescale
+    email: support@timescale.com
+
+archives:
+- replacements:
+    darwin: Darwin
+    linux: Linux
+    windows: Windows
+    386: i386
+    amd64: x86_64
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+
+dockers:
+-
+  binaries:
+  - timescale-prometheus
+  skip_push: true
+  extra_files:
+  - go.sum
+  - go.mod
+  - pkg
+  - cmd
+  image_templates:
+  - "timescale/timescale-prometheus:{{ .Tag }}"
+  - "timescale/timescale-prometheus:{{ .Major }}.{{ .Minor }}"
+  - "timescale/timescale-prometheus:latest"
+
