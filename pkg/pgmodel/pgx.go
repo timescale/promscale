@@ -764,7 +764,7 @@ func createOrderedKeys(m map[string]string) []string {
 
 func (l *sampleLabels) Scan(value interface{}) error {
 	if value == nil {
-		l = &sampleLabels{}
+		*l = sampleLabels{}
 		return nil
 	}
 

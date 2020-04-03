@@ -22,7 +22,10 @@ func TestRestElection(t *testing.T) {
 	if leader, _ := re.IsLeader(); !leader {
 		t.Error("Failed to elect")
 	}
-	re.Resign()
+	err := re.Resign()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if leader, _ := re.IsLeader(); leader {
 		t.Error("Failed to resign")
 	}
@@ -46,6 +49,9 @@ func TestRESTApi(t *testing.T) {
 	}
 
 	leaderCheckReq, err := http.NewRequest("GET", "/admin/leader", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	recorder = httptest.NewRecorder()
 	re.handleLeader().ServeHTTP(recorder, leaderCheckReq)
 	if recorder.Body.String() != "true" {
@@ -53,6 +59,9 @@ func TestRESTApi(t *testing.T) {
 	}
 
 	resignReq, err := http.NewRequest("PUT", "/admin/leader", bytes.NewReader([]byte("0")))
+	if err != nil {
+		t.Fatal(err)
+	}
 	recorder = httptest.NewRecorder()
 	re.handleLeader().ServeHTTP(recorder, resignReq)
 

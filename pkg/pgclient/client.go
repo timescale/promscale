@@ -2,7 +2,6 @@ package pgclient
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"regexp"
@@ -49,10 +48,6 @@ type Client struct {
 	ConnectionStr string
 }
 
-var (
-	createTmpTableStmt *sql.Stmt
-)
-
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
@@ -68,7 +63,7 @@ func NewClient(cfg *Config) (*Client, error) {
 
 	config := bigcache.DefaultConfig(10 * time.Minute)
 	metrics, _ := bigcache.NewBigCache(config)
-	cache := &pgmodel.MetricNameCache{metrics}
+	cache := &pgmodel.MetricNameCache{Metrics: metrics}
 
 	ingestor := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache)
 	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache)
@@ -92,5 +87,5 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 
 // HealthCheck checks that the client is properly connected
 func (c *Client) HealthCheck() error {
-	return c.HealthCheck()
+	return c.reader.HealthCheck()
 }

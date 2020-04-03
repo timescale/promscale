@@ -15,10 +15,10 @@ func Init(logLevel string) {
 	allowedLevel := promlog.AllowedLevel{}
 	allowedLevel.Set(logLevel)
 
-    config := promlog.Config{
-        Level: &allowedLevel,
-        Format: &promlog.AllowedFormat{},
-    }
+	config := promlog.Config{
+		Level:  &allowedLevel,
+		Format: &promlog.AllowedFormat{},
+	}
 
 	logger = promlog.New(&config)
 }

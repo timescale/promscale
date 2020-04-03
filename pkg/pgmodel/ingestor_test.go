@@ -268,7 +268,7 @@ func TestDBIngestorIngest(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			cache := &mockCache{
-				seriesCache:  make(map[string]SeriesID, 0),
+				seriesCache:  make(map[string]SeriesID),
 				setSeriesErr: c.setSeriesErr,
 				getSeriesErr: c.getSeriesErr,
 			}

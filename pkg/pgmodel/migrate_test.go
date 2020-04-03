@@ -159,10 +159,10 @@ func TestPGConnection(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	db, err := pgx.Connect(context.Background(), PGConnectURL(t, defaultDB))
-	defer db.Close(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close(context.Background())
 	var res int
 	err = db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
 	if err != nil {
@@ -340,6 +340,9 @@ func TestSQLChunkInterval(t *testing.T) {
 		verifyChunkInterval(t, db, "test_new_metric1", time.Duration(7*time.Hour))
 
 		_, err = db.Exec(context.Background(), "SELECT prom.set_default_chunk_interval(INTERVAL '2 hours')")
+		if err != nil {
+			t.Error(err)
+		}
 
 		verifyChunkInterval(t, db, "test_new_metric1", time.Duration(7*time.Hour))
 
@@ -421,6 +424,9 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		verifyRetentionPeriod(t, db, "test_new_metric1", time.Duration(7*time.Hour))
 
 		_, err = db.Exec(context.Background(), "SELECT prom.set_default_retention_period(INTERVAL '2 hours')")
+		if err != nil {
+			t.Error(err)
+		}
 
 		verifyRetentionPeriod(t, db, "test_new_metric1", time.Duration(7*time.Hour))
 
@@ -830,7 +836,7 @@ func TestSQLIngest(t *testing.T) {
 				tables := make(map[string]bool)
 				for _, ts := range tcase.metrics {
 					for _, l := range ts.Labels {
-						if l.Name == metricNameLabelName {
+						if len(ts.Samples) > 0 && l.Name == metricNameLabelName {
 							tables[l.Value] = true
 						}
 					}
@@ -838,7 +844,10 @@ func TestSQLIngest(t *testing.T) {
 				totalRows := 0
 				for table := range tables {
 					var rowsInTable int
-					db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM prom.%s", table)).Scan(&rowsInTable)
+					err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM prom.%s", table)).Scan(&rowsInTable)
+					if err != nil {
+						t.Fatal(err)
+					}
 					totalRows += rowsInTable
 				}
 				if totalRows != int(cnt) {
@@ -846,7 +855,10 @@ func TestSQLIngest(t *testing.T) {
 				}
 
 				var numberSeries int
-				db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.series").Scan(&numberSeries)
+				err = db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.series").Scan(&numberSeries)
+				if err != nil {
+					t.Fatal(err)
+				}
 				if numberSeries != tcase.countSeries {
 					t.Fatalf("unexpected number of series: got %v expected %v\n", numberSeries, tcase.countSeries)
 				}
@@ -1543,7 +1555,12 @@ func TestMain(m *testing.M) {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
 		}
-		defer container.Terminate(ctx)
+		defer func() {
+			err := container.Terminate(ctx)
+			if err != nil {
+				panic(err)
+			}
+		}()
 	}
 	code := m.Run()
 	os.Exit(code)
