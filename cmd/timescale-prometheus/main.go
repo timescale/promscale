@@ -130,21 +130,25 @@ func main() {
 
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
-	client, err := pgclient.NewClient(&cfg.pgmodelCfg)
-	if err != nil {
-		log.Error(err)
-		os.Exit(1)
-	}
-
-	elector = initElector(cfg)
+	dbIsReadyProvider := pgclient.OnDbReady(&cfg.pgmodelCfg)
+	// if database is not ready eventually -> exit
+	dbIsReadyProvider.AddCallback(exitIfNoDatabaseCallback())
+	// adding initElector as a callback
+	// makes sure elector is ready before migration
+	dbIsReadyProvider.AddCallback(initElectorCallback(cfg))
 
 	if cfg.migrate {
-		migrate(&cfg.pgmodelCfg)
+		// makes sure migration is done after elector is created
+		dbIsReadyProvider.AddCallback(createMigrateCallback(&cfg.pgmodelCfg))
 	}
+	// will complete after dbIsReadyProvider is done and all it's callbacks
+	// are also done (makes sure elector and migration are complete)
+	clientProvider := pgclient.NewClientProvider(&cfg.pgmodelCfg, dbIsReadyProvider)
+	elector = initElector(cfg)
 
-	http.Handle("/write", timeHandler("write", write(client)))
-	http.Handle("/read", timeHandler("read", read(client)))
-	http.Handle("/healthz", health(client))
+	http.Handle("/write", timeHandler("write", write(clientProvider)))
+	http.Handle("/read", timeHandler("read", read(clientProvider)))
+	http.Handle("/healthz", health(clientProvider))
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.listenAddr)
@@ -176,6 +180,22 @@ func parseFlags() *config {
 	flag.Parse()
 
 	return cfg
+}
+
+func exitIfNoDatabaseCallback() util.CallbackOnEventualResult {
+	return func(isDbReady interface{}) {
+		if isDbReady == nil {
+			log.Error("msg", "database is not ready, failed to connect after several attempts")
+			os.Exit(1)
+			return
+		}
+	}
+}
+
+func initElectorCallback(cfg *config) util.CallbackOnEventualResult {
+	return func(interface{}) {
+		initElector(cfg)
+	}
 }
 
 func initElector(cfg *config) *util.Elector {
@@ -213,6 +233,12 @@ func initElector(cfg *config) *util.Elector {
 	return &scheduledElector.Elector
 }
 
+func createMigrateCallback(cfg *pgclient.Config) util.CallbackOnEventualResult {
+	return func(isDbReady interface{}) {
+		migrate(cfg)
+	}
+}
+
 func migrate(cfg *pgclient.Config) {
 	shouldWrite, err := isWriter()
 	if err != nil {
@@ -226,13 +252,13 @@ func migrate(cfg *pgclient.Config) {
 
 	dbStd, err := sql.Open("pgx", cfg.GetConnectionStr())
 	if err != nil {
-		log.Error(err)
+		log.Error("msg", err)
 		return
 	}
 	defer func() {
 		err := dbStd.Close()
 		if err != nil {
-			log.Error(err)
+			log.Error("msg", err)
 			return
 		}
 	}()
@@ -240,13 +266,29 @@ func migrate(cfg *pgclient.Config) {
 	err = pgmodel.Migrate(dbStd)
 
 	if err != nil {
-		log.Error(err)
+		log.Error("msg", err)
 		return
 	}
 }
 
-func write(writer pgmodel.DBInserter) http.Handler {
+func write(writerProvider util.Eventual) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var writer pgmodel.DBInserter
+		writerI, done := writerProvider.Get()
+		if !done {
+			log.Warn("msg", "Write request received while waiting for remote storage; ignoring")
+			return
+		}
+
+		if done && writerI == nil {
+			errStr := "Couldn't connect to remote storage"
+			log.Error("msg", errStr)
+			http.Error(w, errStr, http.StatusInternalServerError)
+			return
+		}
+
+		writer = writerI.(pgmodel.DBInserter)
+
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			log.Error("msg", "Read error", "err", err.Error())
@@ -254,6 +296,8 @@ func write(writer pgmodel.DBInserter) http.Handler {
 			return
 		}
 
+		// TODO fix so we don't implicitly "know" that elector would be set if the
+		// writer Eventual is complete
 		shouldWrite, err := isWriter()
 		if err != nil {
 			log.Error("msg", "IsLeader check failed", "err", err)
@@ -307,7 +351,6 @@ func write(writer pgmodel.DBInserter) http.Handler {
 			log.Info("msg", "Samples write throughput", "samples/sec", d)
 		default:
 		}
-
 	})
 }
 
@@ -327,7 +370,7 @@ func getCounterValue(counter prometheus.Counter) float64 {
 	return dtoMetric.GetCounter().GetValue()
 }
 
-func read(reader pgmodel.Reader) http.Handler {
+func read(readerEventually util.Eventual) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -354,10 +397,28 @@ func read(reader pgmodel.Reader) http.Handler {
 		receivedQueries.Add(queryCount)
 		begin := time.Now()
 
+		var reader pgmodel.Reader
+		readerI, done := readerEventually.Get()
+		if !done {
+			errStr := "Read request received while waiting for remote storage; ignoring"
+			log.Warn("msg", errStr)
+			http.Error(w, errStr, http.StatusInternalServerError)
+			failedQueries.Add(queryCount)
+			return
+		}
+
+		if done && readerI == nil {
+			errStr := "Couldn't connect to remote storage"
+			log.Error("msg", errStr)
+			http.Error(w, errStr, http.StatusInternalServerError)
+			failedQueries.Add(queryCount)
+		}
+
+		reader = readerI.(pgmodel.Reader)
 		var resp *prompb.ReadResponse
 		resp, err = reader.Read(&req)
 		if err != nil {
-			log.Warn("msg", "Error executing query", "query", req, "storage", "PostgreSQL", "err", err)
+			log.Warn("msg", "Error executing query", "query", req, "storage", "TimescaleDB", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			failedQueries.Add(queryCount)
 			return
@@ -383,8 +444,22 @@ func read(reader pgmodel.Reader) http.Handler {
 	})
 }
 
-func health(hc pgmodel.HealthChecker) http.Handler {
+func health(hcEventually util.Eventual) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var hc pgmodel.HealthChecker
+		hcI, done := hcEventually.Get()
+		if !done {
+			log.Warn("Healthcheck while waiting for db")
+			w.Header().Set("Content-Length", "0")
+			return
+		}
+		if done && hcI == nil {
+			errStr := "Healthcheck failed; db is unavailable"
+			log.Warn("msg", errStr)
+			http.Error(w, errStr, http.StatusInternalServerError)
+			return
+		}
+
 		err := hc.HealthCheck()
 		if err != nil {
 			log.Warn("Healthcheck failed", err)

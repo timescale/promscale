@@ -58,7 +58,7 @@ func (e *Elector) IsLeader() (bool, error) {
 func (e *Elector) Resign() error {
 	err := e.election.Resign()
 	if err != nil {
-		log.Error("err", "Failed to resign", "err", err)
+		log.Error("msg", "Failed to resign", "err", err)
 	} else {
 		log.Info("msg", "Instance is no longer a leader")
 	}
@@ -182,7 +182,7 @@ func (r *RestElection) handleLeader() http.HandlerFunc {
 				// resign
 				err = r.Resign()
 				if err != nil {
-					log.Error("err", err)
+					log.Error("msg", err)
 					http.Error(response, err.Error(), http.StatusInternalServerError)
 					return
 				}

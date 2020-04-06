@@ -145,7 +145,7 @@ func (l *PgAdvisoryLock) getAdvisoryLock() (bool, error) {
 func (l *PgAdvisoryLock) connCleanUp() {
 	if l.conn != nil {
 		if err := l.conn.Close(context.Background()); err != nil {
-			log.Error("err", err)
+			log.Error("msg", err)
 		}
 	}
 	l.conn = nil

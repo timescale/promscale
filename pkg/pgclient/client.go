@@ -2,8 +2,10 @@ package pgclient
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/timescale/timescale-prometheus/pkg/util"
 	"regexp"
 	"time"
 
@@ -54,10 +56,11 @@ func NewClient(cfg *Config) (*Client, error) {
 
 	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr)
 
-	log.Info("msg", regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connectionStr, "password='****'"))
+	escapedConnStr := regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connectionStr, "password='****'")
+	log.Info("msg", escapedConnStr)
 
 	if err != nil {
-		log.Error("err creating connection pool for new client", err)
+		log.Error("msg", "err creating connection pool for new client", err)
 		return nil, err
 	}
 
@@ -69,6 +72,48 @@ func NewClient(cfg *Config) (*Client, error) {
 	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache)
 
 	return &Client{Connection: connectionPool, ingestor: ingestor, reader: reader, cfg: cfg}, nil
+}
+
+func OnDbReady(cfg *Config) util.Eventual {
+	numRetries := uint(10)
+	backOff := 10 * time.Second
+	isDbReady := func() (interface{}, error) {
+		dbStd, err := sql.Open("pgx", cfg.GetConnectionStr())
+		if err != nil {
+			err = fmt.Errorf("db was not ready: %s", err)
+			log.Warn("msg", err)
+			return nil, err
+		}
+		defer func() {
+			err := dbStd.Close()
+			if err != nil {
+				log.Error("msg", fmt.Errorf("error closing conn in db readiness check: %s", err))
+			}
+		}()
+		row := dbStd.QueryRow("SELECT 1")
+		var one int
+		if err := row.Scan(&one); err != nil {
+			err = fmt.Errorf("db was not ready: %s", err)
+			log.Warn("msg", err)
+			return nil, err
+		}
+		return true, nil
+	}
+	return util.NewEventualWith("is-db-alive-yet", numRetries, backOff, isDbReady)
+}
+
+func NewClientProvider(cfg *Config, onDbReady util.Eventual) util.Eventual {
+	return onDbReady.Map("create-db-client", func(dbOk interface{}) interface{} {
+		if dbOk == nil {
+			// db was not ok
+			return nil
+		}
+		client, err := NewClient(cfg)
+		if err != nil {
+			return nil
+		}
+		return client
+	})
 }
 
 func (cfg *Config) GetConnectionStr() string {

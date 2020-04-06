@@ -4,11 +4,8 @@
 package util
 
 import (
-	"fmt"
 	"sync"
 	"time"
-
-	"github.com/timescale/timescale-prometheus/pkg/log"
 )
 
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
@@ -52,24 +49,5 @@ func (dt *ThroughputCalc) Start() {
 				}
 			}
 		}()
-	}
-}
-
-// Blocking retry with a fixed delay
-func RetryWithFixedDelay(retries uint, wait time.Duration, f func() (interface{}, error)) (interface{}, error) {
-	current := uint(0)
-	for {
-		value, err := f()
-		if err == nil {
-			return value, nil
-		}
-		log.Error("msg", "Error running function with retry", "err", err)
-		current++
-		if current >= retries {
-			log.Error("msg", fmt.Sprintf("Giving up retrying after %d failed attempts", retries))
-			return nil, err
-		}
-		log.Debug("Sleeping for %d(ns) before next retry", wait.Nanoseconds())
-		time.Sleep(wait)
 	}
 }
