@@ -8,7 +8,7 @@ metadata:
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 spec:
-  schedule: "0,30 * * * *"
+  schedule: {{ .Values.dropChunk.schedule }}
   jobTemplate:
     spec:
       template:
@@ -22,14 +22,14 @@ spec:
             - CALL prom.drop_chunks();
             env:
               - name: PGPORT
-                value: {{ .Values.port | quote }}
+                value: {{ .Values.connection.port | quote }}
               - name: PGUSER
-                value: {{ .Values.user }}
+                value: {{ .Values.connection.user }}
               - name: PGPASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: {{ .Values.passwordSecret }}
-                    key: {{ .Values.user }}
+                    name: {{ tpl .Values.connection.password.secretTemplate . }}
+                    key: {{ .Values.connection.user }}
               - name: PGHOST
-                value: {{ tpl .Values.host.nameTemplate . }}
+                value: {{ tpl .Values.connection.host.nameTemplate . }}
           restartPolicy: OnFailure
