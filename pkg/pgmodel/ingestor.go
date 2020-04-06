@@ -6,7 +6,6 @@ package pgmodel
 import (
 	"fmt"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -24,7 +23,7 @@ type SeriesID int64
 
 // Inserter is responsible for inserting label, series and data into the storage.
 type Inserter interface {
-	InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error)
+	InsertNewData(newSeries []SeriesWithCallback, rows map[string][]*samplesInfo) (uint64, error)
 	Close()
 }
 
@@ -42,54 +41,6 @@ type Cache interface {
 type samplesInfo struct {
 	seriesID SeriesID
 	samples  []prompb.Sample
-}
-
-// SampleInfoIterator is an iterator over a collection of sampleInfos that returns
-// data in the format expected for the data table row.
-type SampleInfoIterator struct {
-	sampleInfos     []*samplesInfo
-	sampleInfoIndex int
-	sampleIndex     int
-}
-
-// NewSampleInfoIterator is the constructor
-func NewSampleInfoIterator() *SampleInfoIterator {
-	return &SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0}
-}
-
-//Append adds a sample info to the back of the iterator
-func (t *SampleInfoIterator) Append(s *samplesInfo) {
-	t.sampleInfos = append(t.sampleInfos, s)
-}
-
-// Next returns true if there is another row and makes the next row data
-// available to Values(). When there are no more rows available or an error
-// has occurred it returns false.
-func (t *SampleInfoIterator) Next() bool {
-	t.sampleIndex++
-	if t.sampleInfoIndex < len(t.sampleInfos) && t.sampleIndex >= len(t.sampleInfos[t.sampleInfoIndex].samples) {
-		t.sampleInfoIndex++
-		t.sampleIndex = 0
-	}
-	return t.sampleInfoIndex < len(t.sampleInfos)
-}
-
-// Values returns the values for the current row
-func (t *SampleInfoIterator) Values() ([]interface{}, error) {
-	info := t.sampleInfos[t.sampleInfoIndex]
-	sample := info.samples[t.sampleIndex]
-	row := []interface{}{
-		model.Time(sample.Timestamp).Time(),
-		sample.Value,
-		info.seriesID,
-	}
-	return row, nil
-}
-
-// Err returns any error that has been encountered by the CopyFromSource. If
-// this is not nil *Conn.CopyFrom will abort the copy.
-func (t *SampleInfoIterator) Err() error {
-	return nil
 }
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
@@ -113,9 +64,9 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 	return rowsInserted, err
 }
 
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, map[string]*SampleInfoIterator, int, error) {
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, map[string][]*samplesInfo, int, error) {
 	var seriesToInsert []SeriesWithCallback
-	dataSamples := make(map[string]*SampleInfoIterator)
+	dataSamples := make(map[string][]*samplesInfo, 0)
 	rows := 0
 
 	for _, t := range tts {
@@ -158,11 +109,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, m
 			})
 		}
 
-		if _, ok := dataSamples[metricName]; !ok {
-			dataSamples[metricName] = NewSampleInfoIterator()
-		}
-
-		dataSamples[metricName].Append(&sample)
+		dataSamples[metricName] = append(dataSamples[metricName], &sample)
 	}
 
 	return seriesToInsert, dataSamples, rows, nil
