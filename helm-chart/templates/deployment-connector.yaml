@@ -36,7 +36,7 @@ spec:
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.connection.passwordSecret }}
+                  name: {{ tpl .Values.connection.password.secretTemplate . }}
                   key: {{ .Values.connection.user }}
             - name: PGHOST
               value: {{ tpl .Values.connection.host.nameTemplate . }} 
