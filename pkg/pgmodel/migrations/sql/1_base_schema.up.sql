@@ -501,9 +501,11 @@ LANGUAGE SQL VOLATILE PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name TEXT, new_interval INTERVAL)
 RETURNS void
 AS $func$
+    --set interval while addeing 1% of randomness to the interval so that chunks are not aligned so that
+    --chunks are staggered for compression jobs.
     SELECT set_chunk_time_interval(
         format('SCHEMA_PROM.%I',(SELECT table_name FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)))::regclass,
-        new_interval);
+        new_interval * (1.0+((random()*0.01)-0.005)));
 $func$
 LANGUAGE SQL VOLATILE;
 
