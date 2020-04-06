@@ -36,7 +36,7 @@ func (m *mockCache) SetSeries(lset Labels, id SeriesID) error {
 
 type mockInserter struct {
 	insertedSeries  []SeriesWithCallback
-	insertedData    []map[string]*SampleInfoIterator
+	insertedData    []map[string][]*samplesInfo
 	insertSeriesErr error
 	insertDataErr   error
 }
@@ -45,7 +45,7 @@ func (m *mockInserter) Close() {
 
 }
 
-func (m *mockInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error) {
+func (m *mockInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
 
 	err := m.InsertSeries(newSeries)
 	if err != nil {
@@ -66,11 +66,11 @@ func (m *mockInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 	return m.insertSeriesErr
 }
 
-func (m *mockInserter) InsertData(rows map[string]*SampleInfoIterator) (uint64, error) {
+func (m *mockInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error) {
 	m.insertedData = append(m.insertedData, rows)
 	ret := 0
 	for _, data := range rows {
-		for _, si := range data.sampleInfos {
+		for _, si := range data {
 			ret += len(si.samples)
 		}
 	}

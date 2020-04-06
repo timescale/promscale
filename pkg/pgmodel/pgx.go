@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -138,6 +139,54 @@ func (p *pgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 
+// SampleInfoIterator is an iterator over a collection of sampleInfos that returns
+// data in the format expected for the data table row.
+type SampleInfoIterator struct {
+	sampleInfos     []*samplesInfo
+	sampleInfoIndex int
+	sampleIndex     int
+}
+
+// NewSampleInfoIterator is the constructor
+func NewSampleInfoIterator() *SampleInfoIterator {
+	return &SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0}
+}
+
+//Append adds a sample info to the back of the iterator
+func (t *SampleInfoIterator) Append(s *samplesInfo) {
+	t.sampleInfos = append(t.sampleInfos, s)
+}
+
+// Next returns true if there is another row and makes the next row data
+// available to Values(). When there are no more rows available or an error
+// has occurred it returns false.
+func (t *SampleInfoIterator) Next() bool {
+	t.sampleIndex++
+	if t.sampleInfoIndex < len(t.sampleInfos) && t.sampleIndex >= len(t.sampleInfos[t.sampleInfoIndex].samples) {
+		t.sampleInfoIndex++
+		t.sampleIndex = 0
+	}
+	return t.sampleInfoIndex < len(t.sampleInfos)
+}
+
+// Values returns the values for the current row
+func (t *SampleInfoIterator) Values() ([]interface{}, error) {
+	info := t.sampleInfos[t.sampleInfoIndex]
+	sample := info.samples[t.sampleIndex]
+	row := []interface{}{
+		model.Time(sample.Timestamp).Time(),
+		sample.Value,
+		info.seriesID,
+	}
+	return row, nil
+}
+
+// Err returns any error that has been encountered by the CopyFromSource. If
+// this is not nil *Conn.CopyFrom will abort the copy.
+func (t *SampleInfoIterator) Err() error {
+	return nil
+}
+
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
 func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngestor {
@@ -182,7 +231,7 @@ func (p *pgxInserter) Close() {
 	})
 }
 
-func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string]*SampleInfoIterator) (uint64, error) {
+func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
 	err := p.InsertSeries(newSeries)
 	if err != nil {
 		return 0, err
@@ -260,7 +309,7 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 }
 
 type insertDataRequest struct {
-	data     *SampleInfoIterator
+	data     []*samplesInfo
 	finished *sync.WaitGroup
 	errChan  chan error
 }
@@ -270,7 +319,7 @@ type insertDataTask struct {
 	errChan  chan error
 }
 
-func (p *pgxInserter) InsertData(rows map[string]*SampleInfoIterator) (uint64, error) {
+func (p *pgxInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error) {
 	// check that all the metrics are valid, we don't want to deadlock waiting
 	// on an Insert to a metric that does not exist
 	for metricName := range rows {
@@ -285,7 +334,7 @@ func (p *pgxInserter) InsertData(rows map[string]*SampleInfoIterator) (uint64, e
 	workFinished.Add(len(rows))
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
-		for _, si := range data.sampleInfos {
+		for _, si := range data {
 			numRows += uint64(len(si.samples))
 		}
 		p.insertMetricData(metricName, data, workFinished, errChan)
@@ -301,7 +350,7 @@ func (p *pgxInserter) InsertData(rows map[string]*SampleInfoIterator) (uint64, e
 	return numRows, err
 }
 
-func (p *pgxInserter) insertMetricData(metric string, data *SampleInfoIterator, finished *sync.WaitGroup, errChan chan error) {
+func (p *pgxInserter) insertMetricData(metric string, data []*samplesInfo, finished *sync.WaitGroup, errChan chan error) {
 	inserter := p.getMetricTableInserter(metric)
 	inserter <- insertDataRequest{data: data, finished: finished, errChan: errChan}
 }
@@ -391,14 +440,14 @@ func (p *pgxInserter) metricTableInsert(metric string, input chan insertDataRequ
 			return
 		}
 		needsResponse = append(needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
-		batch.sampleInfos = append(batch.sampleInfos, req.data.sampleInfos...)
+		batch.sampleInfos = append(batch.sampleInfos, req.data...)
 
 	TryReadMore:
 		for len(batch.sampleInfos) < batchSize {
 			select {
 			case req := <-input:
 				needsResponse = append(needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
-				batch.sampleInfos = append(batch.sampleInfos, req.data.sampleInfos...)
+				batch.sampleInfos = append(batch.sampleInfos, req.data...)
 			default:
 				break TryReadMore
 			}
