@@ -277,7 +277,7 @@ func verifyChunkInterval(t *testing.T, db *pgxpool.Pool, tableName string, expec
 	}
 
 	dur := time.Duration(time.Duration(intervalLength) * time.Microsecond)
-	if dur != expectedDuration {
+	if dur.Round(time.Hour) != expectedDuration {
 		t.Errorf("Unexpected chunk interval for table %v: got %v want %v", tableName, dur, expectedDuration)
 	}
 }
