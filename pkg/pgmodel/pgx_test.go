@@ -38,7 +38,7 @@ type mockPGXConn struct {
 	QueryErr          map[int]error // Mapping query call to error response.
 	CopyFromTableName []pgx.Identifier
 	CopyFromColumns   [][]string
-	CopyFromRowSource []pgx.CopyFromSource
+	CopyFromRowSource [][]*samplesInfo
 	CopyFromResult    int64
 	CopyFromError     error
 	CopyFromRowsRows  [][]interface{}
@@ -77,9 +77,9 @@ func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, co
 	m.CopyFromTableName = append(m.CopyFromTableName, tableName)
 	m.CopyFromColumns = append(m.CopyFromColumns, columnNames)
 	src := rowSrc.(*SampleInfoIterator)
-	rows := SampleInfoIterator{sampleIndex: -1}
-	rows.sampleInfos = append(rows.sampleInfos, src.sampleInfos...)
-	m.CopyFromRowSource = append(m.CopyFromRowSource, &rows)
+	rows := make([]*samplesInfo, 0, len(src.sampleInfos))
+	rows = append(rows, src.sampleInfos...)
+	m.CopyFromRowSource = append(m.CopyFromRowSource, rows)
 	return m.CopyFromResult, m.CopyFromError
 }
 
@@ -450,12 +450,12 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	}
 }
 
-func createRows(x int) map[string]*SampleInfoIterator {
+func createRows(x int) map[string][]*samplesInfo {
 	return createRowsByMetric(x, 1)
 }
 
-func createRowsByMetric(x int, metricCount int) map[string]*SampleInfoIterator {
-	ret := make(map[string]*SampleInfoIterator)
+func createRowsByMetric(x int, metricCount int) map[string][]*samplesInfo {
+	ret := make(map[string][]*samplesInfo, 0)
 	i := 0
 
 	metrics := make([]string, 0, metricCount)
@@ -469,10 +469,8 @@ func createRowsByMetric(x int, metricCount int) map[string]*SampleInfoIterator {
 
 	for i < x {
 		metricIndex := i % metricCount
-		if _, ok := ret[metrics[metricIndex]]; !ok {
-			ret[metrics[metricIndex]] = NewSampleInfoIterator()
-		}
-		ret[metrics[metricIndex]].Append(&samplesInfo{})
+
+		ret[metrics[metricIndex]] = append(ret[metrics[metricIndex]], &samplesInfo{})
 		i++
 	}
 	return ret
@@ -481,7 +479,7 @@ func createRowsByMetric(x int, metricCount int) map[string]*SampleInfoIterator {
 func TestPGXInserterInsertData(t *testing.T) {
 	testCases := []struct {
 		name           string
-		rows           map[string]*SampleInfoIterator
+		rows           map[string][]*samplesInfo
 		queryNoRows    bool
 		queryErr       map[int]error
 		copyFromResult int64
