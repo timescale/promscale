@@ -32,3 +32,11 @@ jobs:
 
     - name: Build
       run: go build -v ./...
+
+    - name: Test
+      run: go test -race ./...
+
+    - name: Generated
+      run: |
+        go generate ./...
+        git diff --exit-code
