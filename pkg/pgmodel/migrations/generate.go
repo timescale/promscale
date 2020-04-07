@@ -9,13 +9,50 @@
 package main
 
 import (
+	"github.com/shurcooL/vfsgen"
 	"log"
 	"net/http"
-
-	"github.com/shurcooL/vfsgen"
+	"os"
+	"time"
 )
 
-var Assets http.FileSystem = http.Dir("sql")
+// modTimeFS is an http.FileSystem wrapper that modifies
+// underlying fs such that all of its file mod times are set to zero.
+type modTimeFS struct {
+	fs http.FileSystem
+}
+
+func (fs modTimeFS) Open(name string) (http.File, error) {
+	f, err := fs.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return modTimeFile{f}, nil
+}
+
+type modTimeFile struct {
+	http.File
+}
+
+func (f modTimeFile) Stat() (os.FileInfo, error) {
+	fi, err := f.File.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return modTimeFileInfo{fi}, nil
+}
+
+type modTimeFileInfo struct {
+	os.FileInfo
+}
+
+func (modTimeFileInfo) ModTime() time.Time {
+	return time.Time{}
+}
+
+var Assets http.FileSystem = modTimeFS{
+	fs: http.Dir("sql"),
+}
 
 func main() {
 	err := vfsgen.Generate(Assets, vfsgen.Options{
