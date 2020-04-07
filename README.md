@@ -13,6 +13,8 @@ stack.
 The following command will install Prometheus, TimescaleDB, Timescale-Prometheus Connector, and Grafana
 into your Kubernetes cluster:
 ```
+helm repo add timescale https://charts.timescale.com/
+helm repo update
 helm install <release_name> timescale/timescale-observability
 ```
 
