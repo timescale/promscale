@@ -480,7 +480,7 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 
 	for {
 		if !handler.hasPendingReqs() {
-			stillAlive := handler.waitForReq()
+			stillAlive := handler.blockingHandleReq()
 			if !stillAlive {
 				return
 			}
@@ -491,7 +491,7 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 	hotReceive:
 		for {
 			for i := 0; i < 1000; i++ {
-				receivingNewReqs := handler.handleMoreReqs()
+				receivingNewReqs := handler.nonblockingHandleReq()
 				if !receivingNewReqs {
 					break hotReceive
 				}
@@ -510,7 +510,7 @@ func (h *InsertHandler) hasPendingReqs() bool {
 	return !h.pending.IsEmpty()
 }
 
-func (h *InsertHandler) waitForReq() bool {
+func (h *InsertHandler) blockingHandleReq() bool {
 	req, ok := <-h.input
 	if !ok {
 		return false
@@ -521,7 +521,7 @@ func (h *InsertHandler) waitForReq() bool {
 	return true
 }
 
-func (h *InsertHandler) handleMoreReqs() bool {
+func (h *InsertHandler) nonblockingHandleReq() bool {
 	select {
 	case req := <-h.input:
 		h.handleReq(req)
@@ -540,20 +540,13 @@ func (h *InsertHandler) handleReq(req insertDataRequest) bool {
 	return false
 }
 
-func (p *PendingBuffer) addReq(req insertDataRequest) bool {
-	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
-	p.batch.sampleInfos = append(p.batch.sampleInfos, req.data...)
-	return len(p.batch.sampleInfos) > flushSize
-}
-
 func (h *InsertHandler) flushTimedOutReqs() {
 	for {
-		earliest := h.pending.Front()
+		earliest, earliestPending := h.pending.Front()
 		if earliest == nil {
 			return
 		}
 
-		earliestPending := earliest.Value.(*PendingBuffer)
 		elapsed := time.Now().Sub(earliestPending.start)
 		if elapsed < flushTimeout {
 			return
@@ -564,7 +557,7 @@ func (h *InsertHandler) flushTimedOutReqs() {
 }
 
 func (h *InsertHandler) flushEarliestReq() {
-	earliest := h.pending.Front()
+	earliest, _ := h.pending.Front()
 	if earliest == nil {
 		return
 	}
@@ -630,6 +623,12 @@ func (m *orderedMap) addReq(req insertDataRequest) (bool, *list.Element) {
 	return needsFlush, pending
 }
 
+func (p *PendingBuffer) addReq(req insertDataRequest) bool {
+	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
+	p.batch.sampleInfos = append(p.batch.sampleInfos, req.data...)
+	return len(p.batch.sampleInfos) > flushSize
+}
+
 func (m *orderedMap) newPendingBuffer(metricTable string) *PendingBuffer {
 	var buffer *PendingBuffer
 	if len(m.oldBuffers) > 0 {
@@ -646,8 +645,9 @@ func (m *orderedMap) newPendingBuffer(metricTable string) *PendingBuffer {
 	return buffer
 }
 
-func (m *orderedMap) Front() *list.Element {
-	return m.order.Front()
+func (m *orderedMap) Front() (*list.Element, *PendingBuffer) {
+	elem := m.order.Front()
+	return elem, elem.Value.(*PendingBuffer)
 }
 
 func (m *orderedMap) Remove(elem *list.Element) *PendingBuffer {
