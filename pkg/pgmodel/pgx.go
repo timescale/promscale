@@ -4,11 +4,14 @@
 package pgmodel
 
 import (
+	"container/list"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -190,12 +193,12 @@ func (t *SampleInfoIterator) Err() error {
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
 func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngestor {
-	pi := &pgxInserter{
-		conn: &pgxConnImpl{
-			conn: c,
-		},
-		metricTableNames: cache,
+
+	conn := &pgxConnImpl{
+		conn: c,
 	}
+
+	pi := newPgxInserter(conn, cache)
 
 	config := bigcache.DefaultConfig(10 * time.Minute)
 	series, _ := bigcache.NewBigCache(config)
@@ -218,17 +221,40 @@ func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
 	return NewPgxIngestorWithMetricCache(c, cache)
 }
 
+func newPgxInserter(conn pgxConn, cache MetricCache) *pgxInserter {
+	maxProcs := runtime.GOMAXPROCS(-1)
+	if maxProcs <= 0 {
+		maxProcs = runtime.NumCPU()
+	}
+	if maxProcs <= 0 {
+		maxProcs = 1
+	}
+	inserters := make([]chan insertDataRequest, maxProcs)
+	for i := 0; i < maxProcs; i++ {
+		ch := make(chan insertDataRequest, 1000)
+		inserters[i] = ch
+		go runInserterRoutine(conn, ch)
+	}
+
+	return &pgxInserter{
+		conn:             conn,
+		metricTableNames: cache,
+		inserters:        inserters,
+		seed:             maphash.MakeSeed(),
+	}
+}
+
 type pgxInserter struct {
-	conn                 pgxConn
-	metricTableNames     MetricCache
-	metricTableInserters sync.Map
+	conn             pgxConn
+	metricTableNames MetricCache
+	inserters        []chan insertDataRequest
+	seed             maphash.Seed
 }
 
 func (p *pgxInserter) Close() {
-	p.metricTableInserters.Range(func(key, value interface{}) bool {
-		close(value.(chan insertDataRequest))
-		return true
-	})
+	for i := 0; i < len(p.inserters); i++ {
+		close(p.inserters[i])
+	}
 }
 
 func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
@@ -309,9 +335,10 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 }
 
 type insertDataRequest struct {
-	data     []*samplesInfo
-	finished *sync.WaitGroup
-	errChan  chan error
+	metricTable string
+	data        []*samplesInfo
+	finished    *sync.WaitGroup
+	errChan     chan error
 }
 
 type insertDataTask struct {
@@ -337,7 +364,11 @@ func (p *pgxInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error)
 		for _, si := range data {
 			numRows += uint64(len(si.samples))
 		}
-		p.insertMetricData(metricName, data, workFinished, errChan)
+		tableName, err := p.getMetricTableName(metricName)
+		if err != nil {
+			panic("lost metric table name")
+		}
+		p.insertMetricData(tableName, data, workFinished, errChan)
 	}
 
 	workFinished.Wait()
@@ -350,9 +381,9 @@ func (p *pgxInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error)
 	return numRows, err
 }
 
-func (p *pgxInserter) insertMetricData(metric string, data []*samplesInfo, finished *sync.WaitGroup, errChan chan error) {
-	inserter := p.getMetricTableInserter(metric)
-	inserter <- insertDataRequest{data: data, finished: finished, errChan: errChan}
+func (p *pgxInserter) insertMetricData(metricTable string, data []*samplesInfo, finished *sync.WaitGroup, errChan chan error) {
+	inserter := p.getMetricTableInserter(metricTable)
+	inserter <- insertDataRequest{metricTable: metricTable, data: data, finished: finished, errChan: errChan}
 }
 
 func (p *pgxInserter) createMetricTable(metric string) (string, error) {
@@ -404,76 +435,230 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	return tableName, err
 }
 
-func (p *pgxInserter) getMetricTableInserter(metric string) chan insertDataRequest {
-	var inserterI interface{}
-	var ok bool
-	var inserter chan insertDataRequest
-	if inserterI, ok = p.metricTableInserters.Load(metric); !ok {
-		ch := make(chan insertDataRequest, 1000)
-		ii, loaded := p.metricTableInserters.LoadOrStore(metric, ch)
-		inserterI = ii
-		if !loaded {
-			go p.metricTableInsert(metric, ch)
-		}
-
+func (p *pgxInserter) getMetricTableInserter(metricTable string) chan insertDataRequest {
+	h := maphash.Hash{}
+	h.SetSeed(p.seed)
+	h.WriteString(metricTable)
+	if len(p.inserters) < 1 {
+		panic(fmt.Sprintf("invalid len %d", len(p.inserters)))
 	}
-	inserter = inserterI.(chan insertDataRequest)
-
-	return inserter
+	inserter := h.Sum64() % uint64(len(p.inserters))
+	return p.inserters[inserter]
 }
 
-func (p *pgxInserter) metricTableInsert(metric string, input chan insertDataRequest) {
-	tableName, err := p.getMetricTableName(metric)
-	if err != nil {
+type InsertHandler struct {
+	conn    pgxConn
+	input   chan insertDataRequest
+	pending orderedMap
+}
+
+type orderedMap struct {
+	elements map[string]*list.Element
+	order    list.List // list of PendingBuffer
+
+	oldBuffers []*PendingBuffer
+}
+
+type PendingBuffer struct {
+	metricTable   string
+	needsResponse []insertDataTask
+	batch         SampleInfoIterator
+	start         time.Time
+}
+
+const (
+	flushSize    = 2000
+	flushTimeout = 500 * time.Millisecond
+)
+
+func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
+	handler := InsertHandler{
+		conn:    conn,
+		input:   input,
+		pending: makeOrderedMap(),
+	}
+
+	for {
+		if !handler.hasPendingReqs() {
+			stillAlive := handler.blockingHandleReq()
+			if !stillAlive {
+				return
+			}
+			continue
+		}
+
+		startHandling := time.Now()
+	hotReceive:
+		for {
+			for i := 0; i < 1000; i++ {
+				receivingNewReqs := handler.nonblockingHandleReq()
+				if !receivingNewReqs {
+					break hotReceive
+				}
+			}
+			if time.Now().Sub(startHandling) > flushTimeout {
+				handler.flushTimedOutReqs()
+				startHandling = time.Now()
+			}
+		}
+
+		handler.flushEarliestReq()
+	}
+}
+
+func (h *InsertHandler) hasPendingReqs() bool {
+	return !h.pending.IsEmpty()
+}
+
+func (h *InsertHandler) blockingHandleReq() bool {
+	req, ok := <-h.input
+	if !ok {
+		return false
+	}
+
+	h.handleReq(req)
+
+	return true
+}
+
+func (h *InsertHandler) nonblockingHandleReq() bool {
+	select {
+	case req := <-h.input:
+		h.handleReq(req)
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *InsertHandler) handleReq(req insertDataRequest) bool {
+	needsFlush, pending := h.pending.addReq(req)
+	if needsFlush {
+		h.flushPending(pending)
+		return true
+	}
+	return false
+}
+
+func (h *InsertHandler) flushTimedOutReqs() {
+	for {
+		earliest, earliestPending := h.pending.Front()
+		if earliest == nil {
+			return
+		}
+
+		elapsed := time.Now().Sub(earliestPending.start)
+		if elapsed < flushTimeout {
+			return
+		}
+
+		h.flushPending(earliest)
+	}
+}
+
+func (h *InsertHandler) flushEarliestReq() {
+	earliest, _ := h.pending.Front()
+	if earliest == nil {
 		return
 	}
 
-	batch := SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0}
+	h.flushPending(earliest)
+}
 
-	const batchSize int = 1000
+func (h *InsertHandler) flushPending(pendingElem *list.Element) {
+	pending := h.pending.Remove(pendingElem)
 
-	var needsResponse []insertDataTask
+	_, err := h.conn.CopyFrom(
+		context.Background(),
+		pgx.Identifier{promSchema, pending.metricTable},
+		copyColumns,
+		&pending.batch,
+	)
 
-	for {
-		req, ok := <-input
-		if !ok {
-			return
-		}
-		needsResponse = append(needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
-		batch.sampleInfos = append(batch.sampleInfos, req.data...)
-
-	TryReadMore:
-		for len(batch.sampleInfos) < batchSize {
+	for i := 0; i < len(pending.needsResponse); i++ {
+		if err != nil {
 			select {
-			case req := <-input:
-				needsResponse = append(needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
-				batch.sampleInfos = append(batch.sampleInfos, req.data...)
+			case pending.needsResponse[i].errChan <- err:
 			default:
-				break TryReadMore
 			}
 		}
-		_, err := p.conn.CopyFrom(
-			context.Background(),
-			pgx.Identifier{promSchema, tableName},
-			copyColumns,
-			&batch,
-		)
-		for i := 0; i < len(batch.sampleInfos); i++ {
-			batch.sampleInfos[i] = nil
-		}
-		batch = SampleInfoIterator{sampleInfos: batch.sampleInfos[:0], sampleIndex: -1, sampleInfoIndex: 0}
-		for i := 0; i < len(needsResponse); i++ {
-			if err != nil {
-				select {
-				case needsResponse[i].errChan <- err:
-				default:
-				}
-			}
-			needsResponse[i].finished.Done()
-			needsResponse[i] = insertDataTask{}
-		}
-		needsResponse = needsResponse[:0]
+		pending.needsResponse[i].finished.Done()
+		pending.needsResponse[i] = insertDataTask{}
 	}
+	pending.needsResponse = pending.needsResponse[:0]
+
+	for i := 0; i < len(pending.batch.sampleInfos); i++ {
+		pending.batch.sampleInfos[i] = nil
+	}
+	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0], sampleIndex: -1, sampleInfoIndex: 0}
+
+	h.pending.giveOldBuffer(pending)
+}
+
+func makeOrderedMap() orderedMap {
+	return orderedMap{
+		elements: make(map[string]*list.Element),
+		order:    list.List{},
+	}
+}
+
+func (m *orderedMap) IsEmpty() bool {
+	return len(m.elements) == 0
+}
+
+func (m *orderedMap) addReq(req insertDataRequest) (bool, *list.Element) {
+	pending, ok := m.elements[req.metricTable]
+
+	var needsFlush bool
+	var pendingBuffer *PendingBuffer
+	if ok {
+		pendingBuffer = pending.Value.(*PendingBuffer)
+	} else {
+		pendingBuffer = m.newPendingBuffer(req.metricTable)
+		pending = m.order.PushBack(pendingBuffer)
+		m.elements[req.metricTable] = pending
+	}
+
+	needsFlush = pendingBuffer.addReq(req)
+	return needsFlush, pending
+}
+
+func (p *PendingBuffer) addReq(req insertDataRequest) bool {
+	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
+	p.batch.sampleInfos = append(p.batch.sampleInfos, req.data...)
+	return len(p.batch.sampleInfos) > flushSize
+}
+
+func (m *orderedMap) newPendingBuffer(metricTable string) *PendingBuffer {
+	var buffer *PendingBuffer
+	if len(m.oldBuffers) > 0 {
+		last := len(m.oldBuffers) - 1
+		buffer, m.oldBuffers = m.oldBuffers[last], m.oldBuffers[:last]
+	} else {
+		buffer = &PendingBuffer{
+			batch: SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0},
+		}
+	}
+
+	buffer.start = time.Now()
+	buffer.metricTable = metricTable
+	return buffer
+}
+
+func (m *orderedMap) Front() (*list.Element, *PendingBuffer) {
+	elem := m.order.Front()
+	return elem, elem.Value.(*PendingBuffer)
+}
+
+func (m *orderedMap) Remove(elem *list.Element) *PendingBuffer {
+	pending := elem.Value.(*PendingBuffer)
+	m.order.Remove(elem)
+	delete(m.elements, pending.metricTable)
+	return pending
+}
+
+func (m *orderedMap) giveOldBuffer(buffer *PendingBuffer) {
+	m.oldBuffers = append(m.oldBuffers, buffer)
 }
 
 // NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX

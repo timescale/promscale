@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"regexp"
+	"runtime"
 	"time"
 
 	"github.com/allegro/bigcache"
@@ -52,7 +53,14 @@ type Client struct {
 func NewClient(cfg *Config) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
 
-	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr)
+	maxProcs := runtime.GOMAXPROCS(-1)
+	if maxProcs <= 0 {
+		maxProcs = runtime.NumCPU()
+	}
+	if maxProcs <= 0 {
+		maxProcs = 1
+	}
+	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxProcs, maxProcs))
 
 	log.Info("msg", regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connectionStr, "password='****'"))
 
