@@ -462,6 +462,11 @@ type PendingBuffer struct {
 	start         time.Time
 }
 
+const (
+	flushSize    = 2000
+	flushTimeout = 500 * time.Millisecond
+)
+
 func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 	handler := InsertHandler{
 		conn:    conn,
@@ -478,12 +483,22 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 			}
 			continue
 		}
-		receivingNewReqs := true
-		for receivingNewReqs {
-			handler.flushTimedOutReqs()
-			receivingNewReqs = handler.handleMoreReqs()
-			//TODO if we run out of new reqs, flush one?
+
+		startHandling := time.Now()
+	hotReceive:
+		for {
+			for i := 0; i < 1000; i++ {
+				receivingNewReqs, _ := handler.handleMoreReqs()
+				if !receivingNewReqs {
+					break hotReceive
+				}
+			}
+			if time.Now().Sub(startHandling) > flushTimeout {
+				handler.flushTimedOutReqs()
+				startHandling = time.Now()
+			}
 		}
+
 		handler.flushEarliestReq()
 	}
 }
@@ -503,23 +518,21 @@ func (h *InsertHandler) waitForReq() bool {
 	return true
 }
 
-func (h *InsertHandler) handleMoreReqs() bool {
+func (h *InsertHandler) handleMoreReqs() (gorReq bool, flushed bool) {
 	select {
 	case req := <-h.input:
-		h.handleReq(req)
-		return true
+		flushed := h.handleReq(req)
+		return true, flushed
 	default:
-		return false
+		return false, false
 	}
 }
 
-const flushSize = 2000
-
-func (h *InsertHandler) handleReq(req insertDataRequest) {
+func (h *InsertHandler) handleReq(req insertDataRequest) bool {
 	pending, ok := h.pending[req.metricTable]
 	if !ok && len(req.data) > flushSize {
 		h.flushSingleReq(req)
-		return
+		return true
 	}
 
 	if !ok {
@@ -527,7 +540,7 @@ func (h *InsertHandler) handleReq(req insertDataRequest) {
 		buffer.addReq(req)
 		pending = h.timer.PushBack(buffer)
 		h.pending[req.metricTable] = pending
-		return
+		return false
 	}
 
 	pendingBuffer := pending.Value.(*PendingBuffer)
@@ -535,7 +548,9 @@ func (h *InsertHandler) handleReq(req insertDataRequest) {
 	if needsFlush {
 		h.timer.Remove(pending)
 		h.flushPending(pendingBuffer)
+		return true
 	}
+	return false
 }
 
 func (h *InsertHandler) newPendingBuffer(metricTable string) *PendingBuffer {
@@ -561,8 +576,6 @@ func (p *PendingBuffer) addReq(req insertDataRequest) bool {
 }
 
 func (h *InsertHandler) flushTimedOutReqs() {
-	const flushTimeout = 1 * time.Millisecond
-
 	for {
 		earliest := h.timer.Front()
 		if earliest == nil {
