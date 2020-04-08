@@ -13,6 +13,9 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
+	"runtime"
+	"runtime/pprof"
 	"sync/atomic"
 	"time"
 
@@ -45,6 +48,10 @@ type config struct {
 	prometheusTimeout time.Duration
 	electionInterval  time.Duration
 	migrate           bool
+
+	cpuProfileFile   string
+	memProfileFile   string
+	blockProfileFile string
 }
 
 const (
@@ -147,6 +154,60 @@ func main() {
 	http.Handle("/read", timeHandler("read", read(client)))
 	http.Handle("/healthz", health(client))
 
+	if cfg.blockProfileFile != "" {
+		runtime.SetBlockProfileRate(10000000)
+	}
+
+	var f *os.File
+	if cfg.cpuProfileFile != "" {
+		f, err := os.Create(cfg.cpuProfileFile)
+		if err != nil {
+			log.Error("msg", "could not start cpu profile", "err", err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
+	if cfg.cpuProfileFile != "" || cfg.memProfileFile != "" || cfg.blockProfileFile != "" {
+		finished := make(chan os.Signal, 1)
+		signal.Notify(finished, os.Interrupt)
+		go func() {
+			for _ = range finished {
+				if cfg.cpuProfileFile != "" {
+					pprof.StopCPUProfile()
+					f.Close()
+				}
+				if cfg.blockProfileFile != "" {
+					f, err := os.Create(cfg.blockProfileFile)
+					if err != nil {
+						fmt.Println("could not create block profile: ", err)
+						os.Exit(1)
+					}
+					defer f.Close() // error handling omitted for example
+					runtime.GC()    // get up-to-date statistics
+					if err := pprof.Lookup("block").WriteTo(f, 0); err != nil {
+						fmt.Println("could not write block profile: ", err)
+						os.Exit(1)
+					}
+				}
+				if cfg.memProfileFile != "" {
+					f, err := os.Create(cfg.memProfileFile)
+					if err != nil {
+						fmt.Println("could not create memory profile: ", err)
+						os.Exit(1)
+					}
+					defer f.Close() // error handling omitted for example
+					runtime.GC()    // get up-to-date statistics
+					if err := pprof.Lookup("allocs").WriteTo(f, 0); err != nil {
+						fmt.Println("could not write memory profile: ", err)
+						os.Exit(1)
+					}
+				}
+				os.Exit(0)
+			}
+		}()
+	}
+
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.listenAddr)
 
@@ -173,6 +234,11 @@ func parseFlags() *config {
 	flag.BoolVar(&cfg.restElection, "leader-election-rest", false, "Enable REST interface for the leader election")
 	flag.DurationVar(&cfg.electionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
 	flag.BoolVar(&cfg.migrate, "migrate", true, "Update the Prometheus SQL to the latest version")
+
+	flag.StringVar(&cfg.cpuProfileFile, "cpu-profile", "", "File to output the CPU profile to.")
+	flag.StringVar(&cfg.memProfileFile, "mem-profile", "", "File to output the memory profile to.")
+	flag.StringVar(&cfg.blockProfileFile, "block-profile", "", "File to output the profile of blocking operations to.")
+
 	envy.Parse("TS_PROM")
 	flag.Parse()
 
