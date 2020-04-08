@@ -449,8 +449,12 @@ func (p *pgxInserter) getMetricTableInserter(metricTable string) chan insertData
 type InsertHandler struct {
 	conn    pgxConn
 	input   chan insertDataRequest
-	pending map[string]*list.Element
-	timer   list.List // list of PendingBuffer
+	pending orderedMap
+}
+
+type orderedMap struct {
+	elements map[string]*list.Element
+	order    list.List // list of PendingBuffer
 
 	oldBuffers []*PendingBuffer
 }
@@ -471,8 +475,7 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 	handler := InsertHandler{
 		conn:    conn,
 		input:   input,
-		pending: make(map[string]*list.Element),
-		timer:   list.List{},
+		pending: makeOrderedMap(),
 	}
 
 	for {
@@ -488,7 +491,7 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 	hotReceive:
 		for {
 			for i := 0; i < 1000; i++ {
-				receivingNewReqs, _ := handler.handleMoreReqs()
+				receivingNewReqs := handler.handleMoreReqs()
 				if !receivingNewReqs {
 					break hotReceive
 				}
@@ -504,7 +507,7 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 }
 
 func (h *InsertHandler) hasPendingReqs() bool {
-	return len(h.pending) > 0
+	return !h.pending.IsEmpty()
 }
 
 func (h *InsertHandler) waitForReq() bool {
@@ -518,55 +521,23 @@ func (h *InsertHandler) waitForReq() bool {
 	return true
 }
 
-func (h *InsertHandler) handleMoreReqs() (gorReq bool, flushed bool) {
+func (h *InsertHandler) handleMoreReqs() bool {
 	select {
 	case req := <-h.input:
-		flushed := h.handleReq(req)
-		return true, flushed
+		h.handleReq(req)
+		return true
 	default:
-		return false, false
+		return false
 	}
 }
 
 func (h *InsertHandler) handleReq(req insertDataRequest) bool {
-	pending, ok := h.pending[req.metricTable]
-	if !ok && len(req.data) > flushSize {
-		h.flushSingleReq(req)
-		return true
-	}
-
-	if !ok {
-		buffer := h.newPendingBuffer(req.metricTable)
-		buffer.addReq(req)
-		pending = h.timer.PushBack(buffer)
-		h.pending[req.metricTable] = pending
-		return false
-	}
-
-	pendingBuffer := pending.Value.(*PendingBuffer)
-	needsFlush := pendingBuffer.addReq(req)
+	needsFlush, pending := h.pending.addReq(req)
 	if needsFlush {
-		h.timer.Remove(pending)
-		h.flushPending(pendingBuffer)
+		h.flushPending(pending)
 		return true
 	}
 	return false
-}
-
-func (h *InsertHandler) newPendingBuffer(metricTable string) *PendingBuffer {
-	var buffer *PendingBuffer
-	if len(h.oldBuffers) > 0 {
-		last := len(h.oldBuffers) - 1
-		buffer, h.oldBuffers = h.oldBuffers[last], h.oldBuffers[:last]
-	} else {
-		buffer = &PendingBuffer{
-			batch: SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0},
-		}
-	}
-
-	buffer.start = time.Now()
-	buffer.metricTable = metricTable
-	return buffer
 }
 
 func (p *PendingBuffer) addReq(req insertDataRequest) bool {
@@ -577,7 +548,7 @@ func (p *PendingBuffer) addReq(req insertDataRequest) bool {
 
 func (h *InsertHandler) flushTimedOutReqs() {
 	for {
-		earliest := h.timer.Front()
+		earliest := h.pending.Front()
 		if earliest == nil {
 			return
 		}
@@ -588,25 +559,21 @@ func (h *InsertHandler) flushTimedOutReqs() {
 			return
 		}
 
-		h.timer.Remove(earliest)
-		h.flushPending(earliestPending)
+		h.flushPending(earliest)
 	}
 }
 
 func (h *InsertHandler) flushEarliestReq() {
-	earliest := h.timer.Front()
+	earliest := h.pending.Front()
 	if earliest == nil {
 		return
 	}
 
-	earliestPending := earliest.Value.(*PendingBuffer)
-
-	h.timer.Remove(earliest)
-	h.flushPending(earliestPending)
+	h.flushPending(earliest)
 }
 
-func (h *InsertHandler) flushPending(pending *PendingBuffer) {
-	delete(h.pending, pending.metricTable)
+func (h *InsertHandler) flushPending(pendingElem *list.Element) {
+	pending := h.pending.Remove(pendingElem)
 
 	_, err := h.conn.CopyFrom(
 		context.Background(),
@@ -631,25 +598,67 @@ func (h *InsertHandler) flushPending(pending *PendingBuffer) {
 		pending.batch.sampleInfos[i] = nil
 	}
 	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0], sampleIndex: -1, sampleInfoIndex: 0}
-	h.oldBuffers = append(h.oldBuffers, pending)
+
+	h.pending.giveOldBuffer(pending)
 }
 
-func (h *InsertHandler) flushSingleReq(req insertDataRequest) {
-	_, err := h.conn.CopyFrom(
-		context.Background(),
-		pgx.Identifier{promSchema, req.metricTable},
-		copyColumns,
-		&SampleInfoIterator{sampleInfos: req.data, sampleIndex: -1, sampleInfoIndex: 0},
-	)
+func makeOrderedMap() orderedMap {
+	return orderedMap{
+		elements: make(map[string]*list.Element),
+		order:    list.List{},
+	}
+}
 
-	if err != nil {
-		select {
-		case req.errChan <- err:
-		default:
+func (m *orderedMap) IsEmpty() bool {
+	return len(m.elements) == 0
+}
+
+func (m *orderedMap) addReq(req insertDataRequest) (bool, *list.Element) {
+	pending, ok := m.elements[req.metricTable]
+
+	var needsFlush bool
+	var pendingBuffer *PendingBuffer
+	if ok {
+		pendingBuffer = pending.Value.(*PendingBuffer)
+	} else {
+		pendingBuffer = m.newPendingBuffer(req.metricTable)
+		pending = m.order.PushBack(pendingBuffer)
+		m.elements[req.metricTable] = pending
+	}
+
+	needsFlush = pendingBuffer.addReq(req)
+	return needsFlush, pending
+}
+
+func (m *orderedMap) newPendingBuffer(metricTable string) *PendingBuffer {
+	var buffer *PendingBuffer
+	if len(m.oldBuffers) > 0 {
+		last := len(m.oldBuffers) - 1
+		buffer, m.oldBuffers = m.oldBuffers[last], m.oldBuffers[:last]
+	} else {
+		buffer = &PendingBuffer{
+			batch: SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0},
 		}
 	}
 
-	req.finished.Done()
+	buffer.start = time.Now()
+	buffer.metricTable = metricTable
+	return buffer
+}
+
+func (m *orderedMap) Front() *list.Element {
+	return m.order.Front()
+}
+
+func (m *orderedMap) Remove(elem *list.Element) *PendingBuffer {
+	pending := elem.Value.(*PendingBuffer)
+	m.order.Remove(elem)
+	delete(m.elements, pending.metricTable)
+	return pending
+}
+
+func (m *orderedMap) giveOldBuffer(buffer *PendingBuffer) {
+	m.oldBuffers = append(m.oldBuffers, buffer)
 }
 
 // NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
