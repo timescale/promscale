@@ -399,7 +399,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			mockMetrics := &mockMetricCache{
 				metricCache: metricCache,
 			}
-			inserter := pgxInserter{conn: mock, metricTableNames: mockMetrics}
+			inserter := newPgxInserter(mock, mockMetrics)
 
 			var newSeries []SeriesWithCallback
 
@@ -557,7 +557,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				getMetricErr: c.metricsGetErr,
 				setMetricErr: c.metricsSetErr,
 			}
-			inserter := pgxInserter{conn: mock, metricTableNames: mockMetrics}
+			inserter := newPgxInserter(mock, mockMetrics)
 
 			_, err := inserter.InsertData(c.rows)
 
