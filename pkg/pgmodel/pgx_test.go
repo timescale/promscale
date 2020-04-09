@@ -455,7 +455,7 @@ func createRows(x int) map[string][]*samplesInfo {
 }
 
 func createRowsByMetric(x int, metricCount int) map[string][]*samplesInfo {
-	ret := make(map[string][]*samplesInfo, 0)
+	ret := make(map[string][]*samplesInfo)
 	i := 0
 
 	metrics := make([]string, 0, metricCount)
