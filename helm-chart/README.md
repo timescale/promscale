@@ -50,7 +50,7 @@ helm install --name my-release -f myvalues.yaml .
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
 | `password.secretTemplate`         | The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
-| `host.nameTemplate`               | The template for generating the hostname of the db | `{{ .Release.Name }}.default.svc.cluster.local` |
+| `host.nameTemplate`               | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
 | `port`                            | Port the db listens to                      | `5432`                             |
 | `service.port`                    | Port the connector pods will accept connections on | `9201`                      |
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
