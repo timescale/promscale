@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package pgmodel
 
 import (
@@ -14,18 +15,20 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
-// labels stores a labels.Labels in its canonical string representation
+// Labels stores a labels.Labels in its canonical string representation
 type Labels struct {
-	names       []string
-	values      []string
-	metric_name string
-	str         string
+	names      []string
+	values     []string
+	metricName string
+	str        string
 }
 
+// EmptyLables returns an empty Labels object
 func EmptyLables() Labels {
 	return Labels{}
 }
 
+// LabelsFromSlice converts a labels.Labels to a Labels object
 func LabelsFromSlice(ls labels.Labels) (Labels, error) {
 	length := len(ls)
 	names := make([]string, 0, length)
@@ -43,8 +46,9 @@ func LabelsFromSlice(ls labels.Labels) (Labels, error) {
 	return LabelsFromSlices(names, values, metricName)
 }
 
-func LabelsFromSlices(names []string, values []string, metric_name string) (Labels, error) {
-	l := Labels{names: names, values: values, metric_name: metric_name}
+// LabelsFromSlices creates a Labels object from keys, values, and metric name
+func LabelsFromSlices(names []string, values []string, metricName string) (Labels, error) {
+	l := Labels{names: names, values: values, metricName: metricName}
 
 	if !sort.IsSorted(&l) {
 		sort.Sort(&l)
@@ -53,17 +57,17 @@ func LabelsFromSlices(names []string, values []string, metric_name string) (Labe
 	length := len(l.names)
 	vals := l.values[:length]
 
-	expected_str_len := length * 4 // 2 for the length of each key, and 2 for the lengthof each value
+	expectedStrLen := length * 4 // 2 for the length of each key, and 2 for the lengthof each value
 	for i := 0; i < length; i++ {
-		expected_str_len += len(l.names[i]) + len(vals[i])
+		expectedStrLen += len(l.names[i]) + len(vals[i])
 	}
 
 	// BigCache cannot handle cases where the key string has a size greater than
 	// 16bits, so we error on such keys here. Since we are restricted to a 16bit
 	// total length anyway, we only use 16bits to store the legth of each substring
 	// in our string encoding
-	if expected_str_len > math.MaxUint16 {
-		return l, fmt.Errorf("series too long, combined series has length %d, max length %d", expected_str_len, ^uint16(0))
+	if expectedStrLen > math.MaxUint16 {
+		return l, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
 	}
 
 	// the string representation is
@@ -71,7 +75,7 @@ func LabelsFromSlices(names []string, values []string, metric_name string) (Labe
 	// that is a series of the a sequence of key values pairs with each string
 	// prefixed with it's length as a little-endian uint16
 	builder := strings.Builder{}
-	builder.Grow(expected_str_len)
+	builder.Grow(expectedStrLen)
 
 	lengthBuf := make([]byte, 2)
 	for i := 0; i < length; i++ {
@@ -126,12 +130,14 @@ func (l *Labels) String() string {
 	return l.str
 }
 
-func (a Labels) Compare(b Labels) int {
-	return strings.Compare(a.str, b.str)
+// Compare returns a comparison int between two Labels
+func (l Labels) Compare(b Labels) int {
+	return strings.Compare(l.str, b.str)
 }
 
-func (a Labels) Equal(b Labels) bool {
-	return a.str == b.str
+// Equal returns true if two Labels are equal
+func (l Labels) Equal(b Labels) bool {
+	return l.str == b.str
 }
 
 // Labels implements sort.Interface

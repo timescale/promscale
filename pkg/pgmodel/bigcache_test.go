@@ -39,25 +39,25 @@ func TestBigCache(t *testing.T) {
 	}
 
 	testLabels := []labels.Labels{
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "name1",
 				Value: "val1",
 			},
 		},
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "name1",
 				Value: "val2",
 			},
 		},
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "name2",
 				Value: "val2",
 			},
 		},
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "name1",
 				Value: "val1",
