@@ -18,8 +18,8 @@ connection:
     #   nameTemplate: "{{ already-deployed-timescale.default.svc.cluster.local }}"
     # for a host name of a timescaledb instance
     # deployed in the same release (without a cluster override) set:
-    #   nameTemplate: "{{ .Release.Name }}".default.svc.cluster.local
-    nameTemplate: "{{ .Release.Name }}.default.svc.cluster.local"
+    #   nameTemplate: {{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local
+    nameTemplate: "{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local"
   port: 5432
 
 # settings for the service to be created that will expose
