@@ -401,7 +401,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			}
 			inserter := newPgxInserter(mock, mockMetrics)
 
-			var newSeries []SeriesWithCallback
+			var newSeries []seriesWithCallback
 
 			calls := 0
 			for _, ser := range c.series {
@@ -409,7 +409,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
-				newSeries = append(newSeries, SeriesWithCallback{
+				newSeries = append(newSeries, seriesWithCallback{
 					Series: ls,
 					Callback: func(l Labels, id SeriesID) error {
 						calls++
@@ -1200,7 +1200,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						}
 					}
 				case c.err != nil:
-					if !reflect.DeepEqual(err, c.err) {
+					if err.Error() != c.err.Error() {
 						t.Errorf("unexpected error:\ngot\n%#v\nwanted\n%#v", err, c.err)
 					}
 				default:

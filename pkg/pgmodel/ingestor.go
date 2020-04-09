@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package pgmodel
 
 import (
@@ -21,13 +22,13 @@ var (
 // to the PostgreSQL type in the series table (currently BIGINT).
 type SeriesID int64
 
-// Inserter is responsible for inserting label, series and data into the storage.
-type Inserter interface {
-	InsertNewData(newSeries []SeriesWithCallback, rows map[string][]*samplesInfo) (uint64, error)
+// inserter is responsible for inserting label, series and data into the storage.
+type inserter interface {
+	InsertNewData(newSeries []seriesWithCallback, rows map[string][]*samplesInfo) (uint64, error)
 	Close()
 }
 
-type SeriesWithCallback struct {
+type seriesWithCallback struct {
 	Series   Labels
 	Callback func(l Labels, id SeriesID) error
 }
@@ -46,7 +47,7 @@ type samplesInfo struct {
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
 	cache Cache
-	db    Inserter
+	db    inserter
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
@@ -64,8 +65,8 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 	return rowsInserted, err
 }
 
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, map[string][]*samplesInfo, int, error) {
-	var seriesToInsert []SeriesWithCallback
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]seriesWithCallback, map[string][]*samplesInfo, int, error) {
+	var seriesToInsert []seriesWithCallback
 	dataSamples := make(map[string][]*samplesInfo, 0)
 	rows := 0
 
@@ -100,7 +101,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, m
 		rows += len(t.Samples)
 
 		if newSeries {
-			seriesToInsert = append(seriesToInsert, SeriesWithCallback{
+			seriesToInsert = append(seriesToInsert, seriesWithCallback{
 				Series: seriesLabels,
 				Callback: func(l Labels, id SeriesID) error {
 					sample.seriesID = id
@@ -115,6 +116,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]SeriesWithCallback, m
 	return seriesToInsert, dataSamples, rows, nil
 }
 
+// Close closes the ingestor
 func (i *DBIngestor) Close() {
 	i.db.Close()
 }

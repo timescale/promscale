@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package pgmodel
 
 import (
@@ -257,7 +258,7 @@ func (p *pgxInserter) Close() {
 	}
 }
 
-func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertNewData(newSeries []seriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
 	err := p.InsertSeries(newSeries)
 	if err != nil {
 		return 0, err
@@ -266,7 +267,7 @@ func (p *pgxInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[str
 	return p.InsertData(rows)
 }
 
-func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
+func (p *pgxInserter) InsertSeries(seriesToInsert []seriesWithCallback) error {
 	if len(seriesToInsert) == 0 {
 		return nil
 	}
@@ -281,7 +282,7 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 		return seriesToInsert[i].Series.Compare(seriesToInsert[j].Series) < 0
 	})
 
-	batchSeries := make([][]SeriesWithCallback, 0, len(seriesToInsert))
+	batchSeries := make([][]seriesWithCallback, 0, len(seriesToInsert))
 	for _, curr := range seriesToInsert {
 		if !lastSeenLabel.isEmpty() && lastSeenLabel.Equal(curr.Series) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
@@ -289,10 +290,10 @@ func (p *pgxInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
 		}
 
 		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.Series.metric_name, curr.Series.names, curr.Series.values)
+		batch.Queue(getSeriesIDForLabelSQL, curr.Series.metricName, curr.Series.names, curr.Series.values)
 		batch.Queue("COMMIT;")
 		numSQLFunctionCalls++
-		batchSeries = append(batchSeries, []SeriesWithCallback{curr})
+		batchSeries = append(batchSeries, []seriesWithCallback{curr})
 
 		lastSeenLabel = curr.Series
 	}
@@ -446,7 +447,7 @@ func (p *pgxInserter) getMetricTableInserter(metricTable string) chan insertData
 	return p.inserters[inserter]
 }
 
-type InsertHandler struct {
+type insertHandler struct {
 	conn    pgxConn
 	input   chan insertDataRequest
 	pending orderedMap
@@ -456,10 +457,10 @@ type orderedMap struct {
 	elements map[string]*list.Element
 	order    list.List // list of PendingBuffer
 
-	oldBuffers []*PendingBuffer
+	oldBuffers []*pendingBuffer
 }
 
-type PendingBuffer struct {
+type pendingBuffer struct {
 	metricTable   string
 	needsResponse []insertDataTask
 	batch         SampleInfoIterator
@@ -472,7 +473,7 @@ const (
 )
 
 func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
-	handler := InsertHandler{
+	handler := insertHandler{
 		conn:    conn,
 		input:   input,
 		pending: makeOrderedMap(),
@@ -506,11 +507,11 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 	}
 }
 
-func (h *InsertHandler) hasPendingReqs() bool {
+func (h *insertHandler) hasPendingReqs() bool {
 	return !h.pending.IsEmpty()
 }
 
-func (h *InsertHandler) blockingHandleReq() bool {
+func (h *insertHandler) blockingHandleReq() bool {
 	req, ok := <-h.input
 	if !ok {
 		return false
@@ -521,7 +522,7 @@ func (h *InsertHandler) blockingHandleReq() bool {
 	return true
 }
 
-func (h *InsertHandler) nonblockingHandleReq() bool {
+func (h *insertHandler) nonblockingHandleReq() bool {
 	select {
 	case req := <-h.input:
 		h.handleReq(req)
@@ -531,7 +532,7 @@ func (h *InsertHandler) nonblockingHandleReq() bool {
 	}
 }
 
-func (h *InsertHandler) handleReq(req insertDataRequest) bool {
+func (h *insertHandler) handleReq(req insertDataRequest) bool {
 	needsFlush, pending := h.pending.addReq(req)
 	if needsFlush {
 		h.flushPending(pending)
@@ -540,7 +541,7 @@ func (h *InsertHandler) handleReq(req insertDataRequest) bool {
 	return false
 }
 
-func (h *InsertHandler) flushTimedOutReqs() {
+func (h *insertHandler) flushTimedOutReqs() {
 	for {
 		earliest, earliestPending := h.pending.Front()
 		if earliest == nil {
@@ -556,7 +557,7 @@ func (h *InsertHandler) flushTimedOutReqs() {
 	}
 }
 
-func (h *InsertHandler) flushEarliestReq() {
+func (h *insertHandler) flushEarliestReq() {
 	earliest, _ := h.pending.Front()
 	if earliest == nil {
 		return
@@ -565,7 +566,7 @@ func (h *InsertHandler) flushEarliestReq() {
 	h.flushPending(earliest)
 }
 
-func (h *InsertHandler) flushPending(pendingElem *list.Element) {
+func (h *insertHandler) flushPending(pendingElem *list.Element) {
 	pending := h.pending.Remove(pendingElem)
 
 	_, err := h.conn.CopyFrom(
@@ -610,32 +611,32 @@ func (m *orderedMap) addReq(req insertDataRequest) (bool, *list.Element) {
 	pending, ok := m.elements[req.metricTable]
 
 	var needsFlush bool
-	var pendingBuffer *PendingBuffer
+	var buffer *pendingBuffer
 	if ok {
-		pendingBuffer = pending.Value.(*PendingBuffer)
+		buffer = pending.Value.(*pendingBuffer)
 	} else {
-		pendingBuffer = m.newPendingBuffer(req.metricTable)
-		pending = m.order.PushBack(pendingBuffer)
+		buffer = m.newPendingBuffer(req.metricTable)
+		pending = m.order.PushBack(buffer)
 		m.elements[req.metricTable] = pending
 	}
 
-	needsFlush = pendingBuffer.addReq(req)
+	needsFlush = buffer.addReq(req)
 	return needsFlush, pending
 }
 
-func (p *PendingBuffer) addReq(req insertDataRequest) bool {
+func (p *pendingBuffer) addReq(req insertDataRequest) bool {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.sampleInfos = append(p.batch.sampleInfos, req.data...)
 	return len(p.batch.sampleInfos) > flushSize
 }
 
-func (m *orderedMap) newPendingBuffer(metricTable string) *PendingBuffer {
-	var buffer *PendingBuffer
+func (m *orderedMap) newPendingBuffer(metricTable string) *pendingBuffer {
+	var buffer *pendingBuffer
 	if len(m.oldBuffers) > 0 {
 		last := len(m.oldBuffers) - 1
 		buffer, m.oldBuffers = m.oldBuffers[last], m.oldBuffers[:last]
 	} else {
-		buffer = &PendingBuffer{
+		buffer = &pendingBuffer{
 			batch: SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0},
 		}
 	}
@@ -645,19 +646,19 @@ func (m *orderedMap) newPendingBuffer(metricTable string) *PendingBuffer {
 	return buffer
 }
 
-func (m *orderedMap) Front() (*list.Element, *PendingBuffer) {
+func (m *orderedMap) Front() (*list.Element, *pendingBuffer) {
 	elem := m.order.Front()
-	return elem, elem.Value.(*PendingBuffer)
+	return elem, elem.Value.(*pendingBuffer)
 }
 
-func (m *orderedMap) Remove(elem *list.Element) *PendingBuffer {
-	pending := elem.Value.(*PendingBuffer)
+func (m *orderedMap) Remove(elem *list.Element) *pendingBuffer {
+	pending := elem.Value.(*pendingBuffer)
 	m.order.Remove(elem)
 	delete(m.elements, pending.metricTable)
 	return pending
 }
 
-func (m *orderedMap) giveOldBuffer(buffer *PendingBuffer) {
+func (m *orderedMap) giveOldBuffer(buffer *pendingBuffer) {
 	m.oldBuffers = append(m.oldBuffers, buffer)
 }
 

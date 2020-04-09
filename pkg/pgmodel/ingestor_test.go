@@ -35,7 +35,7 @@ func (m *mockCache) SetSeries(lset Labels, id SeriesID) error {
 }
 
 type mockInserter struct {
-	insertedSeries  []SeriesWithCallback
+	insertedSeries  []seriesWithCallback
 	insertedData    []map[string][]*samplesInfo
 	insertSeriesErr error
 	insertDataErr   error
@@ -45,7 +45,7 @@ func (m *mockInserter) Close() {
 
 }
 
-func (m *mockInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
+func (m *mockInserter) InsertNewData(newSeries []seriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
 
 	err := m.InsertSeries(newSeries)
 	if err != nil {
@@ -55,7 +55,7 @@ func (m *mockInserter) InsertNewData(newSeries []SeriesWithCallback, rows map[st
 	return m.InsertData(rows)
 }
 
-func (m *mockInserter) InsertSeries(seriesToInsert []SeriesWithCallback) error {
+func (m *mockInserter) InsertSeries(seriesToInsert []seriesWithCallback) error {
 	m.insertedSeries = append(m.insertedSeries, seriesToInsert...)
 	for i, sti := range seriesToInsert {
 		err := sti.Callback(sti.Series, SeriesID(i))
@@ -98,7 +98,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "One metric",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 					},
@@ -113,7 +113,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "One metric, no sample",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -124,7 +124,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Two metrics",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "foo", Value: "bar"},
@@ -133,7 +133,7 @@ func TestDBIngestorIngest(t *testing.T) {
 						{Timestamp: 1, Value: 0.1},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -149,7 +149,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Two samples",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -166,7 +166,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Two metrics, one series",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -175,7 +175,7 @@ func TestDBIngestorIngest(t *testing.T) {
 						{Timestamp: 1, Value: 0.1},
 					},
 				},
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -191,7 +191,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Insert series error",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -208,7 +208,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Insert data error",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -225,7 +225,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Set series error",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
@@ -242,7 +242,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Get series error",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Labels: []prompb.Label{
 						{Name: metricNameLabelName, Value: "test"},
 					},
@@ -258,7 +258,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		{
 			name: "Missing metric name",
 			metrics: []prompb.TimeSeries{
-				prompb.TimeSeries{
+				{
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
 					},
