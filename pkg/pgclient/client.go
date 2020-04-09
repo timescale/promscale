@@ -79,14 +79,18 @@ func NewClient(cfg *Config) (*Client, error) {
 	return &Client{Connection: connectionPool, ingestor: ingestor, reader: reader, cfg: cfg}, nil
 }
 
+// GetConnectionStr returns a Postgres connection string
 func (cfg *Config) GetConnectionStr() string {
 	return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
 		cfg.host, cfg.port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
 }
+
+// Close closes the client and performs cleanup
 func (c *Client) Close() {
 	c.ingestor.Close()
 }
 
+// Ingest writes the timeseries object into the DB
 func (c *Client) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 	return c.ingestor.Ingest(tts)
 }
