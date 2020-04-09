@@ -439,7 +439,10 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 func (p *pgxInserter) getMetricTableInserter(metricTable string) chan insertDataRequest {
 	h := maphash.Hash{}
 	h.SetSeed(p.seed)
-	h.WriteString(metricTable)
+	_, err := h.WriteString(metricTable)
+	if err != nil {
+		panic(fmt.Sprintf("error hashing metric table name: %v", err))
+	}
 	if len(p.inserters) < 1 {
 		panic(fmt.Sprintf("invalid len %d", len(p.inserters)))
 	}
@@ -497,7 +500,7 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 					break hotReceive
 				}
 			}
-			if time.Now().Sub(startHandling) > flushTimeout {
+			if time.Since(startHandling) > flushTimeout {
 				handler.flushTimedOutReqs()
 				startHandling = time.Now()
 			}
@@ -548,7 +551,7 @@ func (h *insertHandler) flushTimedOutReqs() {
 			return
 		}
 
-		elapsed := time.Now().Sub(earliestPending.start)
+		elapsed := time.Since(earliestPending.start)
 		if elapsed < flushTimeout {
 			return
 		}
