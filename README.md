@@ -129,4 +129,4 @@ applies as in TimescaleDB; please sign the [Contributor License
 Agreement](https://cla-assistant.io/timescale/timescale-prometheus) (CLA) if
 you're a new contributor.
 
-[design-doc]: https://www.timescale.com/404/
+[design-doc]: https://tsdb.co/prom-design-doc
