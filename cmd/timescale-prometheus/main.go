@@ -255,6 +255,8 @@ func write(writer pgmodel.DBInserter) http.Handler {
 			return
 		}
 
+		atomic.StoreInt64(&lastRequestUnixNano, time.Now().UnixNano())
+
 		shouldWrite, err := isWriter()
 		if err != nil {
 			log.Error("msg", "IsLeader check failed", "err", err)

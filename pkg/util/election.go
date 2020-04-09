@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package util
 
 import (
@@ -31,15 +32,18 @@ type Elector struct {
 	election Election
 }
 
+// NewElector is a constructor for the Elector
 func NewElector(election Election) *Elector {
 	elector := &Elector{election: election}
 	return elector
 }
 
+// ID returns the elector ID
 func (e *Elector) ID() string {
 	return e.election.ID()
 }
 
+// BecomeLeader attempts to make the node the leader
 func (e *Elector) BecomeLeader() (bool, error) {
 	leader, err := e.election.BecomeLeader()
 	if err != nil {
@@ -51,10 +55,12 @@ func (e *Elector) BecomeLeader() (bool, error) {
 	return leader, err
 }
 
+// IsLeader checks whether the node is the leader
 func (e *Elector) IsLeader() (bool, error) {
 	return e.election.IsLeader()
 }
 
+// Resign gives up leadership
 func (e *Elector) Resign() error {
 	err := e.election.Resign()
 	if err != nil {
@@ -72,6 +78,7 @@ type ScheduledElector struct {
 	pausedScheduledElection bool
 }
 
+// NewScheduledElector is the constructor
 func NewScheduledElector(election Election, electionInterval time.Duration) *ScheduledElector {
 	scheduledElector := &ScheduledElector{Elector: Elector{election}, ticker: time.NewTicker(electionInterval)}
 	go scheduledElector.scheduledElection()
@@ -86,10 +93,12 @@ func (se *ScheduledElector) resumeScheduledElection() {
 	se.pausedScheduledElection = false
 }
 
-func (se *ScheduledElector) IsPausedScheduledElection() bool {
+func (se *ScheduledElector) isScheduledElectionPaused() bool {
 	return se.pausedScheduledElection
 }
 
+// PrometheusLivenessCheck checks if the last request seen from prometheus and if it's older than a
+// timeout, and if so, give up leadership.
 func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, timeout time.Duration) {
 	elapsed := time.Since(time.Unix(0, lastRequestUnixNano))
 	leader, err := se.IsLeader()
@@ -107,7 +116,7 @@ func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, t
 			}
 		}
 	} else {
-		if se.IsPausedScheduledElection() && elapsed < timeout {
+		if se.isScheduledElectionPaused() && elapsed < timeout {
 			log.Info("msg", "Prometheus seems alive. Resuming scheduled election.")
 			se.resumeScheduledElection()
 		}
@@ -117,14 +126,14 @@ func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, t
 func (se *ScheduledElector) scheduledElection() {
 	for range se.ticker.C {
 		if !se.pausedScheduledElection {
-			se.Elect()
+			se.elect()
 		} else {
 			log.Debug("msg", "Scheduled election is paused. Instance can't become a leader until scheduled election is resumed (Prometheus comes up again)")
 		}
 	}
 }
 
-func (se *ScheduledElector) Elect() bool {
+func (se *ScheduledElector) elect() bool {
 	leader, err := se.IsLeader()
 	if err != nil {
 		log.Error("msg", "Leader check failed", "err", err)
@@ -146,6 +155,7 @@ type RestElection struct {
 	mutex  sync.RWMutex
 }
 
+// NewRestElection returns a new constructor
 func NewRestElection() *RestElection {
 	r := &RestElection{}
 	http.Handle("/admin/election/leader", r.handleLeader())
@@ -208,10 +218,12 @@ func (r *RestElection) handleLeader() http.HandlerFunc {
 	}
 }
 
+// ID returns an always-blank id
 func (r *RestElection) ID() string {
 	return ""
 }
 
+// BecomeLeader causes the election to try to grab leadership
 func (r *RestElection) BecomeLeader() (bool, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -223,12 +235,14 @@ func (r *RestElection) BecomeLeader() (bool, error) {
 	return r.leader, nil
 }
 
+// IsLeader returns whether or not you are the leader
 func (r *RestElection) IsLeader() (bool, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 	return r.leader, nil
 }
 
+// Resign gives up leadership
 func (r *RestElection) Resign() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
