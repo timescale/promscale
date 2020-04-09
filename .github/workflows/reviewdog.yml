@@ -8,9 +8,11 @@ jobs:
     steps:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v1
+
       - name: golangci-lint w/ github-pr-review
-        uses: docker://reviewdog/action-golangci-lint:v1
+        uses: reviewdog/action-golangci-lint@v1
         with:
           github_token: ${{ secrets.github_token }}
+          golangci_lint_flags: "./..."
           tool_name: "golangci-lint-github-pr-review"
           reporter: "github-pr-review"
