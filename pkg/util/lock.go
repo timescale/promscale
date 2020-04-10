@@ -152,6 +152,11 @@ func (l *PgAdvisoryLock) connCleanUp() {
 	l.conn = nil
 }
 
+//Close cleans up the connection
+func (l *PgAdvisoryLock) Close() {
+	l.connCleanUp()
+}
+
 // Locked returns if the instance was able to obtain the leader lock.
 func (l *PgAdvisoryLock) Locked() bool {
 	l.mutex.RLock()

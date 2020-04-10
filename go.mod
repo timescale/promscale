@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/allegro/bigcache v1.2.1
 	github.com/docker/go-connections v0.4.0
+	github.com/fzipp/gocyclo v0.0.0-20150627053110-6acd4345c835 // indirect
 	github.com/go-kit/kit v0.9.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang-migrate/migrate/v4 v4.9.1

@@ -17,26 +17,20 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 
-	"github.com/docker/go-connections/nat"
-	"github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 var (
-	database           = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	useDocker          = flag.Bool("use-docker", true, "start database using a docker container")
-	pgHost             = "localhost"
-	pgPort    nat.Port = "5432/tcp"
+	database  = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	useDocker = flag.Bool("use-docker", true, "start database using a docker container")
 )
 
 const (
 	expectedVersion = 2
-	defaultDB       = "postgres"
 )
 
 func TestMigrate(t *testing.T) {
@@ -152,25 +146,6 @@ func TestConcurrentSQL(t *testing.T) {
 			}
 		}
 	})
-}
-
-func TestPGConnection(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	db, err := pgx.Connect(context.Background(), PGConnectURL(t, defaultDB))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close(context.Background())
-	var res int
-	err = db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res != 1 {
-		t.Errorf("Res is not 1 but %d", res)
-	}
 }
 
 func TestSQLGetOrCreateMetricTableName(t *testing.T) {
@@ -1594,7 +1569,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
-		container, err := startContainer(ctx)
+		container, err := testhelpers.StartPGContainer(ctx)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
@@ -1610,53 +1585,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func PGConnectURL(t *testing.T, dbName string) string {
-	template := "postgres://postgres:password@%s:%d/%s"
-	return fmt.Sprintf(template, pgHost, pgPort.Int(), dbName)
-}
-
-func startContainer(ctx context.Context) (testcontainers.Container, error) {
-	containerPort := nat.Port("5432/tcp")
-	req := testcontainers.ContainerRequest{
-		Image:        "timescale/timescaledb:latest-pg11",
-		ExposedPorts: []string{string(containerPort)},
-		WaitingFor:   wait.NewHostPortStrategy(containerPort),
-		Env: map[string]string{
-			"POSTGRES_PASSWORD": "password",
-		},
-	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	pgHost, err = container.Host(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	pgPort, err = container.MappedPort(ctx, containerPort)
-	if err != nil {
-		return nil, err
-	}
-
-	return container, nil
-}
-
 func withDB(t *testing.T, DBName string, f func(db *pgxpool.Pool, t *testing.T)) {
-	db := dbSetup(t, DBName)
-	defer func() {
-		db.Close()
-	}()
-	performMigrate(t, DBName)
-	f(db, t)
+	testhelpers.WithDB(t, DBName, func(db *pgxpool.Pool, t *testing.T, connectURL string) {
+		performMigrate(t, DBName, connectURL)
+		f(db, t)
+	})
 }
 
-func performMigrate(t *testing.T, DBName string) {
-	dbStd, err := sql.Open("pgx", PGConnectURL(t, DBName))
+func performMigrate(t *testing.T, DBName string, connectURL string) {
+	dbStd, err := sql.Open("pgx", connectURL)
 	defer func() {
 		err := dbStd.Close()
 		if err != nil {
@@ -1670,34 +1607,4 @@ func performMigrate(t *testing.T, DBName string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-func dbSetup(t *testing.T, DBName string) *pgxpool.Pool {
-	if len(*database) == 0 {
-		t.Skip()
-	}
-	db, err := pgx.Connect(context.Background(), PGConnectURL(t, defaultDB))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = db.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", DBName))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s", DBName))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.Close(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	dbPool, err := pgxpool.Connect(context.Background(), PGConnectURL(t, DBName))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return dbPool
 }
