@@ -7,14 +7,10 @@ package pgmodel
 import (
 	"container/list"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/maphash"
-	"reflect"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,7 +20,6 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -35,40 +30,6 @@ const (
 	getMetricsTableSQL       = "SELECT table_name FROM " + promSchema + ".get_metric_table_name_if_exists($1)"
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + promSchema + ".get_or_create_metric_table_name($1)"
 	getSeriesIDForLabelSQL   = "SELECT " + promSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
-
-	subQueryEQ            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d)"
-	subQueryEQMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
-	subQueryNEQ           = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d) "
-	subQueryNEQMatchEmpty = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
-	subQueryRE            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d) "
-	subQueryREMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
-	subQueryNRE           = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
-	subQueryNREMatchEmpty = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
-
-	metricNameSeriesIDSQLFormat = `SELECT m.metric_name, array_agg(s.id)
-	FROM _prom_catalog.series s
-	INNER JOIN _prom_catalog.metric m
-	ON (m.id = s.metric_id)
-	WHERE %s
-	GROUP BY m.metric_name`
-
-	timeseriesByMetricSQLFormat = `SELECT ` + promSchema + `.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM %s m
-	INNER JOIN _prom_catalog.series s
-	ON m.series_id = s.id
-	WHERE %s
-	AND time >= '%s'
-	AND time <= '%s'
-	GROUP BY s.id`
-
-	timeseriesBySeriesIDsSQLFormat = `SELECT ` + promSchema + `.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM %s m
-	INNER JOIN _prom_catalog.series s
-	ON m.series_id = s.id
-	WHERE m.series_id IN (%s)
-	AND time >= '%s'
-	AND time <= '%s'
-	GROUP BY s.id`
 )
 
 var (
@@ -701,7 +662,7 @@ type pgxQuerier struct {
 
 // HealthCheck implements the healtchecker interface
 func (q *pgxQuerier) HealthCheck() error {
-	rows, err := q.conn.Query(context.Background(), "SELECT 1")
+	rows, err := q.conn.Query(context.Background(), "SELECT")
 
 	if err != nil {
 		return err
@@ -716,7 +677,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return []*prompb.TimeSeries{}, nil
 	}
 
-	metric, cases, values, err := q.buildSubQueries(query)
+	metric, cases, values, err := buildSubQueries(query)
 	if err != nil {
 		return nil, err
 	}
@@ -738,7 +699,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		}
 		filter.metric = tableName
 
-		sqlQuery := q.buildTimeseriesByLabelClausesQuery(filter, cases)
+		sqlQuery := buildTimeseriesByLabelClausesQuery(filter, cases)
 		rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 
 		if err != nil {
@@ -750,10 +711,10 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		}
 
 		defer rows.Close()
-		return q.buildTimeSeries(rows)
+		return buildTimeSeries(rows)
 	}
 
-	sqlQuery := q.buildMetricNameSeriesIDQuery(cases)
+	sqlQuery := buildMetricNameSeriesIDQuery(cases)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 
 	if err != nil {
@@ -761,7 +722,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	defer rows.Close()
-	metrics, series, err := q.getSeriesPerMetric(rows)
+	metrics, series, err := getSeriesPerMetric(rows)
 
 	if err != nil {
 		return nil, err
@@ -780,7 +741,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 			return nil, err
 		}
 		filter.metric = tableName
-		sqlQuery = q.buildTimeseriesBySeriesIDQuery(filter, series[i])
+		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
 		rows, err = q.conn.Query(context.Background(), sqlQuery)
 
 		if err != nil {
@@ -788,7 +749,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		}
 
 		defer rows.Close()
-		ts, err := q.buildTimeSeries(rows)
+		ts, err := buildTimeSeries(rows)
 
 		if err != nil {
 			return nil, err
@@ -847,318 +808,4 @@ func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
 	}
 
 	return tableName, nil
-}
-
-func (q *pgxQuerier) buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {
-	results := make([]*prompb.TimeSeries, 0)
-
-	for rows.Next() {
-		var (
-			timestamps []time.Time
-			values     []float64
-			labels     sampleLabels
-		)
-		err := rows.Scan(&labels, &timestamps, &values)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if len(timestamps) != len(values) {
-			return nil, fmt.Errorf("query returned a mismatch in timestamps and values")
-		}
-
-		result := &prompb.TimeSeries{
-			Labels:  labels.ToPrompb(),
-			Samples: make([]prompb.Sample, 0, len(timestamps)),
-		}
-
-		for i := range timestamps {
-			result.Samples = append(result.Samples, prompb.Sample{
-				Timestamp: toMilis(timestamps[i]),
-				Value:     values[i],
-			})
-		}
-
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-// fromLabelMatchers parses protobuf label matchers to Prometheus label matchers.
-// TODO: This is a copy of a function in github.com/prometheus/prometheus/storage/remote
-// package b/c it was causing build issues. We should remove it and resolve the build issues.
-func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, error) {
-	result := make([]*labels.Matcher, 0, len(matchers))
-	for _, matcher := range matchers {
-		var mtype labels.MatchType
-		switch matcher.Type {
-		case prompb.LabelMatcher_EQ:
-			mtype = labels.MatchEqual
-		case prompb.LabelMatcher_NEQ:
-			mtype = labels.MatchNotEqual
-		case prompb.LabelMatcher_RE:
-			mtype = labels.MatchRegexp
-		case prompb.LabelMatcher_NRE:
-			mtype = labels.MatchNotRegexp
-		default:
-			return nil, errors.New("invalid matcher type")
-		}
-		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, matcher)
-	}
-	return result, nil
-}
-
-type clauseBuilder struct {
-	clauses []string
-	args    []interface{}
-}
-
-func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
-	argIndex := len(c.args) + 1
-	argCountInClause := strings.Count(clause, "%d")
-
-	if argCountInClause != len(args) {
-		return fmt.Errorf("invalid number of args")
-	}
-
-	argIndexes := make([]interface{}, 0, argCountInClause)
-
-	for argCountInClause > 0 {
-		argIndexes = append(argIndexes, argIndex)
-		argIndex++
-		argCountInClause--
-	}
-
-	c.clauses = append(c.clauses, fmt.Sprintf(clause, argIndexes...))
-	c.args = append(c.args, args...)
-
-	return nil
-}
-
-func (c *clauseBuilder) build() ([]string, []interface{}) {
-	return c.clauses, c.args
-}
-
-func (q *pgxQuerier) buildSubQueries(query *prompb.Query) (string, []string, []interface{}, error) {
-	var err error
-	metric := ""
-	metricMatcherCount := 0
-	cb := clauseBuilder{}
-	matchers, err := fromLabelMatchers(query.Matchers)
-
-	if err != nil {
-		return "", nil, nil, err
-	}
-
-	for _, m := range matchers {
-		// From the PromQL docs: "Label matchers that match
-		// empty label values also select all time series that
-		// do not have the specific label set at all."
-		matchesEmpty := m.Matches("")
-
-		switch m.Type {
-		case labels.MatchRegexp:
-			sq := subQueryRE
-			if matchesEmpty {
-				sq = subQueryREMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
-		case labels.MatchNotEqual:
-			sq := subQueryNEQ
-			if matchesEmpty {
-				sq = subQueryNEQMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, m.Value)
-		case labels.MatchNotRegexp:
-			sq := subQueryNRE
-			if matchesEmpty {
-				sq = subQueryNREMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
-		case labels.MatchEqual:
-			if m.Name == metricNameLabelName {
-				metricMatcherCount++
-				metric = m.Value
-			}
-			sq := subQueryEQ
-			if matchesEmpty {
-				sq = subQueryEQMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, m.Value)
-		}
-
-		if err != nil {
-			return "", nil, nil, err
-		}
-
-		// Empty value (default case) is ignored.
-	}
-
-	// We can be certain that we want a single metric only if we find a single metric name matcher.
-	// Note: possible future optimization for this case, since multiple metric names would exclude
-	// each other and give empty result.
-	if metricMatcherCount > 1 {
-		metric = ""
-	}
-	clauses, values := cb.build()
-
-	if len(clauses) == 0 {
-		err = fmt.Errorf("no clauses generated")
-	}
-
-	return metric, clauses, values, err
-}
-
-func (q *pgxQuerier) buildMetricNameSeriesIDQuery(cases []string) string {
-	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
-}
-
-func (q *pgxQuerier) buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string) string {
-	return fmt.Sprintf(
-		timeseriesByMetricSQLFormat,
-		pgx.Identifier{promSchema, filter.metric}.Sanitize(),
-		strings.Join(cases, " AND "),
-		filter.startTime,
-		filter.endTime,
-	)
-}
-
-func (q *pgxQuerier) buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []SeriesID) string {
-	s := make([]string, 0, len(series))
-	for _, sID := range series {
-		s = append(s, fmt.Sprintf("%d", sID))
-	}
-	return fmt.Sprintf(
-		timeseriesBySeriesIDsSQLFormat,
-		pgx.Identifier{promSchema, filter.metric}.Sanitize(),
-		strings.Join(s, ","),
-		filter.startTime,
-		filter.endTime,
-	)
-}
-
-func (q *pgxQuerier) getSeriesPerMetric(rows pgx.Rows) ([]string, [][]SeriesID, error) {
-	metrics := make([]string, 0)
-	series := make([][]SeriesID, 0)
-
-	for rows.Next() {
-		var (
-			metricName string
-			seriesIDs  []int64
-		)
-		if err := rows.Scan(&metricName, &seriesIDs); err != nil {
-			return nil, nil, err
-		}
-
-		sIDs := make([]SeriesID, 0, len(seriesIDs))
-
-		for _, v := range seriesIDs {
-			sIDs = append(sIDs, SeriesID(v))
-		}
-
-		metrics = append(metrics, metricName)
-		series = append(series, sIDs)
-	}
-
-	return metrics, series, nil
-}
-
-// anchorValue adds anchors to values in regexps since PromQL docs
-// states that "Regex-matches are fully anchored."
-func anchorValue(str string) string {
-	l := len(str)
-
-	if l == 0 || (str[0] == '^' && str[l-1] == '$') {
-		return str
-	}
-
-	if str[0] == '^' {
-		return fmt.Sprintf("%s$", str)
-	}
-
-	if str[l-1] == '$' {
-		return fmt.Sprintf("^%s", str)
-	}
-
-	return fmt.Sprintf("^%s$", str)
-}
-
-type sampleLabels struct {
-	JSON        []byte
-	Map         map[string]string
-	OrderedKeys []string
-}
-
-func createOrderedKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (l *sampleLabels) Scan(value interface{}) error {
-	if value == nil {
-		*l = sampleLabels{}
-		return nil
-	}
-
-	var t []byte
-
-	switch v := value.(type) {
-	case string:
-		t = []byte(v)
-	case []byte:
-		t = v
-	default:
-		return errInvalidLabelsValue(reflect.TypeOf(value).String())
-	}
-
-	m := make(map[string]string)
-	err := json.Unmarshal(t, &m)
-
-	if err != nil {
-		return err
-	}
-
-	*l = sampleLabels{
-		JSON:        t,
-		Map:         m,
-		OrderedKeys: createOrderedKeys(m),
-	}
-	return nil
-}
-
-func (l sampleLabels) ToPrompb() []prompb.Label {
-	result := make([]prompb.Label, 0, l.len())
-
-	for _, k := range l.OrderedKeys {
-		result = append(result, prompb.Label{
-			Name:  k,
-			Value: l.Map[k],
-		})
-	}
-
-	return result
-}
-
-func (l *sampleLabels) len() int {
-	return len(l.OrderedKeys)
-}
-
-func toMilis(t time.Time) int64 {
-	return t.UnixNano() / 1e6
-}
-
-func toRFC3339Nano(milliseconds int64) string {
-	sec := milliseconds / 1000
-	nsec := (milliseconds - (sec * 1000)) * 1000000
-	return time.Unix(sec, nsec).UTC().Format(time.RFC3339Nano)
 }
