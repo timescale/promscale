@@ -555,6 +555,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 				for _, ts := range c.metrics {
 					labelSet := make(model.LabelSet, len(ts.Labels))
 					metricName := ""
+					kvMap := make(map[string]string)
 					keys := make([]string, 0)
 					values := make([]string, 0)
 					for _, l := range ts.Labels {
@@ -564,6 +565,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						labelSet[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 						keys = append(keys, l.Name)
 						values = append(values, l.Value)
+						kvMap[l.Name] = l.Value
 					}
 
 					jsonOrig, err := json.Marshal(labelSet)
@@ -600,9 +602,6 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					var jsonres []byte
 					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
-					if err != nil {
-						t.Fatal(err)
-					}
 					labelSetRes := make(model.LabelSet, len(ts.Labels))
 					err = json.Unmarshal(jsonres, &labelSetRes)
 					if err != nil {
@@ -613,12 +612,33 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					}
 
+					var (
+						retKeys []string
+						retVals []string
+					)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_key_value_array($1)", labelArray).Scan(&retKeys, &retVals)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(retKeys) != len(retVals) {
+						t.Errorf("invalid kvs, # keys %d, # vals %d", len(retKeys), len(retVals))
+					}
+					if len(retKeys) != len(kvMap) {
+						t.Errorf("invalid kvs, # keys %d, should be %d", len(retKeys), len(kvMap))
+					}
+					for i, k := range retKeys {
+						if kvMap[k] != retVals[i] {
+							t.Errorf("invalid value for %s\n\tgot\n\t%s\n\twanted\n\t%s", k, retVals[i], kvMap[k])
+						}
+					}
+
 					// Check the series_id logic
 					var seriesID int
 					err = db.QueryRow(context.Background(), "SELECT prom.get_series_id_for_label($1)", jsonOrig).Scan(&seriesID)
 					if err != nil {
 						t.Fatal(err)
 					}
+
 					var seriesIDKeyVal int
 					err = db.QueryRow(context.Background(), "SELECT prom.get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
@@ -627,19 +647,35 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					if seriesID != seriesIDKeyVal {
 						t.Fatalf("Expected the series ids to be equal: %v != %v", seriesID, seriesIDKeyVal)
 					}
+
 					err = db.QueryRow(context.Background(), "SELECT prom.label_array_to_jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
 						seriesID).Scan(&jsonres)
-					if err != nil {
-						t.Fatal(err)
-					}
 					labelSetRes = make(model.LabelSet, len(ts.Labels))
 					err = json.Unmarshal(jsonres, &labelSetRes)
 					if err != nil {
 						t.Fatal(err)
 					}
+
 					if labelSet.Fingerprint() != labelSetRes.Fingerprint() {
 						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonres), string(jsonOrig))
 
+					}
+
+					err = db.QueryRow(context.Background(), "SELECT (prom.label_array_to_key_value_array(labels)).* FROM _prom_catalog.series WHERE id=$1",
+						seriesID).Scan(&retKeys, &retVals)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(retKeys) != len(retVals) {
+						t.Errorf("invalid kvs, # keys %d, # vals %d", len(retKeys), len(retVals))
+					}
+					if len(retKeys) != len(kvMap) {
+						t.Errorf("invalid kvs, # keys %d, should be %d", len(retKeys), len(kvMap))
+					}
+					for i, k := range retKeys {
+						if kvMap[k] != retVals[i] {
+							t.Errorf("invalid value for %s\n\tgot\n\t%s\n\twanted\n\t%s", k, retVals[i], kvMap[k])
+						}
 					}
 				}
 			})

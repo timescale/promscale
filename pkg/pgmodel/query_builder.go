@@ -5,10 +5,8 @@
 package pgmodel
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -35,7 +33,7 @@ const (
 	WHERE %s
 	GROUP BY m.metric_name`
 
-	timeseriesByMetricSQLFormat = `SELECT ` + promSchema + `.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesByMetricSQLFormat = `SELECT (` + promSchema + `.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM %s m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -44,7 +42,7 @@ const (
 	AND time <= '%s'
 	GROUP BY s.id`
 
-	timeseriesBySeriesIDsSQLFormat = `SELECT ` + promSchema + `.label_array_to_jsonb(s.labels), array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesBySeriesIDsSQLFormat = `SELECT (` + promSchema + `.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM %s m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -188,11 +186,12 @@ func buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {
 
 	for rows.Next() {
 		var (
+			keys       []string
+			vals       []string
 			timestamps []time.Time
 			values     []float64
-			labels     sampleLabels
 		)
-		err := rows.Scan(&labels, &timestamps, &values)
+		err := rows.Scan(&keys, &vals, &timestamps, &values)
 
 		if err != nil {
 			return nil, err
@@ -202,8 +201,25 @@ func buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {
 			return nil, fmt.Errorf("query returned a mismatch in timestamps and values")
 		}
 
+		if len(keys) != len(vals) {
+			return nil, fmt.Errorf("query returned a mismatch in label keys and values")
+		}
+
+		promLabels := make([]prompb.Label, 0, len(keys))
+
+		for i, k := range keys {
+			promLabels = append(promLabels, prompb.Label{
+				Name:  k,
+				Value: vals[i],
+			})
+		}
+
+		sort.Slice(promLabels, func(i, j int) bool {
+			return promLabels[i].Name < promLabels[j].Name
+		})
+
 		result := &prompb.TimeSeries{
-			Labels:  labels.ToPrompb(),
+			Labels:  promLabels,
 			Samples: make([]prompb.Sample, 0, len(timestamps)),
 		}
 
@@ -292,70 +308,6 @@ func anchorValue(str string) string {
 	}
 
 	return fmt.Sprintf("^%s$", str)
-}
-
-type sampleLabels struct {
-	JSON        []byte
-	Map         map[string]string
-	OrderedKeys []string
-}
-
-func createOrderedKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (l *sampleLabels) Scan(value interface{}) error {
-	if value == nil {
-		*l = sampleLabels{}
-		return nil
-	}
-
-	var t []byte
-
-	switch v := value.(type) {
-	case string:
-		t = []byte(v)
-	case []byte:
-		t = v
-	default:
-		return errInvalidLabelsValue(reflect.TypeOf(value).String())
-	}
-
-	m := make(map[string]string)
-	err := json.Unmarshal(t, &m)
-
-	if err != nil {
-		return err
-	}
-
-	*l = sampleLabels{
-		JSON:        t,
-		Map:         m,
-		OrderedKeys: createOrderedKeys(m),
-	}
-	return nil
-}
-
-func (l sampleLabels) ToPrompb() []prompb.Label {
-	result := make([]prompb.Label, 0, l.len())
-
-	for _, k := range l.OrderedKeys {
-		result = append(result, prompb.Label{
-			Name:  k,
-			Value: l.Map[k],
-		})
-	}
-
-	return result
-}
-
-func (l *sampleLabels) len() int {
-	return len(l.OrderedKeys)
 }
 
 func toMilis(t time.Time) int64 {
