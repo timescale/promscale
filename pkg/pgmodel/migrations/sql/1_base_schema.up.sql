@@ -28,13 +28,25 @@ CREATE TABLE SCHEMA_CATALOG.label (
     UNIQUE (key, value) INCLUDE (id)
 );
 
+--This table creates a unique mapping
+--between label keys and their column names across metrics.
+--This is done for usability of column name, especially for
+-- long keys that get cut off.
+CREATE TABLE SCHEMA_CATALOG.label_key(
+    id SERIAL,
+    key TEXT,
+    value_column_name NAME,
+    id_column_name NAME,
+    PRIMARY KEY (id),
+    UNIQUE(key)
+);
+
 CREATE TABLE SCHEMA_CATALOG.label_key_position (
     metric text,
-    key TEXT,
+    key TEXT, --NOT label_key.id for performance reasons.
     pos int,
     UNIQUE (metric, key) INCLUDE (pos)
 );
-CREATE INDEX ON SCHEMA_CATALOG.label_key_position(metric, key) INCLUDE (pos);
 
 CREATE TABLE SCHEMA_CATALOG.metric (
     id SERIAL PRIMARY KEY,
@@ -110,7 +122,7 @@ CREATE TRIGGER make_metric_table_trigger
 
 -- Return a table name built from a full_name and a suffix.
 -- The full name is truncated so that the suffix could fit in full.
--- name size will always be 63 chars.
+-- name size will always be exactly 63 chars.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(
         full_name text, suffix text)
     RETURNS name
@@ -122,8 +134,12 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 -- Return a new unique name from a name and id.
 -- This tries to use the full_name in full. But if the
 -- full name doesn't fit, generates a new unique name.
+-- Note that there cannot be a collision betweeen a user
+-- defined name and a name with a suffix because user
+-- defined names of length 63 always get a suffix and
+-- conversely, all names with a suffix are length 63.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_unique(
-        full_name_arg text, id int)
+        full_name_arg text, suffix text)
     RETURNS name
 AS $func$
     SELECT CASE
@@ -131,7 +147,7 @@ AS $func$
             full_name_arg::name
         ELSE
             SCHEMA_CATALOG.pg_name_with_suffix(
-                full_name_arg, id::text
+                full_name_arg, suffix
             )
         END
 $func$
@@ -151,7 +167,7 @@ LOOP
     INSERT INTO SCHEMA_CATALOG.metric (id, metric_name, table_name)
         SELECT  new_id,
                 metric_name_arg,
-                SCHEMA_CATALOG.pg_name_unique(metric_name_arg, new_id)
+                SCHEMA_CATALOG.pg_name_unique(metric_name_arg, new_id::text)
     ON CONFLICT DO NOTHING
     RETURNING SCHEMA_CATALOG.metric.id, SCHEMA_CATALOG.metric.table_name
     INTO id, table_name;
@@ -169,6 +185,55 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
+
+--Creates a new label_key row for a given key.
+--This uses up some sequences so should only be called
+--If the table does not yet exist.
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_label_key(
+        new_key TEXT, OUT id INT, OUT value_column_name NAME, OUT id_column_name NAME
+)
+AS $func$
+DECLARE
+  new_id int;
+BEGIN
+new_id = nextval(pg_get_serial_sequence('SCHEMA_CATALOG.label_key','id'))::int;
+LOOP
+    INSERT INTO SCHEMA_CATALOG.label_key (id, key, value_column_name, id_column_name)
+        SELECT  new_id,
+                new_key,
+                SCHEMA_CATALOG.pg_name_unique(new_key, new_id::text),
+                SCHEMA_CATALOG.pg_name_unique(new_key || '_id', format('%s_id', new_id))
+    ON CONFLICT DO NOTHING
+    RETURNING SCHEMA_CATALOG.label_key.id, SCHEMA_CATALOG.label_key.value_column_name, SCHEMA_CATALOG.label_key.id_column_name
+    INTO id, value_column_name, id_column_name;
+    -- under high concurrency the insert may not return anything, so try a select and loop
+    -- https://stackoverflow.com/a/15950324
+    EXIT WHEN FOUND;
+
+    SELECT lk.id, lk.value_column_name, lk.id_column_name
+    INTO id, value_column_name, id_column_name
+    FROM SCHEMA_CATALOG.label_key lk
+    WHERE key = new_key;
+
+    EXIT WHEN FOUND;
+END LOOP;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
+
+--Get a label key row if one doesn't yet exist.
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_key(
+        key TEXT, OUT id INT, OUT value_column_name NAME, OUT id_column_name NAME)
+AS $func$
+   SELECT id, value_column_name, id_column_name
+   FROM SCHEMA_CATALOG.label_key lk
+   WHERE lk.key = get_or_create_label_key.key
+   UNION ALL
+   SELECT *
+   FROM SCHEMA_CATALOG.create_label_key(get_or_create_label_key.key)
+   LIMIT 1
+$func$
+LANGUAGE sql VOLATILE PARALLEL SAFE;
 
 -- Get a new label array position for a label key. For any metric,
 -- we want the positions to be as compact as possible.
@@ -227,6 +292,8 @@ BEGIN
         next_position := 1; -- 1-indexed arrays
     END IF;
 
+    PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
+
     INSERT INTO SCHEMA_CATALOG.label_key_position
         VALUES (metric_name, key_name, next_position)
     ON CONFLICT
@@ -238,8 +305,8 @@ BEGIN
         RAISE 'Could not find a new position';
     END IF;
 
-   PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
-   PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
+    PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
+    PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
 
     RETURN position;
 END
@@ -788,7 +855,7 @@ AS $$
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_column_name(label_key text, id int)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_column_name_for_view(label_key text, id BOOLEAN)
     returns NAME
 AS $func$
 DECLARE
@@ -798,10 +865,14 @@ BEGIN
   INTO STRICT is_reserved;
 
   IF is_reserved THEN
-    label_key := label_key || '_label';
+    label_key := 'label_' || label_key;
   END IF;
 
-  RETURN SCHEMA_CATALOG.pg_name_unique(label_key, id);
+  IF id THEN
+    RETURN (SCHEMA_CATALOG.get_or_create_label_key(label_key)).id_column_name;
+  ELSE
+    RETURN (SCHEMA_CATALOG.get_or_create_label_key(label_key)).value_column_name;
+  END IF;
 END
 $func$
 LANGUAGE PLPGSQL;
@@ -817,7 +888,7 @@ DECLARE
 BEGIN
     SELECT
         ',' || string_agg(
-            format ('SCHEMA_PROM.get_label_value(series.labels[%s]) AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name(key, pos))
+            format ('SCHEMA_PROM.get_label_value(series.labels[%s]) AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name_for_view(key, false))
         , ', ' ORDER BY pos)
     INTO STRICT label_value_cols
     FROM SCHEMA_CATALOG.label_key_position lkp
@@ -855,7 +926,7 @@ DECLARE
 BEGIN
     SELECT
         ',' || string_agg(
-            format ('series.labels[%s] AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name(key||'_id', pos))
+            format ('series.labels[%s] AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name_for_view(key, true))
         , ', ' ORDER BY pos)
     INTO STRICT label_value_cols
     FROM SCHEMA_CATALOG.label_key_position lkp
