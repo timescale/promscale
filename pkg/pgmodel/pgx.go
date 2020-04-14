@@ -612,6 +612,9 @@ func (m *orderedMap) newPendingBuffer(metricTable string) *pendingBuffer {
 
 func (m *orderedMap) Front() (*list.Element, *pendingBuffer) {
 	elem := m.order.Front()
+	if elem == nil {
+		return nil, nil
+	}
 	return elem, elem.Value.(*pendingBuffer)
 }
 
