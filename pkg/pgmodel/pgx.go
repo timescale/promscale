@@ -24,8 +24,10 @@ import (
 )
 
 const (
-	promSchema    = "prom"
-	catalogSchema = "_prom_catalog"
+	promSchema       = "prom"
+	seriesViewSchema = "prom_series"
+	metricViewSchema = "prom_metric"
+	catalogSchema    = "_prom_catalog"
 
 	getMetricsTableSQL       = "SELECT table_name FROM " + promSchema + ".get_metric_table_name_if_exists($1)"
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + promSchema + ".get_or_create_metric_table_name($1)"

@@ -3,6 +3,9 @@
 
 CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
 CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- data tables + public functions
+CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES;
+CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC;
+
 
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 -----------------------
@@ -105,35 +108,34 @@ CREATE TRIGGER make_metric_table_trigger
 -- Internal functions --
 ------------------------
 
--- Return a table name built from a metric_name and a suffix.
--- The metric name is truncated so that the suffix could fit in full.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_table_name_with_suffix(
-        metric_name text, suffix text)
+-- Return a table name built from a full_name and a suffix.
+-- The full name is truncated so that the suffix could fit in full.
+-- name size will always be 63 chars.
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(
+        full_name text, suffix text)
     RETURNS name
 AS $func$
-    SELECT (substring(metric_name for 63-(char_length(suffix)+1)) || '_' || suffix)::name
+    SELECT (substring(full_name for 63-(char_length(suffix)+1)) || '_' || suffix)::name
 $func$
 LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 
--- Return a new name for a metric table.
--- This tries to use the metric table in full. But if the
--- metric name doesn't fit, generates a new unique name.
--- Note that this can use up the next val of SCHEMA_CATALOG.metric_name_suffx
--- so it should be called only if a table does not yet exist.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.new_metric_table_name(
-        metric_name_arg text, metric_id int)
+-- Return a new unique name from a name and id.
+-- This tries to use the full_name in full. But if the
+-- full name doesn't fit, generates a new unique name.
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_unique(
+        full_name_arg text, id int)
     RETURNS name
 AS $func$
     SELECT CASE
-        WHEN char_length(metric_name_arg) < 63 THEN
-            metric_name_arg::name
+        WHEN char_length(full_name_arg) < 63 THEN
+            full_name_arg::name
         ELSE
-            SCHEMA_CATALOG.metric_table_name_with_suffix(
-                metric_name_arg, metric_id::text
+            SCHEMA_CATALOG.pg_name_with_suffix(
+                full_name_arg, id::text
             )
         END
 $func$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 
 --Creates a new table for a given metric name.
 --This uses up some sequences so should only be called
@@ -149,7 +151,7 @@ LOOP
     INSERT INTO SCHEMA_CATALOG.metric (id, metric_name, table_name)
         SELECT  new_id,
                 metric_name_arg,
-                SCHEMA_CATALOG.new_metric_table_name(metric_name_arg, new_id)
+                SCHEMA_CATALOG.pg_name_unique(metric_name_arg, new_id)
     ON CONFLICT DO NOTHING
     RETURNING SCHEMA_CATALOG.metric.id, SCHEMA_CATALOG.metric.table_name
     INTO id, table_name;
@@ -235,6 +237,10 @@ BEGIN
     IF NOT FOUND THEN
         RAISE 'Could not find a new position';
     END IF;
+
+   PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
+   PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
+
     RETURN position;
 END
 $func$
@@ -755,3 +761,124 @@ BEGIN
     END LOOP;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_stale_marker(value double precision)
+RETURNS BOOLEAN
+AS $func$
+    SELECT float8send(value) = '\x7ff0000000000002'
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_normal_nan(value double precision)
+RETURNS BOOLEAN
+AS $func$
+    SELECT float8send(value) = '\x7ff8000000000001'
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_label_value(
+        label_id INT)
+    RETURNS TEXT
+AS $$
+    SELECT
+        value
+    FROM SCHEMA_CATALOG.label
+    WHERE
+        id = label_id
+$$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_column_name(label_key text, id int)
+    returns NAME
+AS $func$
+DECLARE
+  is_reserved boolean;
+BEGIN
+  SELECT label_key = ANY(ARRAY['time', 'value', 'series_id', 'labels'])
+  INTO STRICT is_reserved;
+
+  IF is_reserved THEN
+    label_key := label_key || '_label';
+  END IF;
+
+  RETURN SCHEMA_CATALOG.pg_name_unique(label_key, id);
+END
+$func$
+LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series_view(
+        metric_name text)
+    RETURNS BOOLEAN
+AS $func$
+DECLARE
+   label_value_cols text;
+   view_name text;
+   metric_id int;
+BEGIN
+    SELECT
+        ',' || string_agg(
+            format ('SCHEMA_PROM.get_label_value(series.labels[%s]) AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name(key, pos))
+        , ', ' ORDER BY pos)
+    INTO STRICT label_value_cols
+    FROM SCHEMA_CATALOG.label_key_position lkp
+    WHERE lkp.metric = metric_name and key != '__name__';
+
+    SELECT m.table_name, m.id
+    INTO STRICT view_name, metric_id
+    FROM SCHEMA_CATALOG.metric m
+    WHERE m.metric_name = create_series_view.metric_name;
+
+    EXECUTE FORMAT($$
+        CREATE OR REPLACE VIEW SCHEMA_SERIES.%I AS
+        SELECT
+            id AS series_id,
+            labels
+            %s
+        FROM
+            SCHEMA_CATALOG.series
+        WHERE metric_id = %L
+    $$, view_name, label_value_cols, metric_id);
+    RETURN true;
+END
+$func$
+LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_view(
+        metric_name text)
+    RETURNS BOOLEAN
+AS $func$
+DECLARE
+   label_value_cols text;
+   table_name text;
+   metric_id int;
+BEGIN
+    SELECT
+        ',' || string_agg(
+            format ('series.labels[%s] AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name(key||'_id', pos))
+        , ', ' ORDER BY pos)
+    INTO STRICT label_value_cols
+    FROM SCHEMA_CATALOG.label_key_position lkp
+    WHERE lkp.metric = metric_name and key != '__name__';
+
+    SELECT m.table_name, m.id
+    INTO STRICT table_name, metric_id
+    FROM SCHEMA_CATALOG.metric m
+    WHERE m.metric_name = create_metric_view.metric_name;
+
+    EXECUTE FORMAT($$
+        CREATE OR REPLACE VIEW SCHEMA_METRIC.%1$I AS
+        SELECT
+            data.time as time,
+            data.value as value,
+            data.series_id AS series_id,
+            series.labels
+            %2$s
+        FROM
+            SCHEMA_PROM.%1$I AS data
+            LEFT JOIN SCHEMA_CATALOG.series AS series ON (series.id = data.series_id AND series.metric_id = %3$L)
+    $$, table_name, label_value_cols, metric_id);
+    RETURN true;
+END
+$func$
+LANGUAGE PLPGSQL;
