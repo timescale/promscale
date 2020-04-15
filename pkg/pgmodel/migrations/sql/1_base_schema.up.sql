@@ -957,3 +957,48 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 int[], labels2 int[])
+RETURNS BOOLEAN
+AS $func$
+    --assumes no duplicate entries
+    SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(int[], int[]) IS 'returns true if two label arrays are equal, including the metric name';
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal_across_metrics(labels1 int[], labels2 int[])
+RETURNS BOOLEAN
+AS $func$
+    --assumes labels have metric name in position 1 and have no duplicate entries
+    SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2[2:]
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_equal_across_metrics(int[], int[]) IS 'returns true if two label arrays are equal, ignoring the metric name';
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_matcher_get_from_json(labels jsonb)
+RETURNS int[]
+AS $func$
+    SELECT ARRAY(
+           SELECT coalesce(l.id, -1) -- -1 indicates no such label
+           FROM SCHEMA_CATALOG.label_jsonb_each_text(labels) e
+           LEFT JOIN SCHEMA_CATALOG.label l
+               ON (l.key = e.key AND l.value = e.value)
+        )
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_CATALOG.label_matcher_get_from_json(jsonb)
+IS 'returns an array of label ids for the JSONB. This is not a labels array since the order of ids isnt guaranteed.';
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_contains(labels int[], partial_labels jsonb)
+RETURNS BOOLEAN
+AS $func$
+    --keep as a simple statement that calls internal function so that planner
+    --could expand this into query
+    SELECT labels @> SCHEMA_CATALOG.label_matcher_get_from_json(partial_labels)
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(int[], int[])
+IS 'returns true if the labels array contains the labels inside the JSONB';
