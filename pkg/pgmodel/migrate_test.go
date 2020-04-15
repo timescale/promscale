@@ -576,7 +576,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var jsonres []byte
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_jsonb(($1::int[]))", labelArray).Scan(&jsonres)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -594,7 +594,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						retKeys []string
 						retVals []string
 					)
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_key_value_array($1)", labelArray).Scan(&retKeys, &retVals)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_key_value_array($1::int[])", labelArray).Scan(&retKeys, &retVals)
 					if err != nil {
 						t.Fatal(err)
 					}
