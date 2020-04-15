@@ -958,24 +958,7 @@ END
 $func$
 LANGUAGE PLPGSQL;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 int[], labels2 int[])
-RETURNS BOOLEAN
-AS $func$
-    --assumes no duplicate entries
-    SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2
-$func$
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(int[], int[]) IS 'returns true if two label arrays are equal, including the metric name';
 
-
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal_across_metrics(labels1 int[], labels2 int[])
-RETURNS BOOLEAN
-AS $func$
-    --assumes labels have metric name in position 1 and have no duplicate entries
-    SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2[2:]
-$func$
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_equal_across_metrics(int[], int[]) IS 'returns true if two label arrays are equal, ignoring the metric name';
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_matcher_get_from_json(labels jsonb)
 RETURNS int[]
@@ -991,6 +974,57 @@ LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.label_matcher_get_from_json(jsonb)
 IS 'returns an array of label ids for the JSONB. This is not a labels array since the order of ids isnt guaranteed.';
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.count_jsonb_keys(j jsonb)
+RETURNS bigint
+AS $func$
+    SELECT count(*) from (SELECT jsonb_object_keys(j)) v;
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+
+
+--TODO: Add comments to functions below
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 int[], labels2 int[])
+RETURNS BOOLEAN
+AS $func$
+    --assumes no duplicate entries
+    SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(int[], int[])
+IS 'returns true if two label arrays are equal, including the metric name';
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 int[], json_labels jsonb)
+RETURNS BOOLEAN
+AS $func$
+    --assumes no duplicate entries
+    SELECT array_length(labels1, 1) = SCHEMA_CATALOG.count_jsonb_keys(json_labels)
+           AND labels1 @> SCHEMA_CATALOG.label_matcher_get_from_json(json_labels)
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(int[], jsonb)
+IS 'returns true if the label array and jsonb are equal, including the metric name';
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match(labels1 int[], labels2 int[])
+RETURNS BOOLEAN
+AS $func$
+    --assumes labels have metric name in position 1 and have no duplicate entries
+    SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2[2:]
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_match(int[], int[])
+IS 'returns true if two label arrays are equal, ignoring the metric name';
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match(labels1 int[], json_labels jsonb)
+RETURNS BOOLEAN
+AS $func$
+    --assumes no duplicate entries
+     SELECT (array_length(labels1, 1) - 1) = SCHEMA_CATALOG.count_jsonb_keys(json_labels-'__name__')
+            AND labels1 @> SCHEMA_CATALOG.label_matcher_get_from_json(json_labels-'__name__')
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_match(int[], jsonb)
+IS 'returns true if the label array and jsonb are equal, ignoring the metric name';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_contains(labels int[], partial_labels jsonb)
 RETURNS BOOLEAN
@@ -1000,5 +1034,5 @@ AS $func$
     SELECT labels @> SCHEMA_CATALOG.label_matcher_get_from_json(partial_labels)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(int[], int[])
+COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(int[], jsonb)
 IS 'returns true if the labels array contains the labels inside the JSONB';
