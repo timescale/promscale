@@ -665,7 +665,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`},
 			sqlArgs: [][]interface{}{{metricNameLabelName, "bar"}},
 			queryResults: []rowResults{
@@ -686,7 +686,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`},
 			sqlArgs: [][]interface{}{{"__name__", "bar"}},
 			queryResults: []rowResults{
@@ -707,7 +707,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`},
 			sqlArgs: [][]interface{}{
@@ -732,7 +732,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
@@ -767,7 +767,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`},
 			sqlArgs: [][]interface{}{{"__name__", "bar"}},
 			queryResults: []rowResults{
@@ -827,7 +827,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2)
+	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
@@ -922,7 +922,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
-				{"__name__", ""},
+				{"__name__", "^$"},
 				{"foo"},
 				nil,
 				{"bar"},
@@ -1062,7 +1062,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
+	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
@@ -1109,7 +1109,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
-	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value != $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6)  AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value !~ $8)
+	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)

@@ -19,8 +19,7 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 )
 
-// PromClient is a wrapper around http.Client
-// PromClient sends read requests to Prometheus remote adapter read endpoint
+// PromClient is a wrapper around http.Client for sending read requests.
 type PromClient struct {
 	url        *url.URL
 	httpClient *http.Client
@@ -36,7 +35,7 @@ func NewPromClient(urlStr string, timeout time.Duration) (*PromClient, error) {
 	return &PromClient{url: url, httpClient: httpClient}, nil
 }
 
-// Read sends a read request to Prometheus remote adapter
+// Read sends a read request to Prometheus remote read endpoint.
 func (c *PromClient) Read(rr *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	data, err := proto.Marshal(rr)
 	if err != nil {
@@ -57,7 +56,7 @@ func (c *PromClient) Read(rr *prompb.ReadRequest) (*prompb.ReadResponse, error) 
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("Prometheus adapter returned status: %s", httpResp.Status)
+		return nil, fmt.Errorf("Prometheus returned status: %s", httpResp.Status)
 	}
 
 	compressed, err = ioutil.ReadAll(httpResp.Body)
@@ -649,73 +648,124 @@ func TestPromQL(t *testing.T) {
 				},
 			},
 		},
-		// TODO: Check why is this query returning different results from Prometheus.
-		//{
-		//	name: "Complex query 1",
-		//	readRequest: &prompb.ReadRequest{
-		//		Queries: []*prompb.Query{
-		//			{
-		//				Matchers: []*prompb.LabelMatcher{
-		//					{
-		//						Type:  prompb.LabelMatcher_RE,
-		//						Name:  "instance",
-		//						Value: "(1|2)",
-		//					},
-		//					{
-		//						Type:  prompb.LabelMatcher_NRE,
-		//						Name:  "foo",
-		//						Value: "ba.*",
-		//					},
-		//					{
-		//						Type:  prompb.LabelMatcher_NEQ,
-		//						Name:  metricNameLabelName,
-		//						Value: "metric_1",
-		//					},
-		//				},
-		//				StartTimestampMs: 90000,
-		//				EndTimestampMs:   160000,
-		//			},
-		//		},
-		//	},
-		//},
-		// TODO: Fix query, returning an error in the connector.
-		//{
-		//	name: "Complex query 1.1",
-		//	readRequest: &prompb.ReadRequest{
-		//		Queries: []*prompb.Query{
-		//			{
-		//				Matchers: []*prompb.LabelMatcher{
-		//					{
-		//						Type:  prompb.LabelMatcher_RE,
-		//						Name:  "foo",
-		//						Value: "*",
-		//					},
-		//				},
-		//				StartTimestampMs: 90000,
-		//				EndTimestampMs:   160000,
-		//			},
-		//		},
-		//	},
-		//},
-		// TODO: Check why is this query returning different results from Prometheus.
-		//{
-		//	name: "Complex query 1.2",
-		//	readRequest: &prompb.ReadRequest{
-		//		Queries: []*prompb.Query{
-		//			{
-		//				Matchers: []*prompb.LabelMatcher{
-		//					{
-		//						Type:  prompb.LabelMatcher_RE,
-		//						Name:  "foo",
-		//						Value: "",
-		//					},
-		//				},
-		//				StartTimestampMs: 90000,
-		//				EndTimestampMs:   160000,
-		//			},
-		//		},
-		//	},
-		//},
+		{
+			name: "Test match empty on EQ",
+			readRequest: &prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "foo",
+								Value: "",
+							},
+						},
+						StartTimestampMs: 90000,
+						EndTimestampMs:   160000,
+					},
+				},
+			},
+		},
+		{
+			name: "Test match empty on NEQ",
+			readRequest: &prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_NEQ,
+								Name:  "foo",
+								Value: "bar",
+							},
+						},
+						StartTimestampMs: 90000,
+						EndTimestampMs:   160000,
+					},
+				},
+			},
+		},
+		{
+			name: "Test match empty on RE",
+			readRequest: &prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  "foo",
+								Value: "",
+							},
+						},
+						StartTimestampMs: 90000,
+						EndTimestampMs:   160000,
+					},
+				},
+			},
+		},
+		{
+			name: "Test match empty on NRE",
+			readRequest: &prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_NRE,
+								Name:  "foo",
+								Value: "bar",
+							},
+						},
+						StartTimestampMs: 90000,
+						EndTimestampMs:   160000,
+					},
+				},
+			},
+		},
+		{
+			name: "Test error regex matcher",
+			readRequest: &prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  "foo",
+								Value: "*",
+							},
+						},
+						StartTimestampMs: 90000,
+						EndTimestampMs:   160000,
+					},
+				},
+			},
+		},
+		{
+			name: "Complex query 1",
+			readRequest: &prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  "instance",
+								Value: "(1|2)",
+							},
+							{
+								Type:  prompb.LabelMatcher_NRE,
+								Name:  "foo",
+								Value: "ba.*",
+							},
+							{
+								Type:  prompb.LabelMatcher_NEQ,
+								Name:  metricNameLabelName,
+								Value: "metric_1",
+							},
+						},
+						StartTimestampMs: 90000,
+						EndTimestampMs:   160000,
+					},
+				},
+			},
+		},
 		{
 			name: "Complex query 2",
 			readRequest: &prompb.ReadRequest{
@@ -832,15 +882,20 @@ func TestPromQL(t *testing.T) {
 		r := NewPgxReader(db)
 		for _, c := range testCases {
 			t.Run(c.name, func(t *testing.T) {
-				connResp, err := r.Read(c.readRequest)
+				connResp, connErr := r.Read(c.readRequest)
+				promResp, promErr := promClient.Read(c.readRequest)
 
-				if err != nil {
+				// If a query returns an error on both sides, its considered an
+				// expected result. The errors don't need to be identical.
+				if connErr != nil && promErr != nil {
+					return
+				}
+
+				if connErr != nil {
 					t.Errorf("unexpected error returned:\ngot\n%s\nwanted\nnil", err)
 				}
 
-				promResp, err := promClient.Read(c.readRequest)
-
-				if err != nil {
+				if promErr != nil {
 					t.Errorf("unexpected error returned:\ngot\n%s\nwanted\nnil", err)
 				}
 
