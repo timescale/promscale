@@ -8,6 +8,8 @@ CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC;
 
 
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
+
+CREATE DOMAIN SCHEMA_PROM.label_ids AS int[] NOT NULL;
 -----------------------
 -- Table definitions --
 -----------------------
@@ -15,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 CREATE TABLE SCHEMA_CATALOG.series (
     id bigserial PRIMARY KEY,
     metric_id int,
-    labels int[],
+    labels SCHEMA_PROM.label_ids,
     UNIQUE(labels) INCLUDE (id)
 );
 CREATE INDEX series_labels_id ON SCHEMA_CATALOG.series USING GIN (labels);
@@ -284,15 +286,19 @@ BEGIN
         RETURN position;
     END IF;
 
-    SELECT
-        max(pos) + 1
-    FROM
-        SCHEMA_CATALOG.label_key_position
-    WHERE
-        metric = metric_name INTO next_position;
+    IF key_name = '__name__' THEN
+       next_position := 1; -- 1-indexed arrays, __name__ as first element
+    ELSE
+        SELECT
+            max(pos) + 1
+        FROM
+            SCHEMA_CATALOG.label_key_position
+        WHERE
+            metric = metric_name INTO next_position;
 
-    IF next_position IS NULL THEN
-        next_position := 1; -- 1-indexed arrays
+        IF next_position IS NULL THEN
+            next_position := 2; -- element 1 reserved for __name__
+        END IF;
     END IF;
 
     PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
@@ -437,7 +443,7 @@ LANGUAGE SQL VOLATILE;
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb_to_label_array(js jsonb)
-RETURNS INT[] AS $$
+RETURNS SCHEMA_PROM.label_ids AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
@@ -466,12 +472,12 @@ RETURNS INT[] AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )
+    )::SCHEMA_PROM.label_ids
 $$
 LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS INT[] AS $$
+RETURNS SCHEMA_PROM.label_ids AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
@@ -499,13 +505,13 @@ RETURNS INT[] AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )
+    )::SCHEMA_PROM.label_ids
 $$
 LANGUAGE SQL VOLATILE;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_key_value_array(labels int[], OUT keys text[], OUT vals text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_key_value_array(labels SCHEMA_PROM.label_ids, OUT keys text[], OUT vals text[])
 AS $$
     SELECT
         array_agg(l.key), array_agg(l.value)
@@ -516,7 +522,7 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
 --Returns the jsonb for a series defined by a label_array
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_jsonb(labels int[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_jsonb(labels SCHEMA_PROM.label_ids)
 RETURNS jsonb AS $$
     SELECT
         jsonb_object(keys, vals)
@@ -528,7 +534,7 @@ LANGUAGE SQL STABLE PARALLEL SAFE;
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
         metric_id int,
-        label_array int[],
+        label_array SCHEMA_PROM.label_ids,
         OUT series_id BIGINT)
 AS $func$
 BEGIN
