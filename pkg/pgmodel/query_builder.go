@@ -19,12 +19,12 @@ import (
 const (
 	subQueryEQ            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d)"
 	subQueryEQMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
-	subQueryNEQ           = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d) "
-	subQueryNEQMatchEmpty = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
-	subQueryRE            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d) "
+	subQueryNEQ           = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
+	subQueryNEQMatchEmpty = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d)"
+	subQueryRE            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
 	subQueryREMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
-	subQueryNRE           = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
-	subQueryNREMatchEmpty = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
+	subQueryNRE           = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
+	subQueryNREMatchEmpty = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
 
 	metricNameSeriesIDSQLFormat = `SELECT m.metric_name, array_agg(s.id)
 	FROM _prom_catalog.series s
@@ -70,24 +70,6 @@ func buildSubQueries(query *prompb.Query) (string, []string, []interface{}, erro
 		matchesEmpty := m.Matches("")
 
 		switch m.Type {
-		case labels.MatchRegexp:
-			sq := subQueryRE
-			if matchesEmpty {
-				sq = subQueryREMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
-		case labels.MatchNotEqual:
-			sq := subQueryNEQ
-			if matchesEmpty {
-				sq = subQueryNEQMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, m.Value)
-		case labels.MatchNotRegexp:
-			sq := subQueryNRE
-			if matchesEmpty {
-				sq = subQueryNREMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
 		case labels.MatchEqual:
 			if m.Name == metricNameLabelName {
 				metricMatcherCount++
@@ -98,6 +80,24 @@ func buildSubQueries(query *prompb.Query) (string, []string, []interface{}, erro
 				sq = subQueryEQMatchEmpty
 			}
 			err = cb.addClause(sq, m.Name, m.Value)
+		case labels.MatchNotEqual:
+			sq := subQueryNEQ
+			if matchesEmpty {
+				sq = subQueryNEQMatchEmpty
+			}
+			err = cb.addClause(sq, m.Name, m.Value)
+		case labels.MatchRegexp:
+			sq := subQueryRE
+			if matchesEmpty {
+				sq = subQueryREMatchEmpty
+			}
+			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
+		case labels.MatchNotRegexp:
+			sq := subQueryNRE
+			if matchesEmpty {
+				sq = subQueryNREMatchEmpty
+			}
+			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
 		}
 
 		if err != nil {
@@ -295,7 +295,11 @@ func getSeriesPerMetric(rows pgx.Rows) ([]string, [][]SeriesID, error) {
 func anchorValue(str string) string {
 	l := len(str)
 
-	if l == 0 || (str[0] == '^' && str[l-1] == '$') {
+	if l == 0 {
+		return "^$"
+	}
+
+	if str[0] == '^' && str[l-1] == '$' {
 		return str
 	}
 
