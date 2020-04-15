@@ -281,15 +281,19 @@ BEGIN
         RETURN position;
     END IF;
 
-    SELECT
-        max(pos) + 1
-    FROM
-        SCHEMA_CATALOG.label_key_position
-    WHERE
-        metric = metric_name INTO next_position;
+    IF key_name = '__name__' THEN
+       next_position := 1; -- 1-indexed arrays, __name__ as first element
+    ELSE
+        SELECT
+            max(pos) + 1
+        FROM
+            SCHEMA_CATALOG.label_key_position
+        WHERE
+            metric = metric_name INTO next_position;
 
-    IF next_position IS NULL THEN
-        next_position := 1; -- 1-indexed arrays
+        IF next_position IS NULL THEN
+            next_position := 2; -- element 1 reserved for __name__
+        END IF;
     END IF;
 
     PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
