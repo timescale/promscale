@@ -365,7 +365,7 @@ func TestSQLQuery(t *testing.T) {
 							{
 								Type:  prompb.LabelMatcher_NRE,
 								Name:  metricNameLabelName,
-								Value: "non-existant",
+								Value: "non-existent",
 							},
 						},
 						StartTimestampMs: 2,

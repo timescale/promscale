@@ -691,30 +691,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	if metric != "" {
-		tableName, err := q.getMetricTableName(metric)
-		if err != nil {
-			// If the metric table is missing, there are no results for this query.
-			if err == errMissingTableName {
-				return make([]*prompb.TimeSeries, 0), nil
-			}
-
-			return nil, err
-		}
-		filter.metric = tableName
-
-		sqlQuery := buildTimeseriesByLabelClausesQuery(filter, cases)
-		rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
-
-		if err != nil {
-			// If we are getting undefined table error, it means the query
-			// is looking for a metric which doesn't exist in the system.
-			if e, ok := err.(*pgconn.PgError); !ok || e.Code != pgerrcode.UndefinedTable {
-				return nil, err
-			}
-		}
-
-		defer rows.Close()
-		return buildTimeSeries(rows)
+		return q.querySingleMetric(metric, filter, cases, values)
 	}
 
 	sqlQuery := buildMetricNameSeriesIDQuery(cases)
@@ -751,8 +728,8 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 			return nil, err
 		}
 
-		defer rows.Close()
 		ts, err := buildTimeSeries(rows)
+		rows.Close()
 
 		if err != nil {
 			return nil, err
@@ -762,6 +739,33 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	return results, nil
+}
+
+func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}) ([]*prompb.TimeSeries, error) {
+	tableName, err := q.getMetricTableName(metric)
+	if err != nil {
+		// If the metric table is missing, there are no results for this query.
+		if err == errMissingTableName {
+			return make([]*prompb.TimeSeries, 0), nil
+		}
+
+		return nil, err
+	}
+	filter.metric = tableName
+
+	sqlQuery := buildTimeseriesByLabelClausesQuery(filter, cases)
+	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
+
+	if err != nil {
+		// If we are getting undefined table error, it means the query
+		// is looking for a metric which doesn't exist in the system.
+		if e, ok := err.(*pgconn.PgError); !ok || e.Code != pgerrcode.UndefinedTable {
+			return nil, err
+		}
+	}
+
+	defer rows.Close()
+	return buildTimeSeries(rows)
 }
 
 func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {

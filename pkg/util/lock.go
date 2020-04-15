@@ -20,7 +20,7 @@ const (
 	waitForConnectionTimeout = time.Second
 )
 
-// PgAdvisoryLock is implementation of leader election based on PostgreSQL advisory locks. All adapters withing a HA group are trying
+// PgAdvisoryLock is implementation of leader election based on PostgreSQL advisory locks. All adapters within a HA group are trying
 // to obtain an advisory lock for particular group. The one who holds the lock can write to the database. Due to the fact
 // that Prometheus HA setup provides no consistency guarantees this implementation is best effort in regards
 // to metrics that is written (some duplicates or data loss are possible during fail-over)
