@@ -1,4 +1,6 @@
 # Timescale-Prometheus Connector
+![Go](https://github.com/timescale/timescale-prometheus/workflows/Go/badge.svg)
+![reviewdog - golangci](https://github.com/timescale/timescale-prometheus/workflows/reviewdog%20-%20golangci/badge.svg)
 
 With this remote storage connector, Prometheus can use TimescaleDB as a compressed, long-term store for time-series metrics.
 For a detailed description of this architecture, please see [our design doc][design-doc].
