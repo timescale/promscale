@@ -981,6 +981,26 @@ AS $func$
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
+--TODO rename
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_id_for_match_eq(
+        key_name text, value_name text)
+    RETURNS INT[]
+AS $$
+    SELECT COALESCE(array_agg(l.id), array[]::int[])
+    FROM _prom_catalog.label l
+    WHERE l.key = key_name and l.value = value_name
+$$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_id_for_match_neq(
+        key_name text, value_name text)
+    RETURNS INT[]
+AS $$
+    SELECT COALESCE(array_agg(l.id), array[]::int[])
+    FROM _prom_catalog.label l
+    WHERE l.key = key_name and l.value != value_name
+$$
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
 
 --TODO: Add comments to functions below
@@ -1032,6 +1052,21 @@ AS $func$
     --keep as a simple statement that calls internal function so that planner
     --could expand this into query
     SELECT labels @> SCHEMA_CATALOG.label_matcher_get_from_json(partial_labels)
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(int[], jsonb)
+IS 'returns true if the labels array contains the labels inside the JSONB';
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match_eq(labels int[], key text, value text, match_if_key_is_missing boolean = false)
+RETURNS BOOLEAN
+AS $func$
+    SELECT
+    CASE
+        WHEN match_if_key_is_missing THEN
+            NOT labels && SCHEMA_CATALOG.get_label_id_for_match_neq(key, value)
+        ELSE
+            labels && SCHEMA_CATALOG.get_label_id_for_match_eq(key, value)
+    END
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(int[], jsonb)
