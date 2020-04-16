@@ -15,7 +15,7 @@ spec:
         spec:
           containers:
           - name: {{ .Chart.Name }}-drop-chunk
-            image: postgres:11-alpine
+            image: postgres:12-alpine
             args:
             - psql
             - -c
