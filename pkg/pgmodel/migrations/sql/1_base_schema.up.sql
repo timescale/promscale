@@ -1073,3 +1073,11 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(SCHEMA_PROM.label_ids, jsonb)
 IS 'returns true if the labels array contains the labels inside the JSONB';
+
+
+CREATE OR REPLACE FUNCTION test(labels SCHEMA_PROM.label_ids, ids int[])
+RETURNS BOOLEAN
+AS $func$
+     SELECT labels && ids
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
