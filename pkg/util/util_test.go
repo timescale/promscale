@@ -4,12 +4,54 @@
 package util
 
 import (
+	"testing"
+	"time"
+
 	"github.com/timescale/timescale-prometheus/pkg/log"
+)
+
+const (
+	step      = 3.0
+	frequency = 5.0
+	count     = 5.0
 )
 
 func init() {
 	err := log.Init("debug")
 	if err != nil {
 		panic(err)
+	}
+}
+
+func TestThroughputCalc(t *testing.T) {
+
+	calc := NewThroughputCalc(time.Second / frequency)
+	ticker := time.NewTicker(time.Second / frequency)
+	stop := time.NewTimer(time.Second / 2)
+	factor := 1.0
+	var value float64
+	current := step * factor
+
+	calc.Start()
+
+	for range ticker.C {
+		calc.SetCurrent(current)
+		value = <-calc.Values
+		current = current + (step * factor)
+		select {
+		case <-stop.C:
+			if value != step*frequency*factor {
+				t.Errorf("Value is not %f, its %f", step*frequency*factor, value)
+			}
+
+			factor++
+
+			if factor > count {
+				return
+			}
+
+			stop.Reset(time.Second / 2)
+		default:
+		}
 	}
 }
