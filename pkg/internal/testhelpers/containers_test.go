@@ -8,7 +8,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jackc/pgx/v4"
@@ -59,13 +61,32 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
-		container, err := StartPGContainer(ctx)
+		pgContainer, err := StartPGContainer(ctx)
+		if err != nil {
+			fmt.Println("Error setting up container", err)
+			os.Exit(1)
+		}
+		path, err := ioutil.TempDir("", "prom_test")
+		if err != nil {
+			fmt.Println("Error getting temp dir for Prometheus storage", err)
+			os.Exit(1)
+		}
+		err = os.Mkdir(filepath.Join(path, "wal"), 0777)
+		if err != nil {
+			fmt.Println("Error getting temp dir for Prometheus storage", err)
+			os.Exit(1)
+		}
+		promContainer, err := StartPromContainer(path, ctx)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
 		}
 		defer func() {
-			err := container.Terminate(ctx)
+			err := pgContainer.Terminate(ctx)
+			if err != nil {
+				panic(err)
+			}
+			err = promContainer.Terminate(ctx)
 			if err != nil {
 				panic(err)
 			}

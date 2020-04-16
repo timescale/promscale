@@ -23,7 +23,7 @@ import (
 var (
 	useDocker        = flag.Bool("use-docker", true, "start database using a docker container")
 	database         = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	electionInterval = flag.Duration("election-interval", 5*time.Second, "Scheduled election interval")
+	electionInterval = flag.Duration("election-interval", 1*time.Second, "Scheduled election interval")
 )
 
 func TestRestElection(t *testing.T) {
