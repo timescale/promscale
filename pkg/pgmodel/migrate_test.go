@@ -55,8 +55,8 @@ func TestMigrate(t *testing.T) {
 }
 
 func testConcurrentMetricTable(t *testing.T, db *pgxpool.Pool, metricName string) int64 {
-	var id *int64 = nil
-	var name *string = nil
+	var id *int64
+	var name *string
 	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.create_metric_table($1)", metricName).Scan(&id, &name)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func testConcurrentMetricTable(t *testing.T, db *pgxpool.Pool, metricName string
 }
 
 func testConcurrentNewLabel(t *testing.T, db *pgxpool.Pool, labelName string) int64 {
-	var id *int64 = nil
+	var id *int64
 	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.get_new_label_id($1, $1)", labelName).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func testConcurrentNewLabel(t *testing.T, db *pgxpool.Pool, labelName string) in
 }
 
 func testConcurrentCreateSeries(t *testing.T, db *pgxpool.Pool, index int) int64 {
-	var id *int64 = nil
+	var id *int64
 	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.create_series($1, array[$1::int])", index).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
@@ -577,6 +577,9 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					var jsonres []byte
 					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_jsonb($1)", labelArray).Scan(&jsonres)
+					if err != nil {
+						t.Fatal(err)
+					}
 					labelSetRes := make(model.LabelSet, len(ts.Labels))
 					err = json.Unmarshal(jsonres, &labelSetRes)
 					if err != nil {
@@ -625,6 +628,9 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					err = db.QueryRow(context.Background(), "SELECT prom.label_array_to_jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
 						seriesID).Scan(&jsonres)
+					if err != nil {
+						t.Fatal(err)
+					}
 					labelSetRes = make(model.LabelSet, len(ts.Labels))
 					err = json.Unmarshal(jsonres, &labelSetRes)
 					if err != nil {

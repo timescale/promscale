@@ -31,7 +31,7 @@ func getSingleSampleValue(t *testing.T, resp *prompb.ReadResponse) float64 {
 }
 
 func getBooleanSQLResult(t *testing.T, db *pgxpool.Pool, sql string, args ...interface{}) bool {
-	var res *bool = nil
+	var res *bool
 	err := db.QueryRow(context.Background(), sql, args...).Scan(&res)
 	if err != nil {
 		t.Fatal(err)
