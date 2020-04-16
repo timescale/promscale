@@ -8,6 +8,8 @@ CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC;
 
 
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
+
+CREATE DOMAIN SCHEMA_PROM.label_ids AS int[] NOT NULL;
 -----------------------
 -- Table definitions --
 -----------------------
@@ -15,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 CREATE TABLE SCHEMA_CATALOG.series (
     id bigserial PRIMARY KEY,
     metric_id int,
-    labels int[],
+    labels SCHEMA_PROM.label_ids,
     UNIQUE(labels) INCLUDE (id)
 );
 CREATE INDEX series_labels_id ON SCHEMA_CATALOG.series USING GIN (labels);
@@ -438,7 +440,7 @@ LANGUAGE SQL;
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb_to_label_array(js jsonb)
-RETURNS INT[] AS $$
+RETURNS SCHEMA_PROM.label_ids AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
@@ -467,12 +469,12 @@ RETURNS INT[] AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )
+    )::SCHEMA_PROM.label_ids
 $$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS INT[] AS $$
+RETURNS SCHEMA_PROM.label_ids AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
@@ -500,13 +502,13 @@ RETURNS INT[] AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )
+    )::SCHEMA_PROM.label_ids
 $$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_key_value_array(labels int[], OUT keys text[], OUT vals text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_key_value_array(labels SCHEMA_PROM.label_ids, OUT keys text[], OUT vals text[])
 AS $$
     SELECT
         array_agg(l.key), array_agg(l.value)
@@ -517,7 +519,7 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
 --Returns the jsonb for a series defined by a label_array
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_jsonb(labels int[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_jsonb(labels SCHEMA_PROM.label_ids)
 RETURNS jsonb AS $$
     SELECT
         jsonb_object(keys, vals)
@@ -529,7 +531,7 @@ LANGUAGE SQL STABLE PARALLEL SAFE;
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
         metric_id int,
-        label_array int[],
+        label_array SCHEMA_PROM.label_ids,
         OUT series_id BIGINT)
 AS $func$
 BEGIN
@@ -1004,17 +1006,17 @@ LANGUAGE SQL STABLE PARALLEL SAFE;
 
 
 --TODO: Add comments to functions below
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 int[], labels2 int[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 SCHEMA_PROM.label_ids, labels2 SCHEMA_PROM.label_ids)
 RETURNS BOOLEAN
 AS $func$
     --assumes no duplicate entries
     SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(int[], int[])
+COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(SCHEMA_PROM.label_ids, SCHEMA_PROM.label_ids)
 IS 'returns true if two label arrays are equal, including the metric name';
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 int[], json_labels jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_equal(labels1 SCHEMA_PROM.label_ids, json_labels jsonb)
 RETURNS BOOLEAN
 AS $func$
     --assumes no duplicate entries
@@ -1022,20 +1024,20 @@ AS $func$
            AND labels1 @> SCHEMA_CATALOG.label_matcher_get_from_json(json_labels)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(int[], jsonb)
+COMMENT ON FUNCTION SCHEMA_PROM.labels_equal(SCHEMA_PROM.label_ids, jsonb)
 IS 'returns true if the label array and jsonb are equal, including the metric name';
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match(labels1 int[], labels2 int[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match(labels1 SCHEMA_PROM.label_ids, labels2 SCHEMA_PROM.label_ids)
 RETURNS BOOLEAN
 AS $func$
     --assumes labels have metric name in position 1 and have no duplicate entries
     SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2[2:]
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_match(int[], int[])
+COMMENT ON FUNCTION SCHEMA_PROM.labels_match(SCHEMA_PROM.label_ids, SCHEMA_PROM.label_ids)
 IS 'returns true if two label arrays are equal, ignoring the metric name';
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match(labels1 int[], json_labels jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match(labels1 SCHEMA_PROM.label_ids, json_labels jsonb)
 RETURNS BOOLEAN
 AS $func$
     --assumes no duplicate entries
@@ -1043,10 +1045,10 @@ AS $func$
             AND labels1 @> SCHEMA_CATALOG.label_matcher_get_from_json(json_labels-'__name__')
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_match(int[], jsonb)
+COMMENT ON FUNCTION SCHEMA_PROM.labels_match(SCHEMA_PROM.label_ids, jsonb)
 IS 'returns true if the label array and jsonb are equal, ignoring the metric name';
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_contains(labels int[], partial_labels jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_contains(labels SCHEMA_PROM.label_ids, partial_labels jsonb)
 RETURNS BOOLEAN
 AS $func$
     --keep as a simple statement that calls internal function so that planner
@@ -1054,10 +1056,10 @@ AS $func$
     SELECT labels @> SCHEMA_CATALOG.label_matcher_get_from_json(partial_labels)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(int[], jsonb)
+COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(SCHEMA_PROM.label_ids, jsonb)
 IS 'returns true if the labels array contains the labels inside the JSONB';
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match_eq(labels int[], key text, value text, match_if_key_is_missing boolean = false)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_match_eq(labels SCHEMA_PROM.label_ids, key text, value text, match_if_key_is_missing boolean = false)
 RETURNS BOOLEAN
 AS $func$
     SELECT
@@ -1069,5 +1071,5 @@ AS $func$
     END
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(int[], jsonb)
+COMMENT ON FUNCTION SCHEMA_PROM.labels_contains(SCHEMA_PROM.label_ids, jsonb)
 IS 'returns true if the labels array contains the labels inside the JSONB';
