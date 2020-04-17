@@ -32,4 +32,6 @@ spec:
                     key: {{ .Values.connection.user }}
               - name: PGHOST
                 value: {{ tpl .Values.connection.host.nameTemplate . }}
+              - name:  PGDATABASE
+                value: {{ .Values.connection.dbName }}
           restartPolicy: OnFailure
