@@ -21,7 +21,7 @@ CREATE TABLE SCHEMA_CATALOG.series (
 CREATE INDEX series_labels_id ON SCHEMA_CATALOG.series USING GIN (labels);
 
 CREATE TABLE SCHEMA_CATALOG.label (
-    id serial,
+    id serial CHECK (id > 0),
     key TEXT,
     value text,
     PRIMARY KEY (id) INCLUDE (key, value),
@@ -73,14 +73,14 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_chunk_interval()
 AS $func$
     SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='chunk_interval';
 $func$
-LANGUAGE sql STABLE PARALLEL SAFE;
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_retention_period()
     RETURNS INTERVAL
 AS $func$
     SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='retention_period';
 $func$
-LANGUAGE sql STABLE PARALLEL SAFE;
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
@@ -106,7 +106,7 @@ BEGIN
    RETURN NEW;
 END
 $func$
-LANGUAGE plpgsql;
+LANGUAGE PLPGSQL VOLATILE;
 
 CREATE TRIGGER make_metric_table_trigger
     AFTER INSERT ON SCHEMA_CATALOG.metric
@@ -129,7 +129,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(
 AS $func$
     SELECT (substring(full_name for 63-(char_length(suffix)+1)) || '_' || suffix)::name
 $func$
-LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 -- Return a new unique name from a name and id.
 -- This tries to use the full_name in full. But if the
@@ -151,11 +151,14 @@ AS $func$
             )
         END
 $func$
-LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 --Creates a new table for a given metric name.
 --This uses up some sequences so should only be called
 --If the table does not yet exist.
+--The function inserts into the metric catalog table, 
+--  which causes the make_metric_table trigger to fire, 
+--  which actually creates the table
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_table(
         metric_name_arg text, OUT id int, OUT table_name name)
 AS $func$
@@ -184,7 +187,7 @@ LOOP
 END LOOP;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
+LANGUAGE PLPGSQL VOLATILE ;
 
 --Creates a new label_key row for a given key.
 --This uses up some sequences so should only be called
@@ -219,7 +222,7 @@ LOOP
 END LOOP;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
+LANGUAGE PLPGSQL VOLATILE;
 
 --Get a label key row if one doesn't yet exist.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_key(
@@ -233,7 +236,7 @@ AS $func$
    FROM SCHEMA_CATALOG.create_label_key(get_or_create_label_key.key)
    LIMIT 1
 $func$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 -- Get a new label array position for a label key. For any metric,
 -- we want the positions to be as compact as possible.
@@ -311,7 +314,7 @@ BEGIN
     RETURN position;
 END
 $func$
-LANGUAGE plpgsql;
+LANGUAGE PLPGSQL VOLATILE;
 
 --should only be called after a check that that the label doesn't exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
@@ -340,7 +343,7 @@ LOOP
 END LOOP;
 END
 $func$
-LANGUAGE PLPGSQL;
+LANGUAGE PLPGSQL VOLATILE;
 
 --wrapper around jsonb_each_text to give a better row_estimate
 --for labels (10 not 100)
@@ -370,7 +373,7 @@ AS $func$
    FROM SCHEMA_CATALOG.metric m
    WHERE m.metric_name = get_metric_table_name_if_exists.metric_name
 $func$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
@@ -386,10 +389,10 @@ AS $func$
    FROM SCHEMA_CATALOG.create_metric_table(get_or_create_metric_table_name.metric_name)
    LIMIT 1
 $func$
-LANGUAGE sql VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 --public function to get the array position for a label key
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_label_key_pos(
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_label_key_pos(
         metric_name text, key_name text)
     RETURNS INT
 AS $$
@@ -406,10 +409,10 @@ AS $$
         SCHEMA_CATALOG.get_new_pos_for_key(metric_name, key_name)
     LIMIT 1
 $$
-LANGUAGE SQL;
+LANGUAGE SQL VOLATILE;
 
 --Get the label_id for a key, value pair
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_label_id(
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_label_id(
         key_name text, value_name text)
     RETURNS INT
 AS $$
@@ -426,7 +429,7 @@ AS $$
         SCHEMA_CATALOG.get_new_label_id(key_name, value_name)
     LIMIT 1
 $$
-LANGUAGE SQL;
+LANGUAGE SQL VOLATILE;
 
 --This generates a position based array from the jsonb
 --0s represent keys that are not set (we don't use NULL
@@ -440,9 +443,9 @@ RETURNS INT[] AS $$
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              SCHEMA_PROM.get_label_key_pos(js->>'__name__', e.key)) idx,
+              SCHEMA_PROM.get_or_create_label_key_pos(js->>'__name__', e.key)) idx,
             coalesce(l.id,
-              SCHEMA_PROM.get_label_id(e.key, e.value)) val
+              SCHEMA_PROM.get_or_create_label_id(e.key, e.value)) val
         FROM SCHEMA_CATALOG.label_jsonb_each_text(js) e
              LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = e.key AND l.value = e.value)
@@ -452,7 +455,7 @@ RETURNS INT[] AS $$
                   lkp.metric = js->>'__name__' AND
                   lkp.key = e.key
                )
-        --needs to order by key to prevent deadlocks if get_label_id is creating labels
+        --needs to order by key to prevent deadlocks if get_or_create_label_id is creating labels
         ORDER BY l.key
     )
     SELECT ARRAY(
@@ -465,7 +468,7 @@ RETURNS INT[] AS $$
             LEFT JOIN idx_val ON (idx_val.idx = g)
     )
 $$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS INT[] AS $$
@@ -474,9 +477,9 @@ RETURNS INT[] AS $$
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              SCHEMA_PROM.get_label_key_pos(metric_name, kv.key)) idx,
+              SCHEMA_PROM.get_or_create_label_key_pos(metric_name, kv.key)) idx,
             coalesce(l.id,
-              SCHEMA_PROM.get_label_id(kv.key, kv.value)) val
+              SCHEMA_PROM.get_or_create_label_id(kv.key, kv.value)) val
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
             LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = kv.key AND l.value = kv.value)
@@ -498,7 +501,7 @@ RETURNS INT[] AS $$
             LEFT JOIN idx_val ON (idx_val.idx = g)
     )
 $$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
@@ -547,7 +550,7 @@ LOOP
 END LOOP;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE PARALLEL SAFE;
+LANGUAGE PLPGSQL VOLATILE;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_PROM.get_series_id_for_label(label jsonb)
 RETURNS BIGINT AS $$
@@ -561,7 +564,7 @@ RETURNS BIGINT AS $$
    SELECT SCHEMA_CATALOG.create_series((SCHEMA_PROM.get_or_create_metric_table_name(label->>'__name__')).id, (SELECT * FROM cte))
    LIMIT 1
 $$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_PROM.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS BIGINT AS $$
@@ -575,7 +578,7 @@ RETURNS BIGINT AS $$
    SELECT SCHEMA_CATALOG.create_series((SCHEMA_PROM.get_or_create_metric_table_name(metric_name)).id, (SELECT * FROM cte))
    LIMIT 1
 $$
-LANGUAGE SQL VOLATILE PARALLEL SAFE;
+LANGUAGE SQL VOLATILE;
 
 --
 -- Parameter manipulation functions
@@ -584,7 +587,7 @@ LANGUAGE SQL VOLATILE PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name TEXT, new_interval INTERVAL)
 RETURNS void
 AS $func$
-    --set interval while addeing 1% of randomness to the interval so that chunks are not aligned so that
+    --set interval while adding 1% of randomness to the interval so that chunks are not aligned so that
     --chunks are staggered for compression jobs.
     SELECT set_chunk_time_interval(
         format('SCHEMA_PROM.%I',(SELECT table_name FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)))::regclass,
@@ -604,7 +607,7 @@ AS $$
 
     SELECT true;
 $$
-LANGUAGE sql VOLATILE;
+LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -646,7 +649,7 @@ AS $$
     SELECT SCHEMA_CATALOG.get_default_retention_period()
     LIMIT 1
 $$
-LANGUAGE sql STABLE;
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_retention_period(retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -655,7 +658,7 @@ AS $$
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
     SELECT true;
 $$
-LANGUAGE sql VOLATILE;
+LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -778,8 +781,10 @@ BEGIN
    RETURN true;
 END
 $func$
-LANGUAGE plpgsql;
+LANGUAGE PLPGSQL VOLATILE;
 
+--Order by random with stable marking gives us same order in a statement and different 
+-- orderings in different statements
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
 RETURNS SETOF SCHEMA_CATALOG.metric
 AS $$
@@ -792,12 +797,10 @@ AS $$
         --random order also to prevent starvation
         ORDER BY random()
 $$
-LANGUAGE sql STABLE;
-
+LANGUAGE SQL STABLE;
 
 --public procedure to be called by cron
 CREATE PROCEDURE SCHEMA_PROM.drop_chunks()
-LANGUAGE plpgsql
 AS $$
 DECLARE
     r RECORD;
@@ -827,7 +830,7 @@ BEGIN
         COMMIT;
     END LOOP;
 END;
-$$;
+$$ LANGUAGE PLPGSQL;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_stale_marker(value double precision)
 RETURNS BOOLEAN
@@ -875,7 +878,7 @@ BEGIN
   END IF;
 END
 $func$
-LANGUAGE PLPGSQL;
+LANGUAGE PLPGSQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series_view(
         metric_name text)
@@ -912,7 +915,7 @@ BEGIN
     RETURN true;
 END
 $func$
-LANGUAGE PLPGSQL;
+LANGUAGE PLPGSQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_view(
@@ -952,4 +955,4 @@ BEGIN
     RETURN true;
 END
 $func$
-LANGUAGE PLPGSQL;
+LANGUAGE PLPGSQL VOLATILE;
