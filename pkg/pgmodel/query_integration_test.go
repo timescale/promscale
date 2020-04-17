@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -963,7 +964,14 @@ func generateSmallTimeseries() []prompb.TimeSeries {
 }
 
 func generatePrometheusWALFile() (string, error) {
-	path, err := ioutil.TempDir("", "prom_test_storage")
+	tmpDir := ""
+
+	if runtime.GOOS == "darwin" {
+		// Docker on Mac lacks access to default os tmp dir - "/var/folders/random_number"
+		// so switch to cross-user tmp dir
+		tmpDir = "/tmp"
+	}
+	path, err := ioutil.TempDir(tmpDir, "prom_test_storage")
 	if err != nil {
 		return "", err
 	}
