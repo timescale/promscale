@@ -44,17 +44,17 @@ CREATE TABLE SCHEMA_CATALOG.label_key(
 );
 
 CREATE TABLE SCHEMA_CATALOG.label_key_position (
-    metric text,
+    metric_name text, --references metric.metric_name NOT metric.id for performance reasons
     key TEXT, --NOT label_key.id for performance reasons.
     pos int,
-    UNIQUE (metric, key) INCLUDE (pos)
+    UNIQUE (metric_name, key) INCLUDE (pos)
 );
 
 CREATE TABLE SCHEMA_CATALOG.metric (
     id SERIAL PRIMARY KEY,
-    metric_name text,
-    table_name name,
-    default_chunk_interval BOOLEAN DEFAULT true,
+    metric_name text NOT NULL,
+    table_name name NOT NULL,
+    default_chunk_interval BOOLEAN NOT NULL DEFAULT true,
     retention_period INTERVAL DEFAULT NULL, --NULL to use the default retention_period
     UNIQUE (metric_name) INCLUDE (table_name),
     UNIQUE(table_name)
@@ -158,8 +158,8 @@ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 --Creates a new table for a given metric name.
 --This uses up some sequences so should only be called
 --If the table does not yet exist.
---The function inserts into the metric catalog table, 
---  which causes the make_metric_table trigger to fire, 
+--The function inserts into the metric catalog table,
+--  which causes the make_metric_table trigger to fire,
 --  which actually creates the table
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_table(
         metric_name_arg text, OUT id int, OUT table_name name)
@@ -257,10 +257,10 @@ BEGIN
     SELECT
         pos
     FROM
-        SCHEMA_CATALOG.label_key_position
+        SCHEMA_CATALOG.label_key_position lkp
     WHERE
-        metric = metric_name
-        AND KEY = key_name
+        lkp.metric_name = get_new_pos_for_key.metric_name
+        AND lkp.key = get_new_pos_for_key.key_name
     INTO position;
 
     IF FOUND THEN
@@ -268,7 +268,7 @@ BEGIN
     END IF;
 
     SELECT table_name
-    FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)
+    FROM SCHEMA_PROM.get_or_create_metric_table_name(get_new_pos_for_key.metric_name)
     INTO metric_table;
     --lock as for ALTER TABLE because we are in effect changing the schema here
     --also makes sure the next_position below is correct in terms of concurrency
@@ -277,10 +277,10 @@ BEGIN
     SELECT
         pos
     FROM
-        SCHEMA_CATALOG.label_key_position
+        SCHEMA_CATALOG.label_key_position lkp
     WHERE
-        metric = metric_name
-        AND KEY = key_name INTO position;
+        lkp.metric_name = get_new_pos_for_key.metric_name
+        AND lkp.key =  get_new_pos_for_key.key_name INTO position;
 
     IF FOUND THEN
         RETURN position;
@@ -292,9 +292,9 @@ BEGIN
         SELECT
             max(pos) + 1
         FROM
-            SCHEMA_CATALOG.label_key_position
+            SCHEMA_CATALOG.label_key_position lkp
         WHERE
-            metric = metric_name INTO next_position;
+            lkp.metric_name = get_new_pos_for_key.metric_name INTO next_position;
 
         IF next_position IS NULL THEN
             next_position := 2; -- element 1 reserved for __name__
@@ -399,20 +399,20 @@ LANGUAGE SQL VOLATILE;
 
 --public function to get the array position for a label key
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_label_key_pos(
-        metric_name text, key_name text)
+        metric_name text, key text)
     RETURNS INT
 AS $$
     --only executes the more expensive PLPGSQL function if the label doesn't exist
     SELECT
         pos
     FROM
-        SCHEMA_CATALOG.label_key_position
+        SCHEMA_CATALOG.label_key_position lkp
     WHERE
-        metric = metric_name
-        AND KEY = key_name
+        lkp.metric_name = get_or_create_label_key_pos.metric_name
+        AND lkp.key = get_or_create_label_key_pos.key
     UNION ALL
     SELECT
-        SCHEMA_CATALOG.get_new_pos_for_key(metric_name, key_name)
+        SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, get_or_create_label_key_pos.key)
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
@@ -458,7 +458,7 @@ RETURNS SCHEMA_PROM.label_ids AS $$
             LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
                ON
                (
-                  lkp.metric = js->>'__name__' AND
+                  lkp.metric_name = js->>'__name__' AND
                   lkp.key = e.key
                )
         --needs to order by key to prevent deadlocks if get_or_create_label_id is creating labels
@@ -483,7 +483,7 @@ RETURNS SCHEMA_PROM.label_ids AS $$
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              SCHEMA_PROM.get_or_create_label_key_pos(metric_name, kv.key)) idx,
+              SCHEMA_PROM.get_or_create_label_key_pos(key_value_array_to_label_array.metric_name, kv.key)) idx,
             coalesce(l.id,
               SCHEMA_PROM.get_or_create_label_id(kv.key, kv.value)) val
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
@@ -492,7 +492,7 @@ RETURNS SCHEMA_PROM.label_ids AS $$
             LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
                ON
                (
-                  lkp.metric = metric_name AND
+                  lkp.metric_name = key_value_array_to_label_array.metric_name AND
                   lkp.key = kv.key
                )
         ORDER BY kv.key
@@ -789,7 +789,7 @@ END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
 
---Order by random with stable marking gives us same order in a statement and different 
+--Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
 RETURNS SETOF SCHEMA_CATALOG.metric
@@ -901,7 +901,7 @@ BEGIN
         , ', ' ORDER BY pos)
     INTO STRICT label_value_cols
     FROM SCHEMA_CATALOG.label_key_position lkp
-    WHERE lkp.metric = metric_name and key != '__name__';
+    WHERE lkp.metric_name = create_series_view.metric_name and key != '__name__';
 
     SELECT m.table_name, m.id
     INTO STRICT view_name, metric_id
@@ -939,7 +939,7 @@ BEGIN
         , ', ' ORDER BY pos)
     INTO STRICT label_value_cols
     FROM SCHEMA_CATALOG.label_key_position lkp
-    WHERE lkp.metric = metric_name and key != '__name__';
+    WHERE lkp.metric_name = create_metric_view.metric_name and key != '__name__';
 
     SELECT m.table_name, m.id
     INTO STRICT table_name, metric_id
