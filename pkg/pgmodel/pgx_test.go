@@ -607,7 +607,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				if err != nil {
 					t.Fatalf("error when fetching metric table name: %s", err)
 				}
-				tNames = append(tNames, pgx.Identifier{promSchema, realTableName})
+				tNames = append(tNames, pgx.Identifier{dataSchema, realTableName})
 			}
 
 			// Sorting because range over a map gives random iteration order.
@@ -736,7 +736,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."foo" m
+	FROM "prom_data"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
@@ -831,7 +831,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."foo" m
+	FROM "prom_data"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
@@ -866,7 +866,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []string{`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."bar" m
+	FROM "prom_data"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
@@ -905,7 +905,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."foo" m
+	FROM "prom_data"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
@@ -914,7 +914,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."bar" m
+	FROM "prom_data"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
@@ -964,7 +964,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."foo" m
+	FROM "prom_data"."foo" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
@@ -973,7 +973,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."bar" m
+	FROM "prom_data"."bar" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
@@ -1022,7 +1022,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."metric" m
+	FROM "prom_data"."metric" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1,99,98)
@@ -1066,7 +1066,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."metric" m
+	FROM "prom_data"."metric" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1,4,5)
@@ -1113,7 +1113,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name`,
 				`SELECT table_name FROM prom.get_metric_table_name_if_exists($1)`,
 				`SELECT (prom.label_array_to_key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM "prom"."metric" m
+	FROM "prom_data"."metric" m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1,2)

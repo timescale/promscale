@@ -5,6 +5,7 @@ CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functio
 CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- data tables + public functions
 CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES;
 CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC;
+CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
 
 
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
@@ -90,21 +91,21 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
     AS $func$
 DECLARE
 BEGIN
-   EXECUTE format('CREATE TABLE SCHEMA_PROM.%I(time TIMESTAMPTZ, value DOUBLE PRECISION, series_id INT)',
+   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ, value DOUBLE PRECISION, series_id INT)',
                     NEW.table_name);
-   EXECUTE format('CREATE INDEX ON SCHEMA_PROM.%I (series_id, time) INCLUDE (value)',
+   EXECUTE format('CREATE INDEX ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.table_name);
-   PERFORM create_hypertable(format('SCHEMA_PROM.%I', NEW.table_name), 'time',
+   PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
                              chunk_time_interval=>SCHEMA_CATALOG.get_default_chunk_interval());
    EXECUTE format($$
-     ALTER TABLE SCHEMA_PROM.%I SET (
+     ALTER TABLE SCHEMA_DATA.%I SET (
         timescaledb.compress,
         timescaledb.compress_segmentby = 'series_id',
         timescaledb.compress_orderby = 'time'
     ); $$, NEW.table_name);
 
    --chunks where the end time is before now()-10 minutes will be compressed
-   PERFORM add_compress_chunks_policy(format('SCHEMA_PROM.%I', NEW.table_name), INTERVAL '10 minutes');
+   PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', NEW.table_name), INTERVAL '10 minutes');
    RETURN NEW;
 END
 $func$
@@ -272,7 +273,7 @@ BEGIN
     INTO metric_table;
     --lock as for ALTER TABLE because we are in effect changing the schema here
     --also makes sure the next_position below is correct in terms of concurrency
-    EXECUTE format('LOCK TABLE SCHEMA_PROM.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
+    EXECUTE format('LOCK TABLE SCHEMA_DATA.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
     --second check after lock
     SELECT
         pos
@@ -596,7 +597,7 @@ AS $func$
     --set interval while adding 1% of randomness to the interval so that chunks are not aligned so that
     --chunks are staggered for compression jobs.
     SELECT set_chunk_time_interval(
-        format('SCHEMA_PROM.%I',(SELECT table_name FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)))::regclass,
+        format('SCHEMA_DATA.%I',(SELECT table_name FROM SCHEMA_PROM.get_or_create_metric_table_name(metric_name)))::regclass,
         new_interval * (1.0+((random()*0.01)-0.005)));
 $func$
 LANGUAGE SQL VOLATILE;
@@ -713,7 +714,7 @@ BEGIN
     INTO STRICT time_dimension_id
     FROM _timescaledb_catalog.hypertable h
     INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
-    WHERE h.schema_name = 'SCHEMA_PROM' AND h.table_name = metric_table
+    WHERE h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table
     ORDER BY d.id ASC
     LIMIT 1;
 
@@ -740,18 +741,18 @@ BEGIN
     $query$
         WITH potentially_drop_series AS (
             SELECT distinct series_id
-            FROM SCHEMA_PROM.%1$I
+            FROM SCHEMA_DATA.%1$I
             WHERE time < %2$L
             EXCEPT
             SELECT distinct series_id
-            FROM SCHEMA_PROM.%1$I
+            FROM SCHEMA_DATA.%1$I
             WHERE time >= %2$L AND time < %3$L
         ), confirmed_drop_series AS (
             SELECT series_id
             FROM potentially_drop_series
             WHERE NOT EXISTS (
                  SELECT 1
-                 FROM  SCHEMA_PROM.%1$I  data_exists
+                 FROM  SCHEMA_DATA.%1$I  data_exists
                  WHERE data_exists.series_id = potentially_drop_series.series_id AND time >= %3$L
                  --use chunk append + more likely to find something starting at earliest time
                  ORDER BY time ASC
@@ -783,7 +784,7 @@ BEGIN
         WHERE id IN (SELECT * FROM confirmed_drop_labels);
     $query$ USING label_ids;
 
-   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_PROM', older_than=>older_than);
+   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than);
    RETURN true;
 END
 $func$
@@ -798,7 +799,7 @@ AS $$
         FROM SCHEMA_CATALOG.metric m
         WHERE EXISTS (
             SELECT 1 FROM
-            show_chunks(hypertable=>format('%I.%I', 'SCHEMA_PROM', m.table_name),
+            show_chunks(hypertable=>format('%I.%I', 'SCHEMA_DATA', m.table_name),
                          older_than=>NOW() - SCHEMA_PROM.get_metric_retention_period(m.metric_name)))
         --random order also to prevent starvation
         ORDER BY random()
@@ -955,7 +956,7 @@ BEGIN
             series.labels
             %2$s
         FROM
-            SCHEMA_PROM.%1$I AS data
+            SCHEMA_DATA.%1$I AS data
             LEFT JOIN SCHEMA_CATALOG.series AS series ON (series.id = data.series_id AND series.metric_id = %3$L)
     $$, table_name, label_value_cols, metric_id);
     RETURN true;

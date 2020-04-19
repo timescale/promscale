@@ -243,7 +243,7 @@ func buildMetricNameSeriesIDQuery(cases []string) string {
 func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string) string {
 	return fmt.Sprintf(
 		timeseriesByMetricSQLFormat,
-		pgx.Identifier{promSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
@@ -257,7 +257,7 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []Serie
 	}
 	return fmt.Sprintf(
 		timeseriesBySeriesIDsSQLFormat,
-		pgx.Identifier{promSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
 		strings.Join(s, ","),
 		filter.startTime,
 		filter.endTime,

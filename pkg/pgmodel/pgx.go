@@ -27,6 +27,7 @@ const (
 	promSchema       = "prom"
 	seriesViewSchema = "prom_series"
 	metricViewSchema = "prom_metric"
+	dataSchema       = "prom_data"
 	catalogSchema    = "_prom_catalog"
 
 	getMetricsTableSQL       = "SELECT table_name FROM " + promSchema + ".get_metric_table_name_if_exists($1)"
@@ -537,7 +538,7 @@ func (h *insertHandler) flushPending(pendingElem *list.Element) {
 
 	_, err := h.conn.CopyFrom(
 		context.Background(),
-		pgx.Identifier{promSchema, pending.metricTable},
+		pgx.Identifier{dataSchema, pending.metricTable},
 		copyColumns,
 		&pending.batch,
 	)
