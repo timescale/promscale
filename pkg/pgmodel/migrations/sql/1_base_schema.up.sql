@@ -11,6 +11,17 @@ CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 
 CREATE DOMAIN SCHEMA_PROM.label_ids AS int[] NOT NULL;
+
+DO $$
+DECLARE
+   new_path text;
+BEGIN
+   new_path := current_setting('search_path') || format(',%L,%L', 'SCHEMA_PROM', 'SCHEMA_METRIC');
+   execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
+END
+$$;
+
+
 -----------------------
 -- Table definitions --
 -----------------------
