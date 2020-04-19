@@ -38,6 +38,7 @@ func (t *mySrc) replaceSchemaNames(r io.ReadCloser) (io.ReadCloser, error) {
 	s = strings.ReplaceAll(s, "SCHEMA_PROM", promSchema)
 	s = strings.ReplaceAll(s, "SCHEMA_SERIES", seriesViewSchema)
 	s = strings.ReplaceAll(s, "SCHEMA_METRIC", metricViewSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_DATA", dataSchema)
 	r = ioutil.NopCloser(strings.NewReader(s))
 	return r, err
 }

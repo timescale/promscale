@@ -893,11 +893,11 @@ func TestPromQL(t *testing.T) {
 				}
 
 				if connErr != nil {
-					t.Errorf("unexpected error returned:\ngot\n%s\nwanted\nnil", err)
+					t.Fatalf("unexpected error returned:\ngot\n%s\nwanted\nnil", connErr)
 				}
 
 				if promErr != nil {
-					t.Errorf("unexpected error returned:\ngot\n%s\nwanted\nnil", err)
+					t.Fatalf("unexpected error returned:\ngot\n%v\nwanted\nnil", promErr)
 				}
 
 				// Length checking is for case when query returns an empty results,

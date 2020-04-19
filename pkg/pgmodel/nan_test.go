@@ -138,13 +138,13 @@ func TestSQLStaleNaN(t *testing.T) {
 			isStaleNaN := getBooleanSQLResult(t, db,
 				fmt.Sprintf(
 					`SELECT prom.is_stale_marker(value)
-					 FROM prom."StaleMetric"
+					 FROM prom_data."StaleMetric"
 					 WHERE %s
 				`, timeClause), time.Duration(int64(time.Millisecond)*startMs), time.Duration(int64(time.Millisecond)*endMs))
 			isNormalNaN := getBooleanSQLResult(t, db,
 				fmt.Sprintf(
 					`SELECT prom.is_normal_nan(value)
-						 FROM prom."StaleMetric"
+						 FROM prom_data."StaleMetric"
 						 WHERE %s
 					`, timeClause), time.Duration(int64(time.Millisecond)*startMs), time.Duration(int64(time.Millisecond)*endMs))
 			if c.isStaleNaN {

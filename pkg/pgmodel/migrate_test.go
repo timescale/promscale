@@ -865,7 +865,7 @@ func TestSQLIngest(t *testing.T) {
 				totalRows := 0
 				for table := range tables {
 					var rowsInTable int
-					err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM prom.%s", table)).Scan(&rowsInTable)
+					err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM prom_data.%s", table)).Scan(&rowsInTable)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -949,7 +949,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		count := 0
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom.test`).Scan(&count)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom_data.test`).Scan(&count)
 		if err != nil {
 			t.Error(err)
 		}
@@ -1025,7 +1025,7 @@ func TestSQLDropChunk(t *testing.T) {
 		}
 
 		cnt := 0
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom.test')").Scan(&cnt)
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom_data.test')").Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1037,7 +1037,7 @@ func TestSQLDropChunk(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom.test')").Scan(&cnt)
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom_data.test')").Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1050,7 +1050,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 		//test2 isn't affected
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom.test2')").Scan(&cnt)
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom_data.test2')").Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
