@@ -12,14 +12,14 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
-func getViewRowCount(t *testing.T, db *pgxpool.Pool, view string, expected int) {
+func getViewRowCount(t *testing.T, db *pgxpool.Pool, view string, where string, expected int) {
 	var count int
-	err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM %s", view)).Scan(&count)
+	err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM %s %s", view, where)).Scan(&count)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if count != expected {
-		t.Fatalf("unexpected view count: view %s, got %d expected %d", view, count, expected)
+		t.Fatalf("unexpected view count: view %s, where clause %s, got %d expected %d", view, where, count, expected)
 	}
 }
 
@@ -167,8 +167,164 @@ func TestSQLView(t *testing.T) {
 					}
 				}
 			}
-			getViewRowCount(t, db, "prom_series.\""+name+"\"", seriesCount)
-			getViewRowCount(t, db, "prom_metric.\""+name+"\"", pointCount)
+			getViewRowCount(t, db, "prom_series.\""+name+"\"", "", seriesCount)
+			getViewRowCount(t, db, "prom_metric.\""+name+"\"", "", pointCount)
+		}
+	})
+}
+
+func TestSQLViewSelectors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+		metrics := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "cpu_usage"},
+					{Name: "namespace", Value: "production"},
+					{Name: "node", Value: "brain"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 10, Value: 0.5},
+					{Timestamp: 40, Value: 0.6},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "cpu_usage"},
+					{Name: "namespace", Value: "dev"},
+					{Name: "node", Value: "pinky"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 10, Value: 0.1},
+					{Timestamp: 45, Value: 0.2},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "cpu_usage"},
+					{Name: "namespace", Value: "dev"},
+					{Name: "node", Value: "brain"},
+					{Name: "new_tag", Value: "value"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 60, Value: 0.2},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "cpu_total"},
+					{Name: "namespace", Value: "production"},
+					{Name: "node", Value: "brain"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 10, Value: 0.5},
+					{Timestamp: 40, Value: 0.6},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: metricNameLabelName, Value: "cpu_total"},
+					{Name: "namespace", Value: "dev"},
+					{Name: "node", Value: "pinky"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 10, Value: 0.1},
+					{Timestamp: 45, Value: 0.2},
+				},
+			},
+		}
+
+		ingestor := NewPgxIngestor(db)
+		defer ingestor.Close()
+		_, err := ingestor.Ingest(metrics)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		queries := []struct {
+			where string
+			rows  int
+		}{
+			{
+				where: "WHERE labels ? ('namespace' == 'dev')",
+				rows:  3,
+			},
+			{
+				where: "WHERE labels ? ('namespace' !== 'dev')",
+				rows:  2,
+			},
+			{
+				where: "WHERE labels ? ('namespace' ==~ 'de.*')",
+				rows:  3,
+			},
+			{
+				where: "WHERE labels ? ('namespace' !=~ 'de.*')",
+				rows:  2,
+			},
+			{
+				where: "WHERE labels ? ('namespace' == 'dev') AND labels ? ('node' == 'brain')",
+				rows:  1,
+			},
+			{
+				where: `WHERE eq(labels, jsonb '{"namespace":"dev", "node":"brain", "new_tag":"value"}')`,
+				rows:  1,
+			},
+			{
+				where: `WHERE eq(labels, jsonb '{"namespace":"dev"}')`,
+				rows:  0, //eq is not contain
+			},
+			{
+				where: `WHERE labels @> jsonb '{"namespace":"dev"}'`,
+				rows:  3,
+			},
+			{
+				where: "WHERE labels ? ('new_tag' == 'value')",
+				rows:  1,
+			},
+			{
+				where: "WHERE labels ? ('new_tag' !== 'value')",
+				rows:  4,
+			},
+			{
+				where: "WHERE labels ? ('namespace' == 'not_exist')",
+				rows:  0,
+			},
+			{
+				where: "WHERE labels ? ('not_exist' == 'not_exist')",
+				rows:  0,
+			},
+			{
+				where: "WHERE labels ? ('namespace' !== 'not_exist')",
+				rows:  5,
+			},
+			{
+				where: "WHERE labels ? ('not_exist' !== 'not_exist')",
+				rows:  5,
+			},
+			{
+				where: "WHERE labels ? ('namespace' ==~ 'not_exist.*')",
+				rows:  0,
+			},
+			{
+				where: "WHERE labels ? ('not_exist' ==~ 'not_exist.*')",
+				rows:  0,
+			},
+			{
+				where: "WHERE labels ? ('namespace' !=~ 'not_exist.*')",
+				rows:  5,
+			},
+			{
+				where: "WHERE labels ? ('not_exist' !=~ 'not_exist.*')",
+				rows:  5,
+			},
+		}
+
+		for _, q := range queries {
+			getViewRowCount(t, db, "prom_metric.\"cpu_usage\"", q.where, q.rows)
 		}
 	})
 }

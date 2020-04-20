@@ -974,3 +974,180 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+
+----------------------------------
+-- Label selectors and matchers --
+----------------------------------
+
+CREATE DOMAIN SCHEMA_PROM.matcher_positive AS int[] NOT NULL;
+CREATE DOMAIN SCHEMA_PROM.matcher_negative AS int[] NOT NULL;
+CREATE DOMAIN SCHEMA_PROM.label_key AS TEXT NOT NULL;
+CREATE DOMAIN SCHEMA_PROM.pattern AS TEXT NOT NULL;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.count_jsonb_keys(j jsonb)
+RETURNS INT
+AS $func$
+    SELECT count(*)::int from (SELECT jsonb_object_keys(j)) v;
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_matcher_from_json(labels jsonb)
+RETURNS SCHEMA_PROM.matcher_positive
+AS $func$
+    SELECT ARRAY(
+           SELECT coalesce(l.id, -1) -- -1 indicates no such label
+           FROM SCHEMA_CATALOG.label_jsonb_each_text(labels-'__name__') e
+           LEFT JOIN SCHEMA_CATALOG.label l
+               ON (l.key = e.key AND l.value = e.value)
+        )::SCHEMA_PROM.matcher_positive
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.get_matcher_from_json(jsonb)
+IS 'returns an array of label ids for the JSONB. This is not a labels array since the order of ids isnt guaranteed. __name__ is ignored.';
+
+
+
+---------------- eq functions ------------------
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels1 SCHEMA_PROM.label_ids, labels2 SCHEMA_PROM.label_ids)
+RETURNS BOOLEAN
+AS $func$
+    --assumes labels have metric name in position 1 and have no duplicate entries
+    SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2[2:]
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_ids, SCHEMA_PROM.label_ids)
+IS 'returns true if two label arrays are equal, ignoring the metric name';
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels1 SCHEMA_PROM.label_ids, matchers SCHEMA_PROM.matcher_positive)
+RETURNS BOOLEAN
+AS $func$
+    --assumes no duplicate entries
+     SELECT array_length(labels1, 1) = (array_length(matchers, 1) + 1)
+            AND labels1 @> matchers
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_ids, SCHEMA_PROM.matcher_positive)
+IS 'returns true if the label array and matchers are equal, there should not be a matcher for the metric name';
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels SCHEMA_PROM.label_ids, json_labels jsonb)
+RETURNS BOOLEAN
+AS $func$
+    --assumes no duplicate entries
+    --do not call eq(label_ids, matchers) to allow inlining
+     SELECT array_length(labels, 1) = (SCHEMA_CATALOG.count_jsonb_keys(json_labels-'__name__') + 1)
+            AND labels @> SCHEMA_PROM.get_matcher_from_json(json_labels)
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_ids, jsonb)
+IS 'returns true if the labels and jsonb are equal, ignoring the metric name';
+
+
+--------------------- op @> ------------------------
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_contains(labels SCHEMA_PROM.label_ids, json_labels jsonb)
+RETURNS BOOLEAN
+AS $func$
+    SELECT labels @> SCHEMA_PROM.get_matcher_from_json(json_labels)
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_PROM.@> (
+    LEFTARG = SCHEMA_PROM.label_ids,
+    RIGHTARG = jsonb,
+    FUNCTION = SCHEMA_CATALOG.label_contains
+);
+
+--------------------- op ? ------------------------
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_ids, matchers SCHEMA_PROM.matcher_positive)
+RETURNS BOOLEAN
+AS $func$
+    SELECT labels && matchers
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_PROM.? (
+    LEFTARG = SCHEMA_PROM.label_ids,
+    RIGHTARG = SCHEMA_PROM.matcher_positive,
+    FUNCTION = SCHEMA_CATALOG.label_match
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_ids, matchers SCHEMA_PROM.matcher_negative)
+RETURNS BOOLEAN
+AS $func$
+    SELECT NOT (labels && matchers)
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_PROM.? (
+    LEFTARG = SCHEMA_PROM.label_ids,
+    RIGHTARG = SCHEMA_PROM.matcher_negative,
+    FUNCTION = SCHEMA_CATALOG.label_match
+);
+
+--------------------- op == !== ==~ !=~ ------------------------
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_equal(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+RETURNS SCHEMA_PROM.matcher_positive
+AS $func$
+    SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_positive
+    FROM _prom_catalog.label l
+    WHERE l.key = label_key and l.value = pattern
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_equal(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+RETURNS SCHEMA_PROM.matcher_negative
+AS $func$
+    SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_negative
+    FROM _prom_catalog.label l
+    WHERE l.key = label_key and l.value = pattern
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_regex(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+RETURNS SCHEMA_PROM.matcher_positive
+AS $func$
+    SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_positive
+    FROM _prom_catalog.label l
+    WHERE l.key = label_key and l.value ~ pattern
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_regex(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+RETURNS SCHEMA_PROM.matcher_negative
+AS $func$
+    SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_negative
+    FROM _prom_catalog.label l
+    WHERE l.key = label_key and l.value ~ pattern
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+
+CREATE OPERATOR SCHEMA_PROM.== (
+    LEFTARG = SCHEMA_PROM.label_key,
+    RIGHTARG = SCHEMA_PROM.pattern,
+    FUNCTION = SCHEMA_CATALOG.label_find_key_equal
+);
+
+CREATE OPERATOR SCHEMA_PROM.!== (
+    LEFTARG = SCHEMA_PROM.label_key,
+    RIGHTARG = SCHEMA_PROM.pattern,
+    FUNCTION = SCHEMA_CATALOG.label_find_key_not_equal
+);
+
+CREATE OPERATOR SCHEMA_PROM.==~ (
+    LEFTARG = SCHEMA_PROM.label_key,
+    RIGHTARG = SCHEMA_PROM.pattern,
+    FUNCTION = SCHEMA_CATALOG.label_find_key_regex
+);
+
+CREATE OPERATOR SCHEMA_PROM.!=~ (
+    LEFTARG = SCHEMA_PROM.label_key,
+    RIGHTARG = SCHEMA_PROM.pattern,
+    FUNCTION = SCHEMA_CATALOG.label_find_key_not_regex
+);
+
