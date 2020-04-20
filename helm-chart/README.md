@@ -11,13 +11,22 @@ on Kubernetes. This chart will do the following:
 
 ## Prerequisites 
 
-The chart expects that the password used to connect to TimescaleDB is
-created before the chart is deployed. 
-You can set the secret name by modifying the  `password.secretTemplate` value. 
+### Database Name
+
+The name of the database the Timescale-Prometheus connector will connect to by default
+is set to `timescale`. You can change it by modifying the `connection.dbName` value.
+The database **must be created before** starting the connector.
+
+### Password
+
+The chart expects that the password used to connect to TimescaleDB is stored in a 
+Kubernetes Secret created before the chart is deployed. 
+You can set the secret name by modifying the  `connection.password.secretTemplate` value. 
 Templating is supported and you can use:
 ```yaml
-password:
-  secretTemplate: "{{ .Release.Name }}-timescaledb-passwords"
+connection:
+  password:
+    secretTemplate: "{{ .Release.Name }}-timescaledb-passwords"
 ```
 
 ## Installing
@@ -49,9 +58,10 @@ helm install --name my-release -f myvalues.yaml .
 | `image`                           | The image (with tag) to pull                | `timescale/timescale-prometheus`   |
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
-| `password.secretTemplate`         | The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
-| `host.nameTemplate`               | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
-| `port`                            | Port the db listens to                      | `5432`                             |
+| `connection.password.secretTemplate`         | The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
+| `connection.host.nameTemplate`               | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
+| `connection.port`                 | Port the db listens to                      | `5432`                             |
+| `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
 | `service.port`                    | Port the connector pods will accept connections on | `9201`                      |
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |

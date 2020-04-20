@@ -107,7 +107,7 @@ The Timescale-Prometheus Connector is a Go project managed by go modules. You ca
 any directory and on the first build it will download it's required dependencies.
 
 ```bash
-# Fetch the source code of Outflux in any directory
+# Fetch the source code of Timescale-Prometheus in any directory
 $ git clone git@github.com:timescale/timescale-prometheus.git
 $ cd ./timescale-prometheus
 

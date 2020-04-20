@@ -30,17 +30,17 @@ type Config struct {
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
 func ParseFlags(cfg *Config) *Config {
-	flag.StringVar(&cfg.host, "pg-host", "localhost", "The PostgreSQL host")
-	flag.IntVar(&cfg.port, "pg-port", 5432, "The PostgreSQL port")
-	flag.StringVar(&cfg.user, "pg-user", "postgres", "The PostgreSQL user")
-	flag.StringVar(&cfg.password, "pg-password", "", "The PostgreSQL password")
-	flag.StringVar(&cfg.database, "pg-database", "postgres", "The PostgreSQL database")
-	flag.StringVar(&cfg.sslMode, "pg-ssl-mode", "disable", "The PostgreSQL connection ssl mode")
-	flag.IntVar(&cfg.dbConnectRetries, "pg-db-connect-retries", 0, "How many times to retry connecting to the database")
+	flag.StringVar(&cfg.host, "db-host", "localhost", "The TimescaleDB host")
+	flag.IntVar(&cfg.port, "db-port", 5432, "The TimescaleDB port")
+	flag.StringVar(&cfg.user, "db-user", "postgres", "The TimescaleDB user")
+	flag.StringVar(&cfg.password, "db-password", "", "The TimescaleDB password")
+	flag.StringVar(&cfg.database, "db-name", "timescale", "The TimescaleDB database")
+	flag.StringVar(&cfg.sslMode, "db-ssl-mode", "disable", "The TimescaleDB connection ssl mode")
+	flag.IntVar(&cfg.dbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
 	return cfg
 }
 
-// Client sends Prometheus samples to PostgreSQL
+// Client sends Prometheus samples to TimescaleDB
 type Client struct {
 	Connection    *pgxpool.Pool
 	ingestor      *pgmodel.DBIngestor

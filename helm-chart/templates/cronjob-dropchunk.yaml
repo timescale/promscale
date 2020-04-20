@@ -15,7 +15,7 @@ spec:
         spec:
           containers:
           - name: {{ .Chart.Name }}-drop-chunk
-            image: postgres:11-alpine
+            image: postgres:12-alpine
             args:
             - psql
             - -c
@@ -32,4 +32,6 @@ spec:
                     key: {{ .Values.connection.user }}
               - name: PGHOST
                 value: {{ tpl .Values.connection.host.nameTemplate . }}
+              - name:  PGDATABASE
+                value: {{ .Values.connection.dbName }}
           restartPolicy: OnFailure

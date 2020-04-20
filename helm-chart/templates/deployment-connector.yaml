@@ -29,25 +29,21 @@ spec:
             - containerPort: 9201
               name: connector-port
           env:
-            - name: PGPORT
+            - name: TS_PROM_DB_PORT
               value: {{ .Values.connection.port | quote }}
-            - name: PGUSER
+            - name: TS_PROM_DB_USER
               value: {{ .Values.connection.user }}
-            - name: PGPASSWORD
+            - name: TS_PROM_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ tpl .Values.connection.password.secretTemplate . }}
                   key: {{ .Values.connection.user }}
-            - name: PGHOST
-              value: {{ tpl .Values.connection.host.nameTemplate . }} 
-          args:
-            [
-              -pg-ssl-mode=require,
-              -pg-host=$(PGHOST),
-              -pg-user=$(PGUSER),
-              -pg-password=$(PGPASSWORD),
-              -pg-port=$(PGPORT)
-            ]
+            - name: TS_PROM_DB_HOST
+              value: {{ tpl .Values.connection.host.nameTemplate . }}
+            - name: TS_PROM_DB_NAME
+              value: {{ .Values.connection.dbName }}
+            - name: TS_PROM_DB_SSL_MODE
+              value: require
       {{- with .Values.nodeSelector }}
       nodeSelector:
       {{ toYaml . | indent 2 }}
