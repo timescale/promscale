@@ -73,7 +73,7 @@ func dbSetup(t *testing.T, DBName string) *pgxpool.Pool {
 func StartPGContainer(ctx context.Context) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
 	req := testcontainers.ContainerRequest{
-		Image:        "timescale/timescaledb:latest-pg11",
+		Image:        "timescale/timescaledb:latest-pg12",
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor:   wait.NewHostPortStrategy(containerPort),
 		Env: map[string]string{
