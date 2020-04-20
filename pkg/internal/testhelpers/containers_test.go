@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/jackc/pgx/v4"
@@ -66,7 +67,14 @@ func TestMain(m *testing.M) {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
 		}
-		path, err := ioutil.TempDir("", "prom_test")
+
+		tmpDir := ""
+		if runtime.GOOS == "darwin" {
+			// Docker on Mac lacks access to default os tmp dir - "/var/folders/random_number"
+			// so switch to cross-user tmp dir
+			tmpDir = "/tmp"
+		}
+		path, err := ioutil.TempDir(tmpDir, "prom_test")
 		if err != nil {
 			fmt.Println("Error getting temp dir for Prometheus storage", err)
 			os.Exit(1)
