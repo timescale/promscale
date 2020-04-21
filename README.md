@@ -39,6 +39,10 @@ By default, the `timescale-observability` Helm chart sets up a single-instance o
 interested in a replicated setup for high-availabilty with automated backups, please see
 [this github repo](https://github.com/timescale/timescaledb-kubernetes/tree/master/charts/timescaledb-single) for additional instructions.
 
+# Working with SQL data
+
+We describe how to use our pre-defined views and functions to work with the prometheus data in [the SQL schema doc](sql_schema.md).
+
 # Advanced
 
 ## Helm (sub)chart for Timescale-Prometheus Connector only
