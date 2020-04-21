@@ -1,5 +1,9 @@
 # Data Model Schema
 
+The design of the internal SQL schema is described in [our design doc][design-doc].
+This document describes how to query the data once it is ingested. We aim
+to make querying easier using view, operators, and functions.
+
 ## Views
 
 We define several views to make working with prometheus data easier.
@@ -19,6 +23,9 @@ simply `cpu_usage` view). The view contains a the following column:
  - series_id - The ID of the series
  - labels - The array of label ids
  - plus a column for each label name's id in the metric's label set
+
+A label value can be retrieved from the label name id using the `get_label_value`
+function. A full json for the series can be retrieved with `label_array_to_jsonb(labels)`.
 
 For example:
 ```
@@ -182,3 +189,5 @@ Note the eq function tests equivalence of the entire label object.
 Therefore you need to provide the entire json object if using the
 function above. For partial matches see the Containment
 section above.
+
+[design-doc]: https://tsdb.co/prom-design-do
