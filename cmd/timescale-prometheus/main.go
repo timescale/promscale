@@ -53,6 +53,12 @@ const (
 )
 
 var (
+	leaderGauge = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "current_leader",
+			Help: "Shows current election leader status",
+		},
+	)
 	receivedSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "received_samples_total",
@@ -111,6 +117,7 @@ var (
 )
 
 func init() {
+	prometheus.MustRegister(leaderGauge)
 	prometheus.MustRegister(receivedSamples)
 	prometheus.MustRegister(sentSamples)
 	prometheus.MustRegister(failedSamples)
@@ -217,14 +224,17 @@ func initElector(cfg *config) *util.Elector {
 func migrate(cfg *pgclient.Config) {
 	shouldWrite, err := isWriter()
 	if err != nil {
+		leaderGauge.Set(0)
 		log.Error("msg", "IsLeader check failed", "err", err)
 		return
 	}
 	if !shouldWrite {
+		leaderGauge.Set(0)
 		log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Won't update", elector.ID()))
 		return
 	}
 
+	leaderGauge.Set(1)
 	dbStd, err := sql.Open("pgx", cfg.GetConnectionStr())
 	if err != nil {
 		log.Error(err)
@@ -259,14 +269,17 @@ func write(writer pgmodel.DBInserter) http.Handler {
 
 		shouldWrite, err := isWriter()
 		if err != nil {
+			leaderGauge.Set(0)
 			log.Error("msg", "IsLeader check failed", "err", err)
 			return
 		}
 		if !shouldWrite {
+			leaderGauge.Set(0)
 			log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
 			return
 		}
 
+		leaderGauge.Set(1)
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
 			log.Error("msg", "Decode error", "err", err.Error())
