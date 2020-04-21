@@ -3,7 +3,7 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-    image: timescale/pg_prometheus:latest
+    image: timescale/timescaledb:latest-pg12
     ports:
     - 5432:5432/tcp
   prometheus:
@@ -20,10 +20,10 @@ services:
     - prometheus
     environment:
       TS_PROM_LOG_LEVEL: debug
-      TS_PROM_PG_DB_CONNECT_RETRIES: 10
-      TS_PROM_PG_HOST: db
-      TS_PROM_PG_PASSWORD: postgres
-      TS_PROM_PG_SCHEMA: postgres
+      TS_PROM_DB_CONNECT_RETRIES: 10
+      TS_PROM_DB_HOST: db
+      TS_PROM_DB_PASSWORD: postgres
+      TS_PROM_DB_NAME: postgres
       TS_PROM_WEB_TELEMETRY_PATH: /metrics-text
     image: timescale/timescale-prometheus:latest
     ports:
