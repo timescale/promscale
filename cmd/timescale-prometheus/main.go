@@ -137,18 +137,21 @@ func main() {
 
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
+	elector = initElector(cfg)
+
+	// migrate has to happen after elector started
+	if cfg.migrate {
+		migrate(&cfg.pgmodelCfg)
+	}
+
+	// client has to be initiated after migrate since migrate
+	// can change database GUC settings
 	client, err := pgclient.NewClient(&cfg.pgmodelCfg)
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)
 	}
 	defer client.Close()
-
-	elector = initElector(cfg)
-
-	if cfg.migrate {
-		migrate(&cfg.pgmodelCfg)
-	}
 
 	http.Handle("/write", timeHandler("write", write(client)))
 	http.Handle("/read", timeHandler("read", read(client)))
