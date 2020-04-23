@@ -1,8 +1,10 @@
 # Timescale-Prometheus Connector
-![Go](https://github.com/timescale/timescale-prometheus/workflows/Go/badge.svg)
-![reviewdog - golangci](https://github.com/timescale/timescale-prometheus/workflows/reviewdog%20-%20golangci/badge.svg)
+[![Go](https://github.com/timescale/timescale-prometheus/workflows/Go/badge.svg)](https://github.com/timescale/timescale-prometheus/actions?query=workflow%3AGo)
+[![reviewdog - golangci](https://github.com/timescale/timescale-prometheus/workflows/reviewdog%20-%20golangci/badge.svg)](https://github.com/timescale/timescale-prometheus/actions?query=workflow%3A%22reviewdog+-+golangci%22)
 [![Go Report Card](https://goreportcard.com/badge/github.com/timescale/timescale-prometheus)](https://goreportcard.com/report/github.com/timescale/timescale-prometheus)
+[![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/timescale-prometheus/maintainability)
 [![GoDoc](https://godoc.org/github.com/timescale/timescale-prometheus?status.svg)](https://pkg.go.dev/github.com/timescale/timescale-prometheus)
+
 With this remote storage connector, Prometheus can use TimescaleDB as a compressed, long-term store for time-series metrics.
 For a detailed description of this architecture, please see [our design doc][design-doc].
 
@@ -41,7 +43,7 @@ interested in a replicated setup for high-availabilty with automated backups, pl
 
 # Working with SQL data
 
-We describe how to use our pre-defined views and functions to work with the prometheus data in [the SQL schema doc](sql_schema.md).
+We describe how to use our pre-defined views and functions to work with the prometheus data in [the SQL schema doc](docs/sql_schema.md).
 
 # Advanced
 
