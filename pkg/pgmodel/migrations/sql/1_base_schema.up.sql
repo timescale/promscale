@@ -10,7 +10,7 @@ CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
 
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 
-CREATE DOMAIN SCHEMA_PROM.label_ids AS int[] NOT NULL;
+CREATE DOMAIN SCHEMA_PROM.label_array AS int[] NOT NULL;
 
 DO $$
 DECLARE
@@ -18,6 +18,7 @@ DECLARE
 BEGIN
    new_path := current_setting('search_path') || format(',%L,%L', 'SCHEMA_PROM', 'SCHEMA_METRIC');
    execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
+   execute format('SET search_path = %s', new_path);
 END
 $$;
 
@@ -29,7 +30,7 @@ $$;
 CREATE TABLE SCHEMA_CATALOG.series (
     id bigserial PRIMARY KEY,
     metric_id int,
-    labels SCHEMA_PROM.label_ids,
+    labels SCHEMA_PROM.label_array,
     UNIQUE(labels) INCLUDE (id)
 );
 CREATE INDEX series_labels_id ON SCHEMA_CATALOG.series USING GIN (labels);
@@ -454,8 +455,8 @@ LANGUAGE SQL VOLATILE;
 --since intarray does not support it).
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb_to_label_array(js jsonb)
-RETURNS SCHEMA_PROM.label_ids AS $$
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array(js jsonb)
+RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
@@ -484,12 +485,12 @@ RETURNS SCHEMA_PROM.label_ids AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )::SCHEMA_PROM.label_ids
+    )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS SCHEMA_PROM.label_ids AS $$
+RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
@@ -517,13 +518,13 @@ RETURNS SCHEMA_PROM.label_ids AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )::SCHEMA_PROM.label_ids
+    )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_key_value_array(labels SCHEMA_PROM.label_ids, OUT keys text[], OUT vals text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_key_value_array(labels SCHEMA_PROM.label_array, OUT keys text[], OUT vals text[])
 AS $$
     SELECT
         array_agg(l.key), array_agg(l.value)
@@ -534,7 +535,7 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
 --Returns the jsonb for a series defined by a label_array
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_jsonb(labels SCHEMA_PROM.label_ids)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
 RETURNS jsonb AS $$
     SELECT
         jsonb_object(keys, vals)
@@ -546,7 +547,7 @@ LANGUAGE SQL STABLE PARALLEL SAFE;
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
         metric_id int,
-        label_array SCHEMA_PROM.label_ids,
+        label_array SCHEMA_PROM.label_array,
         OUT series_id BIGINT)
 AS $func$
 BEGIN
@@ -573,7 +574,7 @@ LANGUAGE PLPGSQL VOLATILE;
 CREATE OR REPLACE  FUNCTION SCHEMA_PROM.get_series_id_for_label(label jsonb)
 RETURNS BIGINT AS $$
    WITH CTE AS (
-       SELECT SCHEMA_PROM.jsonb_to_label_array(label)
+       SELECT SCHEMA_PROM.label_array(label)
    )
    SELECT id
    FROM SCHEMA_CATALOG.series
@@ -711,7 +712,7 @@ DECLARE
     check_time TIMESTAMPTZ;
     older_than_chunk TIMESTAMPTZ;
     time_dimension_id INT;
-    label_ids int[];
+    label_array int[];
 BEGIN
     SELECT table_name
     INTO STRICT metric_table
@@ -776,7 +777,7 @@ BEGIN
         )
         SELECT ARRAY(SELECT DISTINCT unnest(labels) as label_id
         FROM deleted_series)
-    $query$, metric_table, older_than, check_time) INTO label_ids;
+    $query$, metric_table, older_than, check_time) INTO label_array;
 
     --needs to be a separate query and not a CTE since this needs to "see"
     --the series rows deleted above as deleted.
@@ -793,7 +794,7 @@ BEGIN
         )
         DELETE FROM SCHEMA_CATALOG.label
         WHERE id IN (SELECT * FROM confirmed_drop_labels);
-    $query$ USING label_ids;
+    $query$ USING label_array;
 
    PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than);
    RETURN true;
@@ -864,7 +865,7 @@ AS $func$
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_label_value(
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.val(
         label_id INT)
     RETURNS TEXT
 AS $$
@@ -909,7 +910,7 @@ DECLARE
 BEGIN
     SELECT
         ',' || string_agg(
-            format ('SCHEMA_PROM.get_label_value(series.labels[%s]) AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name_for_view(key, false))
+            format ('SCHEMA_PROM.val(series.labels[%s]) AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name_for_view(key, false))
         , ', ' ORDER BY pos)
     INTO STRICT label_value_cols
     FROM SCHEMA_CATALOG.label_key_position lkp
@@ -1009,18 +1010,18 @@ IS 'returns an array of label ids for the JSONB. This is not a labels array sinc
 
 ---------------- eq functions ------------------
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels1 SCHEMA_PROM.label_ids, labels2 SCHEMA_PROM.label_ids)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels1 SCHEMA_PROM.label_array, labels2 SCHEMA_PROM.label_array)
 RETURNS BOOLEAN
 AS $func$
     --assumes labels have metric name in position 1 and have no duplicate entries
     SELECT array_length(labels1, 1) = array_length(labels2, 1) AND labels1 @> labels2[2:]
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_ids, SCHEMA_PROM.label_ids)
+COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, SCHEMA_PROM.label_array)
 IS 'returns true if two label arrays are equal, ignoring the metric name';
 
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels1 SCHEMA_PROM.label_ids, matchers SCHEMA_PROM.matcher_positive)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels1 SCHEMA_PROM.label_array, matchers SCHEMA_PROM.matcher_positive)
 RETURNS BOOLEAN
 AS $func$
     --assumes no duplicate entries
@@ -1028,26 +1029,26 @@ AS $func$
             AND labels1 @> matchers
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_ids, SCHEMA_PROM.matcher_positive)
+COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, SCHEMA_PROM.matcher_positive)
 IS 'returns true if the label array and matchers are equal, there should not be a matcher for the metric name';
 
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels SCHEMA_PROM.label_ids, json_labels jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels SCHEMA_PROM.label_array, json_labels jsonb)
 RETURNS BOOLEAN
 AS $func$
     --assumes no duplicate entries
-    --do not call eq(label_ids, matchers) to allow inlining
+    --do not call eq(label_array, matchers) to allow inlining
      SELECT array_length(labels, 1) = (SCHEMA_CATALOG.count_jsonb_keys(json_labels-'__name__') + 1)
             AND labels @> SCHEMA_PROM.get_matcher_from_json(json_labels)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_ids, jsonb)
+COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, jsonb)
 IS 'returns true if the labels and jsonb are equal, ignoring the metric name';
 
 
 --------------------- op @> ------------------------
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_contains(labels SCHEMA_PROM.label_ids, json_labels jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_contains(labels SCHEMA_PROM.label_array, json_labels jsonb)
 RETURNS BOOLEAN
 AS $func$
     SELECT labels @> SCHEMA_PROM.get_matcher_from_json(json_labels)
@@ -1055,14 +1056,14 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
 CREATE OPERATOR SCHEMA_PROM.@> (
-    LEFTARG = SCHEMA_PROM.label_ids,
+    LEFTARG = SCHEMA_PROM.label_array,
     RIGHTARG = jsonb,
     FUNCTION = SCHEMA_CATALOG.label_contains
 );
 
 --------------------- op ? ------------------------
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_ids, matchers SCHEMA_PROM.matcher_positive)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_array, matchers SCHEMA_PROM.matcher_positive)
 RETURNS BOOLEAN
 AS $func$
     SELECT labels && matchers
@@ -1070,12 +1071,12 @@ $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OPERATOR SCHEMA_PROM.? (
-    LEFTARG = SCHEMA_PROM.label_ids,
+    LEFTARG = SCHEMA_PROM.label_array,
     RIGHTARG = SCHEMA_PROM.matcher_positive,
     FUNCTION = SCHEMA_CATALOG.label_match
 );
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_ids, matchers SCHEMA_PROM.matcher_negative)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_array, matchers SCHEMA_PROM.matcher_negative)
 RETURNS BOOLEAN
 AS $func$
     SELECT NOT (labels && matchers)
@@ -1083,7 +1084,7 @@ $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OPERATOR SCHEMA_PROM.? (
-    LEFTARG = SCHEMA_PROM.label_ids,
+    LEFTARG = SCHEMA_PROM.label_array,
     RIGHTARG = SCHEMA_PROM.matcher_negative,
     FUNCTION = SCHEMA_CATALOG.label_match
 );

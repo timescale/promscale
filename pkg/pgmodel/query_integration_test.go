@@ -567,7 +567,7 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.Tim
 }
 
 func TestPromQL(t *testing.T) {
-	if testing.Short() {
+	if testing.Short() || !*useDocker {
 		t.Skip("skipping integration test")
 	}
 

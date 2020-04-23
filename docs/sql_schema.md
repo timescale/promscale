@@ -24,8 +24,8 @@ simply `cpu_usage` view). The view contains a the following column:
  - labels - The array of label ids
  - plus a column for each label name's id in the metric's label set
 
-A label value can be retrieved from the label name id using the `get_label_value`
-function. A full json for the series can be retrieved with `label_array_to_jsonb(labels)`.
+A label value can be retrieved from the label name id using the `val`
+function. A full json for the series can be retrieved with `jsonb(labels)`.
 
 For example:
 ```
@@ -42,12 +42,15 @@ For example:
 ```
 
 Example query for single point with their labels:
+
+```
 SELECT
-    label_array_to_jsonb(labels) as labels,
+    jsonb(labels) as labels,
     value
 FROM cpu_usage
 WHERE time < now();
-
+```
+Results:
 ```
                      labels                   | value
 ----------------------------------------------+-------
@@ -59,12 +62,15 @@ WHERE time < now();
 
 Example query for a rollup:
 
+```
 SELECT
-   get_label_value(node_id) as node,
+   val(node_id) as node,
    avg(value)
 FROM cpu_usage
 WHERE time < now()
 GROUP BY node_id
+```
+Results:
 
 ```
  node  | avg
@@ -143,7 +149,7 @@ FROM cpu_usage  u
 WHERE labels ? ('namepace' == 'dev') AND labels ? ('node' == 'brain')
 ```
 
-Label matchers are formed by using a qualifier of the form `labels ? (<tag_key> <operator> <pattern>)`.
+Label matchers are formed by using a qualifier of the form `labels ? (<tag_key> <operator> <pattern>)` (note: the parantheses are mandatory).
 There are four operators,
 
 - `==` match tag values that are equal to the pattern
@@ -165,7 +171,7 @@ For those coming from PromQL there are a few differences to keep in mind:
 
 The `eq` function tests exact equivalence between labels, without comparing the metric name (`__name__`) label key.
 For instance if the labels `a` is `{"__name__":"metric", "foo":"bar", "baz":"frob"}`
-then `SELECT eq(a, jsonb {"__name__":"something else", "foo":"bar", "baz":"frob"})` will evaluate to `true`, however, unlike `@>` if `SELECT eq(a, {"__name__":"metric", "foo":"bar"})` will evaluate to `false`.
+then `SELECT eq(a, jsonb {"__name__":"something else", "foo":"bar", "baz":"frob"})` will evaluate to `true`, however, unlike `@>`, the query `SELECT eq(a, {"__name__":"metric", "foo":"bar"})` will evaluate to `false`.
 Thus, it can be used to compare across metrics or within a metric.
 
 For example, to join 2 series that are scraped at the same time:

@@ -412,6 +412,15 @@ func TestSQLRetentionPeriod(t *testing.T) {
 	})
 }
 
+func getFingerprintFromJson(t *testing.T, jsonRes []byte) model.Fingerprint {
+	labelSetRes := make(model.LabelSet)
+	err := json.Unmarshal(jsonRes, &labelSetRes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return labelSetRes.Fingerprint()
+}
+
 func TestSQLJsonLabelArray(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -548,7 +557,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatal(err)
 					}
 					var labelArray []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom.jsonb_to_label_array($1)", jsonOrig).Scan(&labelArray)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array($1)", jsonOrig).Scan(&labelArray)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -575,18 +584,14 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatalf("Expected label arrays to be equal: %v != %v", labelArray, labelArrayKV)
 					}
 
-					var jsonres []byte
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array_to_jsonb(($1::int[]))", labelArray).Scan(&jsonres)
+					var jsonRes []byte
+					err = db.QueryRow(context.Background(), "SELECT * FROM jsonb(($1::int[]))", labelArray).Scan(&jsonRes)
 					if err != nil {
 						t.Fatal(err)
 					}
-					labelSetRes := make(model.LabelSet, len(ts.Labels))
-					err = json.Unmarshal(jsonres, &labelSetRes)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if labelSet.Fingerprint() != labelSetRes.Fingerprint() {
-						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonres), string(jsonOrig))
+					fingerprintRes := getFingerprintFromJson(t, jsonRes)
+					if labelSet.Fingerprint() != fingerprintRes {
+						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(fingerprintRes), string(jsonOrig))
 
 					}
 
@@ -626,19 +631,15 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatalf("Expected the series ids to be equal: %v != %v", seriesID, seriesIDKeyVal)
 					}
 
-					err = db.QueryRow(context.Background(), "SELECT prom.label_array_to_jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
-						seriesID).Scan(&jsonres)
+					err = db.QueryRow(context.Background(), "SELECT prom.jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
+						seriesID).Scan(&jsonRes)
 					if err != nil {
 						t.Fatal(err)
 					}
-					labelSetRes = make(model.LabelSet, len(ts.Labels))
-					err = json.Unmarshal(jsonres, &labelSetRes)
-					if err != nil {
-						t.Fatal(err)
-					}
+					fingerprintRes = getFingerprintFromJson(t, jsonRes)
 
-					if labelSet.Fingerprint() != labelSetRes.Fingerprint() {
-						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonres), string(jsonOrig))
+					if labelSet.Fingerprint() != fingerprintRes {
+						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonRes), string(jsonOrig))
 
 					}
 
@@ -1099,6 +1100,15 @@ func TestMain(m *testing.M) {
 func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
 	testhelpers.WithDB(t, DBName, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, DBName, connectURL)
+
+		//need to get a new pool after the Migrate to catch any GUC changes made during Migrate
+		db, err := pgxpool.Connect(context.Background(), connectURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			db.Close()
+		}()
 		f(db, t)
 	})
 }
