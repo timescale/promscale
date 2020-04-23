@@ -156,7 +156,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
-		err := db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name(metric_name => $1)", metricName).Scan(&metricID, &tableName)
+		err := db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name(metric_name => $1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		savedMetricID := metricID
 
 		//query for same name should give same result
-		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +182,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 
 		//different metric id should give new result
 		metricName = "test_metric_2"
-		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +196,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 
 		//test long names that don't fit as table names
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_1"
-		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -210,7 +210,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		savedMetricID = metricID
 
 		//another call return same info
-		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,7 +223,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 
 		//changing just ending returns new table
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_2"
-		err = db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -329,7 +329,7 @@ func verifyRetentionPeriod(t testing.TB, db *pgxpool.Pool, metricName string, ex
 	var dur time.Duration
 
 	err := db.QueryRow(context.Background(),
-		`SELECT prom.get_metric_retention_period($1)`,
+		`SELECT _prom_catalog.get_metric_retention_period($1)`,
 		metricName).Scan(&dur)
 	if err != nil {
 		t.Error(err)
@@ -623,7 +623,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var seriesIDKeyVal int
-					err = db.QueryRow(context.Background(), "SELECT prom.get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
 						t.Fatal(err)
 					}

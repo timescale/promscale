@@ -30,9 +30,9 @@ const (
 	dataSchema       = "prom_data"
 	catalogSchema    = "_prom_catalog"
 
-	getMetricsTableSQL       = "SELECT table_name FROM " + promSchema + ".get_metric_table_name_if_exists($1)"
-	getCreateMetricsTableSQL = "SELECT table_name FROM " + promSchema + ".get_or_create_metric_table_name($1)"
-	getSeriesIDForLabelSQL   = "SELECT " + promSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
+	getMetricsTableSQL       = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
+	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
+	getSeriesIDForLabelSQL   = "SELECT " + catalogSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
 )
 
 var (
