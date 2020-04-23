@@ -489,14 +489,14 @@ RETURNS SCHEMA_PROM.label_array AS $$
 $$
 LANGUAGE SQL VOLATILE;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array_to_label_array(metric_name TEXT, label_keys text[], label_values text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              SCHEMA_CATALOG.get_or_create_label_key_pos(key_value_array_to_label_array.metric_name, kv.key)) idx,
+              SCHEMA_CATALOG.get_or_create_label_key_pos(label_array.metric_name, kv.key)) idx,
             coalesce(l.id,
               SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) val
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
@@ -505,7 +505,7 @@ RETURNS SCHEMA_PROM.label_array AS $$
             LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
                ON
                (
-                  lkp.metric_name = key_value_array_to_label_array.metric_name AND
+                  lkp.metric_name = label_array.metric_name AND
                   lkp.key = kv.key
                )
         ORDER BY kv.key
@@ -524,7 +524,7 @@ LANGUAGE SQL VOLATILE;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array_to_key_value_array(labels SCHEMA_PROM.label_array, OUT keys text[], OUT vals text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array(labels SCHEMA_PROM.label_array, OUT keys text[], OUT vals text[])
 AS $$
     SELECT
         array_agg(l.key), array_agg(l.value)
@@ -540,7 +540,7 @@ RETURNS jsonb AS $$
     SELECT
         jsonb_object(keys, vals)
     FROM
-      SCHEMA_PROM.label_array_to_key_value_array(labels)
+      SCHEMA_PROM.key_value_array(labels)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
@@ -571,7 +571,7 @@ END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
 
-CREATE OR REPLACE  FUNCTION SCHEMA_PROM.get_series_id_for_label(label jsonb)
+CREATE OR REPLACE  FUNCTION SCHEMA_PROM.series_id(label jsonb)
 RETURNS BIGINT AS $$
    WITH CTE AS (
        SELECT SCHEMA_PROM.label_array(label)
@@ -588,7 +588,7 @@ LANGUAGE SQL VOLATILE;
 CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS BIGINT AS $$
    WITH CTE AS (
-       SELECT SCHEMA_PROM.key_value_array_to_label_array(metric_name, label_keys, label_values)
+       SELECT SCHEMA_PROM.label_array(metric_name, label_keys, label_values)
    )
    SELECT id
    FROM SCHEMA_CATALOG.series
@@ -992,7 +992,7 @@ AS $func$
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_matcher_from_json(labels jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.matcher(labels jsonb)
 RETURNS SCHEMA_PROM.matcher_positive
 AS $func$
     SELECT ARRAY(
@@ -1003,7 +1003,7 @@ AS $func$
         )::SCHEMA_PROM.matcher_positive
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.get_matcher_from_json(jsonb)
+COMMENT ON FUNCTION SCHEMA_PROM.matcher(jsonb)
 IS 'returns an array of label ids for the JSONB. This is not a labels array since the order of ids isnt guaranteed. __name__ is ignored.';
 
 
@@ -1039,7 +1039,7 @@ AS $func$
     --assumes no duplicate entries
     --do not call eq(label_array, matchers) to allow inlining
      SELECT array_length(labels, 1) = (SCHEMA_CATALOG.count_jsonb_keys(json_labels-'__name__') + 1)
-            AND labels @> SCHEMA_PROM.get_matcher_from_json(json_labels)
+            AND labels @> SCHEMA_PROM.matcher(json_labels)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, jsonb)
@@ -1051,7 +1051,7 @@ IS 'returns true if the labels and jsonb are equal, ignoring the metric name';
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_contains(labels SCHEMA_PROM.label_array, json_labels jsonb)
 RETURNS BOOLEAN
 AS $func$
-    SELECT labels @> SCHEMA_PROM.get_matcher_from_json(json_labels)
+    SELECT labels @> SCHEMA_PROM.matcher(json_labels)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
