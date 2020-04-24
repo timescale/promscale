@@ -27,7 +27,7 @@ func TestPGConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	db, err := pgx.Connect(context.Background(), pgConnectURL(t, defaultDB))
+	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB))
 	if err != nil {
 		t.Fatal(err)
 	}
