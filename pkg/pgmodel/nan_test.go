@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
-func getSingleSampleValue(t *testing.T, resp *prompb.ReadResponse) float64 {
+func getSingleSampleValue(t testing.TB, resp *prompb.ReadResponse) float64 {
 	res := resp.GetResults()
 	if len(res) != 1 {
 		t.Fatal("Expect one result")
@@ -30,7 +30,7 @@ func getSingleSampleValue(t *testing.T, resp *prompb.ReadResponse) float64 {
 	return samples[0].GetValue()
 }
 
-func getBooleanSQLResult(t *testing.T, db *pgxpool.Pool, sql string, args ...interface{}) bool {
+func getBooleanSQLResult(t testing.TB, db *pgxpool.Pool, sql string, args ...interface{}) bool {
 	var res *bool
 	err := db.QueryRow(context.Background(), sql, args...).Scan(&res)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		metricName := "StaleMetric"
 		metrics := []prompb.TimeSeries{
 			{

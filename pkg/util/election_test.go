@@ -90,7 +90,7 @@ func TestRESTApi(t *testing.T) {
 }
 
 func TestPgAdvisoryLock(t *testing.T) {
-	testhelpers.WithDB(t, *database, func(pool *pgxpool.Pool, t *testing.T, connectURL string) {
+	testhelpers.WithDB(t, *database, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock, err := NewPgAdvisoryLock(1, connectURL)
 		if err != nil {
 			t.Fatal(err)
@@ -129,7 +129,7 @@ func TestPgAdvisoryLock(t *testing.T) {
 }
 
 func TestElector(t *testing.T) {
-	testhelpers.WithDB(t, *database, func(pool *pgxpool.Pool, t *testing.T, connectURL string) {
+	testhelpers.WithDB(t, *database, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgAdvisoryLock(2, connectURL)
 		if err != nil {
 			t.Error(err)
@@ -164,7 +164,7 @@ func TestElector(t *testing.T) {
 }
 
 func TestPrometheusLivenessCheck(t *testing.T) {
-	testhelpers.WithDB(t, *database, func(pool *pgxpool.Pool, t *testing.T, connectURL string) {
+	testhelpers.WithDB(t, *database, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgAdvisoryLock(3, connectURL)
 		if err != nil {
 			t.Error(err)

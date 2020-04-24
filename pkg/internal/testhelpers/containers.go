@@ -35,9 +35,13 @@ func pgConnectURL(dbName string) string {
 	return fmt.Sprintf(connectTemplate, pgHost, pgPort.Int(), dbName)
 }
 
-// WithDB establishes a database for testing and calls the callback.
-func WithDB(t *testing.T, DBName string, f func(db *pgxpool.Pool, t *testing.T, connectString string)) {
-	db := dbSetup(t, DBName)
+// WithDB establishes a database for testing and calls the callback
+func WithDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
+	db, err := dbSetup(DBName)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	defer func() {
 		db.Close()
 	}()
@@ -58,32 +62,32 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	return dbPool
 }
 
-func dbSetup(t *testing.T, DBName string) *pgxpool.Pool {
+func dbSetup(DBName string) (*pgxpool.Pool, error) {
 	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB))
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	_, err = db.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", DBName))
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s", DBName))
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	err = db.Close(context.Background())
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName))
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	return dbPool
+	return dbPool, nil
 }
 
 // StartPGContainer starts a postgreSQL container for use in testing
