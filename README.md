@@ -41,6 +41,23 @@ By default, the `timescale-observability` Helm chart sets up a single-instance o
 interested in a replicated setup for high-availabilty with automated backups, please see
 [this github repo](https://github.com/timescale/timescaledb-kubernetes/tree/master/charts/timescaledb-single) for additional instructions.
 
+# Configuring data retention
+
+By default, data is stored for 90 days and then deleted.
+This default can be changed in SQL by using the SQL function
+`set_default_retention_period(new interval)`.  For example,
+```
+SELECT set_default_retention_period(180 * INTERVAL '1 day')
+```
+
+You can also override this default on a per-metric basis using
+the SQL function `set_metric_retention_period(metric_name, interval)`
+and undo this override with `reset_metric_retention_period(metric_name)`.
+
+Note: The default applies to all metrics that do not have override,
+no matter whether they were created before or after the call to
+`set_default_retention_period`.
+
 # Working with SQL data
 
 We describe how to use our pre-defined views and functions to work with the prometheus data in [the SQL schema doc](docs/sql_schema.md).
@@ -56,6 +73,11 @@ A Helm chart for only the Timescale-Prometheus Connector is available in the [he
 This is used as a dependency from the `timescale-observability` Helm chart and can be used as a dependency in your own custom Helm chart.
 
 ## Non-Helm installation methods
+
+Any non-helm installations also need to make sure the `drop_chunks` procedure on a regular
+basis (e.g. via CRON). We recommend executing it every 30 minutes.
+This is necessary to execute data retention policies according to the configured policy.
+This is set up automatically in helm.
 
 ### Binaries
 
