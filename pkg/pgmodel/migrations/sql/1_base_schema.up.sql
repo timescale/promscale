@@ -488,6 +488,9 @@ RETURNS SCHEMA_PROM.label_array AS $$
     )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.label_array(jsonb)
+IS 'converts a jsonb to a label array';
+
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS SCHEMA_PROM.label_array AS $$
@@ -521,6 +524,8 @@ RETURNS SCHEMA_PROM.label_array AS $$
     )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.label_array(text, text[], text[])
+IS 'converts a metric name, array of keys, and array of values to a label array';
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
@@ -533,6 +538,8 @@ AS $$
       INNER JOIN SCHEMA_CATALOG.label l ON (l.id = label_id)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.key_value_array(SCHEMA_PROM.label_array)
+IS 'converts a labels array to two arrays: one for keys and another for values';
 
 --Returns the jsonb for a series defined by a label_array
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
@@ -543,6 +550,8 @@ RETURNS jsonb AS $$
       SCHEMA_PROM.key_value_array(labels)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
+IS 'converts a labels array to a JSONB object';
 
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
@@ -584,6 +593,8 @@ RETURNS BIGINT AS $$
    LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.series_id(jsonb)
+IS 'returns the series id that exactly matches a JSONB of labels';
 
 CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS BIGINT AS $$
@@ -627,6 +638,8 @@ AS $$
     SELECT true;
 $$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL)
+IS 'set the chunk interval for any metrics (existing and new) without an explicit override';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -643,6 +656,8 @@ AS $func$
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL)
+IS 'set a chunk interval for a specific metric (this overrides the default)';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name TEXT)
 RETURNS BOOLEAN
@@ -656,6 +671,8 @@ AS $func$
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT)
+IS 'resets the chunk interval for a specific metric to using the default';
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
@@ -678,6 +695,8 @@ AS $$
     SELECT true;
 $$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL)
+IS 'set the retention period for any metrics (existing and new) without an explicit override';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -692,6 +711,8 @@ AS $func$
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)
+IS 'set a retention period for a specific metric (this overrides the default)';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name TEXT)
 RETURNS BOOLEAN
@@ -701,7 +722,8 @@ AS $func$
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
-
+COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT)
+IS 'resets the retention period for a specific metric to using the default';
 
 --drop chunks from metrics tables and delete the appropriate series.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunks(metric_name TEXT, older_than TIMESTAMPTZ)
@@ -850,6 +872,8 @@ BEGIN
     END LOOP;
 END;
 $$ LANGUAGE PLPGSQL;
+COMMENT ON PROCEDURE SCHEMA_PROM.drop_chunks()
+IS 'drops data according to the data retention policy. This procedure should be run regularly in a cron job';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_stale_marker(value double precision)
 RETURNS BOOLEAN
@@ -857,6 +881,8 @@ AS $func$
     SELECT float8send(value) = '\x7ff0000000000002'
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.is_stale_marker(double precision)
+IS 'returns true if the value is a Prometheus stale marker';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_normal_nan(value double precision)
 RETURNS BOOLEAN
@@ -864,6 +890,9 @@ AS $func$
     SELECT float8send(value) = '\x7ff8000000000001'
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.is_normal_nan(double precision)
+IS 'returns true if the value is a NaN';
+
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.val(
         label_id INT)
@@ -876,6 +905,8 @@ AS $$
         id = label_id
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.val(INT)
+IS 'returns the label value from a label id';
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_column_name_for_view(label_key text, id BOOLEAN)
     returns NAME
@@ -1004,7 +1035,7 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.matcher(jsonb)
-IS 'returns an array of label ids for the JSONB. This is not a labels array since the order of ids isnt guaranteed. __name__ is ignored.';
+IS 'returns a matcher for the JSONB, __name__ is ignored. The matcher can be used to match against a label array using @> or ? operators';
 
 
 
