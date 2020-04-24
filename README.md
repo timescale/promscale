@@ -45,6 +45,8 @@ interested in a replicated setup for high-availabilty with automated backups, pl
 
 We describe how to use our pre-defined views and functions to work with the prometheus data in [the SQL schema doc](docs/sql_schema.md).
 
+A Reference for our SQL API is [available here](docs/sql_api.md).
+
 # Advanced
 
 ## Helm (sub)chart for Timescale-Prometheus Connector only
