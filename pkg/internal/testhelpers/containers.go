@@ -18,6 +18,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+const (
+	defaultDB       = "postgres"
+	connectTemplate = "postgres://postgres:password@%s:%d/%s"
+)
+
 var (
 	PromHost          = "localhost"
 	PromPort nat.Port = "9090/tcp"
@@ -26,24 +31,35 @@ var (
 	pgPort nat.Port = "5432/tcp"
 )
 
-const defaultDB = "postgres"
-
-func pgConnectURL(t *testing.T, dbName string) string {
-	template := "postgres://postgres:password@%s:%d/%s"
-	return fmt.Sprintf(template, pgHost, pgPort.Int(), dbName)
+func pgConnectURL(dbName string) string {
+	return fmt.Sprintf(connectTemplate, pgHost, pgPort.Int(), dbName)
 }
 
-// WithDB establishes a database for testing and calls the callback
+// WithDB establishes a database for testing and calls the callback.
 func WithDB(t *testing.T, DBName string, f func(db *pgxpool.Pool, t *testing.T, connectString string)) {
 	db := dbSetup(t, DBName)
 	defer func() {
 		db.Close()
 	}()
-	f(db, t, pgConnectURL(t, DBName))
+	f(db, t, pgConnectURL(DBName))
+}
+
+func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
+	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = dbPool.Exec(context.Background(), "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return dbPool
 }
 
 func dbSetup(t *testing.T, DBName string) *pgxpool.Pool {
-	db, err := pgx.Connect(context.Background(), pgConnectURL(t, defaultDB))
+	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,12 +73,13 @@ func dbSetup(t *testing.T, DBName string) *pgxpool.Pool {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	err = db.Close(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(t, DBName))
+	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName))
 	if err != nil {
 		t.Fatal(err)
 	}

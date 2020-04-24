@@ -511,8 +511,11 @@ func TestSQLQuery(t *testing.T) {
 	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
 		// Ingest test dataset.
 		ingestQueryTestDataset(db, t, generateSmallTimeseries())
+		// Getting a read-only connection to ensure read path is idempotent.
+		readOnly := testhelpers.GetReadOnlyConnection(t, *database)
+		defer readOnly.Close()
 
-		r := NewPgxReader(db)
+		r := NewPgxReader(readOnly)
 		for _, c := range testCases {
 			t.Run(c.name, func(t *testing.T) {
 				resp, err := r.Read(&c.readRequest)
@@ -879,8 +882,11 @@ func TestPromQL(t *testing.T) {
 	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
 		// Ingest test dataset.
 		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		// Getting a read-only connection to ensure read path is idempotent.
+		readOnly := testhelpers.GetReadOnlyConnection(t, *database)
+		defer readOnly.Close()
 
-		r := NewPgxReader(db)
+		r := NewPgxReader(readOnly)
 		for _, c := range testCases {
 			t.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Read(c.readRequest)
