@@ -508,16 +508,22 @@ func TestSQLQuery(t *testing.T) {
 		},
 	}
 
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
 		ingestQueryTestDataset(db, t, generateSmallTimeseries())
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *database)
 		defer readOnly.Close()
 
+		var tester *testing.T
+		var ok bool
+		if tester, ok = t.(*testing.T); !ok {
+			t.Fatalf("Cannot run test, not an instance of testing.T")
+		}
+
 		r := NewPgxReader(readOnly)
 		for _, c := range testCases {
-			t.Run(c.name, func(t *testing.T) {
+			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Read(&c.readRequest)
 
 				if err != nil && err != c.expectErr {
@@ -541,7 +547,7 @@ func createQueryResult(ts []*prompb.TimeSeries) []*prompb.QueryResult {
 	}
 }
 
-func ingestQueryTestDataset(db *pgxpool.Pool, t *testing.T, metrics []prompb.TimeSeries) {
+func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.TimeSeries) {
 	ingestor := NewPgxIngestor(db)
 	cnt, err := ingestor.Ingest(metrics)
 
@@ -879,16 +885,23 @@ func TestPromQL(t *testing.T) {
 		},
 	}
 
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
 		ingestQueryTestDataset(db, t, generateLargeTimeseries())
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *database)
 		defer readOnly.Close()
 
+		var tester *testing.T
+		var ok bool
+		if tester, ok = t.(*testing.T); !ok {
+			t.Fatalf("Cannot run test, not an instance of testing.T")
+			return
+		}
+
 		r := NewPgxReader(readOnly)
 		for _, c := range testCases {
-			t.Run(c.name, func(t *testing.T) {
+			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Read(c.readRequest)
 				promResp, promErr := promClient.Read(c.readRequest)
 

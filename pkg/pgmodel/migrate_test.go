@@ -37,7 +37,7 @@ func TestMigrate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		var version int64
 		var dirty bool
 		err := db.QueryRow(context.Background(), "SELECT version, dirty FROM prom_schema_migrations").Scan(&version, &dirty)
@@ -54,7 +54,7 @@ func TestMigrate(t *testing.T) {
 	})
 }
 
-func testConcurrentMetricTable(t *testing.T, db *pgxpool.Pool, metricName string) int64 {
+func testConcurrentMetricTable(t testing.TB, db *pgxpool.Pool, metricName string) int64 {
 	var id *int64
 	var name *string
 	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.create_metric_table($1)", metricName).Scan(&id, &name)
@@ -67,7 +67,7 @@ func testConcurrentMetricTable(t *testing.T, db *pgxpool.Pool, metricName string
 	return *id
 }
 
-func testConcurrentNewLabel(t *testing.T, db *pgxpool.Pool, labelName string) int64 {
+func testConcurrentNewLabel(t testing.TB, db *pgxpool.Pool, labelName string) int64 {
 	var id *int64
 	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.get_new_label_id($1, $1)", labelName).Scan(&id)
 	if err != nil {
@@ -79,7 +79,7 @@ func testConcurrentNewLabel(t *testing.T, db *pgxpool.Pool, labelName string) in
 	return *id
 }
 
-func testConcurrentCreateSeries(t *testing.T, db *pgxpool.Pool, index int) int64 {
+func testConcurrentCreateSeries(t testing.TB, db *pgxpool.Pool, index int) int64 {
 	var id *int64
 	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.create_series($1, array[$1::int])", index).Scan(&id)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestConcurrentSQL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		for i := 0; i < 10; i++ {
 			name := fmt.Sprintf("metric_%d", i)
 			var id1, id2 int64
@@ -152,7 +152,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
@@ -236,7 +236,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 	})
 }
 
-func verifyChunkInterval(t *testing.T, db *pgxpool.Pool, tableName string, expectedDuration time.Duration) {
+func verifyChunkInterval(t testing.TB, db *pgxpool.Pool, tableName string, expectedDuration time.Duration) {
 	var intervalLength int64
 
 	err := db.QueryRow(context.Background(),
@@ -261,7 +261,7 @@ func TestSQLChunkInterval(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -325,7 +325,7 @@ func TestSQLChunkInterval(t *testing.T) {
 	})
 }
 
-func verifyRetentionPeriod(t *testing.T, db *pgxpool.Pool, metricName string, expectedDuration time.Duration) {
+func verifyRetentionPeriod(t testing.TB, db *pgxpool.Pool, metricName string, expectedDuration time.Duration) {
 	var dur time.Duration
 
 	err := db.QueryRow(context.Background(),
@@ -344,7 +344,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -526,7 +526,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		databaseName := fmt.Sprintf("%s_%d", *database, tcIndex)
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			withDB(t, databaseName, func(db *pgxpool.Pool, t *testing.T) {
+			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
 				for _, ts := range c.metrics {
 					labelSet := make(model.LabelSet, len(ts.Labels))
 					metricName := ""
@@ -838,7 +838,7 @@ func TestSQLIngest(t *testing.T) {
 		tcase := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			withDB(t, databaseName, func(db *pgxpool.Pool, t *testing.T) {
+			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
 				ingestor := NewPgxIngestor(db)
 				defer ingestor.Close()
 				cnt, err := ingestor.Ingest(tcase.metrics)
@@ -893,7 +893,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		//this is the range_end of a chunk boundary (exclusive)
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 
@@ -992,7 +992,7 @@ func TestSQLDropChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		//a chunk way back in 2009
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 
@@ -1096,14 +1096,14 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func withDB(t *testing.T, DBName string, f func(db *pgxpool.Pool, t *testing.T)) {
-	testhelpers.WithDB(t, DBName, func(db *pgxpool.Pool, t *testing.T, connectURL string) {
+func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
+	testhelpers.WithDB(t, DBName, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, DBName, connectURL)
 		f(db, t)
 	})
 }
 
-func performMigrate(t *testing.T, DBName string, connectURL string) {
+func performMigrate(t testing.TB, DBName string, connectURL string) {
 	dbStd, err := sql.Open("pgx", connectURL)
 	defer func() {
 		err := dbStd.Close()

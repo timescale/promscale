@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
-func getViewRowCount(t *testing.T, db *pgxpool.Pool, view string, where string, expected int) {
+func getViewRowCount(t testing.TB, db *pgxpool.Pool, view string, where string, expected int) {
 	var count int
 	err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM %s %s", view, where)).Scan(&count)
 	if err != nil {
@@ -28,7 +28,7 @@ func TestSQLView(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -178,7 +178,7 @@ func TestSQLViewSelectors(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	withDB(t, *database, func(db *pgxpool.Pool, t *testing.T) {
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
