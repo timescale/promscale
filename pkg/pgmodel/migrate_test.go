@@ -412,7 +412,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 	})
 }
 
-func getFingerprintFromJson(t *testing.T, jsonRes []byte) model.Fingerprint {
+func getFingerprintFromJSON(t testing.TB, jsonRes []byte) model.Fingerprint {
 	labelSetRes := make(model.LabelSet)
 	err := json.Unmarshal(jsonRes, &labelSetRes)
 	if err != nil {
@@ -589,7 +589,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					fingerprintRes := getFingerprintFromJson(t, jsonRes)
+					fingerprintRes := getFingerprintFromJSON(t, jsonRes)
 					if labelSet.Fingerprint() != fingerprintRes {
 						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(fingerprintRes), string(jsonOrig))
 
@@ -636,7 +636,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					fingerprintRes = getFingerprintFromJson(t, jsonRes)
+					fingerprintRes = getFingerprintFromJSON(t, jsonRes)
 
 					if labelSet.Fingerprint() != fingerprintRes {
 						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonRes), string(jsonOrig))
