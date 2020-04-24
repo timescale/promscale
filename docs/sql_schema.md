@@ -196,4 +196,4 @@ Therefore you need to provide the entire json object if using the
 function above. For partial matches see the Containment
 section above.
 
-[design-doc]: https://tsdb.co/prom-design-do
+[design-doc]: https://tsdb.co/prom-design-doc
