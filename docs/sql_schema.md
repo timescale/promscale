@@ -112,6 +112,51 @@ Example query to look at all the series:
          5 | {5,6}   | production | brain
 ```
 
+### Informational Views
+
+Information about metrics is available in the `prom_info.metric` view which has
+the following columns
+
+- id
+- metric_name
+- table_name - name of the tables and views in the `prom_metric` and `prom_series`
+  schemas
+- retention_period - the length of time data in this table will be kept
+- chunk_interval - the time interval of each new chunk
+- label_keys - an array of the label keys used with this metric
+- size - disk space used for storing the metric
+- compression_ratio - the compression ratio achieved for this metric (higher is better): (1 - (compressed_size/uncompressed_size)) * 100
+- total_chunks - number of chunks storing metrics
+- compressed_chunks - number of chunks that have been compressed
+
+Example:
+```
+ id | metric_name | table_name | retention_period | chunk_interval |            label_keys             | size  |    compression_ratio    | total_chunks | compressed_chunks
+----+-------------+------------+------------------+----------------+-----------------------------------+-------+-------------------------+--------------+-------------------
+  2 | cpu_usage   | cpu_usage  | 90 days          | 08:00:00       | {__name__,namespace,new_tag,node} | 48 kB | 20.00000000000000000000 |            1 |                 1
+  1 | cpu_total   | cpu_total  | 90 days          | 08:00:00       | {__name__,namespace,node}         | 48 kB | 20.00000000000000000000 |            1 |                 1
+```
+
+Information about labels is available in the `prom_info.label` view which has
+the following columns
+
+- key - the label key
+- value_column_name - name of the column in the `prom_series.metric_name` view
+  that has the value of the label.
+- id_column_name - name of the column in the `prom_metric.metric_name` view
+  that has the id of the label.
+- values - an array of the label values used with this key
+
+```
+    key    | value_column_name | id_column_name |        values
+-----------+-------------------+----------------+-----------------------
+ __name__  | __name__          | __name___id    | {cpu_total,cpu_usage}
+ namespace | namespace         | namespace_id   | {dev,production}
+ node      | node              | node_id        | {brain,pinky}
+ new_tag   | new_tag           | new_tag_id     | {value}
+```
+
+
 ## Series Selectors
 
 We have added simple-to-use series selectors for filtering series in either of the two views above.

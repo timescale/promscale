@@ -28,6 +28,7 @@ const (
 	seriesViewSchema = "prom_series"
 	metricViewSchema = "prom_metric"
 	dataSchema       = "prom_data"
+	infoSchema       = "prom_info"
 	catalogSchema    = "_prom_catalog"
 
 	getMetricsTableSQL       = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"

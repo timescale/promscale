@@ -41,7 +41,7 @@ By default, the `timescale-observability` Helm chart sets up a single-instance o
 interested in a replicated setup for high-availabilty with automated backups, please see
 [this github repo](https://github.com/timescale/timescaledb-kubernetes/tree/master/charts/timescaledb-single) for additional instructions.
 
-# Configuring data retention
+# Configuring Data Retention
 
 By default, data is stored for 90 days and then deleted.
 This default can be changed in SQL by using the SQL function

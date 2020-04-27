@@ -6,6 +6,7 @@ CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- data tables + public functions
 CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES;
 CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC;
 CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
+CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
 
 
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
@@ -80,7 +81,7 @@ CREATE TABLE SCHEMA_CATALOG.default (
 
 INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
 ('chunk_interval', (INTERVAL '8 hours')::text),
-('retention_period', (90 * INTERVAL '24 hour')::text);
+('retention_period', (90 * INTERVAL '1 day')::text);
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_chunk_interval()
@@ -1183,3 +1184,43 @@ CREATE OPERATOR SCHEMA_PROM.!=~ (
     FUNCTION = SCHEMA_CATALOG.label_find_key_not_regex
 );
 
+--------------------------------- Views --------------------------------
+
+CREATE VIEW SCHEMA_INFO.metric AS
+   SELECT
+     m.id,
+     m.metric_name,
+     m.table_name,
+     SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+    (
+        SELECT _timescaledb_internal.to_interval(interval_length)
+        FROM _timescaledb_catalog.dimension d
+        WHERE d.hypertable_id = h.id
+        ORDER BY d.id ASC
+        LIMIT 1
+    ) as chunk_interval,
+     ARRAY(
+        SELECT key
+        FROM SCHEMA_CATALOG.label_key_position lkp
+        WHERE lkp.metric_name = m.metric_name
+        ORDER BY key) label_keys,
+    hi.total_size as size,
+    (1.0 - (pg_size_bytes(chs.compressed_total_bytes)::numeric / pg_size_bytes(chs.uncompressed_total_bytes)::numeric)) * 100 as compression_ratio,
+    chs.total_chunks,
+    chs.number_compressed_chunks as compressed_chunks
+   FROM SCHEMA_CATALOG.metric m
+   LEFT JOIN timescaledb_information.hypertable hi ON
+              (hi.table_schema = 'SCHEMA_DATA' AND hi.table_name = m.table_name)
+   LEFT JOIN timescaledb_information.compressed_hypertable_stats chs ON
+              (chs.hypertable_name = format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass)
+   LEFT JOIN _timescaledb_catalog.hypertable h ON
+              (h.schema_name = 'SCHEMA_DATA' AND h.table_name = m.table_name);
+
+CREATE VIEW SCHEMA_INFO.label AS
+  SELECT
+    lk.key,
+    lk.value_column_name,
+    lk.id_column_name,
+    ARRAY(SELECT value FROM SCHEMA_CATALOG.label l WHERE l.key = lk.key ORDER BY value)
+      AS values
+  FROM SCHEMA_CATALOG.label_key lk;
