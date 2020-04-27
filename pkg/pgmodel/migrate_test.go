@@ -326,14 +326,16 @@ func TestSQLChunkInterval(t *testing.T) {
 }
 
 func verifyRetentionPeriod(t testing.TB, db *pgxpool.Pool, metricName string, expectedDuration time.Duration) {
+	var durS int
 	var dur time.Duration
 
 	err := db.QueryRow(context.Background(),
-		`SELECT _prom_catalog.get_metric_retention_period($1)`,
-		metricName).Scan(&dur)
+		`SELECT EXTRACT(epoch FROM _prom_catalog.get_metric_retention_period($1))`,
+		metricName).Scan(&durS)
 	if err != nil {
 		t.Error(err)
 	}
+	dur = time.Duration(durS) * time.Second
 
 	if dur != expectedDuration {
 		t.Fatalf("Unexpected retention period for table %v: got %v want %v", metricName, dur, expectedDuration)
