@@ -30,6 +30,7 @@ const (
 	dataSchema       = "prom_data"
 	infoSchema       = "prom_info"
 	catalogSchema    = "_prom_catalog"
+	extSchema        = "_prom_ext"
 
 	getMetricsTableSQL       = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"

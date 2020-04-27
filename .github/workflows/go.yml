@@ -36,6 +36,9 @@ jobs:
     - name: Test
       run: go test -race ./...
 
+    - name: Test W/O Extension
+      run: go test -race ./pkg/pgmodel -use-extension=false
+
     - name: Generated
       run: |
         go generate ./...

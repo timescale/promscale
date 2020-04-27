@@ -91,10 +91,16 @@ func dbSetup(DBName string) (*pgxpool.Pool, error) {
 }
 
 // StartPGContainer starts a postgreSQL container for use in testing
-func StartPGContainer(ctx context.Context) (testcontainers.Container, error) {
+func StartPGContainer(ctx context.Context, withExtension bool) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
+	var image string
+	if withExtension {
+		image = "timescaledev/timescale_prometheus_extra:latest-pg12"
+	} else {
+		image = "timescale/timescaledb:latest-pg12"
+	}
 	req := testcontainers.ContainerRequest{
-		Image:        "timescale/timescaledb:latest-pg12",
+		Image:        image,
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor:   wait.NewHostPortStrategy(containerPort),
 		Env: map[string]string{

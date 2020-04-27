@@ -16,7 +16,13 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/httpfs"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel/migrations"
+)
+
+const (
+	extensionInstall = `CREATE EXTENSION "timescale_prometheus_extra" SCHEMA %s;
+`
 )
 
 type mySrc struct {
@@ -35,6 +41,7 @@ func (t *mySrc) replaceSchemaNames(r io.ReadCloser) (io.ReadCloser, error) {
 	}
 	s := buf.String()
 	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", catalogSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_EXT", extSchema)
 	s = strings.ReplaceAll(s, "SCHEMA_PROM", promSchema)
 	s = strings.ReplaceAll(s, "SCHEMA_SERIES", seriesViewSchema)
 	s = strings.ReplaceAll(s, "SCHEMA_METRIC", metricViewSchema)
@@ -83,6 +90,13 @@ func Migrate(db *sql.DB) error {
 	}
 
 	err = m.Up()
+	if err == nil {
+		_, extErr := db.Exec(fmt.Sprintf(extensionInstall, extSchema))
+		if extErr != nil {
+			log.Warn("msg", "timescale_prometheus_extra extension not installed", "cause", extErr)
+		}
+	}
+
 	sErr, dErr := m.Close()
 	if sErr != nil {
 		return sErr
