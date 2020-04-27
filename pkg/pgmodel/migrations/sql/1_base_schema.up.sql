@@ -3,21 +3,24 @@
 
 CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
 CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- data tables + public functions
+CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
 CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES;
 CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC;
 CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
 CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
 
-
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 
 CREATE DOMAIN SCHEMA_PROM.label_array AS int[] NOT NULL;
 
+-- the timescale_prometheus_extra extension contains optimized version of some
+-- of our functions and operators. To ensure the correct version of the are
+-- used, SCHEMA_EXT must be before all of our other schemas in the search path
 DO $$
 DECLARE
    new_path text;
 BEGIN
-   new_path := current_setting('search_path') || format(',%L,%L', 'SCHEMA_PROM', 'SCHEMA_METRIC');
+   new_path := current_setting('search_path') || format(',%L,%L,%L,%L', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG');
    execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
    execute format('SET search_path = %s', new_path);
 END
@@ -369,16 +372,16 @@ LANGUAGE PLPGSQL VOLATILE;
 --for labels (10 not 100)
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_jsonb_each_text(js jsonb,  OUT key text, OUT value text)
  RETURNS SETOF record
- LANGUAGE internal
+ LANGUAGE SQL
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
-AS $function$jsonb_each_text$function$;
+AS $function$ SELECT (jsonb_each_text(js)).* $function$;
 
 --wrapper around unnest to give better row estimate (10 not 100)
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_unnest(label_array anyarray)
  RETURNS SETOF anyelement
- LANGUAGE internal
+ LANGUAGE SQL
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
-AS $function$array_unnest$function$;
+AS $function$ SELECT unnest(label_array) $function$;
 
 
 ---------------------------------------------------
@@ -466,7 +469,7 @@ RETURNS SCHEMA_PROM.label_array AS $$
               SCHEMA_CATALOG.get_or_create_label_key_pos(js->>'__name__', e.key)) idx,
             coalesce(l.id,
               SCHEMA_CATALOG.get_or_create_label_id(e.key, e.value)) val
-        FROM SCHEMA_CATALOG.label_jsonb_each_text(js) e
+        FROM label_jsonb_each_text(js) e
              LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = e.key AND l.value = e.value)
             LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
@@ -535,7 +538,7 @@ AS $$
     SELECT
         array_agg(l.key), array_agg(l.value)
     FROM
-      SCHEMA_CATALOG.label_unnest(labels) label_id
+      label_unnest(labels) label_id
       INNER JOIN SCHEMA_CATALOG.label l ON (l.id = label_id)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
@@ -1029,7 +1032,7 @@ RETURNS SCHEMA_PROM.matcher_positive
 AS $func$
     SELECT ARRAY(
            SELECT coalesce(l.id, -1) -- -1 indicates no such label
-           FROM SCHEMA_CATALOG.label_jsonb_each_text(labels-'__name__') e
+           FROM label_jsonb_each_text(labels-'__name__') e
            LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = e.key AND l.value = e.value)
         )::SCHEMA_PROM.matcher_positive
@@ -1158,7 +1161,6 @@ AS $func$
     WHERE l.key = label_key and l.value ~ pattern
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-
 
 CREATE OPERATOR SCHEMA_PROM.== (
     LEFTARG = SCHEMA_PROM.label_key,

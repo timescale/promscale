@@ -1,0 +1,5 @@
+# timescale_prometheus_extra extension
+comment = 'Timescale-Prometheus support functions'
+default_version = '0.1'
+module_pathname = '$libdir/timescale_prometheus_extra'
+relocatable = false

@@ -18,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
@@ -25,8 +26,9 @@ import (
 )
 
 var (
-	database  = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	useDocker = flag.Bool("use-docker", true, "start database using a docker container")
+	database     = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	useDocker    = flag.Bool("use-docker", true, "start database using a docker container")
+	useExtension = flag.Bool("use-extension", true, "use the timescale_prometheus_extra extension")
 )
 
 const (
@@ -625,7 +627,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var seriesIDKeyVal int
-					err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					err = db.QueryRow(context.Background(), "SELECT get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -633,7 +635,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatalf("Expected the series ids to be equal: %v != %v", seriesID, seriesIDKeyVal)
 					}
 
-					err = db.QueryRow(context.Background(), "SELECT prom.jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
+					err = db.QueryRow(context.Background(), "SELECT jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
 						seriesID).Scan(&jsonRes)
 					if err != nil {
 						t.Fatal(err)
@@ -645,7 +647,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					}
 
-					err = db.QueryRow(context.Background(), "SELECT (prom.key_value_array(labels)).* FROM _prom_catalog.series WHERE id=$1",
+					err = db.QueryRow(context.Background(), "SELECT (key_value_array(labels)).* FROM _prom_catalog.series WHERE id=$1",
 						seriesID).Scan(&retKeys, &retVals)
 					if err != nil {
 						t.Fatal(err)
@@ -1063,11 +1065,57 @@ func TestSQLDropChunk(t *testing.T) {
 	})
 }
 
+func TestExtensionFunctions(t *testing.T) {
+	if !*useExtension || testing.Short() {
+		t.Skip("skipping extension test; testing without extension")
+	}
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
+		functions := []string{
+			"label_jsonb_each_text",
+			"label_unnest",
+			"label_find_key_equal",
+			"label_find_key_not_equal",
+			"label_find_key_regex",
+			"label_find_key_not_regex",
+		}
+		for _, fn := range functions {
+			const query = "SELECT nspname FROM pg_proc LEFT JOIN pg_namespace ON pronamespace = pg_namespace.oid WHERE pg_proc.oid = $1::regproc;"
+			schema := ""
+			err := db.QueryRow(context.Background(), query, fn).Scan(&schema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if schema != extSchema {
+				t.Errorf("function %s in wrong schema\nexpected\n\t%s\nfound\n\t%s", fn, extSchema, schema)
+			}
+		}
+
+		operators := []string{
+			fmt.Sprintf("==(%s.label_key,%s.pattern)", promSchema, promSchema),
+			fmt.Sprintf("!==(%s.label_key,%s.pattern)", promSchema, promSchema),
+			fmt.Sprintf("==~(%s.label_key,%s.pattern)", promSchema, promSchema),
+			fmt.Sprintf("!=~(%s.label_key,%s.pattern)", promSchema, promSchema),
+		}
+		for _, opr := range operators {
+			const query = "SELECT nspname FROM pg_operator LEFT JOIN pg_namespace ON oprnamespace = pg_namespace.oid WHERE pg_operator.oid = $1::regoperator;"
+			schema := ""
+			err := db.QueryRow(context.Background(), query, opr).Scan(&schema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if schema != extSchema {
+				t.Errorf("function %s in wrong schema\nexpected\n\t%s\nfound\n\t%s", opr, extSchema, schema)
+			}
+		}
+	})
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
+	_ = log.Init("debug")
 	if !testing.Short() && *useDocker {
-		pgCont, err := testhelpers.StartPGContainer(ctx)
+		pgCont, err := testhelpers.StartPGContainer(ctx, *useExtension)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
