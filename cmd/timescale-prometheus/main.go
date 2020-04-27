@@ -137,7 +137,16 @@ func main() {
 
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
-	elector = initElector(cfg)
+	elector, err = initElector(cfg)
+
+	if err != nil {
+		log.Error("msg", err.Error())
+		os.Exit(1)
+	}
+
+	if elector == nil {
+		log.Warn("msg", "No adapter leader election. Group lock id is not set. Possible duplicate write load if running adapter in high-availability mode")
+	}
 
 	// migrate has to happen after elector started
 	if cfg.migrate {
@@ -153,8 +162,8 @@ func main() {
 	}
 	defer client.Close()
 
-	http.Handle("/write", timeHandler("write", write(client)))
-	http.Handle("/read", timeHandler("read", read(client)))
+	http.Handle("/write", timeHandler(httpRequestDuration, "write", write(client)))
+	http.Handle("/read", timeHandler(httpRequestDuration, "read", read(client)))
 	http.Handle("/healthz", health(client))
 
 	log.Info("msg", "Starting up...")
@@ -189,26 +198,22 @@ func parseFlags() *config {
 	return cfg
 }
 
-func initElector(cfg *config) *util.Elector {
+func initElector(cfg *config) (*util.Elector, error) {
 	if cfg.restElection && cfg.haGroupLockID != 0 {
-		log.Error("msg", "Use either REST or PgAdvisoryLock for the leader election")
-		os.Exit(1)
+		return nil, fmt.Errorf("Use either REST or PgAdvisoryLock for the leader election")
 	}
 	if cfg.restElection {
-		return util.NewElector(util.NewRestElection())
+		return util.NewElector(util.NewRestElection()), nil
 	}
 	if cfg.haGroupLockID == 0 {
-		log.Warn("msg", "No adapter leader election. Group lock id is not set. Possible duplicate write load if running adapter in high-availability mode")
-		return nil
+		return nil, nil
 	}
 	if cfg.prometheusTimeout == -1 {
-		log.Error("msg", "Prometheus timeout configuration must be set when using PG advisory lock")
-		os.Exit(1)
+		return nil, fmt.Errorf("Prometheus timeout configuration must be set when using PG advisory lock")
 	}
 	lock, err := util.NewPgAdvisoryLock(cfg.haGroupLockID, cfg.pgmodelCfg.GetConnectionStr())
 	if err != nil {
-		log.Error("msg", "Error creating advisory lock", "haGroupLockId", cfg.haGroupLockID, "err", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.haGroupLockID, err)
 	}
 	scheduledElector := util.NewScheduledElector(lock, cfg.electionInterval)
 	log.Info("msg", "Initialized leader election based on PostgreSQL advisory lock")
@@ -221,7 +226,7 @@ func initElector(cfg *config) *util.Elector {
 			}
 		}()
 	}
-	return &scheduledElector.Elector
+	return &scheduledElector.Elector, nil
 }
 
 func migrate(cfg *pgclient.Config) {
@@ -261,15 +266,6 @@ func migrate(cfg *pgclient.Config) {
 
 func write(writer pgmodel.DBInserter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		compressed, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			log.Error("msg", "Read error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		atomic.StoreInt64(&lastRequestUnixNano, time.Now().UnixNano())
-
 		shouldWrite, err := isWriter()
 		if err != nil {
 			leaderGauge.Set(0)
@@ -283,6 +279,16 @@ func write(writer pgmodel.DBInserter) http.Handler {
 		}
 
 		leaderGauge.Set(1)
+
+		compressed, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			log.Error("msg", "Read error", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		atomic.StoreInt64(&lastRequestUnixNano, time.Now().UnixNano())
+
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
 			log.Error("msg", "Decode error", "err", err.Error())
@@ -310,6 +316,7 @@ func write(writer pgmodel.DBInserter) http.Handler {
 		numSamples, err := writer.Ingest(req.GetTimeseries())
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			failedSamples.Add(float64(receivedBatchCount))
 			return
 		}
@@ -415,12 +422,12 @@ func health(hc pgmodel.HealthChecker) http.Handler {
 }
 
 // timeHandler uses Prometheus histogram to track request time
-func timeHandler(path string, handler http.Handler) http.Handler {
+func timeHandler(histogramVec prometheus.ObserverVec, path string, handler http.Handler) http.Handler {
 	f := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		handler.ServeHTTP(w, r)
-		elapsedMs := time.Since(start).Nanoseconds() / int64(time.Millisecond)
-		httpRequestDuration.WithLabelValues(path).Observe(float64(elapsedMs))
+		elapsedMs := time.Since(start).Milliseconds()
+		histogramVec.WithLabelValues(path).Observe(float64(elapsedMs))
 	}
 	return http.HandlerFunc(f)
 }
