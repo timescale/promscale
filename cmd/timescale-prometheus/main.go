@@ -9,6 +9,7 @@ package main
 import (
 	"database/sql"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -31,8 +32,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
-
-	"fmt"
 )
 
 type config struct {
@@ -140,17 +139,26 @@ func main() {
 	elector, err = initElector(cfg)
 
 	if err != nil {
-		log.Error("msg", err.Error())
+		log.Error("msg", "Aborting startup because of elector init error: %s", err.Error())
 		os.Exit(1)
 	}
 
 	if elector == nil {
-		log.Warn("msg", "No adapter leader election. Group lock id is not set. Possible duplicate write load if running adapter in high-availability mode")
+		log.Warn(
+			"msg",
+			"No adapter leader election. Group lock id is not set. "+
+				"Possible duplicate write load if running adapter in high-availability mode",
+		)
 	}
 
 	// migrate has to happen after elector started
 	if cfg.migrate {
-		migrate(&cfg.pgmodelCfg)
+		err = migrate(&cfg.pgmodelCfg)
+
+		if err != nil {
+			log.Error("msg", "Aborting startup because of migration error: %s", err.Error())
+			os.Exit(1)
+		}
 	}
 
 	// client has to be initiated after migrate since migrate
@@ -229,39 +237,37 @@ func initElector(cfg *config) (*util.Elector, error) {
 	return &scheduledElector.Elector, nil
 }
 
-func migrate(cfg *pgclient.Config) {
+func migrate(cfg *pgclient.Config) error {
 	shouldWrite, err := isWriter()
 	if err != nil {
 		leaderGauge.Set(0)
-		log.Error("msg", "IsLeader check failed", "err", err)
-		return
+		return fmt.Errorf("isWriter check failed: %w", err)
 	}
 	if !shouldWrite {
 		leaderGauge.Set(0)
 		log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Won't update", elector.ID()))
-		return
+		return nil
 	}
 
 	leaderGauge.Set(1)
 	dbStd, err := sql.Open("pgx", cfg.GetConnectionStr())
 	if err != nil {
-		log.Error(err)
-		return
+		return fmt.Errorf("Error while trying to open DB connection: %w", err)
 	}
 	defer func() {
 		err := dbStd.Close()
 		if err != nil {
-			log.Error(err)
-			return
+			log.Error("msg", "Error while trying to close DB connection: %s", err)
 		}
 	}()
 
 	err = pgmodel.Migrate(dbStd)
 
 	if err != nil {
-		log.Error(err)
-		return
+		return fmt.Errorf("Error while trying to migrate DB: %w", err)
 	}
+
+	return nil
 }
 
 func write(writer pgmodel.DBInserter) http.Handler {
