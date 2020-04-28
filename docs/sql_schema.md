@@ -133,8 +133,8 @@ Example:
 ```
  id | metric_name | table_name | retention_period | chunk_interval |            label_keys             | size  |    compression_ratio    | total_chunks | compressed_chunks
 ----+-------------+------------+------------------+----------------+-----------------------------------+-------+-------------------------+--------------+-------------------
-  2 | cpu_usage   | cpu_usage  | 90 days          | 08:00:00       | {__name__,namespace,new_tag,node} | 48 kB | 20.00000000000000000000 |            1 |                 1
-  1 | cpu_total   | cpu_total  | 90 days          | 08:00:00       | {__name__,namespace,node}         | 48 kB | 20.00000000000000000000 |            1 |                 1
+  2 | cpu_usage   | cpu_usage  | 90 days          | 08:00:00       | {__name__,namespace,new_tag,node} | 48 kB | 95.00000000000000000000 |            1 |                 1
+  1 | cpu_total   | cpu_total  | 90 days          | 08:00:00       | {__name__,namespace,node}         | 48 kB | 96.00000000000000000000 |            1 |                 1
 ```
 
 Information about labels is available in the `prom_info.label` view which has
