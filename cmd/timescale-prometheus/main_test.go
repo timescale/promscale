@@ -14,9 +14,11 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
+
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgclient"
 	"github.com/timescale/timescale-prometheus/pkg/util"
@@ -521,18 +523,21 @@ func TestMigrate(t *testing.T) {
 		cfg         *pgclient.Config
 		isLeader    bool
 		electionErr error
+		shouldError bool
 	}{
 		{
 			name:        "elector error",
 			electionErr: fmt.Errorf("some error"),
+			shouldError: true,
 		},
 		{
 			name: "not a leader",
 		},
 		{
-			name:     "is leader",
-			isLeader: true,
-			cfg:      &pgclient.Config{},
+			name:        "is leader",
+			isLeader:    true,
+			cfg:         &pgclient.Config{},
+			shouldError: true,
 		},
 	}
 	for _, c := range testCases {
@@ -546,13 +551,20 @@ func TestMigrate(t *testing.T) {
 			mockGauge := &mockGauge{}
 			leaderGauge = mockGauge
 
-			migrate(c.cfg)
+			err := migrate(c.cfg)
+
+			switch {
+			case err != nil && !c.shouldError:
+				t.Errorf("Unexpected error returned:\ngot\n%s\nwanted nil\n", err)
+			case err == nil && c.shouldError:
+				t.Errorf("Expected error to be returned: got nil")
+			}
 
 			switch {
 			case c.isLeader && mockGauge.value != 1:
-				t.Errorf("leader gauge metric not set correctly: got %f when is leader", mockGauge.value)
+				t.Errorf("Leader gauge metric not set correctly: got %f when is leader", mockGauge.value)
 			case !c.isLeader && mockGauge.value != 0:
-				t.Errorf("leader gauge metric not set correctly: got %f when is not leader", mockGauge.value)
+				t.Errorf("Leader gauge metric not set correctly: got %f when is not leader", mockGauge.value)
 			}
 		})
 	}
