@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"regexp"
 	"runtime"
-	"time"
 
 	"github.com/allegro/bigcache"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -69,8 +68,7 @@ func NewClient(cfg *Config) (*Client, error) {
 		return nil, err
 	}
 
-	config := bigcache.DefaultConfig(10 * time.Minute)
-	metrics, _ := bigcache.NewBigCache(config)
+	metrics, _ := bigcache.NewBigCache(pgmodel.DefaultCacheConfig())
 	cache := &pgmodel.MetricNameCache{Metrics: metrics}
 
 	ingestor := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache)
