@@ -37,9 +37,8 @@ const (
 )
 
 var (
-	copyColumns           = []string{"time", "value", "series_id"}
-	errMissingTableName   = fmt.Errorf("missing metric table name")
-	errInvalidLabelsValue = func(s string) error { return fmt.Errorf("invalid labels value %s", s) }
+	copyColumns         = []string{"time", "value", "series_id"}
+	errMissingTableName = fmt.Errorf("missing metric table name")
 )
 
 type pgxBatch interface {
@@ -166,8 +165,7 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngest
 
 	pi := newPgxInserter(conn, cache)
 
-	config := bigcache.DefaultConfig(10 * time.Minute)
-	series, _ := bigcache.NewBigCache(config)
+	series, _ := bigcache.NewBigCache(DefaultCacheConfig())
 
 	bc := &bCache{
 		series: series,
@@ -181,8 +179,7 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngest
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
 func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
-	config := bigcache.DefaultConfig(10 * time.Minute)
-	metrics, _ := bigcache.NewBigCache(config)
+	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
 	cache := &MetricNameCache{metrics}
 	return NewPgxIngestorWithMetricCache(c, cache)
 }
@@ -650,8 +647,7 @@ func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBReader {
 
 // NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
 func NewPgxReader(c *pgxpool.Pool) *DBReader {
-	config := bigcache.DefaultConfig(10 * time.Minute)
-	metrics, _ := bigcache.NewBigCache(config)
+	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
 	cache := &MetricNameCache{metrics}
 	return NewPgxReaderWithMetricCache(c, cache)
 }

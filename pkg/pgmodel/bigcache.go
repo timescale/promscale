@@ -7,8 +7,14 @@ package pgmodel
 import (
 	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/allegro/bigcache"
+	"github.com/timescale/timescale-prometheus/pkg/log"
+)
+
+const (
+	defaultEvictionDuration = 10 * time.Minute
 )
 
 var (
@@ -57,4 +63,11 @@ func (m *MetricNameCache) Get(metric string) (string, error) {
 // Set stores table name for specified metric.
 func (m *MetricNameCache) Set(metric string, tableName string) error {
 	return m.Metrics.Set(metric, []byte(tableName))
+}
+
+func DefaultCacheConfig() bigcache.Config {
+	config := bigcache.DefaultConfig(defaultEvictionDuration)
+	config.Logger = &log.CustomCacheLogger{}
+
+	return config
 }

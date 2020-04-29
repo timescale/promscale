@@ -6,6 +6,8 @@
 package log
 
 import (
+	"fmt"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/promlog"
@@ -51,4 +53,14 @@ func Warn(keyvals ...interface{}) {
 // Error logs an ERROR level message, ignoring logging errors
 func Error(keyvals ...interface{}) {
 	_ = level.Error(logger).Log(keyvals...)
+}
+
+// CustomCacheLogger is a custom logger used for transforming cache logs
+// so that they conform the our logging setup. It also implements the
+// bigcache.Logger interface.
+type CustomCacheLogger struct{}
+
+// Printf sends the log in the debug stream of the logger.
+func (c *CustomCacheLogger) Printf(format string, v ...interface{}) {
+	_ = level.Debug(logger).Log("msg", fmt.Sprintf(format, v...))
 }
