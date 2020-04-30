@@ -25,6 +25,16 @@ connection:
   # must be created before start
   dbName: timescale
 
+# Prometheus annotations to configure scraping metrics from the connector
+prometheus:
+  enabled: true
+  # Using the predefined annotations from the Prometheus helm chart:
+  # https://hub.helm.sh/charts/stable/prometheus
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '9201'
+    prometheus.io/path: '/metrics'
+
 
 # settings for the service to be created that will expose
 # the timescale-prometheus deployment
