@@ -128,9 +128,12 @@ var (
 func init() {
 	prometheus.MustRegister(leaderGauge)
 	prometheus.MustRegister(receivedSamples)
+	prometheus.MustRegister(receivedQueries)
 	prometheus.MustRegister(sentSamples)
 	prometheus.MustRegister(failedSamples)
+	prometheus.MustRegister(failedQueries)
 	prometheus.MustRegister(sentBatchDuration)
+	prometheus.MustRegister(queryBatchDuration)
 	prometheus.MustRegister(httpRequestDuration)
 	writeThroughput.Start()
 }
