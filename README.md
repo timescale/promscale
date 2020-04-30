@@ -79,6 +79,12 @@ basis (e.g. via CRON). We recommend executing it every 30 minutes.
 This is necessary to execute data retention policies according to the configured policy.
 This is set up automatically in helm.
 
+We also recommend running this with a Timescaledb installation that includes the `timescale_prometheus_extra`
+Postgres extension. While this isn't a requirement, it does optimize certain queries.
+A docker image of Timescaledb with the extension is available at on Docker Hub at
+[`timescaledev/timescale_prometheus_extra:latest-pg12`](https://hub.docker.com/r/timescaledev/timescale_prometheus_extra).
+Instructions on how to compile and install the extension are in the extensions [README](extension/Readme.md).
+
 ### Binaries
 
 You can download pre-built binaries for the Timescale-Prometheus Connector [on our release page](https://github.com/timescale/timescale-prometheus/releases).
@@ -87,6 +93,9 @@ You can download pre-built binaries for the Timescale-Prometheus Connector [on o
 
 A docker image for the Timescale-Prometheus Connector is available
 on Docker Hub at [timescale/timescale-prometheus](https://hub.docker.com/r/timescale/timescale-prometheus/).
+
+A docker image of timescaledb with the `timescale_prometheus_extra` extension is available at on Docker Hub at
+[`timescaledev/timescale_prometheus_extra:latest-pg12`](https://hub.docker.com/r/timescaledev/timescale_prometheus_extra).
 
 ## Non-Helm Configuration
 
