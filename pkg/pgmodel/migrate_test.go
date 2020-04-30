@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -17,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 
@@ -26,9 +30,12 @@ import (
 )
 
 var (
-	database     = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	useDocker    = flag.Bool("use-docker", true, "start database using a docker container")
-	useExtension = flag.Bool("use-extension", true, "use the timescale_prometheus_extra extension")
+	database               = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	useDocker              = flag.Bool("use-docker", true, "start database using a docker container")
+	useExtension           = flag.Bool("use-extension", true, "use the timescale_prometheus_extra extension")
+	updateGoldenFiles      = flag.Bool("update", false, "update the golden files of this test")
+	pgContainer            testcontainers.Container
+	pgContainerTestDataDir string
 )
 
 const (
@@ -993,6 +1000,86 @@ func TestSQLDropMetricChunk(t *testing.T) {
 	})
 }
 
+func copyFile(src string, dest string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	newFile, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer newFile.Close()
+
+	_, err = io.Copy(newFile, sourceFile)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func TestSQLGoldenFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
+		files, err := filepath.Glob("testdata/sql/*")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, file := range files {
+			base := filepath.Base(file)
+			base = strings.TrimSuffix(base, filepath.Ext(base))
+			i, err := pgContainer.Exec(context.Background(), []string{"bash", "-c", "psql -U postgres -d " + *database + " -f /testdata/sql/" + base + ".sql &> /testdata/out/" + base + ".out"})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if i != 0 {
+				/* on psql failure print the logs */
+				rc, err := pgContainer.Logs(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer rc.Close()
+
+				msg, err := ioutil.ReadAll(rc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Log(string(msg))
+			}
+
+			expectedFile := filepath.Join("testdata/expected/", base+".out")
+			actualFile := filepath.Join(pgContainerTestDataDir, "out", base+".out")
+
+			if *updateGoldenFiles {
+				err = copyFile(actualFile, expectedFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			expected, err := ioutil.ReadFile(expectedFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			actual, err := ioutil.ReadFile(actualFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if string(expected) != string(actual) {
+				t.Fatalf("Golden file does not match result: diff %s %s", expectedFile, actualFile)
+			}
+		}
+	})
+}
+
 func TestSQLDropChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -1110,12 +1197,45 @@ func TestExtensionFunctions(t *testing.T) {
 	})
 }
 
+func generatePGTestDirFiles() string {
+	tmpDir, err := testhelpers.TempDir("testdata")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = os.Mkdir(filepath.Join(tmpDir, "sql"), 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = os.Mkdir(filepath.Join(tmpDir, "out"), 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	files, err := filepath.Glob("testdata/sql/*")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range files {
+		err = copyFile(file, filepath.Join(tmpDir, "sql", filepath.Base(file)))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	return tmpDir
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
 	_ = log.Init("debug")
 	if !testing.Short() && *useDocker {
-		pgCont, err := testhelpers.StartPGContainer(ctx, *useExtension)
+		var err error
+
+		pgContainerTestDataDir = generatePGTestDirFiles()
+
+		pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, pgContainerTestDataDir)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
@@ -1133,10 +1253,11 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 		defer func() {
-			err := pgCont.Terminate(ctx)
 			if err != nil {
 				panic(err)
 			}
+			pgContainer = nil
+
 			err = promCont.Terminate(ctx)
 			if err != nil {
 				panic(err)
