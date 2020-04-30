@@ -132,14 +132,14 @@ func main() {
 		fmt.Println("Fatal error: cannot start logger", err)
 		os.Exit(1)
 	}
-	log.Info("config", fmt.Sprintf("%+v", cfg))
+	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
 
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
 	elector, err = initElector(cfg)
 
 	if err != nil {
-		log.Error("msg", "Aborting startup because of elector init error: %s", err.Error())
+		log.Error("msg", "Aborting startup because of elector init error: %s", util.MaskPassword(err.Error()))
 		os.Exit(1)
 	}
 
@@ -156,7 +156,7 @@ func main() {
 		err = migrate(&cfg.pgmodelCfg)
 
 		if err != nil {
-			log.Error("msg", "Aborting startup because of migration error: %s", err.Error())
+			log.Error("msg", "Aborting startup because of migration error: %s", util.MaskPassword(err.Error()))
 			os.Exit(1)
 		}
 	}
@@ -165,7 +165,7 @@ func main() {
 	// can change database GUC settings
 	client, err := pgclient.NewClient(&cfg.pgmodelCfg)
 	if err != nil {
-		log.Error(err)
+		log.Error(util.MaskPassword(err.Error()))
 		os.Exit(1)
 	}
 	defer client.Close()
@@ -419,7 +419,7 @@ func health(hc pgmodel.HealthChecker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := hc.HealthCheck()
 		if err != nil {
-			log.Warn("Healthcheck failed", err)
+			log.Warn("msg", "Healthcheck failed", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

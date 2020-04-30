@@ -5,8 +5,16 @@
 package util
 
 import (
+	"regexp"
 	"sync"
 	"time"
+)
+
+var (
+	maskPasswordRegex1         = regexp.MustCompile(`password=(\s*?)'([^']+?)'`)
+	maskPasswordReplaceString1 = "password=$1'****'"
+	maskPasswordRegex2         = regexp.MustCompile(`password:(\s*?)([^\s]+?)( |$)`)
+	maskPasswordReplaceString2 = "password:$1****$3"
 )
 
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
@@ -54,4 +62,10 @@ func (dt *ThroughputCalc) Start() {
 			}
 		}()
 	}
+}
+
+// MaskPassword is used to mask sensitive password data before outputing to persistent stream like logs.
+func MaskPassword(s string) string {
+	s = maskPasswordRegex1.ReplaceAllString(s, maskPasswordReplaceString1)
+	return maskPasswordRegex2.ReplaceAllString(s, maskPasswordReplaceString2)
 }
