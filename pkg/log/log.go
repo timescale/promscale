@@ -7,6 +7,7 @@ package log
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -53,6 +54,12 @@ func Warn(keyvals ...interface{}) {
 // Error logs an ERROR level message, ignoring logging errors
 func Error(keyvals ...interface{}) {
 	_ = level.Error(logger).Log(keyvals...)
+}
+
+// Fatal logs an ERROR level message and exits
+func Fatal(keyvals ...interface{}) {
+	_ = level.Error(logger).Log(keyvals...)
+	os.Exit(1)
 }
 
 // CustomCacheLogger is a custom logger used for transforming cache logs

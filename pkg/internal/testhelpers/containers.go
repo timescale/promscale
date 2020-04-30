@@ -7,8 +7,10 @@ package testhelpers
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/docker/go-connections/nat"
@@ -91,7 +93,7 @@ func dbSetup(DBName string) (*pgxpool.Pool, error) {
 }
 
 // StartPGContainer starts a postgreSQL container for use in testing
-func StartPGContainer(ctx context.Context, withExtension bool) (testcontainers.Container, error) {
+func StartPGContainer(ctx context.Context, withExtension bool, testDataDir string) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
 	var image string
 	if withExtension {
@@ -106,7 +108,15 @@ func StartPGContainer(ctx context.Context, withExtension bool) (testcontainers.C
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
 		},
+		SkipReaper: false, /* switch to true not to kill docker container */
 	}
+
+	if testDataDir != "" {
+		req.BindMounts = map[string]string{
+			testDataDir: "/testdata",
+		}
+	}
+
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
@@ -168,4 +178,16 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 	}
 
 	return container, nil
+}
+
+// TempDir returns a temp directory for tests
+func TempDir(name string) (string, error) {
+	tmpDir := ""
+
+	if runtime.GOOS == "darwin" {
+		// Docker on Mac lacks access to default os tmp dir - "/var/folders/random_number"
+		// so switch to cross-user tmp dir
+		tmpDir = "/tmp"
+	}
+	return ioutil.TempDir(tmpDir, name)
 }
