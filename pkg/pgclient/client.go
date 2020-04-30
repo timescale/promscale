@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"regexp"
 	"runtime"
 
 	"github.com/allegro/bigcache"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	"github.com/timescale/timescale-prometheus/pkg/util"
 )
 
 // Config for the database
@@ -61,10 +61,10 @@ func NewClient(cfg *Config) (*Client, error) {
 	}
 	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxProcs, maxProcs))
 
-	log.Info("msg", regexp.MustCompile("password='(.+?)'").ReplaceAllLiteralString(connectionStr, "password='****'"))
+	log.Info("msg", util.MaskPassword(connectionStr))
 
 	if err != nil {
-		log.Error("err creating connection pool for new client", err)
+		log.Error("err creating connection pool for new client", util.MaskPassword(err.Error()))
 		return nil, err
 	}
 

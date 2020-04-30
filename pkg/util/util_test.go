@@ -55,3 +55,27 @@ func TestThroughputCalc(t *testing.T) {
 		}
 	}
 }
+
+func TestMaskPassword(t *testing.T) {
+	testData := map[string]string{
+		"password='foobar' host='localhost'":   "password='****' host='localhost'",
+		"password='foo bar' host='localhost'":  "password='****' host='localhost'",
+		"password='foo'bar' host='localhost'":  "password='****'bar' host='localhost'",
+		"password= 'foobar' host='localhost'":  "password= '****' host='localhost'",
+		"password=  'foobar' host='localhost'": "password=  '****' host='localhost'",
+		"pass='foobar' host='localhost'":       "pass='foobar' host='localhost'",
+		"host='localhost' password='foobar'":   "host='localhost' password='****'",
+		"password:foobar  host: localhost":     "password:****  host: localhost",
+		"password:foo bar  host: localhost":    "password:**** bar  host: localhost",
+		"password: foobar  host: localhost":    "password: ****  host: localhost",
+		"password:  foobar  host: localhost":   "password:  ****  host: localhost",
+		"pass:foobar host: localhost":          "pass:foobar host: localhost",
+		"host: localhost password: foobar":     "host: localhost password: ****",
+	}
+
+	for input, expected := range testData {
+		if output := MaskPassword(input); expected != output {
+			t.Errorf("Unexpected function output:\ngot %s\nwanted %s\n", output, expected)
+		}
+	}
+}
