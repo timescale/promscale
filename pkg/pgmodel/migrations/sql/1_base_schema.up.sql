@@ -1,13 +1,66 @@
 --NOTES
 --This code assumes that table names can only be 63 chars long
 
+CREATE ROLE prom_reader;
+CREATE ROLE prom_writer;
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
+GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_CATALOG GRANT SELECT ON TABLES TO prom_reader;
+GRANT CREATE ON SCHEMA SCHEMA_CATALOG TO prom_writer;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_CATALOG GRANT ALL PRIVILEGES ON TABLES TO prom_writer;
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- data tables + public functions
+GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_PROM TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_PROM GRANT SELECT ON TABLES TO prom_reader;
+GRANT CREATE ON SCHEMA SCHEMA_PROM TO prom_writer;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA SCHEMA_PROM TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_PROM GRANT ALL PRIVILEGES ON TABLES TO prom_writer;
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
+GRANT USAGE ON SCHEMA SCHEMA_EXT TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_EXT TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_EXT GRANT SELECT ON TABLES TO prom_reader;
+GRANT CREATE ON SCHEMA SCHEMA_EXT TO prom_writer;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA SCHEMA_EXT TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_EXT GRANT ALL PRIVILEGES ON TABLES TO prom_writer;
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES;
+GRANT USAGE ON SCHEMA SCHEMA_SERIES TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_SERIES TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_SERIES GRANT SELECT ON TABLES TO prom_reader;
+GRANT CREATE ON SCHEMA SCHEMA_SERIES TO prom_writer;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA SCHEMA_SERIES TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_SERIES GRANT ALL PRIVILEGES ON TABLES TO prom_writer;
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC;
+GRANT USAGE ON SCHEMA SCHEMA_METRIC TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_METRIC TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_METRIC GRANT SELECT ON TABLES TO prom_reader;
+GRANT CREATE ON SCHEMA SCHEMA_METRIC TO prom_writer;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA SCHEMA_METRIC TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_METRIC GRANT ALL PRIVILEGES ON TABLES TO prom_writer;
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
+GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_DATA TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA GRANT SELECT ON TABLES TO prom_reader;
+GRANT CREATE ON SCHEMA SCHEMA_DATA TO prom_writer;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA SCHEMA_DATA TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA GRANT ALL PRIVILEGES ON TABLES TO prom_writer;
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
+GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_INFO TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_INFO GRANT SELECT ON TABLES TO prom_reader;
+GRANT CREATE ON SCHEMA SCHEMA_INFO TO prom_writer;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA SCHEMA_INFO TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_INFO GRANT ALL PRIVILEGES ON TABLES TO prom_writer;
+
+GRANT prom_reader TO prom_writer;
 
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 
@@ -93,6 +146,7 @@ AS $func$
     SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='chunk_interval';
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_chunk_interval() TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_retention_period()
     RETURNS INTERVAL
@@ -100,7 +154,7 @@ AS $func$
     SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='retention_period';
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_retention_period() TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
     RETURNS trigger
@@ -126,6 +180,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.make_metric_table() TO prom_writer;
 
 CREATE TRIGGER make_metric_table_trigger
     AFTER INSERT ON SCHEMA_CATALOG.metric
@@ -149,6 +204,7 @@ AS $func$
     SELECT (substring(full_name for 63-(char_length(suffix)+1)) || '_' || suffix)::name
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(text, text) TO prom_reader;
 
 -- Return a new unique name from a name and id.
 -- This tries to use the full_name in full. But if the
@@ -171,6 +227,7 @@ AS $func$
         END
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_unique(text, text) TO prom_reader;
 
 --Creates a new table for a given metric name.
 --This uses up some sequences so should only be called
@@ -207,6 +264,7 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE ;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_table(text) TO prom_writer;
 
 --Creates a new label_key row for a given key.
 --This uses up some sequences so should only be called
@@ -242,6 +300,7 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_label_key(TEXT) TO prom_writer;
 
 --Get a label key row if one doesn't yet exist.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_key(
@@ -256,6 +315,7 @@ AS $func$
    LIMIT 1
 $func$
 LANGUAGE SQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key(TEXT) to prom_writer;
 
 -- Get a new label array position for a label key. For any metric,
 -- we want the positions to be as compact as possible.
@@ -338,6 +398,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text) TO prom_writer;
 
 --should only be called after a check that that the label doesn't exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
@@ -367,14 +428,16 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_label_id(text, text) to prom_writer;
 
 --wrapper around jsonb_each_text to give a better row_estimate
 --for labels (10 not 100)
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_jsonb_each_text(js jsonb,  OUT key text, OUT value text)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_jsonb_each_text(js jsonb, OUT key text, OUT value text)
  RETURNS SETOF record
  LANGUAGE SQL
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
 AS $function$ SELECT (jsonb_each_text(js)).* $function$;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_jsonb_each_text(jsonb) to prom_reader;
 
 --wrapper around unnest to give better row estimate (10 not 100)
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_unnest(label_array anyarray)
@@ -382,6 +445,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_unnest(label_array anyarray)
  LANGUAGE SQL
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
 AS $function$ SELECT unnest(label_array) $function$;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_unnest(anyarray) to prom_reader;
 
 
 ---------------------------------------------------
@@ -397,6 +461,7 @@ AS $func$
    WHERE m.metric_name = get_metric_table_name_if_exists.metric_name
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_table_name_if_exists(text) to prom_reader;
 
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
@@ -413,6 +478,7 @@ AS $func$
    LIMIT 1
 $func$
 LANGUAGE SQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_name(text) to prom_writer;
 
 --public function to get the array position for a label key
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(
@@ -433,6 +499,7 @@ AS $$
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(text, text) to prom_writer;
 
 --Get the label_id for a key, value pair
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_id(
@@ -453,6 +520,7 @@ AS $$
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_id(text, text) to prom_writer;
 
 --This generates a position based array from the jsonb
 --0s represent keys that are not set (we don't use NULL
@@ -494,7 +562,7 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.label_array(jsonb)
 IS 'converts a jsonb to a label array';
-
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_array(jsonb) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS SCHEMA_PROM.label_array AS $$
@@ -530,6 +598,7 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.label_array(text, text[], text[])
 IS 'converts a metric name, array of keys, and array of values to a label array';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_array(TEXT, text[], text[]) TO prom_writer;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
@@ -544,6 +613,7 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.key_value_array(SCHEMA_PROM.label_array)
 IS 'converts a labels array to two arrays: one for keys and another for values';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.key_value_array(SCHEMA_PROM.label_array) TO prom_reader;
 
 --Returns the jsonb for a series defined by a label_array
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
@@ -556,6 +626,7 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
 IS 'converts a labels array to a JSONB object';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.jsonb(SCHEMA_PROM.label_array) TO prom_reader;
 
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
@@ -583,6 +654,7 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, SCHEMA_PROM.label_array) TO prom_writer;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_PROM.series_id(label jsonb)
 RETURNS BIGINT AS $$
@@ -599,6 +671,7 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.series_id(jsonb)
 IS 'returns the series id that exactly matches a JSONB of labels';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.series_id(jsonb) TO prom_writer;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS BIGINT AS $$
@@ -613,7 +686,7 @@ RETURNS BIGINT AS $$
    LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
-
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(TEXT, text[], text[]) TO prom_writer;
 --
 -- Parameter manipulation functions
 --
@@ -628,6 +701,7 @@ AS $func$
         new_interval * (1.0+((random()*0.01)-0.005)));
 $func$
 LANGUAGE SQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(TEXT, INTERVAL) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_chunk_interval(chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -644,6 +718,7 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL)
 IS 'set the chunk interval for any metrics (existing and new) without an explicit override';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -662,6 +737,7 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL)
 IS 'set a chunk interval for a specific metric (this overrides the default)';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name TEXT)
 RETURNS BOOLEAN
@@ -677,7 +753,7 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT)
 IS 'resets the chunk interval for a specific metric to using the default';
-
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
 RETURNS INTERVAL
@@ -690,6 +766,7 @@ AS $$
     LIMIT 1
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_retention_period(TEXT) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_retention_period(retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -701,6 +778,7 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL)
 IS 'set the retention period for any metrics (existing and new) without an explicit override';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -715,6 +793,8 @@ AS $func$
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL) TO prom_writer;
+
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)
 IS 'set a retention period for a specific metric (this overrides the default)';
 
@@ -728,6 +808,7 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT)
 IS 'resets the retention period for a specific metric to using the default';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT) TO prom_writer;
 
 --drop chunks from metrics tables and delete the appropriate series.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunks(metric_name TEXT, older_than TIMESTAMPTZ)
@@ -736,7 +817,6 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunks(metric_name TEXT, o
 DECLARE
     metric_table NAME;
     check_time TIMESTAMPTZ;
-    older_than_chunk TIMESTAMPTZ;
     time_dimension_id INT;
     label_array int[];
 BEGIN
@@ -827,6 +907,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.drop_metric_chunks(TEXT, TIMESTAMPTZ) TO prom_writer;
 
 --Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
@@ -843,6 +924,7 @@ AS $$
         ORDER BY random()
 $$
 LANGUAGE SQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk() TO prom_reader;
 
 --public procedure to be called by cron
 CREATE PROCEDURE SCHEMA_PROM.drop_chunks()
@@ -878,6 +960,7 @@ END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_PROM.drop_chunks()
 IS 'drops data according to the data retention policy. This procedure should be run regularly in a cron job';
+GRANT EXECUTE ON PROCEDURE SCHEMA_PROM.drop_chunks() TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_stale_marker(value double precision)
 RETURNS BOOLEAN
@@ -887,6 +970,7 @@ $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.is_stale_marker(double precision)
 IS 'returns true if the value is a Prometheus stale marker';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.is_stale_marker(double precision) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_normal_nan(value double precision)
 RETURNS BOOLEAN
@@ -896,7 +980,7 @@ $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.is_normal_nan(double precision)
 IS 'returns true if the value is a NaN';
-
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.is_normal_nan(double precision) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.val(
         label_id INT)
@@ -911,6 +995,7 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.val(INT)
 IS 'returns the label value from a label id';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.val(INT) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_column_name_for_view(label_key text, id BOOLEAN)
     returns NAME
@@ -933,6 +1018,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_label_key_column_name_for_view(text, BOOLEAN) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series_view(
         metric_name text)
@@ -970,7 +1056,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series_view(text) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_view(
         metric_name text)
@@ -1010,6 +1096,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
 ----------------------------------
 -- Label selectors and matchers --
@@ -1026,6 +1113,7 @@ AS $func$
     SELECT count(*)::int from (SELECT jsonb_object_keys(j)) v;
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.count_jsonb_keys(jsonb) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.matcher(labels jsonb)
 RETURNS SCHEMA_PROM.matcher_positive
@@ -1040,6 +1128,7 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.matcher(jsonb)
 IS 'returns a matcher for the JSONB, __name__ is ignored. The matcher can be used to match against a label array using @> or ? operators';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.matcher(jsonb) TO prom_reader;
 
 
 
@@ -1054,7 +1143,7 @@ $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, SCHEMA_PROM.label_array)
 IS 'returns true if two label arrays are equal, ignoring the metric name';
-
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, SCHEMA_PROM.label_array) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels1 SCHEMA_PROM.label_array, matchers SCHEMA_PROM.matcher_positive)
 RETURNS BOOLEAN
@@ -1066,7 +1155,7 @@ $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, SCHEMA_PROM.matcher_positive)
 IS 'returns true if the label array and matchers are equal, there should not be a matcher for the metric name';
-
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, SCHEMA_PROM.matcher_positive) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.eq(labels SCHEMA_PROM.label_array, json_labels jsonb)
 RETURNS BOOLEAN
@@ -1079,7 +1168,7 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, jsonb)
 IS 'returns true if the labels and jsonb are equal, ignoring the metric name';
-
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.eq(SCHEMA_PROM.label_array, jsonb) TO prom_reader;
 
 --------------------- op @> ------------------------
 
@@ -1089,6 +1178,7 @@ AS $func$
     SELECT labels @> SCHEMA_PROM.matcher(json_labels)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_contains(SCHEMA_PROM.label_array, jsonb) TO prom_reader;
 
 CREATE OPERATOR SCHEMA_PROM.@> (
     LEFTARG = SCHEMA_PROM.label_array,
@@ -1104,6 +1194,7 @@ AS $func$
     SELECT labels && matchers
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_match(SCHEMA_PROM.label_array, SCHEMA_PROM.matcher_positive) TO prom_reader;
 
 CREATE OPERATOR SCHEMA_PROM.? (
     LEFTARG = SCHEMA_PROM.label_array,
@@ -1117,6 +1208,7 @@ AS $func$
     SELECT NOT (labels && matchers)
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_match(SCHEMA_PROM.label_array, SCHEMA_PROM.matcher_negative) TO prom_reader;
 
 CREATE OPERATOR SCHEMA_PROM.? (
     LEFTARG = SCHEMA_PROM.label_array,
@@ -1134,6 +1226,7 @@ AS $func$
     WHERE l.key = label_key and l.value = pattern
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_equal(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_equal(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
 RETURNS SCHEMA_PROM.matcher_negative
@@ -1143,6 +1236,7 @@ AS $func$
     WHERE l.key = label_key and l.value = pattern
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_not_equal(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_regex(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
 RETURNS SCHEMA_PROM.matcher_positive
@@ -1152,6 +1246,7 @@ AS $func$
     WHERE l.key = label_key and l.value ~ pattern
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_regex(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_regex(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
 RETURNS SCHEMA_PROM.matcher_negative
@@ -1161,6 +1256,7 @@ AS $func$
     WHERE l.key = label_key and l.value ~ pattern
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_not_regex(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
 
 CREATE OPERATOR SCHEMA_PROM.== (
     LEFTARG = SCHEMA_PROM.label_key,

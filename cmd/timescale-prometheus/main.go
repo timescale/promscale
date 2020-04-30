@@ -156,7 +156,7 @@ func main() {
 		err = migrate(&cfg.pgmodelCfg)
 
 		if err != nil {
-			log.Error("msg", "Aborting startup because of migration error: %s", util.MaskPassword(err.Error()))
+			log.Error("msg", fmt.Sprintf("Aborting startup because of migration error: %s", util.MaskPassword(err.Error())))
 			os.Exit(1)
 		}
 	}
