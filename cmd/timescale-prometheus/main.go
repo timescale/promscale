@@ -49,64 +49,74 @@ type config struct {
 const (
 	tickInterval      = time.Second
 	promLivenessCheck = time.Second
+	promNamespace     = "ts_prom"
 )
 
 var (
 	leaderGauge = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "current_leader",
-			Help: "Shows current election leader status",
+			Namespace: promNamespace,
+			Name:      "current_leader",
+			Help:      "Shows current election leader status",
 		},
 	)
 	receivedSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "received_samples_total",
-			Help: "Total number of received samples.",
+			Namespace: promNamespace,
+			Name:      "received_samples_total",
+			Help:      "Total number of received samples.",
 		},
 	)
 	receivedQueries = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "received_queries_total",
-			Help: "Total number of received queries.",
+			Namespace: promNamespace,
+			Name:      "received_queries_total",
+			Help:      "Total number of received queries.",
 		},
 	)
 	sentSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "sent_samples_total",
-			Help: "Total number of processed samples sent to remote storage.",
+			Namespace: promNamespace,
+			Name:      "sent_samples_total",
+			Help:      "Total number of processed samples sent to remote storage.",
 		},
 	)
 	failedSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "failed_samples_total",
-			Help: "Total number of processed samples which failed on send to remote storage.",
+			Namespace: promNamespace,
+			Name:      "failed_samples_total",
+			Help:      "Total number of processed samples which failed on send to remote storage.",
 		},
 	)
 	failedQueries = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "failed_queries_total",
-			Help: "Total number of queries which failed on send to remote storage.",
+			Namespace: promNamespace,
+			Name:      "failed_queries_total",
+			Help:      "Total number of queries which failed on send to remote storage.",
 		},
 	)
 	sentBatchDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "sent_batch_duration_seconds",
-			Help:    "Duration of sample batch send calls to the remote storage.",
-			Buckets: prometheus.DefBuckets,
+			Namespace: promNamespace,
+			Name:      "sent_batch_duration_seconds",
+			Help:      "Duration of sample batch send calls to the remote storage.",
+			Buckets:   prometheus.DefBuckets,
 		},
 	)
 	queryBatchDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "query_batch_duration_seconds",
-			Help:    "Duration of query batch read calls to the remote storage.",
-			Buckets: prometheus.DefBuckets,
+			Namespace: promNamespace,
+			Name:      "query_batch_duration_seconds",
+			Help:      "Duration of query batch read calls to the remote storage.",
+			Buckets:   prometheus.DefBuckets,
 		},
 	)
 	httpRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "http_request_duration_ms",
-			Help:    "Duration of HTTP request in milliseconds",
-			Buckets: prometheus.DefBuckets,
+			Namespace: promNamespace,
+			Name:      "http_request_duration_ms",
+			Help:      "Duration of HTTP request in milliseconds",
+			Buckets:   prometheus.DefBuckets,
 		},
 		[]string{"path"},
 	)
