@@ -47,7 +47,7 @@ CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
 GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_DATA TO prom_reader;
 ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA GRANT SELECT ON TABLES TO prom_reader;
-GRANT CREATE ON SCHEMA SCHEMA_DATA TO prom_writer;
+GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_writer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_DATA TO prom_writer;
 ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
 
@@ -695,7 +695,6 @@ AS $func$
         new_interval * (1.0+((random()*0.01)-0.005)));
 $func$
 LANGUAGE SQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(TEXT, INTERVAL) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_chunk_interval(chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -712,7 +711,6 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL)
 IS 'set the chunk interval for any metrics (existing and new) without an explicit override';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -731,7 +729,6 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL)
 IS 'set a chunk interval for a specific metric (this overrides the default)';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name TEXT)
 RETURNS BOOLEAN
@@ -747,7 +744,6 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT)
 IS 'resets the chunk interval for a specific metric to using the default';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
 RETURNS INTERVAL
