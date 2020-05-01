@@ -16,6 +16,9 @@ spec:
     metadata:
       labels:
         app: {{ template "connector.fullname" . }}
+      {{ if .Values.prometheus.enabled }}
+      annotations: {{ .Values.prometheus.annotations | toYaml | nindent 8 }}
+      {{ end }}
     spec:
       containers:
         - image: {{ .Values.image }}
