@@ -1,12 +1,12 @@
-PG_CONFIG=pg_config
+PG_CONFIG?=pg_config
 
 EXTENSION=timescale_prometheus_extra
 SQL_FILES=sql/timescale-prometheus.sql
 
 EXT_VERSION = $(shell cat timescale_prometheus_extra.control | grep 'default' | sed "s/^.*'\(.*\)'$\/\1/g")
 EXT_SQL_FILE = sql/$(EXTENSION)--$(EXT_VERSION).sql
-PG_VER=pg12
-TIMESCALEDB_VER=1.7.0
+PG_VER ?= pg12
+TIMESCALEDB_VER ?= 1.7.0
 
 DATA = $(EXT_SQL_FILE)
 MODULE_big = $(EXTENSION)
