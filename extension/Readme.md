@@ -12,4 +12,4 @@ The extension is installed by default on the
 
 To compile and install from source run: `make && make install`.
 
-This extension will be installed automatically by the timescale-prometheus connector.
+This extension will be created via `CREATE EXTENSION` automatically by the timescale-prometheus connector and should not be created manually.
