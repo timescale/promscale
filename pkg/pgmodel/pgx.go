@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	promSchema       = "prom"
+	promSchema       = "prom_api"
 	seriesViewSchema = "prom_series"
 	metricViewSchema = "prom_metric"
 	dataSchema       = "prom_data"

@@ -1,26 +1,53 @@
 
 DO $$
     DECLARE
-        version INT;
-        dirty BOOLEAN;
+        current_version INT;
+        is_dirty BOOLEAN;
+        original_message TEXT;
     BEGIN
         BEGIN
             SELECT version, dirty
-            INTO STRICT version, dirty
-            FROM public.prom_schema_migrations;
+              INTO STRICT current_version, is_dirty
+              FROM public.prom_schema_migrations;
         EXCEPTION WHEN OTHERS THEN
-            RAISE EXCEPTION 'could not determine the version of the timescale-prometheus connector that was installed'
+            GET STACKED DIAGNOSTICS original_message = MESSAGE_TEXT;
+            RAISE EXCEPTION 'could not determine the version of the timescale-prometheus connector that was installed due to: %', original_message
             USING HINT='This extension should not be created manually. It will be created by the timescale-prometheus connector and requires the connector to be installed first.';
             RETURN;
+        END;
 
-        IF version < 1 OR DIRTY THEN
+        IF current_version < 1 OR is_dirty THEN
             RAISE EXCEPTION 'the requisite version of the timescale-prometheus connector has not been installed'
             USING HINT='This extension should not be created manually. It will be created by the timescale-prometheus connector and requires the connector to be installed first.';
         END IF;
     END
 $$;
 
-SET LOCAL search_path TO DEFAULT;
+-- Set the search path to one that will find all the definitions provided by the
+-- connector. Since the connector can change the schemas it stores things
+-- in we cannot just hardcode the searchpath, instead we switch the search path
+-- based on the schemas declared by the connector.
+DO $$
+    DECLARE
+        ext_schema TEXT;
+        prom_schema TEXT;
+        metric_schema TEXT;
+        catalog_schema TEXT;
+        new_path TEXT;
+    BEGIN
+        SELECT value FROM public.prom_installation_info
+         WHERE key = 'extension schema'
+          INTO ext_schema;
+        SELECT value FROM public.prom_installation_info
+         WHERE key = 'prometheus API schema'
+          INTO prom_schema;
+        SELECT value FROM public.prom_installation_info
+         WHERE key = 'catalog schema'
+          INTO catalog_schema;
+        new_path := format('public,%s,%s,%s', ext_schema, prom_schema, catalog_schema);
+        PERFORM set_config('search_path', new_path, false);
+    END
+$$;
 
 DO $$
     BEGIN
@@ -56,48 +83,48 @@ GRANT EXECUTE ON FUNCTION @extschema@.label_unnest(anyarray) TO prom_reader;
 
 ---------------------  comparison functions ---------------------
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_equal(label_key label_key, pattern pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_equal(key label_key, pat pattern)
 RETURNS matcher_positive
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_positive
-    FROM _prom_catalog.label l
-    WHERE l.key = label_key and l.value = pattern
+    FROM label l
+    WHERE l.key = key and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT const_support;
+SUPPORT @extschema@.const_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_equal(label_key, pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_equal(key label_key, pattern pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_equal(key label_key, pat pattern)
 RETURNS matcher_negative
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_negative
-    FROM _prom_catalog.label l
-    WHERE l.key = key and l.value = pattern
+    FROM label l
+    WHERE l.key = key and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT const_support;
+SUPPORT @extschema@.const_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_not_equal(label_key, pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_regex(key label_key, pattern pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_regex(key label_key, pat pattern)
 RETURNS matcher_positive
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_positive
-    FROM _prom_catalog.label l
-    WHERE l.key = key and l.value ~ pattern
+    FROM label l
+    WHERE l.key = key and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT const_support;
+SUPPORT @extschema@.const_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_regex(label_key, pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_regex(key label_key, pattern pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_regex(key label_key, pat pattern)
 RETURNS matcher_negative
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_negative
-    FROM _prom_catalog.label l
-    WHERE l.key = key and l.value ~ pattern
+    FROM label l
+    WHERE l.key = key and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT const_support;
+SUPPORT @extschema@.const_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_not_regex(label_key, pattern) TO prom_reader;
 
 CREATE OPERATOR @extschema@.== (

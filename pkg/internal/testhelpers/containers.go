@@ -10,20 +10,27 @@ import (
 	"io/ioutil"
 	"runtime"
 
+	"os"
+	"path/filepath"
+	"testing"
+
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 const (
 	defaultDB       = "postgres"
-	connectTemplate = "postgres://postgres:password@%s:%d/%s"
+	connectTemplate = "postgres://%s:password@%s:%d/%s"
+
+	postgresUser = "postgres"
+	promUser     = "prom"
+
+	Superuser   = true
+	NoSuperuser = false
 )
 
 var (
@@ -34,13 +41,19 @@ var (
 	pgPort nat.Port = "5432/tcp"
 )
 
-func pgConnectURL(dbName string) string {
-	return fmt.Sprintf(connectTemplate, pgHost, pgPort.Int(), dbName)
+type SuperuserStatus = bool
+
+func pgConnectURL(dbName string, superuser SuperuserStatus) string {
+	user := postgresUser
+	if !superuser {
+		user = promUser
+	}
+	return fmt.Sprintf(connectTemplate, user, pgHost, pgPort.Int(), dbName)
 }
 
 // WithDB establishes a database for testing and calls the callback
-func WithDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
-	db, err := dbSetup(DBName)
+func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
+	db, err := dbSetup(DBName, superuser)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -48,11 +61,11 @@ func WithDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB, 
 	defer func() {
 		db.Close()
 	}()
-	f(db, t, pgConnectURL(DBName))
+	f(db, t, pgConnectURL(DBName, superuser))
 }
 
 func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
-	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName))
+	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName, NoSuperuser))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +78,8 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	return dbPool
 }
 
-func dbSetup(DBName string) (*pgxpool.Pool, error) {
-	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB))
+func dbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
+	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +89,7 @@ func dbSetup(DBName string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s", DBName))
+	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s OWNER %s", DBName, promUser))
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +99,7 @@ func dbSetup(DBName string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName))
+	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName, superuser))
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +147,21 @@ func StartPGContainer(ctx context.Context, withExtension bool, testDataDir strin
 	}
 
 	pgPort, err = container.MappedPort(ctx, containerPort)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB, Superuser))
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE USER %s WITH NOSUPERUSER CREATEROLE PASSWORD 'password'", promUser))
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.Close(context.Background())
 	if err != nil {
 		return nil, err
 	}

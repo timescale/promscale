@@ -56,8 +56,6 @@ GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_INFO TO prom_reader;
 ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_INFO GRANT SELECT ON TABLES TO prom_reader;
 
-CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
-
 CREATE DOMAIN SCHEMA_PROM.label_array AS int[] NOT NULL;
 
 -- the timescale_prometheus_extra extension contains optimized version of some
@@ -77,6 +75,21 @@ $$;
 -----------------------
 -- Table definitions --
 -----------------------
+
+CREATE TABLE public.prom_installation_info (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+INSERT INTO public.prom_installation_info(key, value) VALUES
+    ('catalog schema',        'SCHEMA_CATALOG'),
+    ('prometheus API schema', 'SCHEMA_PROM'),
+    ('extension schema',      'SCHEMA_EXT'),
+    ('series schema',         'SCHEMA_SERIES'),
+    ('metric schema',         'SCHEMA_METRIC'),
+    ('data schema',           'SCHEMA_DATA'),
+    ('information schema',    'SCHEMA_INFO');
+
 
 CREATE TABLE SCHEMA_CATALOG.series (
     id bigserial PRIMARY KEY,

@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	extensionInstall = `CREATE EXTENSION "timescale_prometheus_extra" SCHEMA %s;
-`
+	timescaleInstall = "CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;"
+	extensionInstall = "CREATE EXTENSION timescale_prometheus_extra WITH SCHEMA %s;"
 )
 
 type mySrc struct {
@@ -73,9 +73,14 @@ func (t *mySrc) ReadDown(version uint) (r io.ReadCloser, identifier string, err 
 func Migrate(db *sql.DB) error {
 	// The migration table will be put in the public schema not in any of our schema because we never want to drop it and
 	// our scripts and our last down script drops our shemas
-	driver, err := postgres.WithInstance(db, &postgres.Config{MigrationsTable: fmt.Sprintf("%s_schema_migrations", promSchema)})
+	driver, err := postgres.WithInstance(db, &postgres.Config{MigrationsTable: "prom_schema_migrations"})
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot create driver due to %w", err)
+	}
+
+	_, err = db.Exec(timescaleInstall)
+	if err != nil {
+		return fmt.Errorf("timescaledb failed to install due to %w", err)
 	}
 
 	src, err := httpfs.New(migrations.SqlFiles, "/")

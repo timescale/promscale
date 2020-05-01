@@ -27,7 +27,7 @@ func TestPGConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB))
+	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestWithDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	WithDB(t, *database, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	WithDB(t, *database, Superuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		var res int
 		err := db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
 		if err != nil {
