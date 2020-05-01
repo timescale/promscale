@@ -8,16 +8,17 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"os"
-	"path/filepath"
 	"runtime"
-	"testing"
 
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"os"
+	"path/filepath"
+	"testing"
 )
 
 const (
@@ -104,7 +105,9 @@ func StartPGContainer(ctx context.Context, withExtension bool, testDataDir strin
 	req := testcontainers.ContainerRequest{
 		Image:        image,
 		ExposedPorts: []string{string(containerPort)},
-		WaitingFor:   wait.NewHostPortStrategy(containerPort),
+		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
+			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
+		}),
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
 		},
@@ -154,7 +157,7 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 	req := testcontainers.ContainerRequest{
 		Image:        "prom/prometheus",
 		ExposedPorts: []string{string(prometheusPort)},
-		WaitingFor:   wait.NewHostPortStrategy(prometheusPort),
+		WaitingFor:   wait.ForListeningPort(prometheusPort),
 		BindMounts: map[string]string{
 			storagePath: "/prometheus",
 		},
