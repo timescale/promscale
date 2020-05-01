@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "connector.fullname" . }}
+  name: {{ .Release.Name }}-timescale-prometheus-connector
   labels:
     app: {{ template "connector.fullname" . }}
     chart: {{ template "connector.chart" . }}
