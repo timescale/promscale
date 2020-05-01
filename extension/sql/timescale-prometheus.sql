@@ -1,4 +1,25 @@
 
+DO $$
+    DECLARE
+        version INT;
+        dirty BOOLEAN;
+    BEGIN
+        BEGIN
+            SELECT version, dirty
+            INTO STRICT version, dirty
+            FROM public.prom_schema_migrations;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'could not determine the version of the timescale-prometheus connector that was installed'
+            USING HINT='This extension should not be created manually. It will be created by the timescale-prometheus connector and requires the connector to be installed first.';
+            RETURN;
+
+        IF version < 1 OR DIRTY THEN
+            RAISE EXCEPTION 'the requisite version of the timescale-prometheus connector has not been installed'
+            USING HINT='This extension should not be created manually. It will be created by the timescale-prometheus connector and requires the connector to be installed first.';
+        END IF;
+    END
+$$;
+
 SET LOCAL search_path TO DEFAULT;
 
 DO $$
