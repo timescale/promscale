@@ -300,31 +300,31 @@ func TestSQLChunkInterval(t *testing.T) {
 			t.Fatal(err)
 		}
 		verifyChunkInterval(t, db, "test", time.Duration(8*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_chunk_interval('test2', INTERVAL '7 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_chunk_interval('test2', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyChunkInterval(t, db, "test2", time.Duration(7*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom.set_default_chunk_interval(INTERVAL '6 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_chunk_interval(INTERVAL '6 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyChunkInterval(t, db, "test", time.Duration(6*time.Hour))
 		verifyChunkInterval(t, db, "test2", time.Duration(7*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom.reset_metric_chunk_interval('test2')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_chunk_interval('test2')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyChunkInterval(t, db, "test2", time.Duration(6*time.Hour))
 
 		//set on a metric that doesn't exist should create the metric and set the parameter
-		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_chunk_interval('test_new_metric1', INTERVAL '7 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_chunk_interval('test_new_metric1', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyChunkInterval(t, db, "test_new_metric1", time.Duration(7*time.Hour))
 
-		_, err = db.Exec(context.Background(), "SELECT prom.set_default_chunk_interval(INTERVAL '2 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_chunk_interval(INTERVAL '2 hours')")
 		if err != nil {
 			t.Error(err)
 		}
@@ -385,33 +385,33 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			t.Fatal(err)
 		}
 		verifyRetentionPeriod(t, db, "test", time.Duration(90*24*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_retention_period('test2', INTERVAL '7 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test2', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 
 		verifyRetentionPeriod(t, db, "test", time.Duration(90*24*time.Hour))
 		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom.set_default_retention_period(INTERVAL '6 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_retention_period(INTERVAL '6 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyRetentionPeriod(t, db, "test", time.Duration(6*time.Hour))
 		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom.reset_metric_retention_period('test2')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('test2')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyRetentionPeriod(t, db, "test2", time.Duration(6*time.Hour))
 
 		//set on a metric that doesn't exist should create the metric and set the parameter
-		_, err = db.Exec(context.Background(), "SELECT prom.set_metric_retention_period('test_new_metric1', INTERVAL '7 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test_new_metric1', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyRetentionPeriod(t, db, "test_new_metric1", time.Duration(7*time.Hour))
 
-		_, err = db.Exec(context.Background(), "SELECT prom.set_default_retention_period(INTERVAL '2 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_retention_period(INTERVAL '2 hours')")
 		if err != nil {
 			t.Error(err)
 		}
@@ -568,7 +568,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatal(err)
 					}
 					var labelArray []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array($1)", jsonOrig).Scan(&labelArray)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.label_array($1)", jsonOrig).Scan(&labelArray)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -580,7 +580,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var labelArrayKV []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom.label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -610,7 +610,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						retKeys []string
 						retVals []string
 					)
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom.key_value_array($1::int[])", labelArray).Scan(&retKeys, &retVals)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.key_value_array($1::int[])", labelArray).Scan(&retKeys, &retVals)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -628,7 +628,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					// Check the series_id logic
 					var seriesID int
-					err = db.QueryRow(context.Background(), "SELECT prom.series_id($1)", jsonOrig).Scan(&seriesID)
+					err = db.QueryRow(context.Background(), "SELECT prom_api.series_id($1)", jsonOrig).Scan(&seriesID)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -1125,7 +1125,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected there to be a chunk")
 		}
 
-		_, err = db.Exec(context.Background(), "CALL prom.drop_chunks()")
+		_, err = db.Exec(context.Background(), "CALL prom_api.drop_chunks()")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1137,7 +1137,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected the chunk to be dropped")
 		}
 		//noop works fine
-		_, err = db.Exec(context.Background(), "CALL prom.drop_chunks()")
+		_, err = db.Exec(context.Background(), "CALL prom_api.drop_chunks()")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1157,6 +1157,17 @@ func TestExtensionFunctions(t *testing.T) {
 		t.Skip("skipping extension test; testing without extension")
 	}
 	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
+
+		searchPath := ""
+		expected := fmt.Sprintf(`"$user", public, %s, %s, %s, %s`, extSchema, promSchema, metricViewSchema, catalogSchema)
+		err := db.QueryRow(context.Background(), "SHOW search_path;").Scan(&searchPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if searchPath != expected {
+			t.Errorf("incorrect search path\nexpected\n\t%s\nfound\n\t%s", expected, searchPath)
+		}
+
 		functions := []string{
 			"label_jsonb_each_text",
 			"label_unnest",
@@ -1269,7 +1280,7 @@ func TestMain(m *testing.M) {
 }
 
 func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
-	testhelpers.WithDB(t, DBName, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, DBName, connectURL)
 
 		//need to get a new pool after the Migrate to catch any GUC changes made during Migrate

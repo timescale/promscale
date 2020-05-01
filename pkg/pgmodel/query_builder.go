@@ -33,7 +33,7 @@ const (
 	WHERE %s
 	GROUP BY m.metric_name`
 
-	timeseriesByMetricSQLFormat = `SELECT (` + promSchema + `.key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesByMetricSQLFormat = `SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM %s m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
@@ -42,7 +42,7 @@ const (
 	AND time <= '%s'
 	GROUP BY s.id`
 
-	timeseriesBySeriesIDsSQLFormat = `SELECT (` + promSchema + `.key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesBySeriesIDsSQLFormat = `SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM %s m
 	INNER JOIN _prom_catalog.series s
 	ON m.series_id = s.id
