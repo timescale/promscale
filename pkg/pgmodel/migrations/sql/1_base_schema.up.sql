@@ -693,12 +693,16 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, name, SCHEMA_PROM.la
 
 CREATE OR REPLACE  FUNCTION SCHEMA_PROM.series_id(label jsonb)
 RETURNS BIGINT AS $$
+   --need to make sure the series partition exists
+   SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__');
+
    WITH CTE AS (
        SELECT SCHEMA_PROM.label_array(label)
    )
    SELECT id
    FROM SCHEMA_CATALOG.series
    WHERE labels = (SELECT * FROM cte)
+         AND metric_id =  (SELECT (SCHEMA_CATALOG.get_metric_table_name_if_exists(label->>'__name__')).id)
    UNION ALL
    SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__')
@@ -711,12 +715,16 @@ GRANT EXECUTE ON FUNCTION SCHEMA_PROM.series_id(jsonb) TO prom_writer;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS BIGINT AS $$
+   --need to make sure the series partition exists
+   SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+
    WITH CTE AS (
        SELECT SCHEMA_PROM.label_array(metric_name, label_keys, label_values)
    )
    SELECT id
    FROM SCHEMA_CATALOG.series
    WHERE labels = (SELECT * FROM cte)
+         AND metric_id =  (SELECT (SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name)).id)
    UNION ALL
    SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)
