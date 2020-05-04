@@ -495,8 +495,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_table_name_if_exists(text) t
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_name(
-        metric_name text)
-    RETURNS TABLE (id int, table_name name)
+        metric_name text, OUT id int, OUT table_name name)
 AS $func$
    SELECT id, table_name::name
    FROM SCHEMA_CATALOG.metric m
@@ -660,30 +659,37 @@ GRANT EXECUTE ON FUNCTION SCHEMA_PROM.jsonb(SCHEMA_PROM.label_array) TO prom_rea
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
         metric_id int,
+        metric_table_name NAME,
         label_array SCHEMA_PROM.label_array,
         OUT series_id BIGINT)
 AS $func$
 BEGIN
 LOOP
-    INSERT INTO SCHEMA_CATALOG.series(metric_id, labels)
-    SELECT metric_id, label_array
-    ON CONFLICT DO NOTHING
-    RETURNING id
-    INTO series_id;
-
-    EXIT WHEN FOUND;
-
-    SELECT id
+    EXECUTE format ($$
+        INSERT INTO SCHEMA_DATA_SERIES.%I(metric_id, labels)
+        SELECT $1, $2
+        ON CONFLICT DO NOTHING
+        RETURNING id
+    $$, metric_table_name)
     INTO series_id
-    FROM SCHEMA_CATALOG.series
-    WHERE labels = label_array;
+    USING metric_id, label_array;
 
-    EXIT WHEN FOUND;
+    EXIT WHEN series_id is not null;
+
+    EXECUTE format($$
+        SELECT id
+        FROM SCHEMA_DATA_SERIES.%I
+        WHERE labels = $1
+    $$, metric_table_name)
+    INTO series_id
+    USING label_array;
+
+    EXIT WHEN series_id is not null;
 END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, SCHEMA_PROM.label_array) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, name, SCHEMA_PROM.label_array) TO prom_writer;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_PROM.series_id(label jsonb)
 RETURNS BIGINT AS $$
@@ -694,7 +700,8 @@ RETURNS BIGINT AS $$
    FROM SCHEMA_CATALOG.series
    WHERE labels = (SELECT * FROM cte)
    UNION ALL
-   SELECT SCHEMA_CATALOG.create_series((SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__')).id, (SELECT * FROM cte))
+   SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
+   FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__')
    LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
@@ -711,7 +718,8 @@ RETURNS BIGINT AS $$
    FROM SCHEMA_CATALOG.series
    WHERE labels = (SELECT * FROM cte)
    UNION ALL
-   SELECT SCHEMA_CATALOG.create_series((SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)).id, (SELECT * FROM cte))
+   SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
+   FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)
    LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
