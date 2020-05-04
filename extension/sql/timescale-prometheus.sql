@@ -1,9 +1,20 @@
 
 SET LOCAL search_path TO DEFAULT;
 
+DO $$
+    BEGIN
+        CREATE ROLE prom_reader;
+    EXCEPTION WHEN duplicate_object THEN
+        RAISE NOTICE 'role prom_reader already exists, skipping create';
+        RETURN;
+    END
+$$;
+
 CREATE OR REPLACE FUNCTION @extschema@.const_support(internal) RETURNS INTERNAL
 AS '$libdir/timescale_prometheus_extra', 'const_support'
 LANGUAGE C IMMUTABLE STRICT;
+GRANT EXECUTE ON FUNCTION @extschema@.const_support(internal) TO prom_reader;
+
 
 --wrapper around jsonb_each_text to give a better row_estimate
 --for labels (10 not 100)
@@ -12,6 +23,7 @@ CREATE OR REPLACE FUNCTION @extschema@.label_jsonb_each_text(js jsonb,  OUT key 
  LANGUAGE internal
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
 AS $function$jsonb_each_text$function$;
+GRANT EXECUTE ON FUNCTION @extschema@.label_jsonb_each_text(jsonb) TO prom_reader;
 
 --wrapper around unnest to give better row estimate (10 not 100)
 CREATE OR REPLACE FUNCTION @extschema@.label_unnest(label_array anyarray)
@@ -19,6 +31,7 @@ CREATE OR REPLACE FUNCTION @extschema@.label_unnest(label_array anyarray)
  LANGUAGE internal
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
 AS $function$array_unnest$function$;
+GRANT EXECUTE ON FUNCTION @extschema@.label_unnest(anyarray) TO prom_reader;
 
 ---------------------  comparison functions ---------------------
 
@@ -31,6 +44,7 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT const_support;
+GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_equal(label_key, pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_equal(key label_key, pattern pattern)
 RETURNS matcher_negative
@@ -41,6 +55,7 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT const_support;
+GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_not_equal(label_key, pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION @extschema@.label_find_key_regex(key label_key, pattern pattern)
 RETURNS matcher_positive
@@ -51,6 +66,7 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT const_support;
+GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_regex(label_key, pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_regex(key label_key, pattern pattern)
 RETURNS matcher_negative
@@ -61,6 +77,7 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT const_support;
+GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_not_regex(label_key, pattern) TO prom_reader;
 
 CREATE OPERATOR @extschema@.== (
     LEFTARG = label_key,
