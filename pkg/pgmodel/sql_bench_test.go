@@ -240,18 +240,18 @@ func BenchmarkGetOrCreateMetricTableName(b *testing.B) {
 
 func keyValueArrayToLabelArray(db *pgxpool.Pool, metricName string, keys []string, values []string) error {
 	var labelArray []int
-	return db.QueryRow(context.Background(), "SELECT prom.key_value_array_to_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArray)
+	return db.QueryRow(context.Background(), "SELECT label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArray)
 }
 
 func createMetricTableName(db *pgxpool.Pool, name string) error {
 	var metricID int
 	var tableName string
-	return db.QueryRow(context.Background(), "SELECT * FROM prom.get_or_create_metric_table_name($1)", name).Scan(&metricID, &tableName)
+	return db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", name).Scan(&metricID, &tableName)
 }
 
 func getSeriesIDForKeyValueArray(db *pgxpool.Pool, metricName string, keys []string, values []string) error {
 	var seriesIDKeyVal int
-	return db.QueryRow(context.Background(), "SELECT prom.get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+	return db.QueryRow(context.Background(), "SELECT _prom_catalog.get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 }
 
 func generateKeysAndValues(count int, prefix string) ([]string, []string) {
