@@ -90,7 +90,7 @@ func testConcurrentNewLabel(t testing.TB, db *pgxpool.Pool, labelName string) in
 
 func testConcurrentCreateSeries(t testing.TB, db *pgxpool.Pool, index int) int64 {
 	var id *int64
-	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.create_series($1, array[$1::int])", index).Scan(&id)
+	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.create_series(1, array[1, $1::int])", index).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
 	}

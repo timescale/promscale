@@ -28,6 +28,7 @@ const (
 	seriesViewSchema = "prom_series"
 	metricViewSchema = "prom_metric"
 	dataSchema       = "prom_data"
+	dataSeriesSchema = "prom_data_series"
 	infoSchema       = "prom_info"
 	catalogSchema    = "_prom_catalog"
 	extSchema        = "_prom_ext"

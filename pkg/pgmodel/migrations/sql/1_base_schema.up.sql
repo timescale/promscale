@@ -51,6 +51,15 @@ GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_writer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_DATA TO prom_writer;
 ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
 
+CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_SERIES;
+GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA_SERIES GRANT SELECT ON TABLES TO prom_reader;
+GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_writer;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_DATA_SERIES TO prom_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA_SERIES GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
+
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
 GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_INFO TO prom_reader;
@@ -92,11 +101,10 @@ INSERT INTO public.prom_installation_info(key, value) VALUES
 
 
 CREATE TABLE SCHEMA_CATALOG.series (
-    id bigserial PRIMARY KEY,
+    id bigserial,
     metric_id int,
-    labels SCHEMA_PROM.label_array,
-    UNIQUE(labels) INCLUDE (id)
-);
+    labels SCHEMA_PROM.label_array --labels are globally unique because of how partitions are defined
+) PARTITION BY LIST(metric_id);
 CREATE INDEX series_labels_id ON SCHEMA_CATALOG.series USING GIN (labels);
 
 CREATE TABLE SCHEMA_CATALOG.label (
@@ -167,6 +175,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
     RETURNS trigger
     AS $func$
 DECLARE
+  label_id INT;
 BEGIN
    EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ, value DOUBLE PRECISION, series_id INT)',
                     NEW.table_name);
@@ -180,6 +189,19 @@ BEGIN
         timescaledb.compress_segmentby = 'series_id',
         timescaledb.compress_orderby = 'time'
     ); $$, NEW.table_name);
+
+    SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
+    INTO STRICT label_id;
+
+    --note that because labels[1] is unique across partitions and UNIQUE(labels) inside partition, labels are guaranteed globally unique
+    EXECUTE format($$
+        CREATE TABLE SCHEMA_DATA_SERIES.%1$I PARTITION OF SCHEMA_CATALOG.series (
+            CHECK(labels[1] = %2$L AND labels[1] IS NOT NULL),
+            CHECK(metric_id = %3$L),
+            UNIQUE(labels) INCLUDE (id),
+            PRIMARY KEY(id)
+        ) FOR VALUES IN (%3$L)
+    $$, NEW.table_name, label_id, NEW.id);
 
    --chunks where the end time is before now()-10 minutes will be compressed
    PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', NEW.table_name), INTERVAL '10 minutes');
@@ -876,7 +898,7 @@ BEGIN
                  LIMIT 1
             )
         ), deleted_series AS (
-          DELETE from SCHEMA_CATALOG.series
+          DELETE from SCHEMA_DATA_SERIES.%1$I
           WHERE id IN (SELECT series_id FROM confirmed_drop_series)
           RETURNING id, labels
         )
@@ -886,20 +908,20 @@ BEGIN
 
     --needs to be a separate query and not a CTE since this needs to "see"
     --the series rows deleted above as deleted.
-    EXECUTE $query$
+    EXECUTE format($query$
     WITH confirmed_drop_labels AS (
             SELECT label_id
             FROM unnest($1) as labels(label_id)
             WHERE NOT EXISTS (
                  SELECT 1
-                 FROM  SCHEMA_CATALOG.series series_exists
+                 FROM  SCHEMA_DATA_SERIES.%1$I series_exists
                  WHERE series_exists.labels && ARRAY[labels.label_id]
                  LIMIT 1
             )
         )
         DELETE FROM SCHEMA_CATALOG.label
         WHERE id IN (SELECT * FROM confirmed_drop_labels);
-    $query$ USING label_array;
+    $query$, metric_table) USING label_array;
 
    PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than);
    RETURN true;
