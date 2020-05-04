@@ -31,24 +31,25 @@ const (
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
 	WHERE %s
-	GROUP BY m.metric_name`
+	GROUP BY m.metric_name
+	ORDER BY m.metric_name`
 
 	timeseriesByMetricSQLFormat = `SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM %s m
-	INNER JOIN _prom_catalog.series s
+	FROM %[1]s m
+	INNER JOIN %[2]s s
 	ON m.series_id = s.id
-	WHERE %s
-	AND time >= '%s'
-	AND time <= '%s'
+	WHERE %[3]s
+	AND time >= '%[4]s'
+	AND time <= '%[5]s'
 	GROUP BY s.id`
 
 	timeseriesBySeriesIDsSQLFormat = `SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM %s m
-	INNER JOIN _prom_catalog.series s
+	FROM %[1]s m
+	INNER JOIN %[2]s s
 	ON m.series_id = s.id
-	WHERE m.series_id IN (%s)
-	AND time >= '%s'
-	AND time <= '%s'
+	WHERE m.series_id IN (%[3]s)
+	AND time >= '%[4]s'
+	AND time <= '%[5]s'
 	GROUP BY s.id`
 )
 
@@ -244,6 +245,7 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 	return fmt.Sprintf(
 		timeseriesByMetricSQLFormat,
 		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{dataSeriesSchema, filter.metric}.Sanitize(),
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
@@ -258,6 +260,7 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []Serie
 	return fmt.Sprintf(
 		timeseriesBySeriesIDsSQLFormat,
 		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{dataSeriesSchema, filter.metric}.Sanitize(),
 		strings.Join(s, ","),
 		filter.startTime,
 		filter.endTime,

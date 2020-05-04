@@ -59,11 +59,11 @@ SELECT * FROM prom_info.metric ORDER BY id;
 SELECT * FROM cpu_usage ORDER BY time, series_id LIMIT 5;
           time          | value | series_id |  labels   | node_id | namespace_id | new_tag_id 
 ------------------------+-------+-----------+-----------+---------+--------------+------------
- 2000-01-01 02:03:05+00 | 101.1 |         1 | {2,1,3}   |       1 |            3 |           
- 2000-01-01 02:03:05+00 | 101.1 |         2 | {2,4,6,5} |       4 |            6 |          5
- 2000-01-01 02:03:06+00 | 102.1 |         1 | {2,1,3}   |       1 |            3 |           
- 2000-01-01 02:03:06+00 | 102.1 |         2 | {2,4,6,5} |       4 |            6 |          5
- 2000-01-01 02:03:07+00 | 103.1 |         1 | {2,1,3}   |       1 |            3 |           
+ 2000-01-01 02:03:05+00 | 101.1 |         1 | {1,3,4}   |       3 |            4 |           
+ 2000-01-01 02:03:05+00 | 101.1 |         2 | {1,5,7,6} |       5 |            7 |          6
+ 2000-01-01 02:03:06+00 | 102.1 |         1 | {1,3,4}   |       3 |            4 |           
+ 2000-01-01 02:03:06+00 | 102.1 |         2 | {1,5,7,6} |       5 |            7 |          6
+ 2000-01-01 02:03:07+00 | 103.1 |         1 | {1,3,4}   |       3 |            4 |           
 (5 rows)
 
 SELECT time, value, jsonb(labels), val(namespace_id) FROM cpu_usage ORDER BY time, series_id LIMIT 5;
@@ -79,7 +79,7 @@ SELECT time, value, jsonb(labels), val(namespace_id) FROM cpu_usage ORDER BY tim
 SELECT * FROM prom_series.cpu_usage ORDER BY series_id;
  series_id |  labels   | node  | namespace  | new_tag 
 -----------+-----------+-------+------------+---------
-         1 | {2,1,3}   | brain | dev        | 
-         2 | {2,4,6,5} | pinky | production | foo
+         1 | {1,3,4}   | brain | dev        | 
+         2 | {1,5,7,6} | pinky | production | foo
 (2 rows)
 
