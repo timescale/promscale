@@ -29,6 +29,14 @@ connection:
     secretTemplate: "{{ .Release.Name }}-timescaledb-passwords"
 ```
 
+The data in the Secret object should look like this:
+```yaml
+data:
+  username: base64encodedPassword
+```
+where `username` is the user that the Connector will use to connect to the
+database. By default the *'postgres'* user is used, as set in `.Values.connection.user`.
+
 ## Installing
 
 To install the chart with the release name `my-release`:
@@ -58,8 +66,8 @@ helm install --name my-release -f myvalues.yaml .
 | `image`                           | The image (with tag) to pull                | `timescale/timescale-prometheus`   |
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
-| `connection.password.secretTemplate`         | The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
-| `connection.host.nameTemplate`               | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
+| `connection.password.secretTemplate`| The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
+| `connection.host.nameTemplate`    | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
 | `connection.port`                 | Port the db listens to                      | `5432`                             |
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
 | `service.port`                    | Port the connector pods will accept connections on | `9201`                      |
