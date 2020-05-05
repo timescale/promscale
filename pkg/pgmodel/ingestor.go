@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	metricNameLabelName = "__name__"
+	MetricNameLabelName = "__name__"
 )
 
 var (
-	errNoMetricName = fmt.Errorf("metric name missing")
+	ErrNoMetricName = fmt.Errorf("metric name missing")
 )
 
 // SeriesID represents a globally unique id for the series. This should be equivalent
@@ -80,7 +80,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]seriesWithCallback, m
 			return nil, nil, rows, err
 		}
 		if metricName == "" {
-			return nil, nil, rows, errNoMetricName
+			return nil, nil, rows, ErrNoMetricName
 		}
 
 		var seriesID SeriesID

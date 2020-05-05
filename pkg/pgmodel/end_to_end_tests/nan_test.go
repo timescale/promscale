@@ -1,4 +1,4 @@
-package pgmodel
+package end_to_end_tests
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/prompb"
+
+	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
 
 func getSingleSampleValue(t testing.TB, resp *prompb.ReadResponse) float64 {
@@ -47,12 +49,12 @@ func TestSQLStaleNaN(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		metricName := "StaleMetric"
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: metricNameLabelName, Value: metricName},
+					{Name: MetricNameLabelName, Value: metricName},
 					{Name: "foo", Value: "bar"},
 					{Name: "common", Value: "tag"},
 					{Name: "empty", Value: ""},
@@ -77,7 +79,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		matchers := []*prompb.LabelMatcher{
 			{
 				Type:  prompb.LabelMatcher_EQ,
-				Name:  metricNameLabelName,
+				Name:  MetricNameLabelName,
 				Value: metricName,
 			},
 		}

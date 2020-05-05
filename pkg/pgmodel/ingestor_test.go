@@ -100,7 +100,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -115,7 +115,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -126,7 +126,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -135,7 +135,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -151,7 +151,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -168,7 +168,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -177,7 +177,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -193,7 +193,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -210,7 +210,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -227,7 +227,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -244,7 +244,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: metricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -301,10 +301,10 @@ func TestDBIngestorIngest(t *testing.T) {
 				if c.setSeriesErr != nil && err != c.setSeriesErr {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.setSeriesErr)
 				}
-				if err == errNoMetricName {
+				if err == ErrNoMetricName {
 					for _, ts := range c.metrics {
 						for _, label := range ts.Labels {
-							if label.Name == metricNameLabelName {
+							if label.Name == MetricNameLabelName {
 								t.Errorf("returning missing metric name when one was found for metric name: %s\n", label.Name)
 							}
 						}

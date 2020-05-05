@@ -37,7 +37,7 @@ jobs:
       run: go test -race ./...
 
     - name: Test W/O Extension
-      run: go test -race ./pkg/pgmodel -use-extension=false
+      run: go test -race ./pkg/pgmodel/end_to_end_tests/ -use-extension=false
 
     - name: Generated
       run: |

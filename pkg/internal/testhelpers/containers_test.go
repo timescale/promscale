@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	useDocker = flag.Bool("use-docker", true, "start database using a docker container")
-	database  = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	useDocker    = flag.Bool("use-docker", true, "start database using a docker container")
+	testDatabase = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 )
 
 func TestPGConnection(t *testing.T) {
@@ -46,7 +46,7 @@ func TestWithDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	WithDB(t, *database, Superuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	WithDB(t, *testDatabase, Superuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		var res int
 		err := db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
 		if err != nil {
