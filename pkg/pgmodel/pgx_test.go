@@ -341,7 +341,7 @@ func createSeries(x int) []*labels.Labels {
 				Value: fmt.Sprintf("value_%d", i),
 			},
 			labels.Label{
-				Name:  fmt.Sprint(metricNameLabelName),
+				Name:  fmt.Sprint(MetricNameLabelName),
 				Value: fmt.Sprintf("metric_%d", i),
 			},
 		}
@@ -658,7 +658,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
@@ -668,7 +668,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`},
-			sqlArgs: [][]interface{}{{metricNameLabelName, "bar"}},
+			sqlArgs: [][]interface{}{{MetricNameLabelName, "bar"}},
 			queryResults: []rowResults{
 				{{1, []int64{}}},
 			},
@@ -680,7 +680,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
@@ -764,7 +764,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
@@ -810,7 +810,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []string{`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`},
@@ -826,7 +826,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: metricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
@@ -852,7 +852,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -868,7 +868,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []string{`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
@@ -882,11 +882,11 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY s.id`},
 			sqlArgs: [][]interface{}{
 				{"bar"},
-				{metricNameLabelName, "bar"},
+				{MetricNameLabelName, "bar"},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -901,7 +901,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_RE, Name: metricNameLabelName, Value: ""},
+					{Type: prompb.LabelMatcher_RE, Name: MetricNameLabelName, Value: ""},
 				},
 			},
 			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
@@ -938,11 +938,11 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 				{
-					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -960,8 +960,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "foo"},
-					{Type: prompb.LabelMatcher_EQ, Name: metricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "foo"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []string{`SELECT m.metric_name, array_agg(s.id)
@@ -998,11 +998,11 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 				{
-					Labels:  []prompb.Label{{Name: metricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},

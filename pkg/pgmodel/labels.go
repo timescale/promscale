@@ -38,7 +38,7 @@ func LabelsFromSlice(ls labels.Labels) (Labels, error) {
 	for _, l := range ls {
 		names = append(names, l.Name)
 		values = append(values, l.Value)
-		if l.Name == metricNameLabelName {
+		if l.Name == MetricNameLabelName {
 			metricName = l.Value
 		}
 	}
@@ -112,7 +112,7 @@ func labelProtosToLabels(labelPairs []prompb.Label) (Labels, string, error) {
 	for _, l := range labelPairs {
 		names = append(names, l.Name)
 		values = append(values, l.Value)
-		if l.Name == metricNameLabelName {
+		if l.Name == MetricNameLabelName {
 			metricName = l.Value
 		}
 	}

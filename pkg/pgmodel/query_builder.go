@@ -72,7 +72,7 @@ func buildSubQueries(query *prompb.Query) (string, []string, []interface{}, erro
 
 		switch m.Type {
 		case labels.MatchEqual:
-			if m.Name == metricNameLabelName {
+			if m.Name == MetricNameLabelName {
 				metricMatcherCount++
 				metric = m.Value
 			}

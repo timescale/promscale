@@ -1,4 +1,4 @@
-package pgmodel
+package end_to_end_tests
 
 import (
 	"context"
