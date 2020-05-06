@@ -3,12 +3,14 @@ name: Go
 on:
   push:
     branches: [ master ]
-    paths-ignore:
-      - 'extension/**'
+    paths:
+      - '**'
+      - '!extension/**'
   pull_request:
     branches: [ master ]
-    paths-ignore:
-      - 'extension/**'
+    paths:
+      - '**'
+      - '!extension/**'
 
 jobs:
 
