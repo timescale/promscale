@@ -24,7 +24,7 @@ RUN set -ex \
     && cp /pgextwlist/pgextwlist.so `pg_config --pkglibdir`/plugins \
     && rm -rf /pgextwlist
 
-COPY timescale_prometheus_extra.control Makefile /build/timescale-prometheus/
+COPY timescale_prometheus_extra.control Makefile dependencies.makefile /build/timescale-prometheus/
 COPY src/*.c src/*.h /build/timescale-prometheus/src/
 COPY sql/timescale-prometheus.sql /build/timescale-prometheus/sql/
 
