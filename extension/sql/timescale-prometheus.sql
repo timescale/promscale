@@ -58,10 +58,10 @@ DO $$
     END
 $$;
 
-CREATE OR REPLACE FUNCTION @extschema@.const_support(internal) RETURNS INTERNAL
-AS '$libdir/timescale_prometheus_extra', 'const_support'
+CREATE OR REPLACE FUNCTION @extschema@.make_call_subquery_support(internal) RETURNS INTERNAL
+AS '$libdir/timescale_prometheus_extra', 'make_call_subquery_support'
 LANGUAGE C IMMUTABLE STRICT;
-GRANT EXECUTE ON FUNCTION @extschema@.const_support(internal) TO prom_reader;
+GRANT EXECUTE ON FUNCTION @extschema@.make_call_subquery_support(internal) TO prom_reader;
 
 
 --wrapper around jsonb_each_text to give a better row_estimate
@@ -91,7 +91,7 @@ AS $func$
     WHERE l.key = key and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT @extschema@.const_support;
+SUPPORT @extschema@.make_call_subquery_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_equal(label_key, pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_equal(key label_key, pat pattern)
@@ -102,7 +102,7 @@ AS $func$
     WHERE l.key = key and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT @extschema@.const_support;
+SUPPORT @extschema@.make_call_subquery_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_not_equal(label_key, pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION @extschema@.label_find_key_regex(key label_key, pat pattern)
@@ -113,7 +113,7 @@ AS $func$
     WHERE l.key = key and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT @extschema@.const_support;
+SUPPORT @extschema@.make_call_subquery_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_regex(label_key, pattern) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_regex(key label_key, pat pattern)
@@ -124,7 +124,7 @@ AS $func$
     WHERE l.key = key and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
-SUPPORT @extschema@.const_support;
+SUPPORT @extschema@.make_call_subquery_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_not_regex(label_key, pattern) TO prom_reader;
 
 CREATE OPERATOR @extschema@.== (

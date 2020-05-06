@@ -15,18 +15,18 @@
 PG_MODULE_MAGIC;
 #endif
 
-PG_FUNCTION_INFO_V1(const_support);
+PG_FUNCTION_INFO_V1(make_call_subquery_support);
 /*
  * This is a support function that optimizes calls to the supported function if
- * it's called with constant arguments. Such calls are transformed into a
- * subselect of the function call. This allows the planner to make this call
+ * it's called with constant-like arguments. Such calls are transformed into a
+ * subquery of the function call. This allows the planner to make this call
  * an InitPlan which is evaluated once per query instead of multiple times
  * (e.g. on every tuple when the function is used in a WHERE clause).
- * This should be used on any stable function that is often called with constant
+ * This should be used on any stable function that is often called with constant-like
  * arguments.
 */
 Datum
-const_support(PG_FUNCTION_ARGS)
+make_call_subquery_support(PG_FUNCTION_ARGS)
 {
 	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
 	Node	   *ret = NULL;
