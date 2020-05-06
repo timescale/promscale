@@ -172,3 +172,4 @@ Agreement](https://cla-assistant.io/timescale/timescale-prometheus) (CLA) if
 you're a new contributor.
 
 [design-doc]: https://tsdb.co/prom-design-doc
+
