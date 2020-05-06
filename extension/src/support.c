@@ -16,6 +16,20 @@ PG_MODULE_MAGIC;
 #endif
 
 PG_FUNCTION_INFO_V1(make_call_subquery_support);
+
+static bool
+arg_can_be_put_into_subquery(Node *arg) {
+	if(IsA(arg, Const))
+		return true;
+
+	if(IsA(arg, CoerceToDomain)) {
+		CoerceToDomain *dom = castNode(CoerceToDomain, arg);
+		return arg_can_be_put_into_subquery((Node *)dom->arg);
+	}
+
+	return false;
+}
+
 /*
  * This is a support function that optimizes calls to the supported function if
  * it's called with constant-like arguments. Such calls are transformed into a
@@ -57,10 +71,8 @@ make_call_subquery_support(PG_FUNCTION_ARGS)
 			/* Check that these are expressions that don't reference
 			any vars, i.e. they are constants or expressions of constants */
 			Node *arg = lfirst(lc);
-			Relids relids = pull_varnos(arg);
 
-			if(bms_membership(relids) != BMS_EMPTY_SET ||
-				contain_volatile_functions(arg))
+			if(!arg_can_be_put_into_subquery(arg))
 			{
 				PG_RETURN_POINTER(NULL);
 			}
