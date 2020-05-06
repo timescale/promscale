@@ -10,8 +10,8 @@ on:
 
 jobs:
 
-  build:
-    name: Build
+  tests:
+    name: Tests
     runs-on: ubuntu-latest
     steps:
 

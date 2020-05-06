@@ -10,8 +10,8 @@ on:
 
 jobs:
 
-  build:
-    name: Build
+  dockertests:
+    name: New Docker Tests
     runs-on: ubuntu-latest
     steps:
 
