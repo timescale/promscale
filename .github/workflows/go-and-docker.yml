@@ -3,10 +3,12 @@ name: Go and Docker
 on:
   push:
     branches: [ master ]
-    paths: 'extension/**'
+    paths:
+      - 'extension/**'
   pull_request:
     branches: [ master ]
-    paths: 'extension/**'
+    paths:
+      - 'extension/**'
 
 jobs:
 
