@@ -8,6 +8,8 @@
 
 #include <nodes/pathnodes.h>
 #include <nodes/supportnodes.h>
+#include <nodes/bitmapset.h>
+#include <optimizer/optimizer.h>
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -52,8 +54,13 @@ const_support(PG_FUNCTION_ARGS)
 		}
 		foreach(lc, expr->args)
 		{
+			/* Check that these are expressions that don't reference
+			any vars, i.e. they are constants or expressions of constants */
 			Node *arg = lfirst(lc);
-			if(!IsA(arg, Const))
+			Relids relids = pull_varnos(arg);
+
+			if(bms_membership(relids) != BMS_EMPTY_SET ||
+				contain_volatile_functions(arg))
 			{
 				PG_RETURN_POINTER(NULL);
 			}
