@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 )
 
 const (
@@ -32,5 +33,15 @@ func TestMigrate(t *testing.T) {
 			t.Error("Dirty is true")
 		}
 
+	})
+}
+
+func TestMigrateTwice(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+		performMigrate(t, *testDatabase, connectURL)
+		performMigrate(t, *testDatabase, connectURL)
 	})
 }
