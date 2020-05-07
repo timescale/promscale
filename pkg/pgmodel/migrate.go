@@ -22,7 +22,7 @@ import (
 
 const (
 	timescaleInstall = "CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;"
-	extensionInstall = "CREATE EXTENSION timescale_prometheus_extra WITH SCHEMA %s;"
+	extensionInstall = "CREATE EXTENSION IF NOT EXISTS timescale_prometheus_extra WITH SCHEMA %s;"
 )
 
 type mySrc struct {
@@ -71,7 +71,7 @@ func (t *mySrc) ReadDown(version uint) (r io.ReadCloser, identifier string, err 
 }
 
 // Migrate performs a database migration to the latest version
-func Migrate(db *sql.DB) error {
+func Migrate(db *sql.DB) (err error) {
 	// The migration table will be put in the public schema not in any of our schema because we never want to drop it and
 	// our scripts and our last down script drops our shemas
 	driver, err := postgres.WithInstance(db, &postgres.Config{MigrationsTable: "prom_schema_migrations"})
@@ -94,21 +94,35 @@ func Migrate(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		//don't override error if already set
+		if err != nil {
+			return
+		}
+		if sourceErr != nil {
+			err = sourceErr
+			return
+		}
+		if databaseErr != nil {
+			err = databaseErr
+			return
+		}
+	}()
 
 	err = m.Up()
-	if err == nil {
-		_, extErr := db.Exec(fmt.Sprintf(extensionInstall, extSchema))
-		if extErr != nil {
-			log.Warn("msg", "timescale_prometheus_extra extension not installed", "cause", extErr)
-		}
+	//ignore no change errors as we want this idempotent. Being up to date is not a bad thing.
+	if err == migrate.ErrNoChange {
+		err = nil
+	}
+	if err != nil {
+		return err
 	}
 
-	sErr, dErr := m.Close()
-	if sErr != nil {
-		return sErr
+	_, extErr := db.Exec(fmt.Sprintf(extensionInstall, extSchema))
+	if extErr != nil {
+		log.Warn("msg", "timescale_prometheus_extra extension not installed", "cause", extErr)
 	}
-	if dErr != nil {
-		return dErr
-	}
-	return err
+
+	return nil
 }
