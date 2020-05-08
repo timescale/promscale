@@ -693,8 +693,11 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, name, SCHEMA_PROM.la
 
 CREATE OR REPLACE  FUNCTION SCHEMA_PROM.series_id(label jsonb)
 RETURNS BIGINT AS $$
+DECLARE
+  series_id bigint;
+BEGIN
    --need to make sure the series partition exists
-   SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__');
+   PERFORM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__');
 
    WITH CTE AS (
        SELECT SCHEMA_PROM.label_array(label)
@@ -707,17 +710,29 @@ RETURNS BIGINT AS $$
    SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__')
    LIMIT 1
+   INTO series_id;
+
+   RETURN series_id;
+END
 $$
-LANGUAGE SQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.series_id(jsonb)
 IS 'returns the series id that exactly matches a JSONB of labels';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.series_id(jsonb) TO prom_writer;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS BIGINT AS $$
+DECLARE
+  series_id bigint;
+BEGIN
    --need to make sure the series partition exists
-   SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+   PERFORM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
 
+   --This query MUST take all of its locks after the create metric table above
+   --since this requires a lower level lock on the series table than the potential
+   --exclusive lock on series when adding the series partition. This is why this
+   --is a PLPGSQL function and not a SQL Function (a SQL function parses/plans all
+   --statement during startup, which would take a lock on the series table)
    WITH CTE AS (
        SELECT SCHEMA_PROM.label_array(metric_name, label_keys, label_values)
    )
@@ -729,8 +744,12 @@ RETURNS BIGINT AS $$
    SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)
    LIMIT 1
+   INTO series_id;
+
+   RETURN series_id;
+END
 $$
-LANGUAGE SQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(TEXT, text[], text[]) TO prom_writer;
 --
 -- Parameter manipulation functions

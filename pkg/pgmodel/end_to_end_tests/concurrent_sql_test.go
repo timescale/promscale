@@ -10,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/prometheus/prompb"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
+	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
 
 func testConcurrentMetricTable(t testing.TB, db *pgxpool.Pool, metricName string) int64 {
@@ -39,14 +41,40 @@ func testConcurrentNewLabel(t testing.TB, db *pgxpool.Pool, labelName string) in
 	return *id
 }
 
-func testConcurrentCreateSeries(t testing.TB, db *pgxpool.Pool, index int) int64 {
+func testConcurrentCreateSeries(t testing.TB, db *pgxpool.Pool, index int, metricName string) int64 {
 	var id *int64
 	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.create_series((SELECT id FROM _prom_catalog.metric WHERE metric_name=$3), $1, array[(SELECT id FROM _prom_catalog.label WHERE key = '__name__' AND value=$3), $2::int])",
-		fmt.Sprintf("metric_%d", index), index, fmt.Sprintf("metric_%d", index)).Scan(&id)
+		metricName, index, metricName).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if id == nil {
+		t.Fatalf("NULL found")
+	}
+	return *id
+}
+
+func testConcurrentGetSeries(t testing.TB, db *pgxpool.Pool, metricName string) int64 {
+	var id *int64
+	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.get_series_id_for_key_value_array($1, array['__name__'], array[$1])",
+		metricName).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == nil {
+		t.Fatalf("NULL found")
+	}
+	return *id
+}
+
+func testConcurrentGOCMetricTable(t testing.TB, db *pgxpool.Pool, metricName string) int64 {
+	var id *int64
+	var name *string
+	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&id, &name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == nil || name == nil {
 		t.Fatalf("NULL found")
 	}
 	return *id
@@ -94,11 +122,41 @@ func TestConcurrentSQL(t *testing.T) {
 			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				id1 = testConcurrentCreateSeries(t, db, i)
+				id1 = testConcurrentCreateSeries(t, db, i, fmt.Sprintf("metric_%d", i))
 			}()
 			go func() {
 				defer wg.Done()
-				id2 = testConcurrentCreateSeries(t, db, i)
+				id2 = testConcurrentCreateSeries(t, db, i, fmt.Sprintf("metric_%d", i))
+			}()
+			wg.Wait()
+
+			if id1 != id2 {
+				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
+			}
+
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				id1 = testConcurrentGOCMetricTable(t, db, fmt.Sprintf("goc_metric_%d", i))
+			}()
+			go func() {
+				defer wg.Done()
+				id2 = testConcurrentGOCMetricTable(t, db, fmt.Sprintf("goc_metric_%d", i))
+			}()
+			wg.Wait()
+
+			if id1 != id2 {
+				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
+			}
+
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				id1 = testConcurrentGetSeries(t, db, fmt.Sprintf("gs_metric_%d", i))
+			}()
+			go func() {
+				defer wg.Done()
+				id2 = testConcurrentGetSeries(t, db, fmt.Sprintf("gs_metric_%d", i))
 			}()
 			wg.Wait()
 
@@ -106,5 +164,112 @@ func TestConcurrentSQL(t *testing.T) {
 				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
 			}
 		}
+	})
+}
+
+func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool) {
+	metrics := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "cpu_usage"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 10, Value: 0.5},
+			},
+		},
+	}
+
+	ingestor := NewPgxIngestor(db)
+	defer ingestor.Close()
+	_, err := ingestor.Ingest(metrics)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
+	metrics := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: "namespace", Value: "production"},
+				{Name: "node", Value: "brain"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 10, Value: 0.5},
+				{Timestamp: 40, Value: 0.6},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: "namespace", Value: "dev"},
+				{Name: "node", Value: "pinky"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 10, Value: 0.1},
+				{Timestamp: 45, Value: 0.2},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: "namespace", Value: "production"},
+				{Name: "node", Value: "brain"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 10, Value: 0.5},
+				{Timestamp: 40, Value: 0.6},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: "namespace", Value: "dev"},
+				{Name: "node", Value: "pinky"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 10, Value: 0.1},
+				{Timestamp: 45, Value: 0.2},
+			},
+		},
+	}
+
+	ingestor := NewPgxIngestor(db)
+	defer ingestor.Close()
+	_, err := ingestor.Ingest(metrics)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConcurrentInsert(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			testConcurrentInsertSimple(t, db)
+		}()
+		go func() {
+			defer wg.Done()
+			testConcurrentInsertSimple(t, db)
+		}()
+		wg.Wait()
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			testConcurrentInsertAdvanced(t, db)
+		}()
+		go func() {
+			defer wg.Done()
+			testConcurrentInsertAdvanced(t, db)
+		}()
+		wg.Wait()
 	})
 }
