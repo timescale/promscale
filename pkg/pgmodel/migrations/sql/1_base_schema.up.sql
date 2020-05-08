@@ -1103,15 +1103,14 @@ BEGIN
     WHERE m.metric_name = create_series_view.metric_name;
 
     EXECUTE FORMAT($$
-        CREATE OR REPLACE VIEW SCHEMA_SERIES.%I AS
+        CREATE OR REPLACE VIEW SCHEMA_SERIES.%1$I AS
         SELECT
             id AS series_id,
             labels
-            %s
+            %2$s
         FROM
-            SCHEMA_CATALOG.series
-        WHERE metric_id = %L
-    $$, view_name, label_value_cols, metric_id);
+            SCHEMA_DATA_SERIES.%1$I AS series
+    $$, view_name, label_value_cols);
     RETURN true;
 END
 $func$
@@ -1150,8 +1149,8 @@ BEGIN
             %2$s
         FROM
             SCHEMA_DATA.%1$I AS data
-            LEFT JOIN SCHEMA_CATALOG.series AS series ON (series.id = data.series_id AND series.metric_id = %3$L)
-    $$, table_name, label_value_cols, metric_id);
+            LEFT JOIN SCHEMA_DATA_SERIES.%1$I AS series ON (series.id = data.series_id)
+    $$, table_name, label_value_cols);
     RETURN true;
 END
 $func$
