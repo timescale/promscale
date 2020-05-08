@@ -22,7 +22,7 @@ import (
 
 const (
 	timescaleInstall = "CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;"
-	extensionInstall = "CREATE EXTENSION timescale_prometheus_extra WITH SCHEMA %s;"
+	extensionInstall = "CREATE EXTENSION IF NOT EXISTS timescale_prometheus_extra WITH SCHEMA %s;"
 )
 
 type mySrc struct {
@@ -96,6 +96,11 @@ func Migrate(db *sql.DB) error {
 	}
 
 	err = m.Up()
+	if err == migrate.ErrNoChange {
+		log.Info("msg", "No migration changes!")
+		err = nil
+	}
+
 	if err == nil {
 		_, extErr := db.Exec(fmt.Sprintf(extensionInstall, extSchema))
 		if extErr != nil {

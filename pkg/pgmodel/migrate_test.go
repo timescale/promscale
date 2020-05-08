@@ -47,20 +47,41 @@ func TestMigrate(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	withDB(t, *database, func(db *pgxpool.Pool, t testing.TB) {
-		var version int64
-		var dirty bool
-		err := db.QueryRow(context.Background(), "SELECT version, dirty FROM prom_schema_migrations").Scan(&version, &dirty)
+		checkMigrationsState(db, t)
+	})
+}
+
+func TestRepeatMigrate(t *testing.T) {
+	testhelpers.WithDB(t, *database, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+		performMigrate(t, connectURL)
+
+		//need to get a new pool after the Migrate to catch any GUC changes made during Migrate
+		db, err := pgxpool.Connect(context.Background(), connectURL)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if version != expectedVersion {
-			t.Errorf("Version unexpected:\ngot\n%d\nwanted\n%d", version, expectedVersion)
-		}
-		if dirty {
-			t.Error("Dirty is true")
-		}
+		defer func() {
+			db.Close()
+		}()
 
+		performMigrate(t, connectURL)
+		checkMigrationsState(db, t)
 	})
+}
+
+func checkMigrationsState(db *pgxpool.Pool, t testing.TB) {
+	var version int64
+	var dirty bool
+	err := db.QueryRow(context.Background(), "SELECT version, dirty FROM prom_schema_migrations").Scan(&version, &dirty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != expectedVersion {
+		t.Errorf("Version unexpected:\ngot\n%d\nwanted\n%d", version, expectedVersion)
+	}
+	if dirty {
+		t.Error("Dirty is true")
+	}
 }
 
 func testConcurrentMetricTable(t testing.TB, db *pgxpool.Pool, metricName string) int64 {
@@ -1282,7 +1303,7 @@ func TestMain(m *testing.M) {
 
 func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
 	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
-		performMigrate(t, DBName, connectURL)
+		performMigrate(t, connectURL)
 
 		//need to get a new pool after the Migrate to catch any GUC changes made during Migrate
 		db, err := pgxpool.Connect(context.Background(), connectURL)
@@ -1296,7 +1317,7 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 	})
 }
 
-func performMigrate(t testing.TB, DBName string, connectURL string) {
+func performMigrate(t testing.TB, connectURL string) {
 	dbStd, err := sql.Open("pgx", connectURL)
 	defer func() {
 		err := dbStd.Close()
