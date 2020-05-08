@@ -167,11 +167,11 @@ func TestConcurrentSQL(t *testing.T) {
 	})
 }
 
-func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool) {
+func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_usage"},
+				{Name: MetricNameLabelName, Value: metric},
 			},
 			Samples: []prompb.Sample{
 				{Timestamp: 10, Value: 0.5},
@@ -250,16 +250,29 @@ func TestConcurrentInsert(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			testConcurrentInsertSimple(t, db)
-		}()
-		go func() {
-			defer wg.Done()
-			testConcurrentInsertSimple(t, db)
-		}()
-		wg.Wait()
+		for i := 0; i < 10; i++ {
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				testConcurrentInsertSimple(t, db, fmt.Sprintf("metric_%d", i))
+			}()
+			go func() {
+				defer wg.Done()
+				testConcurrentInsertSimple(t, db, fmt.Sprintf("metric_%d", i))
+			}()
+			wg.Wait()
+
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				testConcurrentInsertSimple(t, db, fmt.Sprintf("metric_1_%d", i))
+			}()
+			go func() {
+				defer wg.Done()
+				testConcurrentInsertSimple(t, db, fmt.Sprintf("metric_2_%d", i))
+			}()
+			wg.Wait()
+		}
 
 		wg.Add(2)
 		go func() {
