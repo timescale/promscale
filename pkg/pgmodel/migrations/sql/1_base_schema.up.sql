@@ -193,6 +193,12 @@ BEGIN
     SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
     INTO STRICT label_id;
 
+
+    -- stupidly create table ... partition of X first takes an access share lock
+    -- and then an access exclusive lock. Such an upgrade can, and does, cause
+    -- deadlocks. Taking the stronger lock beforehand prevents such deadlocks.
+    LOCK TABLE _prom_catalog.series in ACCESS EXCLUSIVE mode;
+
     --note that because labels[1] is unique across partitions and UNIQUE(labels) inside partition, labels are guaranteed globally unique
     EXECUTE format($$
         CREATE TABLE SCHEMA_DATA_SERIES.%1$I PARTITION OF SCHEMA_CATALOG.series (
