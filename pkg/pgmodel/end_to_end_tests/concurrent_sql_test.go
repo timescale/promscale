@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -172,9 +173,19 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		{
 			Labels: []prompb.Label{
 				{Name: MetricNameLabelName, Value: metric},
+				{Name: "node", Value: "brain"},
 			},
 			Samples: []prompb.Sample{
-				{Timestamp: 10, Value: 0.5},
+				{Timestamp: int64(model.Now()), Value: 0.5},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: metric},
+				{Name: "node", Value: "pinky"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: int64(model.Now()), Value: 0.5},
 			},
 		},
 	}
@@ -196,8 +207,8 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 				{Name: "node", Value: "brain"},
 			},
 			Samples: []prompb.Sample{
-				{Timestamp: 10, Value: 0.5},
-				{Timestamp: 40, Value: 0.6},
+				{Timestamp: int64(model.Now()), Value: 0.5},
+				{Timestamp: int64(model.Now()), Value: 0.6},
 			},
 		},
 		{
@@ -207,8 +218,8 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 				{Name: "node", Value: "pinky"},
 			},
 			Samples: []prompb.Sample{
-				{Timestamp: 10, Value: 0.1},
-				{Timestamp: 45, Value: 0.2},
+				{Timestamp: int64(model.Now()), Value: 0.1},
+				{Timestamp: int64(model.Now()), Value: 0.2},
 			},
 		},
 		{
@@ -218,8 +229,8 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 				{Name: "node", Value: "brain"},
 			},
 			Samples: []prompb.Sample{
-				{Timestamp: 10, Value: 0.5},
-				{Timestamp: 40, Value: 0.6},
+				{Timestamp: int64(model.Now()), Value: 0.5},
+				{Timestamp: int64(model.Now()), Value: 0.6},
 			},
 		},
 		{
@@ -229,8 +240,8 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 				{Name: "node", Value: "pinky"},
 			},
 			Samples: []prompb.Sample{
-				{Timestamp: 10, Value: 0.1},
-				{Timestamp: 45, Value: 0.2},
+				{Timestamp: int64(model.Now()), Value: 0.1},
+				{Timestamp: int64(model.Now()), Value: 0.2},
 			},
 		},
 	}
@@ -273,6 +284,21 @@ func TestConcurrentInsert(t *testing.T) {
 			}()
 			wg.Wait()
 		}
+
+		for i := 0; i < 10; i++ {
+			j := i
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				testConcurrentInsertSimple(t, db, fmt.Sprintf("metric_multi_%d", j))
+			}()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				testConcurrentInsertSimple(t, db, fmt.Sprintf("metric_multi_%d", j))
+			}()
+		}
+		wg.Wait()
 
 		wg.Add(2)
 		go func() {

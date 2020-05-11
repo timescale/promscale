@@ -82,6 +82,48 @@ func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesExistingLabels(b *testing.B) {
 	})
 }
 
+func BenchmarkGetSeriesIDForKeyValueArrayNewMetric(b *testing.B) {
+	b.StopTimer()
+	withDB(b, "bench_2", func(db *pgxpool.Pool, t testing.TB) {
+		err := createMetricTableName(db, metricName)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		keys, values := generateKeysAndValues(labelCount, "label")
+		for n := 0; n < b.N; n++ {
+			err = getSeriesIDForKeyValueArray(db, otherMetricName, keys, values)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		var bench *testing.B
+		var ok bool
+		if bench, ok = t.(*testing.B); !ok {
+			t.Fatal("Not a benchmarking instance, stopping benchmark")
+		}
+
+		//preload many metrics so that we are testing performance when many metrics exists
+		for n := 0; n < 1000; n++ {
+			err = getSeriesIDForKeyValueArray(db, fmt.Sprintf("%s_warmup_%d", metricName, n), keys, values)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		bench.ResetTimer()
+		bench.StartTimer()
+		for n := 0; n < b.N; n++ {
+			err = getSeriesIDForKeyValueArray(db, fmt.Sprintf("%s_%d", metricName, n), keys, values)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		bench.StopTimer()
+	})
+}
+
 func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesNewLabels(b *testing.B) {
 	b.StopTimer()
 	withDB(b, "bench_3", func(db *pgxpool.Pool, t testing.TB) {

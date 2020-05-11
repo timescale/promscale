@@ -197,7 +197,8 @@ BEGIN
     -- stupidly create table ... partition of X first takes an access share lock
     -- and then an access exclusive lock. Such an upgrade can, and does, cause
     -- deadlocks. Taking the stronger lock beforehand prevents such deadlocks.
-    LOCK TABLE _prom_catalog.series in ACCESS EXCLUSIVE mode;
+    -- We only need the lock on the parent.
+    LOCK TABLE ONLY SCHEMA_CATALOG.series in ACCESS EXCLUSIVE mode;
 
     --note that because labels[1] is unique across partitions and UNIQUE(labels) inside partition, labels are guaranteed globally unique
     EXECUTE format($$
@@ -701,21 +702,25 @@ CREATE OR REPLACE  FUNCTION SCHEMA_PROM.series_id(label jsonb)
 RETURNS BIGINT AS $$
 DECLARE
   series_id bigint;
+  table_name name;
+  metric_id int;
 BEGIN
    --need to make sure the series partition exists
-   PERFORM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__');
+   SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__') mtn
+   INTO metric_id, table_name;
 
-   WITH CTE AS (
-       SELECT SCHEMA_PROM.label_array(label)
-   )
-   SELECT id
-   FROM SCHEMA_CATALOG.series
-   WHERE labels = (SELECT * FROM cte)
-         AND metric_id =  (SELECT (SCHEMA_CATALOG.get_metric_table_name_if_exists(label->>'__name__')).id)
-   UNION ALL
-   SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
-   FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__')
-   LIMIT 1
+   EXECUTE format($query$
+    WITH CTE AS (
+        SELECT SCHEMA_PROM.label_array($1)
+    )
+    SELECT id
+    FROM SCHEMA_DATA_SERIES.%1$I as series
+    WHERE labels = (SELECT * FROM cte)
+    UNION ALL
+    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, (SELECT * FROM cte))
+    LIMIT 1
+   $query$, table_name, metric_id)
+   USING label
    INTO series_id;
 
    RETURN series_id;
@@ -727,34 +732,38 @@ IS 'returns the series id that exactly matches a JSONB of labels';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.series_id(jsonb) TO prom_writer;
 
 CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS BIGINT AS $$
+RETURNS BIGINT AS $func$
 DECLARE
   series_id bigint;
+  table_name name;
+  metric_id int;
 BEGIN
    --need to make sure the series partition exists
-   PERFORM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+   SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
+   INTO metric_id, table_name;
 
    --This query MUST take all of its locks after the create metric table above
    --since this requires a lower level lock on the series table than the potential
    --exclusive lock on series when adding the series partition. This is why this
    --is a PLPGSQL function and not a SQL Function (a SQL function parses/plans all
    --statement during startup, which would take a lock on the series table)
-   WITH CTE AS (
-       SELECT SCHEMA_PROM.label_array(metric_name, label_keys, label_values)
-   )
-   SELECT id
-   FROM SCHEMA_CATALOG.series
-   WHERE labels = (SELECT * FROM cte)
-         AND metric_id =  (SELECT (SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name)).id)
-   UNION ALL
-   SELECT SCHEMA_CATALOG.create_series(id, table_name, (SELECT * FROM cte))
-   FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)
-   LIMIT 1
+   EXECUTE format($query$
+    WITH CTE AS (
+        SELECT SCHEMA_PROM.label_array($1, $2, $3)
+    )
+    SELECT id
+    FROM SCHEMA_DATA_SERIES.%1$I as series
+    WHERE labels = (SELECT * FROM cte)
+    UNION ALL
+    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, (SELECT * FROM cte))
+    LIMIT 1
+   $query$, table_name, metric_id)
+   USING metric_name, label_keys, label_values
    INTO series_id;
 
    RETURN series_id;
 END
-$$
+$func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(TEXT, text[], text[]) TO prom_writer;
 --
