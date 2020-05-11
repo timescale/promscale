@@ -705,9 +705,11 @@ DECLARE
   table_name name;
   metric_id int;
 BEGIN
-   --need to make sure the series partition exists
+   --See get_series_id_for_key_value_array for notes about locking
    SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__') mtn
    INTO metric_id, table_name;
+
+   LOCK TABLE ONLY SCHEMA_CATALOG.series in ACCESS SHARE mode;
 
    EXECUTE format($query$
     WITH CTE AS (
@@ -741,6 +743,16 @@ BEGIN
    --need to make sure the series partition exists
    SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
    INTO metric_id, table_name;
+
+   --lock the series table parent first in access share mode so that
+   --its locked before any labels etc are created. Establishes a lock
+   --order of series table then labels table.  This prevents
+   --deadlocks between calls that create metrics and concurrent calls
+   --that don't create metric but do create labels. Where the label-creating
+   --workers is trying to create a series and the metric-creator is waiting
+   --for a label-creation to complete making it's series. This guarantess that
+   -- any metric-creator finshes before other processes create series or labels.
+   LOCK TABLE ONLY SCHEMA_CATALOG.series in ACCESS SHARE mode;
 
    --This query MUST take all of its locks after the create metric table above
    --since this requires a lower level lock on the series table than the potential
