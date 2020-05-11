@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/timescale/timescale-prometheus/pkg/api"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -32,6 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	tspromql "github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
 type config struct {
@@ -190,9 +192,16 @@ func main() {
 		os.Exit(1)
 	}
 	defer client.Close()
-
+	queriable := tspromql.NewQueriable(client)
+	queryEngine := tspromql.NewEngine(log.GetLogger(), time.Minute)
 	http.Handle("/write", timeHandler(httpRequestDuration, "write", write(client)))
 	http.Handle("/read", timeHandler(httpRequestDuration, "read", read(client)))
+	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queriable))
+	http.Handle("/query", queryHandler)
+	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queriable))
+	http.Handle("/query_range", queryRangeHandler)
+	http.Handle("/api/v1/query", queryHandler)
+	http.Handle("/api/v1/query_range", queryRangeHandler)
 	http.Handle("/healthz", health(client))
 
 	log.Info("msg", "Starting up...")
