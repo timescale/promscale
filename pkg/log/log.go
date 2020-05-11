@@ -39,6 +39,10 @@ func Init(logLevel string) error {
 	return nil
 }
 
+func GetLogger() log.Logger {
+	return logger
+}
+
 // Debug logs a DEBUG level message, ignoring logging errors
 func Debug(keyvals ...interface{}) {
 	_ = level.Debug(logger).Log(keyvals...)
