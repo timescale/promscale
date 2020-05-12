@@ -24,7 +24,7 @@ type SeriesID int64
 
 // inserter is responsible for inserting label, series and data into the storage.
 type inserter interface {
-	InsertNewData(newSeries []seriesWithCallback, rows map[string][]*samplesInfo) (uint64, error)
+	InsertNewData(rows map[string][]labeledSamplesInfo) (uint64, error)
 	Close()
 }
 
@@ -39,7 +39,8 @@ type Cache interface {
 	SetSeries(lset Labels, id SeriesID) error
 }
 
-type samplesInfo struct {
+type labeledSamplesInfo struct {
+	labels   Labels
 	seriesID SeriesID
 	samples  []prompb.Sample
 }
@@ -52,22 +53,22 @@ type DBIngestor struct {
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
-	newSeries, data, totalRows, err := i.parseData(tts)
+	data, totalRows, err := i.parseData(tts)
 
 	if err != nil {
 		return 0, err
 	}
 
-	rowsInserted, err := i.db.InsertNewData(newSeries, data)
+	rowsInserted, err := i.db.InsertNewData(data)
 	if err == nil && int(rowsInserted) != totalRows {
 		return rowsInserted, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}
 	return rowsInserted, err
 }
 
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]seriesWithCallback, map[string][]*samplesInfo, int, error) {
-	var seriesToInsert []seriesWithCallback
-	dataSamples := make(map[string][]*samplesInfo)
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string][]labeledSamplesInfo, int, error) {
+	// var seriesToInsert []seriesWithCallback
+	dataSamples := make(map[string][]labeledSamplesInfo)
 	rows := 0
 
 	for _, t := range tts {
@@ -77,43 +78,22 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) ([]seriesWithCallback, m
 
 		seriesLabels, metricName, err := labelProtosToLabels(t.Labels)
 		if err != nil {
-			return nil, nil, rows, err
+			return nil, rows, err
 		}
 		if metricName == "" {
-			return nil, nil, rows, ErrNoMetricName
+			return nil, rows, ErrNoMetricName
 		}
-
-		var seriesID SeriesID
-		newSeries := false
-
-		seriesID, err = i.cache.GetSeries(seriesLabels)
-		if err != nil {
-			if err != ErrEntryNotFound {
-				return nil, nil, rows, err
-			}
-			newSeries = true
-		}
-
-		sample := samplesInfo{
-			seriesID,
+		sample := labeledSamplesInfo{
+			seriesLabels,
+			-1,
 			t.Samples,
 		}
 		rows += len(t.Samples)
 
-		if newSeries {
-			seriesToInsert = append(seriesToInsert, seriesWithCallback{
-				Series: seriesLabels,
-				Callback: func(l Labels, id SeriesID) error {
-					sample.seriesID = id
-					return i.cache.SetSeries(l, id)
-				},
-			})
-		}
-
-		dataSamples[metricName] = append(dataSamples[metricName], &sample)
+		dataSamples[metricName] = append(dataSamples[metricName], sample)
 	}
 
-	return seriesToInsert, dataSamples, rows, nil
+	return dataSamples, rows, nil
 }
 
 // Close closes the ingestor
