@@ -372,12 +372,12 @@ func TestSQLIngest(t *testing.T) {
 				ingestor := NewPgxIngestor(db)
 				defer ingestor.Close()
 				cnt, err := ingestor.Ingest(tcase.metrics)
-				if cnt != tcase.count {
-					t.Fatalf("counts not equal: got %v expected %v\n", cnt, tcase.count)
-				}
-
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
+				}
+
+				if cnt != tcase.count {
+					t.Fatalf("counts not equal: got %v expected %v\n", cnt, tcase.count)
 				}
 
 				if err != nil {

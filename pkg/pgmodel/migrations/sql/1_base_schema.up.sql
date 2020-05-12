@@ -733,11 +733,9 @@ COMMENT ON FUNCTION SCHEMA_PROM.series_id(jsonb)
 IS 'returns the series id that exactly matches a JSONB of labels';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.series_id(jsonb) TO prom_writer;
 
-CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS BIGINT AS $func$
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[], OUT table_name NAME, OUT series_id BIGINT)
+AS $func$
 DECLARE
-  series_id bigint;
-  table_name name;
   metric_id int;
 BEGIN
    --need to make sure the series partition exists
@@ -773,7 +771,7 @@ BEGIN
    USING metric_name, label_keys, label_values
    INTO series_id;
 
-   RETURN series_id;
+   RETURN;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;

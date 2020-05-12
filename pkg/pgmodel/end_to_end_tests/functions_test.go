@@ -220,7 +220,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var seriesIDKeyVal int
-					err = db.QueryRow(context.Background(), "SELECT get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					err = db.QueryRow(context.Background(), "SELECT series_id FROM get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
 						t.Fatal(err)
 					}
