@@ -3,19 +3,20 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"math"
+	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	tspromql "github.com/timescale/timescale-prometheus/pkg/promql"
-	"math"
-	"net/http"
-	"strconv"
-	"time"
 )
 
-func Query(queryEngine *promql.Engine, queriable *tspromql.Queriable) http.Handler {
+func Query(queryEngine *promql.Engine, queriable *tspromql.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
 		if t := r.FormValue("time"); t != "" {

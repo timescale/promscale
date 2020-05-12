@@ -5,7 +5,6 @@
 package pgmodel
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +12,9 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
@@ -53,12 +55,11 @@ const (
 	GROUP BY s.id`
 )
 
-func buildSubQueries(query *prompb.Query) (string, []string, []interface{}, error) {
+func buildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{}, error) {
 	var err error
 	metric := ""
 	metricMatcherCount := 0
 	cb := clauseBuilder{}
-	matchers, err := fromLabelMatchers(query.Matchers)
 
 	if err != nil {
 		return "", nil, nil, err
@@ -123,34 +124,6 @@ func buildSubQueries(query *prompb.Query) (string, []string, []interface{}, erro
 	return metric, clauses, values, err
 }
 
-// fromLabelMatchers parses protobuf label matchers to Prometheus label matchers.
-// TODO: This is a copy of a function in github.com/prometheus/prometheus/storage/remote
-// package b/c it was causing build issues. We should remove it and resolve the build issues.
-func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, error) {
-	result := make([]*labels.Matcher, 0, len(matchers))
-	for _, matcher := range matchers {
-		var mtype labels.MatchType
-		switch matcher.Type {
-		case prompb.LabelMatcher_EQ:
-			mtype = labels.MatchEqual
-		case prompb.LabelMatcher_NEQ:
-			mtype = labels.MatchNotEqual
-		case prompb.LabelMatcher_RE:
-			mtype = labels.MatchRegexp
-		case prompb.LabelMatcher_NRE:
-			mtype = labels.MatchNotRegexp
-		default:
-			return nil, errors.New("invalid matcher type")
-		}
-		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, matcher)
-	}
-	return result, nil
-}
-
 type clauseBuilder struct {
 	clauses []string
 	args    []interface{}
@@ -180,6 +153,160 @@ func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
 
 func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
+}
+
+func buildSeriesSet(rows []pgx.Rows, sortSeries bool) (storage.SeriesSet, storage.Warnings, error) {
+	series := make([]*concreteSeries, 0, len(rows))
+	for _, r := range rows {
+		for r.Next() {
+			var (
+				keys       []string
+				vals       []string
+				timestamps []time.Time
+				values     []float64
+			)
+			err := r.Scan(&keys, &vals, &timestamps, &values)
+
+			if err != nil {
+				return nil, nil, err
+			}
+
+			if len(timestamps) != len(values) {
+				return nil, nil, fmt.Errorf("query returned a mismatch in timestamps and values")
+			}
+
+			if len(keys) != len(vals) {
+				return nil, nil, fmt.Errorf("query returned a mismatch in label keys and values")
+			}
+
+			ll := make(labels.Labels, 0, len(keys))
+
+			for i, k := range keys {
+				ll = append(ll, labels.Label{
+					Name:  k,
+					Value: vals[i],
+				})
+			}
+
+			sort.Sort(ll)
+
+			result := &promql.Series{
+				Metric: ll,
+				Points: make([]promql.Point, 0, len(timestamps)),
+			}
+
+			for i := range timestamps {
+				result.Points = append(result.Points, promql.Point{
+					T: toMilis(timestamps[i]),
+					V: values[i],
+				})
+			}
+
+			series = append(series, &concreteSeries{result})
+		}
+	}
+
+	if sortSeries {
+		sort.Sort(byLabel(series))
+	}
+	return &concreteSeriesSet{
+		series: series,
+	}, nil, nil
+}
+
+type byLabel []*concreteSeries
+
+func (a byLabel) Len() int      { return len(a) }
+func (a byLabel) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a byLabel) Less(i, j int) bool {
+	return labels.Compare(a[i].Samples.Metric, a[j].Samples.Metric) < 0
+}
+
+// errSeriesSet implements storage.SeriesSet, just returning an error.
+type errSeriesSet struct {
+	err error
+}
+
+func (errSeriesSet) Next() bool {
+	return false
+}
+
+func (errSeriesSet) At() storage.Series {
+	return nil
+}
+
+func (e errSeriesSet) Err() error {
+	return e.err
+}
+
+// concreteSeriesSet implements storage.SeriesSet.
+type concreteSeriesSet struct {
+	cur    int
+	series []*concreteSeries
+}
+
+func (c *concreteSeriesSet) Next() bool {
+	c.cur++
+	return c.cur-1 < len(c.series)
+}
+
+func (c *concreteSeriesSet) At() storage.Series {
+	return c.series[c.cur-1]
+}
+
+func (c *concreteSeriesSet) Err() error {
+	return nil
+}
+
+// concreteSeries implements storage.Series.
+type concreteSeries struct {
+	Samples *promql.Series
+}
+
+func (c *concreteSeries) Labels() labels.Labels {
+	return c.Samples.Metric
+}
+
+func (c *concreteSeries) Iterator() chunkenc.Iterator {
+	return newConcreteSeriersIterator(c)
+}
+
+// concreteSeriesIterator implements storage.SeriesIterator.
+type concreteSeriesIterator struct {
+	cur    int
+	series *concreteSeries
+}
+
+func newConcreteSeriersIterator(series *concreteSeries) chunkenc.Iterator {
+	return &concreteSeriesIterator{
+		cur:    -1,
+		series: series,
+	}
+}
+
+// Seek implements storage.SeriesIterator.
+func (c *concreteSeriesIterator) Seek(t int64) bool {
+	c.cur = sort.Search(len(c.series.Samples.Points), func(n int) bool {
+		return c.series.Samples.Points[n].T >= t
+	})
+	return c.cur < len(c.series.Samples.Points)
+}
+
+// At implements storage.SeriesIterator.
+func (c *concreteSeriesIterator) At() (t int64, v float64) {
+	s := c.series.Samples.Points[c.cur]
+	return s.T, s.V
+}
+
+// Next implements storage.SeriesIterator.
+func (c *concreteSeriesIterator) Next() bool {
+	c.cur++
+	return c.cur < len(c.series.Samples.Points)
+}
+
+// Err implements storage.SeriesIterator.
+func (c *concreteSeriesIterator) Err() error {
+	return nil
 }
 
 func buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {
