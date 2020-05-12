@@ -5,6 +5,8 @@
 package pgmodel
 
 import (
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
@@ -17,14 +19,15 @@ type Reader interface {
 // matching timeseries.
 type Querier interface {
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
+	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, ms ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error)
 }
 
-//HealthChecker allows checking for proper operations
+//HealthChecker allows checking for proper operations.
 type HealthChecker interface {
 	HealthCheck() error
 }
 
-// QueryHealthChecker can query and check its own health
+// QueryHealthChecker can query and check its own health.
 type QueryHealthChecker interface {
 	Querier
 	HealthChecker
@@ -33,6 +36,10 @@ type QueryHealthChecker interface {
 // DBReader reads data from the database.
 type DBReader struct {
 	db QueryHealthChecker
+}
+
+func (r *DBReader) GetQuerier() QueryHealthChecker {
+	return r.db
 }
 
 func (r *DBReader) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {

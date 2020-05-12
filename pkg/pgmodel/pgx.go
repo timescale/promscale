@@ -21,6 +21,8 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
@@ -845,19 +847,70 @@ func (q *pgxQuerier) HealthCheck() error {
 	return nil
 }
 
+func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, ms ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	rows, err := q.getResultRows(mint, maxt, ms)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	defer func() {
+		for _, r := range rows {
+			r.Close()
+		}
+	}()
+
+	return buildSeriesSet(rows, sortSeries)
+}
+
 func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	if query == nil {
 		return []*prompb.TimeSeries{}, nil
 	}
 
-	metric, cases, values, err := buildSubQueries(query)
+	matchers, err := prompb.FromLabelMatchers(query.Matchers)
+
 	if err != nil {
 		return nil, err
 	}
+
+	rows, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, matchers)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		for _, r := range rows {
+			r.Close()
+		}
+	}()
+
+	results := make([]*prompb.TimeSeries, 0, len(rows))
+
+	for _, r := range rows {
+		ts, err := buildTimeSeries(r)
+
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, ts...)
+	}
+
+	return results, nil
+}
+
+func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, matchers []*labels.Matcher) ([]pgx.Rows, error) {
+	metric, cases, values, err := buildSubQueries(matchers)
+	if err != nil {
+		return nil, err
+	}
+
 	filter := metricTimeRangeFilter{
 		metric:    metric,
-		startTime: toRFC3339Nano(query.StartTimestampMs),
-		endTime:   toRFC3339Nano(query.EndTimestampMs),
+		startTime: toRFC3339Nano(startTimestamp),
+		endTime:   toRFC3339Nano(endTimestamp),
 	}
 
 	if metric != "" {
@@ -878,7 +931,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	results := make([]*prompb.TimeSeries, 0, len(metrics))
+	results := make([]pgx.Rows, 0, len(metrics))
 
 	for i, metric := range metrics {
 		tableName, err := q.getMetricTableName(metric)
@@ -898,25 +951,18 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 			return nil, err
 		}
 
-		ts, err := buildTimeSeries(rows)
-		rows.Close()
-
-		if err != nil {
-			return nil, err
-		}
-
-		results = append(results, ts...)
+		results = append(results, rows)
 	}
 
 	return results, nil
 }
 
-func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}) ([]*prompb.TimeSeries, error) {
+func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}) ([]pgx.Rows, error) {
 	tableName, err := q.getMetricTableName(metric)
 	if err != nil {
 		// If the metric table is missing, there are no results for this query.
 		if err == errMissingTableName {
-			return make([]*prompb.TimeSeries, 0), nil
+			return nil, nil
 		}
 
 		return nil, err
@@ -933,9 +979,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 			return nil, err
 		}
 	}
-
-	defer rows.Close()
-	return buildTimeSeries(rows)
+	return []pgx.Rows{rows}, nil
 }
 
 func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {

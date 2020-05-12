@@ -10,7 +10,6 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"github.com/timescale/timescale-prometheus/pkg/api"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -20,6 +19,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 
+	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgclient"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
@@ -192,13 +192,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer client.Close()
-	queriable := tspromql.NewQueriable(client)
+	queryable := client.GetQueryable()
 	queryEngine := tspromql.NewEngine(log.GetLogger(), time.Minute)
+	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queryable))
+	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queryable))
 	http.Handle("/write", timeHandler(httpRequestDuration, "write", write(client)))
 	http.Handle("/read", timeHandler(httpRequestDuration, "read", read(client)))
-	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queriable))
 	http.Handle("/query", queryHandler)
-	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queriable))
 	http.Handle("/query_range", queryRangeHandler)
 	http.Handle("/api/v1/query", queryHandler)
 	http.Handle("/api/v1/query_range", queryRangeHandler)
