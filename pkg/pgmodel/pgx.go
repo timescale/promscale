@@ -63,18 +63,64 @@ type MetricCache interface {
 	Set(metric string, tableName string) error
 }
 
-type pgxConnImpl struct {
+type pgxConnPoolImpl struct {
 	conn *pgxpool.Pool
 }
 
-func (p *pgxConnImpl) getConn() *pgxpool.Pool {
+func (p *pgxConnPoolImpl) getConn() *pgxpool.Pool {
+	return p.conn
+}
+
+func (p *pgxConnPoolImpl) Close() {
+	conn := p.getConn()
+	p.conn = nil
+	conn.Close()
+}
+
+func (p *pgxConnPoolImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+	conn := p.getConn()
+
+	return conn.Exec(ctx, sql, arguments...)
+}
+
+func (p *pgxConnPoolImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	conn := p.getConn()
+
+	return conn.Query(ctx, sql, args...)
+}
+
+func (p *pgxConnPoolImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	conn := p.getConn()
+
+	return conn.CopyFrom(ctx, tableName, columnNames, rowSrc)
+}
+
+func (p *pgxConnPoolImpl) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
+	return pgx.CopyFromRows(rows)
+}
+
+func (p *pgxConnPoolImpl) NewBatch() pgxBatch {
+	return &pgx.Batch{}
+}
+
+func (p *pgxConnPoolImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+	conn := p.getConn()
+
+	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
+}
+
+type pgxConnImpl struct {
+	conn *pgxpool.Conn
+}
+
+func (p *pgxConnImpl) getConn() *pgxpool.Conn {
 	return p.conn
 }
 
 func (p *pgxConnImpl) Close() {
 	conn := p.getConn()
 	p.conn = nil
-	conn.Close()
+	conn.Release()
 }
 
 func (p *pgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
@@ -161,11 +207,11 @@ func (t *SampleInfoIterator) Err() error {
 // for caching metric table names.
 func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngestor {
 
-	conn := &pgxConnImpl{
+	conn := &pgxConnPoolImpl{
 		conn: c,
 	}
 
-	pi := newPgxInserter(conn, cache)
+	pi := newPgxInserter(conn, cache, 0)
 
 	series, _ := bigcache.NewBigCache(DefaultCacheConfig())
 
@@ -186,18 +232,25 @@ func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
 	return NewPgxIngestorWithMetricCache(c, cache)
 }
 
-func newPgxInserter(conn pgxConn, cache MetricCache) *pgxInserter {
-	maxProcs := runtime.GOMAXPROCS(-1)
-	if maxProcs <= 0 {
-		maxProcs = runtime.NumCPU()
+func newPgxInserter(conn pgxConn, cache MetricCache, numWorkers int) *pgxInserter {
+	if numWorkers <= 0 {
+		numWorkers = runtime.GOMAXPROCS(-1)
+		if numWorkers <= 0 {
+			numWorkers = runtime.NumCPU()
+		}
+		if numWorkers <= 0 {
+			numWorkers = 1
+		}
 	}
-	if maxProcs <= 0 {
-		maxProcs = 1
-	}
-	inserters := make([]chan insertDataRequest, maxProcs)
-	for i := 0; i < maxProcs; i++ {
+	inserters := make([]chan insertDataRequest, numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		connection, err := conn.(*pgxConnPoolImpl).getConn().Acquire(context.Background())
+		if err != nil {
+			panic(err)
+		}
 		ch := make(chan insertDataRequest, 1000)
 		inserters[i] = ch
+		conn := &pgxConnImpl{conn: connection}
 		go runInserterRoutine(conn, ch)
 	}
 
@@ -636,7 +689,7 @@ func (m *orderedMap) giveOldBuffer(buffer *pendingBuffer) {
 // and caches metric table names using the supplied cacher.
 func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBReader {
 	pi := &pgxQuerier{
-		conn: &pgxConnImpl{
+		conn: &pgxConnPoolImpl{
 			conn: c,
 		},
 		metricTableNames: cache,
