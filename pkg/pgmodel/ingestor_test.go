@@ -35,8 +35,8 @@ func (m *mockCache) SetSeries(lset Labels, id SeriesID) error {
 }
 
 type mockInserter struct {
-	insertedSeries  []seriesWithCallback
-	insertedData    []map[string][]*samplesInfo
+	insertedSeries  map[string]SeriesID
+	insertedData    []map[string][]samplesInfo
 	insertSeriesErr error
 	insertDataErr   error
 }
@@ -45,28 +45,24 @@ func (m *mockInserter) Close() {
 
 }
 
-func (m *mockInserter) InsertNewData(newSeries []seriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
-
-	err := m.InsertSeries(newSeries)
-	if err != nil {
-		return 0, err
-	}
-
+func (m *mockInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
 	return m.InsertData(rows)
 }
 
-func (m *mockInserter) InsertSeries(seriesToInsert []seriesWithCallback) error {
-	m.insertedSeries = append(m.insertedSeries, seriesToInsert...)
-	for i, sti := range seriesToInsert {
-		err := sti.Callback(sti.Series, SeriesID(i))
-		if err != nil {
-			return err
+func (m *mockInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
+	for _, v := range rows {
+		for i, si := range v {
+			id, ok := m.insertedSeries[si.labels.String()]
+			if !ok {
+				id = SeriesID(len(m.insertedSeries))
+				m.insertedSeries[si.labels.String()] = id
+			}
+			v[i].seriesID = id
 		}
 	}
-	return m.insertSeriesErr
-}
-
-func (m *mockInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error) {
+	if m.insertSeriesErr != nil {
+		return 0, m.insertSeriesErr
+	}
 	m.insertedData = append(m.insertedData, rows)
 	ret := 0
 	for _, data := range rows {
@@ -186,7 +182,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 			},
 			count:       2,
-			countSeries: 2,
+			countSeries: 1,
 		},
 		{
 			name: "Insert series error",
@@ -223,39 +219,6 @@ func TestDBIngestorIngest(t *testing.T) {
 			insertDataErr: fmt.Errorf("some error"),
 		},
 		{
-			name: "Set series error",
-			metrics: []prompb.TimeSeries{
-				{
-					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
-						{Name: "test", Value: "test"},
-					},
-					Samples: []prompb.Sample{
-						{Timestamp: 1, Value: 0.1},
-					},
-				},
-			},
-			count:        0,
-			countSeries:  1,
-			setSeriesErr: fmt.Errorf("some error"),
-		},
-		{
-			name: "Get series error",
-			metrics: []prompb.TimeSeries{
-				{
-					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
-					},
-					Samples: []prompb.Sample{
-						{Timestamp: 1, Value: 0.1},
-					},
-				},
-			},
-			count:        0,
-			countSeries:  0,
-			getSeriesErr: fmt.Errorf("some error"),
-		},
-		{
 			name: "Missing metric name",
 			metrics: []prompb.TimeSeries{
 				{
@@ -279,6 +242,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			inserter := mockInserter{
 				insertSeriesErr: c.insertSeriesErr,
 				insertDataErr:   c.insertDataErr,
+				insertedSeries:  make(map[string]SeriesID),
 			}
 
 			i := DBIngestor{
@@ -317,9 +281,10 @@ func TestDBIngestorIngest(t *testing.T) {
 			}
 
 			if c.countSeries != len(inserter.insertedSeries) {
-				t.Errorf("invalid number of series inserted, all series that are not cached must be sent for insertion: got %d, want %d\n",
+				t.Errorf("invalid number of series inserted, all series that are not cached must be sent for insertion: got %d, want %d\n%+v\n",
 					len(inserter.insertedSeries),
 					c.countSeries,
+					inserter.insertedSeries,
 				)
 			}
 		})

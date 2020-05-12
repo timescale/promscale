@@ -5,11 +5,8 @@
 package pgmodel
 
 import (
-	"container/list"
 	"context"
 	"fmt"
-	"hash/maphash"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -35,7 +32,7 @@ const (
 
 	getMetricsTableSQL       = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
-	getSeriesIDForLabelSQL   = "SELECT " + catalogSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
+	getSeriesIDForLabelSQL   = "SELECT * FROM " + catalogSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
 )
 
 var (
@@ -112,18 +109,18 @@ func (p *pgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 // SampleInfoIterator is an iterator over a collection of sampleInfos that returns
 // data in the format expected for the data table row.
 type SampleInfoIterator struct {
-	sampleInfos     []*samplesInfo
+	sampleInfos     []samplesInfo
 	sampleInfoIndex int
 	sampleIndex     int
 }
 
 // NewSampleInfoIterator is the constructor
-func NewSampleInfoIterator() *SampleInfoIterator {
-	return &SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0}
+func NewSampleInfoIterator() SampleInfoIterator {
+	return SampleInfoIterator{sampleInfos: make([]samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0}
 }
 
 //Append adds a sample info to the back of the iterator
-func (t *SampleInfoIterator) Append(s *samplesInfo) {
+func (t *SampleInfoIterator) Append(s samplesInfo) {
 	t.sampleInfos = append(t.sampleInfos, s)
 }
 
@@ -187,123 +184,30 @@ func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
 }
 
 func newPgxInserter(conn pgxConn, cache MetricCache) *pgxInserter {
-	maxProcs := runtime.GOMAXPROCS(-1)
-	if maxProcs <= 0 {
-		maxProcs = runtime.NumCPU()
-	}
-	if maxProcs <= 0 {
-		maxProcs = 1
-	}
-	inserters := make([]chan insertDataRequest, maxProcs)
-	for i := 0; i < maxProcs; i++ {
-		ch := make(chan insertDataRequest, 1000)
-		inserters[i] = ch
-		go runInserterRoutine(conn, ch)
-	}
-
 	return &pgxInserter{
 		conn:             conn,
 		metricTableNames: cache,
-		inserters:        inserters,
-		seed:             maphash.MakeSeed(),
 	}
 }
 
 type pgxInserter struct {
 	conn             pgxConn
 	metricTableNames MetricCache
-	inserters        []chan insertDataRequest
-	seed             maphash.Seed
+	inserters        sync.Map
 }
 
 func (p *pgxInserter) Close() {
-	for i := 0; i < len(p.inserters); i++ {
-		close(p.inserters[i])
-	}
 }
 
-func (p *pgxInserter) InsertNewData(newSeries []seriesWithCallback, rows map[string][]*samplesInfo) (uint64, error) {
-	err := p.InsertSeries(newSeries)
-	if err != nil {
-		return 0, err
-	}
-
+func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
 	return p.InsertData(rows)
 }
 
-func (p *pgxInserter) InsertSeries(seriesToInsert []seriesWithCallback) error {
-	if len(seriesToInsert) == 0 {
-		return nil
-	}
-
-	var lastSeenLabel Labels
-
-	batch := p.conn.NewBatch()
-	numSQLFunctionCalls := 0
-	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
-	// in a different transaction, thus deadlocks are not an issue.
-	sort.Slice(seriesToInsert, func(i, j int) bool {
-		return seriesToInsert[i].Series.Compare(seriesToInsert[j].Series) < 0
-	})
-
-	batchSeries := make([][]seriesWithCallback, 0, len(seriesToInsert))
-	for _, curr := range seriesToInsert {
-		if !lastSeenLabel.isEmpty() && lastSeenLabel.Equal(curr.Series) {
-			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
-			continue
-		}
-
-		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.Series.metricName, curr.Series.names, curr.Series.values)
-		batch.Queue("COMMIT;")
-		numSQLFunctionCalls++
-		batchSeries = append(batchSeries, []seriesWithCallback{curr})
-
-		lastSeenLabel = curr.Series
-	}
-
-	br, err := p.conn.SendBatch(context.Background(), batch)
-	if err != nil {
-		return err
-	}
-	defer br.Close()
-
-	if numSQLFunctionCalls != len(batchSeries) {
-		return fmt.Errorf("unexpected difference in numQueries and batchSeries")
-	}
-
-	for i := 0; i < numSQLFunctionCalls; i++ {
-		_, err = br.Exec()
-		if err != nil {
-			return err
-		}
-		row := br.QueryRow()
-
-		var id SeriesID
-		err = row.Scan(&id)
-		if err != nil {
-			return err
-		}
-		for _, swc := range batchSeries[i] {
-			err := swc.Callback(swc.Series, id)
-			if err != nil {
-				return err
-			}
-		}
-		_, err = br.Exec()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 type insertDataRequest struct {
-	metricTable string
-	data        []*samplesInfo
-	finished    *sync.WaitGroup
-	errChan     chan error
+	metric   string
+	data     []samplesInfo
+	finished *sync.WaitGroup
+	errChan  chan error
 }
 
 type insertDataTask struct {
@@ -311,16 +215,7 @@ type insertDataTask struct {
 	errChan  chan error
 }
 
-func (p *pgxInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error) {
-	// check that all the metrics are valid, we don't want to deadlock waiting
-	// on an Insert to a metric that does not exist
-	for metricName := range rows {
-		_, err := p.getMetricTableName(metricName)
-		if err != nil {
-			return 0, err
-		}
-	}
-
+func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
 	workFinished.Add(len(rows))
@@ -329,11 +224,7 @@ func (p *pgxInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error)
 		for _, si := range data {
 			numRows += uint64(len(si.samples))
 		}
-		tableName, err := p.getMetricTableName(metricName)
-		if err != nil {
-			panic("lost metric table name")
-		}
-		p.insertMetricData(tableName, data, workFinished, errChan)
+		p.insertMetricData(metricName, data, workFinished, errChan)
 	}
 
 	workFinished.Wait()
@@ -346,9 +237,9 @@ func (p *pgxInserter) InsertData(rows map[string][]*samplesInfo) (uint64, error)
 	return numRows, err
 }
 
-func (p *pgxInserter) insertMetricData(metricTable string, data []*samplesInfo, finished *sync.WaitGroup, errChan chan error) {
-	inserter := p.getMetricTableInserter(metricTable)
-	inserter <- insertDataRequest{metricTable: metricTable, data: data, finished: finished, errChan: errChan}
+func (p *pgxInserter) insertMetricData(metric string, data []samplesInfo, finished *sync.WaitGroup, errChan chan error) {
+	inserter := p.getMetricInserter(metric)
+	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
 
 func (p *pgxInserter) createMetricTable(metric string) (string, error) {
@@ -400,38 +291,30 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	return tableName, err
 }
 
-func (p *pgxInserter) getMetricTableInserter(metricTable string) chan insertDataRequest {
-	h := maphash.Hash{}
-	h.SetSeed(p.seed)
-	_, err := h.WriteString(metricTable)
-	if err != nil {
-		panic(fmt.Sprintf("error hashing metric table name: %v", err))
+func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
+	inserter, ok := p.inserters.Load(metric)
+	if !ok {
+		c := make(chan insertDataRequest, 1000)
+		actual, old := p.inserters.LoadOrStore(metric, c)
+		inserter = actual
+		if !old {
+			go runInserterRoutine(p.conn, c)
+		}
 	}
-	if len(p.inserters) < 1 {
-		panic(fmt.Sprintf("invalid len %d", len(p.inserters)))
-	}
-	inserter := h.Sum64() % uint64(len(p.inserters))
-	return p.inserters[inserter]
+	return inserter.(chan insertDataRequest)
 }
 
 type insertHandler struct {
-	conn    pgxConn
-	input   chan insertDataRequest
-	pending orderedMap
-}
-
-type orderedMap struct {
-	elements map[string]*list.Element
-	order    list.List // list of PendingBuffer
-
-	oldBuffers []*pendingBuffer
+	conn            pgxConn
+	input           chan insertDataRequest
+	pending         *pendingBuffer
+	seriesCache     map[string]SeriesID
+	metricTableName string
 }
 
 type pendingBuffer struct {
-	metricTable   string
 	needsResponse []insertDataTask
 	batch         SampleInfoIterator
-	start         time.Time
 }
 
 const (
@@ -441,9 +324,10 @@ const (
 
 func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 	handler := insertHandler{
-		conn:    conn,
-		input:   input,
-		pending: makeOrderedMap(),
+		conn:        conn,
+		input:       input,
+		pending:     &pendingBuffer{make([]insertDataTask, 0), NewSampleInfoIterator()},
+		seriesCache: make(map[string]SeriesID),
 	}
 
 	for {
@@ -455,27 +339,19 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 			continue
 		}
 
-		startHandling := time.Now()
 	hotReceive:
-		for {
-			for i := 0; i < 1000; i++ {
-				receivingNewReqs := handler.nonblockingHandleReq()
-				if !receivingNewReqs {
-					break hotReceive
-				}
-			}
-			if time.Since(startHandling) > flushTimeout {
-				handler.flushTimedOutReqs()
-				startHandling = time.Now()
+		for handler.nonblockingHandleReq() {
+			if len(handler.pending.batch.sampleInfos) >= flushSize {
+				break hotReceive
 			}
 		}
 
-		handler.flushEarliestReq()
+		handler.flush()
 	}
 }
 
 func (h *insertHandler) hasPendingReqs() bool {
-	return !h.pending.IsEmpty()
+	return len(h.pending.batch.sampleInfos) > 0
 }
 
 func (h *insertHandler) blockingHandleReq() bool {
@@ -500,48 +376,40 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 }
 
 func (h *insertHandler) handleReq(req insertDataRequest) bool {
-	needsFlush, pending := h.pending.addReq(req)
+	needsFlush := h.pending.addReq(req)
 	if needsFlush {
-		h.flushPending(pending)
+		h.flushPending(h.pending)
 		return true
 	}
 	return false
 }
 
-func (h *insertHandler) flushTimedOutReqs() {
-	for {
-		earliest, earliestPending := h.pending.Front()
-		if earliest == nil {
-			return
-		}
-
-		elapsed := time.Since(earliestPending.start)
-		if elapsed < flushTimeout {
-			return
-		}
-
-		h.flushPending(earliest)
-	}
-}
-
-func (h *insertHandler) flushEarliestReq() {
-	earliest, _ := h.pending.Front()
-	if earliest == nil {
+func (h *insertHandler) flush() {
+	if !h.hasPendingReqs() {
 		return
 	}
-
-	h.flushPending(earliest)
+	h.flushPending(h.pending)
 }
 
-func (h *insertHandler) flushPending(pendingElem *list.Element) {
-	pending := h.pending.Remove(pendingElem)
+func (h *insertHandler) flushPending(pending *pendingBuffer) {
+	err := func() error {
+		tableName, err := h.setSeriesIds(pending.batch.sampleInfos)
+		if err != nil {
+			return err
+		}
 
-	_, err := h.conn.CopyFrom(
-		context.Background(),
-		pgx.Identifier{dataSchema, pending.metricTable},
-		copyColumns,
-		&pending.batch,
-	)
+		if h.metricTableName == "" {
+			h.metricTableName = tableName
+		}
+
+		_, err = h.conn.CopyFrom(
+			context.Background(),
+			pgx.Identifier{dataSchema, h.metricTableName},
+			copyColumns,
+			&pending.batch,
+		)
+		return err
+	}()
 
 	for i := 0; i < len(pending.needsResponse); i++ {
 		if err != nil {
@@ -556,80 +424,101 @@ func (h *insertHandler) flushPending(pendingElem *list.Element) {
 	pending.needsResponse = pending.needsResponse[:0]
 
 	for i := 0; i < len(pending.batch.sampleInfos); i++ {
-		pending.batch.sampleInfos[i] = nil
+		// nil all pointers to prevent memory leaks
+		pending.batch.sampleInfos[i] = samplesInfo{}
 	}
 	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0], sampleIndex: -1, sampleInfoIndex: 0}
-
-	h.pending.giveOldBuffer(pending)
 }
 
-func makeOrderedMap() orderedMap {
-	return orderedMap{
-		elements: make(map[string]*list.Element),
-		order:    list.List{},
-	}
-}
+func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) {
+	numMissingSeries := 0
 
-func (m *orderedMap) IsEmpty() bool {
-	return len(m.elements) == 0
-}
-
-func (m *orderedMap) addReq(req insertDataRequest) (bool, *list.Element) {
-	pending, ok := m.elements[req.metricTable]
-
-	var needsFlush bool
-	var buffer *pendingBuffer
-	if ok {
-		buffer = pending.Value.(*pendingBuffer)
-	} else {
-		buffer = m.newPendingBuffer(req.metricTable)
-		pending = m.order.PushBack(buffer)
-		m.elements[req.metricTable] = pending
+	for i, series := range sampleInfos {
+		id, ok := h.seriesCache[series.labels.String()]
+		if ok {
+			sampleInfos[i].seriesID = id
+		} else {
+			numMissingSeries++
+		}
 	}
 
-	needsFlush = buffer.addReq(req)
-	return needsFlush, pending
+	if numMissingSeries == 0 {
+		return "", nil
+	}
+
+	seriesToInsert := make([]*samplesInfo, 0, numMissingSeries)
+	for i, series := range sampleInfos {
+		if series.seriesID < 0 {
+			seriesToInsert = append(seriesToInsert, &sampleInfos[i])
+		}
+	}
+	var lastSeenLabel Labels
+
+	batch := h.conn.NewBatch()
+	numSQLFunctionCalls := 0
+	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
+	// in a different transaction, thus deadlocks are not an issue.
+	sort.Slice(seriesToInsert, func(i, j int) bool {
+		return seriesToInsert[i].labels.Compare(seriesToInsert[j].labels) < 0
+	})
+
+	batchSeries := make([][]*samplesInfo, 0, len(seriesToInsert))
+	// group the seriesToInsert by labels, one slice array per unique labels
+	for _, curr := range seriesToInsert {
+		if !lastSeenLabel.isEmpty() && lastSeenLabel.Equal(curr.labels) {
+			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
+			continue
+		}
+
+		batch.Queue("BEGIN;")
+		batch.Queue(getSeriesIDForLabelSQL, curr.labels.metricName, curr.labels.names, curr.labels.values)
+		batch.Queue("COMMIT;")
+		numSQLFunctionCalls++
+		batchSeries = append(batchSeries, []*samplesInfo{curr})
+
+		lastSeenLabel = curr.labels
+	}
+
+	br, err := h.conn.SendBatch(context.Background(), batch)
+	if err != nil {
+		return "", err
+	}
+	defer br.Close()
+
+	if numSQLFunctionCalls != len(batchSeries) {
+		return "", fmt.Errorf("unexpected difference in numQueries and batchSeries")
+	}
+
+	var tableName string
+	for i := 0; i < numSQLFunctionCalls; i++ {
+		_, err = br.Exec()
+		if err != nil {
+			return "", err
+		}
+		row := br.QueryRow()
+
+		var id SeriesID
+		err = row.Scan(&tableName, &id)
+		if err != nil {
+			return "", err
+		}
+		h.seriesCache[batchSeries[i][0].labels.String()] = id
+		for _, lsi := range batchSeries[i] {
+			lsi.seriesID = id
+		}
+		_, err = br.Exec()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return tableName, nil
 }
 
 func (p *pendingBuffer) addReq(req insertDataRequest) bool {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.sampleInfos = append(p.batch.sampleInfos, req.data...)
 	return len(p.batch.sampleInfos) > flushSize
-}
-
-func (m *orderedMap) newPendingBuffer(metricTable string) *pendingBuffer {
-	var buffer *pendingBuffer
-	if len(m.oldBuffers) > 0 {
-		last := len(m.oldBuffers) - 1
-		buffer, m.oldBuffers = m.oldBuffers[last], m.oldBuffers[:last]
-	} else {
-		buffer = &pendingBuffer{
-			batch: SampleInfoIterator{sampleInfos: make([]*samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0},
-		}
-	}
-
-	buffer.start = time.Now()
-	buffer.metricTable = metricTable
-	return buffer
-}
-
-func (m *orderedMap) Front() (*list.Element, *pendingBuffer) {
-	elem := m.order.Front()
-	if elem == nil {
-		return nil, nil
-	}
-	return elem, elem.Value.(*pendingBuffer)
-}
-
-func (m *orderedMap) Remove(elem *list.Element) *pendingBuffer {
-	pending := elem.Value.(*pendingBuffer)
-	m.order.Remove(elem)
-	delete(m.elements, pending.metricTable)
-	return pending
-}
-
-func (m *orderedMap) giveOldBuffer(buffer *pendingBuffer) {
-	m.oldBuffers = append(m.oldBuffers, buffer)
 }
 
 // NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX

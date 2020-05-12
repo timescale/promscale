@@ -293,7 +293,7 @@ func createMetricTableName(db *pgxpool.Pool, name string) error {
 
 func getSeriesIDForKeyValueArray(db *pgxpool.Pool, metricName string, keys []string, values []string) error {
 	var seriesIDKeyVal int
-	return db.QueryRow(context.Background(), "SELECT _prom_catalog.get_series_id_for_key_value_array($1, $2, $3)", metricName, append([]string{"__name__"}, keys...), append([]string{metricName}, values...)).Scan(&seriesIDKeyVal)
+	return db.QueryRow(context.Background(), "SELECT (_prom_catalog.get_series_id_for_key_value_array($1, $2, $3)).series_id", metricName, append([]string{"__name__"}, keys...), append([]string{metricName}, values...)).Scan(&seriesIDKeyVal)
 }
 
 func generateKeysAndValues(count int, prefix string) ([]string, []string) {
