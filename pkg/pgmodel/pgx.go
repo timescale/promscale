@@ -194,9 +194,9 @@ func newPgxInserter(conn pgxConn, cache MetricCache) *pgxInserter {
 	if maxProcs <= 0 {
 		maxProcs = 1
 	}
-	inserters := make([]chan interface{}, maxProcs)
+	inserters := make([]chan insertDataRequest, maxProcs)
 	for i := 0; i < maxProcs; i++ {
-		ch := make(chan interface{}, 1000)
+		ch := make(chan insertDataRequest, 1000)
 		inserters[i] = ch
 		go runInserterRoutine(conn, ch)
 	}
@@ -212,7 +212,7 @@ func newPgxInserter(conn pgxConn, cache MetricCache) *pgxInserter {
 type pgxInserter struct {
 	conn             pgxConn
 	metricTableNames MetricCache
-	inserters        []chan interface{}
+	inserters        []chan insertDataRequest
 	seed             maphash.Seed
 }
 
@@ -314,7 +314,7 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	return tableName, err
 }
 
-func (p *pgxInserter) getMetricInserter(metric string) chan interface{} {
+func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
 	h := maphash.Hash{}
 	h.SetSeed(p.seed)
 	_, err := h.WriteString(metric)
@@ -330,20 +330,21 @@ func (p *pgxInserter) getMetricInserter(metric string) chan interface{} {
 
 type insertHandler struct {
 	conn    pgxConn
-	input   chan interface{} // insertDataRequest or seriesInsertResponse
+	input   chan insertDataRequest
 	pending orderedMap
 
 	seriesCache      sync.Map // map[string]SeriesID
 	metricTableNames sync.Map // map[string]string
 
 	toSeriesInserter chan seriesInsertRequest
+	toCopier         chan seriesInsertResponse
 }
 
 type orderedMap struct {
 	elements map[string]*list.Element
 	order    list.List // list of PendingBuffer
 
-	oldBuffers []*pendingBuffer
+	oldBuffers chan *pendingBuffer
 }
 
 type pendingBuffer struct {
@@ -368,15 +369,18 @@ const (
 	flushTimeout = 500 * time.Millisecond
 )
 
-func runInserterRoutine(conn pgxConn, input chan interface{}) {
+func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
 	seriesInsertChan := make(chan seriesInsertRequest, 1000)
+	toCopier := make(chan seriesInsertResponse, 1000)
 	handler := &insertHandler{
 		conn:             conn,
 		input:            input,
 		pending:          makeOrderedMap(),
 		toSeriesInserter: seriesInsertChan,
+		toCopier:         toCopier,
 	}
-	go handler.runSeriesInserterRoutine(seriesInsertChan, input)
+	go handler.runSeriesInserterRoutine(seriesInsertChan, toCopier)
+	go handler.runCopy(toCopier)
 
 	for {
 		if !handler.hasPendingReqs() {
@@ -431,21 +435,13 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 	}
 }
 
-func (h *insertHandler) handleReq(req interface{}) bool {
-	switch req.(type) {
-	case insertDataRequest:
-		needsFlush, pending := h.pending.addReq(req.(insertDataRequest))
-		if needsFlush {
-			h.flushPending(pending)
-			return true
-		}
-		return false
-	case seriesInsertResponse:
-		h.flushSeriesInsertResponse(req.(seriesInsertResponse))
+func (h *insertHandler) handleReq(req insertDataRequest) bool {
+	needsFlush, pending := h.pending.addReq(req)
+	if needsFlush {
+		h.flushPending(pending)
 		return true
-	default:
-		panic(fmt.Sprintf("unexpected req %+v", req))
 	}
+	return false
 }
 
 func (h *insertHandler) flushTimedOutReqs() {
@@ -481,19 +477,24 @@ func (h *insertHandler) flushPending(pendingElem *list.Element) {
 		return
 	}
 
-	err := h.sendSeriesData(pending)
-
-	h.ackInsertDataRequest(pending, err)
+	h.toCopier <- seriesInsertResponse{pending, nil}
 }
 
-func (h *insertHandler) flushSeriesInsertResponse(resp seriesInsertResponse) {
-	if resp.err != nil {
-		h.ackInsertDataRequest(resp.buffer, resp.err)
-		return
-	}
+func (h *insertHandler) runCopy(input chan seriesInsertResponse) {
+	for {
+		req, ok := <-input
+		if !ok {
+			return
+		}
 
-	err := h.sendSeriesData(resp.buffer)
-	h.ackInsertDataRequest(resp.buffer, err)
+		if req.err != nil {
+			h.ackInsertDataRequest(req.buffer, req.err)
+			continue
+		}
+
+		err := h.sendSeriesData(req.buffer)
+		h.ackInsertDataRequest(req.buffer, err)
+	}
 }
 
 func (h *insertHandler) sendSeriesData(pending *pendingBuffer) error {
@@ -529,7 +530,7 @@ func (h *insertHandler) ackInsertDataRequest(pending *pendingBuffer, err error) 
 	h.pending.giveOldBuffer(pending)
 }
 
-func (h *insertHandler) runSeriesInserterRoutine(input chan seriesInsertRequest, output chan interface{}) {
+func (h *insertHandler) runSeriesInserterRoutine(input chan seriesInsertRequest, output chan seriesInsertResponse) {
 	for {
 		req, ok := <-input
 		if !ok {
@@ -639,8 +640,9 @@ func (h *insertHandler) setSeriesIds(buffer *pendingBuffer) bool {
 
 func makeOrderedMap() orderedMap {
 	return orderedMap{
-		elements: make(map[string]*list.Element),
-		order:    list.List{},
+		elements:   make(map[string]*list.Element),
+		order:      list.List{},
+		oldBuffers: make(chan *pendingBuffer, 1000),
 	}
 }
 
@@ -673,13 +675,14 @@ func (p *pendingBuffer) addReq(req insertDataRequest) bool {
 
 func (m *orderedMap) newPendingBuffer(metric string) *pendingBuffer {
 	var buffer *pendingBuffer
-	if len(m.oldBuffers) > 0 {
-		last := len(m.oldBuffers) - 1
-		buffer, m.oldBuffers = m.oldBuffers[last], m.oldBuffers[:last]
-	} else {
+	select {
+	case buffer = <-m.oldBuffers:
+		break
+	default:
 		buffer = &pendingBuffer{
 			batch: SampleInfoIterator{sampleInfos: make([]labeledSamplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0},
 		}
+		break
 	}
 
 	buffer.start = time.Now()
@@ -703,7 +706,10 @@ func (m *orderedMap) Remove(elem *list.Element) *pendingBuffer {
 }
 
 func (m *orderedMap) giveOldBuffer(buffer *pendingBuffer) {
-	m.oldBuffers = append(m.oldBuffers, buffer)
+	select {
+	case m.oldBuffers <- buffer:
+	default:
+	}
 }
 
 // NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
