@@ -302,44 +302,6 @@ $func$
 LANGUAGE PLPGSQL VOLATILE ;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_table(text) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_table(
-        INOUT metric_name text[], OUT id int[], OUT table_name name[])
-AS $func$
-DECLARE
-  metric_name_arg text;
-  idx int;
-  new_id int;
-BEGIN
-SELECT array_fill(NULL, ARRAY[array_length(metric_name), 1]) INTO id;
-SELECT array_fill(NULL, ARRAY[array_length(metric_name), 1]) INTO table_name;
-FOR metric_name_arg, idx IN SELECT * FROM unnest(metric_name) WITH ORDINALITY
-LOOP
-    new_id = nextval(pg_get_serial_sequence('SCHEMA_CATALOG.metric','id'))::int;
-    LOOP
-        INSERT INTO SCHEMA_CATALOG.metric (id, metric_name, table_name)
-            SELECT  new_id,
-                    metric_name_arg,
-                    SCHEMA_CATALOG.pg_name_unique(metric_name_arg, new_id::text)
-        ON CONFLICT DO NOTHING
-        RETURNING SCHEMA_CATALOG.metric.id, SCHEMA_CATALOG.metric.table_name
-        INTO id[idx], table_name[idx];
-        -- under high concurrency the insert may not return anything, so try a select and loop
-        -- https://stackoverflow.com/a/15950324
-        EXIT WHEN FOUND;
-
-        SELECT m.id, m.table_name
-        INTO id[idx], table_name[idx]
-        FROM SCHEMA_CATALOG.metric m
-        WHERE metric_name = metric_name_arg;
-
-        EXIT WHEN FOUND;
-    END LOOP;
-END LOOP;
-END
-$func$
-LANGUAGE PLPGSQL VOLATILE ;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_table(text) TO prom_writer;
-
 --Creates a new label_key row for a given key.
 --This uses up some sequences so should only be called
 --If the table does not yet exist.
@@ -555,42 +517,23 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_name(text) t
 
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_name(
-        INOUT metric_names text[], OUT ids int[], OUT table_name name[])
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_names(
+        INOUT metric_names text[], OUT ids int[], OUT table_names text[])
 AS $func$
-DECLARE
-    needed_metrics text[];
-BEGIN
-    SELECT array_agg(name order by name) FROM unnest(metric_names) AS a(name)
-    INTO needed_metrics;
-
     SELECT
-        array_agg(n.metric),
-        array_agg(id),
-        array_agg(table_name::name)
-    FROM unnest(metric_names) AS n(metric)
-    INNER JOIN SCHEMA_CATALOG.metric m
-    ON m.metric_name = n.metric
-    INTO STRICT metric_names, ids, table_name;
-
-    SELECT array_agg(n.metric order by n.metric)
-    FROM (SELECT unnest(needed_metrics) EXCEPT SELECT unnest(metric_names))
-        AS n(metric)
-    INTO needed_metrics;
-
-    SELECT
-        array_agg(metric order by metric),
-        array_agg(id order by metric),
-        array_agg(table_name order by metric)
+        array_agg(metric_name),
+        array_agg((f.rec).id),
+        array_agg((f.rec).table_name::text)
     FROM (
-        SELECT unnest(metric_names), unnest(ids), unnest(table_name)
-        UNION ALL
-        SELECT * FROM SCHEMA_CATALOG.create_metric_table(needed_metrics)
-    ) AS f(metric, id, table_name);
-END;
+        SELECT
+            metric_name,
+            get_or_create_metric_table_name(metric_name) AS rec
+        FROM unnest(metric_names) AS a(metric_name)
+        ORDER BY metric_name
+    ) AS f
 $func$
-LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_name(text[]) to prom_writer;
+LANGUAGE SQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_names(text[]) to prom_writer;
 
 --public function to get the array position for a label key
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(

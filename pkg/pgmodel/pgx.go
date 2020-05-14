@@ -33,6 +33,7 @@ const (
 	getMetricsTableSQL       = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
 	getSeriesIDForLabelSQL   = "SELECT * FROM " + catalogSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
+	createMetricTablesSQL    = "SELECT metric_names, table_names FROM " + catalogSchema + ".get_or_create_metric_table_names($1)"
 )
 
 var (
@@ -184,16 +185,18 @@ func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
 }
 
 func newPgxInserter(conn pgxConn, cache MetricCache) *pgxInserter {
+	toMetricTableCreator := make(chan createMetricTableRequest, 100)
+	go runMetricTableCreator(conn, toMetricTableCreator)
 	return &pgxInserter{
-		conn:             conn,
-		metricTableNames: cache,
+		conn:               conn,
+		metricTableCreator: toMetricTableCreator,
 	}
 }
 
 type pgxInserter struct {
-	conn             pgxConn
-	metricTableNames MetricCache
-	inserters        sync.Map
+	conn               pgxConn
+	inserters          sync.Map
+	metricTableCreator chan createMetricTableRequest
 }
 
 func (p *pgxInserter) Close() {
@@ -204,6 +207,11 @@ func (p *pgxInserter) Close() {
 
 func (p *pgxInserter) InsertNewData(rows map[string][]labeledSamplesInfo) (uint64, error) {
 	return p.InsertData(rows)
+}
+
+type createMetricTableRequest struct {
+	metric   string
+	response chan string
 }
 
 type insertDataRequest struct {
@@ -245,55 +253,6 @@ func (p *pgxInserter) insertMetricData(metric string, data []labeledSamplesInfo,
 	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
 
-func (p *pgxInserter) createMetricTable(metric string) (string, error) {
-	res, err := p.conn.Query(
-		context.Background(),
-		getCreateMetricsTableSQL,
-		metric,
-	)
-
-	if err != nil {
-		return "", err
-	}
-
-	var tableName string
-	defer res.Close()
-	if !res.Next() {
-		return "", errMissingTableName
-	}
-
-	if err := res.Scan(&tableName); err != nil {
-		return "", err
-	}
-
-	return tableName, nil
-}
-
-func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
-	var err error
-	var tableName string
-
-	tableName, err = p.metricTableNames.Get(metric)
-
-	if err == nil {
-		return tableName, nil
-	}
-
-	if err != ErrEntryNotFound {
-		return "", err
-	}
-
-	tableName, err = p.createMetricTable(metric)
-
-	if err != nil {
-		return "", err
-	}
-
-	err = p.metricTableNames.Set(metric, tableName)
-
-	return tableName, err
-}
-
 func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
 	inserter, ok := p.inserters.Load(metric)
 	if !ok {
@@ -301,10 +260,110 @@ func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
-			go runInserterRoutine(p.conn, c)
+			result := make(chan string, 1)
+			go runInserterRoutine(p.conn, c, result)
+			p.metricTableCreator <- createMetricTableRequest{metric, result}
 		}
 	}
 	return inserter.(chan insertDataRequest)
+}
+
+type metricTableCreator struct {
+	input      chan createMetricTableRequest
+	responders map[string]chan string
+	buffer     []string
+	conn       pgxConn
+}
+
+func runMetricTableCreator(conn pgxConn, input chan createMetricTableRequest) {
+	creator := metricTableCreator{
+		input:      input,
+		responders: make(map[string]chan string),
+		conn:       conn,
+	}
+
+	for {
+		if !creator.hasPendingReqs() {
+			stillAlive := creator.blockingHandleReq()
+			if !stillAlive {
+				return
+			}
+			continue
+		}
+
+	hotReceive:
+		for creator.nonblockingHandleReq() {
+			if len(creator.buffer) >= flushSize {
+				break hotReceive
+			}
+		}
+
+		creator.flush()
+	}
+}
+
+func (c *metricTableCreator) hasPendingReqs() bool {
+	return len(c.buffer) > 0
+}
+
+func (c *metricTableCreator) blockingHandleReq() bool {
+	req, ok := <-c.input
+	if !ok {
+		return false
+	}
+
+	c.addReq(req)
+
+	return true
+}
+
+func (c *metricTableCreator) nonblockingHandleReq() bool {
+	select {
+	case req := <-c.input:
+		c.addReq(req)
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *metricTableCreator) addReq(req createMetricTableRequest) {
+	c.buffer = append(c.buffer, req.metric)
+	c.responders[req.metric] = req.response
+}
+
+func (c *metricTableCreator) flush() {
+
+	res, err := c.conn.Query(context.Background(), createMetricTablesSQL, c.buffer)
+	if err != nil {
+		//TODO is there a way to handle this?
+		panic(err)
+	}
+
+	for i := 0; i < len(c.buffer); i++ {
+		c.buffer[i] = ""
+	}
+	c.buffer = c.buffer[:0]
+
+	defer res.Close()
+	for res.Next() {
+		var metricNames []string
+		var tableNames []string
+		err := res.Scan(&metricNames, &tableNames)
+		if err != nil {
+			//TODO is there a way to handle this?
+			panic(err)
+		}
+
+		for i := 0; i < len(metricNames); i++ {
+			response, ok := c.responders[metricNames[i]]
+			if !ok {
+				continue
+			}
+			response <- tableNames[i]
+			delete(c.responders, metricNames[i])
+		}
+	}
 }
 
 type insertHandler struct {
@@ -325,13 +384,16 @@ const (
 	flushTimeout = 500 * time.Millisecond
 )
 
-func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
+func runInserterRoutine(conn pgxConn, input chan insertDataRequest, tableName chan string) {
 	handler := insertHandler{
-		conn:        conn,
-		input:       input,
-		pending:     &pendingBuffer{make([]insertDataTask, 0), NewSampleInfoIterator()},
-		seriesCache: make(map[string]SeriesID),
+		conn:            conn,
+		input:           input,
+		pending:         &pendingBuffer{make([]insertDataTask, 0), NewSampleInfoIterator()},
+		seriesCache:     make(map[string]SeriesID),
+		metricTableName: <-tableName,
 	}
+
+	tableName = nil
 
 	for {
 		if !handler.hasPendingReqs() {
@@ -396,13 +458,9 @@ func (h *insertHandler) flush() {
 
 func (h *insertHandler) flushPending(pending *pendingBuffer) {
 	err := func() error {
-		tableName, err := h.setSeriesIds(pending)
+		_, err := h.setSeriesIds(pending)
 		if err != nil {
 			return err
-		}
-
-		if h.metricTableName == "" {
-			h.metricTableName = tableName
 		}
 
 		_, err = h.conn.CopyFrom(
