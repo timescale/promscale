@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 )
 
 const (
@@ -30,9 +31,11 @@ const (
 	catalogSchema    = "_prom_catalog"
 	extSchema        = "_prom_ext"
 
-	getMetricsTableSQL       = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
-	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
-	getSeriesIDForLabelSQL   = "SELECT * FROM " + catalogSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
+	getMetricsTableSQL              = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
+	getCreateMetricsTableSQL        = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
+	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
+	finalizeMetricCreation          = "CALL " + catalogSchema + ".finalize_metric_creation()"
+	getSeriesIDForLabelSQL          = "SELECT * FROM " + catalogSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
 )
 
 var (
@@ -156,13 +159,16 @@ func (t *SampleInfoIterator) Err() error {
 
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngestor {
+func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) (*DBIngestor, error) {
 
 	conn := &pgxConnImpl{
 		conn: c,
 	}
 
-	pi := newPgxInserter(conn, cache)
+	pi, err := newPgxInserter(conn, cache)
+	if err != nil {
+		return nil, err
+	}
 
 	series, _ := bigcache.NewBigCache(DefaultCacheConfig())
 
@@ -173,30 +179,66 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBIngest
 	return &DBIngestor{
 		db:    pi,
 		cache: bc,
-	}
+	}, nil
 }
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
-func NewPgxIngestor(c *pgxpool.Pool) *DBIngestor {
+func NewPgxIngestor(c *pgxpool.Pool) (*DBIngestor, error) {
 	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
 	cache := &MetricNameCache{metrics}
 	return NewPgxIngestorWithMetricCache(c, cache)
 }
 
-func newPgxInserter(conn pgxConn, cache MetricCache) *pgxInserter {
-	return &pgxInserter{
-		conn:             conn,
-		metricTableNames: cache,
+func newPgxInserter(conn pgxConn, cache MetricCache) (*pgxInserter, error) {
+	cmc := make(chan struct{}, 1)
+
+	inserter := &pgxInserter{
+		conn:                   conn,
+		metricTableNames:       cache,
+		completeMetricCreation: cmc,
 	}
+	//on startup run a completeMetricCreation to recover any potentially
+	//incomplete metric
+	err := inserter.CompleteMetricCreation()
+	if err != nil {
+		return nil, err
+	}
+
+	go inserter.runCompleteMetricCreationWorker()
+
+	return inserter, nil
 }
 
 type pgxInserter struct {
-	conn             pgxConn
-	metricTableNames MetricCache
-	inserters        sync.Map
+	conn                   pgxConn
+	metricTableNames       MetricCache
+	inserters              sync.Map
+	completeMetricCreation chan struct{}
+}
+
+func (p *pgxInserter) CompleteMetricCreation() error {
+	_, err := p.conn.Exec(
+		context.Background(),
+		finalizeMetricCreation,
+	)
+	return err
+}
+
+func (p *pgxInserter) runCompleteMetricCreationWorker() {
+	for range p.completeMetricCreation {
+		err := p.CompleteMetricCreation()
+		if err != nil {
+			log.Warn("Got an error finalizing metric: %v", err)
+		}
+	}
 }
 
 func (p *pgxInserter) Close() {
+	close(p.completeMetricCreation)
+	p.inserters.Range(func(key, value interface{}) bool {
+		close(value.(chan insertDataRequest))
+		return true
+	})
 }
 
 func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
@@ -238,7 +280,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 }
 
 func (p *pgxInserter) insertMetricData(metric string, data []samplesInfo, finished *sync.WaitGroup, errChan chan error) {
-	inserter := p.getMetricInserter(metric)
+	inserter := p.getMetricInserter(metric, errChan)
 	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
 
@@ -291,14 +333,14 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	return tableName, err
 }
 
-func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
+func (p *pgxInserter) getMetricInserter(metric string, errChan chan error) chan insertDataRequest {
 	inserter, ok := p.inserters.Load(metric)
 	if !ok {
 		c := make(chan insertDataRequest, 1000)
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
-			go runInserterRoutine(p.conn, c)
+			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, errChan, p.metricTableNames)
 		}
 	}
 	return inserter.(chan insertDataRequest)
@@ -322,12 +364,84 @@ const (
 	flushTimeout = 500 * time.Millisecond
 )
 
-func runInserterRoutine(conn pgxConn, input chan insertDataRequest) {
+func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
+	res, err := conn.Query(
+		context.Background(),
+		getCreateMetricsTableWithNewSQL,
+		metric,
+	)
+
+	if err != nil {
+		return "", true, err
+	}
+
+	var tableName string
+	var possiblyNew bool
+	defer res.Close()
+	if !res.Next() {
+		return "", true, errMissingTableName
+	}
+
+	if err := res.Scan(&tableName, &possiblyNew); err != nil {
+		return "", true, err
+	}
+
+	return tableName, possiblyNew, nil
+}
+
+func runInserterRoutineFailure(input chan insertDataRequest, err error) {
+	for idr := range input {
+		select {
+		case idr.errChan <- fmt.Errorf("The insert routine has previously failed with %w", err):
+		default:
+		}
+		idr.finished.Done()
+	}
+}
+
+func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, errChan chan error, metricTableNames MetricCache) {
+	tableName, err := metricTableNames.Get(metricName)
+	if err == ErrEntryNotFound {
+		var possiblyNew bool
+		tableName, possiblyNew, err = getMetricTableName(conn, metricName)
+		if err != nil {
+			select {
+			case errChan <- err:
+			default:
+			}
+			//won't be able to insert anyway
+			runInserterRoutineFailure(input, err)
+			return
+		} else {
+			//ignone error since this is just an optimization
+			_ = metricTableNames.Set(metricName, tableName)
+		}
+
+		if possiblyNew {
+			//pass a signal if there is space
+			select {
+			case completeMetricCreationSignal <- struct{}{}:
+			default:
+			}
+		}
+	} else if err != nil {
+		if err != nil {
+			select {
+			case errChan <- err:
+			default:
+			}
+		}
+		//won't be able to insert anyway
+		runInserterRoutineFailure(input, err)
+		return
+	}
+
 	handler := insertHandler{
-		conn:        conn,
-		input:       input,
-		pending:     &pendingBuffer{make([]insertDataTask, 0), NewSampleInfoIterator()},
-		seriesCache: make(map[string]SeriesID),
+		conn:            conn,
+		input:           input,
+		pending:         &pendingBuffer{make([]insertDataTask, 0), NewSampleInfoIterator()},
+		seriesCache:     make(map[string]SeriesID),
+		metricTableName: tableName,
 	}
 
 	for {
@@ -393,13 +507,9 @@ func (h *insertHandler) flush() {
 
 func (h *insertHandler) flushPending(pending *pendingBuffer) {
 	err := func() error {
-		tableName, err := h.setSeriesIds(pending.batch.sampleInfos)
+		_, err := h.setSeriesIds(pending.batch.sampleInfos)
 		if err != nil {
 			return err
-		}
-
-		if h.metricTableName == "" {
-			h.metricTableName = tableName
 		}
 
 		_, err = h.conn.CopyFrom(

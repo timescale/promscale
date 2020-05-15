@@ -71,7 +71,11 @@ func NewClient(cfg *Config) (*Client, error) {
 	metrics, _ := bigcache.NewBigCache(pgmodel.DefaultCacheConfig())
 	cache := &pgmodel.MetricNameCache{Metrics: metrics}
 
-	ingestor := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache)
+	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache)
+	if err != nil {
+		log.Error("err starting ingestor", err)
+		return nil, err
+	}
 	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache)
 
 	return &Client{Connection: connectionPool, ingestor: ingestor, reader: reader, cfg: cfg}, nil

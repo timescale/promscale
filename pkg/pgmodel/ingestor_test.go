@@ -49,6 +49,10 @@ func (m *mockInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, err
 	return m.InsertData(rows)
 }
 
+func (m *mockInserter) CompleteMetricCreation() error {
+	return nil
+}
+
 func (m *mockInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
 	for _, v := range rows {
 		for i, si := range v {

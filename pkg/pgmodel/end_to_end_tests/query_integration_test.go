@@ -550,9 +550,11 @@ func createQueryResult(ts []*prompb.TimeSeries) []*prompb.QueryResult {
 }
 
 func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.TimeSeries) {
-	ingestor := NewPgxIngestor(db)
+	ingestor, err := NewPgxIngestor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cnt, err := ingestor.Ingest(metrics)
-
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)
 	}
