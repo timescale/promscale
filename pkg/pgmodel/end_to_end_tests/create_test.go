@@ -25,7 +25,8 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
-		err := db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name(metric_name => $1)", metricName).Scan(&metricID, &tableName)
+		var possiblyNew bool
+		err := db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name(metric_name => $1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -35,10 +36,13 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		if metricID <= 0 {
 			t.Errorf("metric_id should be >= 0:\ngot:%v", metricID)
 		}
+		if !possiblyNew {
+			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
+		}
 		savedMetricID := metricID
 
 		//query for same name should give same result
-		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,10 +52,13 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		if metricID != savedMetricID {
 			t.Errorf("metric_id should be same:\nexpected:%v\ngot:%v", savedMetricID, metricID)
 		}
+		if possiblyNew {
+			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
+		}
 
 		//different metric id should give new result
 		metricName = "test_metric_2"
-		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,11 +68,14 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		if metricID == savedMetricID {
 			t.Errorf("metric_id should not be same:\nexpected: != %v\ngot:%v", savedMetricID, metricID)
 		}
+		if !possiblyNew {
+			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
+		}
 		savedMetricID = metricID
 
 		//test long names that don't fit as table names
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_1"
-		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,11 +85,14 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		if metricID == savedMetricID {
 			t.Errorf("metric_id should not be same:\nexpected: != %v\ngot:%v", savedMetricID, metricID)
 		}
+		if !possiblyNew {
+			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
+		}
 		savedTableName := tableName
 		savedMetricID = metricID
 
 		//another call return same info
-		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,10 +102,13 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		if metricID != savedMetricID {
 			t.Errorf("metric_id should be same:\nexpected:%v\ngot:%v", savedMetricID, metricID)
 		}
+		if possiblyNew {
+			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
+		}
 
 		//changing just ending returns new table
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_2"
-		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -101,6 +117,9 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		}
 		if metricID == savedMetricID {
 			t.Errorf("metric_id should not be same:\nexpected:%v\ngot:%v", savedMetricID, metricID)
+		}
+		if !possiblyNew {
+			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
 		}
 	})
 }
@@ -132,9 +151,12 @@ func TestSQLChunkInterval(t *testing.T) {
 				},
 			},
 		}
-		ingestor := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(db)
+		if err != nil {
+			t.Fatal(err)
+		}
 		defer ingestor.Close()
-		_, err := ingestor.Ingest(ts)
+		_, err = ingestor.Ingest(ts)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -369,7 +391,10 @@ func TestSQLIngest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
-				ingestor := NewPgxIngestor(db)
+				ingestor, err := NewPgxIngestor(db)
+				if err != nil {
+					t.Fatal(err)
+				}
 				defer ingestor.Close()
 				cnt, err := ingestor.Ingest(tcase.metrics)
 				if err != nil && err != tcase.expectErr {
@@ -404,6 +429,11 @@ func TestSQLIngest(t *testing.T) {
 
 				if totalRows != int(cnt) {
 					t.Fatalf("counts not equal: got %v expected %v\n", totalRows, cnt)
+				}
+
+				err = ingestor.CompleteMetricCreation()
+				if err != nil {
+					t.Fatal(err)
 				}
 
 				var numberSeries int

@@ -128,7 +128,9 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		},
 	}
 
-	for tcIndex, c := range testCases {
+	for tcIndexIter, cIter := range testCases {
+		tcIndex := tcIndexIter
+		c := cIter
 		databaseName := fmt.Sprintf("%s_%d", *testDatabase, tcIndex)
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -227,6 +229,10 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					if seriesID != seriesIDKeyVal {
 						t.Fatalf("Expected the series ids to be equal: %v != %v", seriesID, seriesIDKeyVal)
 					}
+					_, err = db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
+					if err != nil {
+						t.Fatal(err)
+					}
 
 					err = db.QueryRow(context.Background(), "SELECT jsonb(labels) FROM _prom_catalog.series WHERE id=$1",
 						seriesID).Scan(&jsonRes)
@@ -236,7 +242,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					fingerprintRes = getFingerprintFromJSON(t, jsonRes)
 
 					if labelSet.Fingerprint() != fingerprintRes {
-						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(jsonRes), string(jsonOrig))
+						t.Fatalf("Json not equal: id %v\n got\n%v\nexpected\n%v", seriesID, string(jsonRes), string(jsonOrig))
 
 					}
 

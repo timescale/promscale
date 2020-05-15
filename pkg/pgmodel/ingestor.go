@@ -25,6 +25,7 @@ type SeriesID int64
 // inserter is responsible for inserting label, series and data into the storage.
 type inserter interface {
 	InsertNewData(rows map[string][]samplesInfo) (uint64, error)
+	CompleteMetricCreation() error
 	Close()
 }
 
@@ -64,6 +65,10 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
 		return rowsInserted, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}
 	return rowsInserted, err
+}
+
+func (i *DBIngestor) CompleteMetricCreation() error {
+	return i.db.CompleteMetricCreation()
 }
 
 func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string][]samplesInfo, int, error) {
