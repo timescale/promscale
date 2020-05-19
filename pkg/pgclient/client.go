@@ -9,7 +9,7 @@ import (
 	"github.com/allegro/bigcache"
 	"github.com/jackc/pgx/v4/pgxpool"
 
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"

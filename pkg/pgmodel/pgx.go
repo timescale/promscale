@@ -17,8 +17,8 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 const (

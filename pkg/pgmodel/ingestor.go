@@ -7,7 +7,7 @@ package pgmodel
 import (
 	"fmt"
 
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 const (

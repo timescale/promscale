@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 type mockCache struct {

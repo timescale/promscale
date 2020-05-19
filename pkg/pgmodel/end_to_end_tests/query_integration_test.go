@@ -15,9 +15,9 @@ import (
 	"github.com/golang/snappy"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 
 	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
