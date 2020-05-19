@@ -68,7 +68,7 @@ type WriteRequest struct {
 	XXX_sizecache        int32        `json:"-"`
 }
 
-func (m *WriteRequest) Reset()         { *m = WriteRequest{} }
+func (m *WriteRequest) Reset()         { *m = WriteRequest{Timeseries: m.Timeseries[:0]} }
 func (m *WriteRequest) String() string { return proto.CompactTextString(m) }
 func (*WriteRequest) ProtoMessage()    {}
 func (*WriteRequest) Descriptor() ([]byte, []int) {
@@ -937,7 +937,12 @@ func (m *WriteRequest) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Timeseries = append(m.Timeseries, TimeSeries{})
+			if len(m.Timeseries) < cap(m.Timeseries) {
+				m.Timeseries = m.Timeseries[:len(m.Timeseries)+1]
+				m.Timeseries[len(m.Timeseries)-1].Reset()
+			} else {
+				m.Timeseries = append(m.Timeseries, TimeSeries{})
+			}
 			if err := m.Timeseries[len(m.Timeseries)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}

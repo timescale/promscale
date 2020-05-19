@@ -146,7 +146,7 @@ type TimeSeries struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *TimeSeries) Reset()         { *m = TimeSeries{} }
+func (m *TimeSeries) Reset()         { *m = TimeSeries{Labels : m.Labels[:0], Samples: m.Samples[:0]} }
 func (m *TimeSeries) String() string { return proto.CompactTextString(m) }
 func (*TimeSeries) ProtoMessage()    {}
 func (*TimeSeries) Descriptor() ([]byte, []int) {
@@ -255,7 +255,7 @@ type Labels struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *Labels) Reset()         { *m = Labels{} }
+func (m *Labels) Reset()         { *m = Labels{Labels: m.Labels[:0]} }
 func (m *Labels) String() string { return proto.CompactTextString(m) }
 func (*Labels) ProtoMessage()    {}
 func (*Labels) Descriptor() ([]byte, []int) {
@@ -1384,7 +1384,12 @@ func (m *TimeSeries) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = append(m.Labels, Label{})
+			if len(m.Labels) < cap(m.Labels) {
+				m.Labels = m.Labels[:len(m.Labels)+1]
+				m.Labels[len(m.Labels)-1].Reset()
+			} else {
+				m.Labels = append(m.Labels, Label{})
+			}
 			if err := m.Labels[len(m.Labels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1418,7 +1423,12 @@ func (m *TimeSeries) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Samples = append(m.Samples, Sample{})
+			if len(m.Samples) < cap(m.Samples) {
+				m.Samples = m.Samples[:len(m.Samples)+1]
+				m.Samples[len(m.Samples)-1].Reset()
+			} else {
+				m.Samples = append(m.Samples, Sample{})
+			}
 			if err := m.Samples[len(m.Samples)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1624,7 +1634,12 @@ func (m *Labels) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = append(m.Labels, Label{})
+			if len(m.Labels) < cap(m.Labels) {
+				m.Labels = m.Labels[:len(m.Labels)+1]
+				m.Labels[len(m.Labels)-1].Reset()
+			} else {
+				m.Labels = append(m.Labels, Label{})
+			}
 			if err := m.Labels[len(m.Labels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
