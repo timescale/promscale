@@ -5,7 +5,7 @@
 package pgmodel
 
 import (
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 // Reader reads the data based on the provided read request.

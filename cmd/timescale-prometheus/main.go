@@ -31,7 +31,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	io_prometheus_client "github.com/prometheus/client_model/go"
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 type config struct {

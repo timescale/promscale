@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 // Labels stores a labels.Labels in its canonical string representation

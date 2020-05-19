@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 type mockQuerier struct {

@@ -4,7 +4,7 @@
 
 package pgmodel
 
-import "github.com/prometheus/prometheus/prompb"
+import "github.com/timescale/timescale-prometheus/pkg/prompb"
 
 // DBInserter is responsible for ingesting the TimeSeries protobuf structs and
 // storing them in the database.

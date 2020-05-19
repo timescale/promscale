@@ -10,6 +10,7 @@ require (
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang-migrate/migrate/v4 v4.9.1
 	github.com/golang/snappy v0.0.1
+	github.com/grpc-ecosystem/grpc-gateway v1.14.1
 	github.com/jackc/pgconn v1.3.2
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
 	github.com/jackc/pgproto3/v2 v2.0.1
@@ -21,6 +22,8 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20200326161412-ae041f97cfc6
 	github.com/spf13/cobra v0.0.7 // indirect
 	github.com/testcontainers/testcontainers-go v0.3.1
+	google.golang.org/genproto v0.0.0-20200305110556-506484158171
+	google.golang.org/grpc v1.27.1
 )
 
 replace github.com/jackc/pgconn => github.com/JLockerman/pgconn v1.5.3-0.20200513205926-64cd2ce264ca

@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 
 	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )

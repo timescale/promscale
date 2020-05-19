@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"

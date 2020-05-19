@@ -15,7 +15,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
 func TestSQLJsonLabelArray(t *testing.T) {
