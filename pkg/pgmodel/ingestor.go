@@ -24,7 +24,7 @@ type SeriesID int64
 
 // inserter is responsible for inserting label, series and data into the storage.
 type inserter interface {
-	InsertNewData(rows map[string][]samplesInfo) (uint64, error)
+	InsertNewData(rows map[string][]samplesInfo, ctx *InsertCtx) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
 }
@@ -53,14 +53,14 @@ type DBIngestor struct {
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
-func (i *DBIngestor) Ingest(tts []prompb.TimeSeries) (uint64, error) {
+func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, ctx *InsertCtx) (uint64, error) {
 	data, totalRows, err := i.parseData(tts)
 
 	if err != nil {
 		return 0, err
 	}
 
-	rowsInserted, err := i.db.InsertNewData(data)
+	rowsInserted, err := i.db.InsertNewData(data, ctx)
 	if err == nil && int(rowsInserted) != totalRows {
 		return rowsInserted, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}
