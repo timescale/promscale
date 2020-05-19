@@ -22,3 +22,5 @@ require (
 	github.com/spf13/cobra v0.0.7 // indirect
 	github.com/testcontainers/testcontainers-go v0.3.1
 )
+
+replace github.com/jackc/pgconn => github.com/JLockerman/pgconn v1.5.3-0.20200513205926-64cd2ce264ca
