@@ -45,7 +45,7 @@ func (m *mockInserter) Close() {
 
 }
 
-func (m *mockInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
+func (m *mockInserter) InsertNewData(rows map[string][]samplesInfo, ctx *InsertCtx) (uint64, error) {
 	return m.InsertData(rows)
 }
 
@@ -254,7 +254,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				db:    &inserter,
 			}
 
-			count, err := i.Ingest(c.metrics)
+			count, err := i.Ingest(c.metrics, NewInsertCtx())
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {

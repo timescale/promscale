@@ -156,7 +156,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(ts)
+		_, err = ingestor.Ingest(ts, NewInsertCtx())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -396,7 +396,7 @@ func TestSQLIngest(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer ingestor.Close()
-				cnt, err := ingestor.Ingest(tcase.metrics)
+				cnt, err := ingestor.Ingest(tcase.metrics, NewInsertCtx())
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
 				}

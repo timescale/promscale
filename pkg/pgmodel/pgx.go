@@ -241,8 +241,8 @@ func (p *pgxInserter) Close() {
 	})
 }
 
-func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
-	return p.InsertData(rows)
+func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo, ctx *InsertCtx) (uint64, error) {
+	return p.InsertData(rows, ctx)
 }
 
 type insertDataRequest struct {
@@ -257,9 +257,10 @@ type insertDataTask struct {
 	errChan  chan error
 }
 
-func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertData(rows map[string][]samplesInfo, ctx *InsertCtx) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
+	sync := true
 	workFinished.Add(len(rows))
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
@@ -269,11 +270,21 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 		p.insertMetricData(metricName, data, workFinished, errChan)
 	}
 
-	workFinished.Wait()
 	var err error
-	select {
-	case err = <-errChan:
-	default:
+	if sync {
+		workFinished.Wait()
+		ctx.Close()
+		select {
+		case err = <-errChan:
+		default:
+		}
+		close(errChan)
+	} else {
+		go func() {
+			workFinished.Wait()
+			ctx.Close()
+			close(errChan)
+		}()
 	}
 
 	return numRows, err

@@ -93,8 +93,8 @@ func (c *Client) Close() {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(tts []prompb.TimeSeries) (uint64, error) {
-	return c.ingestor.Ingest(tts)
+func (c *Client) Ingest(tts []prompb.TimeSeries, ctx *pgmodel.InsertCtx) (uint64, error) {
+	return c.ingestor.Ingest(tts, ctx)
 }
 
 // Read returns the promQL query results

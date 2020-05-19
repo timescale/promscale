@@ -73,7 +73,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(metrics)
+		_, err = ingestor.Ingest(metrics, NewInsertCtx())
 
 		if err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
