@@ -154,6 +154,8 @@ func (l *PgAdvisoryLock) connCleanUp() {
 
 //Close cleans up the connection
 func (l *PgAdvisoryLock) Close() {
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
 	l.connCleanUp()
 }
 
