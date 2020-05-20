@@ -75,6 +75,7 @@ func (e *Elector) Resign() error {
 type ScheduledElector struct {
 	Elector
 	ticker                  *time.Ticker
+	lock                    sync.RWMutex
 	pausedScheduledElection bool
 }
 
@@ -86,14 +87,20 @@ func NewScheduledElector(election Election, electionInterval time.Duration) *Sch
 }
 
 func (se *ScheduledElector) pauseScheduledElection() {
+	se.lock.Lock()
+	defer se.lock.Unlock()
 	se.pausedScheduledElection = true
 }
 
 func (se *ScheduledElector) resumeScheduledElection() {
+	se.lock.Lock()
+	defer se.lock.Unlock()
 	se.pausedScheduledElection = false
 }
 
 func (se *ScheduledElector) isScheduledElectionPaused() bool {
+	se.lock.RLock()
+	defer se.lock.RUnlock()
 	return se.pausedScheduledElection
 }
 
@@ -125,7 +132,7 @@ func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, t
 
 func (se *ScheduledElector) scheduledElection() {
 	for range se.ticker.C {
-		if !se.pausedScheduledElection {
+		if !se.isScheduledElectionPaused() {
 			se.elect()
 		} else {
 			log.Debug("msg", "Scheduled election is paused. Instance can't become a leader until scheduled election is resumed (Prometheus comes up again)")
