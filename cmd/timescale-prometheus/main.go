@@ -142,17 +142,19 @@ func main() {
 	cfg := parseFlags()
 	err := log.Init(cfg.logLevel)
 	if err != nil {
+		fmt.Println("Version: ", Version, "Commit Hash: ", CommitHash)
 		fmt.Println("Fatal error: cannot start logger", err)
 		os.Exit(1)
 	}
+	log.Info("msg", "Version:"+Version+"; Commit Hash: "+CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
-
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
 	elector, err = initElector(cfg)
 
 	if err != nil {
-		log.Error("msg", "Aborting startup because of elector init error: %s", util.MaskPassword(err.Error()))
+		errStr := fmt.Sprintf("Aborting startup because of elector init error: %s", util.MaskPassword(err.Error()))
+		log.Error("msg", errStr)
 		os.Exit(1)
 	}
 
