@@ -268,8 +268,6 @@ BEGIN
                     NEW.table_name);
    EXECUTE format('CREATE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
-   EXECUTE format('CREATE INDEX data_time_%s ON SCHEMA_DATA.%I (time desc) INCLUDE (series_id, value)',
-                    NEW.id, NEW.table_name);
    PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
                              chunk_time_interval=>SCHEMA_CATALOG.get_default_chunk_interval(),
                              create_default_indexes=>false);
