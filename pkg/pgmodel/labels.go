@@ -105,12 +105,9 @@ func initLabels(l *Labels) error {
 	return nil
 }
 
-func labelProtosToLabels(labelPairs []prompb.Label) (Labels, string, error) {
+func labelProtosToLabels(labelPairs []prompb.Label, ctx *InsertCtx) (Labels, string, error) {
 	length := len(labelPairs)
-	labels := Labels{
-		names:  make([]string, 0, length),
-		values: make([]string, 0, length),
-	}
+	labels := ctx.NewLabels(length)
 
 	labels.metricName = ""
 	for _, l := range labelPairs {
@@ -121,9 +118,9 @@ func labelProtosToLabels(labelPairs []prompb.Label) (Labels, string, error) {
 		}
 	}
 
-	err := initLabels(&labels)
+	err := initLabels(labels)
 
-	return labels, labels.metricName, err
+	return *labels, labels.metricName, err
 }
 
 func (l Labels) isEmpty() bool {

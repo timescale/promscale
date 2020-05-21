@@ -54,7 +54,7 @@ type DBIngestor struct {
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, ctx *InsertCtx) (uint64, error) {
-	data, totalRows, err := i.parseData(tts)
+	data, totalRows, err := i.parseData(tts, ctx)
 
 	if err != nil {
 		return 0, err
@@ -71,7 +71,7 @@ func (i *DBIngestor) CompleteMetricCreation() error {
 	return i.db.CompleteMetricCreation()
 }
 
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string][]samplesInfo, int, error) {
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries, ctx *InsertCtx) (map[string][]samplesInfo, int, error) {
 	dataSamples := make(map[string][]samplesInfo)
 	rows := 0
 
@@ -80,7 +80,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries) (map[string][]samplesInf
 			continue
 		}
 
-		seriesLabels, metricName, err := labelProtosToLabels(t.Labels)
+		seriesLabels, metricName, err := labelProtosToLabels(t.Labels, ctx)
 		if err != nil {
 			return nil, rows, err
 		}
