@@ -31,27 +31,29 @@ func EmptyLables() Labels {
 // LabelsFromSlice converts a labels.Labels to a Labels object
 func LabelsFromSlice(ls labels.Labels) (Labels, error) {
 	length := len(ls)
-	names := make([]string, 0, length)
-	values := make([]string, 0, length)
+	labels := Labels{
+		names:  make([]string, 0, length),
+		values: make([]string, 0, length),
+	}
 
-	metricName := ""
+	labels.metricName = ""
 	for _, l := range ls {
-		names = append(names, l.Name)
-		values = append(values, l.Value)
+		labels.names = append(labels.names, l.Name)
+		labels.values = append(labels.values, l.Value)
 		if l.Name == MetricNameLabelName {
-			metricName = l.Value
+			labels.metricName = l.Value
 		}
 	}
 
-	return LabelsFromSlices(names, values, metricName)
+	err := initLabels(&labels)
+	return labels, err
 }
 
-// LabelsFromSlices creates a Labels object from keys, values, and metric name
-func LabelsFromSlices(names []string, values []string, metricName string) (Labels, error) {
-	l := Labels{names: names, values: values, metricName: metricName}
+// initLabels intializes labels
+func initLabels(l *Labels) error {
 
-	if !sort.IsSorted(&l) {
-		sort.Sort(&l)
+	if !sort.IsSorted(l) {
+		sort.Sort(l)
 	}
 
 	length := len(l.names)
@@ -67,7 +69,7 @@ func LabelsFromSlices(names []string, values []string, metricName string) (Label
 	// total length anyway, we only use 16bits to store the legth of each substring
 	// in our string encoding
 	if expectedStrLen > math.MaxUint16 {
-		return l, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
+		return fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
 	}
 
 	// the string representation is
@@ -100,26 +102,28 @@ func LabelsFromSlices(names []string, values []string, metricName string) (Label
 
 	l.str = builder.String()
 
-	return l, nil
+	return nil
 }
 
 func labelProtosToLabels(labelPairs []prompb.Label) (Labels, string, error) {
 	length := len(labelPairs)
-	names := make([]string, 0, length)
-	values := make([]string, 0, length)
+	labels := Labels{
+		names:  make([]string, 0, length),
+		values: make([]string, 0, length),
+	}
 
-	metricName := ""
+	labels.metricName = ""
 	for _, l := range labelPairs {
-		names = append(names, l.Name)
-		values = append(values, l.Value)
+		labels.names = append(labels.names, l.Name)
+		labels.values = append(labels.values, l.Value)
 		if l.Name == MetricNameLabelName {
-			metricName = l.Value
+			labels.metricName = l.Value
 		}
 	}
 
-	ls, err := LabelsFromSlices(names, values, metricName)
+	err := initLabels(&labels)
 
-	return ls, metricName, err
+	return labels, labels.metricName, err
 }
 
 func (l Labels) isEmpty() bool {
