@@ -9,7 +9,10 @@ RUN apk update && apk add --no-cache git \
     && cd timescale-prometheus \
     && go mod download \
     && GIT_COMMIT=$(git rev-list -1 HEAD) \
-    && CGO_ENABLED=0 go build -a --ldflags '-w' --ldflags "-X main.CommitHash=$GIT_COMMIT" -o /go/timescale-prometheus ./cmd/timescale-prometheus
+    && VERSION=$(git describe $GIT_COMMIT) \
+    && CGO_ENABLED=0 go build -a \
+    --ldflags '-w' --ldflags "-X main.CommitHash=$GIT_COMMIT" --ldflags "-X main.Version=$VERSION" \
+    -o /go/timescale-prometheus ./cmd/timescale-prometheus
 
 # Final image
 FROM busybox
