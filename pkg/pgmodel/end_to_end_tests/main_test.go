@@ -17,6 +17,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 
@@ -111,7 +112,7 @@ func performMigrate(t testing.TB, DBName string, connectURL string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = Migrate(dbStd)
+	err = Migrate(dbStd, pgmodel.VersionInfo{Version: "testing-v0.0.1", CommitHash: "azxtestcommit"})
 	if err != nil {
 		t.Fatal(err)
 	}

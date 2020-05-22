@@ -21,12 +21,19 @@ import (
 )
 
 const (
-	timescaleInstall = "CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;"
-	extensionInstall = "CREATE EXTENSION IF NOT EXISTS timescale_prometheus_extra WITH SCHEMA %s;"
+	timescaleInstall            = "CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;"
+	extensionInstall            = "CREATE EXTENSION IF NOT EXISTS timescale_prometheus_extra WITH SCHEMA %s;"
+	metadataUpdateWithExtension = "SELECT update_tsprom_metadata($1, $2, $3)"
+	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 )
 
 type mySrc struct {
 	source.Driver
+}
+
+type VersionInfo struct {
+	Version    string
+	CommitHash string
 }
 
 func (t *mySrc) replaceSchemaNames(r io.ReadCloser) (io.ReadCloser, error) {
@@ -70,8 +77,17 @@ func (t *mySrc) ReadDown(version uint) (r io.ReadCloser, identifier string, err 
 	return
 }
 
+func metadataUpdate(db *sql.DB, withExtension bool, key string, value string) {
+	/* Ignore error if it doesn't work */
+	if withExtension {
+		_, _ = db.Exec(metadataUpdateWithExtension, key, value, true)
+	} else {
+		_, _ = db.Exec(metadataUpdateNoExtension, key, value, true)
+	}
+}
+
 // Migrate performs a database migration to the latest version
-func Migrate(db *sql.DB) (err error) {
+func Migrate(db *sql.DB, versionInfo VersionInfo) (err error) {
 	// The migration table will be put in the public schema not in any of our schema because we never want to drop it and
 	// our scripts and our last down script drops our shemas
 	driver, err := postgres.WithInstance(db, &postgres.Config{MigrationsTable: "prom_schema_migrations"})
@@ -123,6 +139,10 @@ func Migrate(db *sql.DB) (err error) {
 	if extErr != nil {
 		log.Warn("msg", "timescale_prometheus_extra extension not installed", "cause", extErr)
 	}
+
+	// Insert metadata.
+	metadataUpdate(db, extErr == nil, "version", versionInfo.Version)
+	metadataUpdate(db, extErr == nil, "commit_hash", versionInfo.CommitHash)
 
 	return nil
 }

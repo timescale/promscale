@@ -282,7 +282,7 @@ func migrate(cfg *pgclient.Config) error {
 		}
 	}()
 
-	err = pgmodel.Migrate(dbStd)
+	err = pgmodel.Migrate(dbStd, pgmodel.VersionInfo{Version: Version, CommitHash: CommitHash})
 
 	if err != nil {
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)
