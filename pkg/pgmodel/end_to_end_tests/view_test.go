@@ -266,6 +266,10 @@ func TestSQLViewSelectors(t *testing.T) {
 				rows:  2,
 			},
 			{
+				where: "WHERE labels ? ('node' == 'dev')",
+				rows:  0,
+			},
+			{
 				where: "WHERE labels ? ('namespace' ==~ 'de.*')",
 				rows:  3,
 			},
@@ -307,6 +311,10 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				where: "WHERE labels ? ('namespace' !== 'not_exist')",
+				rows:  5,
+			},
+			{
+				where: "WHERE labels ? ('namespace' !== 'pinky')",
 				rows:  5,
 			},
 			{
