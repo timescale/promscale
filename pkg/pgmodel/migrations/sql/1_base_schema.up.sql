@@ -1367,42 +1367,42 @@ CREATE OPERATOR SCHEMA_PROM.? (
 
 --------------------- op == !== ==~ !=~ ------------------------
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_equal(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_equal(key_to_match SCHEMA_PROM.label_key, pat SCHEMA_PROM.pattern)
 RETURNS SCHEMA_PROM.matcher_positive
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_positive
     FROM SCHEMA_CATALOG.label l
-    WHERE l.key = label_key and l.value = pattern
+    WHERE l.key = key_to_match and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_equal(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_equal(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_equal(key_to_match SCHEMA_PROM.label_key, pat SCHEMA_PROM.pattern)
 RETURNS SCHEMA_PROM.matcher_negative
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_negative
     FROM SCHEMA_CATALOG.label l
-    WHERE l.key = label_key and l.value = pattern
+    WHERE l.key = key_to_match and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_not_equal(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_regex(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_regex(key_to_match SCHEMA_PROM.label_key, pat SCHEMA_PROM.pattern)
 RETURNS SCHEMA_PROM.matcher_positive
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_positive
     FROM SCHEMA_CATALOG.label l
-    WHERE l.key = label_key and l.value ~ pattern
+    WHERE l.key = key_to_match and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_regex(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_regex(label_key SCHEMA_PROM.label_key, pattern SCHEMA_PROM.pattern)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_find_key_not_regex(key_to_match SCHEMA_PROM.label_key, pat SCHEMA_PROM.pattern)
 RETURNS SCHEMA_PROM.matcher_negative
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::SCHEMA_PROM.matcher_negative
     FROM SCHEMA_CATALOG.label l
-    WHERE l.key = label_key and l.value ~ pattern
+    WHERE l.key = key_to_match and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_not_regex(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;

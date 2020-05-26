@@ -83,45 +83,45 @@ GRANT EXECUTE ON FUNCTION @extschema@.label_unnest(anyarray) TO prom_reader;
 
 ---------------------  comparison functions ---------------------
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_equal(key label_key, pat pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_equal(key_to_match label_key, pat pattern)
 RETURNS matcher_positive
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_positive
     FROM label l
-    WHERE l.key = key and l.value = pat
+    WHERE l.key = key_to_match and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT @extschema@.make_call_subquery_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_equal(label_key, pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_equal(key label_key, pat pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_equal(key_to_match label_key, pat pattern)
 RETURNS matcher_negative
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_negative
     FROM label l
-    WHERE l.key = key and l.value = pat
+    WHERE l.key = key_to_match and l.value = pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT @extschema@.make_call_subquery_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_not_equal(label_key, pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_regex(key label_key, pat pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_regex(key_to_match label_key, pat pattern)
 RETURNS matcher_positive
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_positive
     FROM label l
-    WHERE l.key = key and l.value ~ pat
+    WHERE l.key = key_to_match and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT @extschema@.make_call_subquery_support;
 GRANT EXECUTE ON FUNCTION @extschema@.label_find_key_regex(label_key, pattern) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_regex(key label_key, pat pattern)
+CREATE OR REPLACE FUNCTION @extschema@.label_find_key_not_regex(key_to_match label_key, pat pattern)
 RETURNS matcher_negative
 AS $func$
     SELECT COALESCE(array_agg(l.id), array[]::int[])::matcher_negative
     FROM label l
-    WHERE l.key = key and l.value ~ pat
+    WHERE l.key = key_to_match and l.value ~ pat
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE
 SUPPORT @extschema@.make_call_subquery_support;
