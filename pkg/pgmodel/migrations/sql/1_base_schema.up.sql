@@ -1471,3 +1471,41 @@ CREATE VIEW SCHEMA_INFO.label AS
     ARRAY(SELECT value FROM SCHEMA_CATALOG.label l WHERE l.key = lk.key ORDER BY value)
       AS values
   FROM SCHEMA_CATALOG.label_key lk;
+
+
+
+
+--Decompression should take place in a procedure because we don't want locks held across
+--decompress_chunk calls since that function takes some heavier locks at the end.
+CREATE PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ)
+AS $$
+DECLARE
+    chunk_row _timescaledb_catalog.chunk;
+    dimension_row _timescaledb_catalog.dimension;
+    hypertable_row _timescaledb_catalog.hypertable;
+    min_time_internal bigint;
+BEGIN
+    SELECT h.* INTO STRICT hypertable_row FROM _timescaledb_catalog.hypertable h
+    WHERE table_name = metric_table AND schema_name = 'SCHEMA_DATA';
+
+    SELECT d.* INTO STRICT dimension_row FROM _timescaledb_catalog.dimension d WHERE hypertable_id = hypertable_row.id ORDER BY id LIMIT 1;
+
+    SELECT _timescaledb_internal.time_to_internal(min_time) INTO STRICT min_time_internal;
+
+    FOR chunk_row IN
+        SELECT c.*
+        FROM _timescaledb_catalog.dimension_slice ds
+        INNER JOIN _timescaledb_catalog.chunk_constraint cc ON cc.dimension_slice_id = ds.id
+        INNER JOIN _timescaledb_catalog.chunk c ON cc.chunk_id = c.id
+        WHERE dimension_id = dimension_row.id
+        -- the range_starts are inclusive
+        AND min_time_internal >= ds.range_start
+        AND c.compressed_chunk_id IS NOT NULL
+        ORDER BY ds.range_start
+    LOOP
+        RAISE NOTICE 'Timescale-Prometheus is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
+        PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
+        COMMIT;
+    END LOOP;
+END;
+$$ LANGUAGE PLPGSQL;
