@@ -7,7 +7,9 @@ package pgmodel
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -116,16 +118,26 @@ type SampleInfoIterator struct {
 	sampleInfos     []samplesInfo
 	sampleInfoIndex int
 	sampleIndex     int
+	minSeen         int64
 }
 
 // NewSampleInfoIterator is the constructor
 func NewSampleInfoIterator() SampleInfoIterator {
-	return SampleInfoIterator{sampleInfos: make([]samplesInfo, 0), sampleIndex: -1, sampleInfoIndex: 0}
+	si := SampleInfoIterator{sampleInfos: make([]samplesInfo, 0)}
+	si.ResetPosition()
+	return si
 }
 
 //Append adds a sample info to the back of the iterator
 func (t *SampleInfoIterator) Append(s samplesInfo) {
 	t.sampleInfos = append(t.sampleInfos, s)
+}
+
+//ResetPosition resets the iteration position to the beginning
+func (t *SampleInfoIterator) ResetPosition() {
+	t.sampleIndex = -1
+	t.sampleInfoIndex = 0
+	t.minSeen = math.MaxInt64
 }
 
 // Next returns true if there is another row and makes the next row data
@@ -148,6 +160,9 @@ func (t *SampleInfoIterator) Values() ([]interface{}, error) {
 		model.Time(sample.Timestamp).Time(),
 		sample.Value,
 		info.seriesID,
+	}
+	if t.minSeen > sample.Timestamp {
+		t.minSeen = sample.Timestamp
 	}
 	return row, nil
 }
@@ -390,6 +405,7 @@ type insertHandler struct {
 	pending         *pendingBuffer
 	seriesCache     map[string]SeriesID
 	metricTableName string
+	metricName      string
 }
 
 type pendingBuffer struct {
@@ -480,6 +496,7 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 		pending:         &pendingBuffer{make([]insertDataTask, 0), NewSampleInfoIterator()},
 		seriesCache:     make(map[string]SeriesID),
 		metricTableName: tableName,
+		metricName:      metricName,
 	}
 
 	for {
@@ -560,6 +577,40 @@ func (h *insertHandler) flush() {
 	h.flushPending(h.pending)
 }
 
+func (h *insertHandler) decompressChunks(pending *pendingBuffer) error {
+	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", h.metricTableName), "table", h.metricTableName, "metric", h.metricName)
+	minTime := model.Time(pending.batch.minSeen).Time()
+
+	//how much faster are we at ingestion than wall-clock time?
+	ingestSpeedup := 2
+	//delay the next compression job proportional to the duration between now and the data time + a constant safety
+	delayBy := (time.Since(minTime) / time.Duration(ingestSpeedup)) + time.Duration(60*time.Minute)
+	maxDelayBy := time.Hour * 24
+	if delayBy > maxDelayBy {
+		delayBy = maxDelayBy
+	}
+
+	_, rescheduleErr := h.conn.Exec(context.Background(),
+		`SELECT alter_job_schedule(
+							(SELECT job_id
+							FROM _timescaledb_config.bgw_policy_compress_chunks p
+							INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = p.hypertable_id)
+							WHERE h.schema_name = $1 and h.table_name = $2),
+							next_start=>$3)`, dataSchema, h.metricTableName, time.Now().Add(delayBy))
+	if rescheduleErr != nil {
+		log.Error("msg", rescheduleErr, "context", "Rescheduling compression")
+		return rescheduleErr
+	}
+
+	_, decompressErr := h.conn.Exec(context.Background(), "CALL "+catalogSchema+".decompress_chunks_after($1, $2);", h.metricTableName, minTime)
+	if decompressErr != nil {
+		log.Error("msg", decompressErr, "context", "Decompressing chunks")
+		return decompressErr
+	}
+
+	return nil
+}
+
 func (h *insertHandler) flushPending(pending *pendingBuffer) {
 	err := func() error {
 		_, err := h.setSeriesIds(pending.batch.sampleInfos)
@@ -573,6 +624,23 @@ func (h *insertHandler) flushPending(pending *pendingBuffer) {
 			copyColumns,
 			&pending.batch,
 		)
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
+				/* If the error was that the table is already compressed, decompress and try again. */
+				decompressErr := h.decompressChunks(pending)
+				if decompressErr != nil {
+					return fmt.Errorf("Error while decompressing. Decompression error: %v, Original Error: %w", decompressErr, err)
+				}
+
+				pending.batch.ResetPosition()
+				_, err = h.conn.CopyFrom(
+					context.Background(),
+					pgx.Identifier{dataSchema, h.metricTableName},
+					copyColumns,
+					&pending.batch,
+				)
+			}
+		}
 		return err
 	}()
 
@@ -592,7 +660,8 @@ func (h *insertHandler) flushPending(pending *pendingBuffer) {
 		// nil all pointers to prevent memory leaks
 		pending.batch.sampleInfos[i] = samplesInfo{}
 	}
-	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0], sampleIndex: -1, sampleInfoIndex: 0}
+	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0]}
+	pending.batch.ResetPosition()
 }
 
 func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) {

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgconn"
+	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 
@@ -447,4 +449,58 @@ func TestSQLIngest(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestInsertCompressed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := NewPgxIngestor(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.test') i;")
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
+				//already compressed (could happen if policy already ran). This is fine
+			} else {
+				t.Fatal(err)
+			}
+		}
+		//ingest after compression
+		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var nextStartAfter time.Time
+		err = db.QueryRow(context.Background(), "SELECT next_start FROM timescaledb_information.policy_stats WHERE hypertable = $1::text::regclass", pgx.Identifier{"prom_data", "test"}.Sanitize()).Scan(&nextStartAfter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Until(nextStartAfter) < time.Hour*10 {
+			t.Error("next_start was not changed enough")
+		}
+	})
 }
