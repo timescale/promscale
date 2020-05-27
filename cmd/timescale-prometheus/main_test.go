@@ -17,7 +17,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 
 	"github.com/timescale/timescale-prometheus/pkg/log"
@@ -112,7 +111,7 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(ts []prompb.TimeSeries, ctx *pgmodel.InsertCtx) (uint64, error) {
+func (m *mockInserter) Ingest(ts []prompb.TimeSeries, ctx *prompb.WriteRequest) (uint64, error) {
 	m.ts = ts
 	return m.result, m.err
 }

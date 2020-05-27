@@ -34,7 +34,7 @@ func TestBigCache(t *testing.T) {
 	if err != nil {
 		t.Errorf("invalid labels %+v: %v", l, err)
 	}
-	if _, err := cache.GetSeries(l); err == nil {
+	if _, err := cache.GetSeries(*l); err == nil {
 		t.Errorf("found cache for a series that was not stored")
 	}
 
@@ -74,7 +74,7 @@ func TestBigCache(t *testing.T) {
 		if err != nil {
 			t.Errorf("invalid series %+v, %v", ls, err)
 		}
-		if err := cache.SetSeries(ls, SeriesID(i)); err != nil {
+		if err := cache.SetSeries(*ls, SeriesID(i)); err != nil {
 			t.Errorf("got unexpected error while storing series: %d", i)
 
 		}
@@ -86,7 +86,7 @@ func TestBigCache(t *testing.T) {
 		if err != nil {
 			t.Errorf("invalid series %+v, %v", ls, err)
 		}
-		if res, err = cache.GetSeries(ls); err != nil {
+		if res, err = cache.GetSeries(*ls); err != nil {
 			t.Errorf("got unexpected error while getting series: %v", series)
 		}
 		if res != SeriesID(i) {
