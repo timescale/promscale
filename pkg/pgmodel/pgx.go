@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/allegro/bigcache"
@@ -157,15 +158,20 @@ func (t *SampleInfoIterator) Err() error {
 	return nil
 }
 
+type Cfg struct {
+	AsyncAcks      bool
+	ReportInterval int
+}
+
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) (*DBIngestor, error) {
+func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache, cfg *Cfg) (*DBIngestor, error) {
 
 	conn := &pgxConnImpl{
 		conn: c,
 	}
 
-	pi, err := newPgxInserter(conn, cache)
+	pi, err := newPgxInserter(conn, cache, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -186,16 +192,29 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache) (*DBInges
 func NewPgxIngestor(c *pgxpool.Pool) (*DBIngestor, error) {
 	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
 	cache := &MetricNameCache{metrics}
-	return NewPgxIngestorWithMetricCache(c, cache)
+	return NewPgxIngestorWithMetricCache(c, cache, &Cfg{})
 }
 
-func newPgxInserter(conn pgxConn, cache MetricCache) (*pgxInserter, error) {
+func newPgxInserter(conn pgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, error) {
 	cmc := make(chan struct{}, 1)
 
 	inserter := &pgxInserter{
 		conn:                   conn,
 		metricTableNames:       cache,
 		completeMetricCreation: cmc,
+		asyncAcks:              cfg.AsyncAcks,
+	}
+	if cfg.AsyncAcks && cfg.ReportInterval > 0 {
+		inserter.insertedDatapoints = new(int64)
+		reportInterval := int64(cfg.ReportInterval)
+		go func() {
+			log.Info("msg", fmt.Sprintf("outputting throughpput info once every %ds", reportInterval))
+			tick := time.Tick(time.Duration(reportInterval) * time.Second)
+			for range tick {
+				inserted := atomic.SwapInt64(inserter.insertedDatapoints, 0)
+				log.Info("msg", "Samples write throughput", "samples/sec", inserted/reportInterval)
+			}
+		}()
 	}
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
@@ -214,6 +233,8 @@ type pgxInserter struct {
 	metricTableNames       MetricCache
 	inserters              sync.Map
 	completeMetricCreation chan struct{}
+	asyncAcks              bool
+	insertedDatapoints     *int64
 }
 
 func (p *pgxInserter) CompleteMetricCreation() error {
@@ -241,8 +262,8 @@ func (p *pgxInserter) Close() {
 	})
 }
 
-func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo, ctx *InsertCtx) (uint64, error) {
-	return p.InsertData(rows, ctx)
+func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
+	return p.InsertData(rows)
 }
 
 type insertDataRequest struct {
@@ -257,10 +278,9 @@ type insertDataTask struct {
 	errChan  chan error
 }
 
-func (p *pgxInserter) InsertData(rows map[string][]samplesInfo, ctx *InsertCtx) (uint64, error) {
+func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
-	sync := true
 	workFinished.Add(len(rows))
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
@@ -271,9 +291,8 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo, ctx *InsertCtx) 
 	}
 
 	var err error
-	if sync {
+	if !p.asyncAcks {
 		workFinished.Wait()
-		ctx.Close()
 		select {
 		case err = <-errChan:
 		default:
@@ -282,8 +301,16 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo, ctx *InsertCtx) 
 	} else {
 		go func() {
 			workFinished.Wait()
-			ctx.Close()
+			select {
+			case err = <-errChan:
+			default:
+			}
 			close(errChan)
+			if err != nil {
+				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "error", err)
+			} else if p.insertedDatapoints != nil {
+				atomic.AddInt64(p.insertedDatapoints, int64(numRows))
+			}
 		}()
 	}
 
@@ -501,12 +528,29 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 }
 
 func (h *insertHandler) handleReq(req insertDataRequest) bool {
+	h.fillKnowSeriesIds(req.data)
 	needsFlush := h.pending.addReq(req)
 	if needsFlush {
 		h.flushPending(h.pending)
 		return true
 	}
 	return false
+}
+
+func (h *insertHandler) fillKnowSeriesIds(sampleInfos []samplesInfo) (numMissingSeries int) {
+	for i, series := range sampleInfos {
+		if series.seriesID > -1 {
+			continue
+		}
+		id, ok := h.seriesCache[series.labels.String()]
+		if ok {
+			sampleInfos[i].seriesID = id
+			series.labels = nil
+		} else {
+			numMissingSeries++
+		}
+	}
+	return
 }
 
 func (h *insertHandler) flush() {
@@ -552,16 +596,7 @@ func (h *insertHandler) flushPending(pending *pendingBuffer) {
 }
 
 func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) {
-	numMissingSeries := 0
-
-	for i, series := range sampleInfos {
-		id, ok := h.seriesCache[series.labels.String()]
-		if ok {
-			sampleInfos[i].seriesID = id
-		} else {
-			numMissingSeries++
-		}
-	}
+	numMissingSeries := h.fillKnowSeriesIds(sampleInfos)
 
 	if numMissingSeries == 0 {
 		return "", nil
@@ -573,7 +608,7 @@ func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) 
 			seriesToInsert = append(seriesToInsert, &sampleInfos[i])
 		}
 	}
-	var lastSeenLabel Labels
+	var lastSeenLabel *Labels
 
 	batch := h.conn.NewBatch()
 	numSQLFunctionCalls := 0
@@ -586,7 +621,7 @@ func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) 
 	batchSeries := make([][]*samplesInfo, 0, len(seriesToInsert))
 	// group the seriesToInsert by labels, one slice array per unique labels
 	for _, curr := range seriesToInsert {
-		if !lastSeenLabel.isEmpty() && lastSeenLabel.Equal(curr.labels) {
+		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.labels) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}

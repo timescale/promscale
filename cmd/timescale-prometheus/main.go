@@ -138,6 +138,8 @@ func init() {
 	writeThroughput.Start()
 }
 
+var reportTput = true
+
 func main() {
 	cfg := parseFlags()
 	err := log.Init(cfg.logLevel)
@@ -174,6 +176,10 @@ func main() {
 			log.Error("msg", fmt.Sprintf("Aborting startup because of migration error: %s", util.MaskPassword(err.Error())))
 			os.Exit(1)
 		}
+	}
+
+	if cfg.pgmodelCfg.AsyncAcks && cfg.pgmodelCfg.ReportInterval > 0 {
+		reportTput = false
 	}
 
 	// client has to be initiated after migrate since migrate
@@ -317,14 +323,14 @@ func write(writer pgmodel.DBInserter) http.Handler {
 			return
 		}
 
-		ctx := pgmodel.NewInsertCtx()
-		if err := proto.Unmarshal(reqBuf, &ctx.WriteRequest); err != nil {
+		req := pgmodel.NewWriteRequest()
+		if err := proto.Unmarshal(reqBuf, req); err != nil {
 			log.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		ts := ctx.WriteRequest.GetTimeseries()
+		ts := req.GetTimeseries()
 		receivedBatchCount := 0
 
 		for _, t := range ts {
@@ -334,7 +340,7 @@ func write(writer pgmodel.DBInserter) http.Handler {
 		receivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		numSamples, err := writer.Ingest(ctx.WriteRequest.GetTimeseries(), ctx)
+		numSamples, err := writer.Ingest(req.GetTimeseries(), req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -351,7 +357,9 @@ func write(writer pgmodel.DBInserter) http.Handler {
 
 		select {
 		case d := <-writeThroughput.Values:
-			log.Info("msg", "Samples write throughput", "samples/sec", d)
+			if reportTput {
+				log.Info("msg", "Samples write throughput", "samples/sec", d)
+			}
 		default:
 		}
 

@@ -24,7 +24,7 @@ type SeriesID int64
 
 // inserter is responsible for inserting label, series and data into the storage.
 type inserter interface {
-	InsertNewData(rows map[string][]samplesInfo, ctx *InsertCtx) (uint64, error)
+	InsertNewData(rows map[string][]samplesInfo) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
 }
@@ -41,7 +41,7 @@ type Cache interface {
 }
 
 type samplesInfo struct {
-	labels   Labels
+	labels   *Labels
 	seriesID SeriesID
 	samples  []prompb.Sample
 }
@@ -53,14 +53,14 @@ type DBIngestor struct {
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
-func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, ctx *InsertCtx) (uint64, error) {
-	data, totalRows, err := i.parseData(tts, ctx)
+func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
+	data, totalRows, err := i.parseData(tts, req)
 
 	if err != nil {
 		return 0, err
 	}
 
-	rowsInserted, err := i.db.InsertNewData(data, ctx)
+	rowsInserted, err := i.db.InsertNewData(data)
 	if err == nil && int(rowsInserted) != totalRows {
 		return rowsInserted, fmt.Errorf("Failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}
@@ -71,7 +71,7 @@ func (i *DBIngestor) CompleteMetricCreation() error {
 	return i.db.CompleteMetricCreation()
 }
 
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries, ctx *InsertCtx) (map[string][]samplesInfo, int, error) {
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]samplesInfo, int, error) {
 	dataSamples := make(map[string][]samplesInfo)
 	rows := 0
 
@@ -80,7 +80,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, ctx *InsertCtx) (map[str
 			continue
 		}
 
-		seriesLabels, metricName, err := labelProtosToLabels(t.Labels, ctx)
+		seriesLabels, metricName, err := labelProtosToLabels(t.Labels)
 		if err != nil {
 			return nil, rows, err
 		}
@@ -95,7 +95,12 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, ctx *InsertCtx) (map[str
 		rows += len(t.Samples)
 
 		dataSamples[metricName] = append(dataSamples[metricName], sample)
+		// we're going to free req after this, but we still need the samples,
+		// so nil the field
+		t.Samples = nil
 	}
+
+	FinishWriteRequest(req)
 
 	return dataSamples, rows, nil
 }

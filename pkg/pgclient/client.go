@@ -25,6 +25,8 @@ type Config struct {
 	database         string
 	sslMode          string
 	dbConnectRetries int
+	AsyncAcks        bool
+	ReportInterval   int
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -36,6 +38,8 @@ func ParseFlags(cfg *Config) *Config {
 	flag.StringVar(&cfg.database, "db-name", "timescale", "The TimescaleDB database")
 	flag.StringVar(&cfg.sslMode, "db-ssl-mode", "disable", "The TimescaleDB connection ssl mode")
 	flag.IntVar(&cfg.dbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
+	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
+	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
 	return cfg
 }
 
@@ -71,7 +75,8 @@ func NewClient(cfg *Config) (*Client, error) {
 	metrics, _ := bigcache.NewBigCache(pgmodel.DefaultCacheConfig())
 	cache := &pgmodel.MetricNameCache{Metrics: metrics}
 
-	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache)
+	c := pgmodel.Cfg{AsyncAcks: cfg.AsyncAcks, ReportInterval: cfg.ReportInterval}
+	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache, &c)
 	if err != nil {
 		log.Error("err starting ingestor", err)
 		return nil, err
@@ -93,8 +98,8 @@ func (c *Client) Close() {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(tts []prompb.TimeSeries, ctx *pgmodel.InsertCtx) (uint64, error) {
-	return c.ingestor.Ingest(tts, ctx)
+func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
+	return c.ingestor.Ingest(tts, req)
 }
 
 // Read returns the promQL query results

@@ -146,7 +146,7 @@ type TimeSeries struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *TimeSeries) Reset()         { *m = TimeSeries{Labels : m.Labels[:0], Samples: m.Samples[:0]} }
+func (m *TimeSeries) Reset()         { *m = TimeSeries{Labels: m.Labels[:0], Samples: m.Samples[:0]} }
 func (m *TimeSeries) String() string { return proto.CompactTextString(m) }
 func (*TimeSeries) ProtoMessage()    {}
 func (*TimeSeries) Descriptor() ([]byte, []int) {

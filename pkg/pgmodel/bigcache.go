@@ -7,6 +7,7 @@ package pgmodel
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/allegro/bigcache"
@@ -62,7 +63,13 @@ func (m *MetricNameCache) Get(metric string) (string, error) {
 
 // Set stores table name for specified metric.
 func (m *MetricNameCache) Set(metric string, tableName string) error {
-	return m.Metrics.Set(metric, []byte(tableName))
+	// deep copy the strings so the original memory doesn't need to stick around
+	metricBuilder := strings.Builder{}
+	metricBuilder.Grow(len(metric))
+	metricBuilder.WriteString(metric)
+	table := make([]byte, len(tableName))
+	copy(table, tableName)
+	return m.Metrics.Set(metricBuilder.String(), table)
 }
 
 func DefaultCacheConfig() bigcache.Config {
