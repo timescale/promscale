@@ -28,50 +28,59 @@ var (
 	updateGoldenFiles = flag.Bool("update", false, "update the golden files of this test")
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
 	useExtension      = flag.Bool("use-extension", true, "use the timescale_prometheus_extra extension")
+	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
 
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
 )
 
 func TestMain(m *testing.M) {
-	flag.Parse()
-	ctx := context.Background()
-	_ = log.Init("debug")
-	if !testing.Short() && *useDocker {
-		var err error
+	var code int
+	func() {
+		flag.Parse()
+		ctx := context.Background()
+		_ = log.Init("debug")
+		if !testing.Short() && *useDocker {
+			var err error
 
-		pgContainerTestDataDir = generatePGTestDirFiles()
+			pgContainerTestDataDir = generatePGTestDirFiles()
 
-		pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, pgContainerTestDataDir)
-		if err != nil {
-			fmt.Println("Error setting up container", err)
-			os.Exit(1)
-		}
-
-		storagePath, err := generatePrometheusWALFile()
-		if err != nil {
-			fmt.Println("Error creating WAL file", err)
-			os.Exit(1)
-		}
-
-		promCont, err := testhelpers.StartPromContainer(storagePath, ctx)
-		if err != nil {
-			fmt.Println("Error setting up container", err)
-			os.Exit(1)
-		}
-		defer func() {
+			pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, pgContainerTestDataDir, *printLogs)
 			if err != nil {
-				panic(err)
+				fmt.Println("Error setting up container", err)
+				os.Exit(1)
 			}
-			pgContainer = nil
 
-			err = promCont.Terminate(ctx)
+			storagePath, err := generatePrometheusWALFile()
 			if err != nil {
-				panic(err)
+				fmt.Println("Error creating WAL file", err)
+				os.Exit(1)
 			}
-		}()
-	}
-	code := m.Run()
+
+			promCont, err := testhelpers.StartPromContainer(storagePath, ctx)
+			if err != nil {
+				fmt.Println("Error setting up container", err)
+				os.Exit(1)
+			}
+			defer func() {
+				if err != nil {
+					panic(err)
+				}
+
+				if *printLogs {
+					_ = pgContainer.StopLogProducer()
+				}
+				_ = pgContainer.Terminate(ctx)
+				pgContainer = nil
+
+				err = promCont.Terminate(ctx)
+				if err != nil {
+					panic(err)
+				}
+			}()
+		}
+		code = m.Run()
+	}()
 	os.Exit(code)
 }
 
