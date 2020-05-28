@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -210,14 +211,32 @@ func NewPgxIngestor(c *pgxpool.Pool) (*DBIngestor, error) {
 	return NewPgxIngestorWithMetricCache(c, cache, &Cfg{})
 }
 
+var ConnectionsPerProc = 5
+
 func newPgxInserter(conn pgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, error) {
 	cmc := make(chan struct{}, 1)
+
+	maxProcs := runtime.GOMAXPROCS(-1)
+	if maxProcs <= 0 {
+		maxProcs = runtime.NumCPU()
+	}
+	if maxProcs <= 0 {
+		maxProcs = 1
+	}
+
+	// we leave one connection per-core for other usages
+	numCopiers := maxProcs*ConnectionsPerProc - maxProcs
+	toCopiers := make(chan copyRequest, numCopiers)
+	for i := 0; i < numCopiers; i++ {
+		go runCopyFrom(conn, toCopiers)
+	}
 
 	inserter := &pgxInserter{
 		conn:                   conn,
 		metricTableNames:       cache,
 		completeMetricCreation: cmc,
 		asyncAcks:              cfg.AsyncAcks,
+		toCopiers:              toCopiers,
 	}
 	if cfg.AsyncAcks && cfg.ReportInterval > 0 {
 		inserter.insertedDatapoints = new(int64)
@@ -250,6 +269,7 @@ type pgxInserter struct {
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
 	insertedDatapoints     *int64
+	toCopiers              chan copyRequest
 }
 
 func (p *pgxInserter) CompleteMetricCreation() error {
@@ -275,6 +295,7 @@ func (p *pgxInserter) Close() {
 		close(value.(chan insertDataRequest))
 		return true
 	})
+	close(p.toCopiers)
 }
 
 func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
@@ -393,30 +414,11 @@ func (p *pgxInserter) getMetricInserter(metric string, errChan chan error) chan 
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
-			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, errChan, p.metricTableNames)
+			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, errChan, p.metricTableNames, p.toCopiers)
 		}
 	}
 	return inserter.(chan insertDataRequest)
 }
-
-type insertHandler struct {
-	conn            pgxConn
-	input           chan insertDataRequest
-	pending         *pendingBuffer
-	seriesCache     map[string]SeriesID
-	metricTableName string
-	metricName      string
-}
-
-type pendingBuffer struct {
-	needsResponse []insertDataTask
-	batch         SampleInfoIterator
-}
-
-const (
-	flushSize    = 2000
-	flushTimeout = 500 * time.Millisecond
-)
 
 func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
 	res, err := conn.Query(
@@ -443,6 +445,38 @@ func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
 	return tableName, possiblyNew, nil
 }
 
+type insertHandler struct {
+	conn            pgxConn
+	input           chan insertDataRequest
+	pending         *pendingBuffer
+	seriesCache     map[string]SeriesID
+	metricTableName string
+	toCopiers       chan copyRequest
+}
+
+type pendingBuffer struct {
+	needsResponse []insertDataTask
+	batch         SampleInfoIterator
+}
+
+const (
+	flushSize = 2000
+)
+
+var pendingBuffers = sync.Pool{
+	New: func() interface{} {
+		pb := new(pendingBuffer)
+		pb.needsResponse = make([]insertDataTask, 0)
+		pb.batch = NewSampleInfoIterator()
+		return pb
+	},
+}
+
+type copyRequest struct {
+	data  *pendingBuffer
+	table string
+}
+
 func runInserterRoutineFailure(input chan insertDataRequest, err error) {
 	for idr := range input {
 		select {
@@ -453,7 +487,7 @@ func runInserterRoutineFailure(input chan insertDataRequest, err error) {
 	}
 }
 
-func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, errChan chan error, metricTableNames MetricCache) {
+func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, errChan chan error, metricTableNames MetricCache, toCopiers chan copyRequest) {
 	tableName, err := metricTableNames.Get(metricName)
 	if err == ErrEntryNotFound {
 		var possiblyNew bool
@@ -493,10 +527,10 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 	handler := insertHandler{
 		conn:            conn,
 		input:           input,
-		pending:         &pendingBuffer{make([]insertDataTask, 0), NewSampleInfoIterator()},
+		pending:         pendingBuffers.Get().(*pendingBuffer),
 		seriesCache:     make(map[string]SeriesID),
 		metricTableName: tableName,
-		metricName:      metricName,
+		toCopiers:       toCopiers,
 	}
 
 	for {
@@ -548,7 +582,7 @@ func (h *insertHandler) handleReq(req insertDataRequest) bool {
 	h.fillKnowSeriesIds(req.data)
 	needsFlush := h.pending.addReq(req)
 	if needsFlush {
-		h.flushPending(h.pending)
+		h.flushPending()
 		return true
 	}
 	return false
@@ -574,11 +608,59 @@ func (h *insertHandler) flush() {
 	if !h.hasPendingReqs() {
 		return
 	}
-	h.flushPending(h.pending)
+	h.flushPending()
 }
 
-func (h *insertHandler) decompressChunks(pending *pendingBuffer) error {
-	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", h.metricTableName), "table", h.metricTableName, "metric", h.metricName)
+func (h *insertHandler) flushPending() {
+	_, err := h.setSeriesIds(h.pending.batch.sampleInfos)
+	if err != nil {
+		h.pending.reportResults(err)
+		return
+	}
+
+	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
+	h.pending = pendingBuffers.Get().(*pendingBuffer)
+}
+
+func runCopyFrom(conn pgxConn, in chan copyRequest) {
+	for {
+		req, ok := <-in
+		if !ok {
+			return
+		}
+		_, err := conn.CopyFrom(
+			context.Background(),
+			pgx.Identifier{dataSchema, req.table},
+			copyColumns,
+			&req.data.batch,
+		)
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
+				/* If the error was that the table is already compressed, decompress and try again. */
+				decompressErr := decompressChunks(conn, req.data, req.table)
+				if decompressErr != nil {
+					req.data.reportResults(err)
+					pendingBuffers.Put(req.data)
+					continue
+				}
+
+				req.data.batch.ResetPosition()
+				_, err = conn.CopyFrom(
+					context.Background(),
+					pgx.Identifier{dataSchema, req.table},
+					copyColumns,
+					&req.data.batch,
+				)
+			}
+		}
+
+		req.data.reportResults(err)
+		pendingBuffers.Put(req.data)
+	}
+}
+
+func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error {
+	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table)
 	minTime := model.Time(pending.batch.minSeen).Time()
 
 	//how much faster are we at ingestion than wall-clock time?
@@ -590,19 +672,19 @@ func (h *insertHandler) decompressChunks(pending *pendingBuffer) error {
 		delayBy = maxDelayBy
 	}
 
-	_, rescheduleErr := h.conn.Exec(context.Background(),
+	_, rescheduleErr := conn.Exec(context.Background(),
 		`SELECT alter_job_schedule(
 							(SELECT job_id
 							FROM _timescaledb_config.bgw_policy_compress_chunks p
 							INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = p.hypertable_id)
 							WHERE h.schema_name = $1 and h.table_name = $2),
-							next_start=>$3)`, dataSchema, h.metricTableName, time.Now().Add(delayBy))
+							next_start=>$3)`, dataSchema, table, time.Now().Add(delayBy))
 	if rescheduleErr != nil {
 		log.Error("msg", rescheduleErr, "context", "Rescheduling compression")
 		return rescheduleErr
 	}
 
-	_, decompressErr := h.conn.Exec(context.Background(), "CALL "+catalogSchema+".decompress_chunks_after($1, $2);", h.metricTableName, minTime)
+	_, decompressErr := conn.Exec(context.Background(), "CALL "+catalogSchema+".decompress_chunks_after($1, $2);", table, minTime)
 	if decompressErr != nil {
 		log.Error("msg", decompressErr, "context", "Decompressing chunks")
 		return decompressErr
@@ -611,39 +693,7 @@ func (h *insertHandler) decompressChunks(pending *pendingBuffer) error {
 	return nil
 }
 
-func (h *insertHandler) flushPending(pending *pendingBuffer) {
-	err := func() error {
-		_, err := h.setSeriesIds(pending.batch.sampleInfos)
-		if err != nil {
-			return err
-		}
-
-		_, err = h.conn.CopyFrom(
-			context.Background(),
-			pgx.Identifier{dataSchema, h.metricTableName},
-			copyColumns,
-			&pending.batch,
-		)
-		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok && strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
-				/* If the error was that the table is already compressed, decompress and try again. */
-				decompressErr := h.decompressChunks(pending)
-				if decompressErr != nil {
-					return fmt.Errorf("Error while decompressing. Decompression error: %v, Original Error: %w", decompressErr, err)
-				}
-
-				pending.batch.ResetPosition()
-				_, err = h.conn.CopyFrom(
-					context.Background(),
-					pgx.Identifier{dataSchema, h.metricTableName},
-					copyColumns,
-					&pending.batch,
-				)
-			}
-		}
-		return err
-	}()
-
+func (pending *pendingBuffer) reportResults(err error) {
 	for i := 0; i < len(pending.needsResponse); i++ {
 		if err != nil {
 			select {
