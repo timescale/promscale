@@ -62,7 +62,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
-		pgContainer, err := StartPGContainer(ctx, true, "")
+		pgContainer, err := StartPGContainer(ctx, true, "", false)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)

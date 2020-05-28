@@ -106,8 +106,20 @@ func dbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
 	return dbPool, nil
 }
 
+type stdoutLogConsumer struct {
+}
+
+func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
+	if l.LogType == testcontainers.StderrLog {
+		fmt.Print(l.LogType, " ", string(l.Content))
+	} else {
+		fmt.Print(string(l.Content))
+	}
+
+}
+
 // StartPGContainer starts a postgreSQL container for use in testing
-func StartPGContainer(ctx context.Context, withExtension bool, testDataDir string) (testcontainers.Container, error) {
+func StartPGContainer(ctx context.Context, withExtension bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
 	var image string
 	if withExtension {
@@ -135,10 +147,26 @@ func StartPGContainer(ctx context.Context, withExtension bool, testDataDir strin
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
-		Started:          true,
+		Started:          false,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if printLogs {
+		container.FollowOutput(stdoutLogConsumer{})
+	}
+
+	err = container.Start(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	if printLogs {
+		err = container.StartLogProducer(context.Background())
+		if err != nil {
+			fmt.Println("Error setting up logger", err)
+			os.Exit(1)
+		}
 	}
 
 	pgHost, err = container.Host(ctx)
