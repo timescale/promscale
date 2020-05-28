@@ -63,7 +63,7 @@ func NewClient(cfg *Config) (*Client, error) {
 	if maxProcs <= 0 {
 		maxProcs = 1
 	}
-	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", 5*maxProcs, maxProcs))
+	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxProcs*pgmodel.ConnectionsPerProc, maxProcs))
 
 	log.Info("msg", util.MaskPassword(connectionStr))
 
