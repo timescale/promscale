@@ -41,7 +41,7 @@ dockers:
 -
   binaries:
   - timescale-prometheus
-  skip_push: true
+  skip_push: false
   extra_files:
   - go.sum
   - go.mod
