@@ -10,7 +10,7 @@ before:
 builds:
 - env:
   - CGO_ENABLED=0
-  main: ./cmd/timescale-prometheus/main.go
+  main: ./cmd/timescale-prometheus/
 
 #don't publish scoop but overwrite the weird names
 scoop:
@@ -43,6 +43,7 @@ dockers:
   - timescale-prometheus
   skip_push: false
   extra_files:
+  - .git
   - go.sum
   - go.mod
   - pkg
