@@ -282,8 +282,8 @@ BEGIN
             labels SCHEMA_PROM.label_array NOT NULL,
             CHECK(labels[1] = %2$L AND labels[1] IS NOT NULL),
             CHECK(metric_id = %3$L),
-            UNIQUE(labels) INCLUDE (id),
-            PRIMARY KEY(id)
+            CONSTRAINT series_labels_id_%3$s UNIQUE(labels) INCLUDE (id),
+            CONSTRAINT series_pkey_%3$s PRIMARY KEY(id)
         )
     $$, NEW.table_name, label_id, NEW.id);
 
@@ -307,12 +307,12 @@ CREATE TRIGGER make_metric_table_trigger
 
 -- Return a table name built from a full_name and a suffix.
 -- The full name is truncated so that the suffix could fit in full.
--- name size will always be exactly 63 chars.
+-- name size will always be exactly 62 chars.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(
         full_name text, suffix text)
     RETURNS name
 AS $func$
-    SELECT (substring(full_name for 63-(char_length(suffix)+1)) || '_' || suffix)::name
+    SELECT (substring(full_name for 62-(char_length(suffix)+1)) || '_' || suffix)::name
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(text, text) TO prom_reader;
@@ -322,14 +322,18 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(text, text) TO prom
 -- full name doesn't fit, generates a new unique name.
 -- Note that there cannot be a collision betweeen a user
 -- defined name and a name with a suffix because user
--- defined names of length 63 always get a suffix and
--- conversely, all names with a suffix are length 63.
+-- defined names of length 62 always get a suffix and
+-- conversely, all names with a suffix are length 62.
+
+-- We use a max name length of 62 not 63 because table creation creates an
+-- array type named `_tablename`. We need to ensure that this name is
+-- unique as well, so have to reserve a space for the underscore.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_unique(
         full_name_arg text, suffix text)
     RETURNS name
 AS $func$
     SELECT CASE
-        WHEN char_length(full_name_arg) < 63 THEN
+        WHEN char_length(full_name_arg) < 62 THEN
             full_name_arg::name
         ELSE
             SCHEMA_CATALOG.pg_name_with_suffix(

@@ -6,6 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -135,20 +136,49 @@ func TestConcurrentSQL(t *testing.T) {
 				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
 			}
 
-			wg.Add(2)
+			/* test creating tables with same long name */
+			wg.Add(3)
 			go func() {
 				defer wg.Done()
-				id1 = testConcurrentGOCMetricTable(t, db, fmt.Sprintf("goc_metric_%d", i))
+				_, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
+				if err != nil {
+					t.Fatal(err)
+				}
+			}()
+			metric := fmt.Sprintf("test1"+strings.Repeat("long_name_", 10)+"goc_metric_%d", i)
+			go func() {
+				defer wg.Done()
+				id1 = testConcurrentGOCMetricTable(t, db, metric)
 			}()
 			go func() {
 				defer wg.Done()
-				id2 = testConcurrentGOCMetricTable(t, db, fmt.Sprintf("goc_metric_%d", i))
+				id2 = testConcurrentGOCMetricTable(t, db, metric)
 			}()
 			wg.Wait()
 
 			if id1 != id2 {
 				t.Fatalf("ids aren't equal: %d != %d", id1, id2)
 			}
+
+			/* test creating tables with long names and different suffixes */
+			wg.Add(3)
+			go func() {
+				defer wg.Done()
+				_, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
+				if err != nil {
+					t.Fatal(err)
+				}
+			}()
+			metric = fmt.Sprintf("test2"+strings.Repeat("long_name_", 10)+"goc_metric_%d", i)
+			go func() {
+				defer wg.Done()
+				id1 = testConcurrentGOCMetricTable(t, db, metric)
+			}()
+			go func() {
+				defer wg.Done()
+				id2 = testConcurrentGOCMetricTable(t, db, metric+"_diff")
+			}()
+			wg.Wait()
 
 			wg.Add(2)
 			go func() {

@@ -372,6 +372,10 @@ func (p *pgxInserter) createMetricTable(metric string) (string, error) {
 	var tableName string
 	defer res.Close()
 	if !res.Next() {
+		err = res.Err()
+		if err != nil {
+			return "", err
+		}
 		return "", errMissingTableName
 	}
 
