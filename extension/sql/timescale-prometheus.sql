@@ -160,3 +160,74 @@ AS $func$
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED
 $func$
 LANGUAGE SQL VOLATILE SECURITY DEFINER;
+
+----------------------------  aggregation functions ----------------------------
+
+CREATE FUNCTION @extschema@.prom_delta_transition(state internal, lowest_time timestamptz,
+    greatest_time timestamptz, step bigint, range bigint,
+    sample_time timestamptz, sample_value double precision)
+RETURNS internal AS '$libdir/timescale_prometheus_extra', 'gapfill_delta_transition'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
+CREATE FUNCTION @extschema@.prom_rate_transition(state internal, lowest_time timestamptz,
+    greatest_time timestamptz, step bigint, range bigint,
+    sample_time timestamptz, sample_value double precision)
+RETURNS internal AS '$libdir/timescale_prometheus_extra', 'gapfill_rate_transition'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
+CREATE FUNCTION @extschema@.prom_increase_transition(state internal, lowest_time timestamptz,
+    greatest_time timestamptz, step bigint, range bigint,
+    sample_time timestamptz, sample_value double precision)
+RETURNS internal AS '$libdir/timescale_prometheus_extra', 'gapfill_increase_transition'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
+CREATE FUNCTION @extschema@.prom_extrapolate_final(state internal)
+RETURNS DOUBLE PRECISION[]
+AS '$libdir/timescale_prometheus_extra', 'gapfill_delta_final'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
+
+-- implementation of prometheus delta function
+-- for proper behavior the input must be ORDER BY sample_time
+CREATE AGGREGATE @extschema@.prom_delta(
+    lowest_time timestamptz,
+    greatest_time TIMESTAMPTZ,
+    step BIGINT,
+    range BIGINT,
+    sample_time TIMESTAMPTZ,
+    sample_value DOUBLE PRECISION)
+(
+    sfunc=@extschema@.prom_delta_transition,
+    stype=internal,
+    finalfunc=@extschema@.prom_extrapolate_final
+);
+
+-- implementation of prometheus rate function
+-- for proper behavior the input must be ORDER BY sample_time
+CREATE AGGREGATE @extschema@.prom_rate(
+    lowest_time timestamptz,
+    greatest_time TIMESTAMPTZ,
+    step BIGINT,
+    range BIGINT,
+    sample_time TIMESTAMPTZ,
+    sample_value DOUBLE PRECISION)
+(
+    sfunc=@extschema@.prom_rate_transition,
+    stype=internal,
+    finalfunc=@extschema@.prom_extrapolate_final
+);
+
+-- implementation of prometheus increase function
+-- for proper behavior the input must be ORDER BY sample_time
+CREATE AGGREGATE @extschema@.prom_increase(
+    lowest_time timestamptz,
+    greatest_time TIMESTAMPTZ,
+    step BIGINT,
+    range BIGINT,
+    sample_time TIMESTAMPTZ,
+    sample_value DOUBLE PRECISION)
+(
+    sfunc=@extschema@.prom_increase_transition,
+    stype=internal,
+    finalfunc=@extschema@.prom_extrapolate_final
+);

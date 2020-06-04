@@ -14,6 +14,10 @@ MODULE_big = $(EXTENSION)
 OBJS = $(SRCS:.c=.o)
 DEPS = $(SRCS:.c=.d)
 
+DEPS += target/release/libtimescale_prometheus_extra_rs.d
+
+SHLIB_LINK_INTERNAL = target/release/libtimescale_prometheus_extra_rs.a
+
 MKFILE_PATH := $(abspath $(MAKEFILE_LIST))
 CURRENT_DIR = $(dir $(MKFILE_PATH))
 
@@ -41,13 +45,25 @@ override CFLAGS += -DINCLUDE_PACKAGE_SUPPORT=0 -MMD
 override pg_regress_clean_files = test/results/ test/regression.diffs test/regression.out tmp_check/ log/
 -include $(DEPS)
 
-all: $(EXT_SQL_FILE)
+all: $(EXT_SQL_FILE) target/release/libtimescale_prometheus_extra_rs.a
 
 $(EXT_SQL_FILE): $(SQL_FILES)
 	@cat $^ > $@
 
 check-sql-files:
 	@echo $(SQL_FILES)
+
+rust: target/release/libtimescale_prometheus_extra_rs.a
+
+timescale_prometheus_extra.so: target/release/libtimescale_prometheus_extra_rs.a
+
+target/release/libtimescale_prometheus_extra_rs.a: Cargo.toml Cargo.lock $(RUST_SRCS)
+	cargo build --release $(EXTRA_RUST_ARGS)
+
+clean:
+	rm -f $(OBJS) $(patsubst %.o,%.bc, $(OBJS))
+	rm timescale_prometheus_extra.so
+	cargo clean
 
 install: $(EXT_SQL_FILE)
 
@@ -58,4 +74,4 @@ package: clean $(EXT_SQL_FILE)
 	$(install_sh) -m 644 $(EXTENSION).control 'package/extension/'
 	$(install_sh) -m 644 $(EXT_SQL_FILE) 'package/extension/'
 
-.PHONY: check-sql-files all docker-image docker-push
+.PHONY: check-sql-files all docker-image docker-push rust
