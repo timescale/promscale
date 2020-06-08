@@ -617,7 +617,26 @@ $$
 LANGUAGE SQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(text, text) to prom_writer;
 
+--public function to get the array position for a label key if it exists
+--useful in case users want to group by a specific label key
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_pos_if_exists(
+        metric_name text, key text)
+    RETURNS INT
+AS $$
+    SELECT
+        pos
+    FROM
+        SCHEMA_CATALOG.label_key_position lkp
+    WHERE
+        lkp.metric_name = get_or_create_label_key_pos.metric_name
+        AND lkp.key = get_or_create_label_key_pos.key
+    LIMIT 1
+$$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_label_key_pos_if_exists(text, text) to prom_reader;
+
 --Get the label_id for a key, value pair
+-- no need for a get function only as users will not be using ids directly
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_id(
         key_name text, value_name text)
     RETURNS INT
@@ -643,6 +662,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_id(text, text) to p
 --since intarray does not support it).
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
+--Read queries can use the eq function or others with the jsonb to find equality
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array(js jsonb)
 RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
