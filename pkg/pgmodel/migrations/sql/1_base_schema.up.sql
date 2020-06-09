@@ -663,7 +663,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_id(text, text) to p
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
 --Read queries can use the eq function or others with the jsonb to find equality
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array(js jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_label_array(js jsonb)
 RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
         SELECT
@@ -696,11 +696,11 @@ RETURNS SCHEMA_PROM.label_array AS $$
     )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.label_array(jsonb)
+COMMENT ON FUNCTION SCHEMA_PROM.get_or_create_label_array(jsonb)
 IS 'converts a jsonb to a label array';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_array(jsonb) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_or_create_label_array(jsonb) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_array(metric_name TEXT, label_keys text[], label_values text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_label_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
         SELECT
@@ -732,9 +732,9 @@ RETURNS SCHEMA_PROM.label_array AS $$
     )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.label_array(text, text[], text[])
+COMMENT ON FUNCTION SCHEMA_PROM.get_or_create_label_array(text, text[], text[])
 IS 'converts a metric name, array of keys, and array of values to a label array';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_array(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
@@ -817,7 +817,7 @@ BEGIN
 
    EXECUTE format($query$
     WITH CTE AS (
-        SELECT SCHEMA_PROM.label_array($1)
+        SELECT SCHEMA_PROM.get_or_create_label_array($1)
     )
     SELECT id
     FROM SCHEMA_DATA_SERIES.%1$I as series
@@ -854,7 +854,7 @@ BEGIN
 
    EXECUTE format($query$
     WITH CTE AS (
-        SELECT SCHEMA_PROM.label_array($1, $2, $3)
+        SELECT SCHEMA_PROM.get_or_create_label_array($1, $2, $3)
     )
     SELECT id
     FROM SCHEMA_DATA_SERIES.%1$I as series
