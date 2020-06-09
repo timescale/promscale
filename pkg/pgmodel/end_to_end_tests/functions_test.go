@@ -156,7 +156,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatal(err)
 					}
 					var labelArray []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.label_array($1)", jsonOrig).Scan(&labelArray)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.get_or_create_label_array($1)", jsonOrig).Scan(&labelArray)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -168,7 +168,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var labelArrayKV []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
+					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
 					if err != nil {
 						t.Fatal(err)
 					}
