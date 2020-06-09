@@ -1,11 +1,12 @@
 package query
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql"
 	"math"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
 func NewEngine(logger log.Logger, queryTimeout time.Duration) *promql.Engine {

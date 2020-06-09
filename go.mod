@@ -7,6 +7,7 @@ require (
 	github.com/OneOfOne/xxhash v1.2.5 // indirect
 	github.com/allegro/bigcache v1.2.1
 	github.com/docker/go-connections v0.4.0
+	github.com/edsrzf/mmap-go v1.0.0
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang-migrate/migrate/v4 v4.9.1
@@ -18,6 +19,7 @@ require (
 	github.com/jackc/pgtype v1.2.0
 	github.com/jackc/pgx/v4 v4.4.1
 	github.com/jamiealquiza/envy v1.1.0
+	github.com/opentracing/opentracing-go v1.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.1
 	github.com/prometheus/client_model v0.2.0
@@ -27,6 +29,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.5.1
 	google.golang.org/genproto v0.0.0-20200420144010-e5e8543f8aeb
 	google.golang.org/grpc v1.29.0
+	github.com/uber/jaeger-client-go v2.23.0+incompatible
 )
 
 replace github.com/jackc/pgconn => github.com/JLockerman/pgconn v1.5.3-0.20200513205926-64cd2ce264ca
