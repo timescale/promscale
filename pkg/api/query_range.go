@@ -6,8 +6,8 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
