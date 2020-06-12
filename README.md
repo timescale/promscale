@@ -20,7 +20,7 @@ into your Kubernetes cluster:
 ```
 helm repo add timescale https://charts.timescale.com/
 helm repo update
-helm install <release_name> timescale/timescale-observability
+helm install --devel <release_name> timescale/timescale-observability
 ```
 
 # Configuring Helm Chart
