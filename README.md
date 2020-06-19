@@ -19,6 +19,10 @@ insights.
 For a detailed description of this architecture, please see [our design
 doc][design-doc].
 
+If you have any questions, please join the #prometheus channel on
+[TimescaleDB Slack](https://slack.timescale.com/), or the
+[Timescale-Prometheus Users Google Group](https://groups.google.com/forum/#!forum/timescale-prometheus-users).
+
 ### About TimescaleDB
 
 **[TimescaleDB](https://github.com/timescale/timescaledb)** is a
