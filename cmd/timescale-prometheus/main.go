@@ -10,7 +10,6 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -25,14 +24,10 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/util"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 	"github.com/jamiealquiza/envy"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	io_prometheus_client "github.com/prometheus/client_model/go"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
 	tspromql "github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
@@ -122,6 +117,15 @@ var (
 		},
 		[]string{"path"},
 	)
+	ReadQueryLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: promNamespace,
+			Name:      "query_latency_ms",
+			Help:      "Query latency in milliseconds",
+			Buckets:   []float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000},
+		},
+		[]string{"query"},
+	)
 	writeThroughput     = util.NewThroughputCalc(tickInterval)
 	elector             *util.Elector
 	lastRequestUnixNano = time.Now().UnixNano()
@@ -137,10 +141,9 @@ func init() {
 	prometheus.MustRegister(sentBatchDuration)
 	prometheus.MustRegister(queryBatchDuration)
 	prometheus.MustRegister(httpRequestDuration)
+	prometheus.MustRegister(ReadQueryLatency)
 	writeThroughput.Start()
 }
-
-var reportTput = true
 
 func main() {
 	cfg := parseFlags()
@@ -180,13 +183,9 @@ func main() {
 		}
 	}
 
-	if cfg.pgmodelCfg.AsyncAcks && cfg.pgmodelCfg.ReportInterval > 0 {
-		reportTput = false
-	}
-
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.pgmodelCfg)
+	client, err := pgclient.NewClient(&cfg.pgmodelCfg, ReadQueryLatency)
 	if err != nil {
 		log.Error(util.MaskPassword(err.Error()))
 		os.Exit(1)
@@ -196,13 +195,26 @@ func main() {
 	queryEngine := tspromql.NewEngine(log.GetLogger(), time.Minute)
 	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queryable))
 	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queryable))
-	http.Handle("/write", timeHandler(httpRequestDuration, "write", write(client)))
-	http.Handle("/read", timeHandler(httpRequestDuration, "read", read(client)))
+	promMetrics := api.Metrics{
+		LeaderGauge:         leaderGauge,
+		ReceivedSamples:     receivedSamples,
+		FailedSamples:       failedSamples,
+		SentSamples:         sentSamples,
+		SentBatchDuration:   sentBatchDuration,
+		WriteThroughput:     writeThroughput,
+		LastRequestUnixNano: lastRequestUnixNano,
+		QueryBatchDuration:  queryBatchDuration,
+		FailedQueries:       failedQueries,
+		ReceivedQueries:     receivedQueries,
+	}
+	writeHandler := timeHandler(httpRequestDuration, "write", api.Write(client, elector, &promMetrics))
+	http.Handle("/write", writeHandler)
+	http.Handle("/read", timeHandler(httpRequestDuration, "read", api.Read(client, &promMetrics)))
 	http.Handle("/query", queryHandler)
 	http.Handle("/query_range", queryRangeHandler)
 	http.Handle("/api/v1/query", queryHandler)
 	http.Handle("/api/v1/query_range", queryRangeHandler)
-	http.Handle("/healthz", health(client))
+	http.Handle("/healthz", api.Health(client))
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.listenAddr)
@@ -300,163 +312,12 @@ func migrate(cfg *pgclient.Config) error {
 	return nil
 }
 
-func write(writer pgmodel.DBInserter) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		shouldWrite, err := isWriter()
-		if err != nil {
-			leaderGauge.Set(0)
-			log.Error("msg", "IsLeader check failed", "err", err)
-			return
-		}
-		if !shouldWrite {
-			leaderGauge.Set(0)
-			log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
-			return
-		}
-
-		leaderGauge.Set(1)
-
-		compressed, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			log.Error("msg", "Read error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		atomic.StoreInt64(&lastRequestUnixNano, time.Now().UnixNano())
-
-		reqBuf, err := snappy.Decode(nil, compressed)
-		if err != nil {
-			log.Error("msg", "Decode error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		req := pgmodel.NewWriteRequest()
-		if err := proto.Unmarshal(reqBuf, req); err != nil {
-			log.Error("msg", "Unmarshal error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		ts := req.GetTimeseries()
-		receivedBatchCount := 0
-
-		for _, t := range ts {
-			receivedBatchCount = receivedBatchCount + len(t.Samples)
-		}
-
-		receivedSamples.Add(float64(receivedBatchCount))
-		begin := time.Now()
-
-		numSamples, err := writer.Ingest(req.GetTimeseries(), req)
-		if err != nil {
-			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			failedSamples.Add(float64(receivedBatchCount))
-			return
-		}
-
-		duration := time.Since(begin).Seconds()
-
-		sentSamples.Add(float64(numSamples))
-		sentBatchDuration.Observe(duration)
-
-		writeThroughput.SetCurrent(getCounterValue(sentSamples))
-
-		select {
-		case d := <-writeThroughput.Values:
-			if reportTput {
-				log.Info("msg", "Samples write throughput", "samples/sec", d)
-			}
-		default:
-		}
-
-	})
-}
-
 func isWriter() (bool, error) {
 	if elector != nil {
 		shouldWrite, err := elector.IsLeader()
 		return shouldWrite, err
 	}
 	return true, nil
-}
-
-func getCounterValue(counter prometheus.Counter) float64 {
-	dtoMetric := &io_prometheus_client.Metric{}
-	if err := counter.Write(dtoMetric); err != nil {
-		log.Warn("msg", "Error reading counter value", "err", err, "sentSamples", sentSamples)
-	}
-	return dtoMetric.GetCounter().GetValue()
-}
-
-func read(reader pgmodel.Reader) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		compressed, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			log.Error("msg", "Read error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		reqBuf, err := snappy.Decode(nil, compressed)
-		if err != nil {
-			log.Error("msg", "Decode error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		var req prompb.ReadRequest
-		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			log.Error("msg", "Unmarshal error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		queryCount := float64(len(req.Queries))
-		receivedQueries.Add(queryCount)
-		begin := time.Now()
-
-		var resp *prompb.ReadResponse
-		resp, err = reader.Read(&req)
-		if err != nil {
-			log.Warn("msg", "Error executing query", "query", req, "storage", "PostgreSQL", "err", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			failedQueries.Add(queryCount)
-			return
-		}
-
-		duration := time.Since(begin).Seconds()
-		queryBatchDuration.Observe(duration)
-
-		data, err := proto.Marshal(resp)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/x-protobuf")
-		w.Header().Set("Content-Encoding", "snappy")
-
-		compressed = snappy.Encode(nil, data)
-		if _, err := w.Write(compressed); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-}
-
-func health(hc pgmodel.HealthChecker) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := hc.HealthCheck()
-		if err != nil {
-			log.Warn("msg", "Healthcheck failed", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Length", "0")
-	})
 }
 
 // timeHandler uses Prometheus histogram to track request time

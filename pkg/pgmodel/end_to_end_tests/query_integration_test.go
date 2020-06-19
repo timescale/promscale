@@ -523,7 +523,7 @@ func TestSQLQuery(t *testing.T) {
 			t.Fatalf("Cannot run test, not an instance of testing.T")
 		}
 
-		r := NewPgxReader(readOnly)
+		r := NewPgxReader(readOnly, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Read(&c.readRequest)
@@ -904,7 +904,7 @@ func TestPromQL(t *testing.T) {
 			return
 		}
 
-		r := NewPgxReader(readOnly)
+		r := NewPgxReader(readOnly, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Read(c.readRequest)

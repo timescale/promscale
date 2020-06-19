@@ -130,7 +130,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		}
 
 		for _, c := range query {
-			r := NewPgxReader(db)
+			r := NewPgxReader(db, nil)
 			resp, err := r.Read(&c.rrq)
 			startMs := c.rrq.Queries[0].StartTimestampMs
 			endMs := c.rrq.Queries[0].EndTimestampMs

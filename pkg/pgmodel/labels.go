@@ -6,6 +6,7 @@ package pgmodel
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -167,4 +168,30 @@ func (l *Labels) Swap(i, j int) {
 	tmp = l.values[j]
 	l.values[j] = l.values[i]
 	l.values[i] = tmp
+}
+
+// FromLabelMatchers parses protobuf label matchers to Prometheus label matchers.
+func FromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, error) {
+	result := make([]*labels.Matcher, 0, len(matchers))
+	for _, matcher := range matchers {
+		var mtype labels.MatchType
+		switch matcher.Type {
+		case prompb.LabelMatcher_EQ:
+			mtype = labels.MatchEqual
+		case prompb.LabelMatcher_NEQ:
+			mtype = labels.MatchNotEqual
+		case prompb.LabelMatcher_RE:
+			mtype = labels.MatchRegexp
+		case prompb.LabelMatcher_NRE:
+			mtype = labels.MatchNotRegexp
+		default:
+			return nil, errors.New("invalid matcher type")
+		}
+		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, matcher)
+	}
+	return result, nil
 }

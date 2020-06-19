@@ -231,6 +231,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		defer ingestor.Close()
 		_, err = ingestor.Ingest(ts, NewWriteRequest())
 		if err != nil {

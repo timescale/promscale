@@ -15,6 +15,7 @@ require (
 	github.com/jackc/pgconn v1.3.2
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
 	github.com/jackc/pgproto3/v2 v2.0.1
+	github.com/jackc/pgtype v1.2.0
 	github.com/jackc/pgx/v4 v4.4.1
 	github.com/jamiealquiza/envy v1.1.0
 	github.com/pkg/errors v0.9.1

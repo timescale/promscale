@@ -283,6 +283,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer ingestor.Close()
 	_, err = ingestor.Ingest(metrics, NewWriteRequest())
 	if err != nil {
