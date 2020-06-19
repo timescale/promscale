@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"runtime"
 
 	"github.com/allegro/bigcache"
@@ -55,7 +56,7 @@ type Client struct {
 }
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config) (*Client, error) {
+func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
 
 	maxProcs := runtime.GOMAXPROCS(-1)
@@ -84,6 +85,7 @@ func NewClient(cfg *Config) (*Client, error) {
 		return nil, err
 	}
 	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache)
+
 
 	queryable := promql.NewQueryable(reader.GetQuerier())
 

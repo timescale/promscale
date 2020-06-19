@@ -398,6 +398,7 @@ func TestSQLIngest(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer ingestor.Close()
+
 				cnt, err := ingestor.Ingest(tcase.metrics, NewWriteRequest())
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)

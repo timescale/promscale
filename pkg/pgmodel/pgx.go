@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -70,7 +71,8 @@ type MetricCache interface {
 }
 
 type pgxConnImpl struct {
-	conn *pgxpool.Pool
+	conn     *pgxpool.Pool
+	readHist prometheus.ObserverVec
 }
 
 func (p *pgxConnImpl) getConn() *pgxpool.Pool {
@@ -91,6 +93,12 @@ func (p *pgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interfa
 
 func (p *pgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
 	conn := p.getConn()
+	if p.readHist != nil {
+		defer func(start time.Time, hist prometheus.ObserverVec, path string) {
+			elapsedMs := float64(time.Since(start).Milliseconds())
+			hist.WithLabelValues(path).Observe(elapsedMs)
+		}(time.Now(), p.readHist, sql[0:6])
+	}
 
 	return conn.Query(ctx, sql, args...)
 }
@@ -818,7 +826,7 @@ func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBReader {
 }
 
 // NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
-func NewPgxReader(c *pgxpool.Pool) *DBReader {
+func NewPgxReader(c *pgxpool.Pool, readHist prometheus.ObserverVec) *DBReader {
 	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
 	cache := &MetricNameCache{metrics}
 	return NewPgxReaderWithMetricCache(c, cache)
@@ -854,12 +862,6 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 		return nil, nil, err
 	}
 
-	defer func() {
-		for _, r := range rows {
-			r.Close()
-		}
-	}()
-
 	return buildSeriesSet(rows, sortSeries)
 }
 
@@ -868,7 +870,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return []*prompb.TimeSeries{}, nil
 	}
 
-	matchers, err := prompb.FromLabelMatchers(query.Matchers)
+	matchers, err := FromLabelMatchers(query.Matchers)
 
 	if err != nil {
 		return nil, err
