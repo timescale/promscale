@@ -8,7 +8,7 @@
 This project connects Prometheus to TimescaleDB, creating an
 **analytical and long-term storage platform for Prometheus metrics**.
 
-<img src="./docs/timescale-prometheus-arch.png>
+<img src="./docs/timescale-prometheus-arch.png" alt="Timescale-Prometheus Architecture Diagram" width="800"/>
 
 This platform is **horizontally-scalable**, **highly-compressed**, and
 **operationally mature**. By allowing a user to use SQL, in addition to
