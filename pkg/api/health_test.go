@@ -24,7 +24,8 @@ func (m *mockHealthChecker) HealthCheck() error {
 }
 
 func TestHealth(t *testing.T) {
-	log.Init("debug")
+	_ = log.Init("debug")
+
 	testCases := []struct {
 		name                   string
 		httpStatus             int
