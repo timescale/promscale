@@ -42,7 +42,7 @@ const (
 	getCreateMetricsTableSQL        = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
 	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
 	finalizeMetricCreation          = "CALL " + catalogSchema + ".finalize_metric_creation()"
-	getSeriesIDForLabelSQL          = "SELECT * FROM " + catalogSchema + ".get_series_id_for_key_value_array($1, $2, $3)"
+	getSeriesIDForLabelSQL          = "SELECT * FROM " + catalogSchema + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
 )
 
 var (

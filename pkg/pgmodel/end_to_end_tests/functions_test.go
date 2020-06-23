@@ -156,7 +156,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatal(err)
 					}
 					var labelArray []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.get_or_create_label_array($1)", jsonOrig).Scan(&labelArray)
+					err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_label_array($1)", jsonOrig).Scan(&labelArray)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -168,7 +168,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var labelArrayKV []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM prom_api.get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
+					err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -216,13 +216,13 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					// Check the series_id logic
 					var seriesID int
-					err = db.QueryRow(context.Background(), "SELECT prom_api.series_id($1)", jsonOrig).Scan(&seriesID)
+					err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_or_create_series_id($1)", jsonOrig).Scan(&seriesID)
 					if err != nil {
 						t.Fatal(err)
 					}
 
 					var seriesIDKeyVal int
-					err = db.QueryRow(context.Background(), "SELECT series_id FROM get_series_id_for_key_value_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					err = db.QueryRow(context.Background(), "SELECT series_id FROM get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
 						t.Fatal(err)
 					}
