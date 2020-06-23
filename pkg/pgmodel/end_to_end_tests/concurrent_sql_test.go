@@ -58,7 +58,7 @@ func testConcurrentCreateSeries(t testing.TB, db *pgxpool.Pool, index int, metri
 
 func testConcurrentGetSeries(t testing.TB, db *pgxpool.Pool, metricName string) int64 {
 	var id *int64
-	err := db.QueryRow(context.Background(), "SELECT series_id FROM _prom_catalog.get_series_id_for_key_value_array($1, array['__name__'], array[$1])",
+	err := db.QueryRow(context.Background(), "SELECT series_id FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, array['__name__'], array[$1])",
 		metricName).Scan(&id)
 	if err != nil {
 		t.Fatal(err)

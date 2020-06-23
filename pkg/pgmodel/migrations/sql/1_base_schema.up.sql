@@ -619,7 +619,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(text, text)
 
 --public function to get the array position for a label key if it exists
 --useful in case users want to group by a specific label key
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_pos_if_exists(
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_key_position(
         metric_name text, key text)
     RETURNS INT
 AS $$
@@ -628,12 +628,12 @@ AS $$
     FROM
         SCHEMA_CATALOG.label_key_position lkp
     WHERE
-        lkp.metric_name = get_or_create_label_key_pos.metric_name
-        AND lkp.key = get_or_create_label_key_pos.key
+        lkp.metric_name = label_key_position.metric_name
+        AND lkp.key = label_key_position.key
     LIMIT 1
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_label_key_pos_if_exists(text, text) to prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_key_position(text, text) to prom_reader;
 
 --Get the label_id for a key, value pair
 -- no need for a get function only as users will not be using ids directly
@@ -663,7 +663,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_id(text, text) to p
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
 --Read queries can use the eq function or others with the jsonb to find equality
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_label_array(js jsonb)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_array(js jsonb)
 RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
         SELECT
@@ -696,18 +696,18 @@ RETURNS SCHEMA_PROM.label_array AS $$
     )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.get_or_create_label_array(jsonb)
+COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(jsonb)
 IS 'converts a jsonb to a label array';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_or_create_label_array(jsonb) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(jsonb) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_or_create_label_array(metric_name TEXT, label_keys text[], label_values text[])
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_array(metric_name TEXT, label_keys text[], label_values text[])
 RETURNS SCHEMA_PROM.label_array AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              SCHEMA_CATALOG.get_or_create_label_key_pos(label_array.metric_name, kv.key)) idx,
+              SCHEMA_CATALOG.get_or_create_label_key_pos(get_or_create_label_array.metric_name, kv.key)) idx,
             coalesce(l.id,
               SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) val
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
@@ -716,7 +716,7 @@ RETURNS SCHEMA_PROM.label_array AS $$
             LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
                ON
                (
-                  lkp.metric_name = label_array.metric_name AND
+                  lkp.metric_name = get_or_create_label_array.metric_name AND
                   lkp.key = kv.key
                )
         ORDER BY kv.key
@@ -732,9 +732,9 @@ RETURNS SCHEMA_PROM.label_array AS $$
     )::SCHEMA_PROM.label_array
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.get_or_create_label_array(text, text[], text[])
+COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(text, text[], text[])
 IS 'converts a metric name, array of keys, and array of values to a label array';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
 -- Returns keys and values for a label_array
 -- This function needs to be optimized for performance
@@ -802,14 +802,19 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, name, SCHEMA_PROM.label_array) TO prom_writer;
 
-CREATE OR REPLACE  FUNCTION SCHEMA_PROM.series_id(label jsonb)
+-- There shouldn't be a need to have a read only version of this as we'll use
+-- the eq or other matcher functions to find series ids like this. However, 
+-- there are possible use cases that need the series id directly for performance
+-- that we might want to see if we need to support, in which case a 
+-- read only version might be useful in future. 
+CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_or_create_series_id(label jsonb)
 RETURNS BIGINT AS $$
 DECLARE
   series_id bigint;
   table_name name;
   metric_id int;
 BEGIN
-   --See get_series_id_for_key_value_array for notes about locking
+   --See get_or_create_series_id_for_kv_array for notes about locking
    SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__') mtn
    INTO metric_id, table_name;
 
@@ -817,7 +822,7 @@ BEGIN
 
    EXECUTE format($query$
     WITH CTE AS (
-        SELECT SCHEMA_PROM.get_or_create_label_array($1)
+        SELECT SCHEMA_CATALOG.get_or_create_label_array($1)
     )
     SELECT id
     FROM SCHEMA_DATA_SERIES.%1$I as series
@@ -833,11 +838,11 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.series_id(jsonb)
+COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id(jsonb)
 IS 'returns the series id that exactly matches a JSONB of labels';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.series_id(jsonb) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id(jsonb) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(metric_name TEXT, label_keys text[], label_values text[], OUT table_name NAME, OUT series_id BIGINT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(metric_name TEXT, label_keys text[], label_values text[], OUT table_name NAME, OUT series_id BIGINT)
 AS $func$
 DECLARE
   metric_id int;
@@ -854,7 +859,7 @@ BEGIN
 
    EXECUTE format($query$
     WITH CTE AS (
-        SELECT SCHEMA_PROM.get_or_create_label_array($1, $2, $3)
+        SELECT SCHEMA_CATALOG.get_or_create_label_array($1, $2, $3)
     )
     SELECT id
     FROM SCHEMA_DATA_SERIES.%1$I as series
@@ -870,7 +875,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_series_id_for_key_value_array(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
 --
 -- Parameter manipulation functions
 --

@@ -30,12 +30,9 @@ ORDER BY 1, 2, 4;
  is_stale_marker               | value double precision                                   | boolean          | is_stale_marker returns true if the value is a Prometheus stale marker.
  jsonb                         | labels label_array                                       | jsonb            | jsonb converts a labels array to a JSONB object.
  key_value_array               | labels label_array, OUT keys text[], OUT vals text[]     | record           | key_value_array converts a labels array to two arrays: one for keys and another for values.
- label_array                   | js jsonb                                                 | label_array      | label_array converts a jsonb to a label array.
- label_array                   | metric_name text, label_keys text[], label_values text[] | label_array      | label_array converts a metric name, array of keys, and array of values to a label array.
  matcher                       | labels jsonb                                             | matcher_positive | matcher returns a matcher for the JSONB, __name__ is ignored. The matcher can be used to match against a label array using @> or ? operators.
  reset_metric_chunk_interval   | metric_name text                                         | boolean          | reset_metric_chunk_interval resets the chunk interval for a specific metric to using the default.
  reset_metric_retention_period | metric_name text                                         | boolean          | reset_metric_retention_period resets the retention period for a specific metric to using the default.
- series_id                     | label jsonb                                              | bigint           | series_id returns the series id that exactly matches a JSONB of labels.
  set_default_chunk_interval    | chunk_interval interval                                  | boolean          | set_default_chunk_interval set the chunk interval for any metrics (existing and new) without an explicit override.
  set_default_retention_period  | retention_period interval                                | boolean          | set_default_retention_period set the retention period for any metrics (existing and new) without an explicit override.
  set_metric_chunk_interval     | metric_name text, chunk_interval interval                | boolean          | set_metric_chunk_interval set a chunk interval for a specific metric (this overrides the default).
