@@ -14,7 +14,7 @@ import (
 
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/timescale-prometheus/pkg/query"
 	"github.com/timescale/timescale-prometheus/pkg/util"
 )
 
@@ -50,7 +50,7 @@ type Client struct {
 	Connection    *pgxpool.Pool
 	ingestor      *pgmodel.DBIngestor
 	reader        *pgmodel.DBReader
-	queryable     *promql.Queryable
+	queryable     *query.Queryable
 	cfg           *Config
 	ConnectionStr string
 }
@@ -86,8 +86,7 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 	}
 	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache)
 
-
-	queryable := promql.NewQueryable(reader.GetQuerier())
+	queryable := query.NewQueryable(reader.GetQuerier())
 
 	return &Client{Connection: connectionPool, ingestor: ingestor, reader: reader, queryable: queryable, cfg: cfg}, nil
 }
@@ -120,6 +119,6 @@ func (c *Client) HealthCheck() error {
 
 // GetQueryable returns the Prometheus storage.Queryable interface thats running
 // with the same underlying Querier as the DBReader.
-func (c *Client) GetQueryable() *promql.Queryable {
+func (c *Client) GetQueryable() *query.Queryable {
 	return c.queryable
 }

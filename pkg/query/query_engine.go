@@ -1,4 +1,4 @@
-package promql
+package query
 
 import (
 	"github.com/go-kit/kit/log"

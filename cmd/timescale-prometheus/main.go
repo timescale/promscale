@@ -28,7 +28,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	tspromql "github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
 type config struct {
@@ -192,7 +192,7 @@ func main() {
 	}
 	defer client.Close()
 	queryable := client.GetQueryable()
-	queryEngine := tspromql.NewEngine(log.GetLogger(), time.Minute)
+	queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queryable))
 	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queryable))
 	promMetrics := api.Metrics{
