@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/timescale/timescale-prometheus/pkg/log"
-	tspromql "github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
-func Query(queryEngine *promql.Engine, queriable *tspromql.Queryable) http.Handler {
+func Query(queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
 		if t := r.FormValue("time"); t != "" {
@@ -69,11 +69,7 @@ func Query(queryEngine *promql.Engine, queriable *tspromql.Queryable) http.Handl
 			return
 		}
 
-		if res != nil {
-			respond(w, res)
-		} else {
-			w.WriteHeader(http.StatusNoContent)
-		}
+		respond(w, res)
 	})
 
 	return gziphandler.GzipHandler(hf)

@@ -1,4 +1,4 @@
-package promql
+package query
 
 import (
 	"context"

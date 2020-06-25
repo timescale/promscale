@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
-	tspromql "github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/timescale-prometheus/pkg/query"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -168,7 +168,7 @@ func TestQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			handler := Query(engine, tspromql.NewQueryable(tc.querier))
+			handler := Query(engine, query.NewQueryable(tc.querier))
 			queryUrl := constructQuery(tc.metric, tc.time, tc.timeout)
 			w := doQuery(t, handler, queryUrl, tc.canceled)
 

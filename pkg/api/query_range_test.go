@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/timescale/timescale-prometheus/pkg/log"
-	tspromql "github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/timescale-prometheus/pkg/query"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -153,7 +153,7 @@ func TestRangedQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			handler := QueryRange(engine, tspromql.NewQueryable(tc.querier))
+			handler := QueryRange(engine, query.NewQueryable(tc.querier))
 			queryUrl := constructRangedQuery(tc.metric, tc.start, tc.end, tc.step, tc.timeout)
 			w := doRangedQuery(t, handler, queryUrl, tc.canceled)
 
