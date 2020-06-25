@@ -50,6 +50,9 @@ func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, []parser.N
 	return &mockSeriesSet{}, nil, nil, m.err
 }
 
+func (m mockQuerier) LabelNames() ([]string, error) {
+	return nil, nil
+}
 func TestParseDuration(t *testing.T) {
 	testCase := []struct {
 		in          string
@@ -77,7 +80,7 @@ func TestParseDuration(t *testing.T) {
 	for _, tc := range testCase {
 		got, err := parseDuration(tc.in)
 		if err == nil && tc.expectError {
-			t.Errorf("unexected lack of error for input: %s", tc.in)
+			t.Errorf("unexpected lack of error for input: %s", tc.in)
 			continue
 		}
 		if err != nil && !tc.expectError {
@@ -171,8 +174,8 @@ func TestQuery(t *testing.T) {
 				},
 			)
 			handler := Query(engine, query.NewQueryable(tc.querier))
-			queryUrl := constructQuery(tc.metric, tc.time, tc.timeout)
-			w := doQuery(t, handler, queryUrl, tc.canceled)
+			queryURL := constructQuery(tc.metric, tc.time, tc.timeout)
+			w := doQuery(t, handler, queryURL, tc.canceled)
 
 			if w.Code != tc.expectCode {
 				t.Errorf("Unexpected HTTP status code received: got %d wanted %d", w.Code, tc.expectCode)

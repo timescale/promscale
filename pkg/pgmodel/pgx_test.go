@@ -1190,3 +1190,77 @@ func TestPGXQuerierQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestPgxQuerierLabelsNames(t *testing.T) {
+	testCases := []struct {
+		name         string
+		expectedRes  []string
+		errorOnQuery bool
+		errorOnScan  bool
+	}{
+		{
+			name:         "Error on query",
+			errorOnQuery: true,
+		}, {
+			name:        "Error on scanning values",
+			errorOnScan: true,
+			expectedRes: []string{"a"},
+		}, {
+			name:        "Empty result, is ok",
+			expectedRes: []string{},
+		}, {
+			name:        "Result should be sorted",
+			expectedRes: []string{"b", "a"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			queryResults := toRowResults(tc.expectedRes, tc.errorOnScan)
+			queryErr := make(map[int]error)
+			if tc.errorOnQuery {
+				queryErr[0] = fmt.Errorf("some error")
+			}
+			mock := &mockPGXConn{
+				QueryErr:     queryErr,
+				QueryResults: queryResults,
+			}
+			querier := pgxQuerier{conn: mock}
+			res, err := querier.LabelNames()
+			if tc.errorOnQuery && err == nil {
+				t.Error("unexpected lack of error")
+				return
+			} else if tc.errorOnScan && err == nil {
+				t.Error("unexpected lack of error")
+				return
+			} else if err != nil && !tc.errorOnQuery && !tc.errorOnScan {
+				t.Errorf("unexpected error: %v", err)
+				return
+			} else if tc.errorOnQuery || tc.errorOnScan {
+				return
+			}
+			outputIsSorted := sort.SliceIsSorted(res, func(i, j int) bool {
+				return res[i] < res[j]
+			})
+			if !outputIsSorted {
+				t.Error("returned label names are not sorted")
+			}
+			sort.Strings(tc.expectedRes)
+			if !reflect.DeepEqual(tc.expectedRes, res) {
+				t.Errorf("expected: %v, got: %v", tc.expectedRes, res)
+			}
+		})
+	}
+}
+
+func toRowResults(labelNames []string, convertImproperly bool) []rowResults {
+	toReturn := make([]rowResults, 1)
+	toReturn[0] = make(rowResults, len(labelNames))
+	for i, labelName := range labelNames {
+		if convertImproperly {
+			toReturn[0][i] = []interface{}{1}
+		} else {
+			toReturn[0][i] = []interface{}{labelName}
+		}
+	}
+	return toReturn
+}

@@ -39,8 +39,8 @@ func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {
-	fmt.Println("querier label names")
-	return nil, nil, nil
+	lNames, err := q.pgQuerier.LabelNames()
+	return lNames, nil, err
 }
 
 func (q querier) Close() error {

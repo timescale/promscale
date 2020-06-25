@@ -160,7 +160,7 @@ func TestPgxSeriesSet(t *testing.T) {
 			name: "invalid label names",
 			input: append([][][][]byte{},
 				append([][][]byte{},
-					append([][]byte{[]byte{}},
+					append([][]byte{{}},
 						genSeries([]string{"one"}, nil, nil, nil)[1:4]...,
 					),
 				),

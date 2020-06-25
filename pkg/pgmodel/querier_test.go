@@ -18,6 +18,8 @@ type mockQuerier struct {
 	tts               []*prompb.TimeSeries
 	err               error
 	healthCheckCalled bool
+	labelNames        []string
+	labelNamesErr     error
 }
 
 func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
@@ -26,6 +28,10 @@ func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *sto
 
 func (q *mockQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	return q.tts, q.err
+}
+
+func (q *mockQuerier) LabelNames() ([]string, error) {
+	return q.labelNames, q.labelNamesErr
 }
 
 func (q *mockQuerier) HealthCheck() error {

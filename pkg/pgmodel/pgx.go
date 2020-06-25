@@ -44,6 +44,7 @@ const (
 	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
 	finalizeMetricCreation          = "CALL " + catalogSchema + ".finalize_metric_creation()"
 	getSeriesIDForLabelSQL          = "SELECT * FROM " + catalogSchema + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
+	getLabelNamesSQL                = "SELECT distinct key from " + catalogSchema + ".label"
 )
 
 var (
@@ -515,10 +516,10 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 			//won't be able to insert anyway
 			runInserterRoutineFailure(input, err)
 			return
-		} else {
-			//ignone error since this is just an optimization
-			_ = metricTableNames.Set(metricName, tableName)
 		}
+
+		//ignone error since this is just an optimization
+		_ = metricTableNames.Set(metricName, tableName)
 
 		if possiblyNew {
 			//pass a signal if there is space
@@ -903,6 +904,29 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	return results, nil
+}
+
+func (q *pgxQuerier) LabelNames() ([]string, error) {
+	rows, err := q.conn.Query(context.Background(), getLabelNamesSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	labelNames := make([]string, 0)
+
+	for rows.Next() {
+		var labelName string
+		if err := rows.Scan(&labelName); err != nil {
+			return nil, err
+		}
+
+		labelNames = append(labelNames, labelName)
+	}
+
+	sort.Strings(labelNames)
+	return labelNames, nil
 }
 
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]pgx.Rows, parser.Node, error) {
