@@ -1192,6 +1192,18 @@ func TestPGXQuerierQuery(t *testing.T) {
 }
 
 func TestPgxQuerierLabelsNames(t *testing.T) {
+	testLabelMethods(t, func(querier *pgxQuerier) ([]string, error) {
+		return querier.LabelNames()
+	})
+}
+
+func TestPgxQuerierLabelsValues(t *testing.T) {
+	testLabelMethods(t, func(querier *pgxQuerier) ([]string, error) {
+		return querier.LabelValues("m")
+	})
+}
+
+func testLabelMethods(t *testing.T, f func(*pgxQuerier) ([]string, error)) {
 	testCases := []struct {
 		name         string
 		expectedRes  []string
@@ -1225,7 +1237,7 @@ func TestPgxQuerierLabelsNames(t *testing.T) {
 				QueryResults: queryResults,
 			}
 			querier := pgxQuerier{conn: mock}
-			res, err := querier.LabelNames()
+			res, err := f(&querier)
 			if tc.errorOnQuery && err == nil {
 				t.Error("unexpected lack of error")
 				return
@@ -1251,7 +1263,6 @@ func TestPgxQuerierLabelsNames(t *testing.T) {
 		})
 	}
 }
-
 func toRowResults(labelNames []string, convertImproperly bool) []rowResults {
 	toReturn := make([]rowResults, 1)
 	toReturn[0] = make(rowResults, len(labelNames))

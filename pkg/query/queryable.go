@@ -2,8 +2,6 @@ package query
 
 import (
 	"context"
-	"fmt"
-
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
@@ -34,8 +32,8 @@ func newQuerier(ctx context.Context, q pgmodel.Querier, mint, maxt int64) (*quer
 }
 
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	fmt.Println("querier label values: ", name)
-	return nil, nil, nil
+	lVals, err := q.pgQuerier.LabelValues(name)
+	return lVals, nil, err
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {
