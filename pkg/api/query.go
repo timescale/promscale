@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
@@ -84,7 +85,10 @@ func respond(w http.ResponseWriter, res *promql.Result) {
 
 	resp := &response{
 		Status: "success",
-		Data:   res.Value,
+		Data: &queryData{
+			ResultType: res.Value.Type(),
+			Result:     res.Value,
+		},
 	}
 	for _, warn := range res.Warnings {
 		resp.Warnings = append(resp.Warnings, warn.Error())
@@ -105,14 +109,19 @@ func respondError(w http.ResponseWriter, status int, err error, errType string) 
 
 type errResponse struct {
 	Status    string `json:"status"`
-	Error     string `json:"error"`
 	ErrorType string `json:"errorType"`
+	Error     string `json:"error"`
 }
 
 type response struct {
 	Status   string      `json:"status"`
 	Data     interface{} `json:"data,omitempty"`
 	Warnings []string    `json:"warnings,omitempty"`
+}
+
+type queryData struct {
+	ResultType parser.ValueType `json:"resultType"`
+	Result     parser.Value     `json:"result"`
 }
 
 func parseTime(s string) (time.Time, error) {
