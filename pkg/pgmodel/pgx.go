@@ -45,6 +45,7 @@ const (
 	finalizeMetricCreation          = "CALL " + catalogSchema + ".finalize_metric_creation()"
 	getSeriesIDForLabelSQL          = "SELECT * FROM " + catalogSchema + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
 	getLabelNamesSQL                = "SELECT distinct key from " + catalogSchema + ".label"
+	getLabelValuesSQL               = "SELECT value from " + catalogSchema + ".label WHERE key = $1"
 )
 
 var (
@@ -997,7 +998,31 @@ func (q *pgxQuerier) LabelNames() ([]string, error) {
 	return labelNames, nil
 }
 
+func (q *pgxQuerier) LabelValues(labelName string) ([]string, error) {
+	rows, err := q.conn.Query(context.Background(), getLabelValuesSQL, labelName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	labelValues := make([]string, 0)
+
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+
+		labelValues = append(labelValues, value)
+	}
+
+	sort.Strings(labelValues)
+	return labelValues, nil
+}
+
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]pgx.Rows, parser.Node, error) {
+
 	metric, cases, values, err := buildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, err

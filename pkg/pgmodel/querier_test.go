@@ -26,12 +26,16 @@ func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *sto
 	return nil, nil, nil, nil
 }
 
-func (q *mockQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
+func (q *mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	return q.tts, q.err
 }
 
 func (q *mockQuerier) LabelNames() ([]string, error) {
 	return q.labelNames, q.labelNamesErr
+}
+
+func (q *mockQuerier) LabelValues(string) ([]string, error) {
+	return nil, nil
 }
 
 func (q *mockQuerier) HealthCheck() error {

@@ -46,6 +46,10 @@ func (m mockQuerier) LabelNames() ([]string, error) {
 	return m.labelNames, m.labelNamesErr
 }
 
+func (m mockQuerier) LabelValues(string) ([]string, error) {
+	return nil, nil
+}
+
 func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
 }
