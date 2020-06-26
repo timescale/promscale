@@ -99,7 +99,7 @@ func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Han
 			return
 		}
 
-		respond(w, res)
+		respond(w, res.Value, res.Warnings)
 	})
 
 	return gziphandler.GzipHandler(hf)
