@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/prometheus/prometheus/storage"
 	"io"
 	"math"
 	"net/http"
@@ -71,15 +72,15 @@ func Query(queryEngine *promql.Engine, queriable *query.Queryable) http.Handler 
 			return
 		}
 
-		respond(w, res)
+		respond(w, res, res.Warnings)
 	})
 
 	return gziphandler.GzipHandler(hf)
 }
 
-func respond(w http.ResponseWriter, res *promql.Result) {
+func respond(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
 	w.Header().Set("Content-Type", "application/json")
-	if len(res.Warnings) > 0 {
+	if warnings != nil && len(warnings) > 0 {
 		w.Header().Set("Cache-Control", "no-store")
 	}
 	w.WriteHeader(http.StatusOK)

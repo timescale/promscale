@@ -110,7 +110,7 @@ func TestRangedQuery(t *testing.T) {
 			timeout:     "1s",
 			metric:      "m",
 			querier: &mockQuerier{
-				timeToSleep: 2 * time.Second,
+				timeToSleepOnSelect: 2 * time.Second,
 			},
 		}, {
 			name:        "Cancel query",
@@ -130,7 +130,7 @@ func TestRangedQuery(t *testing.T) {
 			expectCode:  http.StatusUnprocessableEntity,
 			expectError: "execution",
 			metric:      "m",
-			querier:     &mockQuerier{err: fmt.Errorf("some error")},
+			querier:     &mockQuerier{selectErr: fmt.Errorf("some error")},
 			timeout:     "30s",
 		}, {
 			name:       "All good",

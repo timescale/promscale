@@ -36,8 +36,14 @@ func (m mockSeriesSet) Err() error {
 }
 
 type mockQuerier struct {
-	timeToSleep time.Duration
-	err         error
+	timeToSleepOnSelect time.Duration
+	selectErr           error
+	labelNames          []string
+	labelNamesErr       error
+}
+
+func (m mockQuerier) LabelNames() ([]string, error) {
+	return m.labelNames, m.labelNamesErr
 }
 
 func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
@@ -45,14 +51,11 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 }
 
 func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
-	time.Sleep(m.timeToSleep)
+	time.Sleep(m.timeToSleepOnSelect)
 
-	return &mockSeriesSet{}, nil, nil, m.err
+	return &mockSeriesSet{}, nil, nil, m.selectErr
 }
 
-func (m mockQuerier) LabelNames() ([]string, error) {
-	return nil, nil
-}
 func TestParseDuration(t *testing.T) {
 	testCase := []struct {
 		in          string
@@ -138,7 +141,7 @@ func TestQuery(t *testing.T) {
 			timeout:     "1s",
 			metric:      "m",
 			querier: &mockQuerier{
-				timeToSleep: 2 * time.Second,
+				timeToSleepOnSelect: 2 * time.Second,
 			},
 		}, {
 			name:        "Cancel query",
@@ -152,7 +155,7 @@ func TestQuery(t *testing.T) {
 			expectCode:  http.StatusUnprocessableEntity,
 			expectError: "execution",
 			metric:      "m",
-			querier:     &mockQuerier{err: fmt.Errorf("some error")},
+			querier:     &mockQuerier{selectErr: fmt.Errorf("some error")},
 			timeout:     "30s",
 		}, {
 			name:       "All good",
