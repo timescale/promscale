@@ -22,6 +22,11 @@ import (
 	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
 
+var (
+	startTime int64 = 1577836800000
+	endTime   int64 = 1577886800000
+)
+
 // PromClient is a wrapper around http.Client for sending read requests.
 type PromClient struct {
 	url        *url.URL
@@ -941,14 +946,16 @@ func generateSamples(index int) []prompb.Sample {
 		timeDelta int64   = 30000
 	)
 	samples := make([]prompb.Sample, 0, 3)
-	i := 1
+	i := 0
+	time := startTime + (timeDelta * int64(i))
 
-	for i <= 1000 {
+	for time < endTime {
 		samples = append(samples, prompb.Sample{
-			Timestamp: timeDelta * int64(i),
+			Timestamp: time,
 			Value:     delta * float64(i),
 		})
 		i++
+		time = startTime + (timeDelta * int64(i))
 	}
 
 	return samples
