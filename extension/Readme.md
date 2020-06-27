@@ -5,6 +5,10 @@ contains support functions to improve the performance of Timescale-Prometheus.
 While Timescale-Prometheus will run without it, adding this extension will
 cause it to perform better.
 
+## Requirements ##
+
+This extension requires Postgres version 12 or newer.
+
 ## Installation ##
 
 The extension is installed by default on the
