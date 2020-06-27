@@ -139,6 +139,7 @@ available at on Docker Hub at
 [`timescaledev/timescale_prometheus_extra:latest-pg12`](https://hub.docker.com/r/timescaledev/timescale_prometheus_extra).
 Instructions on how to compile and install the extension are in the
 extensions [README](extension/Readme.md).
+Please note that the extension requires Postgres version 12 of newer.
 
 #### Binaries
 
