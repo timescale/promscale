@@ -8,6 +8,129 @@ import (
 )
 
 // MarshalJSON marshal bytes to json - template
+func (j *Label) MarshalJSON() ([]byte, error) {
+	var buf fflib.Buffer
+	if j == nil {
+		buf.WriteString("null")
+		return buf.Bytes(), nil
+	}
+	err := j.MarshalJSONBuf(&buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// MarshalJSONBuf marshal buff to json - template
+func (j *Label) MarshalJSONBuf(buf fflib.EncodingBuffer) error {
+	if j == nil {
+		buf.WriteString("null")
+		return nil
+	}
+	var err error
+	var obj []byte
+	_ = obj
+	_ = err
+	buf.WriteString(`{"Name":`)
+	fflib.WriteJsonString(buf, string(j.Name))
+	buf.WriteString(`,"Value":`)
+	fflib.WriteJsonString(buf, string(j.Value))
+	buf.WriteByte('}')
+	return nil
+}
+
+// MarshalJSON marshal bytes to json - template
+func (j *Point) MarshalJSON() ([]byte, error) {
+	var buf fflib.Buffer
+	if j == nil {
+		buf.WriteString("null")
+		return buf.Bytes(), nil
+	}
+	err := j.MarshalJSONBuf(&buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// MarshalJSONBuf marshal buff to json - template
+func (j *Point) MarshalJSONBuf(buf fflib.EncodingBuffer) error {
+	if j == nil {
+		buf.WriteString("null")
+		return nil
+	}
+	var err error
+	var obj []byte
+	_ = obj
+	_ = err
+	buf.WriteString(`{"T":`)
+	fflib.FormatBits2(buf, uint64(j.T), 10, j.T < 0)
+	buf.WriteString(`,"V":`)
+	fflib.AppendFloat(buf, float64(j.V), 'g', -1, 64)
+	buf.WriteByte('}')
+	return nil
+}
+
+// MarshalJSON marshal bytes to json - template
+func (j *Sample) MarshalJSON() ([]byte, error) {
+	var buf fflib.Buffer
+	if j == nil {
+		buf.WriteString("null")
+		return buf.Bytes(), nil
+	}
+	err := j.MarshalJSONBuf(&buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// MarshalJSONBuf marshal buff to json - template
+func (j *Sample) MarshalJSONBuf(buf fflib.EncodingBuffer) error {
+	if j == nil {
+		buf.WriteString("null")
+		return nil
+	}
+	var err error
+	var obj []byte
+	_ = obj
+	_ = err
+	buf.WriteString(`{"value":`)
+
+	{
+
+		err = j.Point.MarshalJSONBuf(buf)
+		if err != nil {
+			return err
+		}
+
+	}
+	buf.WriteString(`,"metric":`)
+	if j.Metric != nil {
+		buf.WriteString(`[`)
+		for i, v := range j.Metric {
+			if i != 0 {
+				buf.WriteString(`,`)
+			}
+
+			{
+
+				err = v.MarshalJSONBuf(buf)
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+		buf.WriteString(`]`)
+	} else {
+		buf.WriteString(`null`)
+	}
+	buf.WriteByte('}')
+	return nil
+}
+
+// MarshalJSON marshal bytes to json - template
 func (j *errResponse) MarshalJSON() ([]byte, error) {
 	var buf fflib.Buffer
 	if j == nil {
@@ -170,11 +293,10 @@ func (j *vectorData) MarshalJSONBuf(buf fflib.EncodingBuffer) error {
 
 			{
 
-				obj, err = v.MarshalJSON()
+				err = v.MarshalJSONBuf(buf)
 				if err != nil {
 					return err
 				}
-				buf.Write(obj)
 
 			}
 		}

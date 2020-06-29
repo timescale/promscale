@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
@@ -91,7 +92,7 @@ func respond(w http.ResponseWriter, res *promql.Result) {
 			Status: "success",
 			Data: vectorData{
 				ResultType: parser.ValueTypeVector,
-				Result:     resVal,
+				Result:     toInternalRepr(resVal),
 			},
 		}
 		for _, warn := range res.Warnings {
@@ -154,7 +155,31 @@ type vectorResponse struct {
 // ffjson: nodecoder
 type vectorData struct {
 	ResultType parser.ValueType `json:"resultType"`
-	Result     promql.Vector    `json:"result"`
+	Result     Vector           `json:"result"`
+}
+
+type Vector = []Sample
+
+// ffjson: nodecoder
+type Sample struct {
+	Point  `json:"value"`
+	Metric []Label `json:"metric"`
+}
+
+// ffjson: nodecoder
+type Point struct {
+	T int64
+	V float64
+}
+
+// ffjson: nodecoder
+type Label struct {
+	Name, Value string
+}
+
+//based on strings.Builder's []byte to string function
+func toInternalRepr(vector promql.Vector) []Sample {
+	return *(*[]Sample)(unsafe.Pointer(&vector))
 }
 
 func parseTime(s string) (time.Time, error) {
