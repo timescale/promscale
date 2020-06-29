@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -83,17 +84,33 @@ func respond(w http.ResponseWriter, res *promql.Result) {
 	}
 	w.WriteHeader(http.StatusOK)
 
-	resp := &response{
-		Status: "success",
-		Data: &queryData{
-			ResultType: res.Value.Type(),
-			Result:     res.Value,
-		},
+	switch resVal := res.Value.(type) {
+	case promql.Vector:
+		warnings := make([]string, 0, len(res.Warnings))
+		for _, warn := range res.Warnings {
+			warnings = append(warnings, warn.Error())
+		}
+		_ = marshalVectorResponse(w, resVal, warnings)
+	case promql.Matrix:
+		warnings := make([]string, 0, len(res.Warnings))
+		for _, warn := range res.Warnings {
+			warnings = append(warnings, warn.Error())
+		}
+		_ = marshalMatrixResponse(w, resVal, warnings)
+	default:
+		resp := &response{
+			Status: "success",
+			Data: &queryData{
+				ResultType: res.Value.Type(),
+				Result:     res.Value,
+			},
+		}
+		for _, warn := range res.Warnings {
+			resp.Warnings = append(resp.Warnings, warn.Error())
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	}
-	for _, warn := range res.Warnings {
-		resp.Warnings = append(resp.Warnings, warn.Error())
-	}
-	_ = json.NewEncoder(w).Encode(resp)
+
 }
 
 func respondError(w http.ResponseWriter, status int, err error, errType string) {
@@ -122,6 +139,14 @@ type response struct {
 type queryData struct {
 	ResultType parser.ValueType `json:"resultType"`
 	Result     parser.Value     `json:"result"`
+}
+
+func marshalMatrixResponse(writer io.Writer, data promql.Matrix, warnings []string) error {
+	out := &errorWrapper{writer: writer}
+	marshalCommonHeader(out)
+	marshalMatrixData(out, data)
+	marshalCommonFooter(out, warnings)
+	return out.err
 }
 
 func parseTime(s string) (time.Time, error) {
