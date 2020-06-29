@@ -1,3 +1,4 @@
+//go:generate ffjson $GOFILE
 package api
 
 import (
@@ -10,6 +11,7 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
+	"github.com/pquerna/ffjson/ffjson"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -83,17 +85,32 @@ func respond(w http.ResponseWriter, res *promql.Result) {
 	}
 	w.WriteHeader(http.StatusOK)
 
-	resp := &response{
-		Status: "success",
-		Data: &queryData{
-			ResultType: res.Value.Type(),
-			Result:     res.Value,
-		},
+	switch resVal := res.Value.(type) {
+	case promql.Vector:
+		resp := vectorResponse{
+			Status: "success",
+			Data: vectorData{
+				ResultType: parser.ValueTypeVector,
+				Result:     resVal,
+			},
+		}
+		for _, warn := range res.Warnings {
+			resp.Warnings = append(resp.Warnings, warn.Error())
+		}
+		_ = ffjson.NewEncoder(w).EncodeFast(resp)
+	default:
+		resp := &response{
+			Status: "success",
+			Data: &queryData{
+				ResultType: res.Value.Type(),
+				Result:     res.Value,
+			},
+		}
+		for _, warn := range res.Warnings {
+			resp.Warnings = append(resp.Warnings, warn.Error())
+		}
+		_ = ffjson.NewEncoder(w).EncodeFast(resp)
 	}
-	for _, warn := range res.Warnings {
-		resp.Warnings = append(resp.Warnings, warn.Error())
-	}
-	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func respondError(w http.ResponseWriter, status int, err error, errType string) {
@@ -107,21 +124,37 @@ func respondError(w http.ResponseWriter, status int, err error, errType string) 
 	})
 }
 
+// ffjson: nodecoder
 type errResponse struct {
 	Status    string `json:"status"`
 	ErrorType string `json:"errorType"`
 	Error     string `json:"error"`
 }
 
+// ffjson: nodecoder
 type response struct {
 	Status   string      `json:"status"`
 	Data     interface{} `json:"data,omitempty"`
 	Warnings []string    `json:"warnings,omitempty"`
 }
 
+// ffjson: nodecoder
 type queryData struct {
 	ResultType parser.ValueType `json:"resultType"`
 	Result     parser.Value     `json:"result"`
+}
+
+// ffjson: nodecoder
+type vectorResponse struct {
+	Status   string     `json:"status"`
+	Data     vectorData `json:"data,omitempty"`
+	Warnings []string   `json:"warnings,omitempty"`
+}
+
+// ffjson: nodecoder
+type vectorData struct {
+	ResultType parser.ValueType `json:"resultType"`
+	Result     promql.Vector    `json:"result"`
 }
 
 func parseTime(s string) (time.Time, error) {

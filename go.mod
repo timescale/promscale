@@ -19,6 +19,7 @@ require (
 	github.com/jackc/pgx/v4 v4.4.1
 	github.com/jamiealquiza/envy v1.1.0
 	github.com/pkg/errors v0.9.1
+	github.com/pquerna/ffjson v0.0.0-20190930134022-aa0246cd15f7
 	github.com/prometheus/client_golang v1.5.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.9.1
