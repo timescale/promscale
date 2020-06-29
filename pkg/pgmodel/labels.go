@@ -129,8 +129,8 @@ func labelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 			if l.Name == MetricNameLabelName {
 				labels.metricName = l.Value
 			}
-			labels = SetLabels(str, labels)
 		}
+		labels = SetLabels(str, labels)
 	}
 
 	return labels, labels.metricName, err
