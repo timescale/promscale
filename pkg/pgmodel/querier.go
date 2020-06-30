@@ -6,6 +6,7 @@ package pgmodel
 
 import (
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
@@ -19,7 +20,7 @@ type Reader interface {
 // matching timeseries.
 type Querier interface {
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
-	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, ms ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error)
+	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error)
 }
 
 //HealthChecker allows checking for proper operations.
