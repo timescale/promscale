@@ -2,6 +2,7 @@ package end_to_end_tests
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -14,10 +15,15 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/timescale-prometheus/pkg/query"
 
 	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
@@ -1123,4 +1129,83 @@ func generateLargeTimeseries() []prompb.TimeSeries {
 	}
 
 	return metrics
+}
+
+func TestPushdown(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	testCases := []struct {
+		name    string
+		query   string
+		startMs int64
+		endMs   int64
+		stepMs  int64
+		res     promql.Result
+	}{
+		{
+			name:    "Simple metric name matcher",
+			query:   `delta(metric_1{instance="1"}[5m])`,
+			startMs: startTime + 300*1000,
+			endMs:   startTime + 330*1000,
+			stepMs:  30 * 1000,
+			res: promql.Result{
+				Value: promql.Matrix{promql.Series{
+					Points: []promql.Point{{V: 20, T: startTime + 300000}, {V: 20, T: startTime + 330000}},
+					Metric: labels.FromStrings("foo", "bar", "instance", "1")},
+				},
+			},
+		},
+		{
+			name:  "Simple metric name matcher",
+			query: `delta(metric_1{instance="1"}[5m])`,
+			endMs: startTime + 300*1000,
+			res: promql.Result{
+				Value: promql.Vector{promql.Sample{
+					Point:  promql.Point{V: 20, T: startTime + 300*1000},
+					Metric: labels.FromStrings("foo", "bar", "instance", "1")},
+				},
+			},
+		},
+	}
+
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		// Ingest test dataset.
+		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		// Getting a read-only connection to ensure read path is idempotent.
+		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
+		defer readOnly.Close()
+
+		var tester *testing.T
+		var ok bool
+		if tester, ok = t.(*testing.T); !ok {
+			t.Fatalf("Cannot run test, not an instance of testing.T")
+			return
+		}
+
+		r := NewPgxReader(readOnly, nil)
+		queryable := query.NewQueryable(r.GetQuerier())
+		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
+
+		for _, c := range testCases {
+			tc := c
+			tester.Run(c.name, func(t *testing.T) {
+				var qry promql.Query
+				var err error
+
+				if tc.stepMs == 0 {
+					qry, err = queryEngine.NewInstantQuery(queryable, c.query, model.Time(tc.endMs).Time())
+				} else {
+					qry, err = queryEngine.NewRangeQuery(queryable, tc.query, model.Time(tc.startMs).Time(), model.Time(tc.endMs).Time(), time.Duration(tc.stepMs)*time.Millisecond)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				res := qry.Exec(context.Background())
+				testutil.Equals(t, tc.res, *res)
+			})
+		}
+	})
 }

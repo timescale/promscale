@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
@@ -35,7 +36,7 @@ const (
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`
 
-	timeseriesByMetricSQLFormat = `SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesByMetricSQLFormat = `
 	FROM %[1]s m
 	INNER JOIN %[2]s s
 	ON m.series_id = s.id
@@ -123,17 +124,12 @@ func buildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{
 	return metric, clauses, values, err
 }
 
-type clauseBuilder struct {
-	clauses []string
-	args    []interface{}
-}
+func fillInParameters(query string, existingArgs []interface{}, newArgs ...interface{}) (string, []interface{}, error) {
+	argIndex := len(existingArgs) + 1
+	argCountInClause := strings.Count(query, "%d")
 
-func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
-	argIndex := len(c.args) + 1
-	argCountInClause := strings.Count(clause, "%d")
-
-	if argCountInClause != len(args) {
-		return fmt.Errorf("invalid number of args")
+	if argCountInClause != len(newArgs) {
+		return "", nil, fmt.Errorf("invalid number of args: in sql %d vs args %d", argCountInClause, len(newArgs))
 	}
 
 	argIndexes := make([]interface{}, 0, argCountInClause)
@@ -144,9 +140,24 @@ func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
 		argCountInClause--
 	}
 
-	c.clauses = append(c.clauses, fmt.Sprintf(clause, argIndexes...))
-	c.args = append(c.args, args...)
+	newSQL := fmt.Sprintf(query, argIndexes...)
+	resArgs := append(existingArgs, newArgs...)
+	return newSQL, resArgs, nil
+}
 
+type clauseBuilder struct {
+	clauses []string
+	args    []interface{}
+}
+
+func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
+	clauseWithParameters, newArgs, err := fillInParameters(clause, c.args, args...)
+	if err != nil {
+		return err
+	}
+
+	c.clauses = append(c.clauses, clauseWithParameters)
+	c.args = newArgs
 	return nil
 }
 
@@ -219,17 +230,6 @@ func buildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
 }
 
-func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string) string {
-	return fmt.Sprintf(
-		timeseriesByMetricSQLFormat,
-		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
-		pgx.Identifier{dataSeriesSchema, filter.metric}.Sanitize(),
-		strings.Join(cases, " AND "),
-		filter.startTime,
-		filter.endTime,
-	)
-}
-
 func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []SeriesID) string {
 	s := make([]string, 0, len(series))
 	for _, sID := range series {
@@ -243,6 +243,101 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []Serie
 		filter.startTime,
 		filter.endTime,
 	)
+}
+
+func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string, values []interface{},
+	hints *storage.SelectHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
+	restOfQuery := fmt.Sprintf(
+		timeseriesByMetricSQLFormat,
+		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{dataSeriesSchema, filter.metric}.Sanitize(),
+		strings.Join(cases, " AND "),
+		filter.startTime,
+		filter.endTime,
+	)
+
+	qf, node, err := getQueryFinalizer(restOfQuery, values, hints, path)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	query, newValues, err := qf.Finalize()
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return query, newValues, node, nil
+}
+
+// cumulativeSubqueryOffset returns the sum of range and offset of all subqueries in the path.
+func partOfSubquery(path []parser.Node) bool {
+	for _, node := range path {
+		switch node.(type) {
+		case *parser.SubqueryExpr:
+			return true
+		}
+	}
+	return false
+}
+
+type queryFinalizer struct {
+	timeClause        string
+	timeParams        []interface{}
+	valueClause       string
+	valueParams       []interface{}
+	restOfQuery       string
+	restOfQueryParams []interface{}
+}
+
+func (t *queryFinalizer) Finalize() (string, []interface{}, error) {
+	fullQuery := `SELECT (key_value_array(s.labels)).*, ` + t.timeClause + `, ` + t.valueClause + t.restOfQuery
+	newParams := append(t.timeParams, t.valueParams...)
+	return fillInParameters(fullQuery, t.restOfQueryParams, newParams...)
+}
+
+/* The path is the list if ancestors (direct parent last) returned node is the last node processed by the pushdown */
+func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage.SelectHints, path []parser.Node) (*queryFinalizer, parser.Node, error) {
+	if path != nil && hints != nil && len(path) >= 2 && !partOfSubquery(path) {
+		var topNode parser.Node
+
+		node := path[len(path)-2]
+		switch n := node.(type) {
+		case *parser.Call:
+			if n.Func.Name == "delta" {
+				topNode = node
+				queryStart := hints.Start + hints.Range
+				queryEnd := hints.End
+				stepDuration := time.Second
+				rangeDuration := time.Duration(hints.Range) * time.Millisecond
+
+				if hints.Step > 0 {
+					stepDuration = time.Duration(hints.Step) * time.Millisecond
+				} else {
+					if queryStart != queryEnd {
+						panic("query start should equal query end")
+					}
+				}
+				qf := queryFinalizer{
+					timeClause:        "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
+					timeParams:        []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
+					valueClause:       "prom_delta($%d, $%d,$%d, $%d, time, value ORDER BY time ASC)",
+					valueParams:       []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
+					restOfQuery:       otherClauses,
+					restOfQueryParams: values,
+				}
+				return &qf, topNode, nil
+			}
+		default:
+			//No pushdown optimization by default
+		}
+	}
+
+	qf := queryFinalizer{
+		timeClause:        "array_agg(m.time ORDER BY time) as time_array",
+		valueClause:       "array_agg(m.value ORDER BY time)",
+		restOfQuery:       otherClauses,
+		restOfQueryParams: values,
+	}
+	return &qf, nil, nil
 }
 
 func getSeriesPerMetric(rows pgx.Rows) ([]string, [][]SeriesID, error) {

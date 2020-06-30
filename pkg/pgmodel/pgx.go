@@ -857,13 +857,13 @@ func (q *pgxQuerier) HealthCheck() error {
 }
 
 func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
-	rows, err := q.getResultRows(mint, maxt, ms)
+	rows, topNode, err := q.getResultRows(mint, maxt, hints, path, ms)
 
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	return buildSeriesSet(rows, nil, sortSeries)
+	return buildSeriesSet(rows, topNode, sortSeries)
 }
 
 func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
@@ -877,7 +877,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	rows, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, matchers)
+	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
 
 	if err != nil {
 		return nil, err
@@ -904,10 +904,10 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	return results, nil
 }
 
-func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, matchers []*labels.Matcher) ([]pgx.Rows, error) {
+func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]pgx.Rows, parser.Node, error) {
 	metric, cases, values, err := buildSubQueries(matchers)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	filter := metricTimeRangeFilter{
@@ -917,21 +917,21 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, mat
 	}
 
 	if metric != "" {
-		return q.querySingleMetric(metric, filter, cases, values)
+		return q.querySingleMetric(metric, filter, cases, values, hints, path)
 	}
 
 	sqlQuery := buildMetricNameSeriesIDQuery(cases)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	defer rows.Close()
 	metrics, series, err := getSeriesPerMetric(rows)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	results := make([]pgx.Rows, 0, len(metrics))
@@ -944,45 +944,49 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, mat
 				continue
 			}
 
-			return nil, err
+			return nil, nil, err
 		}
 		filter.metric = tableName
 		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
 		rows, err = q.conn.Query(context.Background(), sqlQuery)
 
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		results = append(results, rows)
 	}
 
-	return results, nil
+	return results, nil, nil
 }
 
-func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}) ([]pgx.Rows, error) {
+func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}, hints *storage.SelectHints, path []parser.Node) ([]pgx.Rows, parser.Node, error) {
 	tableName, err := q.getMetricTableName(metric)
 	if err != nil {
 		// If the metric table is missing, there are no results for this query.
 		if err == errMissingTableName {
-			return nil, nil
+			return nil, nil, nil
 		}
 
-		return nil, err
+		return nil, nil, err
 	}
 	filter.metric = tableName
 
-	sqlQuery := buildTimeseriesByLabelClausesQuery(filter, cases)
+	sqlQuery, values, topNode, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	//fmt.Println(sqlQuery, values, topNode)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 
 	if err != nil {
 		// If we are getting undefined table error, it means the query
 		// is looking for a metric which doesn't exist in the system.
 		if e, ok := err.(*pgconn.PgError); !ok || e.Code != pgerrcode.UndefinedTable {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return []pgx.Rows{rows}, nil
+	return []pgx.Rows{rows}, topNode, nil
 }
 
 func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {
