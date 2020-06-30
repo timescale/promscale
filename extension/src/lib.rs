@@ -130,7 +130,7 @@ pg_agg!{
 #[derive(Debug)]
 struct GapfillDeltaTransition {
     window: VecDeque<(TimestampTz, f64)>,
-    // all non-NULL values in the eventual array, length must be <= nulls.len()
+    // a Datum for each index in the array, 0 by convention if the value is NULL
     deltas: Vec<Datum>,
     // true if a given value in the array is null, length equal to the number of value
     nulls: Vec<bool>,
@@ -208,6 +208,7 @@ impl GapfillDeltaTransition {
     fn add_delta_for_current_window(&mut self) {
         if self.window.len() < 2 {
             // if there are 1 or fewer values in the window, store NULL
+            self.deltas.push(0);
             self.nulls.push(true);
             return
         }
