@@ -23,11 +23,10 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/util/teststorage"
 )
 
 func BenchmarkRangeQuery(b *testing.B) {
-	storage := teststorage.New(b)
+	storage := NewTestStorage(b)
 	defer storage.Close()
 	opts := EngineOpts{
 		Logger:     nil,

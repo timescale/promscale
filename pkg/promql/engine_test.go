@@ -31,6 +31,13 @@ import (
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
+type QueryableFunc func(ctx context.Context, mint, maxt int64) (Querier, error)
+
+// Querier calls f() with the given parameters.
+func (f QueryableFunc) Querier(ctx context.Context, mint, maxt int64) (Querier, error) {
+	return f(ctx, mint, maxt)
+}
+
 func TestQueryConcurrency(t *testing.T) {
 	maxConcurrency := 10
 
@@ -175,8 +182,8 @@ type errQuerier struct {
 	err error
 }
 
-func (q *errQuerier) Select(bool, *storage.SelectHints, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return errSeriesSet{err: q.err}, nil, q.err
+func (q *errQuerier) Select(bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+	return errSeriesSet{err: q.err}, nil, nil, q.err
 }
 func (*errQuerier) LabelValues(string) ([]string, storage.Warnings, error) { return nil, nil, nil }
 func (*errQuerier) LabelNames() ([]string, storage.Warnings, error)        { return nil, nil, nil }
@@ -200,7 +207,7 @@ func TestQueryError(t *testing.T) {
 	}
 	engine := NewEngine(opts)
 	errStorage := ErrStorage{errors.New("storage error")}
-	queryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	queryable := QueryableFunc(func(ctx context.Context, mint, maxt int64) (Querier, error) {
 		return &errQuerier{err: errStorage}, nil
 	})
 	ctx, cancelCtx := context.WithCancel(context.Background())
@@ -234,7 +241,7 @@ type hintCheckerQuerier struct {
 	t *testing.T
 }
 
-func (q *hintCheckerQuerier) Select(_ bool, sp *storage.SelectHints, _ ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *hintCheckerQuerier) Select(_ bool, sp *storage.SelectHints, _ []parser.Node, _ ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
 	testutil.Equals(q.t, q.start, sp.Start)
 	testutil.Equals(q.t, q.end, sp.End)
 	testutil.Equals(q.t, q.grouping, sp.Grouping)
@@ -242,7 +249,7 @@ func (q *hintCheckerQuerier) Select(_ bool, sp *storage.SelectHints, _ ...*label
 	testutil.Equals(q.t, q.selRange, sp.Range)
 	testutil.Equals(q.t, q.function, sp.Func)
 
-	return errSeriesSet{err: nil}, nil, nil
+	return errSeriesSet{err: nil}, nil, nil, nil
 }
 func (*hintCheckerQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
@@ -428,7 +435,7 @@ func TestParamsSetCorrectly(t *testing.T) {
 
 	for _, tc := range cases {
 		engine := NewEngine(opts)
-		queryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		queryable := QueryableFunc(func(ctx context.Context, mint, maxt int64) (Querier, error) {
 			return &hintCheckerQuerier{start: tc.paramStart * 1000, end: tc.paramEnd * 1000, grouping: tc.paramGrouping, by: tc.paramBy, selRange: tc.paramRange, function: tc.paramFunc, t: t}, nil
 		})
 

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,6 +48,55 @@ const (
 
 var testStartTime = time.Unix(0, 0).UTC()
 
+// New returns a new TestStorage for testing purposes
+// that removes all associated files on closing.
+func NewTestStorage(t testutil.T) *TestStorage {
+	dir, err := ioutil.TempDir("", "test_storage")
+	if err != nil {
+		t.Fatalf("Opening test dir failed: %s", err)
+	}
+
+	// Tests just load data for a series sequentially. Thus we
+	// need a long appendable window.
+	opts := tsdb.DefaultOptions()
+	opts.MinBlockDuration = int64(24 * time.Hour / time.Millisecond)
+	opts.MaxBlockDuration = int64(24 * time.Hour / time.Millisecond)
+	db, err := tsdb.Open(dir, nil, nil, opts)
+	if err != nil {
+		t.Fatalf("Opening test storage failed: %s", err)
+	}
+	return &TestStorage{DB: db, dir: dir}
+}
+
+type TestStorage struct {
+	*tsdb.DB
+	dir string
+}
+
+type QuerierWrapper struct {
+	storage.Querier
+}
+
+func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+	ss, w, err := t.Querier.Select(b, sh, m...)
+	return ss, nil, w, err
+}
+
+func (db *TestStorage) Querier(ctx context.Context, mint, maxt int64) (Querier, error) {
+	q, err := db.DB.Querier(ctx, mint, maxt)
+	if err != nil {
+		return nil, err
+	}
+	return &QuerierWrapper{q}, err
+}
+
+func (s TestStorage) Close() error {
+	if err := s.DB.Close(); err != nil {
+		return err
+	}
+	return os.RemoveAll(s.dir)
+}
+
 // Test is a sequence of read and write commands that are run
 // against a test storage.
 type Test struct {
@@ -54,7 +104,7 @@ type Test struct {
 
 	cmds []testCommand
 
-	storage *teststorage.TestStorage
+	storage *TestStorage
 
 	queryEngine *Engine
 	context     context.Context
@@ -87,7 +137,7 @@ func (t *Test) QueryEngine() *Engine {
 }
 
 // Queryable allows querying the test data.
-func (t *Test) Queryable() storage.Queryable {
+func (t *Test) Queryable() Queryable {
 	return t.storage
 }
 
@@ -98,7 +148,7 @@ func (t *Test) Context() context.Context {
 
 // Storage returns the test's storage.
 func (t *Test) Storage() storage.Storage {
-	return t.storage
+	return t.storage.DB
 }
 
 // TSDB returns test's TSDB.
@@ -515,7 +565,7 @@ func (t *Test) clear() {
 	if t.cancelCtx != nil {
 		t.cancelCtx()
 	}
-	t.storage = teststorage.New(t)
+	t.storage = NewTestStorage(t)
 
 	opts := EngineOpts{
 		Logger:     nil,
