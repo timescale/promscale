@@ -57,7 +57,6 @@ func (p *pgxSeriesSet) At() storage.Series {
 
 	ps := &pgxSeries{}
 	if err := p.rows[p.rowIdx].Scan(&ps.labelNames, &ps.labelValues, &ps.times, &ps.values); err != nil {
-		println(err.Error())
 		return nil
 	}
 
