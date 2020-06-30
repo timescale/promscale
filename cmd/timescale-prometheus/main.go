@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/prometheus/common/route"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -191,10 +192,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer client.Close()
-	queryable := client.GetQueryable()
-	queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
-	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queryable))
-	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queryable))
+
+	router := route.New()
+
 	promMetrics := api.Metrics{
 		LeaderGauge:         leaderGauge,
 		ReceivedSamples:     receivedSamples,
@@ -208,18 +208,44 @@ func main() {
 		ReceivedQueries:     receivedQueries,
 	}
 	writeHandler := timeHandler(httpRequestDuration, "write", api.Write(client, elector, &promMetrics))
-	http.Handle("/write", writeHandler)
-	http.Handle("/read", timeHandler(httpRequestDuration, "read", api.Read(client, &promMetrics)))
-	http.Handle("/query", queryHandler)
-	http.Handle("/query_range", queryRangeHandler)
-	http.Handle("/api/v1/query", queryHandler)
-	http.Handle("/api/v1/query_range", queryRangeHandler)
-	http.Handle("/healthz", api.Health(client))
+	router.Post("/write", writeHandler)
+
+	readHandler := timeHandler(httpRequestDuration, "read", api.Read(client, &promMetrics))
+	router.Get("/read", readHandler)
+	router.Post("/read", readHandler)
+
+	queryable := client.GetQueryable()
+	queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
+	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queryable))
+	router.Get("/query", queryHandler)
+	router.Post("/query", queryHandler)
+	router.Get("/api/v1/query", queryHandler)
+	router.Post("/api/v1/query", queryHandler)
+
+	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queryable))
+	router.Get("/query_range", queryRangeHandler)
+	router.Post("/query_range", queryRangeHandler)
+	router.Get("/api/v1/query_range", queryRangeHandler)
+	router.Post("/api/v1/query_range", queryRangeHandler)
+
+	labelsHandler := timeHandler(httpRequestDuration, "labels", api.Labels(queryable))
+	router.Get("/labels", labelsHandler)
+	router.Post("/labels", labelsHandler)
+	router.Get("/api/v1/labels", labelsHandler)
+	router.Post("/api/v1/labels", labelsHandler)
+
+	labelValuesHandler := timeHandler(httpRequestDuration, "label/:name/values", api.LabelValues(queryable))
+	router.Get("/label/:name/values", labelValuesHandler)
+	router.Get("/api/v1/label/:name/values", labelValuesHandler)
+
+	router.Get("/healthz", api.Health(client))
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.listenAddr)
 
-	err = http.ListenAndServe(cfg.listenAddr, nil)
+	mux := http.NewServeMux()
+	mux.Handle("/", router)
+	err = http.ListenAndServe(cfg.listenAddr, mux)
 
 	if err != nil {
 		log.Error("msg", "Listen failure", "err", err)
@@ -321,12 +347,11 @@ func isWriter() (bool, error) {
 }
 
 // timeHandler uses Prometheus histogram to track request time
-func timeHandler(histogramVec prometheus.ObserverVec, path string, handler http.Handler) http.Handler {
-	f := func(w http.ResponseWriter, r *http.Request) {
+func timeHandler(histogramVec prometheus.ObserverVec, path string, handler http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		handler.ServeHTTP(w, r)
 		elapsedMs := time.Since(start).Milliseconds()
 		histogramVec.WithLabelValues(path).Observe(float64(elapsedMs))
 	}
-	return http.HandlerFunc(f)
 }
