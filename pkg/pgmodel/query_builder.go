@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
@@ -153,10 +154,10 @@ func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
 }
 
-func buildSeriesSet(rows []pgx.Rows, sortSeries bool) (storage.SeriesSet, storage.Warnings, error) {
+func buildSeriesSet(rows []pgx.Rows, topNode parser.Node, sortSeries bool) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
 	return &pgxSeriesSet{
 		rows: rows,
-	}, nil, nil
+	}, topNode, nil, nil
 }
 
 func buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {

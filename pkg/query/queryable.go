@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
 func NewQueryable(q pgmodel.Querier) *Queryable {
@@ -17,7 +19,7 @@ type Queryable struct {
 	q pgmodel.Querier
 }
 
-func (q Queryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+func (q Queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querier, error) {
 	return newQuerier(ctx, q.q, mint, maxt)
 }
 
@@ -45,6 +47,6 @@ func (q querier) Close() error {
 	return nil
 }
 
-func (q querier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.pgQuerier.Select(q.mint, q.maxt, sortSeries, hints, matchers...)
+func (q querier) Select(sortSeries bool, hints *storage.SelectHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+	return q.pgQuerier.Select(q.mint, q.maxt, sortSeries, hints, path, matchers...)
 }
