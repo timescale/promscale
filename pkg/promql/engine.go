@@ -42,6 +42,31 @@ import (
 	"github.com/prometheus/prometheus/util/stats"
 )
 
+// A Queryable handles queries against a storage.
+// Use it when you need to have access to all samples without chunk encoding abstraction e.g promQL.
+type Queryable interface {
+	// Querier returns a new Querier on the storage.
+	Querier(ctx context.Context, mint, maxt int64) (Querier, error)
+}
+
+// Querier provides querying access over time series data of a fixed time range.
+type Querier interface {
+	// LabelValues returns all potential values for a label name.
+	// It is not safe to use the strings beyond the lifefime of the querier.
+	LabelValues(name string) ([]string, storage.Warnings, error)
+
+	// LabelNames returns all the unique label names present in the block in sorted order.
+	LabelNames() ([]string, storage.Warnings, error)
+
+	// Close releases the resources of the Querier.
+	Close() error
+
+	// Select returns a set of series that matches the given label matchers.
+	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
+	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
+	Select(sortSeries bool, hints *storage.SelectHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error)
+}
+
 const (
 	namespace            = "prometheus"
 	subsystem            = "engine"
@@ -137,7 +162,7 @@ type Query interface {
 // query implements the Query interface.
 type query struct {
 	// Underlying data provider.
-	queryable storage.Queryable
+	queryable Queryable
 	// The original query string.
 	q string
 	// Statement of the parsed query.
@@ -360,7 +385,7 @@ func (ng *Engine) SetQueryLogger(l QueryLogger) {
 }
 
 // NewInstantQuery returns an evaluation query for the given expression at the given time.
-func (ng *Engine) NewInstantQuery(q storage.Queryable, qs string, ts time.Time) (Query, error) {
+func (ng *Engine) NewInstantQuery(q Queryable, qs string, ts time.Time) (Query, error) {
 	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
@@ -373,7 +398,7 @@ func (ng *Engine) NewInstantQuery(q storage.Queryable, qs string, ts time.Time) 
 
 // NewRangeQuery returns an evaluation query for the given time range and with
 // the resolution set by the interval.
-func (ng *Engine) NewRangeQuery(q storage.Queryable, qs string, start, end time.Time, interval time.Duration) (Query, error) {
+func (ng *Engine) NewRangeQuery(q Queryable, qs string, start, end time.Time, interval time.Duration) (Query, error) {
 	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
@@ -387,7 +412,7 @@ func (ng *Engine) NewRangeQuery(q storage.Queryable, qs string, start, end time.
 	return qry, nil
 }
 
-func (ng *Engine) newQuery(q storage.Queryable, expr parser.Expr, start, end time.Time, interval time.Duration) *query {
+func (ng *Engine) newQuery(q Queryable, expr parser.Expr, start, end time.Time, interval time.Duration) *query {
 	es := &parser.EvalStmt{
 		Expr:     expr,
 		Start:    start,
@@ -516,7 +541,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	}
 	defer querier.Close()
 
-	warnings, err := ng.populateSeries(ctxPrepare, querier, s)
+	warnings, topNode, err := ng.populateSeries(ctxPrepare, querier, s)
 	prepareSpanTimer.Finish()
 
 	if err != nil {
@@ -536,6 +561,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			defaultEvalInterval: GetDefaultEvaluationInterval(),
 			logger:              ng.logger,
 			lookbackDelta:       ng.lookbackDelta,
+			topNode:             topNode,
 		}
 
 		val, err := evaluator.Eval(s.Expr)
@@ -586,6 +612,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		defaultEvalInterval: GetDefaultEvaluationInterval(),
 		logger:              ng.logger,
 		lookbackDelta:       ng.lookbackDelta,
+		topNode:             topNode,
 	}
 	val, err := evaluator.Eval(s.Expr)
 	if err != nil {
@@ -648,7 +675,7 @@ func (ng *Engine) findMinTime(s *parser.EvalStmt) time.Time {
 	return s.Start.Add(-maxOffset)
 }
 
-func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s *parser.EvalStmt) (storage.Warnings, error) {
+func (ng *Engine) populateSeries(ctx context.Context, querier Querier, s *parser.EvalStmt) (storage.Warnings, parser.Node, error) {
 	var (
 		// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 		// The evaluation of the VectorSelector inside then evaluates the given range and unsets
@@ -656,6 +683,7 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 		evalRange time.Duration
 		warnings  storage.Warnings
 		err       error
+		topNode   parser.Node
 	)
 
 	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
@@ -695,7 +723,10 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 				hints.End = hints.End - offsetMilliseconds
 			}
 
-			set, wrn, err = querier.Select(false, hints, n.LabelMatchers...)
+			if topNode != nil {
+				return fmt.Errorf("Assigning topNode twice")
+			}
+			set, topNode, wrn, err = querier.Select(false, hints, path, n.LabelMatchers...)
 			warnings = append(warnings, wrn...)
 			if err != nil {
 				level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
@@ -708,7 +739,7 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 		}
 		return nil
 	})
-	return warnings, err
+	return warnings, topNode, err
 }
 
 // extractFuncFromPath walks up the path and searches for the first instance of
@@ -785,6 +816,7 @@ type evaluator struct {
 	defaultEvalInterval int64
 	logger              log.Logger
 	lookbackDelta       time.Duration
+	topNode             parser.Node
 }
 
 // errorf causes a panic with the input formatted into an error.
@@ -1018,6 +1050,28 @@ func (ev *evaluator) evalSubquery(subq *parser.SubqueryExpr) *parser.MatrixSelec
 	return ms
 }
 
+func (ev *evaluator) getPushdownResult(vs *parser.VectorSelector, numSteps int) Matrix {
+	mat := make(Matrix, 0, len(vs.Series))
+	for i, s := range vs.Series {
+		ss := Series{
+			Metric: dropMetricName(vs.Series[i].Labels()),
+			Points: getPointSlice(numSteps),
+		}
+
+		it := s.Iterator()
+		for it.Next() {
+			t, v := it.At()
+			ss.Points = append(ss.Points, Point{V: v, T: t})
+		}
+		if len(ss.Points) > 0 {
+			mat = append(mat, ss)
+		} else {
+			putPointSlice(ss.Points)
+		}
+	}
+	return mat
+}
+
 // eval evaluates the given expression as the given AST expression node requires.
 func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 	// This is the top-level evaluation method.
@@ -1026,6 +1080,28 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 		ev.error(err)
 	}
 	numSteps := int((ev.endTimestamp-ev.startTimestamp)/ev.interval) + 1
+
+	if expr == ev.topNode {
+		/* the storage layer has already processed this node. Just return
+		the result. */
+		var mat Matrix
+		parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
+			switch n := node.(type) {
+			/* Note that a MatrixSelector cascades down to it's VectorSelector in Inspect */
+			case *parser.VectorSelector:
+				checkForSeriesSetExpansion(ev.ctx, n)
+				if mat != nil {
+					return fmt.Errorf("Matrix is already filled in")
+				}
+				mat = ev.getPushdownResult(n, numSteps)
+			}
+			return nil
+		})
+		if mat == nil {
+			ev.error(fmt.Errorf("Matrix not filled in"))
+		}
+		return mat
+	}
 
 	switch e := expr.(type) {
 	case *parser.AggregateExpr:
