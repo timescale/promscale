@@ -27,6 +27,8 @@ const (
 	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 )
 
+var ExtensionIsInstalled = false
+
 type mySrc struct {
 	source.Driver
 }
@@ -137,7 +139,10 @@ func Migrate(db *sql.DB, versionInfo VersionInfo) (err error) {
 
 	_, extErr := db.Exec(fmt.Sprintf(extensionInstall, extSchema))
 	if extErr != nil {
+		ExtensionIsInstalled = false
 		log.Warn("msg", "timescale_prometheus_extra extension not installed", "cause", extErr)
+	} else {
+		ExtensionIsInstalled = true
 	}
 
 	// Insert metadata.

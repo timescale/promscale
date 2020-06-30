@@ -296,7 +296,7 @@ func (t *queryFinalizer) Finalize() (string, []interface{}, error) {
 
 /* The path is the list if ancestors (direct parent last) returned node is the last node processed by the pushdown */
 func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage.SelectHints, path []parser.Node) (*queryFinalizer, parser.Node, error) {
-	if path != nil && hints != nil && len(path) >= 2 && !partOfSubquery(path) {
+	if ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !partOfSubquery(path) {
 		var topNode parser.Node
 
 		node := path[len(path)-2]
