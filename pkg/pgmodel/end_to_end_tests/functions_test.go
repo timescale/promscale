@@ -389,6 +389,16 @@ func TestExtensionGapfillDelta(t *testing.T) {
 		if res != "{200,-150}" {
 			t.Errorf("wrong result. Expected\n\t{200,-150}\nfound\n\t%s\n", res)
 		}
+
+		err = db.QueryRow(context.Background(),
+			"SELECT prom_delta('2000-01-02 14:15:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, t, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if res != "{NULL,NULL,200,-50}" {
+			t.Errorf("wrong result. Expected\n\t{NULL,NULL,200,-50}\nfound\n\t%s\n", res)
+		}
 	})
 }
 
