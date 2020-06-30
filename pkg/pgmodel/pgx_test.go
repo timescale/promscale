@@ -855,7 +855,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				},
 			},
 			sqlQueries: []string{`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time) as time_array, array_agg(m.value ORDER BY time)
 	FROM "prom_data"."bar" m
 	INNER JOIN "prom_data_series"."bar" s
 	ON m.series_id = s.id
