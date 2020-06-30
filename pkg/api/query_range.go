@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/prometheus/prometheus/util/stats"
 	"net/http"
 
 	"github.com/NYTimes/gziphandler"
@@ -13,6 +14,7 @@ import (
 
 func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
@@ -99,7 +101,15 @@ func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Han
 			return
 		}
 
-		respond(w, res.Value, res.Warnings)
+		var qs *stats.QueryStats
+		if r.FormValue("stats") != "" {
+			qs = stats.NewQueryStats(qry.Stats())
+		}
+		respond(w, &queryData{
+			Result:     res.Value,
+			ResultType: res.Value.Type(),
+			Stats:      qs,
+		}, res.Warnings)
 	})
 
 	return gziphandler.GzipHandler(hf)

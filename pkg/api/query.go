@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"github.com/prometheus/prometheus/storage"
 	"io"
 	"math"
 	"net/http"
@@ -14,13 +13,16 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/stats"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
-func Query(queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {
+func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		var ts time.Time
 		if t := r.FormValue("time"); t != "" {
 			var err error
@@ -48,7 +50,7 @@ func Query(queryEngine *promql.Engine, queriable *query.Queryable) http.Handler 
 			defer cancel()
 		}
 
-		qry, err := queryEngine.NewInstantQuery(queriable, r.FormValue("query"), ts)
+		qry, err := queryEngine.NewInstantQuery(queryable, r.FormValue("query"), ts)
 		if err != nil {
 			log.Error("msg", "Query error", "err", err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")

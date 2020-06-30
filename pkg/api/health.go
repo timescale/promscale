@@ -6,8 +6,8 @@ import (
 	"net/http"
 )
 
-func Health(hc pgmodel.HealthChecker) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func Health(hc pgmodel.HealthChecker) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		err := hc.HealthCheck()
 		if err != nil {
 			log.Warn("msg", "Healthcheck failed", err)
@@ -15,5 +15,5 @@ func Health(hc pgmodel.HealthChecker) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Length", "0")
-	})
+	}
 }
