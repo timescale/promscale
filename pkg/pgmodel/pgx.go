@@ -863,7 +863,8 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 		return nil, nil, nil, err
 	}
 
-	return buildSeriesSet(rows, topNode, sortSeries)
+	ss, warn, err := buildSeriesSet(rows, sortSeries)
+	return ss, topNode, warn, err
 }
 
 func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
@@ -976,7 +977,6 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	if err != nil {
 		return nil, nil, err
 	}
-	//fmt.Println(sqlQuery, values, topNode)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 
 	if err != nil {

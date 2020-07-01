@@ -165,10 +165,10 @@ func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
 }
 
-func buildSeriesSet(rows []pgx.Rows, topNode parser.Node, sortSeries bool) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+func buildSeriesSet(rows []pgx.Rows, sortSeries bool) (storage.SeriesSet, storage.Warnings, error) {
 	return &pgxSeriesSet{
 		rows: rows,
-	}, topNode, nil, nil
+	}, nil, nil
 }
 
 func buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {
@@ -268,8 +268,7 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 	return query, newValues, node, nil
 }
 
-// cumulativeSubqueryOffset returns the sum of range and offset of all subqueries in the path.
-func partOfSubquery(path []parser.Node) bool {
+func hasSubquery(path []parser.Node) bool {
 	for _, node := range path {
 		switch node.(type) {
 		case *parser.SubqueryExpr:
@@ -294,9 +293,9 @@ func (t *queryFinalizer) Finalize() (string, []interface{}, error) {
 	return fillInParameters(fullQuery, t.restOfQueryParams, newParams...)
 }
 
-/* The path is the list if ancestors (direct parent last) returned node is the last node processed by the pushdown */
+/* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
 func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage.SelectHints, path []parser.Node) (*queryFinalizer, parser.Node, error) {
-	if ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !partOfSubquery(path) {
+	if ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
 		var topNode parser.Node
 
 		node := path[len(path)-2]
