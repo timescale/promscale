@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"sync"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -88,8 +89,12 @@ func metadataUpdate(db *sql.DB, withExtension bool, key string, value string) {
 	}
 }
 
+var migrateMutex = &sync.Mutex{}
+
 // Migrate performs a database migration to the latest version
 func Migrate(db *sql.DB, versionInfo VersionInfo) (err error) {
+	migrateMutex.Lock()
+	defer migrateMutex.Unlock()
 	// The migration table will be put in the public schema not in any of our schema because we never want to drop it and
 	// our scripts and our last down script drops our shemas
 	driver, err := postgres.WithInstance(db, &postgres.Config{MigrationsTable: "prom_schema_migrations"})
