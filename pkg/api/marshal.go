@@ -7,8 +7,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
 func marshalVectorResponse(writer io.Writer, data promql.Vector, warnings []string) error {
