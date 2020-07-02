@@ -13,6 +13,7 @@ branch = "no-mctx-guard"
 
 [profile.release]
 lto = true
+debug = true
 
 [features]
 default = []
