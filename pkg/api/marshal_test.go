@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
 func TestMarshalVector(t *testing.T) {
