@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/timescale-prometheus/pkg/clockcache"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
@@ -883,12 +884,13 @@ func (p *pendingBuffer) addReq(req insertDataRequest) bool {
 
 // NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
 // and caches metric table names using the supplied cacher.
-func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBReader {
+func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache, labelsCacheSize uint64) *DBReader {
 	pi := &pgxQuerier{
 		conn: &pgxConnImpl{
 			conn: c,
 		},
 		metricTableNames: cache,
+		labels:           clockcache.WithMax(labelsCacheSize),
 	}
 
 	return &DBReader{
@@ -897,10 +899,10 @@ func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache) *DBReader {
 }
 
 // NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
-func NewPgxReader(c *pgxpool.Pool, readHist prometheus.ObserverVec) *DBReader {
+func NewPgxReader(c *pgxpool.Pool, readHist prometheus.ObserverVec, labelsCacheSize uint64) *DBReader {
 	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
 	cache := &MetricNameCache{metrics}
-	return NewPgxReaderWithMetricCache(c, cache)
+	return NewPgxReaderWithMetricCache(c, cache, labelsCacheSize)
 }
 
 type metricTimeRangeFilter struct {
@@ -912,6 +914,8 @@ type metricTimeRangeFilter struct {
 type pgxQuerier struct {
 	conn             pgxConn
 	metricTableNames MetricCache
+	// contains [int64]labels.Label
+	labels *clockcache.Cache
 }
 
 // HealthCheck implements the healtchecker interface
@@ -933,7 +937,7 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 		return nil, nil, nil, err
 	}
 
-	ss, warn, err := buildSeriesSet(rows, sortSeries)
+	ss, warn, err := buildSeriesSet(rows, sortSeries, q)
 	return ss, topNode, warn, err
 }
 
@@ -963,7 +967,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 
 	for _, r := range rows {
-		ts, err := buildTimeSeries(r)
+		ts, err := buildTimeSeries(r, q)
 
 		if err != nil {
 			return nil, err
@@ -1019,6 +1023,82 @@ func (q *pgxQuerier) LabelValues(labelName string) ([]string, error) {
 
 	sort.Strings(labelValues)
 	return labelValues, nil
+}
+
+const GetLabelsSQL = "SELECT (key_value_array($1::int[])).*"
+
+type labelQuerier interface {
+	getLabelsForIds(ids []int64) (lls labels.Labels, err error)
+}
+
+func (q *pgxQuerier) getPrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error) {
+	ll, err := q.getLabelsForIds(ids)
+	if err != nil {
+		return
+	}
+	lls = make([]prompb.Label, len(ll))
+	for i := range ll {
+		lls[i] = prompb.Label{Name: ll[i].Name, Value: ll[i].Value}
+	}
+	return
+}
+
+func (q *pgxQuerier) getLabelsForIds(ids []int64) (lls labels.Labels, err error) {
+	keys := make([]interface{}, len(ids))
+	values := make([]interface{}, len(ids))
+	for i := range ids {
+		keys[i] = ids[i]
+	}
+	numHits := q.labels.GetValues(keys, values)
+
+	if numHits < len(ids) {
+		err = q.fetchMissingLabels(keys[numHits:], ids[numHits:], values[numHits:])
+		if err != nil {
+			return
+		}
+	}
+
+	lls = make([]labels.Label, 0, len(values))
+	for i := range values {
+		lls = append(lls, values[i].(labels.Label))
+	}
+
+	return
+}
+
+func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64, newLabels []interface{}) error {
+	for i := range misses {
+		missedIds[i] = misses[i].(int64)
+	}
+	rows, err := q.conn.Query(context.Background(), GetLabelsSQL, missedIds)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var keys []string
+		var vals []string
+		err = rows.Scan(&keys, &vals)
+		if err != nil {
+			return err
+		}
+		if len(keys) != len(vals) {
+			return fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys), len(vals))
+		}
+		if len(keys) != len(misses) {
+			return fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys))
+		}
+
+		for i := range misses {
+			newLabels[i] = labels.Label{Name: keys[i], Value: vals[i]}
+		}
+		numInserted := q.labels.InsertBatch(misses, newLabels)
+		if numInserted < len(misses) {
+			log.Warn("msg", "labels cache starving, may need to increase size")
+		}
+	}
+	return nil
 }
 
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]pgx.Rows, parser.Node, error) {

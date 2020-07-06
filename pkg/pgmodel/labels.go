@@ -161,13 +161,8 @@ func (l *Labels) Less(i, j int) bool {
 }
 
 func (l *Labels) Swap(i, j int) {
-	tmp := l.names[j]
-	l.names[j] = l.names[i]
-	l.names[i] = tmp
-
-	tmp = l.values[j]
-	l.values[j] = l.values[i]
-	l.values[i] = tmp
+	l.names[j], l.names[i] = l.names[i], l.names[j]
+	l.values[j], l.values[i] = l.values[i], l.values[j]
 }
 
 // FromLabelMatchers parses protobuf label matchers to Prometheus label matchers.

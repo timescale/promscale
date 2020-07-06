@@ -45,7 +45,7 @@ const (
 	AND time <= '%[5]s'
 	GROUP BY s.id`
 
-	timeseriesBySeriesIDsSQLFormat = `SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+	timeseriesBySeriesIDsSQLFormat = `SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM %[1]s m
 	INNER JOIN %[2]s s
 	ON m.series_id = s.id
@@ -165,23 +165,23 @@ func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
 }
 
-func buildSeriesSet(rows []pgx.Rows, sortSeries bool) (storage.SeriesSet, storage.Warnings, error) {
+func buildSeriesSet(rows []pgx.Rows, sortSeries bool, querier *pgxQuerier) (storage.SeriesSet, storage.Warnings, error) {
 	return &pgxSeriesSet{
-		rows: rows,
+		rows:    rows,
+		querier: querier,
 	}, nil, nil
 }
 
-func buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows pgx.Rows, q *pgxQuerier) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0)
 
 	for rows.Next() {
 		var (
-			keys       []string
-			vals       []string
+			labelIDs   []int64
 			timestamps []time.Time
 			values     []float64
 		)
-		err := rows.Scan(&keys, &vals, &timestamps, &values)
+		err := rows.Scan(&labelIDs, &timestamps, &values)
 
 		if err != nil {
 			return nil, err
@@ -191,17 +191,9 @@ func buildTimeSeries(rows pgx.Rows) ([]*prompb.TimeSeries, error) {
 			return nil, fmt.Errorf("query returned a mismatch in timestamps and values")
 		}
 
-		if len(keys) != len(vals) {
-			return nil, fmt.Errorf("query returned a mismatch in label keys and values")
-		}
-
-		promLabels := make([]prompb.Label, 0, len(keys))
-
-		for i, k := range keys {
-			promLabels = append(promLabels, prompb.Label{
-				Name:  k,
-				Value: vals[i],
-			})
+		promLabels, err := q.getPrompbLabelsForIds(labelIDs)
+		if err != nil {
+			return nil, err
 		}
 
 		sort.Slice(promLabels, func(i, j int) bool {
@@ -288,7 +280,7 @@ type queryFinalizer struct {
 }
 
 func (t *queryFinalizer) Finalize() (string, []interface{}, error) {
-	fullQuery := `SELECT (key_value_array(s.labels)).*, ` + t.timeClause + `, ` + t.valueClause + t.restOfQuery
+	fullQuery := `SELECT s.labels, ` + t.timeClause + `, ` + t.valueClause + t.restOfQuery
 	newParams := append(t.timeParams, t.valueParams...)
 	return fillInParameters(fullQuery, t.restOfQueryParams, newParams...)
 }
