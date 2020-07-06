@@ -534,7 +534,7 @@ func TestSQLQuery(t *testing.T) {
 			t.Fatalf("Cannot run test, not an instance of testing.T")
 		}
 
-		r := NewPgxReader(readOnly, nil)
+		r := NewPgxReader(readOnly, nil, 100)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Read(&c.readRequest)
@@ -915,7 +915,7 @@ func TestPromQL(t *testing.T) {
 			return
 		}
 
-		r := NewPgxReader(readOnly, nil)
+		r := NewPgxReader(readOnly, nil, 100)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Read(c.readRequest)
@@ -1184,7 +1184,7 @@ func TestPushdown(t *testing.T) {
 			return
 		}
 
-		r := NewPgxReader(readOnly, nil)
+		r := NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 

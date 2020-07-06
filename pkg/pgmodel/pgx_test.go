@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/timescale-prometheus/pkg/clockcache"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
 
@@ -630,7 +631,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 		query        *prompb.Query
 		result       []*prompb.TimeSeries
 		err          error
-		sqlQueries   []string
+		sqlQueries   []string // XXX whitespace in these is significant
 		sqlArgs      [][]interface{}
 		queryResults []rowResults
 		queryErr     map[int]error
@@ -722,7 +723,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."foo" m
 	INNER JOIN "prom_data_series"."foo" s
 	ON m.series_id = s.id
@@ -820,18 +821,20 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."foo" m
 	INNER JOIN "prom_data_series"."foo" s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+	GROUP BY s.id`,
+				"SELECT (key_value_array($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"__name__", "bar"},
 				{"foo"},
 				nil,
+				{[]int64{1}},
 			},
 			result: []*prompb.TimeSeries{
 				{
@@ -842,7 +845,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 			queryResults: []rowResults{
 				{{`foo`, []int64{1}}},
 				{{"foo"}},
-				{{[]string{"__name__"}, []string{"foo"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{1}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]string{"__name__"}, []string{"foo"}}},
 			},
 		},
 		{
@@ -855,17 +859,19 @@ func TestPGXQuerierQuery(t *testing.T) {
 				},
 			},
 			sqlQueries: []string{`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time) as time_array, array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time) as time_array, array_agg(m.value ORDER BY time)
 	FROM "prom_data"."bar" m
 	INNER JOIN "prom_data_series"."bar" s
 	ON m.series_id = s.id
 	WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+	GROUP BY s.id`,
+				"SELECT (key_value_array($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"bar"},
 				{MetricNameLabelName, "bar"},
+				{[]int64{2}},
 			},
 			result: []*prompb.TimeSeries{
 				{
@@ -875,7 +881,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			queryResults: []rowResults{
 				{{"bar"}},
-				{{[]string{"__name__"}, []string{"bar"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]string{"__name__"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -895,7 +902,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."foo" m
 	INNER JOIN "prom_data_series"."foo" s
 	ON m.series_id = s.id
@@ -904,20 +911,24 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."bar" m
 	INNER JOIN "prom_data_series"."bar" s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+	GROUP BY s.id`,
+				"SELECT (key_value_array($1::int[])).*",
+				"SELECT (key_value_array($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"__name__", "^$"},
 				{"foo"},
 				nil,
 				{"bar"},
 				nil,
+				{[]int64{3}},
+				{[]int64{4}},
 			},
 			result: []*prompb.TimeSeries{
 				{
@@ -932,9 +943,11 @@ func TestPGXQuerierQuery(t *testing.T) {
 			queryResults: []rowResults{
 				{{"foo", []int64{1}}, {"bar", []int64{1}}},
 				{{"foo"}},
-				{{[]string{"__name__"}, []string{"foo"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{3}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 				{{"bar"}},
-				{{[]string{"__name__"}, []string{"bar"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{4}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]string{"__name__"}, []string{"foo"}}},
+				{{[]string{"__name__"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -955,7 +968,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."foo" m
 	INNER JOIN "prom_data_series"."foo" s
 	ON m.series_id = s.id
@@ -964,20 +977,24 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."bar" m
 	INNER JOIN "prom_data_series"."bar" s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1)
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+	GROUP BY s.id`,
+				"SELECT (key_value_array($1::int[])).*",
+				"SELECT (key_value_array($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"__name__", "foo", "__name__", "bar"},
 				{"foo"},
 				nil,
 				{"bar"},
 				nil,
+				{[]int64{5}},
+				{[]int64{6}},
 			},
 			result: []*prompb.TimeSeries{
 				{
@@ -992,9 +1009,11 @@ func TestPGXQuerierQuery(t *testing.T) {
 			queryResults: []rowResults{
 				{{"foo", []int64{1}}, {"bar", []int64{1}}},
 				{{"foo"}},
-				{{[]string{"__name__"}, []string{"foo"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{5}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 				{{"bar"}},
-				{{[]string{"__name__"}, []string{"bar"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{6}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]string{"__name__"}, []string{"foo"}}},
+				{{[]string{"__name__"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -1014,18 +1033,20 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."metric" m
 	INNER JOIN "prom_data_series"."metric" s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1,99,98)
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+	GROUP BY s.id`,
+				"SELECT (key_value_array($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"foo", "bar"},
 				{"metric"},
 				nil,
+				{[]int64{7}},
 			},
 			result: []*prompb.TimeSeries{
 				{
@@ -1036,7 +1057,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 			queryResults: []rowResults{
 				{{"metric", []int64{1, 99, 98}}},
 				{{"metric"}},
-				{{[]string{"foo"}, []string{"bar"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{7}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]string{"foo"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -1059,18 +1081,20 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."metric" m
 	INNER JOIN "prom_data_series"."metric" s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1,4,5)
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+	GROUP BY s.id`,
+				"SELECT (key_value_array($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"foo", "bar", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
 				{"metric"},
 				nil,
+				{[]int64{9, 8}},
 			},
 			result: []*prompb.TimeSeries{
 				{
@@ -1084,7 +1108,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 			queryResults: []rowResults{
 				{{"metric", []int64{1, 4, 5}}},
 				{{"metric"}},
-				{{[]string{"foo", "foo2"}, []string{"bar", "bar2"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{8, 9}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]string{"foo", "foo2"}, []string{"bar", "bar2"}}},
 			},
 		},
 		{
@@ -1107,18 +1132,20 @@ func TestPGXQuerierQuery(t *testing.T) {
 	GROUP BY m.metric_name
 	ORDER BY m.metric_name`,
 				`SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)`,
-				`SELECT (key_value_array(s.labels)).*, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
+				`SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
 	FROM "prom_data"."metric" m
 	INNER JOIN "prom_data_series"."metric" s
 	ON m.series_id = s.id
 	WHERE m.series_id IN (1,2)
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
-	GROUP BY s.id`},
+	GROUP BY s.id`,
+				"SELECT (key_value_array($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"foo", "", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
 				{"metric"},
 				nil,
+				{[]int64{10}},
 			},
 			result: []*prompb.TimeSeries{
 				{
@@ -1131,7 +1158,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 			queryResults: []rowResults{
 				{{"metric", []int64{1, 2}}},
 				{{"metric"}},
-				{{[]string{"foo2"}, []string{"bar2"}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]int64{10}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+				{{[]string{"foo2"}, []string{"bar2"}}},
 			},
 		},
 	}
@@ -1148,7 +1176,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				//getMetricErr: c.metricsGetErr,
 				//setMetricErr: c.metricsSetErr,
 			}
-			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics}
+			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics, labels: clockcache.WithMax(0)}
 
 			result, err := querier.Query(c.query)
 
@@ -1165,7 +1193,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						t.Errorf("unexpected error:\ngot\n%#v\nwanted\n%#v", err, c.err)
 					}
 				default:
-					t.Errorf("unexpected error:\ngot\n%s\nwanted nil", err)
+					t.Errorf("unexpected error for query:\ngot\n%s\nwanted nil", err)
 				}
 			}
 
@@ -1175,7 +1203,36 @@ func TestPGXQuerierQuery(t *testing.T) {
 
 			if len(c.sqlQueries) != 0 {
 				if !reflect.DeepEqual(c.sqlQueries, mock.QuerySQLs) {
-					t.Errorf("incorrect sql queries:\ngot\n%#v\nwanted\n%#v\n", mock.QuerySQLs, c.sqlQueries)
+					gotten := make(map[string]struct{}, len(c.sqlQueries))
+					for _, g := range mock.QuerySQLs {
+						gotten[g] = struct{}{}
+						t.Logf("got query:\n\t%s", g)
+					}
+
+					expected := make(map[string]struct{}, len(mock.QuerySQLs))
+					for _, e := range c.sqlQueries {
+						expected[e] = struct{}{}
+						t.Logf("expected query:\n\t%s", e)
+					}
+
+					missingOrExtra := false
+					for i, g := range mock.QuerySQLs {
+						if _, found := expected[g]; !found {
+							t.Errorf("extra SQL query %d:\n\t%s", i, g)
+							missingOrExtra = true
+						}
+					}
+
+					for i, e := range c.sqlQueries {
+						if _, found := gotten[e]; !found {
+							t.Errorf("missing SQL query %d:\n\t%s", i, e)
+							missingOrExtra = true
+						}
+					}
+
+					if !missingOrExtra {
+						t.Errorf("mis-ordered sql queries:\ngot\n%#v\nwanted\n%#v\n", mock.QuerySQLs, c.sqlQueries)
+					}
 				}
 			} else if len(mock.QuerySQLs) > 0 {
 				t.Errorf("incorrect sql queries:\ngot\n%#v\nwanted none", mock.QuerySQLs)

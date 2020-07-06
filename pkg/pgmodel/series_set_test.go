@@ -12,13 +12,15 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 type mockPgxRows struct {
 	closeCalled  bool
 	firstRowRead bool
 	idx          int
-	results      [][][]byte
+	results      []seriesSetRow
+	err          error
 }
 
 // Close closes the rows, making the connection ready for use again. It is safe
@@ -58,41 +60,30 @@ func (m *mockPgxRows) Next() bool {
 // interface, []byte, and nil. []byte will skip the decoding process and directly
 // copy the raw bytes received from PostgreSQL. nil will skip the value entirely.
 func (m *mockPgxRows) Scan(dest ...interface{}) error {
-	if len(dest) != 4 {
+	if m.err != nil {
+		return m.err
+	}
+	if len(dest) != 3 {
 		return fmt.Errorf("incorrect number of destinations to scan in the results")
 	}
-	if len(m.results[m.idx]) != 4 {
-		return fmt.Errorf("incorrect number of results being scanned in")
-	}
 
-	if ln, ok := dest[0].(*pgtype.TextArray); !ok {
-		return fmt.Errorf("label names incorrect type")
-	} else {
-		if err := ln.DecodeBinary(nil, m.results[m.idx][0]); err != nil {
-			return err
-		}
+	ln, ok := dest[0].(*[]int64)
+	if !ok {
+		panic("label names incorrect type, expected int64")
 	}
-	if lv, ok := dest[1].(*pgtype.TextArray); !ok {
-		return fmt.Errorf("label values incorrect type")
-	} else {
-		if err := lv.DecodeBinary(nil, m.results[m.idx][1]); err != nil {
-			return err
-		}
+	*ln = m.results[m.idx].labels
+	ts, ok := dest[1].(*pgtype.TimestamptzArray)
+	if !ok {
+		panic("sample timestamps incorrect type")
 	}
-	if ts, ok := dest[2].(*pgtype.TimestamptzArray); !ok {
-		return fmt.Errorf("sample timestamps incorrect type")
-	} else {
-		if err := ts.DecodeBinary(nil, m.results[m.idx][2]); err != nil {
-			return err
-		}
-	}
-	if vs, ok := dest[3].(*pgtype.Float8Array); !ok {
+	ts.Elements = m.results[m.idx].timestamps
+	//TODO dims?
+	vs, ok := dest[2].(*pgtype.Float8Array)
+	if !ok {
 		return fmt.Errorf("sample values incorrect type")
-	} else {
-		if err := vs.DecodeBinary(nil, m.results[m.idx][3]); err != nil {
-			return err
-		}
 	}
+	vs.Elements = m.results[m.idx].values
+	//TODO dims?
 
 	return nil
 }
@@ -105,7 +96,7 @@ func (m *mockPgxRows) Values() ([]interface{}, error) {
 // RawValues returns the unparsed bytes of the row values. The returned [][]byte is only valid until the next Next
 // call or the Rows is closed. However, the underlying byte data is safe to retain a reference to and mutate.
 func (m *mockPgxRows) RawValues() [][]byte {
-	return m.results[m.idx]
+	panic("not implemented")
 }
 
 func generateArrayHeader(numDim, containsNull, elemOID, arrayLength uint32, addData []byte) []byte {
@@ -120,133 +111,55 @@ func generateArrayHeader(numDim, containsNull, elemOID, arrayLength uint32, addD
 	return append(result, addData...)
 }
 
+type seriesSetRow struct {
+	labels     []int64
+	timestamps []pgtype.Timestamptz
+	values     []pgtype.Float8
+}
+
 func TestPgxSeriesSet(t *testing.T) {
 	testCases := []struct {
 		name     string
-		input    [][][][]byte
-		labels   map[string]string
+		input    [][]seriesSetRow
+		labels   []int64
 		ts       []pgtype.Timestamptz
 		vs       []pgtype.Float8
 		rowCount int
 		err      error
+		rowErr   error
 	}{
 		{
-			name:  "empty rows",
-			input: make([][][][]byte, 0),
-		},
-		{
 			name:     "invalid row",
-			input:    append([][][][]byte{}, genRows(1)),
-			rowCount: 1,
+			rowErr:   fmt.Errorf("arbitrary err"),
+			input:    [][]seriesSetRow{{seriesSetRow{}}},
 			err:      errInvalidData,
+			rowCount: 1,
 		},
 		{
-			name:     "invalid rows",
-			input:    append([][][][]byte{}, genRows(4)),
-			rowCount: 4,
-			err:      errInvalidData,
-		},
-		{
-			name: "invalid row field count",
-			input: append([][][][]byte{},
-				append([][][]byte{},
-					genSeries([]string{"one"}, nil, nil, nil)[:3],
-				),
-			),
-			rowCount: 1,
-			err:      errInvalidData,
-		},
-		{
-			name: "invalid label names",
-			input: append([][][][]byte{},
-				append([][][]byte{},
-					append([][]byte{{}},
-						genSeries([]string{"one"}, nil, nil, nil)[1:4]...,
-					),
-				),
-			),
-			rowCount: 1,
-			err:      errInvalidData,
-		},
-		{
-			name: "invalid label values",
-			input: append([][][][]byte{},
-				append([][][]byte{},
-					append([][]byte{},
-						genSeries([]string{"one"}, nil, nil, nil)[0],
-						[]byte{},
-						genSeries([]string{"one"}, nil, nil, nil)[2],
-						genSeries([]string{"one"}, nil, nil, nil)[3],
-					),
-				),
-			),
-			rowCount: 1,
-			err:      errInvalidData,
-		},
-		{
-			name: "invalid times",
-			input: append([][][][]byte{},
-				append([][][]byte{},
-					append([][]byte{},
-						genSeries([]string{"one"}, nil, nil, nil)[0],
-						genSeries([]string{"one"}, []string{"one"}, nil, nil)[1],
-						[]byte{},
-						genSeries([]string{"one"}, nil, nil, nil)[3],
-					),
-				),
-			),
-			rowCount: 1,
-			err:      errInvalidData,
-		},
-		{
-			name: "invalid values",
-			input: append([][][][]byte{},
-				append([][][]byte{},
-					append([][]byte{},
-						genSeries([]string{"one"}, nil, nil, nil)[0],
-						genSeries([]string{"one"}, []string{"one"}, nil, nil)[1],
-						genSeries([]string{"one"}, nil, nil, nil)[2],
-						[]byte{},
-					),
-				),
-			),
-			rowCount: 1,
-			err:      errInvalidData,
-		},
-		{
-			name: "label name/value count mismatch",
-			input: append([][][][]byte{},
-				append([][][]byte{},
-					genSeries([]string{"one"}, nil, nil, nil),
-				),
-			),
-			rowCount: 1,
-			err:      errInvalidData,
+			name:  "empty rows",
+			input: [][]seriesSetRow{},
 		},
 		{
 			name: "timestamp/value count mismatch",
-			input: append([][][][]byte{},
-				append([][][]byte{},
-					genSeries(
-						[]string{"one"},
-						[]string{"one"},
-						[]pgtype.Timestamptz{},
-						[]pgtype.Float8{{Float: 1.0}}),
-				),
-			),
+			input: [][]seriesSetRow{{
+				genSeries(
+					[]int64{1},
+					[]pgtype.Timestamptz{},
+					[]pgtype.Float8{{Float: 1.0}}),
+			}},
 			rowCount: 1,
 			err:      errInvalidData,
 		},
 		{
 			name:     "happy path 1",
-			labels:   map[string]string{"one": "one"},
+			labels:   []int64{1},
 			ts:       []pgtype.Timestamptz{{Time: time.Now()}},
 			vs:       []pgtype.Float8{{Float: 1}},
 			rowCount: 1,
 		},
 		{
 			name:   "happy path 2",
-			labels: map[string]string{"foo": "bar", "name": "value"},
+			labels: []int64{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Time: time.Unix(0, 500000)},
 				{Time: time.Unix(0, 6000000)},
@@ -259,7 +172,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check nulls (ts and vs negative values are encoded as null)",
-			labels: map[string]string{"foo": "bar", "name": "value"},
+			labels: []int64{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Status: pgtype.Null},
 				{Time: time.Unix(0, 0)},
@@ -274,7 +187,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check all nulls",
-			labels: map[string]string{"foo": "bar", "name": "value"},
+			labels: []int64{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Status: pgtype.Null},
 				{Time: time.Unix(0, 0)},
@@ -289,7 +202,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check infinity",
-			labels: map[string]string{"foo": "bar", "name": "value"},
+			labels: []int64{2, 3},
 			ts: []pgtype.Timestamptz{
 				{InfinityModifier: pgtype.NegativeInfinity},
 				{InfinityModifier: pgtype.Infinity},
@@ -302,22 +215,30 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 	}
 
+	labelMapping := make(map[int64]struct {
+		k string
+		v string
+	})
+	for i := int64(0); i < 4; i++ {
+		labelMapping[i] = struct {
+			k string
+			v string
+		}{
+			k: fmt.Sprintf("k%d", i),
+			v: fmt.Sprintf("v%d", i),
+		}
+	}
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			if c.input == nil {
-				labelNames := make([]string, 0, len(c.labels))
-				labelValues := make([]string, 0, len(c.labels))
-				for k, v := range c.labels {
-					labelNames = append(labelNames, k)
-					labelValues = append(labelValues, v)
+				labels := make([]int64, len(c.labels))
+				for i, l := range c.labels {
+					labels[i] = l
 				}
-				c.input = append([][][][]byte{},
-					append([][][]byte{},
-						genSeries(labelNames, labelValues, c.ts, c.vs),
-					),
-				)
+				c.input = [][]seriesSetRow{{
+					genSeries(labels, c.ts, c.vs)}}
 			}
-			p := pgxSeriesSet{rows: genPgxRows(c.input)}
+			p := pgxSeriesSet{rows: genPgxRows(c.input, c.rowErr), querier: mapQuerier{labelMapping}}
 
 			for c.rowCount > 0 {
 				c.rowCount--
@@ -342,8 +263,10 @@ func TestPgxSeriesSet(t *testing.T) {
 					t.Fatal("unexpected type for storage.Series")
 				}
 
-				if !reflect.DeepEqual(ss.Labels().Map(), c.labels) {
-					t.Fatalf("unexpected labels values: got %+v, wanted %+v\n", ss.Labels().Map(), c.labels)
+				expectedLabels, _ := mapQuerier{labelMapping}.getLabelsForIds(c.labels)
+				expectedMap := expectedLabels.Map()
+				if !reflect.DeepEqual(ss.Labels().Map(), expectedMap) {
+					t.Fatalf("unexpected labels values: got %+v, wanted %+v\n", ss.Labels().Map(), expectedMap)
 				}
 
 				iter := ss.Iterator()
@@ -436,6 +359,25 @@ func TestPgxSeriesSet(t *testing.T) {
 	}
 }
 
+type mapQuerier struct {
+	mapping map[int64]struct {
+		k string
+		v string
+	}
+}
+
+func (m mapQuerier) getLabelsForIds(ids []int64) (labels.Labels, error) {
+	lls := make([]labels.Label, len(ids))
+	for i, id := range ids {
+		kv, ok := m.mapping[id]
+		if !ok {
+			return nil, errInvalidData
+		}
+		lls[i] = labels.Label{Name: kv.k, Value: kv.v}
+	}
+	return lls, nil
+}
+
 func genRows(count int) [][][]byte {
 	result := make([][][]byte, count)
 
@@ -450,93 +392,36 @@ func genRows(count int) [][][]byte {
 	return result
 }
 
-func genPgxRows(m [][][][]byte) []pgx.Rows {
+func genPgxRows(m [][]seriesSetRow, err error) []pgx.Rows {
 	result := make([]pgx.Rows, len(m))
 
 	for i := range result {
 		result[i] = &mockPgxRows{
 			results: m[i],
+			err:     err,
 		}
 	}
 
 	return result
 }
 
-func genSeries(labelNames []string, labelValues []string, ts []pgtype.Timestamptz, vs []pgtype.Float8) [][]byte {
-	result := make([][]byte, 4)
-	keys := make([]byte, 0, 100)
-	values := make([]byte, 0, 100)
-	nulls := make([]uint32, 4)
-	if len(labelNames) == 0 {
-		nulls[0] = 1
-	}
-	if len(labelValues) == 0 {
-		nulls[1] = 1
-	}
-	if len(ts) == 0 {
-		nulls[2] = 1
-	}
-	if len(vs) == 0 {
-		nulls[3] = 1
-	}
-	var err error
-	kIdx, vIdx := 0, 0
-	for _, v := range labelNames {
-		keyLen := len(v)
-		keys = append(keys, []byte("1234")...)
-		binary.BigEndian.PutUint32(keys[kIdx:], uint32(keyLen))
-		kIdx += 4
-		keys = append(keys, v...)
-		kIdx += len(v)
-	}
-	for _, v := range labelValues {
-		valLen := len(v)
-		values = append(values, []byte("1234")...)
-		binary.BigEndian.PutUint32(values[vIdx:], uint32(valLen))
-		vIdx += 4
-		values = append(values, v...)
-		vIdx += len(v)
+func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8) seriesSetRow {
+
+	for i := range ts {
+		if ts[i].Status == pgtype.Undefined {
+			ts[i].Status = pgtype.Present
+		}
 	}
 
-	tts := make([]byte, 0, len(ts)*12)
-	vvs := make([]byte, 0, len(vs)*12)
-	tIdx, vIdx := 0, 0
-	for _, t := range ts {
-		tIdx = len(tts)
-		if t.Status == pgtype.Null {
-			tts = append(tts, make([]byte, 4)...)
-			binary.BigEndian.PutUint32(tts[tIdx:], math.MaxUint32)
-			nulls[2] = 1
-			continue
-		}
-		nulls[2] = 1
-		t.Status = pgtype.Present
-		tts = append(tts, make([]byte, 4)...)
-		binary.BigEndian.PutUint32(tts[tIdx:], 8)
-		tts, err = t.EncodeBinary(nil, tts)
-		if err != nil {
-			panic(err)
+	for i := range vs {
+		if vs[i].Status == pgtype.Undefined {
+			vs[i].Status = pgtype.Present
 		}
 	}
-	for _, v := range vs {
-		vIdx = len(vvs)
-		if v.Status == pgtype.Null {
-			vvs = append(vvs, make([]byte, 4)...)
-			binary.BigEndian.PutUint32(vvs[vIdx:], math.MaxUint32)
-			nulls[3] = 1
-			continue
-		}
-		v.Status = pgtype.Present
-		vvs = append(vvs, make([]byte, 4)...)
-		binary.BigEndian.PutUint32(vvs[vIdx:], 8)
-		vvs, err = v.EncodeBinary(nil, vvs)
-		if err != nil {
-			panic(err)
-		}
+
+	return seriesSetRow{
+		labels:     labels,
+		timestamps: ts,
+		values:     vs,
 	}
-	result[0] = generateArrayHeader(1, nulls[0], 0, uint32(len(labelNames)), keys)
-	result[1] = generateArrayHeader(1, nulls[1], 0, uint32(len(labelValues)), values)
-	result[2] = generateArrayHeader(1, nulls[2], 0, uint32(len(ts)), tts)
-	result[3] = generateArrayHeader(1, nulls[3], 0, uint32(len(vs)), vvs)
-	return result
 }

@@ -3,7 +3,6 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/common/route"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/prometheus/common/route"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
@@ -347,7 +348,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			return
 		}
 
-		r := pgmodel.NewPgxReader(readOnly, nil)
+		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 
@@ -401,7 +402,7 @@ func TestPromQLLabelEndpoints(t *testing.T) {
 			return
 		}
 
-		r := pgmodel.NewPgxReader(readOnly, nil)
+		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 
 		labelNamesHandler := api.Labels(queryable)

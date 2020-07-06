@@ -36,9 +36,6 @@ type element struct {
 }
 
 func WithMax(max uint64) *Cache {
-	if max < 1 {
-		panic("must have max greater than 0")
-	}
 	return &Cache{
 		elements: make(map[interface{}]*element, max),
 		storage:  make([]element, 0, max),

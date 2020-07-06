@@ -4,8 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
 	"runtime"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/allegro/bigcache"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -29,6 +30,7 @@ type Config struct {
 	dbConnectRetries int
 	AsyncAcks        bool
 	ReportInterval   int
+	LabelsCacheSize  uint64
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -42,6 +44,7 @@ func ParseFlags(cfg *Config) *Config {
 	flag.IntVar(&cfg.dbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
 	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
 	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
+	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
 	return cfg
 }
 
@@ -84,7 +87,7 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 		log.Error("err starting ingestor", err)
 		return nil, err
 	}
-	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache)
+	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache, cfg.LabelsCacheSize)
 
 	queryable := query.NewQueryable(reader.GetQuerier())
 

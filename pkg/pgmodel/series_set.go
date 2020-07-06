@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/timescale/timescale-prometheus/pkg/log"
 )
 
 const (
@@ -24,10 +25,14 @@ var (
 
 // pgxSeriesSet implements storage.SeriesSet.
 type pgxSeriesSet struct {
-	rowIdx int
-	rows   []pgx.Rows
-	err    error
+	rowIdx  int
+	rows    []pgx.Rows
+	err     error
+	querier labelQuerier
 }
+
+// pgxSeriesSet must implement storage.SeriesSet
+var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
 // Next forwards the internal cursor to next storage.Series
 func (p *pgxSeriesSet) Next() bool {
@@ -56,16 +61,26 @@ func (p *pgxSeriesSet) At() storage.Series {
 	p.err = errInvalidData
 
 	ps := &pgxSeries{}
-	if err := p.rows[p.rowIdx].Scan(&ps.labelNames, &ps.labelValues, &ps.times, &ps.values); err != nil {
-		return nil
-	}
-
-	if len(ps.labelNames.Elements) != len(ps.labelValues.Elements) {
+	var labelIds []int64
+	if err := p.rows[p.rowIdx].Scan(&labelIds, &ps.times, &ps.values); err != nil {
+		log.Error("err", err)
 		return nil
 	}
 
 	if len(ps.times.Elements) != len(ps.values.Elements) {
 		return nil
+	}
+
+	// this should pretty much always be non-empty due to __name__, but it
+	// costs little to check here
+	if len(labelIds) != 0 {
+		lls, err := p.querier.getLabelsForIds(labelIds)
+		if err != nil {
+			log.Error("err", err)
+			return nil
+		}
+		sort.Sort(lls)
+		ps.labels = lls
 	}
 
 	p.err = nil
@@ -79,24 +94,14 @@ func (p *pgxSeriesSet) Err() error {
 
 // pgxSeries implements storage.Series.
 type pgxSeries struct {
-	labelNames  pgtype.TextArray
-	labelValues pgtype.TextArray
-	times       pgtype.TimestamptzArray
-	values      pgtype.Float8Array
+	labels labels.Labels
+	times  pgtype.TimestamptzArray
+	values pgtype.Float8Array
 }
 
 // Labels returns the label names and values for the series.
 func (p *pgxSeries) Labels() labels.Labels {
-	ll := make(labels.Labels, len(p.labelNames.Elements))
-
-	for i := range ll {
-		ll[i].Name = p.labelNames.Elements[i].String
-		ll[i].Value = p.labelValues.Elements[i].String
-	}
-
-	sort.Sort(ll)
-
-	return ll
+	return p.labels
 }
 
 // Iterator returns a chunkenc.Iterator for iterating over series data.
