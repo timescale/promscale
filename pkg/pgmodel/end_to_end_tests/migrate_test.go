@@ -41,7 +41,7 @@ func TestMigrateTwice(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
-		performMigrate(t, *testDatabase, connectURL)
-		performMigrate(t, *testDatabase, connectURL)
+		performMigrate(t, connectURL)
+		performMigrate(t, connectURL)
 	})
 }

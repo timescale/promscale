@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/stats"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
@@ -74,19 +73,26 @@ func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler 
 			return
 		}
 
-		respond(w, res, res.Warnings)
+		respondQuery(w, res, res.Warnings)
 	})
 
 	return gziphandler.GzipHandler(hf)
 }
 
-func respond(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
+func setHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
 	w.Header().Set("Content-Type", "application/json")
 	if warnings != nil && len(warnings) > 0 {
 		w.Header().Set("Cache-Control", "no-store")
 	}
-	w.WriteHeader(http.StatusOK)
+	if res != nil && res.Value != nil {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
 
+func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
+	setHeaders(w, res, warnings)
 	switch resVal := res.Value.(type) {
 	case promql.Vector:
 		warnings := make([]string, 0, len(res.Warnings))
@@ -113,7 +119,6 @@ func respond(w http.ResponseWriter, res *promql.Result, warnings storage.Warning
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}
-
 }
 
 func respondError(w http.ResponseWriter, status int, err error, errType string) {

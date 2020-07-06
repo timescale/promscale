@@ -87,7 +87,7 @@ func TestMain(m *testing.M) {
 
 func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
 	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
-		performMigrate(t, DBName, connectURL)
+		performMigrate(t, connectURL)
 
 		//need to get a new pool after the Migrate to catch any GUC changes made during Migrate
 		db, err := pgxpool.Connect(context.Background(), connectURL)
@@ -101,7 +101,7 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 	})
 }
 
-func performMigrate(t testing.TB, DBName string, connectURL string) {
+func performMigrate(t testing.TB, connectURL string) {
 	dbStd, err := sql.Open("pgx", connectURL)
 	defer func() {
 		err := dbStd.Close()

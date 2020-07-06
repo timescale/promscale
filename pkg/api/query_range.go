@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"github.com/prometheus/prometheus/util/stats"
 	"net/http"
 
 	"github.com/NYTimes/gziphandler"
@@ -101,15 +100,7 @@ func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Han
 			return
 		}
 
-		var qs *stats.QueryStats
-		if r.FormValue("stats") != "" {
-			qs = stats.NewQueryStats(qry.Stats())
-		}
-		respond(w, &queryData{
-			Result:     res.Value,
-			ResultType: res.Value.Type(),
-			Stats:      qs,
-		}, res.Warnings)
+		respondQuery(w, res, res.Warnings)
 	})
 
 	return gziphandler.GzipHandler(hf)
