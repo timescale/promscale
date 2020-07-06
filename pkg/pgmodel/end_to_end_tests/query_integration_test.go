@@ -948,8 +948,8 @@ func TestPromQL(t *testing.T) {
 
 func generateSamples(index int) []prompb.Sample {
 	var (
-		delta     float64 = float64(index * 2)
-		timeDelta int64   = 30000
+		delta           = float64(index * 2)
+		timeDelta int64 = 30000
 	)
 	samples := make([]prompb.Sample, 0, 3)
 	i := 0

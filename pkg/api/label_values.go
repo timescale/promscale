@@ -6,6 +6,7 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
 	"math"
 	"net/http"
@@ -26,13 +27,16 @@ func LabelValues(queriable *query.Queryable) http.Handler {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return
 		}
-		names, warnings, err := querier.LabelValues(name)
+		var values labelsValue
+		values, warnings, err := querier.LabelValues(name)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return
 		}
 
-		respond(w, names, warnings)
+		respondLabels(w, &promql.Result{
+			Value: values,
+		}, warnings)
 	})
 
 	return gziphandler.GzipHandler(hf)

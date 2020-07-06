@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/common/route"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,7 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
-type response struct {
+type queryResponse struct {
 	Status   string    `json:"status"`
 	Data     queryData `json:"data,omitempty"`
 	Warnings []string  `json:"warnings,omitempty"`
@@ -36,6 +37,11 @@ type sample struct {
 	Metric model.Metric       `json:"metric"`
 	Values []model.SamplePair `json:"values"`
 	Value  model.SamplePair   `json:"value"`
+}
+
+type labelsResponse struct {
+	Status string
+	Data   []string
 }
 
 func genInstantRequest(apiURL, query string, start time.Time) (*http.Request, error) {
@@ -82,13 +88,41 @@ func genRangeRequest(apiURL, query string, start, end time.Time, step time.Durat
 	)
 }
 
+func getLabelsRequest(apiUrl string) (*http.Request, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/labels", apiUrl))
+
+	if err != nil {
+		return nil, err
+	}
+
+	return http.NewRequest(
+		"GET",
+		u.String(),
+		nil,
+	)
+}
+
+func getLabelValuesRequest(apiUrl string, labelName string) (*http.Request, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/label/%s/values", apiUrl, labelName))
+
+	if err != nil {
+		return nil, err
+	}
+
+	return http.NewRequest(
+		"GET",
+		u.String(),
+		nil,
+	)
+}
+
 type samples []sample
 
 func (s samples) Len() int           { return len(s) }
 func (s samples) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s samples) Less(i, j int) bool { return s[i].Metric.Before(s[j].Metric) }
 
-func TestPromQLEndpoint(t *testing.T) {
+func TestPromQLQueryEndpoint(t *testing.T) {
 	if testing.Short() || !*useDocker {
 		t.Skip("skipping integration test")
 	}
@@ -320,20 +354,122 @@ func TestPromQLEndpoint(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unable to create PromQL query request: %s", err)
 			}
-			tester.Run(fmt.Sprintf("%s (instant query)", c.name), testRequest(tester, req, instantQuery, client))
+			testMethod := testRequest(req, instantQuery, client, queryResultComparator)
+			tester.Run(fmt.Sprintf("%s (instant query)", c.name), testMethod)
 
 			for _, step := range steps {
 				req, err = genRangeRequest(apiURL, c.query, start, end, step)
 				if err != nil {
 					t.Fatalf("unable to create PromQL range query request: %s", err)
 				}
-				tester.Run(fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String()), testRequest(tester, req, rangeQuery, client))
+				testMethod := testRequest(req, rangeQuery, client, queryResultComparator)
+				tester.Run(fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String()), testMethod)
 			}
 		}
 	})
 }
 
-func testRequest(t *testing.T, req *http.Request, handler http.Handler, client *http.Client) func(*testing.T) {
+func TestPromQLLabelsEndpoint(t *testing.T) {
+	if testing.Short() || !*useDocker {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		// Ingest test dataset.
+		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		// Getting a read-only connection to ensure read path is idempotent.
+		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
+		defer readOnly.Close()
+
+		var tester *testing.T
+		var ok bool
+		if tester, ok = t.(*testing.T); !ok {
+			t.Fatalf("Cannot run test, not an instance of testing.T")
+			return
+		}
+
+		r := pgmodel.NewPgxReader(readOnly, nil)
+		queryable := query.NewQueryable(r.GetQuerier())
+
+		//labelNamesHandler := api.Labels(queryable)
+		labelValuesHandler := api.LabelValues(queryable)
+		router := route.New()
+		router.Get("/api/v1/label/:name/values", labelValuesHandler.ServeHTTP)
+
+		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		client := &http.Client{Timeout: 10 * time.Second}
+
+		var (
+			req *http.Request
+			err error
+		)
+		//req, err = getLabelsRequest(apiURL)
+		//if err != nil {
+		//	t.Fatalf("unable to create PromQL labels request: %v", err)
+		//}
+		//testMethod := testRequest(req, labelNamesHandler, client, labelsResultComparator)
+		//tester.Run("get all labels", testMethod)
+		labelNames, err := r.GetQuerier().LabelNames()
+		if err != nil {
+			t.Fatalf("could not get label names from querier")
+		}
+		for _, label := range labelNames {
+			req, err = getLabelValuesRequest(apiURL, label)
+			if err != nil {
+				t.Fatalf("unable to create PromQL label values request: %v", err)
+			}
+			testMethod := testRequest(req, router, client, labelsResultComparator)
+			tester.Run(fmt.Sprintf("get label values for %s", label), testMethod)
+		}
+	})
+}
+
+type resultComparator func(promContent []byte, tsContent []byte) error
+
+func queryResultComparator(promContent []byte, tsContent []byte) error {
+	var got, wanted queryResponse
+
+	err := json.Unmarshal(tsContent, &got)
+	if err != nil {
+		return fmt.Errorf("unexpected error returned when reading connector response body:\n%s\nbody:\n%s\n", err.Error(), tsContent)
+	}
+
+	err = json.Unmarshal(promContent, &wanted)
+	if err != nil {
+		return fmt.Errorf("unexpected error returned when reading Prometheus response body:\n%s\nbody:\n%s\n", err.Error(), promContent)
+	}
+
+	// Sorting to make sure
+	sort.Sort(got.Data.Result)
+	sort.Sort(wanted.Data.Result)
+
+	if !reflect.DeepEqual(got, wanted) {
+		return fmt.Errorf("unexpected response:\ngot\n%v\nwanted\n%v", got, wanted)
+	}
+
+	return nil
+}
+
+func labelsResultComparator(promContent []byte, tsContent []byte) error {
+	var got, wanted labelsResponse
+
+	err := json.Unmarshal(tsContent, &got)
+	if err != nil {
+		return fmt.Errorf("unexpected error returned when reading connector response body:\n%s\nbody:\n%s\n", err.Error(), tsContent)
+	}
+
+	err = json.Unmarshal(promContent, &wanted)
+	if err != nil {
+		return fmt.Errorf("unexpected error returned when reading Prometheus response body:\n%s\nbody:\n%s\n", err.Error(), promContent)
+	}
+
+	if !reflect.DeepEqual(got, wanted) {
+		return fmt.Errorf("unexpected response:\ngot\n%v\nwanted\n%v", got, wanted)
+	}
+
+	return nil
+}
+
+func testRequest(req *http.Request, handler http.Handler, client *http.Client, comparator resultComparator) func(*testing.T) {
 	return func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -358,24 +494,9 @@ func testRequest(t *testing.T, req *http.Request, handler http.Handler, client *
 		}
 		defer tsResp.Body.Close()
 
-		var got, wanted response
-
-		err = json.Unmarshal(tsContent, &got)
+		err = comparator(promContent, tsContent)
 		if err != nil {
-			t.Fatalf("unexpected error returned when reading connector response body:\n%s\nbody:\n%s\n", err.Error(), tsContent)
-		}
-
-		err = json.Unmarshal(promContent, &wanted)
-		if err != nil {
-			t.Fatalf("unexpected error returned when reading Prometheus response body:\n%s\nbody:\n%s\n", err.Error(), promContent)
-		}
-
-		// Sorting to make sure
-		sort.Sort(got.Data.Result)
-		sort.Sort(wanted.Data.Result)
-
-		if !reflect.DeepEqual(got, wanted) {
-			t.Errorf("unexpected response:\ngot\n%v\nwanted\n%v", got, wanted)
+			t.Fatal(err)
 		}
 	}
 }
