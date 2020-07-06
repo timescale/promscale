@@ -28,9 +28,9 @@ checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
 name = "cc"
-version = "1.0.55"
+version = "1.0.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1be3409f94d7bdceeb5f5fac551039d9b3f00e25da7a74fc4d33400a0d96368"
+checksum = "0fde55d2a2bfaa4c9668bbc63f531fbdeee3ffe188f4662511ce2c22b3eedebe"
 
 [[package]]
 name = "cexpr"
@@ -117,7 +117,7 @@ checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 [[package]]
 name = "postgres-headers-rs"
 version = "0.1.0"
-source = "git+https://github.com/timescale/timescale-extension-utils#d5714fe1f083015f80c9a9c60d2d29210ee2acfb"
+source = "git+https://github.com/timescale/timescale-extension-utils#098962027183e1cd36acd6e1a47390f1caedbd33"
 dependencies = [
  "bindgen",
 ]
@@ -170,7 +170,7 @@ checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
 [[package]]
 name = "timescale-extension-utils"
 version = "0.1.0"
-source = "git+https://github.com/timescale/timescale-extension-utils#d5714fe1f083015f80c9a9c60d2d29210ee2acfb"
+source = "git+https://github.com/timescale/timescale-extension-utils#098962027183e1cd36acd6e1a47390f1caedbd33"
 dependencies = [
  "postgres-headers-rs",
 ]
@@ -196,9 +196,9 @@ checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
 
 [[package]]
 name = "winapi"
-version = "0.3.8"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8093091eeb260906a183e6ae1abdba2ef5ef2257a21801128899c3fc699229c6"
+checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
 dependencies = [
  "winapi-i686-pc-windows-gnu",
  "winapi-x86_64-pc-windows-gnu",
