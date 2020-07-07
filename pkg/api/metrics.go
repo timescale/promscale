@@ -6,6 +6,9 @@ import (
 )
 
 type Metrics struct {
+	// Using the first word in struct to ensure proper alignment in 32-bit systems.
+	// Reference: https://golang.org/pkg/sync/atomic/#pkg-note-BUG
+	LastRequestUnixNano int64
 	LeaderGauge         prometheus.Gauge
 	ReceivedSamples     prometheus.Counter
 	FailedSamples       prometheus.Counter
@@ -15,5 +18,4 @@ type Metrics struct {
 	ReceivedQueries     prometheus.Counter
 	FailedQueries       prometheus.Counter
 	QueryBatchDuration  prometheus.Histogram
-	LastRequestUnixNano int64
 }
