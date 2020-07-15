@@ -102,6 +102,20 @@ func getLabelsRequest(apiUrl string) (*http.Request, error) {
 	)
 }
 
+func getLabelNamesRequest(apiUrl string) (*http.Request, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/labels", apiUrl))
+
+	if err != nil {
+		return nil, err
+	}
+
+	return http.NewRequest(
+		"GET",
+		u.String(),
+		nil,
+	)
+}
+
 func getLabelValuesRequest(apiUrl string, labelName string) (*http.Request, error) {
 	u, err := url.Parse(fmt.Sprintf("%s/label/%s/values", apiUrl, labelName))
 
@@ -369,7 +383,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 	})
 }
 
-func TestPromQLLabelsEndpoint(t *testing.T) {
+func TestPromQLLabelEndpoints(t *testing.T) {
 	if testing.Short() || !*useDocker {
 		t.Skip("skipping integration test")
 	}
@@ -390,11 +404,11 @@ func TestPromQLLabelsEndpoint(t *testing.T) {
 		r := pgmodel.NewPgxReader(readOnly, nil)
 		queryable := query.NewQueryable(r.GetQuerier())
 
-		//labelNamesHandler := api.Labels(queryable)
+		labelNamesHandler := api.Labels(queryable)
 		labelValuesHandler := api.LabelValues(queryable)
 		router := route.New()
 		router.Get("/api/v1/label/:name/values", labelValuesHandler.ServeHTTP)
-
+		router.Get("/api/v1/labels", labelNamesHandler.ServeHTTP)
 		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
 
@@ -402,12 +416,14 @@ func TestPromQLLabelsEndpoint(t *testing.T) {
 			req *http.Request
 			err error
 		)
-		//req, err = getLabelsRequest(apiURL)
-		//if err != nil {
-		//	t.Fatalf("unable to create PromQL labels request: %v", err)
-		//}
-		//testMethod := testRequest(req, labelNamesHandler, client, labelsResultComparator)
-		//tester.Run("get all labels", testMethod)
+		req, err = getLabelNamesRequest(apiURL)
+		if err != nil {
+			t.Fatalf("unable to create PromQL label names request: %v", err)
+		}
+
+		testMethod := testRequest(req, router, client, labelsResultComparator)
+		tester.Run("get label names", testMethod)
+
 		labelNames, err := r.GetQuerier().LabelNames()
 		if err != nil {
 			t.Fatalf("could not get label names from querier")

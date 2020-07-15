@@ -8,10 +8,9 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"runtime"
-
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/docker/go-connections/nat"
@@ -26,8 +25,9 @@ const (
 	defaultDB       = "postgres"
 	connectTemplate = "postgres://%s:password@%s:%d/%s"
 
-	postgresUser = "postgres"
-	promUser     = "prom"
+	postgresUser    = "postgres"
+	promUser        = "prom"
+	emptyPromConfig = "global:\n  scrape_interval: 10s"
 
 	Superuser   = true
 	NoSuperuser = false
@@ -208,14 +208,19 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 		return nil, err
 	}
 
+	promConfigFile := filepath.Join(storagePath, "prometheus.yml")
+	err = ioutil.WriteFile(promConfigFile, []byte(emptyPromConfig), 0777)
+	if err != nil {
+		return nil, err
+	}
 	prometheusPort := nat.Port("9090/tcp")
-
 	req := testcontainers.ContainerRequest{
 		Image:        "prom/prometheus",
 		ExposedPorts: []string{string(prometheusPort)},
 		WaitingFor:   wait.ForListeningPort(prometheusPort),
 		BindMounts: map[string]string{
-			storagePath: "/prometheus",
+			storagePath:    "/prometheus",
+			promConfigFile: "/etc/prometheus/prometheus.yml",
 		},
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -225,7 +230,6 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 	if err != nil {
 		return nil, err
 	}
-
 	PromHost, err = container.Host(ctx)
 	if err != nil {
 		return nil, err
