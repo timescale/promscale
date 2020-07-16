@@ -675,7 +675,6 @@ func runCopyFrom(conn pgxConn, in chan copyRequest) {
 }
 
 func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error {
-	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table)
 	minTime := model.Time(pending.batch.minSeen).Time()
 
 	//how much faster are we at ingestion than wall-clock time?
@@ -686,6 +685,7 @@ func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error 
 	if delayBy > maxDelayBy {
 		delayBy = maxDelayBy
 	}
+	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table, "min-time", minTime, "age", time.Since(minTime), "delay-job-by", delayBy)
 
 	_, rescheduleErr := conn.Exec(context.Background(),
 		`SELECT alter_job_schedule(
