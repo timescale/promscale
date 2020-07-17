@@ -21,7 +21,6 @@ import (
 
 func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		var ts time.Time
 		if t := r.FormValue("time"); t != "" {
 			var err error
@@ -80,6 +79,7 @@ func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler 
 }
 
 func setHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	if warnings != nil && len(warnings) > 0 {
 		w.Header().Set("Cache-Control", "no-store")
