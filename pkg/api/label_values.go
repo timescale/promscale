@@ -14,8 +14,6 @@ import (
 
 func LabelValues(queriable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-
 		ctx := r.Context()
 		name := route.Param(ctx, "name")
 		if !model.LabelNameRE.MatchString(name) {

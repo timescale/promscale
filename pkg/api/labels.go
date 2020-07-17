@@ -25,8 +25,6 @@ func (l labelsValue) String() string {
 
 func Labels(queriable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-
 		querier, err := queriable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "internal")

@@ -428,6 +428,7 @@ func TestPromQLLabelEndpoints(t *testing.T) {
 		if err != nil {
 			t.Fatalf("could not get label names from querier")
 		}
+		labelNames = append(labelNames, "unexisting_label")
 		for _, label := range labelNames {
 			req, err = getLabelValuesRequest(apiURL, label)
 			if err != nil {

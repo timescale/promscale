@@ -217,25 +217,18 @@ func main() {
 	queryable := client.GetQueryable()
 	queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queryable))
-	router.Get("/query", queryHandler)
-	router.Post("/query", queryHandler)
 	router.Get("/api/v1/query", queryHandler)
 	router.Post("/api/v1/query", queryHandler)
 
 	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queryable))
-	router.Get("/query_range", queryRangeHandler)
-	router.Post("/query_range", queryRangeHandler)
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
 	labelsHandler := timeHandler(httpRequestDuration, "labels", api.Labels(queryable))
-	router.Get("/labels", labelsHandler)
-	router.Post("/labels", labelsHandler)
 	router.Get("/api/v1/labels", labelsHandler)
 	router.Post("/api/v1/labels", labelsHandler)
 
 	labelValuesHandler := timeHandler(httpRequestDuration, "label/:name/values", api.LabelValues(queryable))
-	router.Get("/label/:name/values", labelValuesHandler)
 	router.Get("/api/v1/label/:name/values", labelValuesHandler)
 
 	router.Get("/healthz", api.Health(client))

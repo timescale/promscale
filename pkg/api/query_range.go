@@ -13,7 +13,6 @@ import (
 
 func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
