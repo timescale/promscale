@@ -89,6 +89,17 @@ We describe how to use our pre-defined views and functions to work with the prom
 
 A Reference for our SQL API is [available here](docs/sql_api.md).
 
+### Prometheus HTTP API 
+
+The Timescale-Prometheus Connector can be used directly as a Prometheus Data Source in Grafana, or other software.
+
+It implements some endpoints of the currently stable (V1) 
+[Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api). 
+The API is accessible at `http://timescale_prometheus_connector:9201/api/v1` and can be used to execute instant or range
+PromQL queries against the data in TimescaleDB, as well as retrieve the metadata for label names and values.
+
+A Reference for the implemented endpoints of the Prometheus HTTP API is [available here](docs/prometheus_api.md)
+
 ## Advanced
 
 ### Configuring the Helm Chart
