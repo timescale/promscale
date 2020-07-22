@@ -16,7 +16,7 @@ import (
 
 var (
 	// Application wide logger
-	logger log.Logger
+	logger log.Logger = log.NewNopLogger()
 
 	// logger timestamp format
 	timestampFormat = log.TimestampFormat(

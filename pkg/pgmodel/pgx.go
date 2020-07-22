@@ -643,35 +643,103 @@ func runCopyFrom(conn pgxConn, in chan copyRequest) {
 		if !ok {
 			return
 		}
-		_, err := conn.CopyFrom(
-			context.Background(),
-			pgx.Identifier{dataSchema, req.table},
-			copyColumns,
-			&req.data.batch,
-		)
+		err := doCopyFrom(conn, req)
 		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok && strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
-				/* If the error was that the table is already compressed, decompress and try again. */
-				decompressErr := decompressChunks(conn, req.data, req.table)
-				if decompressErr != nil {
-					req.data.reportResults(err)
-					pendingBuffers.Put(req.data)
-					continue
-				}
-
-				req.data.batch.ResetPosition()
-				_, err = conn.CopyFrom(
-					context.Background(),
-					pgx.Identifier{dataSchema, req.table},
-					copyColumns,
-					&req.data.batch,
-				)
-			}
+			err = copyFromErrorFallback(conn, req, err)
 		}
 
 		req.data.reportResults(err)
 		pendingBuffers.Put(req.data)
 	}
+}
+
+// certain errors are recoverable, handle those we can
+//   1. if the data contains duplicates, switch to INSERT ... ON CONFLICT DO NOTHING
+//      so the duplicates are dropped and the other data can go in
+//   2. if the table is compressed, decompress and retry the insertion
+func copyFromErrorFallback(conn pgxConn, req copyRequest, err error) error {
+	// we use either COPY FROM or INSERT depending on if the dataset has duplicates
+	// if we do need to use INSERT, we need to keep doing so, otherwise we'll
+	// fail due to duplicates.
+	insertFn := doCopyFrom
+	for i := 0; err != nil && i < 10; i++ {
+		insertFn, err = tryRecovery(conn, req, insertFn, err)
+		if insertFn == nil || err != nil {
+			return err
+		}
+		err = insertFn(conn, req)
+	}
+	if err != nil {
+		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
+	}
+	return err
+}
+
+type insertionFunction = func(conn pgxConn, req copyRequest) error
+
+// we can currently recover from two error:
+// If we inserted duplicate data we switch to using INSERT ... ON CONFLICT DO NOTHING
+// to skip redundant data points and try again.
+// If we inserted into a compressed chunk, we decompress the chunk and try again.
+// Since a single batch can have both errors, we need to remember the insert method
+// we're using, so that we deduplicate if needed.
+func tryRecovery(conn pgxConn, req copyRequest, insertFn insertionFunction, err error) (insertionFunction, error) {
+
+	// we only recover from postgres errors right now
+	pgErr, ok := err.(*pgconn.PgError)
+	if !ok {
+		errMsg := err.Error()
+		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.table), "error", errMsg)
+		return nil, err
+	}
+
+	// if we have duplicate data points try again using
+	// INSERT ... ON CONFLICT DO NOTHING to insert only the new ones
+	if pgErr.Code == pgerrcode.UniqueViolation {
+		log.Warn("msg", fmt.Sprintf("duplicate data in sample for %s", req.table), "table", req.table)
+		req.data.batch.ResetPosition()
+		return doInsert, nil
+	}
+
+	// If the error was that the table is already compressed, decompress and try again.
+	if strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
+		decompressErr := decompressChunks(conn, req.data, req.table)
+		if decompressErr != nil {
+			return nil, err
+		}
+
+		req.data.batch.ResetPosition()
+		// use the old insertFn in case it was doing deduplication
+		return insertFn, nil
+	}
+
+	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "error", pgErr.Error())
+	return nil, err
+}
+
+func doCopyFrom(conn pgxConn, req copyRequest) error {
+	_, err := conn.CopyFrom(
+		context.Background(),
+		pgx.Identifier{dataSchema, req.table},
+		copyColumns,
+		&req.data.batch,
+	)
+	return err
+}
+
+func doInsert(conn pgxConn, req copyRequest) error {
+	queryString := fmt.Sprintf("INSERT INTO %s.%s(time, value, series_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", dataSchema, req.table)
+	insertBatch := conn.NewBatch()
+	for req.data.batch.Next() {
+		values, _ := req.data.batch.Values()
+		insertBatch.Queue(queryString, values...)
+	}
+	resp, err := conn.SendBatch(context.Background(), insertBatch)
+	err2 := resp.Close()
+	if err == nil {
+		err = err2
+	}
+	return err
 }
 
 func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error {
