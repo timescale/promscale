@@ -6,10 +6,12 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
@@ -316,7 +318,7 @@ func TestSQLIngest(t *testing.T) {
 					},
 				},
 			},
-			count:       2,
+			count:       1,
 			countSeries: 1,
 		},
 		{
@@ -404,8 +406,12 @@ func TestSQLIngest(t *testing.T) {
 					t.Fatalf("got an unexpected error %v", err)
 				}
 
-				if cnt != tcase.count {
-					t.Fatalf("counts not equal: got %v expected %v\n", cnt, tcase.count)
+				// our reporting of inserts is necessarily inexact due to
+				// duplicates being dropped we report the number of samples the
+				// ingestor handled, not necissarily how many were inserted
+				// into the DB
+				if cnt < tcase.count {
+					t.Fatalf("incorrect counts: got %v expected %v\n", cnt, tcase.count)
 				}
 
 				if err != nil {
@@ -430,8 +436,8 @@ func TestSQLIngest(t *testing.T) {
 					totalRows += rowsInTable
 				}
 
-				if totalRows != int(cnt) {
-					t.Fatalf("counts not equal: got %v expected %v\n", totalRows, cnt)
+				if totalRows != int(tcase.count) {
+					t.Fatalf("counts not equal: got %v expected %v\n", totalRows, tcase.count)
 				}
 
 				err = ingestor.CompleteMetricCreation()
@@ -450,6 +456,109 @@ func TestSQLIngest(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestInsertCompressedDuplicates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 10000000, Value: 1.0},
+				},
+			},
+		}
+		ingestor, err := NewPgxIngestor(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.test') i;")
+
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
+				//already compressed (could happen if policy already ran). This is fine
+			} else {
+				t.Fatal(err)
+			}
+		}
+
+		ts = []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.0},
+				},
+			},
+		}
+
+		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ts = []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.2},
+					{Timestamp: 10, Value: 3.0},
+					{Timestamp: 10000000, Value: 4.0},
+					{Timestamp: 10000001, Value: 5.0},
+				},
+			},
+		}
+
+		//ingest duplicate after compression
+		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rows, err := db.Query(context.Background(), "SELECT value FROM prom_data.test ORDER BY time")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expected := []float64{0.0, 3.0, 1.0, 5.0}
+		found := make([]float64, 0, 4)
+		for rows.Next() {
+			var value float64
+			err = rows.Scan(&value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found = append(found, value)
+		}
+		if !reflect.DeepEqual(expected, found) {
+			t.Errorf("wrong values in DB\nexpected:\n\t%v\ngot:\n\t%v", expected, found)
+		}
+	})
 }
 
 func TestInsertCompressed(t *testing.T) {

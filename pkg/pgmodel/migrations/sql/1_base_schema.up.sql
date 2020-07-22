@@ -266,7 +266,7 @@ DECLARE
 BEGIN
    EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION, series_id INT NOT NULL)',
                     NEW.table_name);
-   EXECUTE format('CREATE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
+   EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
    PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
                              chunk_time_interval=>SCHEMA_CATALOG.get_default_chunk_interval(),
@@ -803,10 +803,10 @@ LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, name, SCHEMA_PROM.label_array) TO prom_writer;
 
 -- There shouldn't be a need to have a read only version of this as we'll use
--- the eq or other matcher functions to find series ids like this. However, 
+-- the eq or other matcher functions to find series ids like this. However,
 -- there are possible use cases that need the series id directly for performance
--- that we might want to see if we need to support, in which case a 
--- read only version might be useful in future. 
+-- that we might want to see if we need to support, in which case a
+-- read only version might be useful in future.
 CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_or_create_series_id(label jsonb)
 RETURNS BIGINT AS $$
 DECLARE
