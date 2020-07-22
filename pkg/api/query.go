@@ -2,18 +2,10 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"io"
-	"math"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
@@ -76,108 +68,4 @@ func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler 
 	})
 
 	return gziphandler.GzipHandler(hf)
-}
-
-func setHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-	if warnings != nil && len(warnings) > 0 {
-		w.Header().Set("Cache-Control", "no-store")
-	}
-	if res != nil && res.Value != nil {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
-func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setHeaders(w, res, warnings)
-	switch resVal := res.Value.(type) {
-	case promql.Vector:
-		warnings := make([]string, 0, len(res.Warnings))
-		for _, warn := range res.Warnings {
-			warnings = append(warnings, warn.Error())
-		}
-		_ = marshalVectorResponse(w, resVal, warnings)
-	case promql.Matrix:
-		warnings := make([]string, 0, len(res.Warnings))
-		for _, warn := range res.Warnings {
-			warnings = append(warnings, warn.Error())
-		}
-		_ = marshalMatrixResponse(w, resVal, warnings)
-	default:
-		resp := &response{
-			Status: "success",
-			Data: &queryData{
-				ResultType: res.Value.Type(),
-				Result:     res.Value,
-			},
-		}
-		for _, warn := range res.Warnings {
-			resp.Warnings = append(resp.Warnings, warn.Error())
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}
-}
-
-func respondError(w http.ResponseWriter, status int, err error, errType string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(&errResponse{
-		Status:    "error",
-		ErrorType: errType,
-		Error:     err.Error(),
-	})
-}
-
-type errResponse struct {
-	Status    string `json:"status"`
-	ErrorType string `json:"errorType"`
-	Error     string `json:"error"`
-}
-
-type response struct {
-	Status   string      `json:"status"`
-	Data     interface{} `json:"data,omitempty"`
-	Warnings []string    `json:"warnings,omitempty"`
-}
-
-type queryData struct {
-	ResultType parser.ValueType `json:"resultType"`
-	Result     parser.Value     `json:"result"`
-}
-
-func marshalMatrixResponse(writer io.Writer, data promql.Matrix, warnings []string) error {
-	out := &errorWrapper{writer: writer}
-	marshalCommonHeader(out)
-	marshalMatrixData(out, data)
-	marshalCommonFooter(out, warnings)
-	return out.err
-}
-
-func parseTime(s string) (time.Time, error) {
-	if t, err := strconv.ParseFloat(s, 64); err == nil {
-		s, ns := math.Modf(t)
-		return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t, nil
-	}
-	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
-}
-
-func parseDuration(s string) (time.Duration, error) {
-	if d, err := strconv.ParseFloat(s, 64); err == nil {
-		ts := d * float64(time.Second)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", s)
-		}
-		return time.Duration(ts), nil
-	}
-	if d, err := model.ParseDuration(s); err == nil {
-		return time.Duration(d), nil
-	}
-	return 0, errors.Errorf("cannot parse %q to a valid duration", s)
 }
