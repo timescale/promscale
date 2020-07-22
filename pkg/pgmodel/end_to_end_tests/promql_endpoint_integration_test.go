@@ -71,29 +71,6 @@ func genInstantRequest(apiURL, query string, start time.Time) (*http.Request, er
 	)
 }
 
-func genSeriesRequest(apiURL string, matchers []string, start, end time.Time) (*http.Request, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/series", apiURL))
-
-	if err != nil {
-		return nil, err
-	}
-
-	val := url.Values{}
-
-	for _, m := range matchers {
-		val.Add("match[]", m)
-	}
-	val.Add("start", fmt.Sprintf("%d", start.Unix()))
-	val.Add("end", fmt.Sprintf("%d", end.Unix()))
-	u.RawQuery = val.Encode()
-
-	return http.NewRequest(
-		"GET",
-		u.String(),
-		nil,
-	)
-}
-
 func genRangeRequest(apiURL, query string, start, end time.Time, step time.Duration) (*http.Request, error) {
 	u, err := url.Parse(fmt.Sprintf("%s/query_range", apiURL))
 
@@ -137,6 +114,29 @@ func getLabelValuesRequest(apiUrl string, labelName string) (*http.Request, erro
 	if err != nil {
 		return nil, err
 	}
+
+	return http.NewRequest(
+		"GET",
+		u.String(),
+		nil,
+	)
+}
+
+func genSeriesRequest(apiURL string, matchers []string, start, end time.Time) (*http.Request, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/series", apiURL))
+
+	if err != nil {
+		return nil, err
+	}
+
+	val := url.Values{}
+
+	for _, m := range matchers {
+		val.Add("match[]", m)
+	}
+	val.Add("start", fmt.Sprintf("%d", start.Unix()))
+	val.Add("end", fmt.Sprintf("%d", end.Unix()))
+	u.RawQuery = val.Encode()
 
 	return http.NewRequest(
 		"GET",
@@ -373,7 +373,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		client := &http.Client{Timeout: 10 * time.Second}
 
 		start := time.Unix(startTime/1000, 0)
-		end := time.Date(294276, time.December, 31, 23, 59, 59, 999999999, time.UTC).UTC() //time.Unix(endTime/1000, 0)
+		end := time.Unix(endTime/1000, 0)
 		var (
 			req *http.Request
 			err error
@@ -451,8 +451,8 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
 
-		start := time.Unix(startTime/1000, 0) //time.Unix(math.MinInt64/1000+62135596801, 0).UTC() //
-		end := time.Unix(endTime/1000, 0)     //time.Date(294276, time.December, 31, 23, 59, 59, 999999999, time.UTC).UTC() //
+		start := time.Unix(startTime/1000, 0)
+		end := time.Unix(endTime/1000, 0)
 		var (
 			req *http.Request
 			err error
