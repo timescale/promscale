@@ -3,14 +3,15 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"math"
+	"net/http"
+	"strings"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
-	"math"
-	"net/http"
-	"strings"
 )
 
 type labelsValue []string
@@ -23,9 +24,14 @@ func (l labelsValue) String() string {
 	return strings.Join(l, "\n")
 }
 
-func Labels(queriable *query.Queryable) http.Handler {
-	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		querier, err := queriable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+func Labels(conf *Config, queryable *query.Queryable) http.Handler {
+	hf := corsWrapper(conf, labelsHandler(queryable))
+	return gziphandler.GzipHandler(hf)
+}
+
+func labelsHandler(queryable *query.Queryable) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		querier, err := queryable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return
@@ -39,13 +45,11 @@ func Labels(queriable *query.Queryable) http.Handler {
 		respondLabels(w, &promql.Result{
 			Value: names,
 		}, warnings)
-	})
-
-	return gziphandler.GzipHandler(hf)
+	}
 }
 
 func respondLabels(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setHeaders(w, res, warnings)
+	setResponseHeaders(w, res, warnings)
 	resp := &response{
 		Status: "success",
 		Data:   res.Value,

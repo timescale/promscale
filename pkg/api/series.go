@@ -16,8 +16,13 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
-func Series(queryable *query.Queryable) http.Handler {
-	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func Series(conf *Config, queryable *query.Queryable) http.Handler {
+	seriesHandler := corsWrapper(conf, series(queryable))
+	return gziphandler.GzipHandler(seriesHandler)
+}
+
+func series(queryable *query.Queryable) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			respondError(w, http.StatusBadRequest, errors.Wrap(err, "error parsing form values"), "bad_data")
 			return
@@ -86,13 +91,10 @@ func Series(queryable *query.Queryable) http.Handler {
 		respondSeries(w, &promql.Result{
 			Value: metrics,
 		}, warnings)
-	})
-
-	return gziphandler.GzipHandler(hf)
+	}
 }
-
 func respondSeries(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setHeaders(w, res, warnings)
+	setResponseHeaders(w, res, warnings)
 	resp := &response{
 		Status: "success",
 		Data:   res.Value,

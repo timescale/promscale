@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/log"
@@ -59,7 +59,6 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 
 func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
 	time.Sleep(m.timeToSleepOnSelect)
-
 	return &mockSeriesSet{}, nil, nil, m.selectErr
 }
 
@@ -191,7 +190,7 @@ func TestQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			handler := Query(engine, query.NewQueryable(tc.querier))
+			handler := queryHandler(engine, query.NewQueryable(tc.querier))
 			queryURL := constructQuery(tc.metric, tc.time, tc.timeout)
 			w := doQuery(t, handler, queryURL, tc.canceled)
 

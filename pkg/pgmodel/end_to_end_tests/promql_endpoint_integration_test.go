@@ -390,9 +390,9 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
-
-		instantQuery := api.Query(queryEngine, queryable)
-		rangeQuery := api.QueryRange(queryEngine, queryable)
+		apiConfig := &api.Config{}
+		instantQuery := api.Query(apiConfig, queryEngine, queryable)
+		rangeQuery := api.QueryRange(apiConfig, queryEngine, queryable)
 
 		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
@@ -489,7 +489,7 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 
-		series := api.Series(queryable)
+		series := api.Series(&api.Config{}, queryable)
 
 		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
@@ -539,8 +539,9 @@ func TestPromQLLabelEndpoints(t *testing.T) {
 		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 
-		labelNamesHandler := api.Labels(queryable)
-		labelValuesHandler := api.LabelValues(queryable)
+		apiConfig := &api.Config{}
+		labelNamesHandler := api.Labels(apiConfig, queryable)
+		labelValuesHandler := api.LabelValues(apiConfig, queryable)
 		router := route.New()
 		router.Get("/api/v1/label/:name/values", labelValuesHandler.ServeHTTP)
 		router.Get("/api/v1/labels", labelNamesHandler.ServeHTTP)

@@ -15,6 +15,7 @@ import (
 
 func TestSeries(t *testing.T) {
 	_ = log.Init("debug")
+
 	testCases := []struct {
 		name        string
 		querier     *mockQuerier
@@ -82,7 +83,7 @@ func TestSeries(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := Series(query.NewQueryable(tc.querier))
+			handler := series(query.NewQueryable(tc.querier))
 			queryUrl := constructSeriesRequest(tc.start, tc.end, tc.matchers)
 			w := doSeriesRequest(t, handler, queryUrl)
 
@@ -95,7 +96,6 @@ func TestSeries(t *testing.T) {
 				_ = json.NewDecoder(bytes.NewReader(w.Body.Bytes())).Decode(&er)
 				if tc.expectError != er.ErrorType {
 					t.Errorf("expected error of type %s, got %s", tc.expectError, er.ErrorType)
-					return
 				}
 			}
 		})

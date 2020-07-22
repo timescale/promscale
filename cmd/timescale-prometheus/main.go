@@ -13,6 +13,7 @@ import (
 	"net/http"
 	pprof "net/http/pprof"
 	"os"
+	"regexp"
 	"sync/atomic"
 	"time"
 
@@ -20,18 +21,15 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
-
+	"github.com/jamiealquiza/envy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgclient"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/util"
-
-	"github.com/jamiealquiza/envy"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/timescale/timescale-prometheus/pkg/query"
+	"github.com/timescale/timescale-prometheus/pkg/util"
 )
 
 type config struct {
@@ -44,6 +42,7 @@ type config struct {
 	prometheusTimeout time.Duration
 	electionInterval  time.Duration
 	migrate           bool
+	corsOrigin        *regexp.Regexp
 }
 
 const (
@@ -148,8 +147,12 @@ func init() {
 }
 
 func main() {
-	cfg := parseFlags()
-	err := log.Init(cfg.logLevel)
+	cfg, err := parseFlags()
+	if err != nil {
+		fmt.Println("Version: ", Version, "Commit Hash: ", CommitHash)
+		fmt.Println("Fatal error: cannot parse flags ", err)
+	}
+	err = log.Init(cfg.logLevel)
 	if err != nil {
 		fmt.Println("Version: ", Version, "Commit Hash: ", CommitHash)
 		fmt.Println("Fatal error: cannot start logger", err)
@@ -231,7 +234,6 @@ func main() {
 	prometheus.MustRegister(labelsCacheCap)
 
 	router := route.New()
-
 	promMetrics := api.Metrics{
 		LeaderGauge:         leaderGauge,
 		ReceivedSamples:     receivedSamples,
@@ -253,21 +255,22 @@ func main() {
 	router.Get("/read", readHandler)
 	router.Post("/read", readHandler)
 
+	apiConf := &api.Config{AllowedOrigin: cfg.corsOrigin}
 	queryable := client.GetQueryable()
 	queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
-	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(queryEngine, queryable))
+	queryHandler := timeHandler(httpRequestDuration, "query", api.Query(apiConf, queryEngine, queryable))
 	router.Get("/api/v1/query", queryHandler)
 	router.Post("/api/v1/query", queryHandler)
 
-	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(queryEngine, queryable))
+	queryRangeHandler := timeHandler(httpRequestDuration, "query_range", api.QueryRange(apiConf, queryEngine, queryable))
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
-	labelsHandler := timeHandler(httpRequestDuration, "labels", api.Labels(queryable))
+	labelsHandler := timeHandler(httpRequestDuration, "labels", api.Labels(apiConf, queryable))
 	router.Get("/api/v1/labels", labelsHandler)
 	router.Post("/api/v1/labels", labelsHandler)
 
-	labelValuesHandler := timeHandler(httpRequestDuration, "label/:name/values", api.LabelValues(queryable))
+	labelValuesHandler := timeHandler(httpRequestDuration, "label/:name/values", api.LabelValues(apiConf, queryable))
 	router.Get("/api/v1/label/:name/values", labelValuesHandler)
 
 	router.Get("/healthz", api.Health(client))
@@ -291,7 +294,7 @@ func main() {
 	}
 }
 
-func parseFlags() *config {
+func parseFlags() (*config, error) {
 
 	cfg := &config{}
 
@@ -299,6 +302,15 @@ func parseFlags() *config {
 
 	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
+
+	var corsOriginFlag string
+	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
+	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
+	if err != nil {
+		err = fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
+		return nil, err
+	}
+	cfg.corsOrigin = corsOriginRegex
 	flag.StringVar(&cfg.logLevel, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
 	flag.IntVar(&cfg.haGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
 	flag.DurationVar(&cfg.prometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
@@ -309,7 +321,7 @@ func parseFlags() *config {
 	envy.Parse("TS_PROM")
 	flag.Parse()
 
-	return cfg
+	return cfg, nil
 }
 
 func initElector(cfg *config) (*util.Elector, error) {
@@ -387,4 +399,12 @@ func timeHandler(histogramVec prometheus.ObserverVec, path string, handler http.
 		elapsedMs := time.Since(start).Milliseconds()
 		histogramVec.WithLabelValues(path).Observe(float64(elapsedMs))
 	}
+}
+
+func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {
+	r, err := regexp.Compile("^(?:" + s + ")$")
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }

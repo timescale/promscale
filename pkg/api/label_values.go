@@ -3,24 +3,30 @@ package api
 import (
 	"context"
 	"fmt"
+	"math"
+	"net/http"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
-	"math"
-	"net/http"
 )
 
-func LabelValues(queriable *query.Queryable) http.Handler {
-	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func LabelValues(conf *Config, queryable *query.Queryable) http.Handler {
+	hf := corsWrapper(conf, labelValues(queryable))
+	return gziphandler.GzipHandler(hf)
+}
+
+func labelValues(queryable *query.Queryable) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		name := route.Param(ctx, "name")
 		if !model.LabelNameRE.MatchString(name) {
 			respondError(w, http.StatusBadRequest, fmt.Errorf("invalid label name: %s", name), "bad_data")
 			return
 		}
-		querier, err := queriable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+		querier, err := queryable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return
@@ -35,7 +41,5 @@ func LabelValues(queriable *query.Queryable) http.Handler {
 		respondLabels(w, &promql.Result{
 			Value: values,
 		}, warnings)
-	})
-
-	return gziphandler.GzipHandler(hf)
+	}
 }
