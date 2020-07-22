@@ -35,7 +35,7 @@ func TestLabels(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := Labels(query.NewQueryable(tc.querier))
+			handler := labelsHandler(query.NewQueryable(tc.querier))
 			w := doLabels(t, handler)
 
 			if w.Code != tc.expectCode {

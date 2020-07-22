@@ -12,7 +12,6 @@ import (
 )
 
 func Read(reader pgmodel.Reader, metrics *Metrics) http.Handler {
-	log.Init("debug")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {

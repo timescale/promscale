@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/httputil"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
@@ -24,8 +26,21 @@ var (
 	maxTimeFormatted = maxTime.Format(time.RFC3339Nano)
 )
 
-func setHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+type Config struct {
+	AllowedOrigin *regexp.Regexp
+}
+
+func corsWrapper(conf *Config, f http.HandlerFunc) http.HandlerFunc {
+	if conf.AllowedOrigin == nil {
+		return f
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.SetCORS(w, conf.AllowedOrigin, r)
+		f(w, r)
+	}
+}
+
+func setResponseHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
 	w.Header().Set("Content-Type", "application/json")
 	if warnings != nil && len(warnings) > 0 {
 		w.Header().Set("Cache-Control", "no-store")
@@ -38,7 +53,7 @@ func setHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warn
 }
 
 func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setHeaders(w, res, warnings)
+	setResponseHeaders(w, res, warnings)
 	switch resVal := res.Value.(type) {
 	case promql.Vector:
 		warnings := make([]string, 0, len(res.Warnings))

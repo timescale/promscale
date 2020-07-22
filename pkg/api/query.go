@@ -11,8 +11,13 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
-func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler {
-	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func Query(conf *Config, queryEngine *promql.Engine, queryable *query.Queryable) http.Handler {
+	hf := corsWrapper(conf, queryHandler(queryEngine, queryable))
+	return gziphandler.GzipHandler(hf)
+}
+
+func queryHandler(queryEngine *promql.Engine, queryable *query.Queryable) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
 		var err error
 		ts, err = parseTimeParam(r, "time", time.Now())
@@ -62,7 +67,5 @@ func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler 
 		}
 
 		respondQuery(w, res, res.Warnings)
-	})
-
-	return gziphandler.GzipHandler(hf)
+	}
 }

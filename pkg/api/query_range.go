@@ -11,8 +11,13 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
-func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {
-	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func QueryRange(conf *Config, queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {
+	hf := corsWrapper(conf, queryRange(queryEngine, queriable))
+	return gziphandler.GzipHandler(hf)
+}
+
+func queryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
@@ -101,7 +106,5 @@ func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Han
 		}
 
 		respondQuery(w, res, res.Warnings)
-	})
-
-	return gziphandler.GzipHandler(hf)
+	}
 }

@@ -154,7 +154,7 @@ func TestRangedQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			handler := QueryRange(engine, query.NewQueryable(tc.querier))
+			handler := queryRange(engine, query.NewQueryable(tc.querier))
 			queryUrl := constructRangedQuery(tc.metric, tc.start, tc.end, tc.step, tc.timeout)
 			w := doRangedQuery(t, handler, queryUrl, tc.canceled)
 
