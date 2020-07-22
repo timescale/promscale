@@ -12,11 +12,11 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
 	"net/http"
+	"strings"
 )
 
 func Series(queryable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if err := r.ParseForm(); err != nil {
 			respondError(w, http.StatusBadRequest, errors.Wrap(err, "error parsing form values"), "bad_data")
 			return
@@ -84,7 +84,7 @@ func Series(queryable *query.Queryable) http.Handler {
 
 		respondSeries(w, &promql.Result{
 			Value: metrics,
-		}, nil)
+		}, warnings)
 	})
 
 	return gziphandler.GzipHandler(hf)
@@ -106,5 +106,9 @@ func (s seriesType) Type() parser.ValueType {
 }
 
 func (s seriesType) String() string {
-	return s.String()
+	var str strings.Builder
+	for _, l := range s {
+		str.WriteString(l.String())
+	}
+	return str.String()
 }

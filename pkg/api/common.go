@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	minTime = time.Unix(math.MinInt64/1000+62135596801, 0).UTC()         //time.Date(-4713, time.January, 1, 0, 0, 0, 0, time.UTC).UTC() //time.Unix(math.MinInt64/1000+62135596801, 0).UTC()
-	maxTime = time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC() //time.Date(294276, time.December, 31, 23, 59, 59, 999999999, time.UTC).UTC() //
+	minTime = time.Unix(math.MinInt64/1000+62135596801, 0).UTC()
+	maxTime = time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()
 
 	minTimeFormatted = minTime.Format(time.RFC3339Nano)
 	maxTimeFormatted = maxTime.Format(time.RFC3339Nano)
