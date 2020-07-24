@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	expectedVersion = 1
+	expectedVersion = "0.0.1-alpha"
 )
 
 func TestMigrate(t *testing.T) {
@@ -20,19 +20,14 @@ func TestMigrate(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		var version int64
-		var dirty bool
-		err := db.QueryRow(context.Background(), "SELECT version, dirty FROM prom_schema_migrations").Scan(&version, &dirty)
+		var version string
+		err := db.QueryRow(context.Background(), "SELECT version FROM prom_schema_migrations").Scan(&version)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if version != expectedVersion {
-			t.Errorf("Version unexpected:\ngot\n%d\nwanted\n%d", version, expectedVersion)
+			t.Errorf("Version unexpected:\ngot\n%s\nwanted\n%s", version, expectedVersion)
 		}
-		if dirty {
-			t.Error("Dirty is true")
-		}
-
 	})
 }
 

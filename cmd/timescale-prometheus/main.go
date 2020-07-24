@@ -7,7 +7,7 @@ package main
 // documentation/examples/remote_storage/remote_storage_adapter/main.go
 
 import (
-	"database/sql"
+	"context"
 	"flag"
 	"fmt"
 	"github.com/prometheus/common/route"
@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 
 	"github.com/timescale/timescale-prometheus/pkg/api"
@@ -311,18 +312,13 @@ func migrate(cfg *pgclient.Config) error {
 	}
 
 	leaderGauge.Set(1)
-	dbStd, err := sql.Open("pgx", cfg.GetConnectionStr())
+	db, err := pgxpool.Connect(context.Background(), cfg.GetConnectionStr())
 	if err != nil {
 		return fmt.Errorf("Error while trying to open DB connection: %w", err)
 	}
-	defer func() {
-		err := dbStd.Close()
-		if err != nil {
-			log.Error("msg", "Error while trying to close DB connection: %s", err)
-		}
-	}()
+	defer db.Close()
 
-	err = pgmodel.Migrate(dbStd, pgmodel.VersionInfo{Version: Version, CommitHash: CommitHash})
+	err = pgmodel.Migrate(db, pgmodel.VersionInfo{Version: Version, CommitHash: CommitHash})
 
 	if err != nil {
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)

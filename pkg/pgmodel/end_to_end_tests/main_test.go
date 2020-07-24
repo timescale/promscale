@@ -5,7 +5,6 @@ package end_to_end_tests
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -89,7 +88,7 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL)
 
-		//need to get a new pool after the Migrate to catch any GUC changes made during Migrate
+		// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
 		db, err := pgxpool.Connect(context.Background(), connectURL)
 		if err != nil {
 			t.Fatal(err)
@@ -102,17 +101,12 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 }
 
 func performMigrate(t testing.TB, connectURL string) {
-	dbStd, err := sql.Open("pgx", connectURL)
-	defer func() {
-		err := dbStd.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = Migrate(dbStd, pgmodel.VersionInfo{Version: "testing-v0.0.1", CommitHash: "azxtestcommit"})
+	defer migratePool.Close()
+	err = Migrate(migratePool, pgmodel.VersionInfo{Version: expectedVersion, CommitHash: "azxtestcommit"})
 	if err != nil {
 		t.Fatal(err)
 	}
