@@ -9,11 +9,12 @@
 package main
 
 import (
-	"github.com/shurcooL/vfsgen"
 	"log"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/shurcooL/vfsgen"
 )
 
 // modTimeFS is an http.FileSystem wrapper that modifies
@@ -58,7 +59,7 @@ func main() {
 	err := vfsgen.Generate(Assets, vfsgen.Options{
 		Filename:     "migration_files_generated.go",
 		PackageName:  "migrations",
-		VariableName: "SqlFiles",
+		VariableName: "MigrationFiles",
 	})
 	if err != nil {
 		log.Fatalln(err)

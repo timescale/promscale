@@ -1,13 +1,12 @@
 
 DO $$
     DECLARE
-        current_version INT;
-        is_dirty BOOLEAN;
+        current_version TEXT;
         original_message TEXT;
     BEGIN
         BEGIN
-            SELECT version, dirty
-              INTO STRICT current_version, is_dirty
+            SELECT version
+              INTO STRICT current_version
               FROM public.prom_schema_migrations;
         EXCEPTION WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS original_message = MESSAGE_TEXT;
@@ -16,7 +15,7 @@ DO $$
             RETURN;
         END;
 
-        IF current_version < 1 OR is_dirty THEN
+        IF current_version = '' THEN
             RAISE EXCEPTION 'the requisite version of the timescale-prometheus connector has not been installed'
             USING HINT='This extension should not be created manually. It will be created by the timescale-prometheus connector and requires the connector to be installed first.';
         END IF;
