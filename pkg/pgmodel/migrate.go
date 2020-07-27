@@ -47,7 +47,8 @@ var (
 
 	toc = map[string][]string{
 		"idempotent": {
-			"001-base.sql",
+			"base.sql",
+			"matcher-functions.sql",
 		},
 	}
 	migrateMutex = &sync.Mutex{}
