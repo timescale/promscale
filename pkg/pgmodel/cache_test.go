@@ -7,20 +7,14 @@ import (
 	"math"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/allegro/bigcache"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/timescale-prometheus/pkg/clockcache"
 )
 
-func TestBigCache(t *testing.T) {
-	config := bigcache.DefaultConfig(10 * time.Minute)
-	series, err := bigcache.NewBigCache(config)
-	if err != nil {
-		t.Fatal("unable to run test, unable to create labels cache")
-	}
-	cache := bCache{
-		series: series,
+func TestCache(t *testing.T) {
+	cache := seriesCache{
+		series: clockcache.WithMax(100),
 	}
 
 	label := labels.Labels{
@@ -145,17 +139,11 @@ func TestMetricTableNameCache(t *testing.T) {
 			tableName: "",
 		},
 	}
-	config := bigcache.DefaultConfig(10 * time.Minute)
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			metrics, err := bigcache.NewBigCache(config)
-
-			if err != nil {
-				t.Fatal("unable to run test, unable to create metrics table name cache")
-			}
 			cache := MetricNameCache{
-				Metrics: metrics,
+				Metrics: clockcache.WithMax(100),
 			}
 
 			missing, err := cache.Get(c.metric)
