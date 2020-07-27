@@ -47,7 +47,7 @@ var (
 
 	toc = map[string][]string{
 		"idempotent": {
-			"1-base.sql",
+			"001-base.sql",
 		},
 	}
 	migrateMutex = &sync.Mutex{}
