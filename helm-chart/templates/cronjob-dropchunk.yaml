@@ -1,7 +1,7 @@
 apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
-  name: {{ template "connector.fullname" . }}-drop-chunk
+  name: {{ include "connector.fullname" . | trunc 41 }}-drop-chunk
   labels:
     app: {{ template "connector.fullname" . }}
     chart: {{ template "connector.chart" . }}
