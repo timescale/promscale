@@ -58,9 +58,7 @@ func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, f func(db *p
 		t.Fatal(err)
 		return
 	}
-	defer func() {
-		db.Close()
-	}()
+	defer db.Close()
 	f(db, t, pgConnectURL(DBName, superuser))
 }
 

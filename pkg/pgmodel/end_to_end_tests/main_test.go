@@ -93,9 +93,7 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer func() {
-			db.Close()
-		}()
+		defer db.Close()
 		f(db, t)
 	})
 }

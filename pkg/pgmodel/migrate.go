@@ -46,7 +46,9 @@ var (
 	ExtensionIsInstalled = false
 
 	toc = map[string][]string{
-		"idempotent": {},
+		"idempotent": {
+			"1-base.sql",
+		},
 	}
 	migrateMutex = &sync.Mutex{}
 )
