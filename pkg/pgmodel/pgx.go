@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/allegro/bigcache"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4"
@@ -189,8 +188,9 @@ func (t *SampleInfoIterator) Err() error {
 }
 
 type Cfg struct {
-	AsyncAcks      bool
-	ReportInterval int
+	AsyncAcks       bool
+	ReportInterval  int
+	SeriesCacheSize uint64
 }
 
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
@@ -206,11 +206,7 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache, cfg *Cfg)
 		return nil, err
 	}
 
-	series, _ := bigcache.NewBigCache(DefaultCacheConfig())
-
-	bc := &bCache{
-		series: series,
-	}
+	bc := &seriesCache{clockcache.WithMax(cfg.SeriesCacheSize)}
 
 	return &DBIngestor{
 		db:    pi,
@@ -220,8 +216,8 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache, cfg *Cfg)
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
 func NewPgxIngestor(c *pgxpool.Pool) (*DBIngestor, error) {
-	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
-	cache := &MetricNameCache{metrics}
+	//TODO what size should we use?
+	cache := &MetricNameCache{clockcache.WithMax(DefaultMetricCacheSize)}
 	return NewPgxIngestorWithMetricCache(c, cache, &Cfg{})
 }
 
@@ -900,8 +896,7 @@ func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache, labelsCache
 
 // NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
 func NewPgxReader(c *pgxpool.Pool, readHist prometheus.ObserverVec, labelsCacheSize uint64) *DBReader {
-	metrics, _ := bigcache.NewBigCache(DefaultCacheConfig())
-	cache := &MetricNameCache{metrics}
+	cache := &MetricNameCache{clockcache.WithMax(DefaultMetricCacheSize)}
 	return NewPgxReaderWithMetricCache(c, cache, labelsCacheSize)
 }
 

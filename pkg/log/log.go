@@ -69,16 +69,6 @@ func Fatal(keyvals ...interface{}) {
 	os.Exit(1)
 }
 
-// CustomCacheLogger is a custom logger used for transforming cache logs
-// so that they conform the our logging setup. It also implements the
-// bigcache.Logger interface.
-type CustomCacheLogger struct{}
-
-// Printf sends the log in the debug stream of the logger.
-func (c *CustomCacheLogger) Printf(format string, v ...interface{}) {
-	_ = level.Debug(logger).Log("msg", fmt.Sprintf(format, v...))
-}
-
 func parseLogLevel(logLevel string) (level.Option, error) {
 	switch logLevel {
 	case "debug":

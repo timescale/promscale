@@ -8,9 +8,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/allegro/bigcache"
 	"github.com/jackc/pgx/v4/pgxpool"
 
+	"github.com/timescale/timescale-prometheus/pkg/clockcache"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 
 	"github.com/timescale/timescale-prometheus/pkg/log"
@@ -31,6 +31,8 @@ type Config struct {
 	AsyncAcks        bool
 	ReportInterval   int
 	LabelsCacheSize  uint64
+	MetricsCacheSize uint64
+	SeriesCacheSize  uint64
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -45,6 +47,8 @@ func ParseFlags(cfg *Config) *Config {
 	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
 	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
 	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
+	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "maximum number of metric names to cache")
+	flag.Uint64Var(&cfg.SeriesCacheSize, "series-cache-size", pgmodel.DefaultSeriesCacheSize, "maximum number of series-sets to cache")
 	return cfg
 }
 
@@ -78,10 +82,13 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 		return nil, err
 	}
 
-	metrics, _ := bigcache.NewBigCache(pgmodel.DefaultCacheConfig())
-	cache := &pgmodel.MetricNameCache{Metrics: metrics}
+	cache := &pgmodel.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
 
-	c := pgmodel.Cfg{AsyncAcks: cfg.AsyncAcks, ReportInterval: cfg.ReportInterval}
+	c := pgmodel.Cfg{
+		AsyncAcks:       cfg.AsyncAcks,
+		ReportInterval:  cfg.ReportInterval,
+		SeriesCacheSize: cfg.SeriesCacheSize,
+	}
 	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache, &c)
 	if err != nil {
 		log.Error("err starting ingestor", err)
