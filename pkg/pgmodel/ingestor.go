@@ -50,8 +50,7 @@ type samplesInfo struct {
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
-	cache SeriesCache
-	db    inserter
+	db inserter
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
@@ -105,14 +104,6 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 	FinishWriteRequest(req)
 
 	return dataSamples, rows, nil
-}
-
-func (i *DBIngestor) NumCachedSeries() int {
-	return i.cache.NumElements()
-}
-
-func (i *DBIngestor) SeriesCacheCapacity() int {
-	return i.cache.Capacity()
 }
 
 // Close closes the ingestor

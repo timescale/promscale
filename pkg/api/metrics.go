@@ -19,6 +19,5 @@ type Metrics struct {
 	FailedQueries       prometheus.Counter
 	QueryBatchDuration  prometheus.Histogram
 	CachedMetricNames   prometheus.CounterFunc
-	CachedSeriesSets    prometheus.CounterFunc
 	CachedLabels        prometheus.CounterFunc
 }

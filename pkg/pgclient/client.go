@@ -48,7 +48,6 @@ func ParseFlags(cfg *Config) *Config {
 	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
 	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
 	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "maximum number of metric names to cache")
-	flag.Uint64Var(&cfg.SeriesCacheSize, "series-cache-size", pgmodel.DefaultSeriesCacheSize, "maximum number of series-sets to cache")
 	return cfg
 }
 
@@ -128,14 +127,6 @@ func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint
 // Read returns the promQL query results
 func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	return c.reader.Read(req)
-}
-
-func (c *Client) NumCachedSeries() int {
-	return c.ingestor.NumCachedSeries()
-}
-
-func (c *Client) SeriesCacheCapacity() int {
-	return c.ingestor.SeriesCacheCapacity()
 }
 
 func (c *Client) NumCachedMetricNames() int {
