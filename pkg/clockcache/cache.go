@@ -273,6 +273,12 @@ func (self *Cache) Len() int {
 	return len(self.storage)
 }
 
+func (self *Cache) Cap() int {
+	self.elementsLock.RLock()
+	defer self.elementsLock.RUnlock()
+	return cap(self.storage)
+}
+
 func (self *Cache) debugString() string {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()

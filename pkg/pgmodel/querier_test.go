@@ -22,6 +22,8 @@ type mockQuerier struct {
 	labelNamesErr     error
 }
 
+var _ Querier = (*mockQuerier)(nil)
+
 func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
 	return nil, nil, nil, nil
 }
@@ -41,6 +43,14 @@ func (q *mockQuerier) LabelValues(string) ([]string, error) {
 func (q *mockQuerier) HealthCheck() error {
 	q.healthCheckCalled = true
 	return nil
+}
+
+func (q *mockQuerier) NumCachedLabels() int {
+	return 0
+}
+
+func (q *mockQuerier) LabelsCacheCapacity() int {
+	return 0
 }
 
 func TestDBReaderRead(t *testing.T) {

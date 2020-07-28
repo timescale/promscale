@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
@@ -42,6 +43,8 @@ type mockQuerier struct {
 	labelNamesErr       error
 }
 
+var _ pgmodel.Querier = (*mockQuerier)(nil)
+
 func (m mockQuerier) LabelNames() ([]string, error) {
 	return m.labelNames, m.labelNamesErr
 }
@@ -58,6 +61,14 @@ func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, []parser.N
 	time.Sleep(m.timeToSleepOnSelect)
 
 	return &mockSeriesSet{}, nil, nil, m.selectErr
+}
+
+func (m mockQuerier) NumCachedLabels() int {
+	return 0
+}
+
+func (m mockQuerier) LabelsCacheCapacity() int {
+	return 0
 }
 
 func TestParseDuration(t *testing.T) {

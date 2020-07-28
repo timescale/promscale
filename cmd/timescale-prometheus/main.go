@@ -10,12 +10,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/prometheus/common/route"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/common/route"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -194,6 +195,61 @@ func main() {
 	}
 	defer client.Close()
 
+	cachedMetricNames := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: promNamespace,
+		Name:      "metric_name_cache_elements_stored",
+		Help:      "Total number of metric names in the metric name cache.",
+	}, func() float64 {
+		return float64(client.NumCachedMetricNames())
+	})
+
+	metricNamesCacheCap := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: promNamespace,
+		Name:      "metric_name_cache_capacity",
+		Help:      "Maximum number of elements in the metric names cache.",
+	}, func() float64 {
+		return float64(client.MetricNamesCacheCapacity())
+	})
+
+	cachedSeriesSets := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: promNamespace,
+		Name:      "series_set_cache_elements_stored",
+		Help:      "Total number of labels to series-set id mappings cached.",
+	}, func() float64 {
+		return float64(client.NumCachedSeries())
+	})
+
+	seriesSetCacheCap := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: promNamespace,
+		Name:      "series_set_cache_capacity",
+		Help:      "Maximum number of elements in the series-set cache.",
+	}, func() float64 {
+		return float64(client.SeriesCacheCapacity())
+	})
+
+	cachedLabels := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: promNamespace,
+		Name:      "label_cache_elements_stored",
+		Help:      "Total number of label-id to label mappings cache.",
+	}, func() float64 {
+		return float64(client.NumCachedLabels())
+	})
+
+	labelsCacheCap := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: promNamespace,
+		Name:      "label_cache_capacity",
+		Help:      "Total number of label-id to label mappings cache.",
+	}, func() float64 {
+		return float64(client.LabelsCacheCapacity())
+	})
+
+	prometheus.MustRegister(cachedMetricNames)
+	prometheus.MustRegister(metricNamesCacheCap)
+	prometheus.MustRegister(cachedSeriesSets)
+	prometheus.MustRegister(seriesSetCacheCap)
+	prometheus.MustRegister(cachedLabels)
+	prometheus.MustRegister(labelsCacheCap)
+
 	router := route.New()
 
 	promMetrics := api.Metrics{
@@ -207,6 +263,9 @@ func main() {
 		QueryBatchDuration:  queryBatchDuration,
 		FailedQueries:       failedQueries,
 		ReceivedQueries:     receivedQueries,
+		CachedMetricNames:   cachedMetricNames,
+		CachedSeriesSets:    cachedSeriesSets,
+		CachedLabels:        cachedLabels,
 	}
 	writeHandler := timeHandler(httpRequestDuration, "write", api.Write(client, elector, &promMetrics))
 	router.Post("/write", writeHandler)
