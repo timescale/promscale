@@ -23,6 +23,8 @@ type Querier interface {
 	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error)
 	LabelNames() ([]string, error)
 	LabelValues(labelName string) ([]string, error)
+	NumCachedLabels() int
+	LabelsCacheCapacity() int
 }
 
 //HealthChecker allows checking for proper operations.

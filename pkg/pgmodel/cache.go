@@ -25,6 +25,8 @@ type seriesCache struct {
 	series *clockcache.Cache
 }
 
+var _ SeriesCache = (*seriesCache)(nil)
+
 func (b *seriesCache) GetSeries(lset Labels) (SeriesID, error) {
 	result, ok := b.series.Get(lset.String())
 	if !ok {
@@ -36,6 +38,14 @@ func (b *seriesCache) GetSeries(lset Labels) (SeriesID, error) {
 func (b *seriesCache) SetSeries(lset Labels, id SeriesID) error {
 	b.series.Insert(lset.String(), id)
 	return nil
+}
+
+func (b *seriesCache) NumElements() int {
+	return b.series.Len()
+}
+
+func (b *seriesCache) Capacity() int {
+	return b.series.Cap()
 }
 
 // MetricNameCache stores and retrieves metric table names in a in-memory cache.
@@ -63,4 +73,12 @@ func (m *MetricNameCache) Set(metric string, tableName string) error {
 	tableBuilder.WriteString(tableName)
 	m.Metrics.Insert(metricBuilder.String(), tableBuilder.String())
 	return nil
+}
+
+func (m *MetricNameCache) NumElements() int {
+	return m.Metrics.Len()
+}
+
+func (m *MetricNameCache) Capacity() int {
+	return m.Metrics.Cap()
 }

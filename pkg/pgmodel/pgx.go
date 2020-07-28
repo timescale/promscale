@@ -216,7 +216,6 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache, cfg *Cfg)
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
 func NewPgxIngestor(c *pgxpool.Pool) (*DBIngestor, error) {
-	//TODO what size should we use?
 	cache := &MetricNameCache{clockcache.WithMax(DefaultMetricCacheSize)}
 	return NewPgxIngestorWithMetricCache(c, cache, &Cfg{})
 }
@@ -913,6 +912,8 @@ type pgxQuerier struct {
 	labels *clockcache.Cache
 }
 
+var _ Querier = (*pgxQuerier)(nil)
+
 // HealthCheck implements the healtchecker interface
 func (q *pgxQuerier) HealthCheck() error {
 	rows, err := q.conn.Query(context.Background(), "SELECT")
@@ -923,6 +924,14 @@ func (q *pgxQuerier) HealthCheck() error {
 
 	rows.Close()
 	return nil
+}
+
+func (q *pgxQuerier) NumCachedLabels() int {
+	return q.labels.Len()
+}
+
+func (q *pgxQuerier) LabelsCacheCapacity() int {
+	return q.labels.Cap()
 }
 
 func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {

@@ -60,6 +60,7 @@ type Client struct {
 	queryable     *query.Queryable
 	cfg           *Config
 	ConnectionStr string
+	metricCache   *pgmodel.MetricNameCache
 }
 
 // NewClient creates a new PostgreSQL client
@@ -98,7 +99,14 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 
 	queryable := query.NewQueryable(reader.GetQuerier())
 
-	return &Client{Connection: connectionPool, ingestor: ingestor, reader: reader, queryable: queryable, cfg: cfg}, nil
+	return &Client{
+		Connection:  connectionPool,
+		ingestor:    ingestor,
+		reader:      reader,
+		queryable:   queryable,
+		cfg:         cfg,
+		metricCache: cache,
+	}, nil
 }
 
 // GetConnectionStr returns a Postgres connection string
@@ -120,6 +128,30 @@ func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint
 // Read returns the promQL query results
 func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	return c.reader.Read(req)
+}
+
+func (c *Client) NumCachedSeries() int {
+	return c.ingestor.NumCachedSeries()
+}
+
+func (c *Client) SeriesCacheCapacity() int {
+	return c.ingestor.SeriesCacheCapacity()
+}
+
+func (c *Client) NumCachedMetricNames() int {
+	return c.metricCache.NumElements()
+}
+
+func (c *Client) MetricNamesCacheCapacity() int {
+	return c.metricCache.Capacity()
+}
+
+func (c *Client) NumCachedLabels() int {
+	return c.reader.GetQuerier().NumCachedLabels()
+}
+
+func (c *Client) LabelsCacheCapacity() int {
+	return c.reader.GetQuerier().LabelsCacheCapacity()
 }
 
 // HealthCheck checks that the client is properly connected

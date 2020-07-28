@@ -34,10 +34,12 @@ type seriesWithCallback struct {
 	Callback func(l Labels, id SeriesID) error
 }
 
-// Cache provides a caching mechanism for labels and series.
-type Cache interface {
+// SeriesCache provides a caching mechanism for labels and series.
+type SeriesCache interface {
 	GetSeries(lset Labels) (SeriesID, error)
 	SetSeries(lset Labels, id SeriesID) error
+	NumElements() int
+	Capacity() int
 }
 
 type samplesInfo struct {
@@ -48,7 +50,7 @@ type samplesInfo struct {
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
-	cache Cache
+	cache SeriesCache
 	db    inserter
 }
 
@@ -103,6 +105,14 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 	FinishWriteRequest(req)
 
 	return dataSamples, rows, nil
+}
+
+func (i *DBIngestor) NumCachedSeries() int {
+	return i.cache.NumElements()
+}
+
+func (i *DBIngestor) SeriesCacheCapacity() int {
+	return i.cache.Capacity()
 }
 
 // Close closes the ingestor

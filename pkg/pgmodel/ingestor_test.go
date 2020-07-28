@@ -16,6 +16,8 @@ type mockCache struct {
 	setSeriesErr error
 }
 
+var _ SeriesCache = (*mockCache)(nil)
+
 func (m *mockCache) GetSeries(lset Labels) (SeriesID, error) {
 	if m.getSeriesErr != nil {
 		return 0, m.getSeriesErr
@@ -32,6 +34,14 @@ func (m *mockCache) GetSeries(lset Labels) (SeriesID, error) {
 func (m *mockCache) SetSeries(lset Labels, id SeriesID) error {
 	m.seriesCache[lset.String()] = id
 	return m.setSeriesErr
+}
+
+func (m *mockCache) NumElements() int {
+	return len(m.seriesCache)
+}
+
+func (m *mockCache) Capacity() int {
+	return len(m.seriesCache)
 }
 
 type mockInserter struct {
