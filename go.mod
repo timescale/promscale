@@ -12,11 +12,11 @@ require (
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/snappy v0.0.1
 	github.com/grpc-ecosystem/grpc-gateway v1.14.4
-	github.com/jackc/pgconn v1.3.2
+	github.com/jackc/pgconn v1.6.3
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
-	github.com/jackc/pgproto3/v2 v2.0.1
-	github.com/jackc/pgtype v1.2.0
-	github.com/jackc/pgx/v4 v4.4.1
+	github.com/jackc/pgproto3/v2 v2.0.2
+	github.com/jackc/pgtype v1.4.2
+	github.com/jackc/pgx/v4 v4.8.0
 	github.com/jamiealquiza/envy v1.1.0
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/pkg/errors v0.9.1
@@ -30,5 +30,3 @@ require (
 	google.golang.org/genproto v0.0.0-20200420144010-e5e8543f8aeb
 	google.golang.org/grpc v1.29.0
 )
-
-replace github.com/jackc/pgconn => github.com/JLockerman/pgconn v1.5.3-0.20200513205926-64cd2ce264ca
