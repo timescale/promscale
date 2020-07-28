@@ -248,11 +248,6 @@ func TestDBIngestorIngest(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			cache := &mockCache{
-				seriesCache:  make(map[string]SeriesID),
-				setSeriesErr: c.setSeriesErr,
-				getSeriesErr: c.getSeriesErr,
-			}
 			inserter := mockInserter{
 				insertSeriesErr: c.insertSeriesErr,
 				insertDataErr:   c.insertDataErr,
@@ -260,8 +255,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			}
 
 			i := DBIngestor{
-				cache: cache,
-				db:    &inserter,
+				db: &inserter,
 			}
 
 			count, err := i.Ingest(c.metrics, NewWriteRequest())

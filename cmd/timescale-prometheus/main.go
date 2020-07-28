@@ -211,22 +211,6 @@ func main() {
 		return float64(client.MetricNamesCacheCapacity())
 	})
 
-	cachedSeriesSets := prometheus.NewCounterFunc(prometheus.CounterOpts{
-		Namespace: promNamespace,
-		Name:      "series_set_cache_elements_stored",
-		Help:      "Total number of labels to series-set id mappings cached.",
-	}, func() float64 {
-		return float64(client.NumCachedSeries())
-	})
-
-	seriesSetCacheCap := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Namespace: promNamespace,
-		Name:      "series_set_cache_capacity",
-		Help:      "Maximum number of elements in the series-set cache.",
-	}, func() float64 {
-		return float64(client.SeriesCacheCapacity())
-	})
-
 	cachedLabels := prometheus.NewCounterFunc(prometheus.CounterOpts{
 		Namespace: promNamespace,
 		Name:      "label_cache_elements_stored",
@@ -245,8 +229,6 @@ func main() {
 
 	prometheus.MustRegister(cachedMetricNames)
 	prometheus.MustRegister(metricNamesCacheCap)
-	prometheus.MustRegister(cachedSeriesSets)
-	prometheus.MustRegister(seriesSetCacheCap)
 	prometheus.MustRegister(cachedLabels)
 	prometheus.MustRegister(labelsCacheCap)
 
@@ -264,7 +246,6 @@ func main() {
 		FailedQueries:       failedQueries,
 		ReceivedQueries:     receivedQueries,
 		CachedMetricNames:   cachedMetricNames,
-		CachedSeriesSets:    cachedSeriesSets,
 		CachedLabels:        cachedLabels,
 	}
 	writeHandler := timeHandler(httpRequestDuration, "write", api.Write(client, elector, &promMetrics))

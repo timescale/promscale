@@ -206,12 +206,7 @@ func NewPgxIngestorWithMetricCache(c *pgxpool.Pool, cache MetricCache, cfg *Cfg)
 		return nil, err
 	}
 
-	bc := &seriesCache{clockcache.WithMax(cfg.SeriesCacheSize)}
-
-	return &DBIngestor{
-		db:    pi,
-		cache: bc,
-	}, nil
+	return &DBIngestor{db: pi}, nil
 }
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX

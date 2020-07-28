@@ -13,40 +13,12 @@ import (
 
 const (
 	DefaultMetricCacheSize = 10000
-	DefaultSeriesCacheSize = 100000
 )
 
 var (
 	// ErrEntryNotFound is returned when entry is not found.
 	ErrEntryNotFound = fmt.Errorf("entry not found")
 )
-
-type seriesCache struct {
-	series *clockcache.Cache
-}
-
-var _ SeriesCache = (*seriesCache)(nil)
-
-func (b *seriesCache) GetSeries(lset Labels) (SeriesID, error) {
-	result, ok := b.series.Get(lset.String())
-	if !ok {
-		return 0, ErrEntryNotFound
-	}
-	return result.(SeriesID), nil
-}
-
-func (b *seriesCache) SetSeries(lset Labels, id SeriesID) error {
-	b.series.Insert(lset.String(), id)
-	return nil
-}
-
-func (b *seriesCache) NumElements() int {
-	return b.series.Len()
-}
-
-func (b *seriesCache) Capacity() int {
-	return b.series.Cap()
-}
 
 // MetricNameCache stores and retrieves metric table names in a in-memory cache.
 type MetricNameCache struct {
