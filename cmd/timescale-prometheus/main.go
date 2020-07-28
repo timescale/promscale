@@ -11,7 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	pprof "net/http/pprof"
 	"os"
 	"sync/atomic"
 	"time"
@@ -298,6 +298,11 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	err = http.ListenAndServe(cfg.listenAddr, mux)
 
 	if err != nil {
