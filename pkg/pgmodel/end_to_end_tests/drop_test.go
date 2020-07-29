@@ -49,7 +49,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +143,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -233,7 +233,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}

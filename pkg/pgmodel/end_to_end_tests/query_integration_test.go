@@ -565,7 +565,7 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.Tim
 	if err != nil {
 		t.Fatal(err)
 	}
-	cnt, err := ingestor.Ingest(metrics, NewWriteRequest())
+	cnt, err := ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
 
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)

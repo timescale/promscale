@@ -150,7 +150,7 @@ func TestSQLView(t *testing.T) {
 		}
 
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(metrics, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)
@@ -248,7 +248,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(metrics, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)
