@@ -28,5 +28,5 @@ func FinishWriteRequest(wr *prompb.WriteRequest) {
 	}
 	wr.Timeseries = wr.Timeseries[:0]
 	wr.XXX_unrecognized = nil
-	wrPool.Put(wr)
+	// wrPool.Put(wr)
 }

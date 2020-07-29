@@ -8,12 +8,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
@@ -162,6 +164,9 @@ func (t *SampleInfoIterator) Next() bool {
 	if t.sampleInfoIndex < len(t.sampleInfos) && t.sampleIndex >= len(t.sampleInfos[t.sampleInfoIndex].samples) {
 		t.sampleInfoIndex++
 		t.sampleIndex = 0
+	}
+	if t.sampleIndex == 0 && t.sampleInfoIndex < len(t.sampleInfos) {
+		checkForDuplicates("Next", t.sampleInfos[t.sampleInfoIndex])
 	}
 	return t.sampleInfoIndex < len(t.sampleInfos)
 }
@@ -327,6 +332,10 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 		for _, si := range data {
 			numRows += uint64(len(si.samples))
 		}
+		// for _, s := range data {
+		// 	checkForDuplicates("InsertData", s)
+		// }
+		checkForDuplicates2("InsertData", data)
 		p.insertMetricData(metricName, data, workFinished, errChan)
 	}
 
@@ -465,6 +474,7 @@ type insertHandler struct {
 type pendingBuffer struct {
 	needsResponse []insertDataTask
 	batch         SampleInfoIterator
+	seen          map[uintptr][]samplesInfo
 }
 
 const (
@@ -476,6 +486,7 @@ var pendingBuffers = sync.Pool{
 		pb := new(pendingBuffer)
 		pb.needsResponse = make([]insertDataTask, 0)
 		pb.batch = NewSampleInfoIterator()
+		pb.seen = make(map[uintptr][]samplesInfo)
 		return pb
 	},
 }
@@ -578,7 +589,10 @@ func (h *insertHandler) blockingHandleReq() bool {
 
 func (h *insertHandler) nonblockingHandleReq() bool {
 	select {
-	case req := <-h.input:
+	case req, ok := <-h.input:
+		if !ok {
+			return false
+		}
 		h.handleReq(req)
 		return true
 	default:
@@ -588,6 +602,9 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 
 func (h *insertHandler) handleReq(req insertDataRequest) bool {
 	h.fillKnowSeriesIds(req.data)
+	for _, series := range req.data {
+		checkForDuplicates("handleReq", series)
+	}
 	needsFlush := h.pending.addReq(req)
 	if needsFlush {
 		h.flushPending()
@@ -598,6 +615,7 @@ func (h *insertHandler) handleReq(req insertDataRequest) bool {
 
 func (h *insertHandler) fillKnowSeriesIds(sampleInfos []samplesInfo) (numMissingSeries int) {
 	for i, series := range sampleInfos {
+		checkForDuplicates("fillKnowSeriesIds", series)
 		if series.seriesID > -1 {
 			continue
 		}
@@ -625,9 +643,19 @@ func (h *insertHandler) flushPending() {
 		h.pending.reportResults(err)
 		return
 	}
+	for _, series := range h.pending.batch.sampleInfos {
+		checkForDuplicates("flushPending", series)
+	}
 
 	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
-	h.pending = pendingBuffers.Get().(*pendingBuffer)
+	// h.pending = pendingBuffers.Get().(*pendingBuffer)
+	h.pending = func() *pendingBuffer {
+		pb := new(pendingBuffer)
+		pb.needsResponse = make([]insertDataTask, 0)
+		pb.batch = NewSampleInfoIterator()
+		pb.seen = make(map[uintptr][]samplesInfo)
+		return pb
+	}()
 }
 
 func runCopyFrom(conn pgxConn, in chan copyRequest) {
@@ -642,7 +670,7 @@ func runCopyFrom(conn pgxConn, in chan copyRequest) {
 		}
 
 		req.data.reportResults(err)
-		pendingBuffers.Put(req.data)
+		// pendingBuffers.Put(req.data)
 	}
 }
 
@@ -711,6 +739,7 @@ func tryRecovery(conn pgxConn, req copyRequest, insertFn insertionFunction, err 
 }
 
 func doCopyFrom(conn pgxConn, req copyRequest) error {
+	// checkForDuplicates2("doCopyFrom", req.data.batch.sampleInfos)
 	_, err := conn.CopyFrom(
 		context.Background(),
 		pgx.Identifier{dataSchema, req.table},
@@ -718,6 +747,22 @@ func doCopyFrom(conn pgxConn, req copyRequest) error {
 		&req.data.batch,
 	)
 	return err
+}
+
+func checkForDuplicates2(loc string, data []samplesInfo) {
+	set := make(map[SeriesID]map[int64]float64, len(data))
+	for _, samples := range data {
+		if _, found := set[samples.seriesID]; !found {
+			set[samples.seriesID] = make(map[int64]float64, len(samples.samples))
+		}
+		for _, sample := range samples.samples {
+			v, found := set[samples.seriesID][sample.Timestamp]
+			if found {
+				fmt.Printf("%s: duplicate found (%v: %v, %v) %v\n", loc, sample.Timestamp, v, sample.Value, samples.labels.values)
+			}
+			set[samples.seriesID][sample.Timestamp] = sample.Value
+		}
+	}
 }
 
 func doInsert(conn pgxConn, req copyRequest) error {
@@ -792,6 +837,9 @@ func (pending *pendingBuffer) reportResults(err error) {
 
 func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) {
 	numMissingSeries := h.fillKnowSeriesIds(sampleInfos)
+	for _, series := range sampleInfos {
+		checkForDuplicates("setSeriesIds", series)
+	}
 
 	if numMissingSeries == 0 {
 		return "", nil
@@ -869,6 +917,13 @@ func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) 
 func (p *pendingBuffer) addReq(req insertDataRequest) bool {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.sampleInfos = append(p.batch.sampleInfos, req.data...)
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&req.data))
+	if _, found := p.seen[hdr.Data]; found {
+		fmt.Printf("duplicate req %v\n", hdr.Data)
+		panic("invalid")
+	}
+	p.seen[hdr.Data] = req.data
+	// checkForDuplicates2("addReq", p.batch.sampleInfos)
 	return len(p.batch.sampleInfos) > flushSize
 }
 

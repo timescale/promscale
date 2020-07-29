@@ -6,6 +6,8 @@ package pgmodel
 
 import (
 	"fmt"
+	"reflect"
+	"unsafe"
 
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
@@ -76,6 +78,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 	dataSamples := make(map[string][]samplesInfo)
 	rows := 0
 
+	seen := make(map[uintptr]struct{})
 	for _, t := range tts {
 		if len(t.Samples) == 0 {
 			continue
@@ -88,20 +91,30 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 		if metricName == "" {
 			return nil, rows, ErrNoMetricName
 		}
+		hdr := (*reflect.SliceHeader)(unsafe.Pointer(&t.Samples))
+		if _, found := seen[hdr.Data]; found {
+			fmt.Printf("duplicate in parseData %v\n", hdr.Data)
+			panic("invalid")
+		}
+		seen[hdr.Data] = struct{}{}
 		sample := samplesInfo{
 			seriesLabels,
 			-1, //sentinel marking the seriesId as unset
 			t.Samples,
 		}
 		rows += len(t.Samples)
-
+		checkForDuplicates("parseData", sample)
 		dataSamples[metricName] = append(dataSamples[metricName], sample)
 		// we're going to free req after this, but we still need the samples,
 		// so nil the field
 		t.Samples = nil
 	}
 
-	FinishWriteRequest(req)
+	for _, s := range dataSamples {
+		checkForDuplicatesStr("parseData 2", s)
+	}
+
+	// FinishWriteRequest(req)
 
 	return dataSamples, rows, nil
 }
@@ -109,4 +122,31 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 // Close closes the ingestor
 func (i *DBIngestor) Close() {
 	i.db.Close()
+}
+
+func checkForDuplicates(loc string, samples samplesInfo) {
+	set := make(map[int64]struct{}, len(samples.samples))
+	for _, sample := range samples.samples {
+		_, found := set[sample.Timestamp]
+		if found {
+			fmt.Printf("%s: duplicate found %v %v \n", loc, sample.Timestamp, samples.labels)
+		}
+		set[sample.Timestamp] = struct{}{}
+	}
+}
+
+func checkForDuplicatesStr(loc string, data []samplesInfo) {
+	set := make(map[string]map[int64]float64, len(data))
+	for i, samples := range data {
+		if _, found := set[samples.labels.String()]; !found {
+			set[samples.labels.String()] = make(map[int64]float64, len(samples.samples))
+		}
+		for j, sample := range samples.samples {
+			v, found := set[samples.labels.String()][sample.Timestamp]
+			if found {
+				fmt.Printf("%s: duplicate found (%d, %d) [%d] (%v: %v, %v) %v\n", loc, i, j, len(samples.samples), sample.Timestamp, v, sample.Value, samples.labels.values)
+			}
+			set[samples.labels.String()][sample.Timestamp] = sample.Value
+		}
+	}
 }
