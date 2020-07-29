@@ -335,7 +335,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 		// for _, s := range data {
 		// 	checkForDuplicates("InsertData", s)
 		// }
-		checkForDuplicates2("InsertData", data)
+		checkForDuplicatesStr("InsertData", data)
 		p.insertMetricData(metricName, data, workFinished, errChan)
 	}
 
@@ -622,7 +622,7 @@ func (h *insertHandler) fillKnowSeriesIds(sampleInfos []samplesInfo) (numMissing
 		id, ok := h.seriesCache[series.labels.String()]
 		if ok {
 			sampleInfos[i].seriesID = id
-			series.labels = nil
+			// series.labels = nil
 		} else {
 			numMissingSeries++
 		}
@@ -648,14 +648,7 @@ func (h *insertHandler) flushPending() {
 	}
 
 	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
-	// h.pending = pendingBuffers.Get().(*pendingBuffer)
-	h.pending = func() *pendingBuffer {
-		pb := new(pendingBuffer)
-		pb.needsResponse = make([]insertDataTask, 0)
-		pb.batch = NewSampleInfoIterator()
-		pb.seen = make(map[uintptr][]samplesInfo)
-		return pb
-	}()
+	h.pending = pendingBuffers.Get().(*pendingBuffer)
 }
 
 func runCopyFrom(conn pgxConn, in chan copyRequest) {
@@ -670,7 +663,7 @@ func runCopyFrom(conn pgxConn, in chan copyRequest) {
 		}
 
 		req.data.reportResults(err)
-		// pendingBuffers.Put(req.data)
+		pendingBuffers.Put(req.data)
 	}
 }
 
@@ -749,22 +742,6 @@ func doCopyFrom(conn pgxConn, req copyRequest) error {
 	return err
 }
 
-func checkForDuplicates2(loc string, data []samplesInfo) {
-	set := make(map[SeriesID]map[int64]float64, len(data))
-	for _, samples := range data {
-		if _, found := set[samples.seriesID]; !found {
-			set[samples.seriesID] = make(map[int64]float64, len(samples.samples))
-		}
-		for _, sample := range samples.samples {
-			v, found := set[samples.seriesID][sample.Timestamp]
-			if found {
-				fmt.Printf("%s: duplicate found (%v: %v, %v) %v\n", loc, sample.Timestamp, v, sample.Value, samples.labels.values)
-			}
-			set[samples.seriesID][sample.Timestamp] = sample.Value
-		}
-	}
-}
-
 func doInsert(conn pgxConn, req copyRequest) error {
 	queryString := fmt.Sprintf("INSERT INTO %s.%s(time, value, series_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", dataSchema, req.table)
 	insertBatch := conn.NewBatch()
@@ -833,6 +810,7 @@ func (pending *pendingBuffer) reportResults(err error) {
 	}
 	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0]}
 	pending.batch.ResetPosition()
+	pending.seen = make(map[uintptr][]samplesInfo)
 }
 
 func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) {
