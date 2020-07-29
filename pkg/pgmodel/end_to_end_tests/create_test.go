@@ -160,7 +160,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -401,7 +401,7 @@ func TestSQLIngest(t *testing.T) {
 				}
 				defer ingestor.Close()
 
-				cnt, err := ingestor.Ingest(tcase.metrics, NewWriteRequest())
+				cnt, err := ingestor.Ingest(copyMetrics(tcase.metrics), NewWriteRequest())
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
 				}
@@ -479,7 +479,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -510,7 +510,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			},
 		}
 
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -535,7 +535,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		}
 
 		//ingest duplicate after compression
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -582,7 +582,7 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -600,7 +600,7 @@ func TestInsertCompressed(t *testing.T) {
 			}
 		}
 		//ingest after compression
-		_, err = ingestor.Ingest(ts, NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -613,4 +613,16 @@ func TestInsertCompressed(t *testing.T) {
 			t.Error("next_start was not changed enough")
 		}
 	})
+}
+
+// deep copy the metrics since we mutate them, and don't want to invalidate the tests
+func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
+	out := make([]prompb.TimeSeries, len(metrics))
+	copy(out, metrics)
+	for i := range out {
+		samples := make([]prompb.Sample, len(out[i].Samples))
+		copy(samples, out[i].Samples)
+		out[i].Samples = samples
+	}
+	return out
 }

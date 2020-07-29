@@ -76,7 +76,8 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 	dataSamples := make(map[string][]samplesInfo)
 	rows := 0
 
-	for _, t := range tts {
+	for i := range tts {
+		t := &tts[i]
 		if len(t.Samples) == 0 {
 			continue
 		}

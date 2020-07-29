@@ -2,18 +2,18 @@ package api
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"sync/atomic"
+	"time"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
 	"github.com/timescale/timescale-prometheus/pkg/util"
-	"io/ioutil"
-	"net/http"
-	"sync/atomic"
-	"time"
 )
 
 func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
@@ -48,8 +48,8 @@ func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) h
 			return
 		}
 
-		var req prompb.WriteRequest
-		if err := proto.Unmarshal(reqBuf, &req); err != nil {
+		req := pgmodel.NewWriteRequest()
+		if err := proto.Unmarshal(reqBuf, req); err != nil {
 			log.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -65,7 +65,7 @@ func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) h
 		metrics.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		numSamples, err := writer.Ingest(req.GetTimeseries(), &req)
+		numSamples, err := writer.Ingest(req.GetTimeseries(), req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
