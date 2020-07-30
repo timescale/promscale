@@ -1166,7 +1166,25 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
   FROM SCHEMA_CATALOG.label_key lk;
 
 
+--this should the only thing run inside the transaction. It's important the txn ends after calling this function
+--to release locks
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delay_compression_job(ht_table name, new_start timestamptz) RETURNS VOID
+AS $$
+DECLARE
+  bgw_job_id int;
+BEGIN
+        SELECT job_id INTO bgw_job_id
+		FROM _timescaledb_config.bgw_policy_compress_chunks p
+		INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = p.hypertable_id)
+		WHERE h.schema_name = 'SCHEMA_DATA' and h.table_name = ht_table;
 
+        --alter job schedule is not currently concurrency-safe (timescaledb issue #2165)
+        PERFORM pg_advisory_xact_lock(12377, bgw_job_id);
+
+		PERFORM alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
+END
+$$
+LANGUAGE PLPGSQL;
 
 --Decompression should take place in a procedure because we don't want locks held across
 --decompress_chunk calls since that function takes some heavier locks at the end.
@@ -1196,8 +1214,19 @@ BEGIN
         AND c.compressed_chunk_id IS NOT NULL
         ORDER BY ds.range_start
     LOOP
-        RAISE NOTICE 'Timescale-Prometheus is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
-        PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
+
+        --lock the chunk exclusive.
+        EXECUTE format('LOCK %I.%I;', chunk_row.schema_name, chunk_row.table_name);
+        --double check it's still compressed.
+        PERFORM c.*
+        FROM _timescaledb_catalog.chunk c
+        WHERE c.id = chunk_row.id AND c.compressed_chunk_id IS NOT NULL;
+
+        IF FOUND THEN
+            RAISE NOTICE 'Timescale-Prometheus is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
+            PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
+        END IF;
+
         COMMIT;
     END LOOP;
 END;
