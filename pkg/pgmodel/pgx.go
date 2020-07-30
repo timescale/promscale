@@ -748,13 +748,8 @@ func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error 
 	}
 	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table, "min-time", minTime, "age", time.Since(minTime), "delay-job-by", delayBy)
 
-	_, rescheduleErr := conn.Exec(context.Background(),
-		`SELECT alter_job_schedule(
-							(SELECT job_id
-							FROM _timescaledb_config.bgw_policy_compress_chunks p
-							INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = p.hypertable_id)
-							WHERE h.schema_name = $1 and h.table_name = $2),
-							next_start=>$3)`, dataSchema, table, time.Now().Add(delayBy))
+	_, rescheduleErr := conn.Exec(context.Background(), "SELECT "+catalogSchema+".delay_compression_job($1, $2)",
+		table, time.Now().Add(delayBy))
 	if rescheduleErr != nil {
 		log.Error("msg", rescheduleErr, "context", "Rescheduling compression")
 		return rescheduleErr
