@@ -466,7 +466,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -488,7 +488,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.test') i;")
+		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -501,7 +501,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -522,7 +522,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -540,7 +540,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		rows, err := db.Query(context.Background(), "SELECT value FROM prom_data.test ORDER BY time")
+		rows, err := db.Query(context.Background(), "SELECT value FROM prom_data.\"tEsT\" ORDER BY time")
 		if err != nil {
 			t.Fatal(err)
 		}
