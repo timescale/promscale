@@ -15,6 +15,7 @@ var (
 	maskPasswordReplaceString1 = "password=$1'****'"
 	maskPasswordRegex2         = regexp.MustCompile(`password:(\s*?)([^\s]+?)( |$)`)
 	maskPasswordReplaceString2 = "password:$1****$3"
+	PromNamespace              = "ts_prom"
 )
 
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel

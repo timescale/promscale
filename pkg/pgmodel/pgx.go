@@ -720,22 +720,40 @@ func doCopyFrom(conn pgxConn, req copyRequest) error {
 	return err
 }
 
-func doInsert(conn pgxConn, req copyRequest) error {
+func doInsert(conn pgxConn, req copyRequest) (err error) {
 	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
 	insertBatch := conn.NewBatch()
+	calls := int64(0)
 	for req.data.batch.Next() {
 		values, _ := req.data.batch.Values()
 		insertBatch.Queue(queryString, values...)
+		calls++
 	}
-	resp, err := conn.SendBatch(context.Background(), insertBatch)
-	err2 := resp.Close()
-	if err == nil {
-		err = err2
-	}
-
+	var resp pgx.BatchResults
+	resp, err = conn.SendBatch(context.Background(), insertBatch)
 	if err != nil {
-		return fmt.Errorf("Error encountered while inserting possibly-duplicate data: %w", err)
+		err = fmt.Errorf("Error encountered while inserting possibly-duplicate data: %w", err)
+		return
 	}
+	defer func() {
+		closeErr := resp.Close()
+		if err == nil && closeErr != nil {
+			err = fmt.Errorf("Error encountered while closing inserter for possibly-duplicate data: %w", closeErr)
+		}
+	}()
+
+	rowsInserted := int64(0)
+	for i := int64(0); i < calls; i++ {
+		var ct pgconn.CommandTag
+		ct, err = resp.Exec()
+		if err != nil {
+			err = fmt.Errorf("Error encountered while reading result when inserting possibly-duplicate data: %w", err)
+			return
+		}
+		rowsInserted += ct.RowsAffected()
+	}
+	duplicateSamples.Add(float64(calls - rowsInserted))
+	duplicateWrites.Inc()
 	return nil
 }
 
@@ -765,6 +783,8 @@ func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error 
 		return decompressErr
 	}
 
+	decompressCalls.Inc()
+	decompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
 	return nil
 }
 
