@@ -49,55 +49,54 @@ type config struct {
 const (
 	tickInterval      = time.Second
 	promLivenessCheck = time.Second
-	promNamespace     = "ts_prom"
 )
 
 var (
 	leaderGauge = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "current_leader",
 			Help:      "Shows current election leader status",
 		},
 	)
 	receivedSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "received_samples_total",
 			Help:      "Total number of received samples.",
 		},
 	)
 	receivedQueries = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "received_queries_total",
 			Help:      "Total number of received queries.",
 		},
 	)
 	sentSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "sent_samples_total",
 			Help:      "Total number of processed samples sent to remote storage.",
 		},
 	)
 	failedSamples = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "failed_samples_total",
 			Help:      "Total number of processed samples which failed on send to remote storage.",
 		},
 	)
 	failedQueries = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "failed_queries_total",
 			Help:      "Total number of queries which failed on send to remote storage.",
 		},
 	)
 	sentBatchDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "sent_batch_duration_seconds",
 			Help:      "Duration of sample batch send calls to the remote storage.",
 			Buckets:   prometheus.DefBuckets,
@@ -105,7 +104,7 @@ var (
 	)
 	queryBatchDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "query_batch_duration_seconds",
 			Help:      "Duration of query batch read calls to the remote storage.",
 			Buckets:   prometheus.DefBuckets,
@@ -113,7 +112,7 @@ var (
 	)
 	httpRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "http_request_duration_ms",
 			Help:      "Duration of HTTP request in milliseconds",
 			Buckets:   prometheus.DefBuckets,
@@ -122,7 +121,7 @@ var (
 	)
 	ReadQueryLatency = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: promNamespace,
+			Namespace: util.PromNamespace,
 			Name:      "query_latency_ms",
 			Help:      "Query latency in milliseconds",
 			Buckets:   []float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000},
@@ -196,7 +195,7 @@ func main() {
 	defer client.Close()
 
 	cachedMetricNames := prometheus.NewCounterFunc(prometheus.CounterOpts{
-		Namespace: promNamespace,
+		Namespace: util.PromNamespace,
 		Name:      "metric_name_cache_elements_stored",
 		Help:      "Total number of metric names in the metric name cache.",
 	}, func() float64 {
@@ -204,7 +203,7 @@ func main() {
 	})
 
 	metricNamesCacheCap := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Namespace: promNamespace,
+		Namespace: util.PromNamespace,
 		Name:      "metric_name_cache_capacity",
 		Help:      "Maximum number of elements in the metric names cache.",
 	}, func() float64 {
@@ -212,7 +211,7 @@ func main() {
 	})
 
 	cachedLabels := prometheus.NewCounterFunc(prometheus.CounterOpts{
-		Namespace: promNamespace,
+		Namespace: util.PromNamespace,
 		Name:      "label_cache_elements_stored",
 		Help:      "Total number of label-id to label mappings cache.",
 	}, func() float64 {
@@ -220,7 +219,7 @@ func main() {
 	})
 
 	labelsCacheCap := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Namespace: promNamespace,
+		Namespace: util.PromNamespace,
 		Name:      "label_cache_capacity",
 		Help:      "Total number of label-id to label mappings cache.",
 	}, func() float64 {
