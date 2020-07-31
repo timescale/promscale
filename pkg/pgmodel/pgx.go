@@ -1023,7 +1023,7 @@ func (q *pgxQuerier) LabelValues(labelName string) ([]string, error) {
 	return labelValues, nil
 }
 
-const GetLabelsSQL = "SELECT (key_value_array($1::int[])).*"
+const GetLabelsSQL = "SELECT (labels_info($1::int[])).*"
 
 type labelQuerier interface {
 	getLabelsForIds(ids []int64) (lls labels.Labels, err error)
@@ -1075,11 +1075,15 @@ func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64,
 	defer rows.Close()
 
 	for rows.Next() {
+		var ids []int64
 		var keys []string
 		var vals []string
-		err = rows.Scan(&keys, &vals)
+		err = rows.Scan(&ids, &keys, &vals)
 		if err != nil {
 			return err
+		}
+		if len(ids) != len(keys) {
+			return fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys))
 		}
 		if len(keys) != len(vals) {
 			return fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys), len(vals))
@@ -1089,6 +1093,7 @@ func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64,
 		}
 
 		for i := range misses {
+			misses[i] = ids[i]
 			newLabels[i] = labels.Label{Name: keys[i], Value: vals[i]}
 		}
 		numInserted := q.labels.InsertBatch(misses, newLabels)

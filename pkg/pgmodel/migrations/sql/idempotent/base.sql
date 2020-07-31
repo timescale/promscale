@@ -583,15 +583,25 @@ COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(text, text[], text[
 IS 'converts a metric name, array of keys, and array of values to a label array';
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
--- Returns keys and values for a label_array
+-- Returns ids, keys and values for a label_array
+-- the order may not be the same as the original labels
 -- This function needs to be optimized for performance
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array(labels SCHEMA_PROM.label_array, OUT keys text[], OUT vals text[])
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_info(INOUT labels INT[], OUT keys text[], OUT vals text[])
 AS $$
     SELECT
-        array_agg(l.key), array_agg(l.value)
+        array_agg(l.id), array_agg(l.key), array_agg(l.value)
     FROM
       label_unnest(labels) label_id
       INNER JOIN SCHEMA_CATALOG.label l ON (l.id = label_id)
+$$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels_info(INT[])
+IS 'converts an array of label ids to three arrays: one for ids, one for keys and another for values';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.labels_info(INT[]) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array(labels SCHEMA_PROM.label_array, OUT keys text[], OUT vals text[])
+AS $$
+    SELECT keys, vals FROM SCHEMA_PROM.labels_info(labels)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 COMMENT ON FUNCTION SCHEMA_PROM.key_value_array(SCHEMA_PROM.label_array)
