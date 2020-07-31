@@ -721,7 +721,7 @@ func doCopyFrom(conn pgxConn, req copyRequest) error {
 }
 
 func doInsert(conn pgxConn, req copyRequest) error {
-	queryString := fmt.Sprintf("INSERT INTO %s.%s(time, value, series_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", dataSchema, req.table)
+	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
 	insertBatch := conn.NewBatch()
 	for req.data.batch.Next() {
 		values, _ := req.data.batch.Values()
@@ -732,7 +732,11 @@ func doInsert(conn pgxConn, req copyRequest) error {
 	if err == nil {
 		err = err2
 	}
-	return err
+
+	if err != nil {
+		return fmt.Errorf("Error encountered while inserting possibly-duplicate data: %w", err)
+	}
+	return nil
 }
 
 func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error {
