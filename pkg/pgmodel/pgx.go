@@ -689,7 +689,7 @@ func tryRecovery(conn pgxConn, req copyRequest, insertFn insertionFunction, err 
 	// if we have duplicate data points try again using
 	// INSERT ... ON CONFLICT DO NOTHING to insert only the new ones
 	if pgErr.Code == pgerrcode.UniqueViolation {
-		log.Warn("msg", fmt.Sprintf("duplicate data in sample for %s", req.table), "table", req.table)
+		log.Warn("msg", fmt.Sprintf("duplicate data in sample for %s", req.table), "detail", pgErr.Detail, "table", req.table)
 		req.data.batch.ResetPosition()
 		return doInsert, nil
 	}
