@@ -829,7 +829,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				"SELECT (key_value_array($1::int[])).*"},
+				"SELECT (labels_info($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"__name__", "bar"},
 				{"foo"},
@@ -846,7 +846,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{{`foo`, []int64{1}}},
 				{{"foo"}},
 				{{[]int64{1}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-				{{[]string{"__name__"}, []string{"foo"}}},
+				{{[]int64{1}, []string{"__name__"}, []string{"foo"}}},
 			},
 		},
 		{
@@ -867,7 +867,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				"SELECT (key_value_array($1::int[])).*"},
+				"SELECT (labels_info($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"bar"},
 				{MetricNameLabelName, "bar"},
@@ -882,7 +882,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			queryResults: []rowResults{
 				{{"bar"}},
 				{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-				{{[]string{"__name__"}, []string{"bar"}}},
+				{{[]int64{2}, []string{"__name__"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -919,8 +919,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				"SELECT (key_value_array($1::int[])).*",
-				"SELECT (key_value_array($1::int[])).*"},
+				"SELECT (labels_info($1::int[])).*",
+				"SELECT (labels_info($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"__name__", "^$"},
 				{"foo"},
@@ -946,8 +946,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{{[]int64{3}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 				{{"bar"}},
 				{{[]int64{4}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-				{{[]string{"__name__"}, []string{"foo"}}},
-				{{[]string{"__name__"}, []string{"bar"}}},
+				{{[]int64{3}, []string{"__name__"}, []string{"foo"}}},
+				{{[]int64{4}, []string{"__name__"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -985,8 +985,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				"SELECT (key_value_array($1::int[])).*",
-				"SELECT (key_value_array($1::int[])).*"},
+				"SELECT (labels_info($1::int[])).*",
+				"SELECT (labels_info($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"__name__", "foo", "__name__", "bar"},
 				{"foo"},
@@ -1012,8 +1012,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{{[]int64{5}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 				{{"bar"}},
 				{{[]int64{6}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-				{{[]string{"__name__"}, []string{"foo"}}},
-				{{[]string{"__name__"}, []string{"bar"}}},
+				{{[]int64{5}, []string{"__name__"}, []string{"foo"}}},
+				{{[]int64{6}, []string{"__name__"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -1041,7 +1041,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				"SELECT (key_value_array($1::int[])).*"},
+				"SELECT (labels_info($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"foo", "bar"},
 				{"metric"},
@@ -1058,7 +1058,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{{"metric", []int64{1, 99, 98}}},
 				{{"metric"}},
 				{{[]int64{7}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-				{{[]string{"foo"}, []string{"bar"}}},
+				{{[]int64{7}, []string{"foo"}, []string{"bar"}}},
 			},
 		},
 		{
@@ -1089,7 +1089,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				"SELECT (key_value_array($1::int[])).*"},
+				"SELECT (labels_info($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"foo", "bar", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
 				{"metric"},
@@ -1109,7 +1109,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{{"metric", []int64{1, 4, 5}}},
 				{{"metric"}},
 				{{[]int64{8, 9}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-				{{[]string{"foo", "foo2"}, []string{"bar", "bar2"}}},
+				{{[]int64{8, 9}, []string{"foo", "foo2"}, []string{"bar", "bar2"}}},
 			},
 		},
 		{
@@ -1140,7 +1140,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 	AND time >= '1970-01-01T00:00:01Z'
 	AND time <= '1970-01-01T00:00:02Z'
 	GROUP BY s.id`,
-				"SELECT (key_value_array($1::int[])).*"},
+				"SELECT (labels_info($1::int[])).*"},
 			sqlArgs: [][]interface{}{
 				{"foo", "", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
 				{"metric"},
@@ -1159,7 +1159,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{{"metric", []int64{1, 2}}},
 				{{"metric"}},
 				{{[]int64{10}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-				{{[]string{"foo2"}, []string{"bar2"}}},
+				{{[]int64{10}, []string{"foo2"}, []string{"bar2"}}},
 			},
 		},
 	}
