@@ -157,7 +157,6 @@ func main() {
 	}
 	log.Info("msg", "Version:"+Version+"; Commit Hash: "+CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
-	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
 	elector, err = initElector(cfg)
 
@@ -278,6 +277,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
+	mux.Handle(cfg.telemetryPath, promhttp.Handler())
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
