@@ -533,7 +533,11 @@ func durationMilliseconds(d time.Duration) int64 {
 // execEvalStmt evaluates the expression of an evaluation statement for the given time range.
 func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.EvalStmt) (parser.Value, storage.Warnings, error) {
 	prepareSpanTimer, ctxPrepare := query.stats.GetSpanTimer(ctx, stats.QueryPreparationTime, ng.metrics.queryPrepareTime)
-	mint := ng.findMinTime(s)
+	mint, err := ng.findMinTime(s)
+	if err != nil {
+		prepareSpanTimer.Finish()
+		return nil, nil, err
+	}
 	querier, err := query.queryable.Querier(ctxPrepare, timestamp.FromTime(mint), timestamp.FromTime(s.End))
 	if err != nil {
 		prepareSpanTimer.Finish()
@@ -650,9 +654,21 @@ func (ng *Engine) cumulativeSubqueryOffset(path []parser.Node) time.Duration {
 	return subqOffset
 }
 
-func (ng *Engine) findMinTime(s *parser.EvalStmt) time.Time {
+type inspector func(parser.Node, []parser.Node) (bool, error)
+
+func (f inspector) Visit(node parser.Node, path []parser.Node) (parser.Visitor, error) {
+	if v, err := f(node, path); !v || err != nil {
+		return nil, err
+	}
+
+	return f, nil
+}
+
+// This is modified from upstream to avoid descending into a MatrixSelector's VectorSelector
+func (ng *Engine) findMinTime(s *parser.EvalStmt) (time.Time, error) {
 	var maxOffset time.Duration
-	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
+
+	err := parser.Walk(inspector(func(node parser.Node, path []parser.Node) (bool, error) {
 		subqOffset := ng.cumulativeSubqueryOffset(path)
 		switch n := node.(type) {
 		case *parser.VectorSelector:
@@ -669,10 +685,13 @@ func (ng *Engine) findMinTime(s *parser.EvalStmt) time.Time {
 			if m := n.VectorSelector.(*parser.VectorSelector).Offset + n.Range + subqOffset; m > maxOffset {
 				maxOffset = m
 			}
+			//do not process the child VectorSelector since we don't want to add the LookbackDelta etc for the underlying
+			//VectorSelector.
+			return false, nil
 		}
-		return nil
-	})
-	return s.Start.Add(-maxOffset)
+		return true, nil
+	}), s.Expr, nil)
+	return s.Start.Add(-maxOffset), err
 }
 
 func (ng *Engine) populateSeries(ctx context.Context, querier Querier, s *parser.EvalStmt) (storage.Warnings, parser.Node, error) {
