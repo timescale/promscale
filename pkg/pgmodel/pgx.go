@@ -167,18 +167,13 @@ func (t *SampleInfoIterator) Next() bool {
 }
 
 // Values returns the values for the current row
-func (t *SampleInfoIterator) Values() ([]interface{}, error) {
+func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID) {
 	info := t.sampleInfos[t.sampleInfoIndex]
 	sample := info.samples[t.sampleIndex]
-	row := []interface{}{
-		model.Time(sample.Timestamp).Time(),
-		sample.Value,
-		info.seriesID,
-	}
 	if t.minSeen > sample.Timestamp {
 		t.minSeen = sample.Timestamp
 	}
-	return row, nil
+	return model.Time(sample.Timestamp).Time(), sample.Value, info.seriesID
 }
 
 // Err returns any error that has been encountered by the CopyFromSource. If
@@ -232,7 +227,7 @@ func newPgxInserter(conn pgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, er
 	numCopiers := maxProcs*ConnectionsPerProc - maxProcs
 	toCopiers := make(chan copyRequest, numCopiers)
 	for i := 0; i < numCopiers; i++ {
-		go runCopyFrom(conn, toCopiers)
+		go runInserter(conn, toCopiers)
 	}
 
 	inserter := &pgxInserter{
@@ -630,7 +625,7 @@ func (h *insertHandler) flushPending() {
 	h.pending = pendingBuffers.Get().(*pendingBuffer)
 }
 
-func runCopyFrom(conn pgxConn, in chan copyRequest) {
+func runInserter(conn pgxConn, in chan copyRequest) {
 	for {
 		req, ok := <-in
 		if !ok {
@@ -638,7 +633,7 @@ func runCopyFrom(conn pgxConn, in chan copyRequest) {
 		}
 		err := doInsert(conn, req)
 		if err != nil {
-			err = copyFromErrorFallback(conn, req, err)
+			err = insertErrorFallback(conn, req, err)
 		}
 
 		req.data.reportResults(err)
@@ -647,28 +642,16 @@ func runCopyFrom(conn pgxConn, in chan copyRequest) {
 }
 
 // certain errors are recoverable, handle those we can
-//   1. if the data contains duplicates, switch to INSERT ... ON CONFLICT DO NOTHING
-//      so the duplicates are dropped and the other data can go in
-//   2. if the table is compressed, decompress and retry the insertion
-func copyFromErrorFallback(conn pgxConn, req copyRequest, err error) error {
-	// we use either COPY FROM or INSERT depending on if the dataset has duplicates
-	// if we do need to use INSERT, we need to keep doing so, otherwise we'll
-	// fail due to duplicates.
-	insertFn := doCopyFrom
-	for i := 0; err != nil && i < 10; i++ {
-		insertFn, err = tryRecovery(conn, req, insertFn, err)
-		if insertFn == nil || err != nil {
-			return err
-		}
-		err = insertFn(conn, req)
-	}
+//   1. if the table is compressed, decompress and retry the insertion
+func insertErrorFallback(conn pgxConn, req copyRequest, err error) error {
+	err = tryRecovery(conn, req, err)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
+		return err
 	}
-	return err
-}
 
-type insertionFunction = func(conn pgxConn, req copyRequest) error
+	return doInsert(conn, req)
+}
 
 // we can currently recover from two error:
 // If we inserted duplicate data we switch to using INSERT ... ON CONFLICT DO NOTHING
@@ -676,47 +659,27 @@ type insertionFunction = func(conn pgxConn, req copyRequest) error
 // If we inserted into a compressed chunk, we decompress the chunk and try again.
 // Since a single batch can have both errors, we need to remember the insert method
 // we're using, so that we deduplicate if needed.
-func tryRecovery(conn pgxConn, req copyRequest, insertFn insertionFunction, err error) (insertionFunction, error) {
-
+func tryRecovery(conn pgxConn, req copyRequest, err error) error {
 	// we only recover from postgres errors right now
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
 		errMsg := err.Error()
 		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.table), "error", errMsg)
-		return nil, err
-	}
-
-	// if we have duplicate data points try again using
-	// INSERT ... ON CONFLICT DO NOTHING to insert only the new ones
-	if pgErr.Code == pgerrcode.UniqueViolation {
-		log.Warn("msg", fmt.Sprintf("duplicate data in sample for %s", req.table), "detail", pgErr.Detail, "table", req.table)
-		req.data.batch.ResetPosition()
-		return doInsert, nil
+		return err
 	}
 
 	// If the error was that the table is already compressed, decompress and try again.
 	if strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
 		decompressErr := decompressChunks(conn, req.data, req.table)
 		if decompressErr != nil {
-			return nil, err
+			return err
 		}
 
 		req.data.batch.ResetPosition()
-		// use the old insertFn in case it was doing deduplication
-		return insertFn, nil
+		return nil
 	}
 
 	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "error", pgErr.Error())
-	return nil, err
-}
-
-func doCopyFrom(conn pgxConn, req copyRequest) error {
-	_, err := conn.CopyFrom(
-		context.Background(),
-		pgx.Identifier{dataSchema, req.table},
-		copyColumns,
-		&req.data.batch,
-	)
 	return err
 }
 
@@ -729,10 +692,10 @@ func doInsert(conn pgxConn, req copyRequest) (err error) {
 	vals := make([]float64, 0, numRows)
 	series := make([]int64, 0, numRows)
 	for req.data.batch.Next() {
-		row, _ := req.data.batch.Values()
-		times = append(times, row[0].(time.Time))
-		vals = append(vals, row[1].(float64))
-		series = append(series, int64(row[2].(SeriesID)))
+		time, val, serie := req.data.batch.Values()
+		times = append(times, time)
+		vals = append(vals, val)
+		series = append(series, int64(serie))
 	}
 	if len(times) != numRows {
 		panic("invalid insert request")
@@ -741,7 +704,6 @@ func doInsert(conn pgxConn, req copyRequest) (err error) {
 	var ct pgconn.CommandTag
 	ct, err = conn.Exec(context.Background(), queryString, times, vals, series)
 	if err != nil {
-		err = fmt.Errorf("Error encountered while inserting possibly-duplicate data: %w", err)
 		return
 	}
 
