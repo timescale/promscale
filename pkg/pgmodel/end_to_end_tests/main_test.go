@@ -40,15 +40,17 @@ func TestMain(m *testing.M) {
 		flag.Parse()
 		ctx := context.Background()
 		_ = log.Init("debug")
-		if !testing.Short() && *useDocker {
+		if !testing.Short() {
 			var err error
 
-			pgContainerTestDataDir = generatePGTestDirFiles()
+			if *useDocker {
+				pgContainerTestDataDir = generatePGTestDirFiles()
 
-			pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, pgContainerTestDataDir, *printLogs)
-			if err != nil {
-				fmt.Println("Error setting up container", err)
-				os.Exit(1)
+				pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, pgContainerTestDataDir, *printLogs)
+				if err != nil {
+					fmt.Println("Error setting up container", err)
+					os.Exit(1)
+				}
 			}
 
 			storagePath, err := generatePrometheusWALFile()
@@ -67,12 +69,14 @@ func TestMain(m *testing.M) {
 					panic(err)
 				}
 
-				if *printLogs {
-					_ = pgContainer.StopLogProducer()
-				}
-				_ = pgContainer.Terminate(ctx)
-				pgContainer = nil
+				if *useDocker {
+					if *printLogs {
+						_ = pgContainer.StopLogProducer()
+					}
 
+					_ = pgContainer.Terminate(ctx)
+					pgContainer = nil
+				}
 				err = promCont.Terminate(ctx)
 				if err != nil {
 					panic(err)

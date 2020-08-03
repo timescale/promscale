@@ -152,7 +152,7 @@ func (s samples) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s samples) Less(i, j int) bool { return s[i].Metric.Before(s[j].Metric) }
 
 func TestPromQLQueryEndpoint(t *testing.T) {
-	if testing.Short() || !*useDocker {
+	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 
@@ -283,6 +283,10 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			query: `delta(metric_3[5m])`,
 		},
 		{
+			name:  "delta 1m",
+			query: `delta(metric_3[1m])`,
+		},
+		{
 			name:  "increase",
 			query: `increase(metric_1[5m])`,
 		},
@@ -384,15 +388,33 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 				t.Fatalf("unable to create PromQL query request: %s", err)
 			}
 			testMethod := testRequest(req, instantQuery, client, queryResultComparator)
-			tester.Run(fmt.Sprintf("%s (instant query)", c.name), testMethod)
+			tester.Run(fmt.Sprintf("%s (instant query, ts=start)", c.name), testMethod)
+
+			// Instant Query, 30 seconds after start
+			req, err = genInstantRequest(apiURL, c.query, start.Add(time.Second*30))
+			if err != nil {
+				t.Fatalf("unable to create PromQL query request: %s", err)
+			}
+			testMethod = testRequest(req, instantQuery, client, queryResultComparator)
+			tester.Run(fmt.Sprintf("%s (instant query ts=start+30sec)", c.name), testMethod)
 
 			for _, step := range steps {
-				req, err = genRangeRequest(apiURL, c.query, start, end, step)
+				req, err = genRangeRequest(apiURL, c.query, start, end.Add(10*time.Minute), step)
 				if err != nil {
 					t.Fatalf("unable to create PromQL range query request: %s", err)
 				}
 				testMethod := testRequest(req, rangeQuery, client, queryResultComparator)
 				tester.Run(fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String()), testMethod)
+			}
+
+			//range that straddles the end of the generated data
+			for _, step := range steps {
+				req, err = genRangeRequest(apiURL, c.query, end, end.Add(time.Minute*10), step)
+				if err != nil {
+					t.Fatalf("unable to create PromQL range query request: %s", err)
+				}
+				testMethod := testRequest(req, rangeQuery, client, queryResultComparator)
+				tester.Run(fmt.Sprintf("%s (range query, step size: %s, straddles_end)", c.name, step.String()), testMethod)
 			}
 		}
 	})

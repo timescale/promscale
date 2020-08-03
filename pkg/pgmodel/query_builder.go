@@ -215,6 +215,10 @@ func buildTimeSeries(rows pgx.Rows, q *pgxQuerier) ([]*prompb.TimeSeries, error)
 		results = append(results, result)
 	}
 
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
 	return results, nil
 }
 

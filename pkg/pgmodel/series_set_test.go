@@ -2,6 +2,7 @@ package pgmodel
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -31,7 +32,7 @@ func (m *mockPgxRows) Close() {
 
 // Err returns any error that occurred while reading.
 func (m *mockPgxRows) Err() error {
-	panic("not implemented")
+	return nil
 }
 
 // CommandTag returns the command tag from this query. It is only available after Rows is closed.
@@ -248,7 +249,7 @@ func TestPgxSeriesSet(t *testing.T) {
 
 				s := p.At()
 
-				if err := p.Err(); err != c.err {
+				if err := p.Err(); !errors.Is(err, c.err) {
 					t.Fatalf("unexpected error returned: got %s, wanted %s", err, c.err)
 				}
 
@@ -352,7 +353,7 @@ func TestPgxSeriesSet(t *testing.T) {
 				t.Fatal("unexpected at value after all rows were iterated on")
 			}
 
-			if c.err != p.Err() {
+			if !errors.Is(p.Err(), c.err) {
 				t.Fatalf("unexpected err: got %s, wanted %s", p.Err(), c.err)
 			}
 		})

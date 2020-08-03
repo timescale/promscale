@@ -191,7 +191,7 @@ func (m *mockRows) Close() {
 
 // Err returns any error that occurred while reading.
 func (m *mockRows) Err() error {
-	panic("not implemented")
+	return nil
 }
 
 // CommandTag returns the command tag from this query. It is only available after Rows is closed.

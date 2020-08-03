@@ -49,6 +49,7 @@ func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler 
 
 		res := qry.Exec(ctx)
 		if res.Err != nil {
+			log.Error("msg", res.Err, "endpoint", "query")
 			switch res.Err.(type) {
 			case promql.ErrQueryCanceled:
 				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
