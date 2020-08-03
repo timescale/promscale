@@ -39,7 +39,6 @@ type mockPGXConn struct {
 	QueryNoRows       bool
 	QueryErr          map[int]error // Mapping query call to error response.
 	CopyFromTableName []string
-	CopyFromColumns   [][]string
 	Times             []time.Time
 	Vals              []float64
 	Series            []int64
@@ -623,12 +622,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 			if !reflect.DeepEqual(mock.CopyFromTableName, expectedNames) {
 				t.Errorf("unexpected copy table:\ngot\n%s\nwanted\n%s", mock.CopyFromTableName, tNames)
-			}
-
-			for _, cols := range mock.CopyFromColumns {
-				if !reflect.DeepEqual(cols, copyColumns) {
-					t.Errorf("unexpected columns:\ngot\n%s\nwanted\n%s", cols, copyColumns)
-				}
 			}
 		})
 	}
