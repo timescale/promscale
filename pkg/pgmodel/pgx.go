@@ -707,8 +707,11 @@ func doInsert(conn pgxConn, req copyRequest) (err error) {
 		return
 	}
 
-	duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
-	duplicateWrites.Inc()
+	if int64(numRows) != ct.RowsAffected() {
+		log.Warn("msg", "duplicate data in sample", "table", req.table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
+		duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
+		duplicateWrites.Inc()
+	}
 	return nil
 }
 
