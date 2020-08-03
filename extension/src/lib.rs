@@ -184,7 +184,9 @@ impl GapfillDeltaTransition {
         if self.window.back().map_or(false, |(prev, _)| *prev > time) {
             elog!(Error, "inputs must be in ascending time order")
         }
-        self.window.push_back((time, val));
+        if time >= self.current_window_min {
+            self.window.push_back((time, val));
+        }
     }
 
     fn in_current_window(&self, time: TimestampTz) -> bool {
