@@ -636,7 +636,7 @@ func runCopyFrom(conn pgxConn, in chan copyRequest) {
 		if !ok {
 			return
 		}
-		err := doCopyFrom(conn, req)
+		err := doInsert(conn, req)
 		if err != nil {
 			err = copyFromErrorFallback(conn, req, err)
 		}
@@ -721,38 +721,31 @@ func doCopyFrom(conn pgxConn, req copyRequest) error {
 }
 
 func doInsert(conn pgxConn, req copyRequest) (err error) {
-	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
-	insertBatch := conn.NewBatch()
-	calls := int64(0)
-	for req.data.batch.Next() {
-		values, _ := req.data.batch.Values()
-		insertBatch.Queue(queryString, values...)
-		calls++
+	numRows := 0
+	for i := range req.data.batch.sampleInfos {
+		numRows += len(req.data.batch.sampleInfos[i].samples)
 	}
-	var resp pgx.BatchResults
-	resp, err = conn.SendBatch(context.Background(), insertBatch)
+	times := make([]time.Time, 0, numRows)
+	vals := make([]float64, 0, numRows)
+	series := make([]int64, 0, numRows)
+	for req.data.batch.Next() {
+		row, _ := req.data.batch.Values()
+		times = append(times, row[0].(time.Time))
+		vals = append(vals, row[1].(float64))
+		series = append(series, int64(row[2].(SeriesID)))
+	}
+	if len(times) != numRows {
+		panic("invalid insert request")
+	}
+	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
+	var ct pgconn.CommandTag
+	ct, err = conn.Exec(context.Background(), queryString, times, vals, series)
 	if err != nil {
 		err = fmt.Errorf("Error encountered while inserting possibly-duplicate data: %w", err)
 		return
 	}
-	defer func() {
-		closeErr := resp.Close()
-		if err == nil && closeErr != nil {
-			err = fmt.Errorf("Error encountered while closing inserter for possibly-duplicate data: %w", closeErr)
-		}
-	}()
 
-	rowsInserted := int64(0)
-	for i := int64(0); i < calls; i++ {
-		var ct pgconn.CommandTag
-		ct, err = resp.Exec()
-		if err != nil {
-			err = fmt.Errorf("Error encountered while reading result when inserting possibly-duplicate data: %w", err)
-			return
-		}
-		rowsInserted += ct.RowsAffected()
-	}
-	duplicateSamples.Add(float64(calls - rowsInserted))
+	duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
 	duplicateWrites.Inc()
 	return nil
 }
