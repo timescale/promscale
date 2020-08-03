@@ -84,6 +84,7 @@ func QueryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.Han
 
 		res := qry.Exec(ctx)
 		if res.Err != nil {
+			log.Error("msg", res.Err, "endpoint", "query_range")
 			switch res.Err.(type) {
 			case promql.ErrQueryCanceled:
 				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")

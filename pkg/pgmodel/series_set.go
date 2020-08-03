@@ -40,6 +40,9 @@ func (p *pgxSeriesSet) Next() bool {
 		return false
 	}
 	for !p.rows[p.rowIdx].Next() {
+		if p.err == nil {
+			p.err = p.rows[p.rowIdx].Err()
+		}
 		p.rows[p.rowIdx].Close()
 		p.rowIdx++
 		if p.rowIdx >= len(p.rows) {
@@ -89,7 +92,10 @@ func (p *pgxSeriesSet) At() storage.Series {
 
 // Err implements storage.SeriesSet.
 func (p *pgxSeriesSet) Err() error {
-	return p.err
+	if p.err != nil {
+		return fmt.Errorf("Error retrieving series set: %w", p.err)
+	}
+	return nil
 }
 
 // pgxSeries implements storage.Series.
