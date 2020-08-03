@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,9 +38,11 @@ type mockPGXConn struct {
 	QueryResultsIndex int
 	QueryNoRows       bool
 	QueryErr          map[int]error // Mapping query call to error response.
-	CopyFromTableName []pgx.Identifier
+	CopyFromTableName []string
 	CopyFromColumns   [][]string
-	CopyFromRowSource [][]samplesInfo
+	Times             []time.Time
+	Vals              []float64
+	Series            []int64
 	CopyFromResult    int64
 	CopyFromError     error
 	CopyFromRowsRows  [][]interface{}
@@ -54,9 +57,33 @@ func (m *mockPGXConn) UseDatabase(dbName string) {
 }
 
 func (m *mockPGXConn) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	m.ExecSQLs = append(m.ExecSQLs, sql)
-	m.ExecArgs = append(m.ExecArgs, arguments)
-	return pgconn.CommandTag([]byte{}), m.ExecErr
+	if strings.HasPrefix(sql, "INSERT INTO ") && strings.HasSuffix(sql, "DO NOTHING") {
+		m.insertLock.Lock()
+		defer m.insertLock.Unlock()
+		if len(arguments) != 3 {
+			panic(fmt.Sprintf("invalid arguments: %v", arguments))
+		}
+		end := 0
+		for end < len(sql) && sql[end] != '(' {
+			end += 1
+		}
+		tableName := sql[len("INSERT INTO "):end]
+		m.CopyFromTableName = append(m.CopyFromTableName, tableName)
+
+		times := arguments[0].([]time.Time)
+		vals := arguments[1].([]float64)
+		series := arguments[2].([]int64)
+
+		m.Times = append(m.Times, times...)
+		m.Vals = append(m.Vals, vals...)
+		m.Series = append(m.Series, series...)
+
+		return pgconn.CommandTag([]byte{}), m.CopyFromError
+	} else {
+		m.ExecSQLs = append(m.ExecSQLs, sql)
+		m.ExecArgs = append(m.ExecArgs, arguments)
+		return pgconn.CommandTag([]byte{}), m.ExecErr
+	}
 }
 
 func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
@@ -75,15 +102,7 @@ func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}
 }
 
 func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	m.insertLock.Lock()
-	defer m.insertLock.Unlock()
-	m.CopyFromTableName = append(m.CopyFromTableName, tableName)
-	m.CopyFromColumns = append(m.CopyFromColumns, columnNames)
-	src := rowSrc.(*SampleInfoIterator)
-	rows := make([]samplesInfo, 0, len(src.sampleInfos))
-	rows = append(rows, src.sampleInfos...)
-	m.CopyFromRowSource = append(m.CopyFromRowSource, rows)
-	return m.CopyFromResult, m.CopyFromError
+	panic("should never be called")
 }
 
 func (m *mockPGXConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
@@ -457,7 +476,7 @@ func createRowsByMetric(x int, metricCount int) map[string][]samplesInfo {
 	for i < x {
 		metricIndex := i % metricCount
 
-		ret[metrics[metricIndex]] = append(ret[metrics[metricIndex]], samplesInfo{})
+		ret[metrics[metricIndex]] = append(ret[metrics[metricIndex]], samplesInfo{samples: []prompb.Sample{{}}})
 		i++
 	}
 	return ret
@@ -598,27 +617,17 @@ func TestPGXInserterInsertData(t *testing.T) {
 			// Sorting because range over a map gives random iteration order.
 			sort.Slice(tNames, func(i, j int) bool { return tNames[i][1] < tNames[j][1] })
 			sort.Slice(mock.CopyFromTableName, func(i, j int) bool { return mock.CopyFromTableName[i][1] < mock.CopyFromTableName[j][1] })
-			if !reflect.DeepEqual(mock.CopyFromTableName, tNames) {
+			expectedNames := make([]string, len(tNames))
+			for i := range tNames {
+				expectedNames[i] = tNames[i].Sanitize()
+			}
+			if !reflect.DeepEqual(mock.CopyFromTableName, expectedNames) {
 				t.Errorf("unexpected copy table:\ngot\n%s\nwanted\n%s", mock.CopyFromTableName, tNames)
 			}
 
 			for _, cols := range mock.CopyFromColumns {
 				if !reflect.DeepEqual(cols, copyColumns) {
 					t.Errorf("unexpected columns:\ngot\n%s\nwanted\n%s", cols, copyColumns)
-				}
-			}
-
-			for i, metric := range mock.CopyFromTableName {
-				name := metric[1]
-				for metric, tableName := range mockMetrics.metricCache {
-					if tableName == name {
-						name = metric
-					}
-				}
-				result := c.rows[name]
-
-				if !reflect.DeepEqual(mock.CopyFromRowSource[i], result) {
-					t.Errorf("unexpected rows for metric %s:\ngot\n%+v\nwanted\n%+v", metric, mock.CopyFromRowSource[i], result)
 				}
 			}
 		})
