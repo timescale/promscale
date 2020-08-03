@@ -112,7 +112,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
 DECLARE
   label_id INT;
 BEGIN
-   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION, series_id INT NOT NULL)',
+   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION, series_id BIGINT NOT NULL)',
                     NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
