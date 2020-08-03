@@ -1,0 +1,397 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+package pgmodel
+
+import (
+	"context"
+	"fmt"
+	"sort"
+
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/timescale-prometheus/pkg/clockcache"
+	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/timescale-prometheus/pkg/prompb"
+)
+
+const (
+	getMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
+	getLabelNamesSQL   = "SELECT distinct key from " + catalogSchema + ".label"
+	getLabelValuesSQL  = "SELECT value from " + catalogSchema + ".label WHERE key = $1"
+)
+
+// NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
+// and caches metric table names using the supplied cacher.
+func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache, labelsCacheSize uint64) *DBReader {
+	pi := &pgxQuerier{
+		conn: &pgxConnImpl{
+			conn: c,
+		},
+		metricTableNames: cache,
+		labels:           clockcache.WithMax(labelsCacheSize),
+	}
+
+	return &DBReader{
+		db: pi,
+	}
+}
+
+// NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
+func NewPgxReader(c *pgxpool.Pool, readHist prometheus.ObserverVec, labelsCacheSize uint64) *DBReader {
+	cache := &MetricNameCache{clockcache.WithMax(DefaultMetricCacheSize)}
+	return NewPgxReaderWithMetricCache(c, cache, labelsCacheSize)
+}
+
+type metricTimeRangeFilter struct {
+	metric    string
+	startTime string
+	endTime   string
+}
+
+type pgxQuerier struct {
+	conn             pgxConn
+	metricTableNames MetricCache
+	// contains [int64]labels.Label
+	labels *clockcache.Cache
+}
+
+var _ Querier = (*pgxQuerier)(nil)
+
+// HealthCheck implements the healtchecker interface
+func (q *pgxQuerier) HealthCheck() error {
+	rows, err := q.conn.Query(context.Background(), "SELECT")
+
+	if err != nil {
+		return err
+	}
+
+	rows.Close()
+	return nil
+}
+
+func (q *pgxQuerier) NumCachedLabels() int {
+	return q.labels.Len()
+}
+
+func (q *pgxQuerier) LabelsCacheCapacity() int {
+	return q.labels.Cap()
+}
+
+// entry point from our own version of the prometheus engine
+func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+	rows, topNode, err := q.getResultRows(mint, maxt, hints, path, ms)
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	ss, warn, err := buildSeriesSet(rows, sortSeries, q)
+	return ss, topNode, warn, err
+}
+
+// entry point from remote-storage queries
+func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
+	if query == nil {
+		return []*prompb.TimeSeries{}, nil
+	}
+
+	matchers, err := FromLabelMatchers(query.Matchers)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		for _, r := range rows {
+			r.Close()
+		}
+	}()
+
+	results := make([]*prompb.TimeSeries, 0, len(rows))
+
+	for _, r := range rows {
+		ts, err := buildTimeSeries(r, q)
+
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, ts...)
+	}
+
+	return results, nil
+}
+
+func (q *pgxQuerier) LabelNames() ([]string, error) {
+	rows, err := q.conn.Query(context.Background(), getLabelNamesSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	labelNames := make([]string, 0)
+
+	for rows.Next() {
+		var labelName string
+		if err := rows.Scan(&labelName); err != nil {
+			return nil, err
+		}
+
+		labelNames = append(labelNames, labelName)
+	}
+
+	sort.Strings(labelNames)
+	return labelNames, nil
+}
+
+func (q *pgxQuerier) LabelValues(labelName string) ([]string, error) {
+	rows, err := q.conn.Query(context.Background(), getLabelValuesSQL, labelName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	labelValues := make([]string, 0)
+
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+
+		labelValues = append(labelValues, value)
+	}
+
+	sort.Strings(labelValues)
+	return labelValues, nil
+}
+
+const GetLabelsSQL = "SELECT (labels_info($1::int[])).*"
+
+type labelQuerier interface {
+	getLabelsForIds(ids []int64) (lls labels.Labels, err error)
+}
+
+func (q *pgxQuerier) getPrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error) {
+	ll, err := q.getLabelsForIds(ids)
+	if err != nil {
+		return
+	}
+	lls = make([]prompb.Label, len(ll))
+	for i := range ll {
+		lls[i] = prompb.Label{Name: ll[i].Name, Value: ll[i].Value}
+	}
+	return
+}
+
+func (q *pgxQuerier) getLabelsForIds(ids []int64) (lls labels.Labels, err error) {
+	keys := make([]interface{}, len(ids))
+	values := make([]interface{}, len(ids))
+	for i := range ids {
+		keys[i] = ids[i]
+	}
+	numHits := q.labels.GetValues(keys, values)
+
+	if numHits < len(ids) {
+		err = q.fetchMissingLabels(keys[numHits:], ids[numHits:], values[numHits:])
+		if err != nil {
+			return
+		}
+	}
+
+	lls = make([]labels.Label, 0, len(values))
+	for i := range values {
+		lls = append(lls, values[i].(labels.Label))
+	}
+
+	return
+}
+
+func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64, newLabels []interface{}) error {
+	for i := range misses {
+		missedIds[i] = misses[i].(int64)
+	}
+	rows, err := q.conn.Query(context.Background(), GetLabelsSQL, missedIds)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ids []int64
+		var keys []string
+		var vals []string
+		err = rows.Scan(&ids, &keys, &vals)
+		if err != nil {
+			return err
+		}
+		if len(ids) != len(keys) {
+			return fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys))
+		}
+		if len(keys) != len(vals) {
+			return fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys), len(vals))
+		}
+		if len(keys) != len(misses) {
+			return fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys))
+		}
+
+		for i := range misses {
+			misses[i] = ids[i]
+			newLabels[i] = labels.Label{Name: keys[i], Value: vals[i]}
+		}
+		numInserted := q.labels.InsertBatch(misses, newLabels)
+		if numInserted < len(misses) {
+			log.Warn("msg", "labels cache starving, may need to increase size")
+		}
+	}
+	return nil
+}
+
+func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]pgx.Rows, parser.Node, error) {
+
+	metric, cases, values, err := buildSubQueries(matchers)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	filter := metricTimeRangeFilter{
+		metric:    metric,
+		startTime: toRFC3339Nano(startTimestamp),
+		endTime:   toRFC3339Nano(endTimestamp),
+	}
+
+	if metric != "" {
+		return q.querySingleMetric(metric, filter, cases, values, hints, path)
+	}
+
+	sqlQuery := buildMetricNameSeriesIDQuery(cases)
+	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	defer rows.Close()
+	metrics, series, err := getSeriesPerMetric(rows)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	results := make([]pgx.Rows, 0, len(metrics))
+
+	for i, metric := range metrics {
+		tableName, err := q.getMetricTableName(metric)
+		if err != nil {
+			// If the metric table is missing, there are no results for this query.
+			if err == errMissingTableName {
+				continue
+			}
+
+			return nil, nil, err
+		}
+		filter.metric = tableName
+		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
+		rows, err = q.conn.Query(context.Background(), sqlQuery)
+
+		if err != nil {
+			return nil, nil, err
+		}
+
+		results = append(results, rows)
+	}
+
+	return results, nil, nil
+}
+
+func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}, hints *storage.SelectHints, path []parser.Node) ([]pgx.Rows, parser.Node, error) {
+	tableName, err := q.getMetricTableName(metric)
+	if err != nil {
+		// If the metric table is missing, there are no results for this query.
+		if err == errMissingTableName {
+			return nil, nil, nil
+		}
+
+		return nil, nil, err
+	}
+	filter.metric = tableName
+
+	sqlQuery, values, topNode, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
+
+	if err != nil {
+		// If we are getting undefined table error, it means the query
+		// is looking for a metric which doesn't exist in the system.
+		if e, ok := err.(*pgconn.PgError); !ok || e.Code != pgerrcode.UndefinedTable {
+			return nil, nil, err
+		}
+	}
+	return []pgx.Rows{rows}, topNode, nil
+}
+
+func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {
+	var err error
+	var tableName string
+
+	tableName, err = q.metricTableNames.Get(metric)
+
+	if err == nil {
+		return tableName, nil
+	}
+
+	if err != ErrEntryNotFound {
+		return "", err
+	}
+
+	tableName, err = q.queryMetricTableName(metric)
+
+	if err != nil {
+		return "", err
+	}
+
+	err = q.metricTableNames.Set(metric, tableName)
+
+	return tableName, err
+}
+
+func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
+	res, err := q.conn.Query(
+		context.Background(),
+		getMetricsTableSQL,
+		metric,
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	var tableName string
+	defer res.Close()
+	if !res.Next() {
+		return "", errMissingTableName
+	}
+
+	if err := res.Scan(&tableName); err != nil {
+		return "", err
+	}
+
+	return tableName, nil
+}
