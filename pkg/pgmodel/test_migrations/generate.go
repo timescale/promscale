@@ -21,7 +21,7 @@ var Assets http.FileSystem = migrations.NewModTimeFs(http.Dir("sql"))
 func main() {
 	err := vfsgen.Generate(Assets, vfsgen.Options{
 		Filename:     "migration_files_generated.go",
-		PackageName:  "migrations",
+		PackageName:  "test_migrations",
 		VariableName: "MigrationFiles",
 	})
 	if err != nil {
