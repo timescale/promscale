@@ -6,6 +6,7 @@ package pgmodel
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
@@ -53,6 +55,11 @@ const (
 	AND time >= '%[4]s'
 	AND time <= '%[5]s'
 	GROUP BY s.id`
+)
+
+var (
+	minTime = timestamp.FromTime(time.Unix(math.MinInt64/1000+62135596801, 0).UTC())
+	maxTime = timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC())
 )
 
 func buildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{}, error) {
@@ -390,6 +397,12 @@ func toMilis(t time.Time) int64 {
 }
 
 func toRFC3339Nano(milliseconds int64) string {
+	if milliseconds == minTime {
+		return "-Infinity"
+	}
+	if milliseconds == maxTime {
+		return "Infinity"
+	}
 	sec := milliseconds / 1000
 	nsec := (milliseconds - (sec * 1000)) * 1000000
 	return time.Unix(sec, nsec).UTC().Format(time.RFC3339Nano)

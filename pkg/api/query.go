@@ -14,16 +14,12 @@ import (
 func Query(queryEngine *promql.Engine, queryable *query.Queryable) http.Handler {
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
-		if t := r.FormValue("time"); t != "" {
-			var err error
-			ts, err = parseTime(t)
-			if err != nil {
-				log.Error("msg", "Query error", "err", err.Error())
-				respondError(w, http.StatusBadRequest, err, "bad_data")
-				return
-			}
-		} else {
-			ts = time.Now()
+		var err error
+		ts, err = parseTimeParam(r, "time", time.Now())
+		if err != nil {
+			log.Error("msg", "Query error", "err", err.Error())
+			respondError(w, http.StatusBadRequest, err, "bad_data")
+			return
 		}
 
 		ctx := r.Context()

@@ -2,6 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+	"strings"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -11,8 +14,6 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/promql"
 	"github.com/timescale/timescale-prometheus/pkg/query"
-	"net/http"
-	"strings"
 )
 
 func Series(queryable *query.Queryable) http.Handler {
@@ -27,13 +28,13 @@ func Series(queryable *query.Queryable) http.Handler {
 			return
 		}
 
-		start, err := parseTime(r.FormValue("start"))
+		start, err := parseTimeParam(r, "start", minTime)
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return
 		}
-		end, err := parseTime(r.FormValue("end"))
+		end, err := parseTimeParam(r, "end", maxTime)
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")

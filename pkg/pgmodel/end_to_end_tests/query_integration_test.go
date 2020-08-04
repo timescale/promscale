@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
@@ -514,6 +516,65 @@ func TestSQLQuery(t *testing.T) {
 							{Timestamp: 1, Value: 1.1},
 							{Timestamp: 2, Value: 1.2},
 							{Timestamp: 3, Value: 1.3},
+						},
+					},
+				}),
+			},
+		},
+		// https://github.com/timescale/timescale-prometheus/issues/125
+		{
+			name: "min start and max end timestamps",
+			readRequest: prompb.ReadRequest{
+				Queries: []*prompb.Query{
+					{
+						Matchers: []*prompb.LabelMatcher{
+							{
+								Type:  prompb.LabelMatcher_RE,
+								Name:  "empty",
+								Value: ".*",
+							},
+							{
+								Type:  prompb.LabelMatcher_EQ,
+								Name:  "common",
+								Value: "tag",
+							},
+						},
+						// Prometheus setting start and end timestamp to min/max values when missing:
+						// https://github.com/prometheus/prometheus/blob/master/web/api/v1/api.go#L555-L556
+						StartTimestampMs: timestamp.FromTime(time.Unix(math.MinInt64/1000+62135596801, 0).UTC()),
+						EndTimestampMs:   timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()),
+					},
+				},
+			},
+			expectResponse: prompb.ReadResponse{
+				Results: createQueryResult([]*prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "empty", Value: ""},
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 0.1},
+							{Timestamp: 2, Value: 0.2},
+							{Timestamp: 3, Value: 0.3},
+							{Timestamp: 4, Value: 0.4},
+							{Timestamp: 5, Value: 0.5},
+						},
+					},
+					{
+						Labels: []prompb.Label{
+							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: "common", Value: "tag"},
+							{Name: "foo", Value: "baz"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: 1, Value: 1.1},
+							{Timestamp: 2, Value: 1.2},
+							{Timestamp: 3, Value: 1.3},
+							{Timestamp: 4, Value: 1.4},
+							{Timestamp: 5, Value: 1.5},
 						},
 					},
 				}),

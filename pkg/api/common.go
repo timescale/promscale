@@ -2,16 +2,18 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/timescale-prometheus/pkg/promql"
 )
 
 var (
@@ -99,6 +101,18 @@ func marshalMatrixResponse(writer io.Writer, data promql.Matrix, warnings []stri
 	marshalMatrixData(out, data)
 	marshalCommonFooter(out, warnings)
 	return out.err
+}
+
+func parseTimeParam(r *http.Request, paramName string, defaultValue time.Time) (time.Time, error) {
+	val := r.FormValue(paramName)
+	if val == "" {
+		return defaultValue, nil
+	}
+	result, err := parseTime(val)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("Invalid time value for '%s': %w", paramName, err)
+	}
+	return result, nil
 }
 
 func parseTime(s string) (time.Time, error) {

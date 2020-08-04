@@ -145,6 +145,27 @@ func genSeriesRequest(apiURL string, matchers []string, start, end time.Time) (*
 	)
 }
 
+func genSeriesNoTimeRequest(apiURL string, matchers []string) (*http.Request, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/series", apiURL))
+
+	if err != nil {
+		return nil, err
+	}
+
+	val := url.Values{}
+
+	for _, m := range matchers {
+		val.Add("match[]", m)
+	}
+	u.RawQuery = val.Encode()
+
+	return http.NewRequest(
+		"GET",
+		u.String(),
+		nil,
+	)
+}
+
 type samples []sample
 
 func (s samples) Len() int           { return len(s) }
@@ -487,6 +508,12 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 			testMethod := testRequest(req, series, client, seriesResultComparator)
 			tester.Run(fmt.Sprintf("%s (instant query)", c.name), testMethod)
 
+			req, err = genSeriesNoTimeRequest(apiURL, c.matchers)
+			if err != nil {
+				t.Fatalf("unable to create PromQL query request: %s", err)
+			}
+			testMethod = testRequest(req, series, client, seriesResultComparator)
+			tester.Run(fmt.Sprintf("%s (instant query)", c.name), testMethod)
 		}
 	})
 }
