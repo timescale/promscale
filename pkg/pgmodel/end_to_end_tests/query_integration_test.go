@@ -1131,6 +1131,7 @@ func generateLargeTimeseries() []prompb.TimeSeries {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
+				{Name: "aaa", Value: "000"},
 				{Name: MetricNameLabelName, Value: "metric_1"},
 				{Name: "foo", Value: "bar"},
 				{Name: "instance", Value: "1"},
@@ -1214,7 +1215,7 @@ func TestPushdown(t *testing.T) {
 			res: promql.Result{
 				Value: promql.Matrix{promql.Series{
 					Points: []promql.Point{{V: 20, T: startTime + 300000}, {V: 20, T: startTime + 330000}},
-					Metric: labels.FromStrings("foo", "bar", "instance", "1")},
+					Metric: labels.FromStrings("foo", "bar", "instance", "1", "aaa", "000")},
 				},
 			},
 		},
@@ -1225,7 +1226,7 @@ func TestPushdown(t *testing.T) {
 			res: promql.Result{
 				Value: promql.Vector{promql.Sample{
 					Point:  promql.Point{V: 20, T: startTime + 300*1000},
-					Metric: labels.FromStrings("foo", "bar", "instance", "1")},
+					Metric: labels.FromStrings("foo", "bar", "instance", "1", "aaa", "000")},
 				},
 			},
 		},

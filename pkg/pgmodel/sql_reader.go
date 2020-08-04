@@ -208,10 +208,12 @@ func (q *pgxQuerier) getLabelsForIds(ids []int64) (lls labels.Labels, err error)
 	numHits := q.labels.GetValues(keys, values)
 
 	if numHits < len(ids) {
-		err = q.fetchMissingLabels(keys[numHits:], ids[numHits:], values[numHits:])
+		var numFetches int
+		numFetches, err = q.fetchMissingLabels(keys[numHits:], ids[numHits:], values[numHits:])
 		if err != nil {
 			return
 		}
+		values = values[:numHits+numFetches]
 	}
 
 	lls = make([]labels.Label, 0, len(values))
@@ -222,13 +224,13 @@ func (q *pgxQuerier) getLabelsForIds(ids []int64) (lls labels.Labels, err error)
 	return
 }
 
-func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64, newLabels []interface{}) error {
+func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64, newLabels []interface{}) (numNewLabels int, err error) {
 	for i := range misses {
 		missedIds[i] = misses[i].(int64)
 	}
 	rows, err := q.conn.Query(context.Background(), GetLabelsSQL, missedIds)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer rows.Close()
 
@@ -238,28 +240,32 @@ func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64,
 		var vals []string
 		err = rows.Scan(&ids, &keys, &vals)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if len(ids) != len(keys) {
-			return fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys))
+			return 0, fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys))
 		}
 		if len(keys) != len(vals) {
-			return fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys), len(vals))
+			return 0, fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys), len(vals))
 		}
-		if len(keys) != len(misses) {
-			return fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys))
+		if len(keys) > len(misses) {
+			return 0, fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys))
 		}
 
-		for i := range misses {
+		numNewLabels = len(keys)
+		misses = misses[:len(keys)]
+		newLabels = newLabels[:len(keys)]
+		for i := range newLabels {
 			misses[i] = ids[i]
 			newLabels[i] = labels.Label{Name: keys[i], Value: vals[i]}
 		}
+
 		numInserted := q.labels.InsertBatch(misses, newLabels)
 		if numInserted < len(misses) {
 			log.Warn("msg", "labels cache starving, may need to increase size")
 		}
 	}
-	return nil
+	return numNewLabels, nil
 }
 
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]pgx.Rows, parser.Node, error) {
