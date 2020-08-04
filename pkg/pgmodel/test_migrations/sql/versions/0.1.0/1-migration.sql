@@ -1,0 +1,1 @@
+INSERT INTO log VALUES('migration 0.1.0');

@@ -1,0 +1,1 @@
+INSERT INTO log VALUES('idempotent 1');

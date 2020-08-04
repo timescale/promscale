@@ -36,16 +36,12 @@ const (
 	preinstallScripts = "preinstall"
 	versionScripts    = "versions"
 	idempotentScripts = "idempotent"
-
-	// TODO: once we have a schema upgrade version for migration scripts,
-	// add tests and remove this flag
-	upgradeUntested = true
 )
 
 var (
 	ExtensionIsInstalled = false
 
-	toc = map[string][]string{
+	tableOfContets = map[string][]string{
 		"idempotent": {
 			"base.sql",
 			"matcher-functions.sql",
@@ -106,20 +102,43 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 	if err != nil {
 		return fmt.Errorf("app version is not semver format, aborting migration")
 	}
-	if err := ensureVersionTable(db); err != nil {
+
+	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContets)
+
+	err = mig.Migrate(appVersion)
+	if err != nil {
+		return fmt.Errorf("Error encountered during migration: %w", err)
+	}
+
+	installExtension(conn)
+
+	metadataUpdate(db, ExtensionIsInstalled, "version", versionInfo.Version)
+	metadataUpdate(db, ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
+	return nil
+}
+
+type Migrator struct {
+	db       *pgxpool.Pool
+	sqlFiles http.FileSystem
+	toc      map[string][]string
+}
+
+func NewMigrator(db *pgxpool.Pool, sqlFiles http.FileSystem, toc map[string][]string) *Migrator {
+	return &Migrator{db: db, sqlFiles: sqlFiles, toc: toc}
+}
+
+func (t *Migrator) Migrate(appVersion semver.Version) error {
+	if err := ensureVersionTable(t.db); err != nil {
 		return fmt.Errorf("error ensuring version table: %w", err)
 	}
-	dbVersion, err := getDBVersion(db)
+
+	dbVersion, err := getDBVersion(t.db)
 	if err != nil {
 		return fmt.Errorf("failed to get the version from database: %w", err)
 	}
 
 	// If already at correct version, nothing to migrate.
 	if dbVersion.Compare(appVersion) == 0 {
-		installExtension(conn)
-
-		metadataUpdate(db, ExtensionIsInstalled, "version", versionInfo.Version)
-		metadataUpdate(db, ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 		return nil
 	}
 
@@ -128,7 +147,7 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("schema version is above the application version, cannot migrate")
 	}
 
-	tx, err := db.Begin(context.Background())
+	tx, err := t.db.Begin(context.Background())
 	if err != nil {
 		return fmt.Errorf("unable to start transaction: %w", err)
 	}
@@ -143,13 +162,13 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 
 	// No version in DB.
 	if dbVersion.Compare(semver.Version{}) == 0 {
-		if err = execMigrationFiles(tx, preinstallScripts); err != nil {
+		if err = t.execMigrationFiles(tx, preinstallScripts); err != nil {
 			return err
 		}
-	} else if err = upgradeVersion(tx, dbVersion, appVersion); err != nil {
+	} else if err = t.upgradeVersion(tx, dbVersion, appVersion); err != nil {
 		return err
 	}
-	if err = execMigrationFiles(tx, idempotentScripts); err != nil {
+	if err = t.execMigrationFiles(tx, idempotentScripts); err != nil {
 		return err
 	}
 	if err = setDBVersion(tx, &appVersion); err != nil {
@@ -159,11 +178,6 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 	if err = tx.Commit(context.Background()); err != nil {
 		return fmt.Errorf("unable to commit migration transaction: %w", err)
 	}
-
-	installExtension(conn)
-
-	metadataUpdate(db, ExtensionIsInstalled, "version", versionInfo.Version)
-	metadataUpdate(db, ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 
 	return nil
 }
@@ -182,7 +196,7 @@ func getDBVersion(db *pgxpool.Pool) (semver.Version, error) {
 	res, err := db.Query(context.Background(), getVersion)
 
 	if err != nil {
-		return version, err
+		return version, fmt.Errorf("Error getting DB version: %w", err)
 	}
 
 	for res.Next() {
@@ -190,7 +204,7 @@ func getDBVersion(db *pgxpool.Pool) (semver.Version, error) {
 	}
 
 	if err != nil {
-		return version, err
+		return version, fmt.Errorf("Error getting DB version: %w", err)
 	}
 
 	return version, nil
@@ -198,8 +212,8 @@ func getDBVersion(db *pgxpool.Pool) (semver.Version, error) {
 
 // execMigrationFiles finds all the migration files in a directory, orders them
 // (either by ToC or by their numerical prefix) and executes them in a transaction.
-func execMigrationFiles(tx pgx.Tx, dirName string) error {
-	f, err := migrations.MigrationFiles.Open(dirName)
+func (t *Migrator) execMigrationFiles(tx pgx.Tx, dirName string) error {
+	f, err := t.sqlFiles.Open(dirName)
 	if err != nil {
 		return fmt.Errorf("unable to get migration scripts: name %s, err %w", dirName, err)
 	}
@@ -210,12 +224,12 @@ func execMigrationFiles(tx pgx.Tx, dirName string) error {
 		file    http.File
 	)
 
-	if myToC, ok := toc[dirName]; ok {
+	if myToC, ok := t.toc[dirName]; ok {
 		// If exists, use ToC to order the migration files before executing them.
 		entries = make([]string, 0, len(myToC))
 		for _, fileName := range myToC {
 			fullName := filepath.Join(dirName, fileName)
-			file, err = migrations.MigrationFiles.Open(fullName)
+			file, err = t.sqlFiles.Open(fullName)
 			if err != nil {
 				return fmt.Errorf("unable to get migration script from toc: name %s, err %w", fullName, err)
 			}
@@ -244,7 +258,7 @@ func execMigrationFiles(tx pgx.Tx, dirName string) error {
 
 	for _, e := range entries {
 		fileName := filepath.Join(dirName, e)
-		f, err := migrations.MigrationFiles.Open(fileName)
+		f, err := t.sqlFiles.Open(fileName)
 		if err != nil {
 			return fmt.Errorf("unable to get migration script: name %s, err %w", fileName, err)
 		}
@@ -314,11 +328,8 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 
 // upgradeVersion finds all the versions between `from` and `to`, sorts them
 // using semantic version ordering and applies them sequentially in the supplied transaction.
-func upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
-	if upgradeUntested {
-		return fmt.Errorf("unsupported version upgrade reached, aborting migration")
-	}
-	f, err := migrations.MigrationFiles.Open(versionScripts)
+func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
+	f, err := t.sqlFiles.Open(versionScripts)
 	if err != nil {
 		return fmt.Errorf("unable to open migration scripts: %w", err)
 	}
@@ -352,7 +363,7 @@ func upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 		}
 
 		if from.Compare(version) < 0 && to.Compare(version) >= 0 {
-			if err = execMigrationFiles(tx, filepath.Join("versions", e.Name())); err != nil {
+			if err = t.execMigrationFiles(tx, filepath.Join("versions", e.Name())); err != nil {
 				return err
 			}
 		}
