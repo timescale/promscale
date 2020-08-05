@@ -106,6 +106,7 @@ func TestMigrationLib(t *testing.T) {
 			"idempotent 2",
 			"idempotent 1",
 			"idempotent 2",
+			"migration 0.9.0",
 			"migration 0.10.0=1",
 			"migration 0.10.0=2",
 			"idempotent 1",
@@ -143,16 +144,24 @@ func TestMigrationLib(t *testing.T) {
 		verifyLogs(t, db, expected[0:6])
 
 		//even if no version upgrades, idempotent files apply
-		err = mig.Migrate(semver.MustParse("0.9.0"))
+		err = mig.Migrate(semver.MustParse("0.8.0"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		verifyLogs(t, db, expected[0:8])
 
+		//even if no version upgrades, idempotent files apply
+		err = mig.Migrate(semver.MustParse("0.8.0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyLogs(t, db, expected[0:8])
+
+		//migrate two version 0.9.0 and 0.10.0 at once to make sure ordered correctly
 		err = mig.Migrate(semver.MustParse("0.10.0"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		verifyLogs(t, db, expected[0:12])
+		verifyLogs(t, db, expected[0:13])
 	})
 }
