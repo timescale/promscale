@@ -355,15 +355,13 @@ func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 
 	sort.Sort(versions)
 
-	for _, e := range entries {
-		version, err := semver.Make(e.Name())
-		if err != nil {
-			log.Warn("msg", "ignoring sql migration script version", "versionName", e.Name())
-			continue
-		}
+	for _, v := range versions {
+		dirname := fmt.Sprintf("%s", v.String())
 
-		if from.Compare(version) < 0 && to.Compare(version) >= 0 {
-			if err = t.execMigrationFiles(tx, filepath.Join("versions", e.Name())); err != nil {
+		//When comparing to the latest version use the post-<current> as well since at least
+		//for now we don't bump versions post-release (pbbl should)
+		if from.Compare(v) < 0 && to.Compare(v) >= 0 {
+			if err = t.execMigrationFiles(tx, filepath.Join("versions", dirname)); err != nil {
 				return err
 			}
 		}
