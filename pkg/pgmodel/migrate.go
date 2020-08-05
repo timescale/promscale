@@ -90,6 +90,7 @@ func (p prefixedNames) getNames() []string {
 func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
+	ExtensionIsInstalled = false
 
 	// Getting an early connection to install the extra extension.
 	// TODO: Investigate why this is required. Installing the extension on the
@@ -115,6 +116,10 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 
 	// If already at correct version, nothing to migrate.
 	if dbVersion.Compare(appVersion) == 0 {
+		installExtension(conn)
+
+		metadataUpdate(db, ExtensionIsInstalled, "version", versionInfo.Version)
+		metadataUpdate(db, ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 		return nil
 	}
 
@@ -155,13 +160,7 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("unable to commit migration transaction: %w", err)
 	}
 
-	_, extErr := conn.Exec(context.Background(), fmt.Sprintf(extensionInstall, extSchema))
-	if extErr != nil {
-		log.Warn("msg", "timescale_prometheus_extra extension not installed", "cause", extErr)
-		ExtensionIsInstalled = false
-	} else {
-		ExtensionIsInstalled = true
-	}
+	installExtension(conn)
 
 	metadataUpdate(db, ExtensionIsInstalled, "version", versionInfo.Version)
 	metadataUpdate(db, ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
@@ -359,6 +358,16 @@ func upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 		}
 	}
 	return nil
+}
+
+func installExtension(conn *pgxpool.Conn) {
+	_, extErr := conn.Exec(context.Background(), fmt.Sprintf(extensionInstall, extSchema))
+	if extErr != nil {
+		log.Warn("msg", "timescale_prometheus_extra extension not installed", "cause", extErr)
+		ExtensionIsInstalled = false
+	} else {
+		ExtensionIsInstalled = true
+	}
 }
 
 func setDBVersion(tx pgx.Tx, version *semver.Version) error {
