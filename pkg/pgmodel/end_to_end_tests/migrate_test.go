@@ -101,6 +101,16 @@ func TestMigrationLib(t *testing.T) {
 			"migration 0.10.0=2",
 			"idempotent 1",
 			"idempotent 2",
+			"idempotent 1",
+			"idempotent 2",
+			"idempotent 1",
+			"idempotent 2",
+			"migration 0.10.1=1",
+			"idempotent 1",
+			"idempotent 2",
+			"migration 0.10.1=2",
+			"idempotent 1",
+			"idempotent 2",
 		}
 
 		mig := pgmodel.NewMigrator(db, test_migrations.MigrationFiles, testTOC)
@@ -126,7 +136,7 @@ func TestMigrationLib(t *testing.T) {
 		}
 		verifyLogs(t, db, expected[0:6])
 
-		//does nothing
+		//does nothing, since non-dev and same version as before
 		err = mig.Migrate(semver.MustParse("0.2.0"))
 		if err != nil {
 			t.Fatal(err)
@@ -153,5 +163,32 @@ func TestMigrationLib(t *testing.T) {
 			t.Fatal(err)
 		}
 		verifyLogs(t, db, expected[0:13])
+
+		//upgrading version, idempotent files apply
+		err = mig.Migrate(semver.MustParse("0.10.1-dev"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyLogs(t, db, expected[0:15])
+
+		//even if no version upgrades, idempotent files apply if it's a dev version
+		err = mig.Migrate(semver.MustParse("0.10.1-dev"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyLogs(t, db, expected[0:17])
+
+		//now test logic within a release:
+		err = mig.Migrate(semver.MustParse("0.10.1-dev.1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyLogs(t, db, expected[0:20])
+
+		err = mig.Migrate(semver.MustParse("0.10.1-dev.2"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyLogs(t, db, expected[0:23])
 	})
 }
