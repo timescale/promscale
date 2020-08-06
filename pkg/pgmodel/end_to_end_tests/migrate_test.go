@@ -85,16 +85,6 @@ func TestMigrationLib(t *testing.T) {
 				"2-toc-run_first.sql",
 				"1-toc-run_second.sql",
 			},
-			"versions/0.1.0": {
-				"1-migration.sql",
-			},
-			"versions/0.2.0": {
-				"1-migration.sql",
-			},
-			"versions/0.10.0": {
-				"2-toc_migration.sql",
-				"1-toc_migration.sql",
-			},
 		}
 
 		expected := []string{
