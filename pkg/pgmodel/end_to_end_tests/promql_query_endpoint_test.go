@@ -3,7 +3,6 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"fmt"
-    "math/rand"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -28,11 +27,6 @@ type queryResponse struct {
 type queryData struct {
 	ResultType string  `json:"resultType"`
 	Result     samples `json:"result"`
-}
-
-type queryTestCase struct {
-    name    string
-    query   string
 }
 
 func genInstantRequest(apiURL, query string, start time.Time) (*http.Request, error) {
@@ -79,9 +73,17 @@ func genRangeRequest(apiURL, query string, start, end time.Time, step time.Durat
 	)
 }
 
-func getQueries(num int) ([]queryTestCase) {
-    numCases := 46
-    testCases := []queryTestCase {
+func TestPromQLQueryEndpoint(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	steps := []time.Duration{10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 30 * time.Minute}
+
+	testCases := []struct {
+		name  string
+		query string
+	}{
 		{
 			name:  "basic query",
 			query: "metric_1",
@@ -203,6 +205,10 @@ func getQueries(num int) ([]queryTestCase) {
 			query: `delta(metric_3[5m])`,
 		},
 		{
+			name:  "delta 1m",
+			query: `delta(metric_3[1m])`,
+		},
+		{
 			name:  "increase",
 			query: `increase(metric_1[5m])`,
 		},
@@ -267,27 +273,6 @@ func getQueries(num int) ([]queryTestCase) {
 			query: `holt_winters(metric_1[10m], 0.1, 0.5)`,
 		},
 	}
-    
-    if num == 0 {
-        return testCases
-    }
-
-    samples := make([]queryTestCase, num)
-    for i := range samples {
-        samples[i] = testCases[rand.Intn(numCases)]
-    }
-
-    return samples
-}
-
-func TestPromQLQueryEndpoint(t *testing.T) {
-	if testing.Short() || !*useDocker {
-		t.Skip("skipping integration test")
-	}
-
-	steps := []time.Duration{10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 30 * time.Minute}
-
-	testCases := getQueries(0)
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
@@ -307,8 +292,9 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		queryable := query.NewQueryable(r.GetQuerier())
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 
-		instantQuery := api.Query(queryEngine, queryable)
-		rangeQuery := api.QueryRange(queryEngine, queryable)
+		apiConfig := &api.Config{}
+		instantQuery := api.Query(apiConfig, queryEngine, queryable)
+		rangeQuery := api.QueryRange(apiConfig, queryEngine, queryable)
 
 		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
@@ -316,26 +302,48 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		start := time.Unix(startTime/1000, 0)
 		end := time.Unix(endTime/1000, 0)
 		var (
-			req *http.Request
-			err error
+			requestCases []requestCase
+			req          *http.Request
+			err          error
 		)
 		for _, c := range testCases {
 			req, err = genInstantRequest(apiURL, c.query, start)
 			if err != nil {
 				t.Fatalf("unable to create PromQL query request: %s", err)
 			}
-			testMethod := testRequest(req, instantQuery, client, queryResultComparator)
-			tester.Run(fmt.Sprintf("%s (instant query)", c.name), testMethod)
+			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (instant query, ts=start)", c.name)})
 
+			// Instant Query, 30 seconds after start
+			req, err = genInstantRequest(apiURL, c.query, start.Add(time.Second*30))
+			if err != nil {
+				t.Fatalf("unable to create PromQL query request: %s", err)
+			}
+			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (instant query, ts=start+30sec)", c.name)})
+		}
+		testMethod := testRequestConcurrent(requestCases, instantQuery, client, queryResultComparator)
+		tester.Run("test instant query endpoint", testMethod)
+
+		requestCases = nil
+		for _, c := range testCases {
 			for _, step := range steps {
-				req, err = genRangeRequest(apiURL, c.query, start, end, step)
+				req, err = genRangeRequest(apiURL, c.query, start, end.Add(10*time.Minute), step)
 				if err != nil {
 					t.Fatalf("unable to create PromQL range query request: %s", err)
 				}
-				testMethod := testRequest(req, rangeQuery, client, queryResultComparator)
-				tester.Run(fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String()), testMethod)
+				requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String())})
+			}
+
+			//range that straddles the end of the generated data
+			for _, step := range steps {
+				req, err = genRangeRequest(apiURL, c.query, end, end.Add(time.Minute*10), step)
+				if err != nil {
+					t.Fatalf("unable to create PromQL range query request: %s", err)
+				}
+				requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (range query, step size: %s, straddles_end)", c.name, step.String())})
 			}
 		}
+		testMethod = testRequestConcurrent(requestCases, rangeQuery, client, queryResultComparator)
+		tester.Run("test range query endpoint", testMethod)
 	})
 }
 

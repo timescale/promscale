@@ -71,17 +71,21 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 
-		labelNamesHandler := api.Labels(queryable)
-		labelValuesHandler := api.LabelValues(queryable)
+		apiConfig := &api.Config{}
+		labelNamesHandler := api.Labels(apiConfig, queryable)
+		labelValuesHandler := api.LabelValues(apiConfig, queryable)
+
 		router := route.New()
 		router.Get("/api/v1/label/:name/values", labelValuesHandler.ServeHTTP)
 		router.Get("/api/v1/labels", labelNamesHandler.ServeHTTP)
+
 		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
 
 		var (
-			req *http.Request
-			err error
+			requestCases []requestCase
+			req          *http.Request
+			err          error
 		)
 		req, err = getLabelNamesRequest(apiURL)
 		if err != nil {
@@ -96,14 +100,16 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 			t.Fatalf("could not get label names from querier")
 		}
 		labelNames = append(labelNames, "unexisting_label")
+
 		for _, label := range labelNames {
 			req, err = getLabelValuesRequest(apiURL, label)
 			if err != nil {
 				t.Fatalf("unable to create PromQL label values request: %v", err)
 			}
-			testMethod := testRequest(req, router, client, labelsResultComparator)
-			tester.Run(fmt.Sprintf("get label values for %s", label), testMethod)
+			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("get label values for %s", label)})
 		}
+		testMethod = testRequestConcurrent(requestCases, router, client, labelsResultComparator)
+		tester.Run("test label endpoint", testMethod)
 	})
 }
 
