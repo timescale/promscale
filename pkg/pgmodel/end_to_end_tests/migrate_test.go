@@ -111,6 +111,9 @@ func TestMigrationLib(t *testing.T) {
 			"migration 0.10.1=2",
 			"idempotent 1",
 			"idempotent 2",
+			"migration 0.10.2-beta=1",
+			"idempotent 1",
+			"idempotent 2",
 		}
 
 		mig := pgmodel.NewMigrator(db, test_migrations.MigrationFiles, testTOC)
@@ -190,5 +193,12 @@ func TestMigrationLib(t *testing.T) {
 			t.Fatal(err)
 		}
 		verifyLogs(t, db, expected[0:23])
+
+		//test beta tags
+		err = mig.Migrate(semver.MustParse("0.10.2-beta.dev.1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyLogs(t, db, expected[0:26])
 	})
 }
