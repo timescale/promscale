@@ -75,6 +75,20 @@ var MigrationFiles = func() http.FileSystem {
 			modTime: time.Time{},
 			content: []byte("\x49\x4e\x53\x45\x52\x54\x20\x49\x4e\x54\x4f\x20\x6c\x6f\x67\x20\x56\x41\x4c\x55\x45\x53\x28\x27\x6d\x69\x67\x72\x61\x74\x69\x6f\x6e\x20\x30\x2e\x31\x30\x2e\x30\x3d\x32\x27\x29\x3b\x0a"),
 		},
+		"/versions/dev/0.10.1": &vfsgen۰DirInfo{
+			name:    "0.10.1",
+			modTime: time.Time{},
+		},
+		"/versions/dev/0.10.1/1-migr_98_at.sql": &vfsgen۰FileInfo{
+			name:    "1-migr_98_at.sql",
+			modTime: time.Time{},
+			content: []byte("\x49\x4e\x53\x45\x52\x54\x20\x49\x4e\x54\x4f\x20\x6c\x6f\x67\x20\x56\x41\x4c\x55\x45\x53\x28\x27\x6d\x69\x67\x72\x61\x74\x69\x6f\x6e\x20\x30\x2e\x31\x30\x2e\x31\x3d\x31\x27\x29\x3b\x0a"),
+		},
+		"/versions/dev/0.10.1/2-1_mig.sql": &vfsgen۰FileInfo{
+			name:    "2-1_mig.sql",
+			modTime: time.Time{},
+			content: []byte("\x49\x4e\x53\x45\x52\x54\x20\x49\x4e\x54\x4f\x20\x6c\x6f\x67\x20\x56\x41\x4c\x55\x45\x53\x28\x27\x6d\x69\x67\x72\x61\x74\x69\x6f\x6e\x20\x30\x2e\x31\x30\x2e\x31\x3d\x32\x27\x29\x3b\x0a"),
+		},
 		"/versions/dev/0.2.0": &vfsgen۰DirInfo{
 			name:    "0.2.0",
 			modTime: time.Time{},
@@ -112,6 +126,7 @@ var MigrationFiles = func() http.FileSystem {
 	fs["/versions/dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.1.0"].(os.FileInfo),
 		fs["/versions/dev/0.10.0"].(os.FileInfo),
+		fs["/versions/dev/0.10.1"].(os.FileInfo),
 		fs["/versions/dev/0.2.0"].(os.FileInfo),
 		fs["/versions/dev/0.9.0"].(os.FileInfo),
 	}
@@ -121,6 +136,10 @@ var MigrationFiles = func() http.FileSystem {
 	fs["/versions/dev/0.10.0"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.10.0/1-migr_98_at.sql"].(os.FileInfo),
 		fs["/versions/dev/0.10.0/2-1_mig.sql"].(os.FileInfo),
+	}
+	fs["/versions/dev/0.10.1"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
+		fs["/versions/dev/0.10.1/1-migr_98_at.sql"].(os.FileInfo),
+		fs["/versions/dev/0.10.1/2-1_mig.sql"].(os.FileInfo),
 	}
 	fs["/versions/dev/0.2.0"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.2.0/1-migration.sql"].(os.FileInfo),

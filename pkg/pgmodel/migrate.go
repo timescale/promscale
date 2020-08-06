@@ -139,8 +139,32 @@ func (t *Migrator) Migrate(appVersion semver.Version) error {
 		return fmt.Errorf("failed to get the version from database: %w", err)
 	}
 
-	// If already at correct version, nothing to migrate.
+	// If already at correct version, nothing to migrate on proper release.
+	// On dev versions, idempotent files need to be reapplied.
 	if dbVersion.Compare(appVersion) == 0 {
+		devRelease := false
+		for _, pre := range appVersion.Pre {
+			if pre.String() == "dev" {
+				devRelease = true
+			}
+		}
+
+		if devRelease {
+			tx, err := t.db.Begin(context.Background())
+			if err != nil {
+				return fmt.Errorf("unable to start transaction: %w", err)
+			}
+			defer func() {
+				_ = tx.Rollback(context.Background())
+			}()
+			if err = t.execMigrationFiles(tx, idempotentScripts); err != nil {
+				return err
+			}
+			if err = tx.Commit(context.Background()); err != nil {
+				return fmt.Errorf("unable to commit migration transaction: %w", err)
+			}
+			return nil
+		}
 		return nil
 	}
 
@@ -414,7 +438,7 @@ func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 
 	for _, v := range versions {
 		//When comparing to the latest version use >= (INCLUSIVE). A migration file
-		//that's marked as version X is part of that version.
+		//that's marked as version X is part of that version
 		if from.Compare(v) < 0 && to.Compare(v) >= 0 {
 			filename := versionMap[v.String()]
 			if err = t.execMigrationFile(tx, filename); err != nil {
