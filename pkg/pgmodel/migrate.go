@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -34,7 +35,7 @@ const (
 	truncateMigrationsTable     = "TRUNCATE prom_schema_migrations"
 
 	preinstallScripts = "preinstall"
-	versionScripts    = "versions"
+	versionScripts    = "versions/dev"
 	idempotentScripts = "idempotent"
 )
 
@@ -47,7 +48,8 @@ var (
 			"matcher-functions.sql",
 		},
 	}
-	migrateMutex = &sync.Mutex{}
+	migrateMutex            = &sync.Mutex{}
+	migrationFileNameRegexp = regexp.MustCompile(`([[:digit:]]*)-[[:word:]]*.sql`)
 )
 
 type VersionInfo struct {
@@ -210,6 +212,22 @@ func getDBVersion(db *pgxpool.Pool) (semver.Version, error) {
 	return version, nil
 }
 
+func (t *Migrator) execMigrationFile(tx pgx.Tx, fileName string) error {
+	f, err := t.sqlFiles.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("unable to get migration script: name %s, err %w", fileName, err)
+	}
+	contents, err := replaceSchemaNames(f)
+	if err != nil {
+		return fmt.Errorf("unable to read migration script: name %s, err %w", fileName, err)
+	}
+	_, err = tx.Exec(context.Background(), string(contents))
+	if err != nil {
+		return fmt.Errorf("error executing migration script: name %s, err %w", fileName, err)
+	}
+	return nil
+}
+
 // execMigrationFiles finds all the migration files in a directory, orders them
 // (either by ToC or by their numerical prefix) and executes them in a transaction.
 func (t *Migrator) execMigrationFiles(tx pgx.Tx, dirName string) error {
@@ -258,17 +276,9 @@ func (t *Migrator) execMigrationFiles(tx pgx.Tx, dirName string) error {
 
 	for _, e := range entries {
 		fileName := filepath.Join(dirName, e)
-		f, err := t.sqlFiles.Open(fileName)
+		err := t.execMigrationFile(tx, fileName)
 		if err != nil {
-			return fmt.Errorf("unable to get migration script: name %s, err %w", fileName, err)
-		}
-		contents, err := replaceSchemaNames(f)
-		if err != nil {
-			return fmt.Errorf("unable to read migration script: name %s, err %w", fileName, err)
-		}
-		_, err = tx.Exec(context.Background(), string(contents))
-		if err != nil {
-			return fmt.Errorf("error executing migration script: name %s, err %w", fileName, err)
+			return err
 		}
 	}
 
@@ -326,42 +336,88 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	return s, err
 }
 
+//A migration file is inside a directory that is a semver version number. The filename itself has the format
+//<migration file number)-<description>.sql. That file correspond to the semver of <dirname>-dev.<migration file number>
+//All app versions >= to that semver will include the migration file
+func (t *Migrator) getMigrationFileVersion(dirName string, fileName string) (*semver.Version, error) {
+	var migrationFileNumber int
+	matches := migrationFileNameRegexp.FindStringSubmatch(fileName)
+	if len(matches) < 2 {
+		return nil, fmt.Errorf("unable to parse the migration file name %v", fileName)
+	}
+	n, err := fmt.Sscanf(matches[1], "%d", &migrationFileNumber)
+	if n != 1 || err != nil {
+		return nil, fmt.Errorf("unable to parse the migration file name %v: %w", fileName, err)
+	}
+
+	migrationFileVersion, err := semver.Make(dirName)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse version from directory %v: %w", dirName, err)
+	}
+	devPrVersion, err := semver.NewPRVersion("dev")
+	if err != nil {
+		return nil, fmt.Errorf("unable to create dev PR version: %w", err)
+	}
+	migrationNumberPrVersion, err := semver.NewPRVersion(fmt.Sprintf("%d", migrationFileNumber))
+	if err != nil {
+		return nil, fmt.Errorf("unable to create dev PR version: %w", err)
+	}
+
+	migrationFileVersion.Pre = append(migrationFileVersion.Pre, devPrVersion, migrationNumberPrVersion)
+	return &migrationFileVersion, nil
+}
+
 // upgradeVersion finds all the versions between `from` and `to`, sorts them
 // using semantic version ordering and applies them sequentially in the supplied transaction.
 func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
-	f, err := t.sqlFiles.Open(versionScripts)
+	devDirFile, err := t.sqlFiles.Open(versionScripts)
 	if err != nil {
 		return fmt.Errorf("unable to open migration scripts: %w", err)
 	}
 
-	entries, err := f.Readdir(-1)
+	versionDirInfoEntries, err := devDirFile.Readdir(-1)
 	if err != nil {
 		return fmt.Errorf("unable to get migration scripts: %w", err)
 	}
 
-	versions := make(semver.Versions, 0, len(entries))
+	versions := make(semver.Versions, 0)
+	versionMap := make(map[string]string)
 
-	for _, e := range entries {
-		version, err := semver.Make(e.Name())
-
-		// Ignoring malformated entries.
-		if err != nil {
-			log.Warn("msg", "Ignoring malformed dir name in migration version directories (not semver)", "dirname", e.Name(), "err", err.Error())
-			continue
+	for _, versionDirInfo := range versionDirInfoEntries {
+		if !versionDirInfo.IsDir() {
+			return fmt.Errorf("Not a directory inside %v: %v", versionScripts, versionDirInfo.Name())
 		}
 
-		versions = append(versions, version)
+		versionDirFile, err := t.sqlFiles.Open(versionScripts + "/" + versionDirInfo.Name())
+		if err != nil {
+			return fmt.Errorf("unable to open migration scripts: %w", err)
+		}
+
+		migrationFileInfoEntries, err := versionDirFile.Readdir(-1)
+		for _, migrationFileInfo := range migrationFileInfoEntries {
+			migrationFileVersion, err := t.getMigrationFileVersion(versionDirInfo.Name(), migrationFileInfo.Name())
+			if err != nil {
+				return err
+			}
+			path := versionScripts + "/" + versionDirInfo.Name() + "/" + migrationFileInfo.Name()
+
+			_, existing := versionMap[migrationFileVersion.String()]
+			if existing {
+				return fmt.Errorf("Found two migration files with the same version: %v", migrationFileVersion.String())
+			}
+			versionMap[migrationFileVersion.String()] = path
+			versions = append(versions, *migrationFileVersion)
+		}
 	}
 
 	sort.Sort(versions)
 
 	for _, v := range versions {
-		dirname := fmt.Sprintf("%s", v.String())
-
-		//When comparing to the latest version use the post-<current> as well since at least
-		//for now we don't bump versions post-release (pbbl should)
+		//When comparing to the latest version use >= (INCLUSIVE). A migration file
+		//that's marked as version X is part of that version.
 		if from.Compare(v) < 0 && to.Compare(v) >= 0 {
-			if err = t.execMigrationFiles(tx, filepath.Join("versions", dirname)); err != nil {
+			filename := versionMap[v.String()]
+			if err = t.execMigrationFile(tx, filename); err != nil {
 				return err
 			}
 		}

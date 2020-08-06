@@ -75,8 +75,12 @@ var MigrationFiles = func() http.FileSystem {
 			name:    "versions",
 			modTime: time.Time{},
 		},
-		"/versions/1-empty.sql": &vfsgen۰FileInfo{
-			name:    "1-empty.sql",
+		"/versions/dev": &vfsgen۰DirInfo{
+			name:    "dev",
+			modTime: time.Time{},
+		},
+		"/versions/dev/.gitignore": &vfsgen۰FileInfo{
+			name:    ".gitignore",
 			modTime: time.Time{},
 			content: []byte(""),
 		},
@@ -97,7 +101,10 @@ var MigrationFiles = func() http.FileSystem {
 		fs["/preinstall/004-matcher_operators.sql"].(os.FileInfo),
 	}
 	fs["/versions"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
-		fs["/versions/1-empty.sql"].(os.FileInfo),
+		fs["/versions/dev"].(os.FileInfo),
+	}
+	fs["/versions/dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
+		fs["/versions/dev/.gitignore"].(os.FileInfo),
 	}
 
 	return fs
