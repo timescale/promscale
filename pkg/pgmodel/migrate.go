@@ -361,8 +361,9 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 }
 
 //A migration file is inside a directory that is a semver version number. The filename itself has the format
-//<migration file number)-<description>.sql. That file correspond to the semver of <dirname>-dev.<migration file number>
-//All app versions >= to that semver will include the migration file
+//<migration file number)-<description>.sql. That file correspond to the semver of <dirname>.<migration file number>
+//where the migration file number is always part of prerelease tag.
+//All app versions >= (inclusive) migration files's semver will include the migration file
 func (t *Migrator) getMigrationFileVersion(dirName string, fileName string) (*semver.Version, error) {
 	var migrationFileNumber int
 	matches := migrationFileNameRegexp.FindStringSubmatch(fileName)
@@ -378,16 +379,12 @@ func (t *Migrator) getMigrationFileVersion(dirName string, fileName string) (*se
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse version from directory %v: %w", dirName, err)
 	}
-	devPrVersion, err := semver.NewPRVersion("dev")
-	if err != nil {
-		return nil, fmt.Errorf("unable to create dev PR version: %w", err)
-	}
 	migrationNumberPrVersion, err := semver.NewPRVersion(fmt.Sprintf("%d", migrationFileNumber))
 	if err != nil {
 		return nil, fmt.Errorf("unable to create dev PR version: %w", err)
 	}
 
-	migrationFileVersion.Pre = append(migrationFileVersion.Pre, devPrVersion, migrationNumberPrVersion)
+	migrationFileVersion.Pre = append(migrationFileVersion.Pre, migrationNumberPrVersion)
 	return &migrationFileVersion, nil
 }
 
