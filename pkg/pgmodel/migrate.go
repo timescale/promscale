@@ -157,7 +157,7 @@ func (t *Migrator) Migrate(appVersion semver.Version) error {
 			defer func() {
 				_ = tx.Rollback(context.Background())
 			}()
-			if err = t.execMigrationFiles(tx, idempotentScripts); err != nil {
+			if err = t.execMigrationDir(tx, idempotentScripts); err != nil {
 				return err
 			}
 			if err = tx.Commit(context.Background()); err != nil {
@@ -188,13 +188,13 @@ func (t *Migrator) Migrate(appVersion semver.Version) error {
 
 	// No version in DB.
 	if dbVersion.Compare(semver.Version{}) == 0 {
-		if err = t.execMigrationFiles(tx, preinstallScripts); err != nil {
+		if err = t.execMigrationDir(tx, preinstallScripts); err != nil {
 			return err
 		}
 	} else if err = t.upgradeVersion(tx, dbVersion, appVersion); err != nil {
 		return err
 	}
-	if err = t.execMigrationFiles(tx, idempotentScripts); err != nil {
+	if err = t.execMigrationDir(tx, idempotentScripts); err != nil {
 		return err
 	}
 	if err = setDBVersion(tx, &appVersion); err != nil {
@@ -252,9 +252,9 @@ func (t *Migrator) execMigrationFile(tx pgx.Tx, fileName string) error {
 	return nil
 }
 
-// execMigrationFiles finds all the migration files in a directory, orders them
+// execMigrationDir finds all the migration files in a directory, orders them
 // (either by ToC or by their numerical prefix) and executes them in a transaction.
-func (t *Migrator) execMigrationFiles(tx pgx.Tx, dirName string) error {
+func (t *Migrator) execMigrationDir(tx pgx.Tx, dirName string) error {
 	f, err := t.sqlFiles.Open(dirName)
 	if err != nil {
 		return fmt.Errorf("unable to get migration scripts: name %s, err %w", dirName, err)
@@ -393,12 +393,12 @@ func (t *Migrator) getMigrationFileVersion(dirName string, fileName string) (*se
 func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 	devDirFile, err := t.sqlFiles.Open(versionScripts)
 	if err != nil {
-		return fmt.Errorf("unable to open migration scripts: %w", err)
+		return fmt.Errorf("unable to open %v directory: %w", versionScripts, err)
 	}
 
 	versionDirInfoEntries, err := devDirFile.Readdir(-1)
 	if err != nil {
-		return fmt.Errorf("unable to get migration scripts: %w", err)
+		return fmt.Errorf("unable to get %v directory entries: %w", versionScripts, err)
 	}
 
 	versions := make(semver.Versions, 0)
@@ -409,24 +409,29 @@ func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 			return fmt.Errorf("Not a directory inside %v: %v", versionScripts, versionDirInfo.Name())
 		}
 
-		versionDirFile, err := t.sqlFiles.Open(versionScripts + "/" + versionDirInfo.Name())
+		versionDirPath := versionScripts + "/" + versionDirInfo.Name()
+		versionDirFile, err := t.sqlFiles.Open(versionDirPath)
 		if err != nil {
-			return fmt.Errorf("unable to open migration scripts: %w", err)
+			return fmt.Errorf("unable to open migration scripts inside %v: %w", versionDirPath, err)
 		}
 
 		migrationFileInfoEntries, err := versionDirFile.Readdir(-1)
+		if err != nil {
+			return fmt.Errorf("unable to get %v directory entries: %w", versionDirPath, err)
+		}
+
 		for _, migrationFileInfo := range migrationFileInfoEntries {
 			migrationFileVersion, err := t.getMigrationFileVersion(versionDirInfo.Name(), migrationFileInfo.Name())
 			if err != nil {
 				return err
 			}
-			path := versionScripts + "/" + versionDirInfo.Name() + "/" + migrationFileInfo.Name()
+			migrationFilePath := versionDirPath + "/" + migrationFileInfo.Name()
 
 			_, existing := versionMap[migrationFileVersion.String()]
 			if existing {
 				return fmt.Errorf("Found two migration files with the same version: %v", migrationFileVersion.String())
 			}
-			versionMap[migrationFileVersion.String()] = path
+			versionMap[migrationFileVersion.String()] = migrationFilePath
 			versions = append(versions, *migrationFileVersion)
 		}
 	}
