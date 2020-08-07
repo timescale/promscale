@@ -48,8 +48,10 @@ var (
 			"matcher-functions.sql",
 		},
 	}
-	migrateMutex            = &sync.Mutex{}
-	migrationFileNameRegexp = regexp.MustCompile(`([[:digit:]]*)-[[:word:]]*.sql`)
+	migrateMutex = &sync.Mutex{}
+
+	//Format of migration files. e.g. 6-foo.sql
+	migrationFileNameRegexp = regexp.MustCompile(`([[:digit:]]+)-[[:word:]]+.sql`)
 )
 
 type VersionInfo struct {
@@ -364,6 +366,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 //<migration file number)-<description>.sql. That file correspond to the semver of <dirname>.<migration file number>
 //where the migration file number is always part of prerelease tag.
 //All app versions >= (inclusive) migration files's semver will include the migration file
+//That is if we're on version `0.1.1-dev.3` then we'll include all sql files up to and including `0.1.1-dev/3-foo.sql`
 func (t *Migrator) getMigrationFileVersion(dirName string, fileName string) (*semver.Version, error) {
 	var migrationFileNumber int
 	matches := migrationFileNameRegexp.FindStringSubmatch(fileName)
@@ -379,12 +382,12 @@ func (t *Migrator) getMigrationFileVersion(dirName string, fileName string) (*se
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse version from directory %v: %w", dirName, err)
 	}
-	migrationNumberPrVersion, err := semver.NewPRVersion(fmt.Sprintf("%d", migrationFileNumber))
+	migrationNumberPreReleaseVersion, err := semver.NewPRVersion(fmt.Sprintf("%d", migrationFileNumber))
 	if err != nil {
 		return nil, fmt.Errorf("unable to create dev PR version: %w", err)
 	}
 
-	migrationFileVersion.Pre = append(migrationFileVersion.Pre, migrationNumberPrVersion)
+	migrationFileVersion.Pre = append(migrationFileVersion.Pre, migrationNumberPreReleaseVersion)
 	return &migrationFileVersion, nil
 }
 
