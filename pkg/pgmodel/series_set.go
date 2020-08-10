@@ -2,11 +2,9 @@ package pgmodel
 
 import (
 	"fmt"
-	"math"
 	"sort"
 
 	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -26,7 +24,7 @@ var (
 // pgxSeriesSet implements storage.SeriesSet.
 type pgxSeriesSet struct {
 	rowIdx  int
-	rows    []pgx.Rows
+	rows    []timescaleRow
 	err     error
 	querier labelQuerier
 }
@@ -34,50 +32,54 @@ type pgxSeriesSet struct {
 // pgxSeriesSet must implement storage.SeriesSet
 var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
+func buildSeriesSet(rows []timescaleRow, querier labelQuerier) (storage.SeriesSet, storage.Warnings, error) {
+	return &pgxSeriesSet{
+		rows:    rows,
+		querier: querier,
+		rowIdx:  -1,
+	}, nil, nil
+}
+
 // Next forwards the internal cursor to next storage.Series
 func (p *pgxSeriesSet) Next() bool {
 	if p.rowIdx >= len(p.rows) {
 		return false
 	}
-	for !p.rows[p.rowIdx].Next() {
-		if p.err == nil {
-			p.err = p.rows[p.rowIdx].Err()
-		}
-		p.rows[p.rowIdx].Close()
-		p.rowIdx++
-		if p.rowIdx >= len(p.rows) {
-			return false
-		}
+	p.rowIdx += 1
+	if p.rowIdx >= len(p.rows) {
+		return false
+	}
+	if p.err == nil {
+		p.err = p.rows[p.rowIdx].err
 	}
 	return true
 }
 
-// At returns the current storage.Series. It expects to get rows to contain
-// four arrays in binary format which it attempts to deserialize into specific types.
-// It also expects that the first two and second two arrays are the same length.
+// At returns the current storage.Series.
 func (p *pgxSeriesSet) At() storage.Series {
 	if p.rowIdx >= len(p.rows) {
 		return nil
 	}
 
-	// Setting invalid data until we confirm that all data is valid.
-	p.err = errInvalidData
+	row := &p.rows[p.rowIdx]
 
-	ps := &pgxSeries{}
-	var labelIds []int64
-	if err := p.rows[p.rowIdx].Scan(&labelIds, &ps.times, &ps.values); err != nil {
-		log.Error("err", err)
+	if row.err != nil {
+		return nil
+	}
+	if len(row.times.Elements) != len(row.values.Elements) {
+		p.err = errInvalidData
 		return nil
 	}
 
-	if len(ps.times.Elements) != len(ps.values.Elements) {
-		return nil
+	ps := &pgxSeries{
+		times:  row.times,
+		values: row.values,
 	}
 
 	// this should pretty much always be non-empty due to __name__, but it
 	// costs little to check here
-	if len(labelIds) != 0 {
-		lls, err := p.querier.getLabelsForIds(labelIds)
+	if len(row.labelIds) != 0 {
+		lls, err := p.querier.getLabelsForIds(row.labelIds)
 		if err != nil {
 			log.Error("err", err)
 			return nil
@@ -86,7 +88,6 @@ func (p *pgxSeriesSet) At() storage.Series {
 		ps.labels = lls
 	}
 
-	p.err = nil
 	return ps
 }
 
@@ -148,16 +149,7 @@ func (p *pgxSeriesIterator) Seek(t int64) bool {
 
 // getTs returns a Unix timestamp in milliseconds.
 func (p *pgxSeriesIterator) getTs() int64 {
-	v := p.times.Elements[p.cur]
-
-	switch v.InfinityModifier {
-	case pgtype.NegativeInfinity:
-		return math.MinInt64
-	case pgtype.Infinity:
-		return math.MaxInt64
-	default:
-		return v.Time.UnixNano() / 1e6
-	}
+	return timestamptzToMs(p.times.Elements[p.cur])
 }
 
 func (p *pgxSeriesIterator) getVal() float64 {

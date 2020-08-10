@@ -172,33 +172,19 @@ func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
 }
 
-func buildSeriesSet(rows []pgx.Rows, sortSeries bool, querier *pgxQuerier) (storage.SeriesSet, storage.Warnings, error) {
-	return &pgxSeriesSet{
-		rows:    rows,
-		querier: querier,
-	}, nil, nil
-}
+func buildTimeSeries(rows []timescaleRow, q *pgxQuerier) ([]*prompb.TimeSeries, error) {
+	results := make([]*prompb.TimeSeries, 0, len(rows))
 
-func buildTimeSeries(rows pgx.Rows, q *pgxQuerier) ([]*prompb.TimeSeries, error) {
-	results := make([]*prompb.TimeSeries, 0)
-
-	for rows.Next() {
-		var (
-			labelIDs   []int64
-			timestamps []time.Time
-			values     []float64
-		)
-		err := rows.Scan(&labelIDs, &timestamps, &values)
-
-		if err != nil {
-			return nil, err
+	for _, row := range rows {
+		if row.err != nil {
+			return nil, row.err
 		}
 
-		if len(timestamps) != len(values) {
+		if len(row.times.Elements) != len(row.values.Elements) {
 			return nil, fmt.Errorf("query returned a mismatch in timestamps and values")
 		}
 
-		promLabels, err := q.getPrompbLabelsForIds(labelIDs)
+		promLabels, err := q.getPrompbLabelsForIds(row.labelIds)
 		if err != nil {
 			return nil, err
 		}
@@ -209,21 +195,17 @@ func buildTimeSeries(rows pgx.Rows, q *pgxQuerier) ([]*prompb.TimeSeries, error)
 
 		result := &prompb.TimeSeries{
 			Labels:  promLabels,
-			Samples: make([]prompb.Sample, 0, len(timestamps)),
+			Samples: make([]prompb.Sample, 0, len(row.times.Elements)),
 		}
 
-		for i := range timestamps {
+		for i := range row.times.Elements {
 			result.Samples = append(result.Samples, prompb.Sample{
-				Timestamp: toMilis(timestamps[i]),
-				Value:     values[i],
+				Timestamp: timestamptzToMs(row.times.Elements[i]),
+				Value:     row.values.Elements[i].Float,
 			})
 		}
 
 		results = append(results, result)
-	}
-
-	if rows.Err() != nil {
-		return nil, rows.Err()
 	}
 
 	return results, nil
