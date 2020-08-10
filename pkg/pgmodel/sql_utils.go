@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -185,4 +186,15 @@ func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
 	}
 
 	return tableName, possiblyNew, nil
+}
+
+func timestamptzToMs(t pgtype.Timestamptz) int64 {
+	switch t.InfinityModifier {
+	case pgtype.NegativeInfinity:
+		return math.MinInt64
+	case pgtype.Infinity:
+		return math.MaxInt64
+	default:
+		return t.Time.UnixNano() / 1e6
+	}
 }

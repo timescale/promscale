@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -92,7 +93,7 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 		return nil, nil, nil, err
 	}
 
-	ss, warn, err := buildSeriesSet(rows, sortSeries, q)
+	ss, warn, err := buildSeriesSet(rows, q)
 	return ss, topNode, warn, err
 }
 
@@ -114,23 +115,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	defer func() {
-		for _, r := range rows {
-			r.Close()
-		}
-	}()
-
-	results := make([]*prompb.TimeSeries, 0, len(rows))
-
-	for _, r := range rows {
-		ts, err := buildTimeSeries(r, q)
-
-		if err != nil {
-			return nil, err
-		}
-
-		results = append(results, ts...)
-	}
+	results, err := buildTimeSeries(rows, q)
 
 	return results, nil
 }
@@ -268,7 +253,14 @@ func (q *pgxQuerier) fetchMissingLabels(misses []interface{}, missedIds []int64,
 	return numNewLabels, nil
 }
 
-func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]pgx.Rows, parser.Node, error) {
+type timescaleRow struct {
+	labelIds []int64
+	times    pgtype.TimestamptzArray
+	values   pgtype.Float8Array
+	err      error
+}
+
+func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
 
 	metric, cases, values, err := buildSubQueries(matchers)
 	if err != nil {
@@ -287,19 +279,20 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 
 	sqlQuery := buildMetricNameSeriesIDQuery(cases)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
+	defer rows.Close()
 
 	if err != nil {
 		return nil, nil, err
 	}
 
-	defer rows.Close()
 	metrics, series, err := getSeriesPerMetric(rows)
 
 	if err != nil {
 		return nil, nil, err
 	}
 
-	results := make([]pgx.Rows, 0, len(metrics))
+	// TODO this assume on average on row per-metric. Is this right?
+	results := make([]timescaleRow, 0, len(metrics))
 
 	for i, metric := range metrics {
 		tableName, err := q.getMetricTableName(metric)
@@ -314,18 +307,19 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 		filter.metric = tableName
 		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
 		rows, err = q.conn.Query(context.Background(), sqlQuery)
-
 		if err != nil {
+			rows.Close()
 			return nil, nil, err
 		}
-
-		results = append(results, rows)
+		results = appendTsRows(results, rows)
+		// can't defer because we need to Close before the next loop iteration
+		rows.Close()
 	}
 
 	return results, nil, nil
 }
 
-func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}, hints *storage.SelectHints, path []parser.Node) ([]pgx.Rows, parser.Node, error) {
+func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}, hints *storage.SelectHints, path []parser.Node) ([]timescaleRow, parser.Node, error) {
 	tableName, err := q.getMetricTableName(metric)
 	if err != nil {
 		// If the metric table is missing, there are no results for this query.
@@ -342,6 +336,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 		return nil, nil, err
 	}
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
+	defer rows.Close()
 
 	if err != nil {
 		// If we are getting undefined table error, it means the query
@@ -350,7 +345,23 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 			return nil, nil, err
 		}
 	}
-	return []pgx.Rows{rows}, topNode, nil
+
+	// TODO this allocation assumes we usually have 1 row, if not, refactor
+	tsRows := appendTsRows(make([]timescaleRow, 0, 1), rows)
+	return tsRows, topNode, nil
+}
+
+func appendTsRows(out []timescaleRow, in pgx.Rows) []timescaleRow {
+	for in.Next() {
+		var row timescaleRow
+		row.err = in.Scan(&row.labelIds, &row.times, &row.values)
+		out = append(out, row)
+		if row.err != nil {
+			log.Error("err", row.err)
+			return out
+		}
+	}
+	return out
 }
 
 func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {

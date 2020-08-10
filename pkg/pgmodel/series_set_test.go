@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -118,6 +117,8 @@ type seriesSetRow struct {
 	values     []pgtype.Float8
 }
 
+var arbitraryErr = fmt.Errorf("arbitrary err")
+
 func TestPgxSeriesSet(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -131,9 +132,9 @@ func TestPgxSeriesSet(t *testing.T) {
 	}{
 		{
 			name:     "invalid row",
-			rowErr:   fmt.Errorf("arbitrary err"),
+			rowErr:   arbitraryErr,
 			input:    [][]seriesSetRow{{seriesSetRow{}}},
-			err:      errInvalidData,
+			err:      arbitraryErr,
 			rowCount: 1,
 		},
 		{
@@ -239,7 +240,7 @@ func TestPgxSeriesSet(t *testing.T) {
 				c.input = [][]seriesSetRow{{
 					genSeries(labels, c.ts, c.vs)}}
 			}
-			p := pgxSeriesSet{rows: genPgxRows(c.input, c.rowErr), querier: mapQuerier{labelMapping}}
+			p, _, _ := buildSeriesSet(genPgxRows(c.input, c.rowErr), mapQuerier{labelMapping})
 
 			for c.rowCount > 0 {
 				c.rowCount--
@@ -393,17 +394,37 @@ func genRows(count int) [][][]byte {
 	return result
 }
 
-func genPgxRows(m [][]seriesSetRow, err error) []pgx.Rows {
-	result := make([]pgx.Rows, len(m))
+func genPgxRows(m [][]seriesSetRow, err error) []timescaleRow {
+	var result []timescaleRow
 
-	for i := range result {
-		result[i] = &mockPgxRows{
-			results: m[i],
-			err:     err,
+	for _, mm := range m {
+		for _, r := range mm {
+			result = append(result, timescaleRow{
+				labelIds: r.labels,
+				times:    toTimestampTzArray(r.timestamps),
+				values:   toFloat8Array(r.values),
+				err:      err,
+			})
 		}
 	}
 
 	return result
+}
+
+func toTimestampTzArray(times []pgtype.Timestamptz) pgtype.TimestamptzArray {
+	return pgtype.TimestamptzArray{
+		Elements:   times,
+		Dimensions: nil,
+		Status:     pgtype.Present,
+	}
+}
+
+func toFloat8Array(values []pgtype.Float8) pgtype.Float8Array {
+	return pgtype.Float8Array{
+		Elements:   values,
+		Dimensions: nil,
+		Status:     pgtype.Present,
+	}
 }
 
 func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8) seriesSetRow {
