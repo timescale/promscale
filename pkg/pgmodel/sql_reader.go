@@ -294,19 +294,29 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 	// TODO this assume on average on row per-metric. Is this right?
 	results := make([]timescaleRow, 0, len(metrics))
 
+	numQueries := 0
+	batch := q.conn.NewBatch()
 	for i, metric := range metrics {
+		//TODO batch getMetricTableName
 		tableName, err := q.getMetricTableName(metric)
 		if err != nil {
 			// If the metric table is missing, there are no results for this query.
 			if err == errMissingTableName {
 				continue
 			}
-
 			return nil, nil, err
 		}
 		filter.metric = tableName
 		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
-		rows, err = q.conn.Query(context.Background(), sqlQuery)
+		batch.Queue(sqlQuery)
+		numQueries += 1
+	}
+
+	batchResults, err := q.conn.SendBatch(context.Background(), batch)
+	defer batchResults.Close()
+
+	for i := 0; i < numQueries; i++ {
+		rows, err = batchResults.Query()
 		if err != nil {
 			rows.Close()
 			return nil, nil, err
