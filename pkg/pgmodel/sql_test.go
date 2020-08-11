@@ -813,6 +813,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					{Type: prompb.LabelMatcher_NEQ, Name: "foo", Value: "bar"},
 				},
 			},
+			result: []*prompb.TimeSeries{},
 			sqlQueries: []sqlQuery{
 				{
 					sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
@@ -1055,6 +1056,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 					err:     error(nil),
 				},
 				{
+					sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
+					args:    []interface{}{"bar"},
+					results: rowResults{{"bar"}},
+					err:     error(nil),
+				},
+				{
 					sql: "SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)\n\t" +
 						"FROM \"prom_data\".\"foo\" m\n\t" +
 						"INNER JOIN \"prom_data_series\".\"foo\" s\n\t" +
@@ -1065,12 +1072,6 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"GROUP BY s.id",
 					args:    []interface{}(nil),
 					results: rowResults{{[]int64{3}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					err:     error(nil),
-				},
-				{
-					sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					args:    []interface{}{"bar"},
-					results: rowResults{{"bar"}},
 					err:     error(nil),
 				},
 				{
@@ -1140,6 +1141,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 					err:     error(nil),
 				},
 				{
+					sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
+					args:    []interface{}{"bar"},
+					results: rowResults{{"bar"}},
+					err:     error(nil),
+				},
+				{
 					sql: "SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)\n\t" +
 						"FROM \"prom_data\".\"foo\" m\n\t" +
 						"INNER JOIN \"prom_data_series\".\"foo\" s\n\t" +
@@ -1150,12 +1157,6 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"GROUP BY s.id",
 					args:    []interface{}(nil),
 					results: rowResults{{[]int64{5}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					err:     error(nil),
-				},
-				{
-					sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					args:    []interface{}{"bar"},
-					results: rowResults{{"bar"}},
 					err:     error(nil),
 				},
 				{
@@ -1398,7 +1399,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(result, c.result) {
-				t.Errorf("unexpected result:\ngot\n%v\nwanted\n%v", result, c.result)
+				t.Errorf("unexpected result:\ngot\n%#v\nwanted\n%+v", result, c.result)
 			}
 		})
 	}
