@@ -9,6 +9,8 @@ metadata:
     heritage: {{ .Release.Service }}
 spec:
   schedule: {{ .Values.dropChunk.schedule }}
+  successfulJobsHistoryLimit: {{.Values.dropChunk.successLimit}}
+  failedJobsHistoryLimit: {{.Values.dropChunk.failureLimit}}
   jobTemplate:
     spec:
       template:

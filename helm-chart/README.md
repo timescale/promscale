@@ -74,6 +74,8 @@ helm install --name my-release -f myvalues.yaml .
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |
 | `dropChunk.schedule`              | The schedule with which the drop-chunk Job runs | `0,30 * * * *`                 |
+| `dropChunk.successLimit`          | The number of successful dropChunk pods to retain in-cluster | `5`               |
+| `dropChunk.failureLimit`          | The number of failed dropChunk pods to retain in-cluster | `5`                   |
 | `resources`                       | Requests and limits for each of the pods    | `{}`                               |
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 

@@ -58,6 +58,8 @@ service:
 # the retention period
 dropChunk:
   schedule: "0,30 * * * *"
+  successLimit: 5
+  failureLimit: 5
 
 # set your own limits
 resources: {}
