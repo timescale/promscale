@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/timescale/timescale-prometheus/pkg/clockcache"
@@ -21,18 +22,20 @@ import (
 
 // Config for the database
 type Config struct {
-	host             string
-	port             int
-	user             string
-	password         string
-	database         string
-	sslMode          string
-	dbConnectRetries int
-	AsyncAcks        bool
-	ReportInterval   int
-	LabelsCacheSize  uint64
-	MetricsCacheSize uint64
-	SeriesCacheSize  uint64
+	host                    string
+	port                    int
+	user                    string
+	password                string
+	database                string
+	sslMode                 string
+	dbConnectRetries        int
+	AsyncAcks               bool
+	ReportInterval          int
+	LabelsCacheSize         uint64
+	MetricsCacheSize        uint64
+	SeriesCacheSize         uint64
+	WriteConnectionsPerProc int
+	MaxConnections          int
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -48,6 +51,8 @@ func ParseFlags(cfg *Config) *Config {
 	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
 	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
 	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "maximum number of metric names to cache")
+	flag.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "maximum number of database connections per go process writing to the database")
+	flag.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "maximum connections that can be open at once, defaults to 80% of the max the DB can handle")
 	return cfg
 }
 
@@ -65,17 +70,14 @@ type Client struct {
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
-
-	maxProcs := runtime.GOMAXPROCS(-1)
-	if maxProcs <= 0 {
-		maxProcs = runtime.NumCPU()
+	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
+	if err != nil {
+		log.Error("err configuring number of connections", util.MaskPassword(err.Error()))
+		return nil, err
 	}
-	if maxProcs <= 0 {
-		maxProcs = 1
-	}
-	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxProcs*pgmodel.ConnectionsPerProc, maxProcs))
+	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
 
-	log.Info("msg", util.MaskPassword(connectionStr))
+	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers)
 
 	if err != nil {
 		log.Error("err creating connection pool for new client", util.MaskPassword(err.Error()))
@@ -88,6 +90,7 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 		AsyncAcks:       cfg.AsyncAcks,
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
+		NumCopiers:      numCopiers,
 	}
 	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache, &c)
 	if err != nil {
@@ -112,6 +115,51 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 func (cfg *Config) GetConnectionStr() string {
 	return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
 		cfg.host, cfg.port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
+}
+
+func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err error) {
+	maxProcs := runtime.GOMAXPROCS(-1)
+	if cfg.WriteConnectionsPerProc < 1 {
+		return 0, 0, 0, fmt.Errorf("invalid number of connections-per-proc %v, must be at least 1", cfg.WriteConnectionsPerProc)
+	}
+	perProc := cfg.WriteConnectionsPerProc
+	max = cfg.MaxConnections
+	if max < 1 {
+		conn, err := pgx.Connect(context.Background(), cfg.GetConnectionStr())
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		defer func() { _ = conn.Close(context.Background()) }()
+		row := conn.QueryRow(context.Background(), "SHOW max_connections")
+		err = row.Scan(&max)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		if max <= 1 {
+			log.Warn("msg", "database can only handle 1 connection")
+			return 1, 1, 1, nil
+		}
+		// we try to only use 80% the database connections
+		max = int(0.8 * float32(max))
+	}
+
+	// we want to leave some connections for non-copier usages, so in the event
+	// there aren't enough connections available to satisfy our per-process
+	// preferences we'll scale down the number of copiers
+	min = maxProcs
+	if max <= min {
+		log.Warn("msg", fmt.Sprintf("database can only handle %v connection; connector has %v procs", max, maxProcs))
+		return 1, max, max / 2, nil
+	}
+
+	numCopiers = perProc * maxProcs
+	// we leave one connection per-core for non-copier usages
+	if numCopiers+maxProcs > max {
+		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max/2))
+		numCopiers = max / 2
+	}
+
+	return
 }
 
 // Close closes the client and performs cleanup

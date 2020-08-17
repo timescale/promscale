@@ -6,7 +6,6 @@ package pgmodel
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -31,6 +30,7 @@ type Cfg struct {
 	AsyncAcks       bool
 	ReportInterval  int
 	SeriesCacheSize uint64
+	NumCopiers      int
 }
 
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
@@ -55,21 +55,14 @@ func NewPgxIngestor(c *pgxpool.Pool) (*DBIngestor, error) {
 	return NewPgxIngestorWithMetricCache(c, cache, &Cfg{})
 }
 
-var ConnectionsPerProc = 5
-
 func newPgxInserter(conn pgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, error) {
 	cmc := make(chan struct{}, 1)
 
-	maxProcs := runtime.GOMAXPROCS(-1)
-	if maxProcs <= 0 {
-		maxProcs = runtime.NumCPU()
+	numCopiers := cfg.NumCopiers
+	if numCopiers < 1 {
+		log.Warn("msg", "num copiers less than 1, setting to 1")
+		numCopiers = 1
 	}
-	if maxProcs <= 0 {
-		maxProcs = 1
-	}
-
-	// we leave one connection per-core for other usages
-	numCopiers := maxProcs*ConnectionsPerProc - maxProcs
 	toCopiers := make(chan copyRequest, numCopiers)
 	for i := 0; i < numCopiers; i++ {
 		go runInserter(conn, toCopiers)
