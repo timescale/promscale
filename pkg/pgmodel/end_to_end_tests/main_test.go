@@ -17,6 +17,7 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	"github.com/timescale/timescale-prometheus/pkg/version"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 
@@ -108,7 +109,7 @@ func performMigrate(t testing.TB, connectURL string) {
 		t.Fatal(err)
 	}
 	defer migratePool.Close()
-	err = Migrate(migratePool, pgmodel.VersionInfo{Version: expectedVersion, CommitHash: "azxtestcommit"})
+	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"})
 	if err != nil {
 		t.Fatal(err)
 	}

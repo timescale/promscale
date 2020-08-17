@@ -30,6 +30,7 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/query"
 	"github.com/timescale/timescale-prometheus/pkg/util"
+	"github.com/timescale/timescale-prometheus/pkg/version"
 )
 
 type config struct {
@@ -149,16 +150,16 @@ func init() {
 func main() {
 	cfg, err := parseFlags()
 	if err != nil {
-		fmt.Println("Version: ", Version, "Commit Hash: ", CommitHash)
+		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
 		fmt.Println("Fatal error: cannot parse flags ", err)
 	}
 	err = log.Init(cfg.logLevel)
 	if err != nil {
-		fmt.Println("Version: ", Version, "Commit Hash: ", CommitHash)
+		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
 		fmt.Println("Fatal error: cannot start logger", err)
 		os.Exit(1)
 	}
-	log.Info("msg", "Version:"+Version+"; Commit Hash: "+CommitHash)
+	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
 
 	elector, err = initElector(cfg)
@@ -374,7 +375,7 @@ func migrate(cfg *pgclient.Config) error {
 	}
 	defer db.Close()
 
-	err = pgmodel.Migrate(db, pgmodel.VersionInfo{Version: Version, CommitHash: CommitHash})
+	err = pgmodel.Migrate(db, pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash})
 
 	if err != nil {
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)
