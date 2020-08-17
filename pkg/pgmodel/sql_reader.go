@@ -117,7 +117,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 
 	results, err := buildTimeSeries(rows, q)
 
-	return results, nil
+	return results, err
 }
 
 func (q *pgxQuerier) LabelNames() ([]string, error) {
@@ -314,6 +314,9 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 
 	batchResults, err := q.conn.SendBatch(context.Background(), batch)
 	defer batchResults.Close()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for i := 0; i < numQueries; i++ {
 		rows, err = batchResults.Query()
@@ -321,9 +324,13 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 			rows.Close()
 			return nil, nil, err
 		}
-		results = appendTsRows(results, rows)
+		results, err = appendTsRows(results, rows)
 		// can't defer because we need to Close before the next loop iteration
 		rows.Close()
+		if err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
 	}
 
 	return results, nil, nil
@@ -357,21 +364,24 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	}
 
 	// TODO this allocation assumes we usually have 1 row, if not, refactor
-	tsRows := appendTsRows(make([]timescaleRow, 0, 1), rows)
-	return tsRows, topNode, nil
+	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows)
+	return tsRows, topNode, err
 }
 
-func appendTsRows(out []timescaleRow, in pgx.Rows) []timescaleRow {
+func appendTsRows(out []timescaleRow, in pgx.Rows) ([]timescaleRow, error) {
+	if in.Err() != nil {
+		return out, in.Err()
+	}
 	for in.Next() {
 		var row timescaleRow
 		row.err = in.Scan(&row.labelIds, &row.times, &row.values)
 		out = append(out, row)
 		if row.err != nil {
 			log.Error("err", row.err)
-			return out
+			return out, row.err
 		}
 	}
-	return out
+	return out, in.Err()
 }
 
 func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {
