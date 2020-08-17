@@ -1,4 +1,4 @@
-package main
+package version
 
 var (
 	// Rules for Versioning:

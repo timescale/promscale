@@ -13,10 +13,7 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel/test_migrations"
-)
-
-const (
-	expectedVersion = "0.0.1-alpha"
+	"github.com/timescale/timescale-prometheus/pkg/version"
 )
 
 func TestMigrate(t *testing.T) {
@@ -24,13 +21,13 @@ func TestMigrate(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		var version string
-		err := db.QueryRow(context.Background(), "SELECT version FROM prom_schema_migrations").Scan(&version)
+		var dbVersion string
+		err := db.QueryRow(context.Background(), "SELECT version FROM prom_schema_migrations").Scan(&dbVersion)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if version != expectedVersion {
-			t.Errorf("Version unexpected:\ngot\n%s\nwanted\n%s", version, expectedVersion)
+		if dbVersion != version.Version {
+			t.Errorf("Version unexpected:\ngot\n%s\nwanted\n%s", dbVersion, version.Version)
 		}
 	})
 }

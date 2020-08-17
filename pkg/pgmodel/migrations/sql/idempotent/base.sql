@@ -964,7 +964,7 @@ LANGUAGE SQL STABLE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk() TO prom_reader;
 
 --public procedure to be called by cron
-CREATE PROCEDURE SCHEMA_PROM.drop_chunks()
+CREATE OR REPLACE PROCEDURE SCHEMA_PROM.drop_chunks()
 AS $$
 DECLARE
     r RECORD;
