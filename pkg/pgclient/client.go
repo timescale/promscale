@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"runtime"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -130,10 +131,16 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 			return 0, 0, 0, err
 		}
 		defer func() { _ = conn.Close(context.Background()) }()
+		var maxStr string
 		row := conn.QueryRow(context.Background(), "SHOW max_connections")
-		err = row.Scan(&max)
+		err = row.Scan(&maxStr)
 		if err != nil {
 			return 0, 0, 0, err
+		}
+		max, err = strconv.Atoi(maxStr)
+		if err != nil {
+			log.Warn("err", err, "msg", "invalid value from postgres max_connections")
+			max = 100
 		}
 		if max <= 1 {
 			log.Warn("msg", "database can only handle 1 connection")
