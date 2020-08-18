@@ -409,6 +409,9 @@ func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 
 	for _, versionDirInfo := range versionDirInfoEntries {
 		if !versionDirInfo.IsDir() {
+			if versionDirInfo.Name() == ".gitignore" {
+				continue
+			}
 			return fmt.Errorf("Not a directory inside %v: %v", versionScripts, versionDirInfo.Name())
 		}
 
