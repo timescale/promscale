@@ -77,7 +77,7 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 	}
 	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
 
-	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers)
+	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections)
 
 	if err != nil {
 		log.Error("err creating connection pool for new client", util.MaskPassword(err.Error()))
