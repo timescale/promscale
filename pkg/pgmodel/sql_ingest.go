@@ -146,9 +146,29 @@ type insertDataRequest struct {
 	errChan  chan error
 }
 
+func (idr *insertDataRequest) reportResult(err error) {
+	if err != nil {
+		select {
+		case idr.errChan <- err:
+		default:
+		}
+	}
+	idr.finished.Done()
+}
+
 type insertDataTask struct {
 	finished *sync.WaitGroup
 	errChan  chan error
+}
+
+func (idt *insertDataTask) reportResult(err error) {
+	if err != nil {
+		select {
+		case idt.errChan <- err:
+		default:
+		}
+	}
+	idt.finished.Done()
 }
 
 func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
@@ -293,50 +313,27 @@ type copyRequest struct {
 	table string
 }
 
-func runInserterRoutineFailure(input chan insertDataRequest, err error) {
-	for idr := range input {
-		select {
-		case idr.errChan <- fmt.Errorf("The insert routine has previously failed with %w", err):
-		default:
-		}
-		idr.finished.Done()
-	}
-}
-
 func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, errChan chan error, metricTableNames MetricCache, toCopiers chan copyRequest) {
-	tableName, err := metricTableNames.Get(metricName)
-	if err == ErrEntryNotFound {
-		var possiblyNew bool
-		tableName, possiblyNew, err = getMetricTableName(conn, metricName)
+	var tableName string
+	var firstReq insertDataRequest
+	firstReqSet := false
+	for firstReq = range input {
+		var err error
+		tableName, err = initializeInserterRoutine(conn, metricName, completeMetricCreationSignal, metricTableNames)
 		if err != nil {
 			select {
 			case errChan <- err:
 			default:
 			}
-			//won't be able to insert anyway
-			runInserterRoutineFailure(input, err)
-			return
+			firstReq.reportResult(fmt.Errorf("Initializing the insert routine has failed with %w", err))
+		} else {
+			firstReqSet = true
+			break
 		}
+	}
 
-		//ignone error since this is just an optimization
-		_ = metricTableNames.Set(metricName, tableName)
-
-		if possiblyNew {
-			//pass a signal if there is space
-			select {
-			case completeMetricCreationSignal <- struct{}{}:
-			default:
-			}
-		}
-	} else if err != nil {
-		if err != nil {
-			select {
-			case errChan <- err:
-			default:
-			}
-		}
-		//won't be able to insert anyway
-		runInserterRoutineFailure(input, err)
+	//input channel was closed before getting a successful request
+	if !firstReqSet {
 		return
 	}
 
@@ -348,6 +345,8 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 		metricTableName: tableName,
 		toCopiers:       toCopiers,
 	}
+
+	handler.handleReq(firstReq)
 
 	for {
 		if !handler.hasPendingReqs() {
@@ -367,6 +366,31 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 
 		handler.flush()
 	}
+}
+
+func initializeInserterRoutine(conn pgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames MetricCache) (tableName string, err error) {
+	tableName, err = metricTableNames.Get(metricName)
+	if err == ErrEntryNotFound {
+		var possiblyNew bool
+		tableName, possiblyNew, err = getMetricTableName(conn, metricName)
+		if err != nil {
+			return "", err
+		}
+
+		//ignone error since this is just an optimization
+		_ = metricTableNames.Set(metricName, tableName)
+
+		if possiblyNew {
+			//pass a signal if there is space
+			select {
+			case completeMetricCreationSignal <- struct{}{}:
+			default:
+			}
+		}
+	} else if err != nil {
+		return "", err
+	}
+	return tableName, err
 }
 
 func (h *insertHandler) hasPendingReqs() bool {
@@ -561,13 +585,7 @@ func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error 
 
 func (pending *pendingBuffer) reportResults(err error) {
 	for i := 0; i < len(pending.needsResponse); i++ {
-		if err != nil {
-			select {
-			case pending.needsResponse[i].errChan <- err:
-			default:
-			}
-		}
-		pending.needsResponse[i].finished.Done()
+		pending.needsResponse[i].reportResult(err)
 		pending.needsResponse[i] = insertDataTask{}
 	}
 	pending.needsResponse = pending.needsResponse[:0]
