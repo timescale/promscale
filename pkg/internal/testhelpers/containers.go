@@ -118,13 +118,18 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 
 // StartPGContainer starts a postgreSQL container for use in testing
 func StartPGContainer(ctx context.Context, withExtension bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
-	containerPort := nat.Port("5432/tcp")
 	var image string
 	if withExtension {
 		image = "timescaledev/timescale_prometheus_extra:latest-pg12"
 	} else {
 		image = "timescale/timescaledb:latest-pg12"
 	}
+	return StartPGContainerWithImage(ctx, image, testDataDir, printLogs)
+}
+
+func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, printLogs bool) (testcontainers.Container, error) {
+	containerPort := nat.Port("5432/tcp")
+
 	req := testcontainers.ContainerRequest{
 		Image:        image,
 		ExposedPorts: []string{string(containerPort)},
