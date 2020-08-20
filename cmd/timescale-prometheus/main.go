@@ -267,6 +267,10 @@ func main() {
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
+	seriesHandler := timeHandler(httpRequestDuration, "series", api.Series(apiConf, queryable))
+	router.Get("/api/v1/series", seriesHandler)
+	router.Post("/api/v1/series", seriesHandler)
+
 	labelsHandler := timeHandler(httpRequestDuration, "labels", api.Labels(apiConf, queryable))
 	router.Get("/api/v1/labels", labelsHandler)
 	router.Post("/api/v1/labels", labelsHandler)
