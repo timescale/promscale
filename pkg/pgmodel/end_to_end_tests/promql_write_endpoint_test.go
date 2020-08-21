@@ -230,7 +230,7 @@ func sendConcurrentWrites(t testing.TB, db *pgxpool.Pool, queues int, metricGrou
 	wg.Wait()
 }
 
-func TestWrite(t *testing.T) {
+func TestPromQLWriteEndpoint(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
