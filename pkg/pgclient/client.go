@@ -146,8 +146,11 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 			log.Warn("msg", "database can only handle 1 connection")
 			return 1, 1, 1, nil
 		}
-		// we try to only use 80% the database connections
+		// we try to only use 80% the database connections, capped at 50
 		max = int(0.8 * float32(max))
+		if max > 50 {
+			max = 50
+		}
 	}
 
 	// we want to leave some connections for non-copier usages, so in the event
@@ -160,8 +163,8 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 	}
 
 	numCopiers = perProc * maxProcs
-	// we leave one connection per-core for non-copier usages
-	if numCopiers+maxProcs > max {
+	// we try to leave one connection per-core for non-copier usages, otherwise using half the connections.
+	if numCopiers > max-maxProcs {
 		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max/2))
 		numCopiers = max / 2
 	}
