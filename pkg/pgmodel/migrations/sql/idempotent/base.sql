@@ -940,7 +940,7 @@ BEGIN
         WHERE id IN (SELECT * FROM confirmed_drop_labels);
     $query$, metric_table) USING label_array;
 
-   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than);
+   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than, cascade_to_materializations=>FALSE);
    RETURN true;
 END
 $func$
