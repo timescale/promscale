@@ -99,7 +99,11 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		dataset := generateLargeTimeseries()
+		if *extendedTest {
+			dataset = append(dataset, generateRealTimeseries()...)
+		}
+		ingestQueryTestDataset(db, t, dataset)
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
 		defer readOnly.Close()

@@ -30,6 +30,7 @@ var (
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
 	useExtension      = flag.Bool("use-extension", true, "use the timescale_prometheus_extra extension")
 	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
+	extendedTest      = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
 
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string

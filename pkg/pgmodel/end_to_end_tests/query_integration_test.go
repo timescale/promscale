@@ -30,11 +30,6 @@ import (
 	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
 
-var (
-	startTime int64 = 1577836800000
-	endTime   int64 = 1577886800000
-)
-
 // PromClient is a wrapper around http.Client for sending read requests.
 type PromClient struct {
 	url        *url.URL
@@ -1007,60 +1002,6 @@ func TestPromQL(t *testing.T) {
 	})
 }
 
-func generateSamples(index int) []prompb.Sample {
-	var (
-		delta           = float64(index * 2)
-		timeDelta int64 = 30000
-	)
-	samples := make([]prompb.Sample, 0, 3)
-	i := 0
-	time := startTime + (timeDelta * int64(i))
-
-	for time < endTime {
-		samples = append(samples, prompb.Sample{
-			Timestamp: time,
-			Value:     delta * float64(i),
-		})
-		i++
-		time = startTime + (timeDelta * int64(i))
-	}
-
-	return samples
-}
-func generateSmallTimeseries() []prompb.TimeSeries {
-	return []prompb.TimeSeries{
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "firstMetric"},
-				{Name: "foo", Value: "bar"},
-				{Name: "common", Value: "tag"},
-				{Name: "empty", Value: ""},
-			},
-			Samples: []prompb.Sample{
-				{Timestamp: 1, Value: 0.1},
-				{Timestamp: 2, Value: 0.2},
-				{Timestamp: 3, Value: 0.3},
-				{Timestamp: 4, Value: 0.4},
-				{Timestamp: 5, Value: 0.5},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "secondMetric"},
-				{Name: "foo", Value: "baz"},
-				{Name: "common", Value: "tag"},
-			},
-			Samples: []prompb.Sample{
-				{Timestamp: 1, Value: 1.1},
-				{Timestamp: 2, Value: 1.2},
-				{Timestamp: 3, Value: 1.3},
-				{Timestamp: 4, Value: 1.4},
-				{Timestamp: 5, Value: 1.5},
-			},
-		},
-	}
-}
-
 func generatePrometheusWALFile() (string, error) {
 	tmpDir := ""
 
@@ -1086,6 +1027,9 @@ func generatePrometheusWALFile() (string, error) {
 	app := st.Appender()
 
 	tts := generateLargeTimeseries()
+	if *extendedTest {
+		tts = append(tts, generateRealTimeseries()...)
+	}
 	var ref *uint64
 
 	for _, ts := range tts {
@@ -1123,74 +1067,6 @@ func generatePrometheusWALFile() (string, error) {
 	st.Close()
 
 	return path, nil
-}
-
-// This function is used to generate timeseries used for ingesting into
-// Prometheus and the connector to verify same results are being returned.
-func generateLargeTimeseries() []prompb.TimeSeries {
-	metrics := []prompb.TimeSeries{
-		{
-			Labels: []prompb.Label{
-				{Name: "aaa", Value: "000"},
-				{Name: MetricNameLabelName, Value: "metric_1"},
-				{Name: "foo", Value: "bar"},
-				{Name: "instance", Value: "1"},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "metric_1"},
-				{Name: "foo", Value: "bar"},
-				{Name: "instance", Value: "2"},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "metric_1"},
-				{Name: "foo", Value: "bar"},
-				{Name: "instance", Value: "3"},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "metric_2"},
-				{Name: "foo", Value: "bat"},
-				{Name: "instance", Value: "1"},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "metric_2"},
-				{Name: "foo", Value: "bat"},
-				{Name: "instance", Value: "2"},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "metric_2"},
-				{Name: "foo", Value: "bat"},
-				{Name: "instance", Value: "3"},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "metric_3"},
-				{Name: "instance", Value: "1"},
-			},
-		},
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "metric_3"},
-				{Name: "instance", Value: "2"},
-			},
-		},
-	}
-
-	for i := range metrics {
-		metrics[i].Samples = generateSamples(i + 1)
-	}
-
-	return metrics
 }
 
 func TestPushdown(t *testing.T) {
