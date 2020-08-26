@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
@@ -43,7 +44,7 @@ var (
 
 type SuperuserStatus = bool
 
-func pgConnectURL(dbName string, superuser SuperuserStatus) string {
+func PgConnectURL(dbName string, superuser SuperuserStatus) string {
 	user := postgresUser
 	if !superuser {
 		user = promUser
@@ -53,17 +54,17 @@ func pgConnectURL(dbName string, superuser SuperuserStatus) string {
 
 // WithDB establishes a database for testing and calls the callback
 func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
-	db, err := dbSetup(DBName, superuser)
+	db, err := DbSetup(DBName, superuser)
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 	defer db.Close()
-	f(db, t, pgConnectURL(DBName, superuser))
+	f(db, t, PgConnectURL(DBName, superuser))
 }
 
 func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
-	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName, NoSuperuser))
+	dbPool, err := pgxpool.Connect(context.Background(), PgConnectURL(DBName, NoSuperuser))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,8 +77,8 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	return dbPool
 }
 
-func dbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
-	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB, Superuser))
+func DbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
+	db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +98,7 @@ func dbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	dbPool, err := pgxpool.Connect(context.Background(), pgConnectURL(DBName, superuser))
+	dbPool, err := pgxpool.Connect(context.Background(), PgConnectURL(DBName, superuser))
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
 			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
-		}),
+		}).Timeout(60 * time.Second),
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
 		},
@@ -160,16 +161,17 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		container.FollowOutput(stdoutLogConsumer{})
 	}
 
-	err = container.Start(context.Background())
-	if err != nil {
-		return nil, err
-	}
 	if printLogs {
 		err = container.StartLogProducer(context.Background())
 		if err != nil {
 			fmt.Println("Error setting up logger", err)
 			os.Exit(1)
 		}
+	}
+
+	err = container.Start(context.Background())
+	if err != nil {
+		return nil, err
 	}
 
 	pgHost, err = container.Host(ctx)
@@ -182,7 +184,7 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		return nil, err
 	}
 
-	db, err := pgx.Connect(context.Background(), pgConnectURL(defaultDB, Superuser))
+	db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +246,63 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 	}
 
 	return container, nil
+}
+
+var ConnectorPort = nat.Port("9201/tcp")
+
+func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, dbname string) (testcontainers.Container, error) {
+	req := testcontainers.ContainerRequest{
+		Image:        image,
+		ExposedPorts: []string{string(ConnectorPort)},
+		WaitingFor:   wait.ForHTTP("/write").WithPort(ConnectorPort).WithAllowInsecure(true),
+		SkipReaper:   false, /* switch to true not to kill docker container */
+		Cmd: []string{
+			"-db-host", "172.17.0.1", // IP refering to the docker's host network
+			"-db-port", pgPort.Port(),
+			"-db-user", "postgres",
+			"-db-password", "password",
+			"-db-ssl-mode", "allow",
+			"-db-name", dbname,
+			"-web-listen-address", "0.0.0.0:" + ConnectorPort.Port(),
+		},
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          false,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if printLogs {
+		container.FollowOutput(stdoutLogConsumer{})
+	}
+
+	if printLogs {
+		err = container.StartLogProducer(context.Background())
+		if err != nil {
+			fmt.Println("Error setting up logger", err)
+			os.Exit(1)
+		}
+	}
+
+	err = container.Start(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return container, nil
+}
+
+func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool) {
+	defer func() {
+		if printLogs {
+			_ = container.StopLogProducer()
+		}
+
+		_ = container.Terminate(ctx)
+	}()
 }
 
 // TempDir returns a temp directory for tests
