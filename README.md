@@ -50,10 +50,10 @@ natively supported by Grafana via the PostgreSQL/TimescaleDB datasource.
 
 ## Getting started with Helm (recommended)
 
-The quickest way to get started is by using the Helm chart from
-[timescale-observability](https://github.com/timescale/timescale-observability),
-which provides a broader framework for installing an end-to-end
-monitoring stack.
+The quickest way to get started is by using
+[The Observability Stack for Kubernetes (tobs)](https://github.com/timescale/tobs),
+which provides a helm chart and CLI tool for installing an end-to-end
+observability stack.
 
 The following command will install Prometheus, TimescaleDB,
 Timescale-Prometheus Connector, and Grafana
@@ -61,7 +61,7 @@ into your Kubernetes cluster:
 ```
 helm repo add timescale https://charts.timescale.com/
 helm repo update
-helm install --devel <release_name> timescale/timescale-observability
+helm install --devel <release_name> timescale/tobs
 ```
 
 ## Quick tips
@@ -89,14 +89,14 @@ We describe how to use our pre-defined views and functions to work with the prom
 
 A Reference for our SQL API is [available here](docs/sql_api.md).
 
-### Prometheus HTTP API 
+### Prometheus HTTP API
 
 The Timescale-Prometheus Connector can be used directly as a Prometheus Data Source in Grafana, or other software.
 
-It implements some endpoints of the currently stable (V1) 
-[Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api). 
+It implements some endpoints of the currently stable (V1)
+[Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api).
 The API is accessible at `http://timescale_prometheus_connector:9201/api/v1` and can be used to execute instant or range
-PromQL queries against the data in TimescaleDB, as well as retrieve the metadata for series, label names and label 
+PromQL queries against the data in TimescaleDB, as well as retrieve the metadata for series, label names and label
 values.
 
 A Reference for the implemented endpoints of the Prometheus HTTP API is [available here](docs/prometheus_api.md)
@@ -106,20 +106,20 @@ A Reference for the implemented endpoints of the Prometheus HTTP API is [availab
 ### Configuring the Helm Chart
 
 To get a fully-documented configuration file for
-`timescale-observability`, please run:
+`tobs`, please run:
 
 ```
-helm show values timescale/timescale-observability > my_values.yml
+helm show values timescale/tobs > my_values.yml
 ```
 
 You can then edit `my_values.yml` and deploy the release with the
 following command:
 
 ```
-helm upgrade --install <release_name> --values my_values.yml timescale/timescale-observability
+helm upgrade --install <release_name> --values my_values.yml timescale/tobs
 ```
 
-By default, the `timescale-observability` Helm chart sets up a
+By default, the `tobs` Helm chart sets up a
 single-instance of TimescaleDB; if you are
 interested in a replicated setup for high-availabilty with automated
 backups, please see
@@ -130,7 +130,7 @@ backups, please see
 A Helm chart for only the Timescale-Prometheus Connector is available in
 the [helm-chart directory](helm-chart/README.md) of this repository.
 
-This is used as a dependency from the `timescale-observability` Helm
+This is used as a dependency from the `tobs` Helm
 chart and can be used as a dependency in your own custom Helm chart.
 
 ## Non-Helm deployment
@@ -140,7 +140,7 @@ chart and can be used as a dependency in your own custom Helm chart.
 Any non-helm installations also need to make sure the `drop_chunks`
 procedure on a regular
 basis (e.g. via CRON). We recommend executing it every 30 minutes.
-This is necessary to execute data retention policies according to the 
+This is necessary to execute data retention policies according to the
 configured policy. This is set up automatically in helm.
 
 We also recommend running this with a Timescaledb installation that
