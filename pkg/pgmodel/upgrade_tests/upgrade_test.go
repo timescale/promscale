@@ -4,16 +4,22 @@
 package upgrade_tests
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net"
+	"net/http"
 	"os"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/blang/semver/v4"
+	"github.com/docker/go-connections/nat"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -47,7 +53,217 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func withNewDB(t testing.TB, image string, initialVersion string, DBName string,
+func TestUpgradeFromPrev(t *testing.T) {
+	upgradedDbInfo := getUpgradedDbInfo(t)
+	pristineDbInfo := getPristineDbInfo(t)
+
+	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
+		printDbInfoDifferences(t, pristineDbInfo, upgradedDbInfo)
+	}
+}
+
+func getUpgradedDbInfo(t *testing.T) (upgradedDbInfo dbInfo) {
+	// we test that upgrading from the previous version gives the correct output
+	// by induction, this property should hold true for any chain of versions
+	prevVersion := semver.MustParse(version.Version)
+	toPreviousVersion(&prevVersion)
+
+	// TODO we could probably improve performance of this test by 2x if we
+	//      gathered the db info in parallel. Unfortunately our db runner doesn't
+	//      support this yet
+	prevImage := "timescale/timescale-prometheus:" + prevVersion.String()
+	withDBAndConnector(t, *testDatabase, prevImage,
+		func(dbContainer testcontainers.Container, dbTmpDir string, connectorHost string, connectorPort nat.Port) {
+			client := http.Client{}
+			defer client.CloseIdleConnections()
+
+			writeUrl := fmt.Sprintf("http://%s/write", net.JoinHostPort(connectorHost, connectorPort.Port()))
+			t.Log(writeUrl)
+
+			doWrite(t, &client, writeUrl, preUpgradeData1, preUpgradeData2)
+
+			t.Logf("upgrading versions %v => %v", prevVersion, version.Version)
+			// TODO this should be NoSuperuser expect for the extwlist error
+			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
+			migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
+
+			db, err := pgxpool.Connect(context.Background(), connectURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			ingestor, err := pgmodel.NewPgxIngestor(db)
+			if err != nil {
+				t.Fatalf("error connecting to DB: %v", err)
+			}
+
+			doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
+
+			ingestor.Close()
+			upgradedDbInfo = getDbInfo(t, dbContainer, dbTmpDir, db)
+		})
+	return
+}
+
+func getPristineDbInfo(t *testing.T) (pristineDbInfo dbInfo) {
+	withNewDBAtCurrentVersion(t, *testDatabase,
+		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
+			defer db.Close()
+			ingestor, err := pgmodel.NewPgxIngestor(db)
+			if err != nil {
+				t.Fatalf("error connecting to DB: %v", err)
+			}
+
+			doIngest(t, ingestor, preUpgradeData1, preUpgradeData2, postUpgradeData1, postUpgradeData2)
+
+			ingestor.Close()
+			pristineDbInfo = getDbInfo(t, container, tmpDir, db)
+		})
+	return
+}
+
+// pick a start time in the future so data won't get compressed
+const startTime = 6600000000000 // approx 210 years after the epoch
+var (
+	preUpgradeData1 = []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "test"},
+				{Name: "test", Value: "test"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: startTime + 1, Value: 0.1},
+				{Timestamp: startTime + 2, Value: 0.2},
+			},
+		},
+	}
+	preUpgradeData2 = []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "test2"},
+				{Name: "foo", Value: "bar"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: startTime + 4, Value: 2.2},
+			},
+		},
+	}
+
+	postUpgradeData1 = []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "test"},
+				{Name: "testB", Value: "testB"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: startTime + 4, Value: 0.4},
+				{Timestamp: startTime + 5, Value: 0.5},
+			},
+		},
+	}
+	postUpgradeData2 = []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: MetricNameLabelName, Value: "test3"},
+				{Name: "baz", Value: "quf"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: startTime + 66, Value: 6.0},
+			},
+		},
+	}
+)
+
+func printDbInfoDifferences(t *testing.T, pristineDbInfo dbInfo, upgradedDbInfo dbInfo) {
+	t.Errorf("upgrade differences")
+	if !reflect.DeepEqual(upgradedDbInfo.schemaNames, pristineDbInfo.schemaNames) {
+		t.Logf("different schemas\nexpected:\n\t%v\ngot:\n\t%v", pristineDbInfo.schemaNames, upgradedDbInfo.schemaNames)
+	}
+	pristineSchemas := make(map[string]schemaInfo)
+	for _, schema := range pristineDbInfo.schemas {
+		pristineSchemas[schema.name] = schema
+	}
+	for _, schema := range upgradedDbInfo.schemas {
+		expected, ok := pristineSchemas[schema.name]
+		if !ok {
+			t.Logf("extra schema %s", schema.name)
+			continue
+		}
+		tablesDiff := schema.tables != expected.tables
+		functionsDiff := schema.functions != expected.functions
+		privilegesDiff := schema.privileges != expected.privileges
+		indicesDiff := schema.indices != expected.indices
+		triggersDiff := schema.triggers != expected.triggers
+		dataDiff := !reflect.DeepEqual(schema.data, expected.data)
+		if tablesDiff || functionsDiff || privilegesDiff || indicesDiff || triggersDiff || dataDiff {
+			t.Logf("differences in schema: %s", schema.name)
+		}
+		if tablesDiff {
+			t.Logf("tables\nexpected:\n\t%s\ngot:\n\t%s", expected.tables, schema.tables)
+		}
+		if functionsDiff {
+			t.Logf("functions\nexpected:\n\t%s\ngot:\n\t%s", expected.functions, schema.functions)
+		}
+		if privilegesDiff {
+			t.Logf("privileges\nexpected:\n\t%s\ngot:\n\t%s", expected.privileges, schema.privileges)
+		}
+		if indicesDiff {
+			t.Logf("indices\nexpected:\n\t%s\ngot:\n\t%s", expected.indices, schema.indices)
+		}
+		if triggersDiff {
+			t.Logf("triggers\nexpected:\n\t%s\ngot:\n\t%s", expected.triggers, schema.triggers)
+		}
+		if dataDiff {
+			t.Logf("data\nexpected:\n\t%+v\ngot:\n\t%+v", expected.data, schema.data)
+		}
+	}
+}
+
+func withDBAndConnector(t testing.TB, DBName string, connectorImage string,
+	f func(dbContainer testcontainers.Container, dbTmpDir string, connectorHost string, connectorPort nat.Port)) {
+	var err error
+	ctx := context.Background()
+
+	tmpDir, err := testhelpers.TempDir("update_test_out")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, *printLogs)
+	if err != nil {
+		t.Fatal("Error setting up container", err)
+	}
+
+	defer testhelpers.StopContainer(ctx, dbContainer, *printLogs)
+
+	db, err := testhelpers.DbSetup(*testDatabase, testhelpers.Superuser)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	db.Close()
+
+	connector, err := testhelpers.StartConnectorWithImage(context.Background(), connectorImage, *printLogs, *testDatabase)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer testhelpers.StopContainer(ctx, connector, *printLogs)
+
+	connectorHost, err := connector.Host(ctx)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	connectorPort, err := connector.MappedPort(ctx, testhelpers.ConnectorPort)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	f(dbContainer, tmpDir, connectorHost, connectorPort)
+}
+
+func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 	f func(container testcontainers.Container, connectURL string, db *pgxpool.Pool, tmpDir string)) {
 	var err error
 	ctx := context.Background()
@@ -57,7 +273,7 @@ func withNewDB(t testing.TB, image string, initialVersion string, DBName string,
 		log.Fatal(err)
 	}
 
-	container, err := testhelpers.StartPGContainerWithImage(ctx, image, tmpDir, *printLogs)
+	container, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, *printLogs)
 	if err != nil {
 		fmt.Println("Error setting up container", err)
 		os.Exit(1)
@@ -76,7 +292,7 @@ func withNewDB(t testing.TB, image string, initialVersion string, DBName string,
 	}()
 	// TODO this should be NoSuperuser expect for the extwlist error
 	testhelpers.WithDB(t, DBName, testhelpers.Superuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
-		migrateToVersion(t, connectURL, initialVersion, "azxtestcommit")
+		migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
 
 		// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
 		db, err := pgxpool.Connect(context.Background(), connectURL)
@@ -96,199 +312,6 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestUpgradeFromPrev(t *testing.T) {
-	// we test that upgrading from the previous version gives the correct output
-	// by induction, this property should hold true for any chain of versions
-	prevVersion := semver.MustParse(version.Version)
-	toPreviousVersion(&prevVersion)
-
-	// pick a start time in the future so data won't get compressed
-	const startTime = 6600000000000 // approx 210 years after the epoch
-	preUpgradeData1 := []prompb.TimeSeries{
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test"},
-				{Name: "test", Value: "test"},
-			},
-			Samples: []prompb.Sample{
-				{Timestamp: startTime + 1, Value: 0.1},
-				{Timestamp: startTime + 2, Value: 0.2},
-			},
-		},
-	}
-	preUpgradeData2 := []prompb.TimeSeries{
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test2"},
-				{Name: "foo", Value: "bar"},
-			},
-			Samples: []prompb.Sample{
-				{Timestamp: startTime + 4, Value: 2.2},
-			},
-		},
-	}
-
-	postUpgradeData1 := []prompb.TimeSeries{
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test"},
-				{Name: "testB", Value: "testB"},
-			},
-			Samples: []prompb.Sample{
-				{Timestamp: startTime + 4, Value: 0.4},
-				{Timestamp: startTime + 5, Value: 0.5},
-			},
-		},
-	}
-	postUpgradeData2 := []prompb.TimeSeries{
-		{
-			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test3"},
-				{Name: "baz", Value: "quf"},
-			},
-			Samples: []prompb.Sample{
-				{Timestamp: startTime + 66, Value: 6.0},
-			},
-		},
-	}
-
-	// TODO we could probably improve performance of this test by 2x if we
-	//      gathered the db info in parallel. Unfortunately our db runner doesn't
-	//      support this yet
-	var upgradedDbInfo dbInfo
-	withNewDB(t, cleanImage, prevVersion.String(), *testDatabase,
-		func(container testcontainers.Container, connectURL string, db *pgxpool.Pool, tmpDir string) {
-			ingestor, err := pgmodel.NewPgxIngestor(db)
-			if err != nil {
-				t.Fatalf("error connecting to DB: %v", err)
-			}
-			_, err = ingestor.Ingest(copyMetrics(preUpgradeData1), &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			_ = ingestor.CompleteMetricCreation()
-			_, err = ingestor.Ingest(copyMetrics(preUpgradeData2), &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			_ = ingestor.CompleteMetricCreation()
-			ingestor.Close()
-			defer db.Close()
-
-			t.Logf("upgrading versions %v => %v", prevVersion, version.Version)
-			migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
-
-			db, err = pgxpool.Connect(context.Background(), connectURL)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer db.Close()
-			ingestor, err = pgmodel.NewPgxIngestor(db)
-			if err != nil {
-				t.Fatalf("error connecting to DB: %v", err)
-			}
-			_ = ingestor.CompleteMetricCreation()
-			_, err = ingestor.Ingest(copyMetrics(postUpgradeData1), &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			_ = ingestor.CompleteMetricCreation()
-			_, err = ingestor.Ingest(copyMetrics(postUpgradeData2), &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			_ = ingestor.CompleteMetricCreation()
-			ingestor.Close()
-			upgradedDbInfo = getDbInfo(t, container, tmpDir, db)
-		})
-
-	var pristineDbInfo dbInfo
-	withNewDB(t, cleanImage, version.Version, *testDatabase,
-		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
-			defer db.Close()
-			ingestor, err := pgmodel.NewPgxIngestor(db)
-			if err != nil {
-				t.Fatalf("error connecting to DB: %v", err)
-			}
-
-			_, err = ingestor.Ingest(preUpgradeData1, &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			// we don't have any good way to ensure metric creation completes
-			// right now, so just sleep for a little bit
-			time.Sleep(1 * time.Millisecond)
-			_, err = ingestor.Ingest(preUpgradeData2, &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			// we don't have any good way to ensure metric creation completes
-			// right now, so just sleep for a little bit
-			time.Sleep(1 * time.Millisecond)
-			_, err = ingestor.Ingest(postUpgradeData1, &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			// we don't have any good way to ensure metric creation completes
-			// right now, so just sleep for a little bit
-			time.Sleep(1 * time.Millisecond)
-			_, err = ingestor.Ingest(postUpgradeData2, &prompb.WriteRequest{})
-			if err != nil {
-				t.Fatalf("ingest error: %v", err)
-			}
-			// we don't have any good way to ensure metric creation completes
-			// right now, so just sleep for a little bit
-			time.Sleep(1 * time.Millisecond)
-			ingestor.Close()
-			pristineDbInfo = getDbInfo(t, container, tmpDir, db)
-		})
-
-	if !reflect.DeepEqual(upgradedDbInfo, pristineDbInfo) {
-		t.Errorf("upgrade differences")
-		if !reflect.DeepEqual(upgradedDbInfo.schemaNames, pristineDbInfo.schemaNames) {
-			t.Logf("different schemas\nexpected:\n\t%v\ngot:\n\t%v", pristineDbInfo.schemaNames, upgradedDbInfo.schemaNames)
-		}
-		pristineSchemas := make(map[string]schemaInfo)
-		for _, schema := range pristineDbInfo.schemas {
-			pristineSchemas[schema.name] = schema
-		}
-		for _, schema := range upgradedDbInfo.schemas {
-			expected, ok := pristineSchemas[schema.name]
-			if !ok {
-				t.Logf("extra schema %s", schema.name)
-				continue
-			}
-			tablesDiff := schema.tables != expected.tables
-			functionsDiff := schema.functions != expected.functions
-			privilegesDiff := schema.privileges != expected.privileges
-			indicesDiff := schema.indices != expected.indices
-			triggersDiff := schema.triggers != expected.triggers
-			dataDiff := !reflect.DeepEqual(schema.data, expected.data)
-			if tablesDiff || functionsDiff || privilegesDiff || indicesDiff || triggersDiff || dataDiff {
-				t.Logf("differences in schema: %s", schema.name)
-			}
-			if tablesDiff {
-				t.Logf("tables\nexpected:\n\t%s\ngot:\n\t%s", expected.tables, schema.tables)
-			}
-			if functionsDiff {
-				t.Logf("functions\nexpected:\n\t%s\ngot:\n\t%s", expected.functions, schema.functions)
-			}
-			if privilegesDiff {
-				t.Logf("privileges\nexpected:\n\t%s\ngot:\n\t%s", expected.privileges, schema.privileges)
-			}
-			if indicesDiff {
-				t.Logf("indices\nexpected:\n\t%s\ngot:\n\t%s", expected.indices, schema.indices)
-			}
-			if triggersDiff {
-				t.Logf("triggers\nexpected:\n\t%s\ngot:\n\t%s", expected.triggers, schema.triggers)
-			}
-			if dataDiff {
-				t.Logf("data\nexpected:\n\t%+v\ngot:\n\t%+v", expected.data, schema.data)
-			}
-		}
 	}
 }
 
@@ -329,6 +352,44 @@ func toPreviousVersion(version *semver.Version) {
 	}
 
 	version.Major -= 1
+}
+
+func tsWriteReq(ts []prompb.TimeSeries) prompb.WriteRequest {
+	return prompb.WriteRequest{
+		Timeseries: ts,
+	}
+}
+
+func writeReqToHttp(r prompb.WriteRequest) *bytes.Reader {
+	data, _ := proto.Marshal(&r)
+	body := snappy.Encode(nil, data)
+	return bytes.NewReader(body)
+}
+
+func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.TimeSeries) {
+	for _, data := range data {
+		body := writeReqToHttp(tsWriteReq(copyMetrics(data)))
+		resp, err := client.Post(url, "application/x-www-form-urlencoded; param=value", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != 200 {
+			t.Fatal("non-ok status:", resp.Status)
+		}
+
+		_, _ = io.Copy(ioutil.Discard, resp.Body)
+		resp.Body.Close()
+	}
+}
+
+func doIngest(t *testing.T, ingestor *DBIngestor, data ...[]prompb.TimeSeries) {
+	for _, data := range data {
+		_, err := ingestor.Ingest(copyMetrics(data), &prompb.WriteRequest{})
+		if err != nil {
+			t.Fatalf("ingest error: %v", err)
+		}
+		_ = ingestor.CompleteMetricCreation()
+	}
 }
 
 var schemas []string = []string{
