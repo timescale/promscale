@@ -241,4 +241,20 @@ Therefore you need to provide the entire json object if using the
 function above. For partial matches see the Containment
 section above.
 
+## Data retention
+
+This default data retention period can be changed by using the SQL function
+`set_default_retention_period(new interval)`.  For example,
+```
+SELECT set_default_retention_period(180 * INTERVAL '1 day')
+```
+
+You can also override this default on a per-metric basis using
+the SQL function `set_metric_retention_period(metric_name, interval)`
+and undo this override with `reset_metric_retention_period(metric_name)`.
+
+Note: The default applies to all metrics that do not have override,
+no matter whether they were created before or after the call to
+`set_default_retention_period`.
+
 [design-doc]: https://tsdb.co/prom-design-doc
