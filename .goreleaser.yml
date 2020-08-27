@@ -28,6 +28,7 @@ archives:
     amd64: x86_64
 checksum:
   name_template: 'checksums.txt'
+format: binary
 snapshot:
   name_template: "{{ .Tag }}-next"
 changelog:
