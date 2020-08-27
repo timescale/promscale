@@ -20,7 +20,8 @@ scoop:
     email: support@timescale.com
 
 archives:
-- replacements:
+- format: binary
+  replacements:
     darwin: Darwin
     linux: Linux
     windows: Windows
@@ -28,7 +29,6 @@ archives:
     amd64: x86_64
 checksum:
   name_template: 'checksums.txt'
-format: binary
 snapshot:
   name_template: "{{ .Tag }}-next"
 changelog:
