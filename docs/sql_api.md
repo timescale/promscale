@@ -22,7 +22,7 @@ ORDER BY 1, 2, 4;
 
  Name | Arguments | Return type | Description
  --- | --- | --- | ---
- drop_chunks                   |                                                          |                  | drop_chunks drops data according to the data retention policy. This procedure should be run regularly in a cron job.
+ execute_maintenance           |                                                          |                  | Execute maintenance tasks like dropping data according to retention policy. This procedure should be run regularly in a cron job.
  eq                            | labels label_array, json_labels jsonb                    | boolean          | eq returns true if the labels and jsonb are equal, ignoring the metric name.
  eq                            | labels1 label_array, labels2 label_array                 | boolean          | eq returns true if two label arrays are equal, ignoring the metric name.
  eq                            | labels1 label_array, matchers matcher_positive           | boolean          | eq returns true if the label array and matchers are equal, there should not be a matcher for the metric name.

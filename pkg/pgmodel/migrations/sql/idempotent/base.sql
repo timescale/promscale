@@ -963,8 +963,7 @@ $$
 LANGUAGE SQL STABLE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk() TO prom_reader;
 
---public procedure to be called by cron
-CREATE OR REPLACE PROCEDURE SCHEMA_PROM.drop_chunks()
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_data_retention_policy()
 AS $$
 DECLARE
     r RECORD;
@@ -995,8 +994,20 @@ BEGIN
     END LOOP;
 END;
 $$ LANGUAGE PLPGSQL;
-COMMENT ON PROCEDURE SCHEMA_PROM.drop_chunks()
-IS 'drops data according to the data retention policy. This procedure should be run regularly in a cron job';
+COMMENT ON PROCEDURE SCHEMA_CATALOG.execute_data_retention_policy()
+IS 'drops old data according to the data retention policy. This procedure should be run regularly in a cron job';
+
+--public procedure to be called by cron
+--right now just does data retention but name is generic so that
+--we can add stuff later without needing people to change their cron scripts
+CREATE OR REPLACE PROCEDURE SCHEMA_PROM.execute_maintenance()
+AS $$
+BEGIN
+    CALL SCHEMA_CATALOG.execute_data_retention_policy();
+END;
+$$ LANGUAGE PLPGSQL;
+COMMENT ON PROCEDURE SCHEMA_PROM.execute_maintenance()
+IS 'Execute maintenance tasks like dropping data according to retention policy. This procedure should be run regularly in a cron job';
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_stale_marker(value double precision)
 RETURNS BOOLEAN
