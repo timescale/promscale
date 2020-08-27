@@ -46,7 +46,7 @@ func ParseFlags(cfg *Config) *Config {
 	flag.StringVar(&cfg.user, "db-user", "postgres", "The TimescaleDB user")
 	flag.StringVar(&cfg.password, "db-password", "", "The TimescaleDB password")
 	flag.StringVar(&cfg.database, "db-name", "timescale", "The TimescaleDB database")
-	flag.StringVar(&cfg.sslMode, "db-ssl-mode", "disable", "The TimescaleDB connection ssl mode")
+	flag.StringVar(&cfg.sslMode, "db-ssl-mode", "require", "The TimescaleDB connection ssl mode")
 	flag.IntVar(&cfg.dbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
 	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
 	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
