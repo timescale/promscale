@@ -76,7 +76,6 @@ func testRequestConcurrent(requestCases []requestCase, handler http.Handler, cli
 			go func() {
 				defer wg.Done()
 
-				t.Log(log)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 				tsResp := rec.Result()
