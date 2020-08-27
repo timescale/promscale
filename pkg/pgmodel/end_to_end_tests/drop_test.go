@@ -157,7 +157,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected there to be a chunk")
 		}
 
-		_, err = db.Exec(context.Background(), "CALL prom_api.drop_chunks()")
+		_, err = db.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected the chunk to be dropped")
 		}
 		//noop works fine
-		_, err = db.Exec(context.Background(), "CALL prom_api.drop_chunks()")
+		_, err = db.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
 		if err != nil {
 			t.Fatal(err)
 		}
