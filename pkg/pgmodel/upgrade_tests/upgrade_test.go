@@ -414,6 +414,7 @@ var schemas []string = []string{
 }
 
 var ourSchemas []string = []string{
+	"public",
 	"_prom_catalog",
 	"_prom_ext",
 	"prom_api",
