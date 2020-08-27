@@ -84,11 +84,11 @@ var MigrationFiles = func() http.FileSystem {
 			modTime: time.Time{},
 			content: []byte(""),
 		},
-		"/versions/dev/0.1.0-beta.3.dev": &vfsgen۰DirInfo{
-			name:    "0.1.0-beta.3.dev",
+		"/versions/dev/0.1.0-beta.2.dev": &vfsgen۰DirInfo{
+			name:    "0.1.0-beta.2.dev",
 			modTime: time.Time{},
 		},
-		"/versions/dev/0.1.0-beta.3.dev/1-drop_procedure_named_drop_chunks.sql": &vfsgen۰FileInfo{
+		"/versions/dev/0.1.0-beta.2.dev/1-drop_procedure_named_drop_chunks.sql": &vfsgen۰FileInfo{
 			name:    "1-drop_procedure_named_drop_chunks.sql",
 			modTime: time.Time{},
 			content: []byte("\x44\x52\x4f\x50\x20\x50\x52\x4f\x43\x45\x44\x55\x52\x45\x20\x49\x46\x20\x45\x58\x49\x53\x54\x53\x20\x53\x43\x48\x45\x4d\x41\x5f\x50\x52\x4f\x4d\x2e\x64\x72\x6f\x70\x5f\x63\x68\x75\x6e\x6b\x73\x28\x29\x3b\x0a"),
@@ -114,10 +114,10 @@ var MigrationFiles = func() http.FileSystem {
 	}
 	fs["/versions/dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/.gitignore"].(os.FileInfo),
-		fs["/versions/dev/0.1.0-beta.3.dev"].(os.FileInfo),
+		fs["/versions/dev/0.1.0-beta.2.dev"].(os.FileInfo),
 	}
-	fs["/versions/dev/0.1.0-beta.3.dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
-		fs["/versions/dev/0.1.0-beta.3.dev/1-drop_procedure_named_drop_chunks.sql"].(os.FileInfo),
+	fs["/versions/dev/0.1.0-beta.2.dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
+		fs["/versions/dev/0.1.0-beta.2.dev/1-drop_procedure_named_drop_chunks.sql"].(os.FileInfo),
 	}
 
 	return fs
