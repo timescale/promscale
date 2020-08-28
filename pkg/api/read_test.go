@@ -2,11 +2,14 @@ package api
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
-	"net/http"
-	"testing"
 )
 
 func TestRead(t *testing.T) {
@@ -24,6 +27,11 @@ func TestRead(t *testing.T) {
 		},
 		{
 			name:         "malformed compression data",
+			responseCode: http.StatusBadRequest,
+			requestBody:  "123",
+		},
+		{
+			name:         "bad header",
 			responseCode: http.StatusBadRequest,
 			requestBody:  "123",
 		},
@@ -68,16 +76,18 @@ func TestRead(t *testing.T) {
 			receivedQueriesCounter := &mockMetric{}
 			queryDurationHist := &mockMetric{}
 			failedQueriesCounter := &mockMetric{}
+			invalidReadReqs := &mockMetric{}
 			metrics := &Metrics{
 				QueryBatchDuration: queryDurationHist,
 				FailedQueries:      failedQueriesCounter,
 				ReceivedQueries:    receivedQueriesCounter,
+				InvalidReadReqs:    invalidReadReqs,
 			}
 			handler := Read(mockReader, metrics)
 
-			test := GenerateHandleTester(t, handler)
+			test := GenerateReadHandleTester(t, handler, c.name == "bad header")
 
-			w := test("GET", getReader(c.requestBody))
+			w := test("POST", getReader(c.requestBody))
 
 			if w.Code != c.responseCode {
 				t.Errorf("Unexpected HTTP status code received: got %d wanted %d", w.Code, c.responseCode)
@@ -110,4 +120,22 @@ type mockReader struct {
 func (m *mockReader) Read(r *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	m.request = r
 	return m.response, m.err
+}
+
+func GenerateReadHandleTester(t *testing.T, handleFunc http.Handler, badHeader bool) HandleTester {
+	return func(method string, body io.Reader) *httptest.ResponseRecorder {
+		req, err := http.NewRequest(method, "", body)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		if !badHeader {
+			req.Header.Add("Content-Encoding", "snappy")
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			req.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
+		}
+
+		w := httptest.NewRecorder()
+		handleFunc.ServeHTTP(w, req)
+		return w
+	}
 }

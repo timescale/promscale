@@ -2,6 +2,14 @@ package api
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"testing/iotest"
+	"time"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
@@ -10,13 +18,6 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 	"github.com/timescale/timescale-prometheus/pkg/util"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"testing/iotest"
-	"time"
 )
 
 func TestWrite(t *testing.T) {
@@ -44,6 +45,12 @@ func TestWrite(t *testing.T) {
 		{
 			name:         "malformed write request",
 			isLeader:     true,
+			responseCode: http.StatusBadRequest,
+			requestBody:  string(snappy.Encode(nil, []byte("test"))),
+		},
+		{
+			name:         "bad header",
+			isLeader:     false,
 			responseCode: http.StatusBadRequest,
 			requestBody:  string(snappy.Encode(nil, []byte("test"))),
 		},
@@ -93,6 +100,7 @@ func TestWrite(t *testing.T) {
 			failedSamplesGauge := &mockMetric{}
 			sentSamplesGauge := &mockMetric{}
 			sendBatchHistogram := &mockMetric{}
+			invalidWriteReqs := &mockMetric{}
 			mock := &mockInserter{
 				result: c.inserterResponse,
 				err:    c.inserterErr,
@@ -104,12 +112,13 @@ func TestWrite(t *testing.T) {
 				FailedSamples:     failedSamplesGauge,
 				SentSamples:       sentSamplesGauge,
 				SentBatchDuration: sendBatchHistogram,
+				InvalidWriteReqs:  invalidWriteReqs,
 				WriteThroughput:   util.NewThroughputCalc(time.Second),
 			})
 
-			test := GenerateHandleTester(t, handler)
+			test := GenerateWriteHandleTester(t, handler, c.name == "bad header")
 
-			w := test("GET", getReader(c.requestBody))
+			w := test("POST", getReader(c.requestBody))
 
 			if w.Code != c.responseCode {
 				t.Errorf("Unexpected HTTP status code received: got %d wanted %d", w.Code, c.responseCode)
@@ -144,16 +153,17 @@ func writeRequestToString(r *prompb.WriteRequest) string {
 
 type HandleTester func(method string, body io.Reader) *httptest.ResponseRecorder
 
-func GenerateHandleTester(t *testing.T, handleFunc http.Handler) HandleTester {
+func GenerateWriteHandleTester(t *testing.T, handleFunc http.Handler, badHeaders bool) HandleTester {
 	return func(method string, body io.Reader) *httptest.ResponseRecorder {
 		req, err := http.NewRequest(method, "", body)
 		if err != nil {
 			t.Errorf("%v", err)
 		}
-		req.Header.Set(
-			"Content-Type",
-			"application/x-www-form-urlencoded; param=value",
-		)
+		if !badHeaders {
+			req.Header.Add("Content-Encoding", "snappy")
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+		}
 		w := httptest.NewRecorder()
 		handleFunc.ServeHTTP(w, req)
 		return w

@@ -94,6 +94,20 @@ var (
 			Help:      "Total number of queries which failed on send to remote storage.",
 		},
 	)
+	invalidReadReqs = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Name:      "invalid_read_requests",
+			Help:      "Total number of remote read requests with invalid metadata.",
+		},
+	)
+	invalidWriteReqs = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Name:      "invalid_write_requests",
+			Help:      "Total number of remote write requests with invalid metadata.",
+		},
+	)
 	sentBatchDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
@@ -140,6 +154,8 @@ func init() {
 	prometheus.MustRegister(sentSamples)
 	prometheus.MustRegister(failedSamples)
 	prometheus.MustRegister(failedQueries)
+	prometheus.MustRegister(invalidReadReqs)
+	prometheus.MustRegister(invalidWriteReqs)
 	prometheus.MustRegister(sentBatchDuration)
 	prometheus.MustRegister(queryBatchDuration)
 	prometheus.MustRegister(httpRequestDuration)
@@ -248,6 +264,8 @@ func main() {
 		ReceivedQueries:     receivedQueries,
 		CachedMetricNames:   cachedMetricNames,
 		CachedLabels:        cachedLabels,
+		InvalidReadReqs:     invalidReadReqs,
+		InvalidWriteReqs:    invalidWriteReqs,
 	}
 	writeHandler := timeHandler(httpRequestDuration, "write", api.Write(client, elector, &promMetrics))
 	router.Post("/write", writeHandler)

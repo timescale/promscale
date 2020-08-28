@@ -2,11 +2,14 @@ package api
 
 import (
 	"fmt"
-	"github.com/timescale/timescale-prometheus/pkg/log"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/timescale/timescale-prometheus/pkg/log"
 )
 
 var (
@@ -50,7 +53,7 @@ func TestHealth(t *testing.T) {
 
 			healthHandle := Health(mock)
 
-			test := GenerateHandleTester(t, healthHandle)
+			test := GenerateHealthHandleTester(t, healthHandle)
 			w := test("GET", strings.NewReader(""))
 
 			if w.Code != c.httpStatus {
@@ -70,5 +73,21 @@ func TestHealth(t *testing.T) {
 			}
 
 		})
+	}
+}
+
+func GenerateHealthHandleTester(t *testing.T, handleFunc http.Handler) HandleTester {
+	return func(method string, body io.Reader) *httptest.ResponseRecorder {
+		req, err := http.NewRequest(method, "", body)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		req.Header.Set(
+			"Content-Type",
+			"application/x-www-form-urlencoded; param=value",
+		)
+		w := httptest.NewRecorder()
+		handleFunc.ServeHTTP(w, req)
+		return w
 	}
 }

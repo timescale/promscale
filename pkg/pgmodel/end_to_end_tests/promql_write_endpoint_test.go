@@ -94,11 +94,18 @@ func getHTTPWriteRequest(protoRequest *prompb.WriteRequest) (*http.Request, erro
 	if err != nil {
 		return nil, err
 	}
-	return http.NewRequest(
+	req, err := http.NewRequest(
 		"POST",
 		u.String(),
 		strings.NewReader(body),
 	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Content-Encoding", "snappy")
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+	return req, nil
 }
 
 func sendWriteRequest(t testing.TB, router *route.Router, ts []prompb.TimeSeries) {
@@ -183,6 +190,7 @@ func getWriteRouter(t testing.TB, db *pgxpool.Pool) *route.Router {
 		SentSamples:       prometheus.NewCounter(prometheus.CounterOpts{}),
 		SentBatchDuration: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteThroughput:   util.NewThroughputCalc(time.Second),
+		InvalidWriteReqs:  prometheus.NewCounter(prometheus.CounterOpts{}),
 	})
 
 	router := route.New()
