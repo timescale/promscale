@@ -20,4 +20,6 @@ type Metrics struct {
 	QueryBatchDuration  prometheus.Histogram
 	CachedMetricNames   prometheus.CounterFunc
 	CachedLabels        prometheus.CounterFunc
+	InvalidReadReqs     prometheus.Counter
+	InvalidWriteReqs    prometheus.Counter
 }
