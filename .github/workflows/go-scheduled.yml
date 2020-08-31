@@ -35,7 +35,13 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: go test -v -race -extended-test ./...
+      run: go test -v -race ./...
+
+    - name: Test W/O Extension
+      run: go test -v -race ./pkg/pgmodel/end_to_end_tests/ -use-extension=false
+
+    - name: Test extended dataset
+      run: go test -v -race ./pkg/pgmodel/end_to_end_tests/ -extended-test
 
     - name: Generated
       run: |
