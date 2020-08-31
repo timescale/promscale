@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
@@ -48,6 +49,19 @@ func TestMigrateTwice(t *testing.T) {
 		performMigrate(t, connectURL)
 		if *useExtension && !pgmodel.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
+		}
+
+		var versionString string
+		err := db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='timescale_prometheus_version'").Scan(&versionString)
+		if err != nil {
+			if err == pgx.ErrNoRows && !*useExtension {
+				//Without an extension, metadata will not be written if running as non-superuser
+				return
+			}
+			t.Fatal(err)
+		}
+		if versionString != version.Version {
+			t.Fatalf("wrong version, expected %v got %v", version.Version, versionString)
 		}
 	})
 }
