@@ -46,7 +46,7 @@ spec:
             - name: TS_PROM_DB_NAME
               value: {{ .Values.connection.dbName }}
             - name: TS_PROM_DB_SSL_MODE
-              value: require
+              value: {{ .Values.connection.sslMode }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
       {{ toYaml . | indent 2 }}
