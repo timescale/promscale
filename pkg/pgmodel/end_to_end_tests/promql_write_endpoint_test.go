@@ -111,7 +111,8 @@ func getHTTPWriteRequest(protoRequest *prompb.WriteRequest) (*http.Request, erro
 func sendWriteRequest(t testing.TB, router *route.Router, ts []prompb.TimeSeries) {
 	req, err := getHTTPWriteRequest(&prompb.WriteRequest{Timeseries: ts})
 	if err != nil {
-		t.Fatalf("unable to create PromQL label names request: %v", err)
+		t.Errorf("unable to create PromQL label names request: %v", err)
+		return
 	}
 
 	rec := httptest.NewRecorder()
@@ -119,12 +120,14 @@ func sendWriteRequest(t testing.TB, router *route.Router, ts []prompb.TimeSeries
 
 	tsResp := rec.Result()
 	if rec.Code != 200 {
-		t.Fatal(rec.Code)
+		t.Error(rec.Code)
+		return
 	}
 
 	_, err = ioutil.ReadAll(tsResp.Body)
 	if err != nil {
-		t.Fatalf("unexpected error returned when reading connector response body:\n%s\n", err.Error())
+		t.Errorf("unexpected error returned when reading connector response body:\n%s\n", err.Error())
+		return
 	}
 	defer tsResp.Body.Close()
 }
@@ -145,14 +148,16 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 			values = append(values, label.Value)
 		}
 		if name == "" {
-			t.Fatal("No ts series metric name found")
+			t.Error("No ts series metric name found")
+			return
 		}
 		for sampleIdx := range ts.Samples {
 			sample := ts.Samples[sampleIdx]
 			rows, err := db.Query(context.Background(), fmt.Sprintf("SELECT value FROM prom_data.%s WHERE time = $1 and series_id = (SELECT series_id FROM _prom_catalog.get_or_create_series_id_for_kv_array($2, $3, $4))",
 				name), model.Time(sample.Timestamp).Time(), name, names, values)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			defer rows.Close()
 			count := 0
@@ -160,18 +165,22 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 				var val *float64
 				err := rows.Scan(&val)
 				if err != nil {
-					t.Fatal(err)
+					t.Error(err)
+					return
 				}
 				if val == nil {
-					t.Fatal("NULL value")
+					t.Error("NULL value")
+					return
 				}
 				if *val != sample.Value {
 					t.Errorf("Unexpected value: got %v, unexpected %v", *val, sample.Value)
+					return
 				}
 				count++
 			}
 			if count != 1 {
 				t.Errorf("Unexpected count: %d", count)
+				return
 			}
 		}
 	}
@@ -225,11 +234,17 @@ func sendConcurrentWrites(t testing.TB, db *pgxpool.Pool, queues int, metricGrou
 					ts := dg.generateTimeseries()
 					sendWriteRequest(t, router, ts)
 					if duplicates {
+						if t.Failed() {
+							return
+						}
 						sendWriteRequest(t, router, ts)
 					}
 					tss = append(tss, ts)
 				}
 				for i := range tss {
+					if t.Failed() {
+						return
+					}
 					verifyTimeseries(t, db, tss[i])
 				}
 			}()
