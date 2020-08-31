@@ -70,6 +70,7 @@ helm install --name my-release -f myvalues.yaml .
 | `connection.host.nameTemplate`    | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
 | `connection.port`                 | Port the db listens to                      | `5432`                             |
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
+| `connection.sslMode`              | SSL mode for connection                     | `require`                          |
 | `service.port`                    | Port the connector pods will accept connections on | `9201`                      |
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |

@@ -21,6 +21,7 @@ connection:
     #   nameTemplate: {{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local
     nameTemplate: "{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local"
   port: 5432
+  sslMode: require
   # database name in which to store the metrics
   # must be created before start
   dbName: timescale
