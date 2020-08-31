@@ -11,10 +11,11 @@ services:
     ports:
     - 9090:9090/tcp
     volumes:
-    - ./sample-docker-prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./sample-docker-prometheus:/etc/prometheus/prometheus:ro
   timescale-prometheus-connector:
     build:
       context: .
+    command: -db-ssl-mode=allow
     depends_on:
     - db
     - prometheus

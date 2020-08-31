@@ -10,11 +10,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	pprof "net/http/pprof"
 	"os"
 	"regexp"
+	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/common/route"
@@ -161,6 +164,14 @@ func main() {
 	}
 	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
+
+	err = waitForDb(cfg)
+	if err != nil {
+		errStr := fmt.Sprintf("Aborting startup due to: %s", util.MaskPassword(err.Error()))
+		log.Error("msg", errStr)
+		os.Exit(1)
+	}
+	log.Info("msg", "connected to DB")
 
 	elector, err = initElector(cfg)
 
@@ -327,6 +338,54 @@ func parseFlags() (*config, error) {
 	flag.Parse()
 
 	return cfg, nil
+}
+
+var errTimedOut = fmt.Errorf("timed out waiting to connect to DB")
+
+func waitForDb(cfg *config) error {
+	maxTimeout := 60 * time.Second
+	addr := fmt.Sprintf("%s:%d", cfg.pgmodelCfg.Host, cfg.pgmodelCfg.Port)
+
+	tryConnect := func() (done bool, err error) {
+		conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
+		if err == nil {
+			conn.Close()
+			return true, nil
+		} else if err == syscall.ECONNREFUSED {
+			log.Info("msg", "connection to DB failed", "err", err.Error())
+			return false, nil
+		} else if e, ok := err.(net.Error); ok && e.Temporary() || e.Timeout() {
+			log.Info("msg", "connection to DB failed", "err", err.Error())
+			return false, nil
+		} else if strings.Contains(err.Error(), "connection refused") { //unfortunately the only protable to detect this
+			log.Info("msg", "connection to DB failed", "err", err.Error())
+			return false, nil
+		}
+		log.Info("msg", "connection to DB failed", "err", err.Error())
+		return true, err
+	}
+
+	done, err := tryConnect()
+	if err != nil {
+		return err
+	} else if done {
+		return nil
+	}
+
+	start := time.Now()
+	for {
+		done, err := tryConnect()
+		if err != nil {
+			return err
+		} else if done {
+			return nil
+		}
+		if time.Since(start) > maxTimeout {
+			return errTimedOut
+		}
+		log.Info("msg", "retrying DB connection")
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func initElector(cfg *config) (*util.Elector, error) {

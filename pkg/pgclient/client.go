@@ -23,8 +23,8 @@ import (
 
 // Config for the database
 type Config struct {
-	host                    string
-	port                    int
+	Host                    string
+	Port                    int
 	user                    string
 	password                string
 	database                string
@@ -41,8 +41,8 @@ type Config struct {
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
 func ParseFlags(cfg *Config) *Config {
-	flag.StringVar(&cfg.host, "db-host", "localhost", "The TimescaleDB host")
-	flag.IntVar(&cfg.port, "db-port", 5432, "The TimescaleDB port")
+	flag.StringVar(&cfg.Host, "db-host", "localhost", "The TimescaleDB host")
+	flag.IntVar(&cfg.Port, "db-port", 5432, "The TimescaleDB port")
 	flag.StringVar(&cfg.user, "db-user", "postgres", "The TimescaleDB user")
 	flag.StringVar(&cfg.password, "db-password", "", "The TimescaleDB password")
 	flag.StringVar(&cfg.database, "db-name", "timescale", "The TimescaleDB database")
@@ -115,7 +115,7 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 // GetConnectionStr returns a Postgres connection string
 func (cfg *Config) GetConnectionStr() string {
 	return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
-		cfg.host, cfg.port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
+		cfg.Host, cfg.Port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
 }
 
 func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err error) {
