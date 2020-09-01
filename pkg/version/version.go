@@ -1,5 +1,7 @@
 package version
 
+import "github.com/blang/semver/v4"
+
 var (
 	// Rules for Versioning:
 	// A release version cannot contain `dev` in its pre-release tag.
@@ -27,4 +29,8 @@ var (
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 	Version    = "0.1.0-beta.3.dev.0"
 	CommitHash = ""
+
+	//ExtVersionRangeString is a range of required timescale_prometheus_extra extension versions
+	ExtVersionRangeString = "=0.1.x"
+	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 )
