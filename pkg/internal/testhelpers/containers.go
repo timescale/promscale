@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/docker/go-connections/nat"
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -125,10 +126,10 @@ func StartPGContainer(ctx context.Context, withExtension bool, testDataDir strin
 	} else {
 		image = "timescale/timescaledb:latest-pg12"
 	}
-	return StartPGContainerWithImage(ctx, image, testDataDir, printLogs)
+	return StartPGContainerWithImage(ctx, image, testDataDir, "", printLogs)
 }
 
-func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, printLogs bool) (testcontainers.Container, error) {
+func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, dataDir string, printLogs bool) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
 
 	req := testcontainers.ContainerRequest{
@@ -143,10 +144,12 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		SkipReaper: false, /* switch to true not to kill docker container */
 	}
 
+	req.BindMounts = make(map[string]string)
 	if testDataDir != "" {
-		req.BindMounts = map[string]string{
-			testDataDir: "/testdata",
-		}
+		req.BindMounts[testDataDir] = "/testdata"
+	}
+	if dataDir != "" {
+		req.BindMounts[dataDir] = "/var/lib/postgresql/data"
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -191,7 +194,11 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 
 	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE USER %s WITH NOSUPERUSER CREATEROLE PASSWORD 'password'", promUser))
 	if err != nil {
-		return nil, err
+		//ignore duplicate errors
+		pgErr, ok := err.(*pgconn.PgError)
+		if !ok || pgErr.Code != "42710" {
+			return nil, err
+		}
 	}
 
 	err = db.Close(context.Background())
@@ -295,13 +302,11 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 }
 
 func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool) {
-	defer func() {
-		if printLogs {
-			_ = container.StopLogProducer()
-		}
+	if printLogs {
+		_ = container.StopLogProducer()
+	}
 
-		_ = container.Terminate(ctx)
-	}()
+	_ = container.Terminate(ctx)
 }
 
 // TempDir returns a temp directory for tests
