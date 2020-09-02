@@ -42,8 +42,11 @@ func TestDeriv(t *testing.T) {
 	a := storage.Appender()
 
 	metric := labels.FromStrings("__name__", "foo")
-	a.Add(metric, 1493712816939, 1.0)
-	a.Add(metric, 1493712846939, 1.0)
+	_, err := a.Add(metric, 1493712816939, 1.0)
+	testutil.Ok(t, err)
+
+	_, err = a.Add(metric, 1493712846939, 1.0)
+	testutil.Ok(t, err)
 
 	testutil.Ok(t, a.Commit())
 
@@ -67,6 +70,6 @@ func TestFunctionList(t *testing.T) {
 
 	for i := range parser.Functions {
 		_, ok := FunctionCalls[i]
-		testutil.Assert(t, ok, (fmt.Sprintf("function %s exists in parser package, but not in promql package", i)))
+		testutil.Assert(t, ok, fmt.Sprintf("function %s exists in parser package, but not in promql package", i))
 	}
 }

@@ -1,3 +1,4 @@
+//nolint:govet
 package pgmodel
 
 import (
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+//nolint
 type mockPgxRows struct {
 	closeCalled  bool
 	firstRowRead bool
@@ -99,6 +101,7 @@ func (m *mockPgxRows) RawValues() [][]byte {
 	panic("not implemented")
 }
 
+//nolint
 func generateArrayHeader(numDim, containsNull, elemOID, arrayLength uint32, addData []byte) []byte {
 	result := make([]byte, 20)
 
@@ -380,6 +383,7 @@ func (m mapQuerier) getLabelsForIds(ids []int64) (labels.Labels, error) {
 	return lls, nil
 }
 
+//nolint
 func genRows(count int) [][][]byte {
 	result := make([][][]byte, count)
 

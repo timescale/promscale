@@ -23,6 +23,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/util/testutil"
 )
 
 func BenchmarkRangeQuery(b *testing.B) {
@@ -249,7 +250,8 @@ func BenchmarkParser(b *testing.B) {
 		b.Run(c, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				parser.ParseExpr(c)
+				_, err := parser.ParseExpr(c)
+				testutil.Ok(b, err)
 			}
 		})
 	}
@@ -258,7 +260,8 @@ func BenchmarkParser(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				parser.ParseExpr(c)
+				_, err := parser.ParseExpr(c)
+				testutil.NotOk(b, err)
 			}
 		})
 	}
