@@ -55,16 +55,9 @@ target/release/libtimescale_prometheus_extra_rs.a: Cargo.toml Cargo.lock $(RUST_
 
 clean:
 	rm -f $(OBJS) $(patsubst %.o,%.bc, $(OBJS))
-	rm timescale_prometheus_extra.so
+	rm -f timescale_prometheus_extra.so
 	cargo clean
 
-install:
-
-package: clean
-	@mkdir -p package/lib
-	@mkdir -p package/extension
-	$(install_sh) -m 755 $(EXTENSION).so 'package/lib/$(EXTENSION).so'
-	$(install_sh) -m 644 $(EXTENSION).control 'package/extension/'
-	$(install_sh) -m 644 $(SQL_FILES) 'package/extension/'
+install: $(SQL_FILES)
 
 .PHONY: all docker-image docker-push rust
