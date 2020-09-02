@@ -257,7 +257,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 	// Then run preUpgrade and shut everything down.
 	func() {
 		fmt.Println("PrevImage", prevDBImage)
-		dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, prevDBImage, tmpDir, dataDir, *printLogs)
+		dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, prevDBImage, tmpDir, dataDir, *printLogs, *useExtension)
 		if err != nil {
 			t.Fatal("Error setting up container", err)
 		}
@@ -294,7 +294,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 
 	//Start a new connector and migrate.
 	//Then run postUpgrade
-	dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs)
+	dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, *useExtension)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}
@@ -331,7 +331,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 	}
 
 	func() {
-		container, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs)
+		container, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, *useExtension)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
@@ -351,7 +351,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 			preRestart(container, connectURL, db, tmpDir)
 		})
 	}()
-	container, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs)
+	container, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, *useExtension)
 	if err != nil {
 		fmt.Println("Error setting up container", err)
 		os.Exit(1)

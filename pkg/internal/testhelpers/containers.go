@@ -126,10 +126,10 @@ func StartPGContainer(ctx context.Context, withExtension bool, testDataDir strin
 	} else {
 		image = "timescale/timescaledb:latest-pg12"
 	}
-	return StartPGContainerWithImage(ctx, image, testDataDir, "", printLogs)
+	return StartPGContainerWithImage(ctx, image, testDataDir, "", printLogs, withExtension)
 }
 
-func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, dataDir string, printLogs bool) (testcontainers.Container, error) {
+func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, dataDir string, printLogs bool, withExtension bool) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
 
 	req := testcontainers.ContainerRequest{
@@ -142,6 +142,14 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 			"POSTGRES_PASSWORD": "password",
 		},
 		SkipReaper: false, /* switch to true not to kill docker container */
+	}
+
+	if withExtension {
+		req.Cmd = []string{
+			"-c", "shared_preload_libraries=timescaledb",
+			"-c", "local_preload_libraries=pgextwlist",
+			"-c", "extwlist.extensions=timescale_prometheus_extra,timescaledb",
+		}
 	}
 
 	req.BindMounts = make(map[string]string)
