@@ -24,6 +24,7 @@ RUN set -ex \
     && cd /pgextwlist \
     && make \
     && make install \
+    && mkdir `pg_config --pkglibdir`/plugins \
     && cp /pgextwlist/pgextwlist.so `pg_config --pkglibdir`/plugins \
     && rm -rf /pgextwlist
 
@@ -39,5 +40,3 @@ RUN set -ex \
     \
     && apk del .build-deps \
     && rm -rf /build
-
-COPY 003-enable-pgextwlist.sh /docker-entrypoint-initdb.d/
