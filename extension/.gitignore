@@ -1,5 +1,4 @@
 .deps
 src/*.o
-sql/timescale_prometheus_extra--*.sql
 timescale_prometheus_extra.so
 /target

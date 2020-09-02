@@ -6,9 +6,8 @@ PG_CONFIG?=pg_config
 EXTENSION=timescale_prometheus_extra
 
 EXT_VERSION = $(shell cat timescale_prometheus_extra.control | grep 'default' | sed "s/^.*'\(.*\)'$\/\1/g")
-EXT_SQL_FILE = sql/$(EXTENSION)--$(EXT_VERSION).sql
 
-DATA = $(EXT_SQL_FILE)
+DATA = $(SQL_FILES)
 MODULE_big = $(EXTENSION)
 
 OBJS = $(SRCS:.c=.o)
@@ -38,20 +37,14 @@ REGRESS_OPTS = \
 
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 
-EXTRA_CLEAN = $(EXT_SQL_FILE) $(DEPS)
+EXTRA_CLEAN = $(DEPS)
 
 include $(PGXS)
 override CFLAGS += -DINCLUDE_PACKAGE_SUPPORT=0 -MMD
 override pg_regress_clean_files = test/results/ test/regression.diffs test/regression.out tmp_check/ log/
 -include $(DEPS)
 
-all: $(EXT_SQL_FILE) target/release/libtimescale_prometheus_extra_rs.a
-
-$(EXT_SQL_FILE): $(SQL_FILES)
-	@cat $^ > $@
-
-check-sql-files:
-	@echo $(SQL_FILES)
+all: target/release/libtimescale_prometheus_extra_rs.a
 
 rust: target/release/libtimescale_prometheus_extra_rs.a
 
@@ -65,13 +58,13 @@ clean:
 	rm timescale_prometheus_extra.so
 	cargo clean
 
-install: $(EXT_SQL_FILE)
+install:
 
-package: clean $(EXT_SQL_FILE)
+package: clean
 	@mkdir -p package/lib
 	@mkdir -p package/extension
 	$(install_sh) -m 755 $(EXTENSION).so 'package/lib/$(EXTENSION).so'
 	$(install_sh) -m 644 $(EXTENSION).control 'package/extension/'
-	$(install_sh) -m 644 $(EXT_SQL_FILE) 'package/extension/'
+	$(install_sh) -m 644 $(SQL_FILES) 'package/extension/'
 
-.PHONY: check-sql-files all docker-image docker-push rust
+.PHONY: all docker-image docker-push rust
