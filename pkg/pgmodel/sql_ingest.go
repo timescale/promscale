@@ -215,6 +215,7 @@ func (p *pgxInserter) insertMetricData(metric string, data []samplesInfo, finish
 	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
 
+//nolint
 func (p *pgxInserter) createMetricTable(metric string) (string, error) {
 	res, err := p.conn.Query(
 		context.Background(),
@@ -243,6 +244,7 @@ func (p *pgxInserter) createMetricTable(metric string) (string, error) {
 	return tableName, nil
 }
 
+//nolint
 func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	var err error
 	var tableName string

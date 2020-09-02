@@ -29,11 +29,6 @@ type inserter interface {
 	Close()
 }
 
-type seriesWithCallback struct {
-	Series   Labels
-	Callback func(l Labels, id SeriesID) error
-}
-
 // SeriesCache provides a caching mechanism for labels and series.
 type SeriesCache interface {
 	GetSeries(lset Labels) (SeriesID, error)
