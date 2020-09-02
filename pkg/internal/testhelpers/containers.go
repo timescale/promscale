@@ -274,7 +274,7 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 		Cmd: []string{
 			"-db-host", "172.17.0.1", // IP refering to the docker's host network
 			"-db-port", pgPort.Port(),
-			"-db-user", "postgres",
+			"-db-user", promUser,
 			"-db-password", "password",
 			"-db-name", dbname,
 			"-web-listen-address", "0.0.0.0:" + ConnectorPort.Port(),

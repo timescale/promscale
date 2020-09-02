@@ -80,13 +80,12 @@ func getUpgradedDbInfo(t *testing.T) (upgradedDbInfo dbInfo) {
 			defer client.CloseIdleConnections()
 
 			writeUrl := fmt.Sprintf("http://%s/write", net.JoinHostPort(connectorHost, connectorPort.Port()))
-			t.Log(writeUrl)
 
 			doWrite(t, &client, writeUrl, preUpgradeData1, preUpgradeData2)
 		},
 		/* postUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string) {
-			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
+			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 
 			db, err := pgxpool.Connect(context.Background(), connectURL)
 			if err != nil {
@@ -108,7 +107,7 @@ func getUpgradedDbInfo(t *testing.T) (upgradedDbInfo dbInfo) {
 
 func getPristineDbInfo(t *testing.T) (pristineDbInfo dbInfo) {
 	withNewDBAtCurrentVersion(t, *testDatabase,
-		/* preUpgrade */
+		/* preRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
 			ingestor, err := pgmodel.NewPgxIngestor(db)
 			if err != nil {
@@ -118,7 +117,7 @@ func getPristineDbInfo(t *testing.T) (pristineDbInfo dbInfo) {
 
 			doIngest(t, ingestor, preUpgradeData1, preUpgradeData2)
 		},
-		/* postUpgrade */
+		/* postRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
 			ingestor, err := pgmodel.NewPgxIngestor(db)
 			if err != nil {
@@ -256,7 +255,6 @@ func withDBStartingAtOldVersionAndUpgrading(
 	// Start a db with the prev extension and a prev connector as well
 	// Then run preUpgrade and shut everything down.
 	func() {
-		fmt.Println("PrevImage", prevDBImage)
 		dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, prevDBImage, tmpDir, dataDir, *printLogs, *useExtension)
 		if err != nil {
 			t.Fatal("Error setting up container", err)
@@ -264,7 +262,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 
 		defer testhelpers.StopContainer(ctx, dbContainer, *printLogs)
 
-		db, err := testhelpers.DbSetup(*testDatabase, testhelpers.Superuser)
+		db, err := testhelpers.DbSetup(*testDatabase, testhelpers.NoSuperuser)
 		if err != nil {
 			t.Fatal(err)
 			return
@@ -289,6 +287,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 			t.Fatal(err)
 			return
 		}
+		t.Logf("Running preUpgrade with old version of connector and db: connector=%v db=%v", connectorImage, prevDBImage)
 		preUpgrade(dbContainer, tmpDir, connectorHost, connectorPort)
 	}()
 
@@ -302,10 +301,10 @@ func withDBStartingAtOldVersionAndUpgrading(
 	defer testhelpers.StopContainer(ctx, dbContainer, *printLogs)
 
 	t.Logf("upgrading versions %v => %v", prevVersion, version.Version)
-	// TODO this should be NoSuperuser expect for the extwlist error
-	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
+	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 	migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
 
+	t.Log("Running postUpgrade")
 	postUpgrade(dbContainer, tmpDir)
 
 }
@@ -338,8 +337,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 		}
 
 		defer testhelpers.StopContainer(ctx, container, *printLogs)
-		// TODO this should be NoSuperuser expect for the extwlist error
-		testhelpers.WithDB(t, DBName, testhelpers.Superuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
+		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 			migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
 
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
@@ -358,7 +356,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 	}
 
 	defer testhelpers.StopContainer(ctx, container, *printLogs)
-	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
+	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 	db, err := pgxpool.Connect(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)

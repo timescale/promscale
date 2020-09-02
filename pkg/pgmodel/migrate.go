@@ -92,16 +92,6 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 	defer migrateMutex.Unlock()
 	ExtensionIsInstalled = false
 
-	// Getting an early connection to install the extra extension.
-	// TODO: Investigate why this is required. Installing the extension on the
-	// migration connection fails, thats why this is necessary. This should be removed.
-	conn, err := db.Acquire(context.Background())
-	if err != nil {
-		return fmt.Errorf("could not acquire connection: %w", err)
-	}
-
-	defer conn.Release()
-
 	appVersion, err := semver.Make(versionInfo.Version)
 	if err != nil {
 		return fmt.Errorf("app version is not semver format, aborting migration")
@@ -114,7 +104,7 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	err = installExtension(conn)
+	err = installExtension(db)
 	if err != nil {
 		return fmt.Errorf("Error encountered while installing extension: %w", err)
 	}
@@ -460,7 +450,7 @@ func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 	return nil
 }
 
-func installExtension(conn *pgxpool.Conn) error {
+func installExtension(conn *pgxpool.Pool) error {
 	availableVersions, err := fetchAvailableExtensionVersions(conn)
 	ExtensionIsInstalled = false
 	if err != nil {
@@ -516,7 +506,7 @@ func installExtension(conn *pgxpool.Conn) error {
 	}
 }
 
-func fetchAvailableExtensionVersions(conn *pgxpool.Conn) (semver.Versions, error) {
+func fetchAvailableExtensionVersions(conn *pgxpool.Pool) (semver.Versions, error) {
 	var versionStrings []string
 	versions := make(semver.Versions, 0)
 	err := conn.QueryRow(context.Background(),
@@ -541,7 +531,7 @@ func fetchAvailableExtensionVersions(conn *pgxpool.Conn) (semver.Versions, error
 	return versions, nil
 }
 
-func fetchInstalledExtensionVersion(conn *pgxpool.Conn) (semver.Version, bool, error) {
+func fetchInstalledExtensionVersion(conn *pgxpool.Pool) (semver.Version, bool, error) {
 	var versionString string
 	err := conn.QueryRow(context.Background(),
 		"SELECT extversion  FROM pg_extension WHERE extname='timescale_prometheus_extra'").Scan(&versionString)
