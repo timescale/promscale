@@ -31,7 +31,7 @@ COPY timescale_prometheus_extra.control Makefile dependencies.makefile /build/ti
 COPY src/*.c src/*.h /build/timescale-prometheus/src/
 COPY Cargo.* /build/timescale-prometheus/
 COPY src/*.rs /build/timescale-prometheus/src/
-COPY sql/timescale-prometheus.sql /build/timescale-prometheus/sql/
+COPY sql/*.sql /build/timescale-prometheus/sql/
 
 RUN set -ex \
     && make -C /build/timescale-prometheus rust EXTRA_RUST_ARGS=--features=parse_headers \
