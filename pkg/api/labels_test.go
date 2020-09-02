@@ -20,7 +20,6 @@ func TestLabels(t *testing.T) {
 		querier     *mockQuerier
 		expectCode  int
 		expectError string
-		canceled    bool
 	}{
 		{
 			name:        "Error on get label names",

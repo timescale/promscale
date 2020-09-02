@@ -27,8 +27,7 @@ var (
 
 // Init starts logging given the minimum log level
 func Init(logLevel string) error {
-	var l log.Logger
-	l = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+	l := log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
 	logLevelOption, err := parseLogLevel(logLevel)
 	if err != nil {
 		return err

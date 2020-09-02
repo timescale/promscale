@@ -91,7 +91,7 @@ func TestMain(m *testing.M) {
 }
 
 func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
-	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL)
 
 		// need to get a new pool after the Migrate to catch any GUC changes made during Migrate

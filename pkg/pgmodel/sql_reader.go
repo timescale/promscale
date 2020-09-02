@@ -279,14 +279,12 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 
 	sqlQuery := buildMetricNameSeriesIDQuery(cases)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
-	defer rows.Close()
-
 	if err != nil {
 		return nil, nil, err
 	}
+	defer rows.Close()
 
 	metrics, series, err := getSeriesPerMetric(rows)
-
 	if err != nil {
 		return nil, nil, err
 	}
@@ -313,10 +311,10 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 	}
 
 	batchResults, err := q.conn.SendBatch(context.Background(), batch)
-	defer batchResults.Close()
 	if err != nil {
 		return nil, nil, err
 	}
+	defer batchResults.Close()
 
 	for i := 0; i < numQueries; i++ {
 		rows, err = batchResults.Query()
@@ -352,9 +350,8 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
-	defer rows.Close()
 
+	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 	if err != nil {
 		// If we are getting undefined table error, it means the query
 		// is looking for a metric which doesn't exist in the system.
@@ -362,6 +359,8 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 			return nil, nil, err
 		}
 	}
+
+	defer rows.Close()
 
 	// TODO this allocation assumes we usually have 1 row, if not, refactor
 	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows)
