@@ -22,7 +22,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel/migrations"
-	"github.com/timescale/timescale-prometheus/pkg/version"
 )
 
 const (
@@ -40,8 +39,6 @@ const (
 )
 
 var (
-	ExtensionIsInstalled = false
-
 	tableOfContets = map[string][]string{
 		"idempotent": {
 			"base.sql",
@@ -448,134 +445,6 @@ func (t *Migrator) upgradeVersion(tx pgx.Tx, from, to semver.Version) error {
 		}
 	}
 	return nil
-}
-
-func installExtension(conn *pgxpool.Pool) error {
-	availableVersions, err := fetchAvailableExtensionVersions(conn)
-	ExtensionIsInstalled = false
-	if err != nil {
-		return err
-	}
-	if len(availableVersions) == 0 {
-		log.Warn("msg", "timescale_prometheus_extra is not available, proceeding without extension")
-		return nil
-	}
-
-	newVersion, ok := getNewExtensionVersion(availableVersions)
-	if !ok {
-		log.Warn("msg", "timescale_prometheus_extra is not available at the right version, need version: %v, proceeding without extension", version.ExtVersionRangeString)
-		return nil
-	}
-
-	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn)
-	if err != nil {
-		return fmt.Errorf("Could not get the installed extension version: %w", err)
-	}
-
-	if !isInstalled {
-		_, extErr := conn.Exec(context.Background(),
-			fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS timescale_prometheus_extra WITH SCHEMA %s VERSION '%s'",
-				extSchema, getSqlVersion(newVersion)))
-		if extErr != nil {
-			return extErr
-		}
-		ExtensionIsInstalled = true
-		return extErr
-	}
-
-	comparator := currentVersion.Compare(newVersion)
-	if comparator > 0 {
-		//currentVersion greater than what we can handle, don't use the extension
-		log.Warn("msg", "timescale_prometheus_extra at a greater version than supported by the connector: %v > %v, proceeding without extension", currentVersion, newVersion)
-		ExtensionIsInstalled = false
-		return nil
-	} else if comparator == 0 {
-		//Nothing to do we are at the correct version
-		ExtensionIsInstalled = true
-		return nil
-	} else {
-		//Upgrade to the right version
-		_, err := conn.Exec(context.Background(),
-			fmt.Sprintf("ALTER EXTENSION timescale_prometheus_extra UPDATE TO '%s'",
-				getSqlVersion(newVersion)))
-		if err != nil {
-			return err
-		}
-		ExtensionIsInstalled = true
-		return nil
-	}
-}
-
-func fetchAvailableExtensionVersions(conn *pgxpool.Pool) (semver.Versions, error) {
-	var versionStrings []string
-	versions := make(semver.Versions, 0)
-	err := conn.QueryRow(context.Background(),
-		"SELECT array_agg(version) FROM pg_available_extension_versions WHERE name ='timescale_prometheus_extra'").Scan(&versionStrings)
-
-	if err != nil {
-		return versions, err
-	}
-	if len(versionStrings) == 0 {
-		return versions, nil
-	}
-
-	for i := range versionStrings {
-		vString := correctVersionString(versionStrings[i])
-		v, err := semver.Parse(vString)
-		if err != nil {
-			return versions, fmt.Errorf("Could not parse available extra extension version %v: %w", vString, err)
-		}
-		versions = append(versions, v)
-	}
-
-	return versions, nil
-}
-
-func fetchInstalledExtensionVersion(conn *pgxpool.Pool) (semver.Version, bool, error) {
-	var versionString string
-	err := conn.QueryRow(context.Background(),
-		"SELECT extversion  FROM pg_extension WHERE extname='timescale_prometheus_extra'").Scan(&versionString)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return semver.Version{}, false, nil
-		}
-		return semver.Version{}, true, err
-	}
-
-	versionString = correctVersionString(versionString)
-
-	v, err := semver.Parse(versionString)
-	if err != nil {
-		return v, true, fmt.Errorf("Could not parse current timescale_prometheus_extra extension version %v: %w", versionString, err)
-	}
-	return v, true, nil
-}
-
-func correctVersionString(v string) string {
-	//we originally published the extension as "0.1" which isn't a valid semver
-	if v == "0.1" {
-		return "0.1.0"
-	}
-	return v
-}
-
-func getSqlVersion(v semver.Version) string {
-	if v.String() == "0.1.0" {
-		return "0.1"
-	}
-	return v.String()
-}
-
-// getNewExtensionVersion returns the highest version allowed by ExtVersionRange
-func getNewExtensionVersion(availableVersions semver.Versions) (semver.Version, bool) {
-	//sort higher extensions first
-	sort.Sort(sort.Reverse(availableVersions))
-	for i := range availableVersions {
-		if version.ExtVersionRange(availableVersions[i]) {
-			return availableVersions[i], true
-		}
-	}
-	return semver.Version{}, false
 }
 
 func setDBVersion(tx pgx.Tx, version *semver.Version) error {
