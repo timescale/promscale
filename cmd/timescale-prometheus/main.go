@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jamiealquiza/envy"
@@ -41,15 +42,19 @@ type config struct {
 	electionInterval  time.Duration
 	migrate           bool
 	stopAfterMigrate  bool
+	useVersionLease   bool
 	corsOrigin        *regexp.Regexp
 }
 
 const (
 	promLivenessCheck = time.Second
+	schemaLockId      = 0x4D829C732AAFCEDE // chosen randomly
 )
 
 var (
-	elector *util.Elector
+	elector            *util.Elector
+	appVersion         = pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash}
+	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
 )
 
 func main() {
@@ -69,52 +74,17 @@ func main() {
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
 
 	promMetrics := api.InitMetrics()
-	elector, err = initElector(cfg, promMetrics)
 
+	client, err := createClient(cfg, promMetrics)
 	if err != nil {
-		errStr := fmt.Sprintf("Aborting startup because of elector init error: %s", util.MaskPassword(err.Error()))
-		log.Error("msg", errStr)
+		log.Error("msg", "aborting startup due to error", "err", util.MaskPassword(err.Error()))
 		os.Exit(1)
 	}
 
-	if elector == nil {
-		log.Warn(
-			"msg",
-			"No adapter leader election. Group lock id is not set. "+
-				"Possible duplicate write load if running adapter in high-availability mode",
-		)
+	if client == nil {
+		os.Exit(0)
 	}
 
-	appVersion := pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash}
-
-	// migrate has to happen after elector started
-	if cfg.migrate {
-		err = migrate(&cfg.pgmodelCfg, appVersion, promMetrics)
-
-		if err != nil {
-			log.Error("msg", fmt.Sprintf("Aborting startup because of migration error: %s", util.MaskPassword(err.Error())))
-			os.Exit(1)
-		}
-		if cfg.stopAfterMigrate {
-			log.Info("msg", "Migration successful, exiting")
-			os.Exit(0)
-		}
-	} else {
-		log.Info("msg", "Skipping migration")
-	}
-
-	if err := checkDependencies(&cfg.pgmodelCfg, appVersion); err != nil {
-		log.Error("msg", fmt.Sprintf("Aborting startup because of dependency error: %s", util.MaskPassword(err.Error())))
-		os.Exit(1)
-	}
-
-	// client has to be initiated after migrate since migrate
-	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.pgmodelCfg)
-	if err != nil {
-		log.Error(util.MaskPassword(err.Error()))
-		os.Exit(1)
-	}
 	defer client.Close()
 
 	apiConf := &api.Config{AllowedOrigin: cfg.corsOrigin}
@@ -158,6 +128,7 @@ func parseFlags() (*config, error) {
 	flag.BoolVar(&cfg.restElection, "leader-election-rest", false, "Enable REST interface for the leader election")
 	flag.DurationVar(&cfg.electionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
 	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
+	flag.BoolVar(&cfg.useVersionLease, "use-schema-version-lease", true, "Prevent race conditions during migration")
 	envy.Parse("TS_PROM")
 	flag.Parse()
 
@@ -182,6 +153,100 @@ func parseFlags() (*config, error) {
 	return cfg, nil
 }
 
+func createClient(cfg *config, promMetrics *api.Metrics) (*pgclient.Client, error) {
+	var schemaVersionLease *util.PgAdvisoryLock
+	if cfg.useVersionLease {
+		// migration lock logic
+		// we don't want to upgrade the schema version while we still have connectors
+		// attached who think the schema is at the old version. To prevent this, as
+		// best we can, each normal connection attempts to grab a (shared) advisory
+		// lock on schemaLockId, and we attempt to grab an exclusive lock on it
+		// before running migrate. This implies that migration must be run when no
+		// other connector is running.
+		schemaVersionLease, err := util.NewPgAdvisoryLock(schemaLockId, cfg.pgmodelCfg.GetConnectionStr())
+		if err != nil {
+			log.Error("msg", "error creating schema version lease", "err", err)
+			os.Exit(1)
+		}
+		// after the client has started it's in charge of maintaining the leases
+		defer schemaVersionLease.Close()
+	}
+
+	migration_success := true
+	if cfg.migrate {
+		err := migrate(&cfg.pgmodelCfg, appVersion, schemaVersionLease)
+		migration_success = err != nil
+		if err != nil && err != migrationLockError {
+			return nil, fmt.Errorf("migration error: %w", err)
+		}
+
+		if cfg.stopAfterMigrate {
+			if err != nil {
+				return nil, err
+			}
+			log.Info("msg", "Migration successful, exiting")
+			return nil, nil
+		}
+	} else {
+		log.Info("msg", "Skipping migration")
+	}
+
+	if schemaVersionLease != nil {
+		// Grab a lease to protect version checking and client creation. This
+		// lease will be released when the schemaVersionLease is closed.
+		locked, err := schemaVersionLease.GetSharedAdvisoryLock()
+		if err != nil {
+			return nil, fmt.Errorf("could not acquire schema version lease due to: %w", err)
+		}
+		if !locked {
+			return nil, fmt.Errorf("could not acquire schema version lease. is a migration in progress?")
+		}
+	}
+
+	// Check the database is on the correct version.
+	// This must be done even if we attempted a migrate; if we failed to acquire
+	// the lock we'll start up as-if we were never supposed to migrate in the
+	// first place. This is also needed as checkDependencies populates our
+	// extension metadata
+	err := checkDependencies(&cfg.pgmodelCfg, appVersion)
+	if err != nil {
+		err = fmt.Errorf("dependency error: %w", err)
+		if !migration_success {
+			log.Error("msg", "Unable to run migrations; failed to acquire the lock. If the database is on an incorrect version, ensure there are no other connectors running and try again.", "err", err)
+		}
+		return nil, err
+	}
+
+	// Election must be done after migration and version-checking: if we're on
+	// the wrong version we should not participate in leader-election.
+	elector, err = initElector(cfg, promMetrics)
+
+	if err != nil {
+		return nil, fmt.Errorf("elector init error: %w", err)
+	}
+
+	if elector == nil {
+		log.Warn(
+			"msg",
+			"No adapter leader election. Group lock id is not set. "+
+				"Possible duplicate write load if running multiple connectors",
+		)
+	}
+
+	leasingFunction := getSchemaLease
+	if !cfg.useVersionLease {
+		leasingFunction = nil
+	}
+	// client has to be initiated after migrate since migrate
+	// can change database GUC settings
+	client, err := pgclient.NewClient(&cfg.pgmodelCfg, leasingFunction)
+	if err != nil {
+		return nil, fmt.Errorf("client creation error: %w", err)
+	}
+
+	return client, nil
+}
+
 func initElector(cfg *config, metrics *api.Metrics) (*util.Elector, error) {
 	if cfg.restElection && cfg.haGroupLockID != 0 {
 		return nil, fmt.Errorf("Use either REST or PgAdvisoryLock for the leader election")
@@ -195,7 +260,8 @@ func initElector(cfg *config, metrics *api.Metrics) (*util.Elector, error) {
 	if cfg.prometheusTimeout == -1 {
 		return nil, fmt.Errorf("Prometheus timeout configuration must be set when using PG advisory lock")
 	}
-	lock, err := util.NewPgLeaderLock(cfg.haGroupLockID, cfg.pgmodelCfg.GetConnectionStr())
+
+	lock, err := util.NewPgLeaderLock(cfg.haGroupLockID, cfg.pgmodelCfg.GetConnectionStr(), getSchemaLease)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.haGroupLockID, err)
 	}
@@ -213,19 +279,29 @@ func initElector(cfg *config, metrics *api.Metrics) (*util.Elector, error) {
 	return &scheduledElector.Elector, nil
 }
 
-func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo, metrics *api.Metrics) error {
-	shouldWrite, err := isWriter()
-	if err != nil {
-		metrics.LeaderGauge.Set(0)
-		return fmt.Errorf("isWriter check failed: %w", err)
-	}
-	if !shouldWrite {
-		metrics.LeaderGauge.Set(0)
-		log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Won't update", elector.ID()))
-		return nil
+func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo, leaseLock util.AdvisoryLock) error {
+	// At startup migrators attempt to grab the schema-version lock. If this
+	// fails that means some other connector is running. All is not lost: some
+	// other connector may have migrated the DB to the correct version. We warn,
+	// then start the connector as normal. If we are on the wrong version, the
+	// normal version-check code will prevent us from running.
+
+	if leaseLock != nil {
+		locked, err := leaseLock.GetAdvisoryLock()
+		if err != nil {
+			return fmt.Errorf("error while acquiring migration lock %w", err)
+		}
+		if !locked {
+			return migrationLockError
+		}
+		defer func() {
+			_, err := leaseLock.Unlock()
+			if err != nil {
+				log.Error("msg", "error while releasing migration lock", "err", err)
+			}
+		}()
 	}
 
-	metrics.LeaderGauge.Set(1)
 	db, err := pgxpool.Connect(context.Background(), cfg.GetConnectionStr())
 	if err != nil {
 		return fmt.Errorf("Error while trying to open DB connection: %w", err)
@@ -251,18 +327,23 @@ func checkDependencies(cfg *pgclient.Config, appVersion pgmodel.VersionInfo) err
 	return pgmodel.CheckDependencies(db, appVersion)
 }
 
-func isWriter() (bool, error) {
-	if elector != nil {
-		shouldWrite, err := elector.IsLeader()
-		return shouldWrite, err
-	}
-	return true, nil
-}
-
 func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {
 	r, err := regexp.Compile("^(?:" + s + ")$")
 	if err != nil {
 		return nil, err
 	}
 	return r, nil
+}
+
+// Except for migration, every connection that communicates with the DB must be
+// guarded by an instante of the schema-version lease to ensure that no other
+// connector can migrate the DB out from under it. We do not bother to release
+// said lease; in such and event the connector will be shutdown anyway, and
+// connection-death will close the connection.
+func getSchemaLease(ctx context.Context, conn *pgx.Conn) error {
+	err := util.GetSharedLease(ctx, conn, schemaLockId)
+	if err != nil {
+		return err
+	}
+	return pgmodel.CheckSchemaVersion(ctx, conn, appVersion)
 }

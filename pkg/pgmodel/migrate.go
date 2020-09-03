@@ -111,18 +111,34 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 	return nil
 }
 
-// CheckDependencies makes sure all project dependencies are set up correctly
+// CheckDependencies makes sure all project dependencies, including the DB schema
+// the extension, are set up correctly. This will set the ExtensionIsInstalled
+// flag and thus should only be called once, at initialization.
 func CheckDependencies(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
+	conn, err := db.Acquire(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to check schema version: %w", err)
+	}
+	defer conn.Release()
+
+	if err = CheckSchemaVersion(context.Background(), conn.Conn(), versionInfo); err != nil {
+		return err
+	}
+
+	return checkExtensionsVersion(db)
+}
+
+// CheckSchemaVersion checks the DB schema version without checking the extension
+func CheckSchemaVersion(ctx context.Context, conn *pgx.Conn, versionInfo VersionInfo) error {
 	expectedVersion := semver.MustParse(versionInfo.Version)
-	dbVersion, err := getDBVersion(db)
+	dbVersion, err := getSchemaVersionOnConnection(ctx, conn)
 	if err != nil {
 		return fmt.Errorf("failed to check schema version: %w", err)
 	}
 	if dbVersion.Compare(expectedVersion) != 0 {
 		return fmt.Errorf("db schema version is incorrect: expected %v, got %v", expectedVersion, dbVersion)
 	}
-
-	return checkExtensionsVersion(db)
+	return nil
 }
 
 type Migrator struct {
@@ -140,7 +156,7 @@ func (t *Migrator) Migrate(appVersion semver.Version) error {
 		return fmt.Errorf("error ensuring version table: %w", err)
 	}
 
-	dbVersion, err := getDBVersion(t.db)
+	dbVersion, err := getSchemaVersion(t.db)
 	if err != nil {
 		return fmt.Errorf("failed to get the version from database: %w", err)
 	}
@@ -223,9 +239,18 @@ func ensureVersionTable(db *pgxpool.Pool) error {
 	return nil
 }
 
-func getDBVersion(db *pgxpool.Pool) (semver.Version, error) {
+func getSchemaVersion(db *pgxpool.Pool) (semver.Version, error) {
+	conn, err := db.Acquire(context.Background())
+	if err != nil {
+		return semver.Version{}, err
+	}
+	defer conn.Release()
+	return getSchemaVersionOnConnection(context.Background(), conn.Conn())
+}
+
+func getSchemaVersionOnConnection(ctx context.Context, db *pgx.Conn) (semver.Version, error) {
 	var version semver.Version
-	res, err := db.Query(context.Background(), getVersion)
+	res, err := db.Query(ctx, getVersion)
 
 	if err != nil {
 		return version, fmt.Errorf("Error getting DB version: %w", err)

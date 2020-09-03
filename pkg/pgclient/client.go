@@ -66,15 +66,26 @@ type Client struct {
 	metricCache   *pgmodel.MetricNameCache
 }
 
+// Post connect validation function, useful for things such as acquiring locks
+// that should live the duration of the connection
+type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
+
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config) (*Client, error) {
+func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
 	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
 	if err != nil {
-		log.Error("err configuring number of connections", util.MaskPassword(err.Error()))
+		log.Error("msg", "configuring number of connections", "err", util.MaskPassword(err.Error()))
 		return nil, err
 	}
-	connectionPool, err := pgxpool.Connect(context.Background(), connectionStr+fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
+
+	pgConfig, err := pgxpool.ParseConfig(connectionStr + fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
+	if err != nil {
+		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
+	}
+
+	pgConfig.AfterConnect = schemaLocker
+	connectionPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
 
 	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections)
 
