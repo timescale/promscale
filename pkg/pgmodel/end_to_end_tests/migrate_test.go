@@ -30,6 +30,18 @@ func TestMigrate(t *testing.T) {
 		if dbVersion != version.Version {
 			t.Errorf("Version unexpected:\ngot\n%s\nwanted\n%s", dbVersion, version.Version)
 		}
+
+		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
+		defer readOnly.Close()
+		err = pgmodel.CheckDependencies(readOnly, pgmodel.VersionInfo{Version: version.Version})
+		if err != nil {
+			t.Error(err)
+		}
+
+		err = pgmodel.CheckDependencies(readOnly, pgmodel.VersionInfo{Version: "100.0.0"})
+		if err == nil {
+			t.Errorf("Expected error in CheckDependencies")
+		}
 	})
 }
 

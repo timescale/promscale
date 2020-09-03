@@ -194,14 +194,20 @@ func main() {
 		)
 	}
 
+	appVersion := pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash}
 	// migrate has to happen after elector started
 	if cfg.migrate {
-		err = migrate(&cfg.pgmodelCfg)
+		err = migrate(&cfg.pgmodelCfg, appVersion)
 
 		if err != nil {
 			log.Error("msg", fmt.Sprintf("Aborting startup because of migration error: %s", util.MaskPassword(err.Error())))
 			os.Exit(1)
 		}
+	}
+
+	if err := checkDependencies(&cfg.pgmodelCfg, appVersion); err != nil {
+		log.Error("msg", fmt.Sprintf("Aborting startup because of dependency error: %s", util.MaskPassword(err.Error())))
+		os.Exit(1)
 	}
 
 	// client has to be initiated after migrate since migrate
@@ -378,7 +384,7 @@ func initElector(cfg *config) (*util.Elector, error) {
 	return &scheduledElector.Elector, nil
 }
 
-func migrate(cfg *pgclient.Config) error {
+func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo) error {
 	shouldWrite, err := isWriter()
 	if err != nil {
 		leaderGauge.Set(0)
@@ -397,13 +403,23 @@ func migrate(cfg *pgclient.Config) error {
 	}
 	defer db.Close()
 
-	err = pgmodel.Migrate(db, pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash})
+	err = pgmodel.Migrate(db, appVersion)
 
 	if err != nil {
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)
 	}
 
 	return nil
+}
+
+func checkDependencies(cfg *pgclient.Config, appVersion pgmodel.VersionInfo) error {
+	db, err := pgxpool.Connect(context.Background(), cfg.GetConnectionStr())
+	if err != nil {
+		return fmt.Errorf("Error while trying to open DB connection: %w", err)
+	}
+	defer db.Close()
+
+	return pgmodel.CheckDependencies(db, appVersion)
 }
 
 func isWriter() (bool, error) {
