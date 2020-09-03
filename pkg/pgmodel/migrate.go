@@ -176,7 +176,7 @@ func (t *Migrator) Migrate(appVersion semver.Version) error {
 
 	// Error if at a greater version.
 	if dbVersion.Compare(appVersion) > 0 {
-		return fmt.Errorf("schema version is above the application version, cannot migrate")
+		return fmt.Errorf("schema version (%v) is above the application version (%v), cannot migrate", dbVersion, appVersion)
 	}
 
 	tx, err := t.db.Begin(context.Background())

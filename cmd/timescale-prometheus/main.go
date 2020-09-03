@@ -14,6 +14,7 @@ import (
 	pprof "net/http/pprof"
 	"os"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -43,6 +44,7 @@ type config struct {
 	prometheusTimeout time.Duration
 	electionInterval  time.Duration
 	migrate           bool
+	stopAfterMigrate  bool
 	corsOrigin        *regexp.Regexp
 }
 
@@ -168,6 +170,7 @@ func main() {
 	if err != nil {
 		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
 		fmt.Println("Fatal error: cannot parse flags ", err)
+		os.Exit(1)
 	}
 	err = log.Init(cfg.logLevel)
 	if err != nil {
@@ -203,6 +206,12 @@ func main() {
 			log.Error("msg", fmt.Sprintf("Aborting startup because of migration error: %s", util.MaskPassword(err.Error())))
 			os.Exit(1)
 		}
+		if cfg.stopAfterMigrate {
+			log.Info("msg", "Migration successful, exiting")
+			os.Exit(0)
+		}
+	} else {
+		log.Info("msg", "Skipping migration")
 	}
 
 	if err := checkDependencies(&cfg.pgmodelCfg, appVersion); err != nil {
@@ -333,23 +342,36 @@ func parseFlags() (*config, error) {
 	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 
 	var corsOriginFlag string
+	var migrateOption string
 	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
-	if err != nil {
-		err = fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
-		return nil, err
-	}
-	cfg.corsOrigin = corsOriginRegex
 	flag.StringVar(&cfg.logLevel, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
 	flag.IntVar(&cfg.haGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
 	flag.DurationVar(&cfg.prometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
 	flag.BoolVar(&cfg.restElection, "leader-election-rest", false, "Enable REST interface for the leader election")
 	flag.DurationVar(&cfg.electionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
-	flag.BoolVar(&cfg.migrate, "migrate", true, "Update the Prometheus SQL to the latest version")
+	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
 	envy.Parse("TS_PROM")
 	flag.Parse()
 
+	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
+	if err != nil {
+		err = fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
+		return nil, err
+	}
+	cfg.corsOrigin = corsOriginRegex
+
+	cfg.stopAfterMigrate = false
+	if strings.EqualFold(migrateOption, "true") {
+		cfg.migrate = true
+	} else if strings.EqualFold(migrateOption, "false") {
+		cfg.migrate = false
+	} else if strings.EqualFold(migrateOption, "only") {
+		cfg.migrate = true
+		cfg.stopAfterMigrate = true
+	} else {
+		return nil, fmt.Errorf("Invalid option for migrate: %v. Valid options are [true, false, only]", migrateOption)
+	}
 	return cfg, nil
 }
 
