@@ -35,7 +35,7 @@ type config struct {
 	telemetryPath     string
 	pgmodelCfg        pgclient.Config
 	logLevel          string
-	haGroupLockID     int
+	haGroupLockID     int64
 	restElection      bool
 	prometheusTimeout time.Duration
 	electionInterval  time.Duration
@@ -152,7 +152,7 @@ func parseFlags() (*config, error) {
 	var migrateOption string
 	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	flag.StringVar(&cfg.logLevel, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
-	flag.IntVar(&cfg.haGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
+	flag.Int64Var(&cfg.haGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
 	flag.DurationVar(&cfg.prometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
 	flag.BoolVar(&cfg.restElection, "leader-election-rest", false, "Enable REST interface for the leader election")
@@ -195,7 +195,7 @@ func initElector(cfg *config, metrics *api.Metrics) (*util.Elector, error) {
 	if cfg.prometheusTimeout == -1 {
 		return nil, fmt.Errorf("Prometheus timeout configuration must be set when using PG advisory lock")
 	}
-	lock, err := util.NewPgAdvisoryLock(cfg.haGroupLockID, cfg.pgmodelCfg.GetConnectionStr())
+	lock, err := util.NewPgLeaderLock(cfg.haGroupLockID, cfg.pgmodelCfg.GetConnectionStr())
 	if err != nil {
 		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.haGroupLockID, err)
 	}

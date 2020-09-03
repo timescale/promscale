@@ -20,34 +20,120 @@ const (
 	waitForConnectionTimeout = time.Second
 )
 
-// PgAdvisoryLock is implementation of leader election based on PostgreSQL advisory locks. All adapters within a HA group are trying
+// PgLeaderLock is implementation of leader election based on PostgreSQL advisory locks. All adapters within a HA group are trying
 // to obtain an advisory lock for particular group. The one who holds the lock can write to the database. Due to the fact
 // that Prometheus HA setup provides no consistency guarantees this implementation is best effort in regards
 // to metrics that is written (some duplicates or data loss are possible during fail-over)
-// `leader-election-pg-advisory-lock-prometheus-timeout` config must be set when using PgAdvisoryLock. It will
+// `leader-election-pg-advisory-lock-prometheus-timeout` config must be set when using PgLeaderLock. It will
 // trigger leader resign (if instance is a leader) and will prevent an instance to become a leader if there are no requests coming
 // from Prometheus within a given timeout. Make sure to provide a reasonable value for the timeout (should be co-related with
 // Prometheus scrape interval, eg. 2x or 3x more then scrape interval to prevent leader flipping).
-// Recommended architecture when using PgAdvisoryLock is to have one adapter instance for one Prometheus instance.
-type PgAdvisoryLock struct {
-	conn        *pgx.Conn
-	connStr     string
-	groupLockID int
-
-	mutex    sync.RWMutex
+// Recommended architecture when using PgLeaderLock is to have one adapter instance for one Prometheus instance.
+type PgLeaderLock struct {
+	PgAdvisoryLock
 	obtained bool
 }
 
-// NewPgAdvisoryLock creates a new instance with specified lock ID, connection pool and lock timeout.
-func NewPgAdvisoryLock(groupLockID int, connStr string) (*PgAdvisoryLock, error) {
-	lock := &PgAdvisoryLock{
-		connStr:     connStr,
-		obtained:    false,
-		groupLockID: groupLockID,
+func NewPgLeaderLock(groupLockID int64, connStr string) (*PgLeaderLock, error) {
+	lock := &PgLeaderLock{
+		PgAdvisoryLock{
+			connStr:     connStr,
+			groupLockID: groupLockID,
+		},
+		false,
 	}
 	_, err := lock.TryLock()
 	if err != nil {
 		return nil, err
+	}
+	return lock, nil
+}
+
+// ID returns the group lock ID for this instance.
+func (l *PgLeaderLock) ID() string {
+	return strconv.FormatInt(int64(l.groupLockID), 10)
+}
+
+// BecomeLeader tries to become a leader by acquiring the lock.
+func (l *PgLeaderLock) BecomeLeader() (bool, error) {
+	return l.TryLock()
+}
+
+// IsLeader returns the current leader status for this instance.
+func (l *PgLeaderLock) IsLeader() (bool, error) {
+	return l.TryLock()
+}
+
+// TryLock tries to obtain the lock if its not already the leader. In the case
+// that it is the leader, it verifies the connection to make sure the lock hasn't
+// been already lost.
+func (l *PgLeaderLock) TryLock() (bool, error) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	gotLock, err := l.GetAdvisoryLock()
+
+	if !gotLock || err != nil {
+		l.obtained = false
+		return false, err
+	}
+
+	if !l.obtained {
+		l.obtained = true
+		log.Debug("msg", fmt.Sprintf("Lock obtained for group id %d", l.groupLockID))
+	}
+
+	return true, nil
+}
+
+// Resign releases the leader status of this instance.
+func (l *PgLeaderLock) Resign() error {
+	return l.Release()
+}
+
+// Locked returns if the instance was able to obtain the locks.
+func (l *PgLeaderLock) Locked() bool {
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
+	return l.obtained
+}
+
+// Release releases the already obtained locks.
+func (l *PgLeaderLock) Release() error {
+	l.mutex.Lock()
+	if !l.obtained {
+		return fmt.Errorf("can't release while not holding the lock")
+	}
+	defer l.mutex.Unlock()
+	rows, err := l.conn.Query(context.Background(), "SELECT pg_advisory_unlock($1)", l.groupLockID)
+	if err != nil {
+		return err
+	}
+	rows.Close()
+	l.obtained = false
+	return nil
+}
+
+type PgAdvisoryLock struct {
+	conn        *pgx.Conn
+	connStr     string
+	groupLockID int64
+
+	mutex sync.RWMutex
+}
+
+type AdvisoryLock interface {
+	GetAdvisoryLock() (bool, error)
+	GetSharedAdvisoryLock() (bool, error)
+	Unlock() error
+	UnlockShared() error
+	Close()
+}
+
+// NewPgAdvisoryLock creates a new instance with specified lock ID, connection pool and lock timeout.
+func NewPgAdvisoryLock(groupLockID int64, connStr string) (*PgAdvisoryLock, error) {
+	lock := &PgAdvisoryLock{
+		connStr:     connStr,
+		groupLockID: groupLockID,
 	}
 	return lock, nil
 }
@@ -70,48 +156,7 @@ func getConn(connStr string, cur, maxRetries int) (*pgx.Conn, error) {
 	return lockConn, nil
 }
 
-// ID returns the group lock ID for this instance.
-func (l *PgAdvisoryLock) ID() string {
-	return strconv.Itoa(l.groupLockID)
-}
-
-// BecomeLeader tries to become a leader by acquiring the lock.
-func (l *PgAdvisoryLock) BecomeLeader() (bool, error) {
-	return l.TryLock()
-}
-
-// IsLeader returns the current leader status for this instance.
-func (l *PgAdvisoryLock) IsLeader() (bool, error) {
-	return l.TryLock()
-}
-
-// Resign releases the leader status of this instance.
-func (l *PgAdvisoryLock) Resign() error {
-	return l.Release()
-}
-
-// TryLock tries to obtain the lock if its not already the leader. In the case
-// that it is the leader, it verifies the connection to make sure the lock hasn't
-// been already lost.
-func (l *PgAdvisoryLock) TryLock() (bool, error) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	gotLock, err := l.getAdvisoryLock()
-
-	if !gotLock || err != nil {
-		l.obtained = false
-		return false, err
-	}
-
-	if !l.obtained {
-		l.obtained = true
-		log.Debug("msg", fmt.Sprintf("Lock obtained for group id %d", l.groupLockID))
-	}
-
-	return true, nil
-}
-
-func (l *PgAdvisoryLock) getAdvisoryLock() (bool, error) {
+func (l *PgAdvisoryLock) GetAdvisoryLock() (bool, error) {
 	var err error
 	if l.conn == nil {
 		l.conn, err = getConn(l.connStr, 0, 10)
@@ -143,6 +188,38 @@ func (l *PgAdvisoryLock) getAdvisoryLock() (bool, error) {
 	return result, nil
 }
 
+func (l *PgAdvisoryLock) GetSharedAdvisoryLock() (bool, error) {
+	var err error
+	if l.conn == nil {
+		l.conn, err = getConn(l.connStr, 0, 10)
+	}
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if err != nil {
+			l.connCleanUp()
+		}
+	}()
+	rows, err := l.conn.Query(context.Background(), "SELECT pg_try_advisory_lock_shared($1)", l.groupLockID)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		err = rows.Err()
+		if err != nil {
+			return false, fmt.Errorf("error while trying to read response rows from `pg_try_advisory_lock_shared` function: %v", err)
+		}
+		return false, fmt.Errorf("missing response row from `pg_try_advisory_lock_shared` function")
+	}
+	var result bool
+	if err := rows.Scan(&result); err != nil {
+		return false, err
+	}
+	return result, nil
+}
+
 func (l *PgAdvisoryLock) connCleanUp() {
 	if l.conn != nil {
 		if err := l.conn.Close(context.Background()); err != nil {
@@ -152,34 +229,33 @@ func (l *PgAdvisoryLock) connCleanUp() {
 	l.conn = nil
 }
 
+func (l *PgAdvisoryLock) Unlock() error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	rows, err := l.conn.Query(context.Background(), "SELECT pg_advisory_unlock($1)", l.groupLockID)
+	if err != nil {
+		return err
+	}
+	rows.Close()
+	return nil
+}
+
+func (l *PgAdvisoryLock) UnlockShared() error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	rows, err := l.conn.Query(context.Background(), "SELECT pg_advisory_unlock_shared($1)", l.groupLockID)
+	if err != nil {
+		return err
+	}
+	rows.Close()
+	return nil
+}
+
 //Close cleans up the connection
 func (l *PgAdvisoryLock) Close() {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
 	l.connCleanUp()
-}
-
-// Locked returns if the instance was able to obtain the leader lock.
-func (l *PgAdvisoryLock) Locked() bool {
-	l.mutex.RLock()
-	defer l.mutex.RUnlock()
-	return l.obtained
-}
-
-// Release releases the already obtained leader lock.
-func (l *PgAdvisoryLock) Release() error {
-	l.mutex.Lock()
-	if !l.obtained {
-		return fmt.Errorf("can't release while not holding the lock")
-	}
-	defer l.mutex.Unlock()
-	rows, err := l.conn.Query(context.Background(), "SELECT pg_advisory_unlock_all()")
-	if err != nil {
-		return err
-	}
-	rows.Close()
-	l.obtained = false
-	return nil
 }
 
 func checkConnection(conn *pgx.Conn) error {
