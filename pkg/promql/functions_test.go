@@ -67,6 +67,6 @@ func TestFunctionList(t *testing.T) {
 
 	for i := range parser.Functions {
 		_, ok := FunctionCalls[i]
-		testutil.Assert(t, ok, fmt.Sprintf("function %s exists in parser package, but not in promql package", i))
+		testutil.Assert(t, ok, (fmt.Sprintf("function %s exists in parser package, but not in promql package", i)))
 	}
 }
