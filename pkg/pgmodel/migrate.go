@@ -101,14 +101,28 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	err = installExtension(db)
+	err = migrateExtension(db)
 	if err != nil {
-		return fmt.Errorf("Error encountered while installing extension: %w", err)
+		return fmt.Errorf("Error encountered while migrating extension: %w", err)
 	}
 
 	metadataUpdate(db, ExtensionIsInstalled, "version", versionInfo.Version)
 	metadataUpdate(db, ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 	return nil
+}
+
+//CheckDependcies makes sure all project dependencies are set up correctly
+func CheckDependencies(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
+	expectedVersion := semver.MustParse(versionInfo.Version)
+	dbVersion, err := getDBVersion(db)
+	if err != nil {
+		return fmt.Errorf("failed to check schema version: %w", err)
+	}
+	if dbVersion.Compare(expectedVersion) != 0 {
+		return fmt.Errorf("db schema version is incorrect: expected %v, got %v", expectedVersion, dbVersion)
+	}
+
+	return checkExtensionVersion(db)
 }
 
 type Migrator struct {

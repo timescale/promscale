@@ -16,7 +16,9 @@ import (
 
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgclient"
+	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/util"
+	"github.com/timescale/timescale-prometheus/pkg/version"
 )
 
 type mockHTTPHandler struct {
@@ -284,7 +286,7 @@ func TestMigrate(t *testing.T) {
 			mockGauge := &mockGauge{}
 			leaderGauge = mockGauge
 
-			err := migrate(c.cfg)
+			err := migrate(c.cfg, pgmodel.VersionInfo{Version: version.Version})
 
 			switch {
 			case err != nil && !c.shouldError:
