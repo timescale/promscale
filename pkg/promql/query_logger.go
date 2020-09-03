@@ -61,14 +61,14 @@ func logUnfinishedQueries(filename string, filesize int, logger log.Logger) {
 	if _, err := os.Stat(filename); err == nil {
 		fd, err := os.Open(filename)
 		if err != nil {
-			_ = level.Error(logger).Log("msg", "Failed to open query log file", "err", err)
+			level.Error(logger).Log("msg", "Failed to open query log file", "err", err)
 			return
 		}
 
 		brokenJSON := make([]byte, filesize)
 		_, err = fd.Read(brokenJSON)
 		if err != nil {
-			_ = level.Error(logger).Log("msg", "Failed to read query log file", "err", err)
+			level.Error(logger).Log("msg", "Failed to read query log file", "err", err)
 			return
 		}
 
@@ -76,7 +76,7 @@ func logUnfinishedQueries(filename string, filesize int, logger log.Logger) {
 		if !queriesExist {
 			return
 		}
-		_ = level.Info(logger).Log("msg", "These queries didn't finish in prometheus' last run:", "queries", queries)
+		level.Info(logger).Log("msg", "These queries didn't finish in prometheus' last run:", "queries", queries)
 	}
 }
 
@@ -84,19 +84,19 @@ func getMMapedFile(filename string, filesize int, logger log.Logger) ([]byte, er
 
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
 	if err != nil {
-		_ = level.Error(logger).Log("msg", "Error opening query log file", "file", filename, "err", err)
+		level.Error(logger).Log("msg", "Error opening query log file", "file", filename, "err", err)
 		return nil, err
 	}
 
 	err = file.Truncate(int64(filesize))
 	if err != nil {
-		_ = level.Error(logger).Log("msg", "Error setting filesize.", "filesize", filesize, "err", err)
+		level.Error(logger).Log("msg", "Error setting filesize.", "filesize", filesize, "err", err)
 		return nil, err
 	}
 
 	fileAsBytes, err := mmap.Map(file, mmap.RDWR, 0)
 	if err != nil {
-		_ = level.Error(logger).Log("msg", "Failed to mmap", "file", filename, "Attempted size", filesize, "err", err)
+		level.Error(logger).Log("msg", "Failed to mmap", "file", filename, "Attempted size", filesize, "err", err)
 		return nil, err
 	}
 
@@ -106,7 +106,7 @@ func getMMapedFile(filename string, filesize int, logger log.Logger) ([]byte, er
 func NewActiveQueryTracker(localStoragePath string, maxConcurrent int, logger log.Logger) *ActiveQueryTracker {
 	err := os.MkdirAll(localStoragePath, 0777)
 	if err != nil {
-		_ = level.Error(logger).Log("msg", "Failed to create directory for logging active queries")
+		level.Error(logger).Log("msg", "Failed to create directory for logging active queries")
 	}
 
 	filename, filesize := filepath.Join(localStoragePath, "queries.active"), 1+maxConcurrent*entrySize
@@ -149,7 +149,7 @@ func _newJSONEntry(query string, timestamp int64, logger log.Logger) []byte {
 	jsonEntry, err := json.Marshal(entry)
 
 	if err != nil {
-		_ = level.Error(logger).Log("msg", "Cannot create json of query", "query", query)
+		level.Error(logger).Log("msg", "Cannot create json of query", "query", query)
 		return []byte{}
 	}
 

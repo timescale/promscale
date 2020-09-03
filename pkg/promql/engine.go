@@ -334,7 +334,7 @@ func NewEngine(opts EngineOpts) *Engine {
 	if opts.LookbackDelta == 0 {
 		opts.LookbackDelta = defaultLookbackDelta
 		if l := opts.Logger; l != nil {
-			_ = level.Debug(l).Log("msg", "Lookback delta is zero, setting to default value", "value", defaultLookbackDelta)
+			level.Debug(l).Log("msg", "Lookback delta is zero, setting to default value", "value", defaultLookbackDelta)
 		}
 	}
 
@@ -371,7 +371,7 @@ func (ng *Engine) SetQueryLogger(l QueryLogger) {
 		// not make reload fail; only log a warning.
 		err := ng.queryLogger.Close()
 		if err != nil {
-			_ = level.Warn(ng.logger).Log("msg", "Error while closing the previous query log file", "err", err)
+			level.Warn(ng.logger).Log("msg", "Error while closing the previous query log file", "err", err)
 		}
 	}
 
@@ -477,7 +477,7 @@ func (ng *Engine) exec(ctx context.Context, q *query) (v parser.Value, w storage
 			}
 			if err := l.Log(f...); err != nil {
 				ng.metrics.queryLogFailures.Inc()
-				_ = level.Error(ng.logger).Log("msg", "can't log query", "err", err)
+				level.Error(ng.logger).Log("msg", "can't log query", "err", err)
 			}
 		}
 		ng.queryLoggerLock.RUnlock()
@@ -748,7 +748,7 @@ func (ng *Engine) populateSeries(ctx context.Context, querier Querier, s *parser
 			set, topNode, wrn, err = querier.Select(false, hints, path, n.LabelMatchers...)
 			warnings = append(warnings, wrn...)
 			if err != nil {
-				_ = level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
+				level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
 				return err
 			}
 			n.UnexpandedSeriesSet = set
@@ -859,7 +859,7 @@ func (ev *evaluator) recover(errp *error) {
 		buf := make([]byte, 64<<10)
 		buf = buf[:runtime.Stack(buf, false)]
 
-		_ = level.Error(ev.logger).Log("msg", "runtime panic in parser", "err", e, "stacktrace", string(buf))
+		level.Error(ev.logger).Log("msg", "runtime panic in parser", "err", e, "stacktrace", string(buf))
 		*errp = errors.Wrap(err, "unexpected error")
 	} else {
 		*errp = e.(error)
@@ -1513,7 +1513,7 @@ func getPointSlice(sz int) []Point {
 }
 
 func putPointSlice(p []Point) {
-	//nolint
+	//lint:ignore SA6002 relax staticcheck verification.
 	pointPool.Put(p[:0])
 }
 

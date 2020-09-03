@@ -485,9 +485,7 @@ func (t *Test) exec(tc testCommand) error {
 	case *loadCmd:
 		app := t.storage.Appender()
 		if err := cmd.append(app); err != nil {
-			if e := app.Rollback(); e != nil {
-				return e
-			}
+			app.Rollback()
 			return err
 		}
 

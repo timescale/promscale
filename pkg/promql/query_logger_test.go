@@ -52,8 +52,7 @@ func TestQueryLogging(t *testing.T) {
 		start := 1 + i*entrySize
 		end := start + entrySize
 
-		_, err := queryLogger.Insert(context.Background(), queries[i])
-		testutil.Ok(t, err)
+		queryLogger.Insert(context.Background(), queries[i])
 
 		have := string(fileAsBytes[start:end])
 		if !regexp.MustCompile(want[i]).MatchString(have) {
@@ -71,36 +70,24 @@ func TestQueryLogging(t *testing.T) {
 }
 
 func TestIndexReuse(t *testing.T) {
-	var (
-		err         error
-		queryBytes  = make([]byte, 1+3*entrySize)
-		queryLogger = ActiveQueryTracker{
-			mmapedFile:   queryBytes,
-			logger:       nil,
-			getNextIndex: make(chan int, 3),
-		}
-	)
+	queryBytes := make([]byte, 1+3*entrySize)
+	queryLogger := ActiveQueryTracker{
+		mmapedFile:   queryBytes,
+		logger:       nil,
+		getNextIndex: make(chan int, 3),
+	}
 
 	queryLogger.generateIndices(3)
-
-	_, err = queryLogger.Insert(context.Background(), "TestQuery1")
-	testutil.Ok(t, err)
-
-	_, err = queryLogger.Insert(context.Background(), "TestQuery2")
-	testutil.Ok(t, err)
-
-	_, err = queryLogger.Insert(context.Background(), "TestQuery3")
-	testutil.Ok(t, err)
+	queryLogger.Insert(context.Background(), "TestQuery1")
+	queryLogger.Insert(context.Background(), "TestQuery2")
+	queryLogger.Insert(context.Background(), "TestQuery3")
 
 	queryLogger.Delete(1 + entrySize)
 	queryLogger.Delete(1)
 	newQuery2 := "ThisShouldBeInsertedAtIndex2"
 	newQuery1 := "ThisShouldBeInsertedAtIndex1"
-	_, err = queryLogger.Insert(context.Background(), newQuery2)
-	testutil.Ok(t, err)
-
-	_, err = queryLogger.Insert(context.Background(), newQuery1)
-	testutil.Ok(t, err)
+	queryLogger.Insert(context.Background(), newQuery2)
+	queryLogger.Insert(context.Background(), newQuery1)
 
 	want := []string{
 		`^{"query":"ThisShouldBeInsertedAtIndex1","timestamp_sec":\d+}\x00*,$`,
