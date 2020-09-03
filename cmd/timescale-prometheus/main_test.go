@@ -7,81 +7,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
-
 	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgclient"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/util"
-	"github.com/timescale/timescale-prometheus/pkg/version"
 )
-
-type mockElection struct {
-	isLeader bool
-	err      error
-}
-
-func (m *mockElection) ID() string {
-	return "ID"
-}
-
-func (m *mockElection) BecomeLeader() (bool, error) {
-	return true, nil
-}
-
-func (m *mockElection) IsLeader() (bool, error) {
-	return m.isLeader, m.err
-}
-
-func (m *mockElection) Resign() error {
-	return nil
-}
-
-type mockGauge struct {
-	value float64
-}
-
-func (m *mockGauge) Desc() *prometheus.Desc {
-	panic("not implemented")
-}
-
-func (m *mockGauge) Write(_ *dto.Metric) error {
-	panic("not implemented")
-}
-
-func (m *mockGauge) Describe(_ chan<- *prometheus.Desc) {
-	panic("not implemented")
-}
-
-func (m *mockGauge) Collect(_ chan<- prometheus.Metric) {
-	panic("not implemented")
-}
-
-func (m *mockGauge) Set(v float64) {
-	m.value = v
-}
-
-func (m *mockGauge) Inc() {
-	panic("not implemented")
-}
-
-func (m *mockGauge) Dec() {
-	panic("not implemented")
-}
-
-func (m *mockGauge) Add(_ float64) {
-	panic("not implemented")
-}
-
-func (m *mockGauge) Sub(_ float64) {
-	panic("not implemented")
-}
-
-func (m *mockGauge) SetToCurrentTime() {
-	panic("not implemented")
-}
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -164,60 +93,6 @@ func TestInitElector(t *testing.T) {
 				if v.Type() != c.electionType {
 					t.Errorf("Wrong type of elector created: got %v wanted %v", v.Type(), c.electionType)
 				}
-			}
-		})
-	}
-}
-
-func TestMigrate(t *testing.T) {
-	testCases := []struct {
-		name        string
-		cfg         *pgclient.Config
-		isLeader    bool
-		electionErr error
-		shouldError bool
-	}{
-		{
-			name:        "elector error",
-			electionErr: fmt.Errorf("some error"),
-			shouldError: true,
-		},
-		{
-			name: "not a leader",
-		},
-		{
-			name:        "is leader",
-			isLeader:    true,
-			cfg:         &pgclient.Config{},
-			shouldError: true,
-		},
-	}
-	for _, c := range testCases {
-		t.Run(c.name, func(t *testing.T) {
-			elector = util.NewElector(
-				&mockElection{
-					isLeader: c.isLeader,
-					err:      c.electionErr,
-				},
-			)
-			metrics := api.InitMetrics()
-			mockGauge := &mockGauge{}
-			metrics.LeaderGauge = mockGauge
-
-			err := migrate(c.cfg, pgmodel.VersionInfo{Version: version.Version}, metrics)
-
-			switch {
-			case err != nil && !c.shouldError:
-				t.Errorf("Unexpected error returned:\ngot\n%s\nwanted nil\n", err)
-			case err == nil && c.shouldError:
-				t.Errorf("Expected error to be returned: got nil")
-			}
-
-			switch {
-			case c.isLeader && mockGauge.value != 1:
-				t.Errorf("Leader gauge metric not set correctly: got %f when is leader", mockGauge.value)
-			case !c.isLeader && mockGauge.value != 0:
-				t.Errorf("Leader gauge metric not set correctly: got %f when is not leader", mockGauge.value)
 			}
 		})
 	}
