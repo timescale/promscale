@@ -10,12 +10,15 @@ import (
 	"time"
 )
 
-var (
-	maskPasswordRegex1         = regexp.MustCompile(`password=(\s*?)'([^']+?)'`)
-	maskPasswordReplaceString1 = "password=$1'****'"
-	maskPasswordRegex2         = regexp.MustCompile(`password:(\s*?)([^\s]+?)( |$)`)
-	maskPasswordReplaceString2 = "password:$1****$3"
+const (
 	PromNamespace              = "ts_prom"
+	maskPasswordReplaceString1 = "password=$1'****'"
+	maskPasswordReplaceString2 = "password:$1****$3"
+)
+
+var (
+	maskPasswordRegex1 = regexp.MustCompile(`password=(\s*?)'([^']+?)'`)
+	maskPasswordRegex2 = regexp.MustCompile(`password:(\s*?)([^\s]+?)( |$)`)
 )
 
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel

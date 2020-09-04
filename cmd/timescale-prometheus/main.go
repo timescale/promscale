@@ -86,6 +86,7 @@ func main() {
 	}
 
 	appVersion := pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash}
+
 	// migrate has to happen after elector started
 	if cfg.migrate {
 		err = migrate(&cfg.pgmodelCfg, appVersion, promMetrics)

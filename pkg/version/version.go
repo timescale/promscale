@@ -2,6 +2,12 @@ package version
 
 import "github.com/blang/semver/v4"
 
+const (
+	Safe = iota
+	Warn
+	Err
+)
+
 var (
 	// Rules for Versioning:
 	// A release version cannot contain `dev` in its pre-release tag.
@@ -30,7 +36,26 @@ var (
 	Version    = "0.1.0-beta.4.dev.0"
 	CommitHash = ""
 
-	//ExtVersionRangeString is a range of required timescale_prometheus_extra extension versions
+	TimescaleVersionRangeString = struct {
+		Safe, Warn string
+	}{
+		Safe: ">=1.7.3 <2.0.0",
+		Warn: ">=1.7.0 <1.7.3",
+	}
+	timescaleVersionSafeRange = semver.MustParseRange(TimescaleVersionRangeString.Safe)
+	timescaleVersionWarnRange = semver.MustParseRange(TimescaleVersionRangeString.Warn)
+
+	// ExtVersionRangeString is a range of required timescale_prometheus_extra extension versions
 	ExtVersionRangeString = "=0.1.x"
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 )
+
+// VerifyTimescaleVersion verifies version compatibility with Timescaledb.
+func VerifyTimescaleVersion(version semver.Version) uint {
+	if timescaleVersionSafeRange(version) {
+		return Safe
+	} else if timescaleVersionWarnRange(version) {
+		return Warn
+	}
+	return Err
+}
