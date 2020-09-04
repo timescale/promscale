@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
@@ -20,19 +21,54 @@ var (
 	ExtensionIsInstalled = false
 )
 
-// checkExtensionVersion checks for the correct version and enables the extension if
+// checkExtensionsVersion checks for the correct version and enables the extension if
 // it is at the right version
-func checkExtensionVersion(conn *pgxpool.Pool) error {
-	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn)
-	if err != nil {
-		return fmt.Errorf("Could not get the installed extension version: %w", err)
+func checkExtensionsVersion(conn *pgxpool.Pool) error {
+	if err := checkTimescaleDBVersion(conn); err != nil {
+		return err
 	}
+	if err := checkTimescalePrometheusExtraVersion(conn); err != nil {
+		return err
+	}
+	return nil
+}
 
+func checkTimescaleDBVersion(conn *pgxpool.Pool) error {
+	timescaleVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "timescaledb")
+	if err != nil {
+		return fmt.Errorf("could not get the installed extension version: %w", err)
+	}
+	if !isInstalled {
+		return fmt.Errorf("timescaledb is not installed: %w", err)
+	}
+	switch version.VerifyTimescaleVersion(timescaleVersion) {
+	case version.Warn:
+		safeRanges := strings.Split(version.TimescaleVersionRangeString.Safe, " ")
+		log.Warn(
+			"msg",
+			fmt.Sprintf(
+				"Might lead to incompatibility issues due to TimescaleDB version. Expected version within %s to %s.",
+				safeRanges[0], safeRanges[1],
+			),
+			"Installed Timescaledb version:", timescaleVersion.String(),
+		)
+	case version.Err:
+		safeRanges := strings.Split(version.TimescaleVersionRangeString.Safe, " ")
+		return fmt.Errorf("incompatible Timescaledb version: %s. Expected version within %s to %s", timescaleVersion.String(), safeRanges[0], safeRanges[1])
+	case version.Safe:
+	}
+	return nil
+}
+
+func checkTimescalePrometheusExtraVersion(conn *pgxpool.Pool) error {
+	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "timescale_prometheus_extra")
+	if err != nil {
+		return fmt.Errorf("could not get the installed extension version: %w", err)
+	}
 	if !isInstalled {
 		ExtensionIsInstalled = false
 		return nil
 	}
-
 	if version.ExtVersionRange(currentVersion) {
 		ExtensionIsInstalled = true
 	} else {
@@ -58,7 +94,7 @@ func migrateExtension(conn *pgxpool.Pool) error {
 		return nil
 	}
 
-	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn)
+	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "timescale_prometheus_extra")
 	if err != nil {
 		return fmt.Errorf("Could not get the installed extension version: %w", err)
 	}
@@ -70,7 +106,7 @@ func migrateExtension(conn *pgxpool.Pool) error {
 		if extErr != nil {
 			return extErr
 		}
-		return checkExtensionVersion(conn)
+		return checkExtensionsVersion(conn)
 	}
 
 	comparator := currentVersion.Compare(newVersion)
@@ -89,7 +125,7 @@ func migrateExtension(conn *pgxpool.Pool) error {
 		}
 	}
 
-	return checkExtensionVersion(conn)
+	return checkExtensionsVersion(conn)
 }
 
 func fetchAvailableExtensionVersions(conn *pgxpool.Pool) (semver.Versions, error) {
@@ -117,22 +153,26 @@ func fetchAvailableExtensionVersions(conn *pgxpool.Pool) (semver.Versions, error
 	return versions, nil
 }
 
-func fetchInstalledExtensionVersion(conn *pgxpool.Pool) (semver.Version, bool, error) {
+func fetchInstalledExtensionVersion(conn *pgxpool.Pool, extensionName string) (semver.Version, bool, error) {
 	var versionString string
-	err := conn.QueryRow(context.Background(),
-		"SELECT extversion  FROM pg_extension WHERE extname='timescale_prometheus_extra'").Scan(&versionString)
-	if err != nil {
+	if err := conn.QueryRow(
+		context.Background(),
+		"SELECT extversion FROM pg_extension WHERE extname=$1;",
+		extensionName,
+	).Scan(&versionString); err != nil {
 		if err == pgx.ErrNoRows {
 			return semver.Version{}, false, nil
 		}
 		return semver.Version{}, true, err
 	}
 
-	versionString = correctVersionString(versionString)
+	if extensionName == "timescale_prometheus_extra" {
+		versionString = correctVersionString(versionString)
+	}
 
 	v, err := semver.Parse(versionString)
 	if err != nil {
-		return v, true, fmt.Errorf("Could not parse current timescale_prometheus_extra extension version %v: %w", versionString, err)
+		return v, true, fmt.Errorf("could not parse current %s extension version %v: %w", extensionName, versionString, err)
 	}
 	return v, true, nil
 }

@@ -111,7 +111,7 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 	return nil
 }
 
-//CheckDependcies makes sure all project dependencies are set up correctly
+// CheckDependencies makes sure all project dependencies are set up correctly
 func CheckDependencies(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 	expectedVersion := semver.MustParse(versionInfo.Version)
 	dbVersion, err := getDBVersion(db)
@@ -122,7 +122,7 @@ func CheckDependencies(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("db schema version is incorrect: expected %v, got %v", expectedVersion, dbVersion)
 	}
 
-	return checkExtensionVersion(db)
+	return checkExtensionsVersion(db)
 }
 
 type Migrator struct {
