@@ -277,6 +277,7 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 			"-db-user", promUser,
 			"-db-password", "password",
 			"-db-name", dbname,
+			"-db-ssl-mode", "prefer",
 			"-web-listen-address", "0.0.0.0:" + ConnectorPort.Port(),
 		},
 	}
