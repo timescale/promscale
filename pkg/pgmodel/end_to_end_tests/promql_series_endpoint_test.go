@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
@@ -118,32 +121,50 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 
-		series := api.Series(&api.Config{}, queryable)
+		apiConfig := &api.Config{
+			AllowedOrigin: regexp.MustCompile(".*"),
+		}
+		series := api.Series(apiConfig, queryable)
+		router := route.New()
+		router.Get("/api/v1/series", series.ServeHTTP)
 
-		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		ts := httptest.NewServer(router)
+		defer ts.Close()
+
+		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
+		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
 
 		start := time.Unix(startTime/1000, 0)
 		end := time.Unix(endTime/1000, 0)
 		var (
 			requestCases []requestCase
-			req          *http.Request
+			tsReq        *http.Request
+			promReq      *http.Request
 			err          error
 		)
 		for _, c := range testCases {
-			req, err = genSeriesRequest(apiURL, c.matchers, start, end)
+			tsReq, err = genSeriesRequest(tsURL, c.matchers, start, end)
 			if err != nil {
-				t.Fatalf("unable to create PromQL series request: %s", err)
+				t.Fatalf("unable to create TS PromQL series request: %s", err)
 			}
-			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("get series for %s", c.name)})
+			promReq, err = genSeriesRequest(promURL, c.matchers, start, end)
+			if err != nil {
+				t.Fatalf("unable to create Prometheus PromQL series request: %s", err)
+			}
+			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("get series for %s", c.name)})
 
-			req, err = genSeriesNoTimeRequest(apiURL, c.matchers)
+			tsReq, err = genSeriesNoTimeRequest(tsURL, c.matchers)
 			if err != nil {
-				t.Fatalf("unable to create PromQL series request: %s", err)
+				t.Fatalf("unable to create TS PromQL series request: %s", err)
 			}
-			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("get no time series for %s", c.name)})
+			promReq, err = genSeriesNoTimeRequest(promURL, c.matchers)
+			if err != nil {
+				t.Fatalf("unable to create Prometheus PromQL series request: %s", err)
+			}
+			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("get no time series for %s", c.name)})
 		}
-		testMethod := testRequestConcurrent(requestCases, series, client, seriesResultComparator)
+		testMethod := testRequestConcurrent(requestCases, client, seriesResultComparator)
 		tester.Run("test series endpoint", testMethod)
 	})
 }

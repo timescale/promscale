@@ -5,17 +5,18 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 )
 
 type requestCase struct {
-	req *http.Request
-	log string
+	tsReq   *http.Request
+	promReq *http.Request
+	log     string
 }
 
 type sample struct {
@@ -90,19 +91,22 @@ func (s samples) Equal(other samples) bool {
 
 type resultComparator func(promContent []byte, tsContent []byte) error
 
-func testRequest(req *http.Request, handler http.Handler, client *http.Client, comparator resultComparator) func(*testing.T) {
+func testRequest(tsReq, promReq *http.Request, client *http.Client, comparator resultComparator) func(*testing.T) {
 	return func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-		tsResp := rec.Result()
-		promResp, promErr := client.Do(req)
+		tsResp, tsErr := client.Do(tsReq)
+
+		if tsErr != nil {
+			t.Fatalf("unexpected error returned from TS client:\n%s\n", tsErr.Error())
+		}
+		promResp, promErr := client.Do(promReq)
 
 		if promErr != nil {
 			t.Fatalf("unexpected error returned from Prometheus client:\n%s\n", promErr.Error())
 		}
 
-		promContent, err := ioutil.ReadAll(promResp.Body)
+		compareHTTPHeaders(t, promResp.Header, tsResp.Header)
 
+		promContent, err := ioutil.ReadAll(promResp.Body)
 		if err != nil {
 			t.Fatalf("unexpected error returned when reading Prometheus response body:\n%s\n", err.Error())
 		}
@@ -122,7 +126,7 @@ func testRequest(req *http.Request, handler http.Handler, client *http.Client, c
 	}
 }
 
-func testRequestConcurrent(requestCases []requestCase, handler http.Handler, client *http.Client, comparator resultComparator) func(*testing.T) {
+func testRequestConcurrent(requestCases []requestCase, client *http.Client, comparator resultComparator) func(*testing.T) {
 	return func(t *testing.T) {
 
 		perm := rand.Perm(len(requestCases))
@@ -130,21 +134,26 @@ func testRequestConcurrent(requestCases []requestCase, handler http.Handler, cli
 		wg := sync.WaitGroup{}
 
 		for i := 0; i < len(perm); i++ {
-			req := requestCases[perm[i]].req
+			tsReq := requestCases[perm[i]].tsReq
+			promReq := requestCases[perm[i]].promReq
 			log := requestCases[perm[i]].log
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 
-				rec := httptest.NewRecorder()
-				handler.ServeHTTP(rec, req)
-				tsResp := rec.Result()
-				promResp, promErr := client.Do(req)
+				tsResp, tsErr := client.Do(tsReq)
+				if tsErr != nil {
+					t.Errorf("unexpected error returned from TS client:\n%s\n", tsErr.Error())
+					return
+				}
+				promResp, promErr := client.Do(promReq)
 
 				if promErr != nil {
 					t.Errorf("unexpected error returned from Prometheus client:\n%s\n", promErr.Error())
 					return
 				}
+
+				compareHTTPHeaders(t, promResp.Header, tsResp.Header)
 
 				promContent, err := ioutil.ReadAll(promResp.Body)
 
@@ -176,4 +185,40 @@ func testRequestConcurrent(requestCases []requestCase, handler http.Handler, cli
 		}
 		wg.Wait()
 	}
+}
+
+func compareHTTPHeaders(t *testing.T, expected, actual http.Header) {
+	for k, v := range expected {
+		if !reflect.DeepEqual(v, actual[k]) {
+			if k == "Date" {
+				if dateHeadersMatch(v, actual[k]) {
+					continue
+				}
+			}
+			t.Errorf("unexpected HTTP header value for header \"%s\":\ngot\n%v\nwanted\n%v\n", k, actual[k], v)
+			return
+		}
+	}
+
+}
+
+// dateHeadersMatch checks if the date headers from two HTTP responses match
+// and are within a tolerance of one second.
+func dateHeadersMatch(expected, actual []string) bool {
+	if len(expected) != 1 {
+		return false
+	}
+
+	if len(actual) != 1 {
+		return false
+	}
+	expectedDate, expectedErr := http.ParseTime(expected[0])
+	actualDate, actualErr := http.ParseTime(actual[0])
+
+	if expectedErr != actualErr {
+		return false
+	}
+
+	return expectedDate.Sub(actualDate) <= time.Second
+
 }
