@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"regexp"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/common/route"
 	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/log"
@@ -2431,57 +2434,84 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 		queryable := query.NewQueryable(r.GetQuerier())
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 
-		apiConfig := &api.Config{}
+		apiConfig := &api.Config{
+			AllowedOrigin: regexp.MustCompile(".*"),
+		}
 		instantQuery := api.Query(apiConfig, queryEngine, queryable)
 		rangeQuery := api.QueryRange(apiConfig, queryEngine, queryable)
 
-		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
-		client := &http.Client{Timeout: 10 * time.Second}
+		router := route.New()
+		router.Get("/api/v1/query", instantQuery.ServeHTTP)
+		router.Get("/api/v1/query_range", rangeQuery.ServeHTTP)
+
+		ts := httptest.NewServer(router)
+		defer ts.Close()
+
+		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
+		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		client := &http.Client{Timeout: 20 * time.Second}
 
 		start := time.Unix(startTime/1000, 0)
 		end := time.Unix(endTime/1000, 0)
 		var (
 			requestCases []requestCase
-			req          *http.Request
+			tsReq        *http.Request
+			promReq      *http.Request
 			err          error
 		)
 		for _, c := range cases {
-			req, err = genInstantRequest(apiURL, c.query, start)
+			tsReq, err = genInstantRequest(tsURL, c.query, start)
 			if err != nil {
-				t.Fatalf("unable to create PromQL query request: %s", err)
+				t.Fatalf("unable to create TS PromQL query request: %s", err)
 			}
-			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (instant query, ts=start)", c.name)})
+			promReq, err = genInstantRequest(promURL, c.query, start)
+			if err != nil {
+				t.Fatalf("unable to create Prometheus PromQL query request: %s", err)
+			}
+			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start)", c.name)})
 
 			// Instant Query, 30 seconds after start
-			req, err = genInstantRequest(apiURL, c.query, start.Add(time.Second*30))
+			tsReq, err = genInstantRequest(tsURL, c.query, start.Add(time.Second*30))
 			if err != nil {
-				t.Fatalf("unable to create PromQL query request: %s", err)
+				t.Fatalf("unable to create TS PromQL query request: %s", err)
 			}
-			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (instant query, ts=start+30sec)", c.name)})
+			promReq, err = genInstantRequest(promURL, c.query, start.Add(time.Second*30))
+			if err != nil {
+				t.Fatalf("unable to create Prometheus PromQL query request: %s", err)
+			}
+			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start+30sec)", c.name)})
 		}
-		testMethod := testRequestConcurrent(requestCases, instantQuery, client, queryResultComparator)
+		testMethod := testRequestConcurrent(requestCases, client, queryResultComparator)
 		tester.Run("test instant query endpoint", testMethod)
 
 		requestCases = nil
 		for _, c := range cases {
 			for _, step := range steps {
-				req, err = genRangeRequest(apiURL, c.query, start, end.Add(10*time.Minute), step)
+				tsReq, err = genRangeRequest(tsURL, c.query, start, end.Add(10*time.Minute), step)
 				if err != nil {
-					t.Fatalf("unable to create PromQL range query request: %s", err)
+					t.Fatalf("unable to create TS PromQL range query request: %s", err)
 				}
-				requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String())})
+				promReq, err = genRangeRequest(promURL, c.query, start, end.Add(10*time.Minute), step)
+				if err != nil {
+					t.Fatalf("unable to create Prometheus PromQL range query request: %s", err)
+				}
+				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String())})
 			}
 
 			//range that straddles the end of the generated data
 			for _, step := range steps {
-				req, err = genRangeRequest(apiURL, c.query, end, end.Add(time.Minute*10), step)
+				tsReq, err = genRangeRequest(tsURL, c.query, end, end.Add(time.Minute*10), step)
 				if err != nil {
-					t.Fatalf("unable to create PromQL range query request: %s", err)
+					t.Fatalf("unable to create TS PromQL range query request: %s", err)
 				}
-				requestCases = append(requestCases, requestCase{req, fmt.Sprintf("%s (range query, step size: %s, straddles_end)", c.name, step.String())})
+				promReq, err = genRangeRequest(promURL, c.query, end, end.Add(time.Minute*10), step)
+				if err != nil {
+					t.Fatalf("unable to create Prometheus PromQL range query request: %s", err)
+				}
+				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s, straddles_end)", c.name, step.String())})
 			}
 		}
-		testMethod = testRequestConcurrent(requestCases, rangeQuery, client, queryResultComparator)
+		testMethod = testRequestConcurrent(requestCases, client, queryResultComparator)
 		tester.Run("test range query endpoint", testMethod)
 	})
 }

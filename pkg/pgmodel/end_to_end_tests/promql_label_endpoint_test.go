@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
@@ -75,7 +77,9 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		r := pgmodel.NewPgxReader(readOnly, nil, 100)
 		queryable := query.NewQueryable(r.GetQuerier())
 
-		apiConfig := &api.Config{}
+		apiConfig := &api.Config{
+			AllowedOrigin: regexp.MustCompile(".*"),
+		}
 		labelNamesHandler := api.Labels(apiConfig, queryable)
 		labelValuesHandler := api.LabelValues(apiConfig, queryable)
 
@@ -83,20 +87,29 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		router.Get("/api/v1/label/:name/values", labelValuesHandler.ServeHTTP)
 		router.Get("/api/v1/labels", labelNamesHandler.ServeHTTP)
 
-		apiURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		ts := httptest.NewServer(router)
+		defer ts.Close()
+
+		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
+		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
 
 		var (
 			requestCases []requestCase
-			req          *http.Request
+			tsReq        *http.Request
+			promReq      *http.Request
 			err          error
 		)
-		req, err = getLabelNamesRequest(apiURL)
+		tsReq, err = getLabelNamesRequest(tsURL)
 		if err != nil {
-			t.Fatalf("unable to create PromQL label names request: %v", err)
+			t.Fatalf("unable to create TS PromQL label names request: %v", err)
+		}
+		promReq, err = getLabelNamesRequest(promURL)
+		if err != nil {
+			t.Fatalf("unable to create Prometheus PromQL label names request: %v", err)
 		}
 
-		testMethod := testRequest(req, router, client, labelsResultComparator)
+		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator)
 		tester.Run("get label names", testMethod)
 
 		labelNames, err := r.GetQuerier().LabelNames()
@@ -106,13 +119,17 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		labelNames = append(labelNames, "unexisting_label")
 
 		for _, label := range labelNames {
-			req, err = getLabelValuesRequest(apiURL, label)
+			tsReq, err = getLabelValuesRequest(tsURL, label)
 			if err != nil {
-				t.Fatalf("unable to create PromQL label values request: %v", err)
+				t.Fatalf("unable to create TS PromQL label values request: %v", err)
 			}
-			requestCases = append(requestCases, requestCase{req, fmt.Sprintf("get label values for %s", label)})
+			promReq, err = getLabelValuesRequest(promURL, label)
+			if err != nil {
+				t.Fatalf("unable to create Prometheus PromQL label values request: %v", err)
+			}
+			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("get label values for %s", label)})
 		}
-		testMethod = testRequestConcurrent(requestCases, router, client, labelsResultComparator)
+		testMethod = testRequestConcurrent(requestCases, client, labelsResultComparator)
 		tester.Run("test label endpoint", testMethod)
 	})
 }
