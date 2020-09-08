@@ -16,6 +16,7 @@ package promql
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -26,6 +27,7 @@ import (
 	"github.com/go-kit/kit/log"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/testutil"
@@ -182,8 +184,8 @@ type errQuerier struct {
 	err error
 }
 
-func (q *errQuerier) Select(bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
-	return errSeriesSet{err: q.err}, nil, nil, q.err
+func (q *errQuerier) Select(bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	return errSeriesSet{err: q.err}, nil
 }
 func (*errQuerier) LabelValues(string) ([]string, storage.Warnings, error) { return nil, nil, nil }
 func (*errQuerier) LabelNames() ([]string, storage.Warnings, error)        { return nil, nil, nil }
@@ -194,9 +196,10 @@ type errSeriesSet struct {
 	err error
 }
 
-func (errSeriesSet) Next() bool         { return false }
-func (errSeriesSet) At() storage.Series { return nil }
-func (e errSeriesSet) Err() error       { return e.err }
+func (errSeriesSet) Next() bool                   { return false }
+func (errSeriesSet) At() storage.Series           { return nil }
+func (e errSeriesSet) Err() error                 { return e.err }
+func (e errSeriesSet) Warnings() storage.Warnings { return nil }
 
 func TestQueryError(t *testing.T) {
 	opts := EngineOpts{
@@ -218,46 +221,37 @@ func TestQueryError(t *testing.T) {
 
 	res := vectorQuery.Exec(ctx)
 	testutil.NotOk(t, res.Err, "expected error on failed select but got none")
-	testutil.Equals(t, errStorage, res.Err)
+	fmt.Println(res.Err, "<=====>", errStorage)
+	testutil.Assert(t, errors.Is(res.Err, errStorage), "expected error doesn't match")
 
 	matrixQuery, err := engine.NewInstantQuery(queryable, "foo[1m]", time.Unix(1, 0))
 	testutil.Ok(t, err)
 
 	res = matrixQuery.Exec(ctx)
 	testutil.NotOk(t, res.Err, "expected error on failed select but got none")
-	testutil.Equals(t, errStorage, res.Err)
+	testutil.Assert(t, errors.Is(res.Err, errStorage), "expected error doesn't match")
 }
 
-// hintCheckerQuerier implements storage.Querier which checks the start and end times
-// in hints.
-type hintCheckerQuerier struct {
-	start    int64
-	end      int64
-	grouping []string
-	by       bool
-	selRange int64
-	function string
-
-	t *testing.T
+type noopHintRecordingQueryable struct {
+	hints []*storage.SelectHints
 }
 
-func (q *hintCheckerQuerier) Select(_ bool, sp *storage.SelectHints, _ []parser.Node, _ ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
-	testutil.Equals(q.t, q.start, sp.Start)
-	testutil.Equals(q.t, q.end, sp.End)
-	testutil.Equals(q.t, q.grouping, sp.Grouping)
-	testutil.Equals(q.t, q.by, sp.By)
-	testutil.Equals(q.t, q.selRange, sp.Range)
-	testutil.Equals(q.t, q.function, sp.Func)
-
-	return errSeriesSet{err: nil}, nil, nil, nil
+func (h *noopHintRecordingQueryable) Querier(context.Context, int64, int64) (Querier, error) {
+	return &hintRecordingQuerier{Querier: &errQuerier{}, h: h}, nil
 }
-func (*hintCheckerQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
-	return nil, nil, nil
-}
-func (*hintCheckerQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
-func (*hintCheckerQuerier) Close() error                                    { return nil }
 
-func TestParamsSetCorrectly(t *testing.T) {
+type hintRecordingQuerier struct {
+	Querier
+
+	h *noopHintRecordingQueryable
+}
+
+func (h *hintRecordingQuerier) Select(sortSeries bool, hints *storage.SelectHints, p []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	h.h.hints = append(h.h.hints, hints)
+	return h.Querier.Select(sortSeries, hints, nil, matchers...)
+}
+
+func TestSelectHintsSetCorrectly(t *testing.T) {
 	opts := EngineOpts{
 		Logger:        nil,
 		Reg:           nil,
@@ -266,192 +260,137 @@ func TestParamsSetCorrectly(t *testing.T) {
 		LookbackDelta: 5 * time.Second,
 	}
 
-	cases := []struct {
+	for _, tc := range []struct {
 		query string
 
-		// All times are in seconds.
+		// All times are in milliseconds.
 		start int64
 		end   int64
 
-		paramStart int64
-		paramEnd   int64
-
-		paramGrouping []string
-		paramBy       bool
-		paramRange    int64
-		paramFunc     string
+		// TODO(bwplotka): Add support for better hints when subquerying.
+		expected []*storage.SelectHints
 	}{{
-		query: "foo",
-		start: 10,
-
-		paramStart: 5,
-		paramEnd:   10,
+		query: "foo", start: 10000,
+		expected: []*storage.SelectHints{
+			{Start: 5000, End: 10000},
+		},
 	}, {
-		query: "foo[2m]",
-		start: 200,
-
-		paramStart: 80, // 200 - 120
-		paramEnd:   200,
-		paramRange: 120000,
+		query: "foo[2m]", start: 200000,
+		expected: []*storage.SelectHints{
+			{Start: 80000, End: 200000, Range: 120000},
+		},
 	}, {
-		query: "foo[2m] offset 2m",
-		start: 300,
-
-		paramStart: 60,
-		paramEnd:   180,
-		paramRange: 120000,
+		query: "foo[2m] offset 2m", start: 300000,
+		expected: []*storage.SelectHints{
+			{Start: 60000, End: 180000, Range: 120000},
+		},
 	}, {
-		query: "foo[2m:1s]",
-		start: 300,
-
-		paramStart: 175, // 300 - 120 - 5
-		paramEnd:   300,
+		query: "foo[2m:1s]", start: 300000,
+		expected: []*storage.SelectHints{
+			{Start: 175000, End: 300000},
+		},
 	}, {
-		query: "count_over_time(foo[2m:1s])",
-		start: 300,
-
-		paramStart: 175, // 300 - 120 - 5
-		paramEnd:   300,
-		paramFunc:  "count_over_time",
+		query: "count_over_time(foo[2m:1s])", start: 300000,
+		expected: []*storage.SelectHints{
+			{Start: 175000, End: 300000, Func: "count_over_time"},
+		},
 	}, {
-		query: "count_over_time(foo[2m:1s] offset 10s)",
-		start: 300,
-
-		paramStart: 165, // 300 - 120 - 5 - 10
-		paramEnd:   300,
-		paramFunc:  "count_over_time",
+		query: "count_over_time(foo[2m:1s] offset 10s)", start: 300000,
+		expected: []*storage.SelectHints{
+			{Start: 165000, End: 290000, Func: "count_over_time"},
+		},
 	}, {
-		query: "count_over_time((foo offset 10s)[2m:1s] offset 10s)",
-		start: 300,
-
-		paramStart: 155, // 300 - 120 - 5 - 10 - 10
-		paramEnd:   290,
-		paramFunc:  "count_over_time",
+		query: "count_over_time((foo offset 10s)[2m:1s] offset 10s)", start: 300000,
+		expected: []*storage.SelectHints{
+			{Start: 155000, End: 280000, Func: "count_over_time"},
+		},
 	}, {
-		// Range queries now.
-		query: "foo",
-		start: 10,
-		end:   20,
 
-		paramStart: 5,
-		paramEnd:   20,
+		query: "foo", start: 10000, end: 20000,
+		expected: []*storage.SelectHints{
+			{Start: 5000, End: 20000, Step: 1000},
+		},
 	}, {
-		query: "rate(foo[2m])",
-		start: 200,
-		end:   500,
-
-		paramStart: 80, // 200 - 120
-		paramEnd:   500,
-		paramRange: 120000,
-		paramFunc:  "rate",
+		query: "rate(foo[2m])", start: 200000, end: 500000,
+		expected: []*storage.SelectHints{
+			{Start: 80000, End: 500000, Range: 120000, Func: "rate", Step: 1000},
+		},
 	}, {
-		query: "rate(foo[2m] offset 2m)",
-		start: 300,
-		end:   500,
-
-		paramStart: 60,
-		paramEnd:   380,
-		paramRange: 120000,
-		paramFunc:  "rate",
+		query: "rate(foo[2m] offset 2m)", start: 300000, end: 500000,
+		expected: []*storage.SelectHints{
+			{Start: 60000, End: 380000, Range: 120000, Func: "rate", Step: 1000},
+		},
 	}, {
-		query: "rate(foo[2m:1s])",
-		start: 300,
-		end:   500,
-
-		paramStart: 175, // 300 - 120 - 5
-		paramEnd:   500,
-		paramFunc:  "rate",
+		query: "rate(foo[2m:1s])", start: 300000, end: 500000,
+		expected: []*storage.SelectHints{
+			{Start: 175000, End: 500000, Func: "rate", Step: 1000},
+		},
 	}, {
-		query: "count_over_time(foo[2m:1s])",
-		start: 300,
-		end:   500,
-
-		paramStart: 175, // 300 - 120 - 5
-		paramEnd:   500,
-		paramFunc:  "count_over_time",
+		query: "count_over_time(foo[2m:1s])", start: 300000, end: 500000,
+		expected: []*storage.SelectHints{
+			{Start: 175000, End: 500000, Func: "count_over_time", Step: 1000},
+		},
 	}, {
-		query: "count_over_time(foo[2m:1s] offset 10s)",
-		start: 300,
-		end:   500,
-
-		paramStart: 165, // 300 - 120 - 5 - 10
-		paramEnd:   500,
-		paramFunc:  "count_over_time",
+		query: "count_over_time(foo[2m:1s] offset 10s)", start: 300000, end: 500000,
+		expected: []*storage.SelectHints{
+			{Start: 165000, End: 490000, Func: "count_over_time", Step: 1000},
+		},
 	}, {
-		query: "count_over_time((foo offset 10s)[2m:1s] offset 10s)",
-		start: 300,
-		end:   500,
-
-		paramStart: 155, // 300 - 120 - 5 - 10 - 10
-		paramEnd:   490,
-		paramFunc:  "count_over_time",
+		query: "count_over_time((foo offset 10s)[2m:1s] offset 10s)", start: 300000, end: 500000,
+		expected: []*storage.SelectHints{
+			{Start: 155000, End: 480000, Func: "count_over_time", Step: 1000},
+		},
 	}, {
-		query: "sum by (dim1) (foo)",
-		start: 10,
-
-		paramStart:    5,
-		paramEnd:      10,
-		paramGrouping: []string{"dim1"},
-		paramBy:       true,
-		paramFunc:     "sum",
+		query: "sum by (dim1) (foo)", start: 10000,
+		expected: []*storage.SelectHints{
+			{Start: 5000, End: 10000, Func: "sum", By: true, Grouping: []string{"dim1"}},
+		},
 	}, {
-		query: "sum without (dim1) (foo)",
-		start: 10,
-
-		paramStart:    5,
-		paramEnd:      10,
-		paramGrouping: []string{"dim1"},
-		paramBy:       false,
-		paramFunc:     "sum",
+		query: "sum without (dim1) (foo)", start: 10000,
+		expected: []*storage.SelectHints{
+			{Start: 5000, End: 10000, Func: "sum", Grouping: []string{"dim1"}},
+		},
 	}, {
-		query: "sum by (dim1) (avg_over_time(foo[1s]))",
-		start: 10,
-
-		paramStart:    9,
-		paramEnd:      10,
-		paramGrouping: nil,
-		paramBy:       false,
-		paramRange:    1000,
-		paramFunc:     "avg_over_time",
+		query: "sum by (dim1) (avg_over_time(foo[1s]))", start: 10000,
+		expected: []*storage.SelectHints{
+			{Start: 9000, End: 10000, Func: "avg_over_time", Range: 1000},
+		},
 	}, {
-		query: "sum by (dim1) (max by (dim2) (foo))",
-		start: 10,
-
-		paramStart:    5,
-		paramEnd:      10,
-		paramGrouping: []string{"dim2"},
-		paramBy:       true,
-		paramFunc:     "max",
+		query: "sum by (dim1) (max by (dim2) (foo))", start: 10000,
+		expected: []*storage.SelectHints{
+			{Start: 5000, End: 10000, Func: "max", By: true, Grouping: []string{"dim2"}},
+		},
 	}, {
-		query: "(max by (dim1) (foo))[5s:1s]",
-		start: 10,
+		query: "(max by (dim1) (foo))[5s:1s]", start: 10000,
+		expected: []*storage.SelectHints{
+			{Start: 0, End: 10000, Func: "max", By: true, Grouping: []string{"dim1"}},
+		},
+	}, {
+		query: "(sum(http_requests{group=~\"p.*\"})+max(http_requests{group=~\"c.*\"}))[20s:5s]", start: 120000,
+		expected: []*storage.SelectHints{
+			{Start: 95000, End: 120000, Func: "sum", By: true},
+			{Start: 95000, End: 120000, Func: "max", By: true},
+		},
+	}} {
+		t.Run(tc.query, func(t *testing.T) {
+			engine := NewEngine(opts)
+			hintsRecorder := &noopHintRecordingQueryable{}
 
-		paramStart:    0,
-		paramEnd:      10,
-		paramGrouping: []string{"dim1"},
-		paramBy:       true,
-		paramFunc:     "max",
-	}}
+			var (
+				query Query
+				err   error
+			)
+			if tc.end == 0 {
+				query, err = engine.NewInstantQuery(hintsRecorder, tc.query, timestamp.Time(tc.start))
+			} else {
+				query, err = engine.NewRangeQuery(hintsRecorder, tc.query, timestamp.Time(tc.start), timestamp.Time(tc.end), time.Second)
+			}
+			testutil.Ok(t, err)
 
-	for _, tc := range cases {
-		engine := NewEngine(opts)
-		queryable := QueryableFunc(func(ctx context.Context, mint, maxt int64) (Querier, error) {
-			return &hintCheckerQuerier{start: tc.paramStart * 1000, end: tc.paramEnd * 1000, grouping: tc.paramGrouping, by: tc.paramBy, selRange: tc.paramRange, function: tc.paramFunc, t: t}, nil
+			res := query.Exec(context.Background())
+			testutil.Ok(t, res.Err)
+			testutil.Equals(t, tc.expected, hintsRecorder.hints)
 		})
-
-		var (
-			query Query
-			err   error
-		)
-		if tc.end == 0 {
-			query, err = engine.NewInstantQuery(queryable, tc.query, time.Unix(tc.start, 0))
-		} else {
-			query, err = engine.NewRangeQuery(queryable, tc.query, time.Unix(tc.start, 0), time.Unix(tc.end, 0), time.Second)
-		}
-		testutil.Ok(t, err)
-
-		res := query.Exec(context.Background())
-		testutil.Ok(t, res.Err)
 	}
 }
 
@@ -832,7 +771,7 @@ func TestRecoverEvaluatorRuntime(t *testing.T) {
 	ev := &evaluator{logger: log.NewNopLogger()}
 
 	var err error
-	defer ev.recover(&err)
+	defer ev.recover(nil, &err)
 
 	// Cause a runtime panic.
 	var a []int
@@ -855,7 +794,7 @@ func TestRecoverEvaluatorError(t *testing.T) {
 			t.Fatalf("wrong error message: %q, expected %q", err, e)
 		}
 	}()
-	defer ev.recover(&err)
+	defer ev.recover(nil, &err)
 
 	panic(e)
 }

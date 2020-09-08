@@ -14,6 +14,7 @@
 package promql
 
 import (
+	"bytes"
 	"container/heap"
 	"context"
 	"fmt"
@@ -28,7 +29,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -64,7 +65,7 @@ type Querier interface {
 	// Select returns a set of series that matches the given label matchers.
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
-	Select(sortSeries bool, hints *storage.SelectHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error)
+	Select(sortSeries bool, hints *storage.SelectHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
 }
 
 const (
@@ -101,10 +102,10 @@ type engineMetrics struct {
 	maxConcurrentQueries prometheus.Gauge
 	queryLogEnabled      prometheus.Gauge
 	queryLogFailures     prometheus.Counter
-	queryQueueTime       prometheus.Summary
-	queryPrepareTime     prometheus.Summary
-	queryInnerEval       prometheus.Summary
-	queryResultSort      prometheus.Summary
+	queryQueueTime       prometheus.Observer
+	queryPrepareTime     prometheus.Observer
+	queryInnerEval       prometheus.Observer
+	queryResultSort      prometheus.Observer
 }
 
 // convertibleToInt64 returns true if v does not over-/underflow an int64.
@@ -245,19 +246,24 @@ type EngineOpts struct {
 	// LookbackDelta determines the time since the last sample after which a time
 	// series is considered stale.
 	LookbackDelta time.Duration
+
+	// NoStepSubqueryIntervalFn is the default evaluation interval of
+	// a subquery in milliseconds if no step in range vector was specified `[30m:<step>]`.
+	NoStepSubqueryIntervalFn func(rangeMillis int64) int64
 }
 
 // Engine handles the lifetime of queries from beginning to end.
 // It is connected to a querier.
 type Engine struct {
-	logger             log.Logger
-	metrics            *engineMetrics
-	timeout            time.Duration
-	maxSamplesPerQuery int
-	activeQueryTracker *ActiveQueryTracker
-	queryLogger        QueryLogger
-	queryLoggerLock    sync.RWMutex
-	lookbackDelta      time.Duration
+	logger                   log.Logger
+	metrics                  *engineMetrics
+	timeout                  time.Duration
+	maxSamplesPerQuery       int
+	activeQueryTracker       *ActiveQueryTracker
+	queryLogger              QueryLogger
+	queryLoggerLock          sync.RWMutex
+	lookbackDelta            time.Duration
+	noStepSubqueryIntervalFn func(rangeMillis int64) int64
 }
 
 // NewEngine returns a new engine.
@@ -265,6 +271,16 @@ func NewEngine(opts EngineOpts) *Engine {
 	if opts.Logger == nil {
 		opts.Logger = log.NewNopLogger()
 	}
+
+	queryResultSummary := prometheus.NewSummaryVec(prometheus.SummaryOpts{
+		Namespace:  namespace,
+		Subsystem:  subsystem,
+		Name:       "query_duration_seconds",
+		Help:       "Query timings",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+	},
+		[]string{"slice"},
+	)
 
 	metrics := &engineMetrics{
 		currentQueries: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -291,38 +307,10 @@ func NewEngine(opts EngineOpts) *Engine {
 			Name:      "queries_concurrent_max",
 			Help:      "The max number of concurrent queries.",
 		}),
-		queryQueueTime: prometheus.NewSummary(prometheus.SummaryOpts{
-			Namespace:   namespace,
-			Subsystem:   subsystem,
-			Name:        "query_duration_seconds",
-			Help:        "Query timings",
-			ConstLabels: prometheus.Labels{"slice": "queue_time"},
-			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
-		}),
-		queryPrepareTime: prometheus.NewSummary(prometheus.SummaryOpts{
-			Namespace:   namespace,
-			Subsystem:   subsystem,
-			Name:        "query_duration_seconds",
-			Help:        "Query timings",
-			ConstLabels: prometheus.Labels{"slice": "prepare_time"},
-			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
-		}),
-		queryInnerEval: prometheus.NewSummary(prometheus.SummaryOpts{
-			Namespace:   namespace,
-			Subsystem:   subsystem,
-			Name:        "query_duration_seconds",
-			Help:        "Query timings",
-			ConstLabels: prometheus.Labels{"slice": "inner_eval"},
-			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
-		}),
-		queryResultSort: prometheus.NewSummary(prometheus.SummaryOpts{
-			Namespace:   namespace,
-			Subsystem:   subsystem,
-			Name:        "query_duration_seconds",
-			Help:        "Query timings",
-			ConstLabels: prometheus.Labels{"slice": "result_sort"},
-			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
-		}),
+		queryQueueTime:   queryResultSummary.WithLabelValues("queue_time"),
+		queryPrepareTime: queryResultSummary.WithLabelValues("prepare_time"),
+		queryInnerEval:   queryResultSummary.WithLabelValues("inner_eval"),
+		queryResultSort:  queryResultSummary.WithLabelValues("result_sort"),
 	}
 
 	if t := opts.ActiveQueryTracker; t != nil {
@@ -344,20 +332,18 @@ func NewEngine(opts EngineOpts) *Engine {
 			metrics.maxConcurrentQueries,
 			metrics.queryLogEnabled,
 			metrics.queryLogFailures,
-			metrics.queryQueueTime,
-			metrics.queryPrepareTime,
-			metrics.queryInnerEval,
-			metrics.queryResultSort,
+			queryResultSummary,
 		)
 	}
 
 	return &Engine{
-		timeout:            opts.Timeout,
-		logger:             opts.Logger,
-		metrics:            metrics,
-		maxSamplesPerQuery: opts.MaxSamples,
-		activeQueryTracker: opts.ActiveQueryTracker,
-		lookbackDelta:      opts.LookbackDelta,
+		timeout:                  opts.Timeout,
+		logger:                   opts.Logger,
+		metrics:                  metrics,
+		maxSamplesPerQuery:       opts.MaxSamples,
+		activeQueryTracker:       opts.ActiveQueryTracker,
+		lookbackDelta:            opts.LookbackDelta,
+		noStepSubqueryIntervalFn: opts.NoStepSubqueryIntervalFn,
 	}
 }
 
@@ -369,8 +355,7 @@ func (ng *Engine) SetQueryLogger(l QueryLogger) {
 	if ng.queryLogger != nil {
 		// An error closing the old file descriptor should
 		// not make reload fail; only log a warning.
-		err := ng.queryLogger.Close()
-		if err != nil {
+		if err := ng.queryLogger.Close(); err != nil {
 			level.Warn(ng.logger).Log("msg", "Error while closing the previous query log file", "err", err)
 		}
 	}
@@ -442,7 +427,7 @@ func (ng *Engine) newTestQuery(f func(context.Context) error) Query {
 //
 // At this point per query only one EvalStmt is evaluated. Alert and record
 // statements are not handled by the Engine.
-func (ng *Engine) exec(ctx context.Context, q *query) (v parser.Value, w storage.Warnings, err error) {
+func (ng *Engine) exec(ctx context.Context, q *query) (v parser.Value, ws storage.Warnings, err error) {
 	ng.metrics.currentQueries.Inc()
 	defer ng.metrics.currentQueries.Dec()
 
@@ -545,30 +530,27 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	}
 	defer querier.Close()
 
-	warnings, topNode, err := ng.populateSeries(ctxPrepare, querier, s)
+	topNode := ng.populateSeries(querier, s)
 	prepareSpanTimer.Finish()
-
-	if err != nil {
-		return nil, warnings, err
-	}
 
 	evalSpanTimer, ctxInnerEval := query.stats.GetSpanTimer(ctx, stats.InnerEvalTime, ng.metrics.queryInnerEval)
 	// Instant evaluation. This is executed as a range evaluation with one step.
 	if s.Start == s.End && s.Interval == 0 {
 		start := timeMilliseconds(s.Start)
 		evaluator := &evaluator{
-			startTimestamp:      start,
-			endTimestamp:        start,
-			interval:            1,
-			ctx:                 ctxInnerEval,
-			maxSamples:          ng.maxSamplesPerQuery,
-			defaultEvalInterval: GetDefaultEvaluationInterval(),
-			logger:              ng.logger,
-			lookbackDelta:       ng.lookbackDelta,
-			topNode:             topNode,
+			startTimestamp:           start,
+			endTimestamp:             start,
+			interval:                 1,
+			ctx:                      ctxInnerEval,
+			maxSamples:               ng.maxSamplesPerQuery,
+			defaultEvalInterval:      GetDefaultEvaluationInterval(),
+			logger:                   ng.logger,
+			lookbackDelta:            ng.lookbackDelta,
+			topNode:                  topNode,
+			noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
 		}
 
-		val, err := evaluator.Eval(s.Expr)
+		val, warnings, err := evaluator.Eval(s.Expr)
 		if err != nil {
 			return nil, warnings, err
 		}
@@ -608,17 +590,18 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 
 	// Range evaluation.
 	evaluator := &evaluator{
-		startTimestamp:      timeMilliseconds(s.Start),
-		endTimestamp:        timeMilliseconds(s.End),
-		interval:            durationMilliseconds(s.Interval),
-		ctx:                 ctxInnerEval,
-		maxSamples:          ng.maxSamplesPerQuery,
-		defaultEvalInterval: GetDefaultEvaluationInterval(),
-		logger:              ng.logger,
-		lookbackDelta:       ng.lookbackDelta,
-		topNode:             topNode,
+		startTimestamp:           timeMilliseconds(s.Start),
+		endTimestamp:             timeMilliseconds(s.End),
+		interval:                 durationMilliseconds(s.Interval),
+		ctx:                      ctxInnerEval,
+		maxSamples:               ng.maxSamplesPerQuery,
+		defaultEvalInterval:      GetDefaultEvaluationInterval(),
+		logger:                   ng.logger,
+		lookbackDelta:            ng.lookbackDelta,
+		noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
+		topNode:                  topNode,
 	}
-	val, err := evaluator.Eval(s.Expr)
+	val, warnings, err := evaluator.Eval(s.Expr)
 	if err != nil {
 		return nil, warnings, err
 	}
@@ -642,16 +625,20 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	return mat, warnings, nil
 }
 
-// cumulativeSubqueryOffset returns the sum of range and offset of all subqueries in the path.
-func (ng *Engine) cumulativeSubqueryOffset(path []parser.Node) time.Duration {
-	var subqOffset time.Duration
+// subqueryOffsetRange returns the sum of offsets and ranges of all subqueries in the path.
+func (ng *Engine) subqueryOffsetRange(path []parser.Node) (time.Duration, time.Duration) {
+	var (
+		subqOffset time.Duration
+		subqRange  time.Duration
+	)
 	for _, node := range path {
 		switch n := node.(type) {
 		case *parser.SubqueryExpr:
-			subqOffset += n.Range + n.Offset
+			subqOffset += n.Offset
+			subqRange += n.Range
 		}
 	}
-	return subqOffset
+	return subqOffset, subqRange
 }
 
 type inspector func(parser.Node, []parser.Node) (bool, error)
@@ -669,20 +656,20 @@ func (ng *Engine) findMinTime(s *parser.EvalStmt) (time.Time, error) {
 	var maxOffset time.Duration
 
 	err := parser.Walk(inspector(func(node parser.Node, path []parser.Node) (bool, error) {
-		subqOffset := ng.cumulativeSubqueryOffset(path)
+		subqOffset, subqRange := ng.subqueryOffsetRange(path)
 		switch n := node.(type) {
 		case *parser.VectorSelector:
-			if maxOffset < ng.lookbackDelta+subqOffset {
-				maxOffset = ng.lookbackDelta + subqOffset
+			if maxOffset < ng.lookbackDelta+subqOffset+subqRange {
+				maxOffset = ng.lookbackDelta + subqOffset + subqRange
 			}
-			if n.Offset+ng.lookbackDelta+subqOffset > maxOffset {
-				maxOffset = n.Offset + ng.lookbackDelta + subqOffset
+			if n.Offset+ng.lookbackDelta+subqOffset+subqRange > maxOffset {
+				maxOffset = n.Offset + ng.lookbackDelta + subqOffset + subqRange
 			}
 		case *parser.MatrixSelector:
-			if maxOffset < n.Range+subqOffset {
-				maxOffset = n.Range + subqOffset
+			if maxOffset < n.Range+subqOffset+subqRange {
+				maxOffset = n.Range + subqOffset + subqRange
 			}
-			if m := n.VectorSelector.(*parser.VectorSelector).Offset + n.Range + subqOffset; m > maxOffset {
+			if m := n.VectorSelector.(*parser.VectorSelector).Offset + n.Range + subqOffset + subqRange; m > maxOffset {
 				maxOffset = m
 			}
 			//do not process the child VectorSelector since we don't want to add the LookbackDelta etc for the underlying
@@ -694,36 +681,34 @@ func (ng *Engine) findMinTime(s *parser.EvalStmt) (time.Time, error) {
 	return s.Start.Add(-maxOffset), err
 }
 
-func (ng *Engine) populateSeries(ctx context.Context, querier Querier, s *parser.EvalStmt) (storage.Warnings, parser.Node, error) {
+func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) parser.Node {
 	var (
 		// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 		// The evaluation of the VectorSelector inside then evaluates the given range and unsets
 		// the variable.
+		set       storage.SeriesSet
 		evalRange time.Duration
-		warnings  storage.Warnings
-		err       error
 		topNode   parser.Node
 	)
 
 	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
-		var set storage.SeriesSet
-		var wrn storage.Warnings
-		hints := &storage.SelectHints{
-			Start: timestamp.FromTime(s.Start),
-			End:   timestamp.FromTime(s.End),
-			Step:  durationToInt64Millis(s.Interval),
-		}
-
-		// We need to make sure we select the timerange selected by the subquery.
-		// TODO(gouthamve): cumulativeSubqueryOffset gives the sum of range and the offset
-		// we can optimise it by separating out the range and offsets, and subtracting the offsets
-		// from end also.
-		subqOffset := ng.cumulativeSubqueryOffset(path)
-		offsetMilliseconds := durationMilliseconds(subqOffset)
-		hints.Start = hints.Start - offsetMilliseconds
-
 		switch n := node.(type) {
 		case *parser.VectorSelector:
+			hints := &storage.SelectHints{
+				Start: timestamp.FromTime(s.Start),
+				End:   timestamp.FromTime(s.End),
+				Step:  durationMilliseconds(s.Interval),
+			}
+
+			// We need to make sure we select the timerange selected by the subquery.
+			// The subqueryOffsetRange function gives the sum of range and the
+			// sum of offset.
+			// TODO(bwplotka): Add support for better hints when subquerying. See: https://github.com/prometheus/prometheus/issues/7630.
+			subqOffset, subqRange := ng.subqueryOffsetRange(path)
+			offsetMilliseconds := durationMilliseconds(subqOffset)
+			hints.Start = hints.Start - offsetMilliseconds - durationMilliseconds(subqRange)
+			hints.End = hints.End - offsetMilliseconds
+
 			if evalRange == 0 {
 				hints.Start = hints.Start - durationMilliseconds(ng.lookbackDelta)
 			} else {
@@ -743,14 +728,9 @@ func (ng *Engine) populateSeries(ctx context.Context, querier Querier, s *parser
 			}
 
 			if topNode != nil {
-				return fmt.Errorf("Assigning topNode twice")
+				return fmt.Errorf("assigning topNode twice")
 			}
-			set, topNode, wrn, err = querier.Select(false, hints, path, n.LabelMatchers...)
-			warnings = append(warnings, wrn...)
-			if err != nil {
-				level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
-				return err
-			}
+			set, topNode = querier.Select(false, hints, path, n.LabelMatchers...)
 			n.UnexpandedSeriesSet = set
 
 		case *parser.MatrixSelector:
@@ -758,7 +738,7 @@ func (ng *Engine) populateSeries(ctx context.Context, querier Querier, s *parser
 		}
 		return nil
 	})
-	return warnings, topNode, err
+	return topNode
 }
 
 // extractFuncFromPath walks up the path and searches for the first instance of
@@ -792,33 +772,39 @@ func extractGroupsFromPath(p []parser.Node) (bool, []string) {
 	return false, nil
 }
 
-func checkForSeriesSetExpansion(ctx context.Context, expr parser.Expr) {
+func checkAndExpandSeriesSet(ctx context.Context, expr parser.Expr) (storage.Warnings, error) {
 	switch e := expr.(type) {
 	case *parser.MatrixSelector:
-		checkForSeriesSetExpansion(ctx, e.VectorSelector)
+		return checkAndExpandSeriesSet(ctx, e.VectorSelector)
 	case *parser.VectorSelector:
-		if e.Series == nil {
-			series, err := expandSeriesSet(ctx, e.UnexpandedSeriesSet)
-			if err != nil {
-				panic(err)
-			} else {
-				e.Series = series
-			}
+		if e.Series != nil {
+			return nil, nil
 		}
+		series, ws, err := expandSeriesSet(ctx, e.UnexpandedSeriesSet)
+		e.Series = series
+		return ws, err
 	}
+	return nil, nil
 }
 
-func expandSeriesSet(ctx context.Context, it storage.SeriesSet) (res []storage.Series, err error) {
+func expandSeriesSet(ctx context.Context, it storage.SeriesSet) (res []storage.Series, ws storage.Warnings, err error) {
 	for it.Next() {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		default:
 		}
 		res = append(res, it.At())
 	}
-	return res, it.Err()
+	return res, it.Warnings(), it.Err()
 }
+
+type errWithWarnings struct {
+	err      error
+	warnings storage.Warnings
+}
+
+func (e errWithWarnings) Error() string { return e.err.Error() }
 
 // An evaluator evaluates given expressions over given fixed timestamps. It
 // is attached to an engine through which it connects to a querier and reports
@@ -830,12 +816,13 @@ type evaluator struct {
 	endTimestamp   int64 // End time in milliseconds.
 	interval       int64 // Interval in milliseconds.
 
-	maxSamples          int
-	currentSamples      int
-	defaultEvalInterval int64
-	logger              log.Logger
-	lookbackDelta       time.Duration
-	topNode             parser.Node
+	maxSamples               int
+	currentSamples           int
+	logger                   log.Logger
+	defaultEvalInterval      int64
+	lookbackDelta            time.Duration
+	topNode                  parser.Node
+	noStepSubqueryIntervalFn func(rangeMillis int64) int64
 }
 
 // errorf causes a panic with the input formatted into an error.
@@ -849,80 +836,91 @@ func (ev *evaluator) error(err error) {
 }
 
 // recover is the handler that turns panics into returns from the top level of evaluation.
-func (ev *evaluator) recover(errp *error) {
+func (ev *evaluator) recover(ws *storage.Warnings, errp *error) {
 	e := recover()
 	if e == nil {
 		return
 	}
-	if err, ok := e.(runtime.Error); ok {
+
+	switch err := e.(type) {
+	case runtime.Error:
 		// Print the stack trace but do not inhibit the running application.
 		buf := make([]byte, 64<<10)
 		buf = buf[:runtime.Stack(buf, false)]
 
 		level.Error(ev.logger).Log("msg", "runtime panic in parser", "err", e, "stacktrace", string(buf))
 		*errp = errors.Wrap(err, "unexpected error")
-	} else {
+	case errWithWarnings:
+		*errp = err.err
+		*ws = append(*ws, err.warnings...)
+	default:
 		*errp = e.(error)
 	}
 }
 
-func (ev *evaluator) Eval(expr parser.Expr) (v parser.Value, err error) {
-	defer ev.recover(&err)
-	return ev.eval(expr), nil
+func (ev *evaluator) Eval(expr parser.Expr) (v parser.Value, ws storage.Warnings, err error) {
+	defer ev.recover(&ws, &err)
+
+	v, ws = ev.eval(expr)
+	return v, ws, nil
 }
 
 // EvalNodeHelper stores extra information and caches for evaluating a single node across steps.
 type EvalNodeHelper struct {
 	// Evaluation timestamp.
-	ts int64
+	Ts int64
 	// Vector that can be used for output.
-	out Vector
+	Out Vector
 
 	// Caches.
-	// dropMetricName and label_*.
-	dmn map[uint64]labels.Labels
+	// DropMetricName and label_*.
+	Dmn map[uint64]labels.Labels
 	// signatureFunc.
-	sigf map[uint64]uint64
+	sigf map[string]string
 	// funcHistogramQuantile.
-	signatureToMetricWithBuckets map[uint64]*metricWithBuckets
+	signatureToMetricWithBuckets map[string]*metricWithBuckets
 	// label_replace.
 	regex *regexp.Regexp
 
+	lb           *labels.Builder
+	lblBuf       []byte
+	lblResultBuf []byte
+
 	// For binary vector matching.
-	rightSigs    map[uint64]Sample
-	matchedSigs  map[uint64]map[uint64]struct{}
-	resultMetric map[uint64]labels.Labels
+	rightSigs    map[string]Sample
+	matchedSigs  map[string]map[uint64]struct{}
+	resultMetric map[string]labels.Labels
 }
 
-// dropMetricName is a cached version of dropMetricName.
-func (enh *EvalNodeHelper) dropMetricName(l labels.Labels) labels.Labels {
-	if enh.dmn == nil {
-		enh.dmn = make(map[uint64]labels.Labels, len(enh.out))
+// DropMetricName is a cached version of DropMetricName.
+func (enh *EvalNodeHelper) DropMetricName(l labels.Labels) labels.Labels {
+	if enh.Dmn == nil {
+		enh.Dmn = make(map[uint64]labels.Labels, len(enh.Out))
 	}
 	h := l.Hash()
-	ret, ok := enh.dmn[h]
+	ret, ok := enh.Dmn[h]
 	if ok {
 		return ret
 	}
 	ret = dropMetricName(l)
-	enh.dmn[h] = ret
+	enh.Dmn[h] = ret
 	return ret
 }
 
 // signatureFunc is a cached version of signatureFunc.
-func (enh *EvalNodeHelper) signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
+func (enh *EvalNodeHelper) signatureFunc(on bool, names ...string) func(labels.Labels) string {
 	if enh.sigf == nil {
-		enh.sigf = make(map[uint64]uint64, len(enh.out))
+		enh.sigf = make(map[string]string, len(enh.Out))
 	}
-	f := signatureFunc(on, names...)
-	return func(l labels.Labels) uint64 {
-		h := l.Hash()
-		ret, ok := enh.sigf[h]
+	f := signatureFunc(on, enh.lblBuf, names...)
+	return func(l labels.Labels) string {
+		enh.lblBuf = l.Bytes(enh.lblBuf)
+		ret, ok := enh.sigf[string(enh.lblBuf)]
 		if ok {
 			return ret
 		}
 		ret = f(l)
-		enh.sigf[h] = ret
+		enh.sigf[string(enh.lblBuf)] = ret
 		return ret
 	}
 }
@@ -931,17 +929,20 @@ func (enh *EvalNodeHelper) signatureFunc(on bool, names ...string) func(labels.L
 // the given function with the values computed for each expression at that
 // step.  The return value is the combination into time series of all the
 // function call results.
-func (ev *evaluator) rangeEval(f func([]parser.Value, *EvalNodeHelper) Vector, exprs ...parser.Expr) Matrix {
+func (ev *evaluator) rangeEval(f func([]parser.Value, *EvalNodeHelper) (Vector, storage.Warnings), exprs ...parser.Expr) (Matrix, storage.Warnings) {
 	numSteps := int((ev.endTimestamp-ev.startTimestamp)/ev.interval) + 1
 	matrixes := make([]Matrix, len(exprs))
 	origMatrixes := make([]Matrix, len(exprs))
 	originalNumSamples := ev.currentSamples
 
+	var warnings storage.Warnings
 	for i, e := range exprs {
 		// Functions will take string arguments from the expressions, not the values.
 		if e != nil && e.Type() != parser.ValueTypeString {
 			// ev.currentSamples will be updated to the correct value within the ev.eval call.
-			matrixes[i] = ev.eval(e).(Matrix)
+			val, ws := ev.eval(e)
+			warnings = append(warnings, ws...)
+			matrixes[i] = val.(Matrix)
 
 			// Keep a copy of the original point slices so that they
 			// can be returned to the pool.
@@ -961,7 +962,7 @@ func (ev *evaluator) rangeEval(f func([]parser.Value, *EvalNodeHelper) Vector, e
 			biggestLen = len(matrixes[i])
 		}
 	}
-	enh := &EvalNodeHelper{out: make(Vector, 0, biggestLen)}
+	enh := &EvalNodeHelper{Out: make(Vector, 0, biggestLen)}
 	seriess := make(map[uint64]Series, biggestLen) // Output series by series hash.
 	tempNumSamples := ev.currentSamples
 	for ts := ev.startTimestamp; ts <= ev.endTimestamp; ts += ev.interval {
@@ -992,12 +993,13 @@ func (ev *evaluator) rangeEval(f func([]parser.Value, *EvalNodeHelper) Vector, e
 			args[i] = vectors[i]
 		}
 		// Make the function call.
-		enh.ts = ts
-		result := f(args, enh)
+		enh.Ts = ts
+		result, ws := f(args, enh)
 		if result.ContainsSameLabelset() {
 			ev.errorf("vector cannot contain metrics with the same labelset")
 		}
-		enh.out = result[:0] // Reuse result vector.
+		enh.Out = result[:0] // Reuse result vector.
+		warnings = append(warnings, ws...)
 
 		ev.currentSamples += len(result)
 		// When we reset currentSamples to tempNumSamples during the next iteration of the loop it also
@@ -1016,7 +1018,7 @@ func (ev *evaluator) rangeEval(f func([]parser.Value, *EvalNodeHelper) Vector, e
 				mat[i] = Series{Metric: s.Metric, Points: []Point{s.Point}}
 			}
 			ev.currentSamples = originalNumSamples + mat.TotalSamples()
-			return mat
+			return mat, warnings
 		}
 
 		// Add samples in output vector to output series.
@@ -1048,25 +1050,26 @@ func (ev *evaluator) rangeEval(f func([]parser.Value, *EvalNodeHelper) Vector, e
 		mat = append(mat, ss)
 	}
 	ev.currentSamples = originalNumSamples + mat.TotalSamples()
-	return mat
+	return mat, warnings
 }
 
 // evalSubquery evaluates given SubqueryExpr and returns an equivalent
 // evaluated MatrixSelector in its place. Note that the Name and LabelMatchers are not set.
-func (ev *evaluator) evalSubquery(subq *parser.SubqueryExpr) *parser.MatrixSelector {
-	val := ev.eval(subq).(Matrix)
+func (ev *evaluator) evalSubquery(subq *parser.SubqueryExpr) (*parser.MatrixSelector, storage.Warnings) {
+	val, ws := ev.eval(subq)
+	mat := val.(Matrix)
 	vs := &parser.VectorSelector{
 		Offset: subq.Offset,
-		Series: make([]storage.Series, 0, len(val)),
+		Series: make([]storage.Series, 0, len(mat)),
 	}
 	ms := &parser.MatrixSelector{
 		Range:          subq.Range,
 		VectorSelector: vs,
 	}
-	for _, s := range val {
+	for _, s := range mat {
 		vs.Series = append(vs.Series, NewStorageSeries(s))
 	}
-	return ms
+	return ms, ws
 }
 
 func (ev *evaluator) getPushdownResult(vs *parser.VectorSelector, numSteps int) Matrix {
@@ -1092,7 +1095,7 @@ func (ev *evaluator) getPushdownResult(vs *parser.VectorSelector, numSteps int) 
 }
 
 // eval evaluates the given expression as the given AST expression node requires.
-func (ev *evaluator) eval(expr parser.Expr) parser.Value {
+func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	// This is the top-level evaluation method.
 	// Thus, we check for timeout/cancellation here.
 	if err := contextDone(ev.ctx, "expression evaluation"); err != nil {
@@ -1103,12 +1106,19 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 	if expr == ev.topNode {
 		/* the storage layer has already processed this node. Just return
 		the result. */
-		var mat Matrix
+		var (
+			mat      Matrix
+			warnings storage.Warnings
+		)
 		parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
 			switch n := node.(type) {
 			/* Note that a MatrixSelector cascades down to it's VectorSelector in Inspect */
 			case *parser.VectorSelector:
-				checkForSeriesSetExpansion(ev.ctx, n)
+				warns, err := checkAndExpandSeriesSet(ev.ctx, n)
+				if err != nil {
+					return fmt.Errorf("topNode eval vector-selector: %w", err)
+				}
+				warnings = warns
 				if mat != nil {
 					return fmt.Errorf("Matrix is already filled in")
 				}
@@ -1119,23 +1129,23 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 		if mat == nil {
 			ev.error(fmt.Errorf("Matrix not filled in"))
 		}
-		return mat
+		return mat, warnings
 	}
 
 	switch e := expr.(type) {
 	case *parser.AggregateExpr:
 		unwrapParenExpr(&e.Param)
 		if s, ok := e.Param.(*parser.StringLiteral); ok {
-			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-				return ev.aggregation(e.Op, e.Grouping, e.Without, s.Val, v[0].(Vector), enh)
+			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+				return ev.aggregation(e.Op, e.Grouping, e.Without, s.Val, v[0].(Vector), enh), nil
 			}, e.Expr)
 		}
-		return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
+		return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
 			var param float64
 			if e.Param != nil {
 				param = v[0].(Vector)[0].V
 			}
-			return ev.aggregation(e.Op, e.Grouping, e.Without, param, v[1].(Vector), enh)
+			return ev.aggregation(e.Op, e.Grouping, e.Without, param, v[1].(Vector), enh), nil
 		}, e.Param, e.Expr)
 
 	case *parser.Call:
@@ -1147,15 +1157,19 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 			// a vector selector.
 			vs, ok := e.Args[0].(*parser.VectorSelector)
 			if ok {
-				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-					return call([]parser.Value{ev.vectorSelector(vs, enh.ts)}, e.Args, enh)
+				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+					val, ws := ev.vectorSelector(vs, enh.Ts)
+					return call([]parser.Value{val}, e.Args, enh), ws
 				})
 			}
 		}
 
 		// Check if the function has a matrix argument.
-		var matrixArgIndex int
-		var matrixArg bool
+		var (
+			matrixArgIndex int
+			matrixArg      bool
+			warnings       storage.Warnings
+		)
 		for i := range e.Args {
 			unwrapParenExpr(&e.Args[i])
 			a := e.Args[i]
@@ -1169,14 +1183,16 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 				matrixArgIndex = i
 				matrixArg = true
 				// Replacing parser.SubqueryExpr with parser.MatrixSelector.
-				e.Args[i] = ev.evalSubquery(subq)
+				val, ws := ev.evalSubquery(subq)
+				e.Args[i] = val
+				warnings = append(warnings, ws...)
 				break
 			}
 		}
 		if !matrixArg {
 			// Does not have a matrix argument.
-			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-				return call(v, e.Args, enh)
+			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+				return call(v, e.Args, enh), warnings
 			}, e.Args...)
 		}
 
@@ -1186,16 +1202,22 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 		otherInArgs := make([]Vector, len(e.Args))
 		for i, e := range e.Args {
 			if i != matrixArgIndex {
-				otherArgs[i] = ev.eval(e).(Matrix)
+				val, ws := ev.eval(e)
+				otherArgs[i] = val.(Matrix)
 				otherInArgs[i] = Vector{Sample{}}
 				inArgs[i] = otherInArgs[i]
+				warnings = append(warnings, ws...)
 			}
 		}
 
 		sel := e.Args[matrixArgIndex].(*parser.MatrixSelector)
 		selVS := sel.VectorSelector.(*parser.VectorSelector)
 
-		checkForSeriesSetExpansion(ev.ctx, sel)
+		ws, err := checkAndExpandSeriesSet(ev.ctx, sel)
+		warnings = append(warnings, ws...)
+		if err != nil {
+			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), warnings})
+		}
 		mat := make(Matrix, 0, len(selVS.Series)) // Output matrix.
 		offset := durationMilliseconds(selVS.Offset)
 		selRange := durationMilliseconds(sel.Range)
@@ -1207,10 +1229,11 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 		points := getPointSlice(16)
 		inMatrix := make(Matrix, 1)
 		inArgs[matrixArgIndex] = inMatrix
-		enh := &EvalNodeHelper{out: make(Vector, 0, 1)}
+		enh := &EvalNodeHelper{Out: make(Vector, 0, 1)}
 		// Process all the calls for one time series at a time.
 		it := storage.NewBuffer(selRange)
 		for i, s := range selVS.Series {
+			ev.currentSamples -= len(points)
 			points = points[:0]
 			it.Reset(s.Iterator())
 			ss := Series{
@@ -1239,10 +1262,10 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 					continue
 				}
 				inMatrix[0].Points = points
-				enh.ts = ts
+				enh.Ts = ts
 				// Make the function call.
 				outVec := call(inArgs, e.Args, enh)
-				enh.out = outVec[:0]
+				enh.Out = outVec[:0]
 				if len(outVec) > 0 {
 					ss.Points = append(ss.Points, Point{V: outVec[0].Point.V, T: ts})
 				}
@@ -1261,6 +1284,7 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 			}
 		}
 
+		ev.currentSamples -= len(points)
 		putPointSlice(points)
 
 		// The absent_over_time function returns 0 or 1 series. So far, the matrix
@@ -1271,7 +1295,7 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 			// Iterate once to look for a complete series.
 			for _, s := range mat {
 				if len(s.Points) == steps {
-					return Matrix{}
+					return Matrix{}, warnings
 				}
 			}
 
@@ -1282,7 +1306,7 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 					found[p.T] = struct{}{}
 				}
 				if i > 0 && len(found) == steps {
-					return Matrix{}
+					return Matrix{}, warnings
 				}
 			}
 
@@ -1298,20 +1322,21 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 					Metric: createLabelsForAbsentFunction(e.Args[0]),
 					Points: newp,
 				},
-			}
+			}, warnings
 		}
 
 		if mat.ContainsSameLabelset() {
 			ev.errorf("vector cannot contain metrics with the same labelset")
 		}
 
-		return mat
+		return mat, warnings
 
 	case *parser.ParenExpr:
 		return ev.eval(e.Expr)
 
 	case *parser.UnaryExpr:
-		mat := ev.eval(e.Expr).(Matrix)
+		val, ws := ev.eval(e.Expr)
+		mat := val.(Matrix)
 		if e.Op == parser.SUB {
 			for i := range mat {
 				mat[i].Metric = dropMetricName(mat[i].Metric)
@@ -1323,53 +1348,57 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 				ev.errorf("vector cannot contain metrics with the same labelset")
 			}
 		}
-		return mat
+		return mat, ws
 
 	case *parser.BinaryExpr:
 		switch lt, rt := e.LHS.Type(), e.RHS.Type(); {
 		case lt == parser.ValueTypeScalar && rt == parser.ValueTypeScalar:
-			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
+			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
 				val := scalarBinop(e.Op, v[0].(Vector)[0].Point.V, v[1].(Vector)[0].Point.V)
-				return append(enh.out, Sample{Point: Point{V: val}})
+				return append(enh.Out, Sample{Point: Point{V: val}}), nil
 			}, e.LHS, e.RHS)
 		case lt == parser.ValueTypeVector && rt == parser.ValueTypeVector:
 			switch e.Op {
 			case parser.LAND:
-				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-					return ev.VectorAnd(v[0].(Vector), v[1].(Vector), e.VectorMatching, enh)
+				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+					return ev.VectorAnd(v[0].(Vector), v[1].(Vector), e.VectorMatching, enh), nil
 				}, e.LHS, e.RHS)
 			case parser.LOR:
-				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-					return ev.VectorOr(v[0].(Vector), v[1].(Vector), e.VectorMatching, enh)
+				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+					return ev.VectorOr(v[0].(Vector), v[1].(Vector), e.VectorMatching, enh), nil
 				}, e.LHS, e.RHS)
 			case parser.LUNLESS:
-				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-					return ev.VectorUnless(v[0].(Vector), v[1].(Vector), e.VectorMatching, enh)
+				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+					return ev.VectorUnless(v[0].(Vector), v[1].(Vector), e.VectorMatching, enh), nil
 				}, e.LHS, e.RHS)
 			default:
-				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-					return ev.VectorBinop(e.Op, v[0].(Vector), v[1].(Vector), e.VectorMatching, e.ReturnBool, enh)
+				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+					return ev.VectorBinop(e.Op, v[0].(Vector), v[1].(Vector), e.VectorMatching, e.ReturnBool, enh), nil
 				}, e.LHS, e.RHS)
 			}
 
 		case lt == parser.ValueTypeVector && rt == parser.ValueTypeScalar:
-			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-				return ev.VectorscalarBinop(e.Op, v[0].(Vector), Scalar{V: v[1].(Vector)[0].Point.V}, false, e.ReturnBool, enh)
+			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+				return ev.VectorscalarBinop(e.Op, v[0].(Vector), Scalar{V: v[1].(Vector)[0].Point.V}, false, e.ReturnBool, enh), nil
 			}, e.LHS, e.RHS)
 
 		case lt == parser.ValueTypeScalar && rt == parser.ValueTypeVector:
-			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-				return ev.VectorscalarBinop(e.Op, v[1].(Vector), Scalar{V: v[0].(Vector)[0].Point.V}, true, e.ReturnBool, enh)
+			return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+				return ev.VectorscalarBinop(e.Op, v[1].(Vector), Scalar{V: v[0].(Vector)[0].Point.V}, true, e.ReturnBool, enh), nil
 			}, e.LHS, e.RHS)
 		}
 
 	case *parser.NumberLiteral:
-		return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) Vector {
-			return append(enh.out, Sample{Point: Point{V: e.Val}})
+		return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
+			return append(enh.Out, Sample{Point: Point{V: e.Val}}), nil
 		})
 
 	case *parser.VectorSelector:
-		checkForSeriesSetExpansion(ev.ctx, e)
+		ws, err := checkAndExpandSeriesSet(ev.ctx, e)
+		if err != nil {
+			fmt.Println("into error", err)
+			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
+		}
 		mat := make(Matrix, 0, len(e.Series))
 		it := storage.NewBuffer(durationMilliseconds(ev.lookbackDelta))
 		for i, s := range e.Series {
@@ -1396,9 +1425,8 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 			} else {
 				putPointSlice(ss.Points)
 			}
-
 		}
-		return mat
+		return mat, ws
 
 	case *parser.MatrixSelector:
 		if ev.startTimestamp != ev.endTimestamp {
@@ -1407,21 +1435,24 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 		return ev.matrixSelector(e)
 
 	case *parser.SubqueryExpr:
-		offsetMillis := durationToInt64Millis(e.Offset)
-		rangeMillis := durationToInt64Millis(e.Range)
+		offsetMillis := durationMilliseconds(e.Offset)
+		rangeMillis := durationMilliseconds(e.Range)
 		newEv := &evaluator{
-			endTimestamp:        ev.endTimestamp - offsetMillis,
-			interval:            ev.defaultEvalInterval,
-			ctx:                 ev.ctx,
-			currentSamples:      ev.currentSamples,
-			maxSamples:          ev.maxSamples,
-			defaultEvalInterval: ev.defaultEvalInterval,
-			logger:              ev.logger,
-			lookbackDelta:       ev.lookbackDelta,
+			endTimestamp:             ev.endTimestamp - offsetMillis,
+			ctx:                      ev.ctx,
+			currentSamples:           ev.currentSamples,
+			maxSamples:               ev.maxSamples,
+			logger:                   ev.logger,
+			interval:                 ev.defaultEvalInterval,
+			defaultEvalInterval:      ev.defaultEvalInterval,
+			lookbackDelta:            ev.lookbackDelta,
+			noStepSubqueryIntervalFn: ev.noStepSubqueryIntervalFn,
 		}
 
 		if e.Step != 0 {
-			newEv.interval = durationToInt64Millis(e.Step)
+			newEv.interval = durationMilliseconds(e.Step)
+		} else {
+			newEv.interval = ev.noStepSubqueryIntervalFn(rangeMillis)
 		}
 
 		// Start with the first timestamp after (ev.startTimestamp - offset - range)
@@ -1431,11 +1462,11 @@ func (ev *evaluator) eval(expr parser.Expr) parser.Value {
 			newEv.startTimestamp += newEv.interval
 		}
 
-		res := newEv.eval(e.Expr)
+		res, ws := newEv.eval(e.Expr)
 		ev.currentSamples = newEv.currentSamples
-		return res
+		return res, ws
 	case *parser.StringLiteral:
-		return String{V: e.Val, T: ev.startTimestamp}
+		return String{V: e.Val, T: ev.startTimestamp}, nil
 	}
 
 	panic(errors.Errorf("unhandled expression of type: %T", expr))
@@ -1446,13 +1477,12 @@ func durationToInt64Millis(d time.Duration) int64 {
 }
 
 // vectorSelector evaluates a *parser.VectorSelector expression.
-func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) Vector {
-	checkForSeriesSetExpansion(ev.ctx, node)
-
-	var (
-		vec = make(Vector, 0, len(node.Series))
-	)
-
+func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vector, storage.Warnings) {
+	ws, err := checkAndExpandSeriesSet(ev.ctx, node)
+	if err != nil {
+		ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
+	}
+	vec := make(Vector, 0, len(node.Series))
 	it := storage.NewBuffer(durationMilliseconds(ev.lookbackDelta))
 	for i, s := range node.Series {
 		it.Reset(s.Iterator())
@@ -1470,7 +1500,7 @@ func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) Vecto
 			ev.error(ErrTooManySamples(env))
 		}
 	}
-	return vec
+	return vec, ws
 }
 
 // vectorSelectorSingle evaluates a instant vector for the iterator of one time series.
@@ -1518,21 +1548,23 @@ func putPointSlice(p []Point) {
 }
 
 // matrixSelector evaluates a *parser.MatrixSelector expression.
-func (ev *evaluator) matrixSelector(node *parser.MatrixSelector) Matrix {
-	checkForSeriesSetExpansion(ev.ctx, node)
-
-	vs := node.VectorSelector.(*parser.VectorSelector)
-
+func (ev *evaluator) matrixSelector(node *parser.MatrixSelector) (Matrix, storage.Warnings) {
 	var (
+		vs = node.VectorSelector.(*parser.VectorSelector)
+
 		offset = durationMilliseconds(vs.Offset)
 		maxt   = ev.startTimestamp - offset
 		mint   = maxt - durationMilliseconds(node.Range)
 		matrix = make(Matrix, 0, len(vs.Series))
+
+		it = storage.NewBuffer(durationMilliseconds(node.Range))
 	)
+	ws, err := checkAndExpandSeriesSet(ev.ctx, node)
+	if err != nil {
+		ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
+	}
 
-	it := storage.NewBuffer(durationMilliseconds(node.Range))
 	series := vs.Series
-
 	for i, s := range series {
 		if err := contextDone(ev.ctx, "expression evaluation"); err != nil {
 			ev.error(err)
@@ -1550,7 +1582,7 @@ func (ev *evaluator) matrixSelector(node *parser.MatrixSelector) Matrix {
 			putPointSlice(ss.Points)
 		}
 	}
-	return matrix
+	return matrix, ws
 }
 
 // matrixIterSlice populates a matrix vector covering the requested range for a
@@ -1571,11 +1603,13 @@ func (ev *evaluator) matrixIterSlice(it *storage.BufferedSeriesIterator, mint, m
 		var drop int
 		for drop = 0; out[drop].T < mint; drop++ {
 		}
+		ev.currentSamples -= drop
 		copy(out, out[drop:])
 		out = out[:len(out)-drop]
 		// Only append points with timestamps after the last timestamp we have.
 		mint = out[len(out)-1].T + 1
 	} else {
+		ev.currentSamples -= len(out)
 		out = out[:0]
 	}
 
@@ -1622,7 +1656,7 @@ func (ev *evaluator) VectorAnd(lhs, rhs Vector, matching *parser.VectorMatching,
 	sigf := enh.signatureFunc(matching.On, matching.MatchingLabels...)
 
 	// The set of signatures for the right-hand side Vector.
-	rightSigs := map[uint64]struct{}{}
+	rightSigs := map[string]struct{}{}
 	// Add all rhs samples to a map so we can easily find matches later.
 	for _, rs := range rhs {
 		rightSigs[sigf(rs.Metric)] = struct{}{}
@@ -1631,10 +1665,10 @@ func (ev *evaluator) VectorAnd(lhs, rhs Vector, matching *parser.VectorMatching,
 	for _, ls := range lhs {
 		// If there's a matching entry in the right-hand side Vector, add the sample.
 		if _, ok := rightSigs[sigf(ls.Metric)]; ok {
-			enh.out = append(enh.out, ls)
+			enh.Out = append(enh.Out, ls)
 		}
 	}
-	return enh.out
+	return enh.Out
 }
 
 func (ev *evaluator) VectorOr(lhs, rhs Vector, matching *parser.VectorMatching, enh *EvalNodeHelper) Vector {
@@ -1643,19 +1677,19 @@ func (ev *evaluator) VectorOr(lhs, rhs Vector, matching *parser.VectorMatching, 
 	}
 	sigf := enh.signatureFunc(matching.On, matching.MatchingLabels...)
 
-	leftSigs := map[uint64]struct{}{}
+	leftSigs := map[string]struct{}{}
 	// Add everything from the left-hand-side Vector.
 	for _, ls := range lhs {
 		leftSigs[sigf(ls.Metric)] = struct{}{}
-		enh.out = append(enh.out, ls)
+		enh.Out = append(enh.Out, ls)
 	}
 	// Add all right-hand side elements which have not been added from the left-hand side.
 	for _, rs := range rhs {
 		if _, ok := leftSigs[sigf(rs.Metric)]; !ok {
-			enh.out = append(enh.out, rs)
+			enh.Out = append(enh.Out, rs)
 		}
 	}
-	return enh.out
+	return enh.Out
 }
 
 func (ev *evaluator) VectorUnless(lhs, rhs Vector, matching *parser.VectorMatching, enh *EvalNodeHelper) Vector {
@@ -1664,17 +1698,17 @@ func (ev *evaluator) VectorUnless(lhs, rhs Vector, matching *parser.VectorMatchi
 	}
 	sigf := enh.signatureFunc(matching.On, matching.MatchingLabels...)
 
-	rightSigs := map[uint64]struct{}{}
+	rightSigs := map[string]struct{}{}
 	for _, rs := range rhs {
 		rightSigs[sigf(rs.Metric)] = struct{}{}
 	}
 
 	for _, ls := range lhs {
 		if _, ok := rightSigs[sigf(ls.Metric)]; !ok {
-			enh.out = append(enh.out, ls)
+			enh.Out = append(enh.Out, ls)
 		}
 	}
-	return enh.out
+	return enh.Out
 }
 
 // VectorBinop evaluates a binary operation between two Vectors, excluding set operators.
@@ -1693,7 +1727,7 @@ func (ev *evaluator) VectorBinop(op parser.ItemType, lhs, rhs Vector, matching *
 
 	// All samples from the rhs hashed by the matching label/values.
 	if enh.rightSigs == nil {
-		enh.rightSigs = make(map[uint64]Sample, len(enh.out))
+		enh.rightSigs = make(map[string]Sample, len(enh.Out))
 	} else {
 		for k := range enh.rightSigs {
 			delete(enh.rightSigs, k)
@@ -1723,7 +1757,7 @@ func (ev *evaluator) VectorBinop(op parser.ItemType, lhs, rhs Vector, matching *
 	// Tracks the match-signature. For one-to-one operations the value is nil. For many-to-one
 	// the value is a set of signatures to detect duplicated result elements.
 	if enh.matchedSigs == nil {
-		enh.matchedSigs = make(map[uint64]map[uint64]struct{}, len(rightSigs))
+		enh.matchedSigs = make(map[string]map[uint64]struct{}, len(rightSigs))
 	} else {
 		for k := range enh.matchedSigs {
 			delete(enh.matchedSigs, k)
@@ -1757,7 +1791,9 @@ func (ev *evaluator) VectorBinop(op parser.ItemType, lhs, rhs Vector, matching *
 			continue
 		}
 		metric := resultMetric(ls.Metric, rs.Metric, op, matching, enh)
-
+		if returnBool {
+			metric = enh.DropMetricName(metric)
+		}
 		insertedSigs, exists := matchedSigs[sig]
 		if matching.Card == parser.CardOneToOne {
 			if exists {
@@ -1779,27 +1815,25 @@ func (ev *evaluator) VectorBinop(op parser.ItemType, lhs, rhs Vector, matching *
 			insertedSigs[insertSig] = struct{}{}
 		}
 
-		enh.out = append(enh.out, Sample{
+		enh.Out = append(enh.Out, Sample{
 			Metric: metric,
 			Point:  Point{V: value},
 		})
 	}
-	return enh.out
+	return enh.Out
 }
 
 // signatureFunc returns a function that calculates the signature for a metric
 // ignoring the provided labels. If on, then the given labels are only used instead.
-func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
+func signatureFunc(on bool, b []byte, names ...string) func(labels.Labels) string {
 	sort.Strings(names)
 	if on {
-		return func(lset labels.Labels) uint64 {
-			h, _ := lset.HashForLabels(make([]byte, 0, 1024), names...)
-			return h
+		return func(lset labels.Labels) string {
+			return string(lset.WithLabels(names...).Bytes(b))
 		}
 	}
-	return func(lset labels.Labels) uint64 {
-		h, _ := lset.HashWithoutLabels(make([]byte, 0, 1024), names...)
-		return h
+	return func(lset labels.Labels) string {
+		return string(lset.WithoutLabels(names...).Bytes(b))
 	}
 }
 
@@ -1807,22 +1841,29 @@ func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
 // binary operation and the matching options.
 func resultMetric(lhs, rhs labels.Labels, op parser.ItemType, matching *parser.VectorMatching, enh *EvalNodeHelper) labels.Labels {
 	if enh.resultMetric == nil {
-		enh.resultMetric = make(map[uint64]labels.Labels, len(enh.out))
+		enh.resultMetric = make(map[string]labels.Labels, len(enh.Out))
 	}
-	// op and matching are always the same for a given node, so
-	// there's no need to include them in the hash key.
-	// If the lhs and rhs are the same then the xor would be 0,
-	// so add in one side to protect against that.
-	lh := lhs.Hash()
-	h := (lh ^ rhs.Hash()) + lh
-	if ret, ok := enh.resultMetric[h]; ok {
+
+	if enh.lb == nil {
+		enh.lb = labels.NewBuilder(lhs)
+	} else {
+		enh.lb.Reset(lhs)
+	}
+
+	buf := bytes.NewBuffer(enh.lblResultBuf[:0])
+	enh.lblBuf = lhs.Bytes(enh.lblBuf)
+	buf.Write(enh.lblBuf)
+	enh.lblBuf = rhs.Bytes(enh.lblBuf)
+	buf.Write(enh.lblBuf)
+	enh.lblResultBuf = buf.Bytes()
+
+	if ret, ok := enh.resultMetric[string(enh.lblResultBuf)]; ok {
 		return ret
 	}
-
-	lb := labels.NewBuilder(lhs)
+	str := string(enh.lblResultBuf)
 
 	if shouldDropMetricName(op) {
-		lb.Del(labels.MetricName)
+		enh.lb.Del(labels.MetricName)
 	}
 
 	if matching.Card == parser.CardOneToOne {
@@ -1834,23 +1875,23 @@ func resultMetric(lhs, rhs labels.Labels, op parser.ItemType, matching *parser.V
 						continue Outer
 					}
 				}
-				lb.Del(l.Name)
+				enh.lb.Del(l.Name)
 			}
 		} else {
-			lb.Del(matching.MatchingLabels...)
+			enh.lb.Del(matching.MatchingLabels...)
 		}
 	}
 	for _, ln := range matching.Include {
 		// Included labels from the `group_x` modifier are taken from the "one"-side.
 		if v := rhs.Get(ln); v != "" {
-			lb.Set(ln, v)
+			enh.lb.Set(ln, v)
 		} else {
-			lb.Del(ln)
+			enh.lb.Del(ln)
 		}
 	}
 
-	ret := lb.Labels()
-	enh.resultMetric[h] = ret
+	ret := enh.lb.Labels()
+	enh.resultMetric[str] = ret
 	return ret
 }
 
@@ -1880,12 +1921,12 @@ func (ev *evaluator) VectorscalarBinop(op parser.ItemType, lhs Vector, rhs Scala
 		if keep {
 			lhsSample.V = value
 			if shouldDropMetricName(op) || returnBool {
-				lhsSample.Metric = enh.dropMetricName(lhsSample.Metric)
+				lhsSample.Metric = enh.DropMetricName(lhsSample.Metric)
 			}
-			enh.out = append(enh.out, lhsSample)
+			enh.Out = append(enh.Out, lhsSample)
 		}
 	}
-	return enh.out
+	return enh.Out
 }
 
 func dropMetricName(l labels.Labels) labels.Labels {
@@ -2047,20 +2088,23 @@ func (ev *evaluator) aggregation(op parser.ItemType, grouping []string, without 
 			if k > inputVecLen {
 				resultSize = inputVecLen
 			}
-			if op == parser.STDVAR || op == parser.STDDEV {
-				result[groupingKey].value = 0.0
-			} else if op == parser.TOPK || op == parser.QUANTILE {
+			switch op {
+			case parser.STDVAR, parser.STDDEV:
+				result[groupingKey].value = 0
+			case parser.TOPK, parser.QUANTILE:
 				result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].heap, &Sample{
 					Point:  Point{V: s.V},
 					Metric: s.Metric,
 				})
-			} else if op == parser.BOTTOMK {
+			case parser.BOTTOMK:
 				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].reverseHeap, &Sample{
 					Point:  Point{V: s.V},
 					Metric: s.Metric,
 				})
+			case parser.GROUP:
+				result[groupingKey].value = 1
 			}
 			continue
 		}
@@ -2071,7 +2115,28 @@ func (ev *evaluator) aggregation(op parser.ItemType, grouping []string, without 
 
 		case parser.AVG:
 			group.groupCount++
-			group.mean += (s.V - group.mean) / float64(group.groupCount)
+			if math.IsInf(group.mean, 0) {
+				if math.IsInf(s.V, 0) && (group.mean > 0) == (s.V > 0) {
+					// The `mean` and `s.V` values are `Inf` of the same sign.  They
+					// can't be subtracted, but the value of `mean` is correct
+					// already.
+					break
+				}
+				if !math.IsInf(s.V, 0) && !math.IsNaN(s.V) {
+					// At this stage, the mean is an infinite. If the added
+					// value is neither an Inf or a Nan, we can keep that mean
+					// value.
+					// This is required because our calculation below removes
+					// the mean value, which would look like Inf += x - Inf and
+					// end up as a NaN.
+					break
+				}
+			}
+			// Divide each side of the `-` by `group.groupCount` to avoid float64 overflows.
+			group.mean += s.V/float64(group.groupCount) - group.mean/float64(group.groupCount)
+
+		case parser.GROUP:
+			// Do nothing. Required to avoid the panic in `default:` below.
 
 		case parser.MAX:
 			if group.value < s.V || math.IsNaN(group.value) {
@@ -2141,7 +2206,7 @@ func (ev *evaluator) aggregation(op parser.ItemType, grouping []string, without 
 			// The heap keeps the lowest value on top, so reverse it.
 			sort.Sort(sort.Reverse(aggr.heap))
 			for _, v := range aggr.heap {
-				enh.out = append(enh.out, Sample{
+				enh.Out = append(enh.Out, Sample{
 					Metric: v.Metric,
 					Point:  Point{V: v.V},
 				})
@@ -2152,7 +2217,7 @@ func (ev *evaluator) aggregation(op parser.ItemType, grouping []string, without 
 			// The heap keeps the lowest value on top, so reverse it.
 			sort.Sort(sort.Reverse(aggr.reverseHeap))
 			for _, v := range aggr.reverseHeap {
-				enh.out = append(enh.out, Sample{
+				enh.Out = append(enh.Out, Sample{
 					Metric: v.Metric,
 					Point:  Point{V: v.V},
 				})
@@ -2166,12 +2231,12 @@ func (ev *evaluator) aggregation(op parser.ItemType, grouping []string, without 
 			// For other aggregations, we already have the right value.
 		}
 
-		enh.out = append(enh.out, Sample{
+		enh.Out = append(enh.Out, Sample{
 			Metric: aggr.labels,
 			Point:  Point{V: aggr.value},
 		})
 	}
-	return enh.out
+	return enh.Out
 }
 
 // btos returns 1 if b is true, 0 otherwise.
