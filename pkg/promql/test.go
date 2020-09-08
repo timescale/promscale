@@ -77,9 +77,9 @@ type QuerierWrapper struct {
 	storage.Querier
 }
 
-func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
-	ss, w, err := t.Querier.Select(b, sh, m...)
-	return ss, nil, w, err
+func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	ss := t.Querier.Select(b, sh, m...)
+	return ss, nil
 }
 
 func (db *TestStorage) Querier(ctx context.Context, mint, maxt int64) (Querier, error) {
@@ -483,7 +483,7 @@ func (t *Test) exec(tc testCommand) error {
 		t.clear()
 
 	case *loadCmd:
-		app := t.storage.Appender()
+		app := t.storage.Appender(context.Background())
 		if err := cmd.append(app); err != nil {
 			app.Rollback()
 			return err
@@ -568,10 +568,11 @@ func (t *Test) clear() {
 	t.storage = NewTestStorage(t)
 
 	opts := EngineOpts{
-		Logger:     nil,
-		Reg:        nil,
-		MaxSamples: 10000,
-		Timeout:    100 * time.Second,
+		Logger:                   nil,
+		Reg:                      nil,
+		MaxSamples:               10000,
+		Timeout:                  100 * time.Second,
+		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(1 * time.Minute) },
 	}
 
 	t.queryEngine = NewEngine(opts)
@@ -693,7 +694,7 @@ func (ll *LazyLoader) clear() {
 
 // appendTill appends the defined time series to the storage till the given timestamp (in milliseconds).
 func (ll *LazyLoader) appendTill(ts int64) error {
-	app := ll.storage.Appender()
+	app := ll.storage.Appender(context.Background())
 	for h, smpls := range ll.loadCmd.defs {
 		m := ll.loadCmd.metrics[h]
 		for i, s := range smpls {
