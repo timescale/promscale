@@ -7,16 +7,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
-	"regexp"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/common/route"
-	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
 type labelsResponse struct {
@@ -74,18 +70,12 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 			return
 		}
 
-		r := pgmodel.NewPgxReader(readOnly, nil, 100)
-		queryable := query.NewQueryable(r.GetQuerier())
+		router, err := buildRouter(readOnly)
 
-		apiConfig := &api.Config{
-			AllowedOrigin: regexp.MustCompile(".*"),
+		if err != nil {
+			t.Fatalf("Cannot run test, unable to build router: %s", err)
+			return
 		}
-		labelNamesHandler := api.Labels(apiConfig, queryable)
-		labelValuesHandler := api.LabelValues(apiConfig, queryable)
-
-		router := route.New()
-		router.Get("/api/v1/label/:name/values", labelValuesHandler.ServeHTTP)
-		router.Get("/api/v1/labels", labelNamesHandler.ServeHTTP)
 
 		ts := httptest.NewServer(router)
 		defer ts.Close()
@@ -98,7 +88,6 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 			requestCases []requestCase
 			tsReq        *http.Request
 			promReq      *http.Request
-			err          error
 		)
 		tsReq, err = getLabelNamesRequest(tsURL)
 		if err != nil {
@@ -112,7 +101,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator)
 		tester.Run("get label names", testMethod)
 
-		labelNames, err := r.GetQuerier().LabelNames()
+		labelNames, err := pgmodel.NewPgxReader(readOnly, nil, 100).GetQuerier().LabelNames()
 		if err != nil {
 			t.Fatalf("could not get label names from querier")
 		}

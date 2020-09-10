@@ -36,8 +36,10 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(duplicateSamples)
-	prometheus.MustRegister(duplicateWrites)
-	prometheus.MustRegister(decompressCalls)
-	prometheus.MustRegister(decompressEarliest)
+	prometheus.MustRegister(
+		duplicateSamples,
+		duplicateWrites,
+		decompressCalls,
+		decompressEarliest,
+	)
 }

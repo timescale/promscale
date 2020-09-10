@@ -3,79 +3,20 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
+	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgclient"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/util"
 	"github.com/timescale/timescale-prometheus/pkg/version"
 )
-
-type mockHTTPHandler struct {
-	w http.ResponseWriter
-	r *http.Request
-}
-
-func (m *mockHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	m.w = w
-	m.r = r
-}
-
-type mockObserverVec struct {
-	labelValues []string
-	o           prometheus.Observer
-}
-
-func (m *mockObserverVec) GetMetricWith(_ prometheus.Labels) (prometheus.Observer, error) {
-	panic("not implemented")
-}
-
-func (m *mockObserverVec) GetMetricWithLabelValues(lvs ...string) (prometheus.Observer, error) {
-	panic("not implemented")
-}
-
-func (m *mockObserverVec) With(_ prometheus.Labels) prometheus.Observer {
-	panic("not implemented")
-}
-
-func (m *mockObserverVec) WithLabelValues(l ...string) prometheus.Observer {
-	m.labelValues = l
-	return m.o
-}
-
-func (m *mockObserverVec) CurryWith(_ prometheus.Labels) (prometheus.ObserverVec, error) {
-	panic("not implemented")
-}
-
-func (m *mockObserverVec) MustCurryWith(_ prometheus.Labels) prometheus.ObserverVec {
-	panic("not implemented")
-}
-
-func (m *mockObserverVec) Describe(_ chan<- *prometheus.Desc) {
-	panic("not implemented")
-}
-
-func (m *mockObserverVec) Collect(_ chan<- prometheus.Metric) {
-	panic("not implemented")
-}
-
-type mockObserver struct {
-	values []float64
-}
-
-func (m *mockObserver) Observe(v float64) {
-	m.values = append(m.values, v)
-}
 
 type mockElection struct {
 	isLeader bool
@@ -154,31 +95,6 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestTimeHandler(t *testing.T) {
-	mockObs := &mockObserver{}
-	mockObserverVec := &mockObserverVec{
-		o: mockObs,
-	}
-
-	mockHandler := &mockHTTPHandler{}
-
-	path := "testpath"
-
-	handler := timeHandler(mockObserverVec, path, mockHandler)
-
-	test := GenerateHandleTester(t, handler)
-
-	test("GET", strings.NewReader(""))
-
-	if len(mockObs.values) != 1 {
-		t.Errorf("Did not observe elapsed time from request")
-	}
-
-	if mockHandler.r == nil {
-		t.Errorf("Did not call HTTP handler")
-	}
-}
-
 func TestInitElector(t *testing.T) {
 	// TODO: refactor the function to be fully testable without using a DB.
 	testCases := []struct {
@@ -228,7 +144,8 @@ func TestInitElector(t *testing.T) {
 	}
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			elector, err := initElector(c.cfg)
+			metrics := api.InitMetrics()
+			elector, err := initElector(c.cfg, metrics)
 
 			switch {
 			case err != nil && !c.shouldError:
@@ -283,10 +200,11 @@ func TestMigrate(t *testing.T) {
 					err:      c.electionErr,
 				},
 			)
+			metrics := api.InitMetrics()
 			mockGauge := &mockGauge{}
-			leaderGauge = mockGauge
+			metrics.LeaderGauge = mockGauge
 
-			err := migrate(c.cfg, pgmodel.VersionInfo{Version: version.Version})
+			err := migrate(c.cfg, pgmodel.VersionInfo{Version: version.Version}, metrics)
 
 			switch {
 			case err != nil && !c.shouldError:
@@ -302,23 +220,5 @@ func TestMigrate(t *testing.T) {
 				t.Errorf("Leader gauge metric not set correctly: got %f when is not leader", mockGauge.value)
 			}
 		})
-	}
-}
-
-type HandleTester func(method string, body io.Reader) *httptest.ResponseRecorder
-
-func GenerateHandleTester(t *testing.T, handleFunc http.Handler) HandleTester {
-	return func(method string, body io.Reader) *httptest.ResponseRecorder {
-		req, err := http.NewRequest(method, "", body)
-		if err != nil {
-			t.Errorf("%v", err)
-		}
-		req.Header.Set(
-			"Content-Type",
-			"application/x-www-form-urlencoded; param=value",
-		)
-		w := httptest.NewRecorder()
-		handleFunc.ServeHTTP(w, req)
-		return w
 	}
 }

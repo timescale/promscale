@@ -7,18 +7,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
-	"regexp"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/common/route"
-	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
 const (
@@ -2430,19 +2424,12 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 			return
 		}
 
-		r := pgmodel.NewPgxReader(readOnly, nil, 100)
-		queryable := query.NewQueryable(r.GetQuerier())
-		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
+		router, err := buildRouter(readOnly)
 
-		apiConfig := &api.Config{
-			AllowedOrigin: regexp.MustCompile(".*"),
+		if err != nil {
+			t.Fatalf("Cannot run test, unable to build router: %s", err)
+			return
 		}
-		instantQuery := api.Query(apiConfig, queryEngine, queryable)
-		rangeQuery := api.QueryRange(apiConfig, queryEngine, queryable)
-
-		router := route.New()
-		router.Get("/api/v1/query", instantQuery.ServeHTTP)
-		router.Get("/api/v1/query_range", rangeQuery.ServeHTTP)
 
 		ts := httptest.NewServer(router)
 		defer ts.Close()
@@ -2457,7 +2444,6 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 			requestCases []requestCase
 			tsReq        *http.Request
 			promReq      *http.Request
-			err          error
 		)
 		for _, c := range cases {
 			tsReq, err = genInstantRequest(tsURL, c.query, start)
