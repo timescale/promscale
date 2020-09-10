@@ -7,17 +7,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
-	"regexp"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
 type seriesResponse struct {
@@ -118,15 +113,12 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 			return
 		}
 
-		r := pgmodel.NewPgxReader(readOnly, nil, 100)
-		queryable := query.NewQueryable(r.GetQuerier())
+		router, err := buildRouter(readOnly)
 
-		apiConfig := &api.Config{
-			AllowedOrigin: regexp.MustCompile(".*"),
+		if err != nil {
+			t.Fatalf("Cannot run test, error building router: %s", err)
+			return
 		}
-		series := api.Series(apiConfig, queryable)
-		router := route.New()
-		router.Get("/api/v1/series", series.ServeHTTP)
 
 		ts := httptest.NewServer(router)
 		defer ts.Close()
@@ -141,7 +133,6 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 			requestCases []requestCase
 			tsReq        *http.Request
 			promReq      *http.Request
-			err          error
 		)
 		for _, c := range testCases {
 			tsReq, err = genSeriesRequest(tsURL, c.matchers, start, end)

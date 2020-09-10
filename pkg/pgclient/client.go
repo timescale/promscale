@@ -7,8 +7,6 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 
@@ -69,7 +67,7 @@ type Client struct {
 }
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
+func NewClient(cfg *Config) (*Client, error) {
 	connectionStr := cfg.GetConnectionStr()
 	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
 	if err != nil {
@@ -85,6 +83,11 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 		return nil, err
 	}
 
+	return NewClientWithPool(cfg, numCopiers, connectionPool)
+}
+
+// NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
+func NewClientWithPool(cfg *Config, numCopiers int, pool *pgxpool.Pool) (*Client, error) {
 	cache := &pgmodel.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
 
 	c := pgmodel.Cfg{
@@ -93,23 +96,27 @@ func NewClient(cfg *Config, readHist prometheus.ObserverVec) (*Client, error) {
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
 	}
-	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(connectionPool, cache, &c)
+	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(pool, cache, &c)
 	if err != nil {
 		log.Error("err starting ingestor", err)
 		return nil, err
 	}
-	reader := pgmodel.NewPgxReaderWithMetricCache(connectionPool, cache, cfg.LabelsCacheSize)
+	reader := pgmodel.NewPgxReaderWithMetricCache(pool, cache, cfg.LabelsCacheSize)
 
 	queryable := query.NewQueryable(reader.GetQuerier())
 
-	return &Client{
-		Connection:  connectionPool,
+	client := &Client{
+		Connection:  pool,
 		ingestor:    ingestor,
 		reader:      reader,
 		queryable:   queryable,
 		cfg:         cfg,
 		metricCache: cache,
-	}, nil
+	}
+
+	InitClientMetrics(client)
+
+	return client, nil
 }
 
 // GetConnectionStr returns a Postgres connection string

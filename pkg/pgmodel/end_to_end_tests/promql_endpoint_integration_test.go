@@ -2,15 +2,21 @@ package end_to_end_tests
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"reflect"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/timescale-prometheus/pkg/api"
+	"github.com/timescale/timescale-prometheus/pkg/pgclient"
+	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 )
 
 type requestCase struct {
@@ -221,4 +227,28 @@ func dateHeadersMatch(expected, actual []string) bool {
 
 	return expectedDate.Sub(actualDate) <= time.Second
 
+}
+
+// buildRouter builds a testing router from a connection pool.
+func buildRouter(pool *pgxpool.Pool) (http.Handler, error) {
+	apiConfig := &api.Config{
+		AllowedOrigin: regexp.MustCompile(".*"),
+	}
+	metrics := api.InitMetrics()
+	conf := &pgclient.Config{
+		AsyncAcks:               false,
+		ReportInterval:          0,
+		LabelsCacheSize:         10000,
+		MetricsCacheSize:        pgmodel.DefaultMetricCacheSize,
+		WriteConnectionsPerProc: 4,
+		MaxConnections:          -1,
+	}
+
+	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool)
+
+	if err != nil {
+		return nil, errors.New("Cannot run test, cannot instantiate pgClient")
+	}
+
+	return api.GenerateRouter(apiConfig, metrics, pgClient, nil), nil
 }

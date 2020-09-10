@@ -11,19 +11,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/route"
-	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
-	"github.com/timescale/timescale-prometheus/pkg/util"
 )
 
 type dataGenerator struct {
@@ -108,7 +103,7 @@ func getHTTPWriteRequest(protoRequest *prompb.WriteRequest) (*http.Request, erro
 	return req, nil
 }
 
-func sendWriteRequest(t testing.TB, router *route.Router, ts []prompb.TimeSeries) {
+func sendWriteRequest(t testing.TB, router http.Handler, ts []prompb.TimeSeries) {
 	req, err := getHTTPWriteRequest(&prompb.WriteRequest{Timeseries: ts})
 	if err != nil {
 		t.Errorf("unable to create PromQL label names request: %v", err)
@@ -186,29 +181,12 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 	}
 }
 
-func getWriteRouter(t testing.TB, db *pgxpool.Pool) *route.Router {
-	r, err := pgmodel.NewPgxIngestor(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	writeHandler := api.Write(r, nil, &api.Metrics{
-		LeaderGauge:       prometheus.NewGauge(prometheus.GaugeOpts{}),
-		ReceivedSamples:   prometheus.NewCounter(prometheus.CounterOpts{}),
-		FailedSamples:     prometheus.NewCounter(prometheus.CounterOpts{}),
-		SentSamples:       prometheus.NewCounter(prometheus.CounterOpts{}),
-		SentBatchDuration: prometheus.NewHistogram(prometheus.HistogramOpts{}),
-		WriteThroughput:   util.NewThroughputCalc(time.Second),
-		InvalidWriteReqs:  prometheus.NewCounter(prometheus.CounterOpts{}),
-	})
-
-	router := route.New()
-	router.Post("/write", writeHandler.ServeHTTP)
-	return router
-}
-
 func sendConcurrentWrites(t testing.TB, db *pgxpool.Pool, queues int, metricGroups int, totalRequests int, duplicates bool) {
-	router := getWriteRouter(t, db)
+	router, err := buildRouter(db)
+
+	if err != nil {
+		t.Fatalf("Unable to send concurrent writes, error building router: %s", err)
+	}
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < queues; i++ {
