@@ -473,7 +473,15 @@ func runInserter(conn pgxConn, in chan copyRequest) {
 			return
 		}
 
+		// sort to prevent deadlocks
+		sort.Slice(insertBatch, func(i, j int) bool {
+			return insertBatch[i].table < insertBatch[j].table
+		})
+
 		doInsertOrFallback(conn, insertBatch...)
+		for i := range insertBatch {
+			insertBatch[i] = copyRequest{}
+		}
 		insertBatch = insertBatch[:0]
 	}
 }
@@ -562,9 +570,6 @@ func tryRecovery(conn pgxConn, err error, req copyRequest) error {
 }
 
 func doInsert(conn pgxConn, reqs ...copyRequest) (err error) {
-	if len(reqs) == 1 {
-		//TODO?
-	}
 	batch := conn.NewBatch()
 	numRowsPerInsert := make([]int, 0, len(reqs))
 	for _, req := range reqs {
