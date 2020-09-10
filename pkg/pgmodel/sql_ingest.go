@@ -494,12 +494,13 @@ func inserterGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, 
 		return batch, false
 	}
 	batch = append(batch, req)
+	timeout := time.After(100 * time.Millisecond)
 hot_gather:
 	for len(batch) < cap(batch) {
 		select {
 		case r2 := <-in:
 			batch = append(batch, r2)
-		default:
+		case _ = <-timeout:
 			break hot_gather
 		}
 	}
@@ -607,16 +608,16 @@ func doInsert(conn pgxConn, reqs ...copyRequest) (err error) {
 	}
 	defer results.Close()
 
-	for i, numRows := range numRowsPerInsert {
-		ct, err := results.Exec()
+	for _, _ = range numRowsPerInsert {
+		_, err := results.Exec()
 		if err != nil {
 			return err
 		}
-		if int64(numRows) != ct.RowsAffected() {
-			log.Warn("msg", "duplicate data in sample", "table", reqs[i].table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
-			duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
-			duplicateWrites.Inc()
-		}
+		// if int64(numRows) != ct.RowsAffected() {
+		// 	log.Warn("msg", "duplicate data in sample", "table", reqs[i].table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
+		// 	duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
+		// 	duplicateWrites.Inc()
+		// }
 	}
 	return nil
 }
