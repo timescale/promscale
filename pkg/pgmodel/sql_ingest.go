@@ -465,31 +465,70 @@ func (h *insertHandler) flushPending() {
 }
 
 func runInserter(conn pgxConn, in chan copyRequest) {
+	insertBatch := make([]copyRequest, 0, 100)
 	for {
-		req, ok := <-in
+		var ok bool
+		insertBatch, ok = inserterGetBatch(insertBatch, in)
 		if !ok {
 			return
 		}
-		err := doInsert(conn, req)
+
+		doInsertOrFallback(conn, insertBatch...)
+		insertBatch = insertBatch[:0]
+	}
+}
+
+func inserterGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, bool) {
+	req, ok := <-in
+	if !ok {
+		return batch, false
+	}
+	batch = append(batch, req)
+hot_gather:
+	for len(batch) < cap(batch) {
+		select {
+		case req := <-in:
+			batch = append(batch, req)
+		default:
+			break hot_gather
+		}
+	}
+	return batch, true
+}
+
+func doInsertOrFallback(conn pgxConn, reqs ...copyRequest) {
+	err := doInsert(conn, reqs...)
+	if err == nil {
+		for i := range reqs {
+			reqs[i].data.reportResults(nil)
+			pendingBuffers.Put(reqs[i].data)
+		}
+		return
+	}
+
+	for i := range reqs {
+		reqs[i].data.batch.ResetPosition()
+		err := doInsert(conn, reqs[i])
 		if err != nil {
-			err = insertErrorFallback(conn, req, err)
+			err = insertErrorFallback(conn, err, reqs[i])
 		}
 
-		req.data.reportResults(err)
-		pendingBuffers.Put(req.data)
+		reqs[i].data.reportResults(err)
+		pendingBuffers.Put(reqs[i].data)
 	}
 }
 
 // certain errors are recoverable, handle those we can
 //   1. if the table is compressed, decompress and retry the insertion
-func insertErrorFallback(conn pgxConn, req copyRequest, err error) error {
-	err = tryRecovery(conn, req, err)
-	if err != nil {
-		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
-		return err
+func insertErrorFallback(conn pgxConn, err error, reqs ...copyRequest) error {
+	for _, req := range reqs {
+		err = tryRecovery(conn, err, req)
+		if err != nil {
+			log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
+			return err
+		}
 	}
-
-	return doInsert(conn, req)
+	return doInsert(conn, reqs...)
 }
 
 // we can currently recover from two error:
@@ -498,7 +537,7 @@ func insertErrorFallback(conn pgxConn, req copyRequest, err error) error {
 // If we inserted into a compressed chunk, we decompress the chunk and try again.
 // Since a single batch can have both errors, we need to remember the insert method
 // we're using, so that we deduplicate if needed.
-func tryRecovery(conn pgxConn, req copyRequest, err error) error {
+func tryRecovery(conn pgxConn, err error, req copyRequest) error {
 	// we only recover from postgres errors right now
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
@@ -522,34 +561,50 @@ func tryRecovery(conn pgxConn, req copyRequest, err error) error {
 	return err
 }
 
-func doInsert(conn pgxConn, req copyRequest) (err error) {
-	numRows := 0
-	for i := range req.data.batch.sampleInfos {
-		numRows += len(req.data.batch.sampleInfos[i].samples)
+func doInsert(conn pgxConn, reqs ...copyRequest) (err error) {
+	if len(reqs) == 1 {
+		//TODO?
 	}
-	times := make([]time.Time, 0, numRows)
-	vals := make([]float64, 0, numRows)
-	series := make([]int64, 0, numRows)
-	for req.data.batch.Next() {
-		time, val, serie := req.data.batch.Values()
-		times = append(times, time)
-		vals = append(vals, val)
-		series = append(series, int64(serie))
-	}
-	if len(times) != numRows {
-		panic("invalid insert request")
-	}
-	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
-	var ct pgconn.CommandTag
-	ct, err = conn.Exec(context.Background(), queryString, times, vals, series)
-	if err != nil {
-		return
+	batch := conn.NewBatch()
+	numRowsPerInsert := make([]int, 0, len(reqs))
+	for _, req := range reqs {
+		numRows := 0
+		for i := range req.data.batch.sampleInfos {
+			numRows += len(req.data.batch.sampleInfos[i].samples)
+		}
+		times := make([]time.Time, 0, numRows)
+		vals := make([]float64, 0, numRows)
+		series := make([]int64, 0, numRows)
+		for req.data.batch.Next() {
+			time, val, serie := req.data.batch.Values()
+			times = append(times, time)
+			vals = append(vals, val)
+			series = append(series, int64(serie))
+		}
+		if len(times) != numRows {
+			panic("invalid insert request")
+		}
+		numRowsPerInsert = append(numRowsPerInsert, numRows)
+		queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
+		batch.Queue(queryString, times, vals, series)
 	}
 
-	if int64(numRows) != ct.RowsAffected() {
-		log.Warn("msg", "duplicate data in sample", "table", req.table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
-		duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
-		duplicateWrites.Inc()
+	results, err := conn.SendBatch(context.Background(), batch)
+	if err != nil {
+		return err
+	}
+	defer results.Close()
+
+	for i, numRows := range numRowsPerInsert {
+		ct, err := results.Exec()
+		if err != nil {
+			return err
+		}
+		if int64(numRows) != ct.RowsAffected() {
+			log.Warn("msg", "duplicate data in sample", "table", reqs[i].table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
+			duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
+			duplicateWrites.Inc()
+		}
 	}
 	return nil
 }
