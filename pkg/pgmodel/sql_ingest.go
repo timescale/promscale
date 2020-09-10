@@ -506,14 +506,18 @@ hot_gather:
 
 func doInsertOrFallback(conn pgxConn, reqs ...copyRequest) {
 	err := doInsert(conn, reqs...)
-	if err == nil {
-		for i := range reqs {
-			reqs[i].data.reportResults(nil)
-			pendingBuffers.Put(reqs[i].data)
-		}
+	if err != nil {
+		insertBatchErrorFallback(conn, reqs...)
 		return
 	}
 
+	for i := range reqs {
+		reqs[i].data.reportResults(nil)
+		pendingBuffers.Put(reqs[i].data)
+	}
+}
+
+func insertBatchErrorFallback(conn pgxConn, reqs ...copyRequest) {
 	for i := range reqs {
 		reqs[i].data.batch.ResetPosition()
 		err := doInsert(conn, reqs[i])
