@@ -33,6 +33,14 @@ var (
 			Name:      "decompress_min_unix_time",
 			Help:      "Earliest decdompression time",
 		}, []string{"table"})
+	numInsertsPerBatch = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Name:      "inserts_per_batch",
+			Help:      "number of INSERTs in a single transaction",
+			Buckets:   []float64{1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 75, 100},
+		},
+	)
 )
 
 func init() {
@@ -41,5 +49,6 @@ func init() {
 		duplicateWrites,
 		decompressCalls,
 		decompressEarliest,
+		numInsertsPerBatch,
 	)
 }
