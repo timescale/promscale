@@ -478,6 +478,8 @@ func runInserter(conn pgxConn, in chan copyRequest) {
 			return insertBatch[i].table < insertBatch[j].table
 		})
 
+		numInsertsPerBatch.Observe(float64(len(insertBatch)))
+
 		doInsertOrFallback(conn, insertBatch...)
 		for i := range insertBatch {
 			insertBatch[i] = copyRequest{}
