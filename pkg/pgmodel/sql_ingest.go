@@ -495,8 +495,8 @@ func inserterGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, 
 hot_gather:
 	for len(batch) < cap(batch) {
 		select {
-		case req := <-in:
-			batch = append(batch, req)
+		case r2 := <-in:
+			batch = append(batch, r2)
 		default:
 			break hot_gather
 		}
@@ -576,7 +576,8 @@ func tryRecovery(conn pgxConn, err error, req copyRequest) error {
 func doInsert(conn pgxConn, reqs ...copyRequest) (err error) {
 	batch := conn.NewBatch()
 	numRowsPerInsert := make([]int, 0, len(reqs))
-	for _, req := range reqs {
+	for r := range reqs {
+		req := &reqs[r]
 		numRows := 0
 		for i := range req.data.batch.sampleInfos {
 			numRows += len(req.data.batch.sampleInfos[i].samples)
