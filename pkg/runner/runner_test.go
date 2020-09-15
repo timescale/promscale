@@ -1,4 +1,4 @@
-package main
+package runner
 
 import (
 	"flag"
@@ -28,13 +28,13 @@ func TestInitElector(t *testing.T) {
 	// TODO: refactor the function to be fully testable without using a DB.
 	testCases := []struct {
 		name         string
-		cfg          *config
+		cfg          *Config
 		shouldError  bool
 		electionType reflect.Type
 	}{
 		{
 			name: "Cannot create REST election with a group lock ID",
-			cfg: &config{
+			cfg: &Config{
 				haGroupLockID: 1,
 				restElection:  true,
 			},
@@ -42,7 +42,7 @@ func TestInitElector(t *testing.T) {
 		},
 		{
 			name: "Create REST elector",
-			cfg: &config{
+			cfg: &Config{
 				haGroupLockID: 0,
 				restElection:  true,
 			},
@@ -50,13 +50,13 @@ func TestInitElector(t *testing.T) {
 		},
 		{
 			name: "Cannot create scheduled elector, no group lock ID and not rest election",
-			cfg: &config{
+			cfg: &Config{
 				haGroupLockID: 0,
 			},
 		},
 		{
 			name: "Prometheus timeout not set for PG advisory lock",
-			cfg: &config{
+			cfg: &Config{
 				haGroupLockID:     1,
 				prometheusTimeout: -1,
 			},
@@ -64,7 +64,7 @@ func TestInitElector(t *testing.T) {
 		},
 		{
 			name: "Can't get advisory lock, couldn't connect to DB",
-			cfg: &config{
+			cfg: &Config{
 				haGroupLockID:     1,
 				prometheusTimeout: 0,
 			},
