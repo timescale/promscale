@@ -1,7 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package main
+package runner
 
 // Based on the Prometheus remote storage example:
 // documentation/examples/remote_storage/remote_storage_adapter/main.go
@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net/http"
 	pprof "net/http/pprof"
-	"os"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -31,11 +30,10 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/version"
 )
 
-type config struct {
+type Config struct {
 	listenAddr        string
 	telemetryPath     string
 	pgmodelCfg        pgclient.Config
-	logLevel          string
 	haGroupLockID     int64
 	restElection      bool
 	prometheusTimeout time.Duration
@@ -55,21 +53,10 @@ var (
 	elector            *util.Elector
 	appVersion         = pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash}
 	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
+	startupError       = fmt.Errorf("startup error")
 )
 
-func main() {
-	cfg, err := parseFlags()
-	if err != nil {
-		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
-		fmt.Println("Fatal error: cannot parse flags ", err)
-		os.Exit(1)
-	}
-	err = log.Init(cfg.logLevel)
-	if err != nil {
-		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
-		fmt.Println("Fatal error: cannot start logger", err)
-		os.Exit(1)
-	}
+func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
 
@@ -78,11 +65,11 @@ func main() {
 	client, err := createClient(cfg, promMetrics)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", util.MaskPassword(err.Error()))
-		os.Exit(1)
+		return startupError
 	}
 
 	if client == nil {
-		os.Exit(0)
+		return nil
 	}
 
 	defer client.Close()
@@ -105,14 +92,13 @@ func main() {
 
 	if err != nil {
 		log.Error("msg", "Listen failure", "err", err)
-		os.Exit(1)
+		return startupError
 	}
+
+	return nil
 }
 
-func parseFlags() (*config, error) {
-
-	cfg := &config{}
-
+func ParseFlags(cfg *Config) (*Config, error) {
 	pgclient.ParseFlags(&cfg.pgmodelCfg)
 
 	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
@@ -121,7 +107,6 @@ func parseFlags() (*config, error) {
 	var corsOriginFlag string
 	var migrateOption string
 	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	flag.StringVar(&cfg.logLevel, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
 	flag.Int64Var(&cfg.haGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
 	flag.DurationVar(&cfg.prometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
@@ -153,7 +138,7 @@ func parseFlags() (*config, error) {
 	return cfg, nil
 }
 
-func createClient(cfg *config, promMetrics *api.Metrics) (*pgclient.Client, error) {
+func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
 	var schemaVersionLease *util.PgAdvisoryLock
 	if cfg.useVersionLease {
 		// migration lock logic
@@ -163,10 +148,11 @@ func createClient(cfg *config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		// lock on schemaLockId, and we attempt to grab an exclusive lock on it
 		// before running migrate. This implies that migration must be run when no
 		// other connector is running.
-		schemaVersionLease, err := util.NewPgAdvisoryLock(schemaLockId, cfg.pgmodelCfg.GetConnectionStr())
+		var err error
+		schemaVersionLease, err = util.NewPgAdvisoryLock(schemaLockId, cfg.pgmodelCfg.GetConnectionStr())
 		if err != nil {
 			log.Error("msg", "error creating schema version lease", "err", err)
-			os.Exit(1)
+			return nil, startupError
 		}
 		// after the client has started it's in charge of maintaining the leases
 		defer schemaVersionLease.Close()
@@ -201,6 +187,8 @@ func createClient(cfg *config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		if !locked {
 			return nil, fmt.Errorf("could not acquire schema version lease. is a migration in progress?")
 		}
+	} else {
+		log.Warn("msg", "skipping schema version lease")
 	}
 
 	// Check the database is on the correct version.
@@ -247,7 +235,7 @@ func createClient(cfg *config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	return client, nil
 }
 
-func initElector(cfg *config, metrics *api.Metrics) (*util.Elector, error) {
+func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
 	if cfg.restElection && cfg.haGroupLockID != 0 {
 		return nil, fmt.Errorf("Use either REST or PgAdvisoryLock for the leader election")
 	}
@@ -279,7 +267,7 @@ func initElector(cfg *config, metrics *api.Metrics) (*util.Elector, error) {
 	return &scheduledElector.Elector, nil
 }
 
-func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo, leaseLock util.AdvisoryLock) error {
+func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock) error {
 	// At startup migrators attempt to grab the schema-version lock. If this
 	// fails that means some other connector is running. All is not lost: some
 	// other connector may have migrated the DB to the correct version. We warn,
@@ -300,6 +288,8 @@ func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo, leaseLock uti
 				log.Error("msg", "error while releasing migration lock", "err", err)
 			}
 		}()
+	} else {
+		log.Warn("msg", "skipping migration lock")
 	}
 
 	db, err := pgxpool.Connect(context.Background(), cfg.GetConnectionStr())
