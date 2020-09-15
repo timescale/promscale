@@ -22,7 +22,9 @@ import (
 	"github.com/timescale/timescale-prometheus/pkg/query"
 )
 
-type mockSeriesSet struct{}
+type mockSeriesSet struct {
+	err error
+}
 
 func (m mockSeriesSet) Next() bool {
 	return false
@@ -33,6 +35,10 @@ func (m mockSeriesSet) At() storage.Series {
 }
 
 func (m mockSeriesSet) Err() error {
+	return m.err
+}
+
+func (m mockSeriesSet) Warnings() storage.Warnings {
 	return nil
 }
 
@@ -57,9 +63,9 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
 }
 
-func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	time.Sleep(m.timeToSleepOnSelect)
-	return &mockSeriesSet{}, nil, nil, m.selectErr
+	return &mockSeriesSet{err: m.selectErr}, nil
 }
 
 func (m mockQuerier) NumCachedLabels() int {

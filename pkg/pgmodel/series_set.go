@@ -32,12 +32,12 @@ type pgxSeriesSet struct {
 // pgxSeriesSet must implement storage.SeriesSet
 var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
-func buildSeriesSet(rows []timescaleRow, querier labelQuerier) (storage.SeriesSet, storage.Warnings, error) {
+func buildSeriesSet(rows []timescaleRow, querier labelQuerier) storage.SeriesSet {
 	return &pgxSeriesSet{
 		rows:    rows,
 		querier: querier,
 		rowIdx:  -1,
-	}, nil, nil
+	}
 }
 
 // Next forwards the internal cursor to next storage.Series
@@ -98,6 +98,8 @@ func (p *pgxSeriesSet) Err() error {
 	}
 	return nil
 }
+
+func (p *pgxSeriesSet) Warnings() storage.Warnings { return nil }
 
 // pgxSeries implements storage.Series.
 type pgxSeries struct {

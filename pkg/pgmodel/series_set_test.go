@@ -243,7 +243,7 @@ func TestPgxSeriesSet(t *testing.T) {
 				c.input = [][]seriesSetRow{{
 					genSeries(labels, c.ts, c.vs)}}
 			}
-			p, _, _ := buildSeriesSet(genPgxRows(c.input, c.rowErr), mapQuerier{labelMapping})
+			p := buildSeriesSet(genPgxRows(c.input, c.rowErr), mapQuerier{labelMapping})
 
 			for c.rowCount > 0 {
 				c.rowCount--

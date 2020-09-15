@@ -1024,7 +1024,7 @@ func generatePrometheusWALFile() (string, error) {
 		return "", err
 	}
 
-	app := st.Appender()
+	app := st.Appender(context.Background())
 
 	tts := generateLargeTimeseries()
 	if *extendedTest {
