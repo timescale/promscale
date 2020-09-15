@@ -102,7 +102,7 @@ func Run(cfg *Config) error {
 
 	promMetrics := api.InitMetrics()
 
-	client, err := createClient(cfg, promMetrics)
+	client, err := CreateClient(cfg, promMetrics)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", util.MaskPassword(err.Error()))
 		return startupError
@@ -138,7 +138,7 @@ func Run(cfg *Config) error {
 	return nil
 }
 
-func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
+func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
 	var schemaVersionLease *util.PgAdvisoryLock
 	if cfg.UseVersionLease {
 		// migration lock logic

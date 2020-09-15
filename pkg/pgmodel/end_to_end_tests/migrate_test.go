@@ -6,14 +6,18 @@ package end_to_end_tests
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/timescale-prometheus/pkg/api"
 	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
+	"github.com/timescale/timescale-prometheus/pkg/pgclient"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel/test_migrations"
+	"github.com/timescale/timescale-prometheus/pkg/runner"
 	"github.com/timescale/timescale-prometheus/pkg/version"
 )
 
@@ -42,6 +46,83 @@ func TestMigrate(t *testing.T) {
 		if err == nil {
 			t.Errorf("Expected error in CheckDependencies")
 		}
+	})
+}
+
+func TestMigrateLock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, _ testing.TB) {
+		conn, err := db.Acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		pgxcfg := conn.Conn().Config()
+		cfg := runner.Config{
+			Migrate:          false,
+			StopAfterMigrate: false,
+			UseVersionLease:  true,
+			PgmodelCfg: pgclient.Config{
+				Database:                *testDatabase,
+				Host:                    pgxcfg.Host,
+				Port:                    int(pgxcfg.Port),
+				User:                    pgxcfg.User,
+				Password:                pgxcfg.Password,
+				SslMode:                 "allow",
+				MaxConnections:          -1,
+				WriteConnectionsPerProc: 1,
+			},
+		}
+		conn.Release()
+		metrics := api.InitMetrics()
+		reader, err := runner.CreateClient(&cfg, metrics)
+		// reader on its own should start
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg2 := cfg
+		cfg2.Migrate = true
+		migrator, err := runner.CreateClient(&cfg2, metrics)
+		// a regular migrator will just become a reader
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cfg3 := cfg2
+		cfg3.StopAfterMigrate = true
+		_, err = runner.CreateClient(&cfg3, metrics)
+		if err == nil {
+			t.Fatalf("migration should fail due to lock")
+		}
+		if !strings.Contains(err.Error(), "Could not acquire migration lock") {
+			t.Fatalf("Incorrect error, expected lock failure, foud: %v", err)
+		}
+
+		reader.Close()
+		migrator.Close()
+
+		only_migrator, err := runner.CreateClient(&cfg3, metrics)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if only_migrator != nil {
+			t.Fatal(only_migrator)
+		}
+
+		migrator, err = runner.CreateClient(&cfg2, metrics)
+		// a regular migrator should still start
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer migrator.Close()
+
+		reader, err = runner.CreateClient(&cfg, metrics)
+		// reader should still be able to start
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reader.Close()
 	})
 }
 
