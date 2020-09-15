@@ -192,7 +192,9 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 
 // Close closes the client and performs cleanup
 func (c *Client) Close() {
+	log.Info("Shutting down Client")
 	c.ingestor.Close()
+	c.Connection.Close()
 }
 
 // Ingest writes the timeseries object into the DB
