@@ -31,17 +31,17 @@ import (
 )
 
 type Config struct {
-	listenAddr        string
-	telemetryPath     string
-	pgmodelCfg        pgclient.Config
-	haGroupLockID     int64
-	restElection      bool
-	prometheusTimeout time.Duration
-	electionInterval  time.Duration
-	migrate           bool
-	stopAfterMigrate  bool
-	useVersionLease   bool
-	corsOrigin        *regexp.Regexp
+	ListenAddr        string
+	TelemetryPath     string
+	PgmodelCfg        pgclient.Config
+	HaGroupLockID     int64
+	RestElection      bool
+	PrometheusTimeout time.Duration
+	ElectionInterval  time.Duration
+	Migrate           bool
+	StopAfterMigrate  bool
+	UseVersionLease   bool
+	CorsOrigin        *regexp.Regexp
 }
 
 const (
@@ -55,6 +55,46 @@ var (
 	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
 	startupError       = fmt.Errorf("startup error")
 )
+
+func ParseFlags(cfg *Config) (*Config, error) {
+	pgclient.ParseFlags(&cfg.PgmodelCfg)
+
+	flag.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
+	flag.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
+
+	var corsOriginFlag string
+	var migrateOption string
+	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
+	flag.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
+	flag.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
+		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
+	flag.BoolVar(&cfg.RestElection, "leader-election-rest", false, "Enable REST interface for the leader election")
+	flag.DurationVar(&cfg.ElectionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
+	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
+	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Prevent race conditions during migration")
+	envy.Parse("TS_PROM")
+	flag.Parse()
+
+	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
+	if err != nil {
+		err = fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
+		return nil, err
+	}
+	cfg.CorsOrigin = corsOriginRegex
+
+	cfg.StopAfterMigrate = false
+	if strings.EqualFold(migrateOption, "true") {
+		cfg.Migrate = true
+	} else if strings.EqualFold(migrateOption, "false") {
+		cfg.Migrate = false
+	} else if strings.EqualFold(migrateOption, "only") {
+		cfg.Migrate = true
+		cfg.StopAfterMigrate = true
+	} else {
+		return nil, fmt.Errorf("Invalid option for migrate: %v. Valid options are [true, false, only]", migrateOption)
+	}
+	return cfg, nil
+}
 
 func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
@@ -74,21 +114,21 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
-	apiConf := &api.Config{AllowedOrigin: cfg.corsOrigin}
+	apiConf := &api.Config{AllowedOrigin: cfg.CorsOrigin}
 	router := api.GenerateRouter(apiConf, promMetrics, client, elector)
 
 	log.Info("msg", "Starting up...")
-	log.Info("msg", "Listening", "addr", cfg.listenAddr)
+	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
-	mux.Handle(cfg.telemetryPath, promhttp.Handler())
+	mux.Handle(cfg.TelemetryPath, promhttp.Handler())
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	err = http.ListenAndServe(cfg.listenAddr, mux)
+	err = http.ListenAndServe(cfg.ListenAddr, mux)
 
 	if err != nil {
 		log.Error("msg", "Listen failure", "err", err)
@@ -98,49 +138,9 @@ func Run(cfg *Config) error {
 	return nil
 }
 
-func ParseFlags(cfg *Config) (*Config, error) {
-	pgclient.ParseFlags(&cfg.pgmodelCfg)
-
-	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
-	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
-
-	var corsOriginFlag string
-	var migrateOption string
-	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	flag.Int64Var(&cfg.haGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
-	flag.DurationVar(&cfg.prometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
-		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
-	flag.BoolVar(&cfg.restElection, "leader-election-rest", false, "Enable REST interface for the leader election")
-	flag.DurationVar(&cfg.electionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
-	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
-	flag.BoolVar(&cfg.useVersionLease, "use-schema-version-lease", true, "Prevent race conditions during migration")
-	envy.Parse("TS_PROM")
-	flag.Parse()
-
-	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
-	if err != nil {
-		err = fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
-		return nil, err
-	}
-	cfg.corsOrigin = corsOriginRegex
-
-	cfg.stopAfterMigrate = false
-	if strings.EqualFold(migrateOption, "true") {
-		cfg.migrate = true
-	} else if strings.EqualFold(migrateOption, "false") {
-		cfg.migrate = false
-	} else if strings.EqualFold(migrateOption, "only") {
-		cfg.migrate = true
-		cfg.stopAfterMigrate = true
-	} else {
-		return nil, fmt.Errorf("Invalid option for migrate: %v. Valid options are [true, false, only]", migrateOption)
-	}
-	return cfg, nil
-}
-
 func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
 	var schemaVersionLease *util.PgAdvisoryLock
-	if cfg.useVersionLease {
+	if cfg.UseVersionLease {
 		// migration lock logic
 		// we don't want to upgrade the schema version while we still have connectors
 		// attached who think the schema is at the old version. To prevent this, as
@@ -149,7 +149,7 @@ func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		// before running migrate. This implies that migration must be run when no
 		// other connector is running.
 		var err error
-		schemaVersionLease, err = util.NewPgAdvisoryLock(schemaLockId, cfg.pgmodelCfg.GetConnectionStr())
+		schemaVersionLease, err = util.NewPgAdvisoryLock(schemaLockId, cfg.PgmodelCfg.GetConnectionStr())
 		if err != nil {
 			log.Error("msg", "error creating schema version lease", "err", err)
 			return nil, startupError
@@ -159,14 +159,14 @@ func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	}
 
 	migration_success := true
-	if cfg.migrate {
-		err := migrate(&cfg.pgmodelCfg, appVersion, schemaVersionLease)
+	if cfg.Migrate {
+		err := migrate(&cfg.PgmodelCfg, appVersion, schemaVersionLease)
 		migration_success = err != nil
 		if err != nil && err != migrationLockError {
 			return nil, fmt.Errorf("migration error: %w", err)
 		}
 
-		if cfg.stopAfterMigrate {
+		if cfg.StopAfterMigrate {
 			if err != nil {
 				return nil, err
 			}
@@ -196,7 +196,7 @@ func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// the lock we'll start up as-if we were never supposed to migrate in the
 	// first place. This is also needed as checkDependencies populates our
 	// extension metadata
-	err := checkDependencies(&cfg.pgmodelCfg, appVersion)
+	err := checkDependencies(&cfg.PgmodelCfg, appVersion)
 	if err != nil {
 		err = fmt.Errorf("dependency error: %w", err)
 		if !migration_success {
@@ -222,12 +222,12 @@ func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	}
 
 	leasingFunction := getSchemaLease
-	if !cfg.useVersionLease {
+	if !cfg.UseVersionLease {
 		leasingFunction = nil
 	}
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.pgmodelCfg, leasingFunction)
+	client, err := pgclient.NewClient(&cfg.PgmodelCfg, leasingFunction)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}
@@ -236,31 +236,31 @@ func createClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 }
 
 func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
-	if cfg.restElection && cfg.haGroupLockID != 0 {
+	if cfg.RestElection && cfg.HaGroupLockID != 0 {
 		return nil, fmt.Errorf("Use either REST or PgAdvisoryLock for the leader election")
 	}
-	if cfg.restElection {
+	if cfg.RestElection {
 		return util.NewElector(util.NewRestElection()), nil
 	}
-	if cfg.haGroupLockID == 0 {
+	if cfg.HaGroupLockID == 0 {
 		return nil, nil
 	}
-	if cfg.prometheusTimeout == -1 {
+	if cfg.PrometheusTimeout == -1 {
 		return nil, fmt.Errorf("Prometheus timeout configuration must be set when using PG advisory lock")
 	}
 
-	lock, err := util.NewPgLeaderLock(cfg.haGroupLockID, cfg.pgmodelCfg.GetConnectionStr(), getSchemaLease)
+	lock, err := util.NewPgLeaderLock(cfg.HaGroupLockID, cfg.PgmodelCfg.GetConnectionStr(), getSchemaLease)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.haGroupLockID, err)
+		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.HaGroupLockID, err)
 	}
-	scheduledElector := util.NewScheduledElector(lock, cfg.electionInterval)
+	scheduledElector := util.NewScheduledElector(lock, cfg.ElectionInterval)
 	log.Info("msg", "Initialized leader election based on PostgreSQL advisory lock")
-	if cfg.prometheusTimeout != 0 {
+	if cfg.PrometheusTimeout != 0 {
 		go func() {
 			ticker := time.NewTicker(promLivenessCheck)
 			for range ticker.C {
 				lastReq := atomic.LoadInt64(&metrics.LastRequestUnixNano)
-				scheduledElector.PrometheusLivenessCheck(lastReq, cfg.prometheusTimeout)
+				scheduledElector.PrometheusLivenessCheck(lastReq, cfg.PrometheusTimeout)
 			}
 		}()
 	}

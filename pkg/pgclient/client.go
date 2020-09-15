@@ -21,13 +21,13 @@ import (
 
 // Config for the database
 type Config struct {
-	host                    string
-	port                    int
-	user                    string
-	password                string
-	database                string
-	sslMode                 string
-	dbConnectRetries        int
+	Host                    string
+	Port                    int
+	User                    string
+	Password                string
+	Database                string
+	SslMode                 string
+	DbConnectRetries        int
 	AsyncAcks               bool
 	ReportInterval          int
 	LabelsCacheSize         uint64
@@ -39,13 +39,13 @@ type Config struct {
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
 func ParseFlags(cfg *Config) *Config {
-	flag.StringVar(&cfg.host, "db-host", "localhost", "The TimescaleDB host")
-	flag.IntVar(&cfg.port, "db-port", 5432, "The TimescaleDB port")
-	flag.StringVar(&cfg.user, "db-user", "postgres", "The TimescaleDB user")
-	flag.StringVar(&cfg.password, "db-password", "", "The TimescaleDB password")
-	flag.StringVar(&cfg.database, "db-name", "timescale", "The TimescaleDB database")
-	flag.StringVar(&cfg.sslMode, "db-ssl-mode", "require", "The TimescaleDB connection ssl mode")
-	flag.IntVar(&cfg.dbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
+	flag.StringVar(&cfg.Host, "db-host", "localhost", "The TimescaleDB host")
+	flag.IntVar(&cfg.Port, "db-port", 5432, "The TimescaleDB port")
+	flag.StringVar(&cfg.User, "db-user", "postgres", "The TimescaleDB user")
+	flag.StringVar(&cfg.Password, "db-password", "", "The TimescaleDB password")
+	flag.StringVar(&cfg.Database, "db-name", "timescale", "The TimescaleDB database")
+	flag.StringVar(&cfg.SslMode, "db-ssl-mode", "require", "The TimescaleDB connection ssl mode")
+	flag.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
 	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
 	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
 	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
@@ -133,7 +133,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, pool *pgxpool.Pool) (*Client
 // GetConnectionStr returns a Postgres connection string
 func (cfg *Config) GetConnectionStr() string {
 	return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
-		cfg.host, cfg.port, cfg.user, cfg.database, cfg.password, cfg.sslMode)
+		cfg.Host, cfg.Port, cfg.User, cfg.Database, cfg.Password, cfg.SslMode)
 }
 
 func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err error) {
