@@ -27,6 +27,10 @@ func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) h
 			return
 		}
 
+		// We need to record this time even if we're not the leader as it's
+		// used to determine if we're eligible to become the leader.
+		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
+
 		shouldWrite, err := isWriter(elector)
 		if err != nil {
 			metrics.LeaderGauge.Set(0)
@@ -47,8 +51,6 @@ func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) h
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
 
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {

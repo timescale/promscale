@@ -114,7 +114,7 @@ func (se *ScheduledElector) PrometheusLivenessCheck(lastRequestUnixNano int64, t
 	}
 	if leader {
 		if elapsed > timeout {
-			log.Warn("msg", "Prometheus timeout exceeded", "timeout", timeout)
+			log.Warn("msg", "Prometheus timeout exceeded", "timeout", timeout, "elapsed", elapsed)
 			se.pauseScheduledElection()
 			log.Warn("msg", "Scheduled election is paused. Instance is removed from election pool.")
 			err := se.Resign()
