@@ -45,6 +45,6 @@ func (q querier) Close() error {
 	return nil
 }
 
-func (q querier) Select(sortSeries bool, hints *storage.SelectHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+func (q querier) Select(sortSeries bool, hints *storage.SelectHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	return q.pgQuerier.Select(q.mint, q.maxt, sortSeries, hints, path, matchers...)
 }

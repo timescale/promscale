@@ -71,10 +71,10 @@ func series(queryable *query.Queryable) http.HandlerFunc {
 		var sets []storage.SeriesSet
 		var warnings storage.Warnings
 		for _, mset := range matcherSets {
-			s, _, wrn, err := q.Select(false, nil, nil, mset...)
-			warnings = append(warnings, wrn...)
-			if err != nil {
-				respondError(w, http.StatusUnprocessableEntity, err, "execution")
+			s, _ := q.Select(false, nil, nil, mset...)
+			warnings = append(warnings, s.Warnings()...)
+			if s.Err() != nil {
+				respondError(w, http.StatusUnprocessableEntity, s.Err(), "execution")
 				return
 			}
 			sets = append(sets, s)
@@ -85,7 +85,7 @@ func series(queryable *query.Queryable) http.HandlerFunc {
 			metrics = append(metrics, set.At().Labels())
 		}
 		if set.Err() != nil {
-			respondError(w, http.StatusUnprocessableEntity, err, "execution")
+			respondError(w, http.StatusUnprocessableEntity, set.Err(), "execution")
 		}
 
 		respondSeries(w, &promql.Result{

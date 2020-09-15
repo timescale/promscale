@@ -20,7 +20,7 @@ type Reader interface {
 // matching timeseries.
 type Querier interface {
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
-	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error)
+	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node)
 	LabelNames() ([]string, error)
 	LabelValues(labelName string) ([]string, error)
 	NumCachedLabels() int

@@ -86,15 +86,14 @@ func (q *pgxQuerier) LabelsCacheCapacity() int {
 }
 
 // entry point from our own version of the prometheus engine
-func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node, storage.Warnings, error) {
+func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	rows, topNode, err := q.getResultRows(mint, maxt, hints, path, ms)
-
 	if err != nil {
-		return nil, nil, nil, err
+		return errorSeriesSet{err: err}, nil
 	}
 
-	ss, warn, err := buildSeriesSet(rows, q)
-	return ss, topNode, warn, err
+	ss := buildSeriesSet(rows, q)
+	return ss, topNode
 }
 
 // entry point from remote-storage queries
@@ -431,3 +430,12 @@ func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
 
 	return tableName, nil
 }
+
+type errorSeriesSet struct {
+	err error
+}
+
+func (errorSeriesSet) Next() bool                   { return false }
+func (errorSeriesSet) At() storage.Series           { return nil }
+func (e errorSeriesSet) Err() error                 { return e.err }
+func (e errorSeriesSet) Warnings() storage.Warnings { return nil }
