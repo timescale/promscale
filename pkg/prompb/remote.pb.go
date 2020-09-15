@@ -68,7 +68,6 @@ type WriteRequest struct {
 	XXX_sizecache        int32        `json:"-"`
 }
 
-func (m *WriteRequest) Reset()         { *m = WriteRequest{Timeseries: m.Timeseries[:0]} }
 func (m *WriteRequest) String() string { return proto.CompactTextString(m) }
 func (*WriteRequest) ProtoMessage()    {}
 func (*WriteRequest) Descriptor() ([]byte, []int) {
