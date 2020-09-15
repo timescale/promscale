@@ -35,38 +35,38 @@ func TestInitElector(t *testing.T) {
 		{
 			name: "Cannot create REST election with a group lock ID",
 			cfg: &Config{
-				haGroupLockID: 1,
-				restElection:  true,
+				HaGroupLockID: 1,
+				RestElection:  true,
 			},
 			shouldError: true,
 		},
 		{
 			name: "Create REST elector",
 			cfg: &Config{
-				haGroupLockID: 0,
-				restElection:  true,
+				HaGroupLockID: 0,
+				RestElection:  true,
 			},
 			electionType: reflect.TypeOf(&util.RestElection{}),
 		},
 		{
 			name: "Cannot create scheduled elector, no group lock ID and not rest election",
 			cfg: &Config{
-				haGroupLockID: 0,
+				HaGroupLockID: 0,
 			},
 		},
 		{
 			name: "Prometheus timeout not set for PG advisory lock",
 			cfg: &Config{
-				haGroupLockID:     1,
-				prometheusTimeout: -1,
+				HaGroupLockID:     1,
+				PrometheusTimeout: -1,
 			},
 			shouldError: true,
 		},
 		{
 			name: "Can't get advisory lock, couldn't connect to DB",
 			cfg: &Config{
-				haGroupLockID:     1,
-				prometheusTimeout: 0,
+				HaGroupLockID:     1,
+				PrometheusTimeout: 0,
 			},
 			shouldError: true,
 		},
