@@ -227,6 +227,17 @@ func TestSQLDropMetricChunk(t *testing.T) {
 				},
 			},
 		}
+		// Avoid randomness in chunk interval size by setting explicitly.
+		_, err := db.Exec(context.Background(), "SELECT _prom_catalog.get_or_create_metric_table_name($1)", "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT set_chunk_time_interval('prom_data.test', interval '8 hour')")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		ingestor, err := NewPgxIngestor(db)
 		if err != nil {
 			t.Fatal(err)
