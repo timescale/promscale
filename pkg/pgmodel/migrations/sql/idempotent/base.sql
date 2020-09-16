@@ -18,6 +18,13 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_retention_period() TO prom_reader;
 
+--Add 1% of randomness to the interval so that chunks are not aligned so that chunks are staggered for compression jobs.
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(chunk_interval INTERVAL)
+RETURNS INTERVAL
+AS $func$
+    SELECT chunk_interval * (1.0+((random()*0.01)-0.005));
+$func$
+LANGUAGE SQL VOLATILE;
 
 --Canonical lock ordering:
 --metrics
@@ -117,7 +124,7 @@ BEGIN
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
    PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
-                             chunk_time_interval=>SCHEMA_CATALOG.get_default_chunk_interval(),
+                             chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                              create_default_indexes=>false);
 
     SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
@@ -744,7 +751,7 @@ AS $func$
     --chunks are staggered for compression jobs.
     SELECT set_chunk_time_interval(
         format('SCHEMA_DATA.%I',(SELECT table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)))::regclass,
-        new_interval * (1.0+((random()*0.01)-0.005)));
+         SCHEMA_CATALOG.get_staggered_chunk_interval(new_interval));
 $func$
 LANGUAGE SQL VOLATILE;
 
