@@ -191,7 +191,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 					fingerprintRes := getFingerprintFromJSON(t, jsonRes)
 					if labelSet.Fingerprint() != fingerprintRes {
-						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", string(fingerprintRes), string(jsonOrig))
+						t.Fatalf("Json not equal: got\n%v\nexpected\n%v", fmt.Sprint(fingerprintRes), string(jsonOrig))
 
 					}
 
