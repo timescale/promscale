@@ -1,10 +1,10 @@
 package end_to_end_tests
 
 import (
-	"compress/gzip"
 	"io/ioutil"
 	"os"
 
+	"github.com/golang/snappy"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"github.com/timescale/timescale-prometheus/pkg/prompb"
 )
@@ -153,17 +153,17 @@ func generateSamples(index int) []prompb.Sample {
 // http://demo.promlabs.com:10002
 func generateRealTimeseries() []prompb.TimeSeries {
 	if len(wr.Timeseries) == 0 {
-		f, err := os.Open("../testdata/real-dataset.gz")
+		f, err := os.Open("../testdata/real-dataset.sz")
 		if err != nil {
 			panic(err)
 		}
 
-		r, err := gzip.NewReader(f)
+		compressed, err := ioutil.ReadAll(f)
 		if err != nil {
 			panic(err)
 		}
 
-		data, err := ioutil.ReadAll(r)
+		data, err := snappy.Decode(nil, compressed)
 		if err != nil {
 			panic(err)
 		}
