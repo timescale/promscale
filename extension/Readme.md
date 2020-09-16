@@ -7,7 +7,12 @@ cause it to perform better.
 
 ## Requirements ##
 
-This extension requires Postgres version 12 or newer.
+To run the extension:
+- PostgreSQL version 12 or newer. 
+
+To compile the extension:
+- Header files for PostgreSQL version 12 or newer. Headers are included in the `postgresql-server-dev-12` package in Debian or Ubuntu. For other platforms see the PostgreSQL [download page](https://www.postgresql.org/download/).
+- [Rust compiler](https://www.rust-lang.org/tools/install)
 
 ## Installation ##
 
@@ -17,3 +22,8 @@ The extension is installed by default on the
 To compile and install from source run: `make && make install`.
 
 This extension will be created via `CREATE EXTENSION` automatically by the timescale-prometheus connector and should not be created manually.
+
+## Common Compilation Issues ##
+
+- `cargo: No such file or directory` means the [Rust compiler](https://www.rust-lang.org/tools/install) is not installed
+- `postgres.h` not found means that you are missing the PostgreSQL header files. If using Debian or Ubuntu simply install the `postgresql-server-dev-12` package. For other platforms see the PostgreSQL [download page](https://www.postgresql.org/download/).
