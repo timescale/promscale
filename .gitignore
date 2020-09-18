@@ -1,6 +1,5 @@
 *~
 /timescale-prometheus*
-/vendor
 /version.properties
 /.target_os
 /.history
