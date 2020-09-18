@@ -1,20 +1,20 @@
-# Build stage
-FROM golang:1.14.1-alpine AS builder
-COPY ./.git timescale-prometheus/.git
-COPY ./pkg timescale-prometheus/pkg
-COPY ./cmd timescale-prometheus/cmd
-COPY ./go.mod timescale-prometheus/go.mod
-COPY ./go.sum timescale-prometheus/go.sum
-RUN apk update && apk add --no-cache git \
-    && cd timescale-prometheus \
-    && go mod download \
-    && GIT_COMMIT=$(git rev-list -1 HEAD) \
-    && CGO_ENABLED=0 go build -a \
-    --ldflags '-w' --ldflags "-X version.CommitHash=$GIT_COMMIT" \
+FROM openshift/origin-release:golang-1.15 AS builder
+
+WORKDIR /timescale-prometheus
+COPY ./pkg ./pkg
+COPY ./cmd ./cmd
+COPY ./go.mod ./go.mod
+COPY ./go.sum ./go.sum
+COPY ./vendor ./vendor
+
+ENV GO111MODULE="on"
+
+# TODO: do the actual building of the binary in Makefile target
+RUN CGO_ENABLED=0 \
+    go build -a --mod=vendor --ldflags '-w' \
     -o /go/timescale-prometheus ./cmd/timescale-prometheus
 
-# Final image
-FROM busybox
-LABEL maintainer="Timescale https://www.timescale.com"
+FROM centos:8
+USER 3001
 COPY --from=builder /go/timescale-prometheus /
 ENTRYPOINT ["/timescale-prometheus"]
