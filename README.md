@@ -1,4 +1,5 @@
 # Timescale-Prometheus
+
 [![Go](https://github.com/timescale/timescale-prometheus/workflows/Go/badge.svg)](https://github.com/timescale/timescale-prometheus/actions?query=workflow%3AGo)
 [![reviewdog - golangci](https://github.com/timescale/timescale-prometheus/workflows/reviewdog%20-%20golangci/badge.svg)](https://github.com/timescale/timescale-prometheus/actions?query=workflow%3A%22reviewdog+-+golangci%22)
 [![Go Report Card](https://goreportcard.com/badge/github.com/timescale/timescale-prometheus)](https://goreportcard.com/report/github.com/timescale/timescale-prometheus)
@@ -53,7 +54,7 @@ backend datasource for Zabbix users and is natively supported in Grafana.
 
 We have four main ways to set up Timescale-Prometheus:
 
-#### tobs (recommended for Kubernetes environments)
+### tobs (recommended for Kubernetes environments)
 
 [The Observability Suite for Kubernetes][tobs] is a
 CLI tool and Helm chart that makes installing a full observability suite into your
@@ -69,20 +70,20 @@ curl --proto '=https' --tlsv1.2 -sSLf  https://tsdb.co/install-tobs-sh |sh
 Or visit the [tobs GitHub repo][tobs] for more information and instructions
 on advanced configuration.
 
-#### 🐳 Docker
+### 🐳 Docker
 
 We provide [docker images](/releases) with every release.
 
 Instructions on how to use our docker images are available [here](docs/docker.md).
 
-#### 🔟 Binaries
+### 🔟 Binaries
 
 We have [pre-packaged binaries](/releases) available for MacOS and Linux on both the x86_64 and i386 architectures.
 Instructions on how to use our prepackaged binaries are available [here](docs/binary.md).
 
 You can also [build binaries from source](docs/binary.md#building-from-source).
 
-#### ⎈ Helm (sub)chart for Timescale-Prometheus Connector only
+### ⎈ Helm (sub)chart for Timescale-Prometheus Connector only
 
 A Helm chart for only the Timescale-Prometheus Connector is available in
 the [helm-chart directory](helm-chart/README.md) of this repository.
@@ -137,7 +138,7 @@ The example below drops all metrics starting with the prefix `go_`,
 which matches Golang process information exposed by exporters like
 `node_exporter`:
 
-```
+```yaml
 remote_write:
  - url: "http://timescale_prometheus_connector:9201/write"
    write_relabel_configs:
@@ -149,16 +150,6 @@ remote_write:
 Additional information about setting up relabel configs, the
 `source_labels` field, and the possible actions can be found in the
 [Prometheus Docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
-
-## ✏️ Contributing
-
-We welcome contributions to the Timescale-Prometheus Connector, which is
-licensed and released under the open-source Apache License, Version 2.
-The same [Contributor's
-Agreement](//github.com/timescale/timescaledb/blob/master/CONTRIBUTING.md)
-applies as in TimescaleDB; please sign the [Contributor License
-Agreement](https://cla-assistant.io/timescale/timescale-prometheus)
-(CLA) if you're a new contributor.
 
 [design-doc]: https://tsdb.co/prom-design-doc
 [tobs]: https://github.com/timescale/tobs
