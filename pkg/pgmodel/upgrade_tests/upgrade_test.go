@@ -366,11 +366,11 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 }
 
 func migrateToVersion(t testing.TB, connectURL string, version string, commitHash string) {
-	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
+	migratePool, err := pgx.Connect(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer migratePool.Close()
+	defer func() { _ = migratePool.Close(context.Background()) }()
 	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash})
 	if err != nil {
 		t.Fatal(err)

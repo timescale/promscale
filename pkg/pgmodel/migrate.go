@@ -19,7 +19,6 @@ import (
 
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/pgmodel/migrations"
 )
@@ -84,7 +83,7 @@ func (p prefixedNames) getNames() []string {
 }
 
 // Migrate performs a database migration to the latest version
-func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
+func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
 	ExtensionIsInstalled = false
@@ -114,14 +113,8 @@ func Migrate(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
 // CheckDependencies makes sure all project dependencies, including the DB schema
 // the extension, are set up correctly. This will set the ExtensionIsInstalled
 // flag and thus should only be called once, at initialization.
-func CheckDependencies(db *pgxpool.Pool, versionInfo VersionInfo) (err error) {
-	conn, err := db.Acquire(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to check schema version: %w", err)
-	}
-	defer conn.Release()
-
-	if err = CheckSchemaVersion(context.Background(), conn.Conn(), versionInfo); err != nil {
+func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo) (err error) {
+	if err = CheckSchemaVersion(context.Background(), db, versionInfo); err != nil {
 		return err
 	}
 
@@ -142,12 +135,12 @@ func CheckSchemaVersion(ctx context.Context, conn *pgx.Conn, versionInfo Version
 }
 
 type Migrator struct {
-	db       *pgxpool.Pool
+	db       *pgx.Conn
 	sqlFiles http.FileSystem
 	toc      map[string][]string
 }
 
-func NewMigrator(db *pgxpool.Pool, sqlFiles http.FileSystem, toc map[string][]string) *Migrator {
+func NewMigrator(db *pgx.Conn, sqlFiles http.FileSystem, toc map[string][]string) *Migrator {
 	return &Migrator{db: db, sqlFiles: sqlFiles, toc: toc}
 }
 
@@ -230,7 +223,7 @@ func (t *Migrator) Migrate(appVersion semver.Version) error {
 	return nil
 }
 
-func ensureVersionTable(db *pgxpool.Pool) error {
+func ensureVersionTable(db *pgx.Conn) error {
 	_, err := db.Exec(context.Background(), createMigrationsTable)
 	if err != nil {
 		return fmt.Errorf("error creating migration table: %w", err)
@@ -239,13 +232,8 @@ func ensureVersionTable(db *pgxpool.Pool) error {
 	return nil
 }
 
-func getSchemaVersion(db *pgxpool.Pool) (semver.Version, error) {
-	conn, err := db.Acquire(context.Background())
-	if err != nil {
-		return semver.Version{}, err
-	}
-	defer conn.Release()
-	return getSchemaVersionOnConnection(context.Background(), conn.Conn())
+func getSchemaVersion(db *pgx.Conn) (semver.Version, error) {
+	return getSchemaVersionOnConnection(context.Background(), db)
 }
 
 func getSchemaVersionOnConnection(ctx context.Context, db *pgx.Conn) (semver.Version, error) {
@@ -498,7 +486,7 @@ func setDBVersion(tx pgx.Tx, version *semver.Version) error {
 	return nil
 }
 
-func metadataUpdate(db *pgxpool.Pool, withExtension bool, key string, value string) {
+func metadataUpdate(db *pgx.Conn, withExtension bool, key string, value string) {
 	/* Ignore error if it doesn't work */
 	if withExtension {
 		_, _ = db.Exec(context.Background(), metadataUpdateWithExtension, key, value, true)

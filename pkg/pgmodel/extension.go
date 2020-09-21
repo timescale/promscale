@@ -12,7 +12,6 @@ import (
 
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/timescale-prometheus/pkg/log"
 	"github.com/timescale/timescale-prometheus/pkg/version"
 )
@@ -23,7 +22,7 @@ var (
 
 // checkExtensionsVersion checks for the correct version and enables the extension if
 // it is at the right version
-func checkExtensionsVersion(conn *pgxpool.Pool) error {
+func checkExtensionsVersion(conn *pgx.Conn) error {
 	if err := checkTimescaleDBVersion(conn); err != nil {
 		return err
 	}
@@ -33,7 +32,7 @@ func checkExtensionsVersion(conn *pgxpool.Pool) error {
 	return nil
 }
 
-func checkTimescaleDBVersion(conn *pgxpool.Pool) error {
+func checkTimescaleDBVersion(conn *pgx.Conn) error {
 	timescaleVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "timescaledb")
 	if err != nil {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
@@ -60,7 +59,7 @@ func checkTimescaleDBVersion(conn *pgxpool.Pool) error {
 	return nil
 }
 
-func checkTimescalePrometheusExtraVersion(conn *pgxpool.Pool) error {
+func checkTimescalePrometheusExtraVersion(conn *pgx.Conn) error {
 	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "timescale_prometheus_extra")
 	if err != nil {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
@@ -77,7 +76,7 @@ func checkTimescalePrometheusExtraVersion(conn *pgxpool.Pool) error {
 	return nil
 }
 
-func migrateExtension(conn *pgxpool.Pool) error {
+func migrateExtension(conn *pgx.Conn) error {
 	availableVersions, err := fetchAvailableExtensionVersions(conn)
 	ExtensionIsInstalled = false
 	if err != nil {
@@ -128,7 +127,7 @@ func migrateExtension(conn *pgxpool.Pool) error {
 	return checkExtensionsVersion(conn)
 }
 
-func fetchAvailableExtensionVersions(conn *pgxpool.Pool) (semver.Versions, error) {
+func fetchAvailableExtensionVersions(conn *pgx.Conn) (semver.Versions, error) {
 	var versionStrings []string
 	versions := make(semver.Versions, 0)
 	err := conn.QueryRow(context.Background(),
@@ -153,7 +152,7 @@ func fetchAvailableExtensionVersions(conn *pgxpool.Pool) (semver.Versions, error
 	return versions, nil
 }
 
-func fetchInstalledExtensionVersion(conn *pgxpool.Pool, extensionName string) (semver.Version, bool, error) {
+func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semver.Version, bool, error) {
 	var versionString string
 	if err := conn.QueryRow(
 		context.Background(),

@@ -37,12 +37,17 @@ func TestMigrate(t *testing.T) {
 
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
 		defer readOnly.Close()
-		err = pgmodel.CheckDependencies(readOnly, pgmodel.VersionInfo{Version: version.Version})
+		conn, err := readOnly.Acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Release()
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version})
 		if err != nil {
 			t.Error(err)
 		}
 
-		err = pgmodel.CheckDependencies(readOnly, pgmodel.VersionInfo{Version: "100.0.0"})
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"})
 		if err == nil {
 			t.Errorf("Expected error in CheckDependencies")
 		}
@@ -197,20 +202,25 @@ func TestMigrationLib(t *testing.T) {
 			"idempotent 2",
 		}
 
-		mig := pgmodel.NewMigrator(db, test_migrations.MigrationFiles, testTOC)
+		migrate_to := func(version string) {
+			c, err := db.Acquire(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Release()
+			mig := pgmodel.NewMigrator(c.Conn(), test_migrations.MigrationFiles, testTOC)
 
-		err := mig.Migrate(semver.MustParse("0.1.1"))
-		if err != nil {
-			t.Fatal(err)
+			err = mig.Migrate(semver.MustParse(version))
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 
+		migrate_to("0.1.1")
 		verifyLogs(t, db, expected)
 
 		//does nothing
-		err = mig.Migrate(semver.MustParse("0.1.1"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.1.1")
 		verifyLogs(t, db, expected)
 
 		//migration + idempotent files on update
@@ -219,34 +229,22 @@ func TestMigrationLib(t *testing.T) {
 			"idempotent 1",
 			"idempotent 2")
 
-		err = mig.Migrate(semver.MustParse("0.2.0"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.2.0")
 		verifyLogs(t, db, expected)
 
 		//does nothing, since non-dev and same version as before
-		err = mig.Migrate(semver.MustParse("0.2.0"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.2.0")
 		verifyLogs(t, db, expected)
 
 		//even if no version upgrades, idempotent files apply
 		expected = append(expected,
 			"idempotent 1",
 			"idempotent 2")
-		err = mig.Migrate(semver.MustParse("0.8.0"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.8.0")
 		verifyLogs(t, db, expected)
 
 		//staying on same version does nothing
-		err = mig.Migrate(semver.MustParse("0.8.0"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.8.0")
 		verifyLogs(t, db, expected)
 
 		//migrate two version 0.9.0 and 0.10.0 at once to make sure ordered correctly
@@ -256,30 +254,21 @@ func TestMigrationLib(t *testing.T) {
 			"migration 0.10.0=2",
 			"idempotent 1",
 			"idempotent 2")
-		err = mig.Migrate(semver.MustParse("0.10.0"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.10.0")
 		verifyLogs(t, db, expected[0:13])
 
 		//upgrading version, idempotent files apply
 		expected = append(expected,
 			"idempotent 1",
 			"idempotent 2")
-		err = mig.Migrate(semver.MustParse("0.10.1-dev"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.10.1-dev")
 		verifyLogs(t, db, expected)
 
 		//even if no version upgrades, idempotent files apply if it's a dev version
 		expected = append(expected,
 			"idempotent 1",
 			"idempotent 2")
-		err = mig.Migrate(semver.MustParse("0.10.1-dev"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.10.1-dev")
 		verifyLogs(t, db, expected)
 
 		//now test logic within a release:
@@ -287,19 +276,14 @@ func TestMigrationLib(t *testing.T) {
 			"migration 0.10.1=1",
 			"idempotent 1",
 			"idempotent 2")
-		err = mig.Migrate(semver.MustParse("0.10.1-dev.1"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.10.1-dev.1")
 		verifyLogs(t, db, expected[0:20])
+
 		expected = append(expected,
 			"migration 0.10.1=2",
 			"idempotent 1",
 			"idempotent 2")
-		err = mig.Migrate(semver.MustParse("0.10.1-dev.2"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.10.1-dev.2")
 		verifyLogs(t, db, expected)
 
 		//test beta tags
@@ -307,10 +291,7 @@ func TestMigrationLib(t *testing.T) {
 			"migration 0.10.2-beta=1",
 			"idempotent 1",
 			"idempotent 2")
-		err = mig.Migrate(semver.MustParse("0.10.2-beta.dev.1"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		migrate_to("0.10.2-beta.dev.1")
 		verifyLogs(t, db, expected)
 	})
 }

@@ -228,6 +228,14 @@ func (l *PgAdvisoryLock) getSharedAdvisoryLock() (bool, error) {
 	return l.runLockFunction("SELECT pg_try_advisory_lock_shared($1)")
 }
 
+func (l *PgAdvisoryLock) Conn() (*pgx.Conn, error) {
+	err := l.ensureConnInit()
+	if err != nil {
+		return nil, err
+	}
+	return l.conn, nil
+}
+
 func (l *PgAdvisoryLock) runLockFunction(query string) (bool, error) {
 	err := l.ensureConnInit()
 	if err != nil {
