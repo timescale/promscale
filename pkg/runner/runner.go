@@ -18,7 +18,6 @@ import (
 	"time"
 
 	pgx "github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jamiealquiza/envy"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -139,28 +138,32 @@ func Run(cfg *Config) error {
 }
 
 func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
-	var schemaVersionLease *util.PgAdvisoryLock
-	if cfg.UseVersionLease {
-		// migration lock logic
-		// we don't want to upgrade the schema version while we still have connectors
-		// attached who think the schema is at the old version. To prevent this, as
-		// best we can, each normal connection attempts to grab a (shared) advisory
-		// lock on schemaLockId, and we attempt to grab an exclusive lock on it
-		// before running migrate. This implies that migration must be run when no
-		// other connector is running.
-		var err error
-		schemaVersionLease, err = util.NewPgAdvisoryLock(schemaLockId, cfg.PgmodelCfg.GetConnectionStr())
-		if err != nil {
-			log.Error("msg", "error creating schema version lease", "err", err)
-			return nil, startupError
-		}
-		// after the client has started it's in charge of maintaining the leases
-		defer schemaVersionLease.Close()
+	// Migration lock logic:
+	// We don't want to upgrade the schema version while we still have connectors
+	// attached who think the schema is at the old version. To prevent this, as
+	// best we can, each normal connection attempts to grab a (shared) advisory
+	// lock on schemaLockId, and we attempt to grab an exclusive lock on it
+	// before running migrate. This implies that migration must be run when no
+	// other connector is running.
+	schemaVersionLease, err := util.NewPgAdvisoryLock(schemaLockId, cfg.PgmodelCfg.GetConnectionStr())
+	if err != nil {
+		log.Error("msg", "error creating schema version lease", "err", err)
+		return nil, startupError
 	}
+	// after the client has started it's in charge of maintaining the leases
+	defer schemaVersionLease.Close()
 
 	migration_success := true
 	if cfg.Migrate {
-		err := migrate(&cfg.PgmodelCfg, appVersion, schemaVersionLease)
+		conn, err := schemaVersionLease.Conn()
+		if err != nil {
+			return nil, fmt.Errorf("migration error: %w", err)
+		}
+		lease := schemaVersionLease
+		if !cfg.UseVersionLease {
+			lease = nil
+		}
+		err = migrate(conn, appVersion, lease)
 		migration_success = err != nil
 		if err != nil && err != migrationLockError {
 			return nil, fmt.Errorf("migration error: %w", err)
@@ -177,7 +180,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		log.Info("msg", "Skipping migration")
 	}
 
-	if schemaVersionLease != nil {
+	if cfg.UseVersionLease {
 		// Grab a lease to protect version checking and client creation. This
 		// lease will be released when the schemaVersionLease is closed.
 		locked, err := schemaVersionLease.GetSharedAdvisoryLock()
@@ -196,7 +199,11 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// the lock we'll start up as-if we were never supposed to migrate in the
 	// first place. This is also needed as checkDependencies populates our
 	// extension metadata
-	err := checkDependencies(&cfg.PgmodelCfg, appVersion)
+	conn, err := schemaVersionLease.Conn()
+	if err != nil {
+		return nil, fmt.Errorf("Dependency checking error while trying to open DB connection: %w", err)
+	}
+	err = pgmodel.CheckDependencies(conn, appVersion)
 	if err != nil {
 		err = fmt.Errorf("dependency error: %w", err)
 		if !migration_success {
@@ -267,7 +274,7 @@ func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
 	return &scheduledElector.Elector, nil
 }
 
-func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock) error {
+func migrate(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock) error {
 	// At startup migrators attempt to grab the schema-version lock. If this
 	// fails that means some other connector is running. All is not lost: some
 	// other connector may have migrated the DB to the correct version. We warn,
@@ -292,29 +299,13 @@ func migrate(cfg *pgclient.Config, appVersion pgmodel.VersionInfo, leaseLock *ut
 		log.Warn("msg", "skipping migration lock")
 	}
 
-	db, err := pgxpool.Connect(context.Background(), cfg.GetConnectionStr())
-	if err != nil {
-		return fmt.Errorf("Error while trying to open DB connection: %w", err)
-	}
-	defer db.Close()
-
-	err = pgmodel.Migrate(db, appVersion)
+	err := pgmodel.Migrate(conn, appVersion)
 
 	if err != nil {
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)
 	}
 
 	return nil
-}
-
-func checkDependencies(cfg *pgclient.Config, appVersion pgmodel.VersionInfo) error {
-	db, err := pgxpool.Connect(context.Background(), cfg.GetConnectionStr())
-	if err != nil {
-		return fmt.Errorf("Error while trying to open DB connection: %w", err)
-	}
-	defer db.Close()
-
-	return pgmodel.CheckDependencies(db, appVersion)
 }
 
 func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {

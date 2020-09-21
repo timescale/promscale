@@ -110,7 +110,12 @@ func performMigrate(t testing.TB, connectURL string) {
 		t.Fatal(err)
 	}
 	defer migratePool.Close()
-	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"})
+	conn, err := migratePool.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	err = Migrate(conn.Conn(), pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"})
 	if err != nil {
 		t.Fatal(err)
 	}
