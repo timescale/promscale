@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/timescale/timescale-prometheus/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/clockcache"
 )
 
 func TestBigLables(t *testing.T) {

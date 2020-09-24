@@ -2,12 +2,13 @@ package api
 
 import (
 	"context"
-	"github.com/timescale/timescale-prometheus/pkg/log"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"regexp"
 	"testing"
+
+	"github.com/timescale/promscale/pkg/log"
 )
 
 func TestCORSWrapper(t *testing.T) {

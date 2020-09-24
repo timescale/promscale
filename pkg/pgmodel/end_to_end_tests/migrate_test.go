@@ -12,13 +12,13 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/timescale-prometheus/pkg/api"
-	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
-	"github.com/timescale/timescale-prometheus/pkg/pgclient"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel/test_migrations"
-	"github.com/timescale/timescale-prometheus/pkg/runner"
-	"github.com/timescale/timescale-prometheus/pkg/version"
+	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
+	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/test_migrations"
+	"github.com/timescale/promscale/pkg/runner"
+	"github.com/timescale/promscale/pkg/version"
 )
 
 func TestMigrate(t *testing.T) {

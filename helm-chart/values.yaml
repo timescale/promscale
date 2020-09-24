@@ -1,4 +1,4 @@
-image: timescale/timescale-prometheus
+image: timescale/promscale
 # number of connector pods to spawn
 replicaCount: 1
 # connection options to connect to a target db
@@ -38,7 +38,7 @@ prometheus:
 
 
 # settings for the service to be created that will expose
-# the timescale-prometheus deployment
+# the promscale deployment
 service:
   port: 9201
   loadBalancer:

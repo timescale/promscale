@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/promscale/pkg/log"
 )
 
 const (

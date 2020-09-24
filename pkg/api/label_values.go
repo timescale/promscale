@@ -9,8 +9,8 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
-	"github.com/timescale/timescale-prometheus/pkg/query"
+	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/query"
 )
 
 func LabelValues(conf *Config, queryable *query.Queryable) http.Handler {

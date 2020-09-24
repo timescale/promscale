@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 // Labels stores a labels.Labels in its canonical string representation

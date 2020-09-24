@@ -19,8 +19,8 @@ import (
 
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel/migrations"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/migrations"
 )
 
 const (

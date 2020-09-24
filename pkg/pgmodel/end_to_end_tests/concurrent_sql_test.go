@@ -12,10 +12,10 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
-	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 func testConcurrentMetricTable(t testing.TB, db *pgxpool.Pool, metricName string) int64 {

@@ -1,9 +1,10 @@
 package api
 
 import (
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
 	"net/http"
+
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel"
 )
 
 func Health(hc pgmodel.HealthChecker) http.HandlerFunc {

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/promscale/pkg/log"
 )
 
 // Election defines an interface for adapter leader election.

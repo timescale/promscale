@@ -5,21 +5,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
-	"github.com/timescale/timescale-prometheus/pkg/query"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/query"
 )
 
 type mockSeriesSet struct {

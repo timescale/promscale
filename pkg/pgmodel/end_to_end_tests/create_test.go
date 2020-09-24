@@ -14,11 +14,11 @@ import (
 	"github.com/jackc/pgerrcode"
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 
-	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 func TestSQLGetOrCreateMetricTableName(t *testing.T) {

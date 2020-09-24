@@ -10,14 +10,14 @@ DO $$
               FROM public.prom_schema_migrations;
         EXCEPTION WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS original_message = MESSAGE_TEXT;
-            RAISE EXCEPTION 'could not determine the version of the timescale-prometheus connector that was installed due to: %', original_message
-            USING HINT='This extension should not be created manually. It will be created by the timescale-prometheus connector and requires the connector to be installed first.';
+            RAISE EXCEPTION 'could not determine the version of the Promscale connector that was installed due to: %', original_message
+            USING HINT='This extension should not be created manually. It will be created by the Promscale connector and requires the connector to be installed first.';
             RETURN;
         END;
 
         IF current_version = '' THEN
-            RAISE EXCEPTION 'the requisite version of the timescale-prometheus connector has not been installed'
-            USING HINT='This extension should not be created manually. It will be created by the timescale-prometheus connector and requires the connector to be installed first.';
+            RAISE EXCEPTION 'the requisite version of the Promscale connector has not been installed'
+            USING HINT='This extension should not be created manually. It will be created by the Promscale connector and requires the connector to be installed first.';
         END IF;
     END
 $$;

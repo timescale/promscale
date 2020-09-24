@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/promscale/pkg/log"
 )
 
 var (

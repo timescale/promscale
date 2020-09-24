@@ -3,7 +3,7 @@ package pgmodel
 import (
 	"sync"
 
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 var wrPool = sync.Pool{

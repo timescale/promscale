@@ -21,12 +21,12 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jamiealquiza/envy"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/timescale/timescale-prometheus/pkg/api"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgclient"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/util"
-	"github.com/timescale/timescale-prometheus/pkg/version"
+	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/util"
+	"github.com/timescale/promscale/pkg/version"
 )
 
 type Config struct {

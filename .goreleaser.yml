@@ -10,11 +10,11 @@ before:
 builds:
 - env:
   - CGO_ENABLED=0
-  main: ./cmd/timescale-prometheus/
+  main: ./cmd/promscale/
 
 #don't publish scoop but overwrite the weird names
 scoop:
-  name: timescale-prometheus
+  name: promscale
   commit_author:
     name: Timescale
     email: support@timescale.com
@@ -41,7 +41,7 @@ changelog:
 dockers:
 -
   binaries:
-  - timescale-prometheus
+  - promscale
   skip_push: false
   extra_files:
   - .git
@@ -50,7 +50,7 @@ dockers:
   - pkg
   - cmd
   image_templates:
-  - "timescale/timescale-prometheus:{{ .Tag }}"
-  - "timescale/timescale-prometheus:{{ .Major }}.{{ .Minor }}"
-  - "timescale/timescale-prometheus:latest"
+  - "timescale/promscale:{{ .Tag }}"
+  - "timescale/promscale:{{ .Major }}.{{ .Minor }}"
+  - "timescale/promscale:latest"
 

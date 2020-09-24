@@ -18,8 +18,8 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/timescale/timescale-prometheus/pkg/clockcache"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 // rowResults represents a collection of a multi-column row result

@@ -23,9 +23,9 @@ spec:
       containers:
         - image: {{ .Values.image }}
           imagePullPolicy: IfNotPresent
-          name: timescale-prometheus-connector
+          name: promscale-connector
           {{- if .Values.resources }}
-          resources: 
+          resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- end }}
           ports:

@@ -12,7 +12,7 @@ services:
     - 9090:9090/tcp
     volumes:
     - ./sample-docker-prometheus:/etc/prometheus/prometheus:ro
-  timescale-prometheus-connector:
+  promscale-connector:
     build:
       context: .
     command: -db-ssl-mode=allow
@@ -27,7 +27,7 @@ services:
       TS_PROM_DB_PASSWORD: postgres
       TS_PROM_DB_NAME: postgres
       TS_PROM_WEB_TELEMETRY_PATH: /metrics-text
-    image: timescale/timescale-prometheus:latest
+    image: timescale/promscale:latest
     ports:
     - 9201:9201/tcp
 version: '3.0'

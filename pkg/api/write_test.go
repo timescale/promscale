@@ -17,10 +17,10 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/util/testutil"
-	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/promscale/pkg/log"
 
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
-	"github.com/timescale/timescale-prometheus/pkg/util"
+	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 func TestWrite(t *testing.T) {

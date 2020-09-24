@@ -12,9 +12,9 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 
-	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 func TestSQLRetentionPeriod(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/timescale/timescale-prometheus/pkg/api"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/util"
+	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 func TestMain(m *testing.M) {
