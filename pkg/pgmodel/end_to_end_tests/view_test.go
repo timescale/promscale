@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 
-	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 func getViewRowCount(t testing.TB, db *pgxpool.Pool, view string, where string, expected int) {

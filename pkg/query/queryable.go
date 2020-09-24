@@ -2,11 +2,12 @@ package query
 
 import (
 	"context"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/promql"
 )
 
 func NewQueryable(q pgmodel.Querier) *Queryable {

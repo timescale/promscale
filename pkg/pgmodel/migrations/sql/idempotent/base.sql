@@ -1251,7 +1251,7 @@ BEGIN
         WHERE c.id = chunk_row.id AND c.compressed_chunk_id IS NOT NULL;
 
         IF FOUND THEN
-            RAISE NOTICE 'Timescale-Prometheus is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
+            RAISE NOTICE 'Promscale is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
             PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
         END IF;
 

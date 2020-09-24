@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
-	"github.com/timescale/timescale-prometheus/pkg/query"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/query"
 )
 
 func Series(conf *Config, queryable *query.Queryable) http.Handler {

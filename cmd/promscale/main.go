@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/runner"
-	"github.com/timescale/timescale-prometheus/pkg/version"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/runner"
+	"github.com/timescale/promscale/pkg/version"
 )
 
 func main() {

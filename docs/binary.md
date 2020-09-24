@@ -2,7 +2,7 @@
 
 ## 🔧 Installing pre-built binaries
 
-You can download pre-built binaries for the Timescale-Prometheus
+You can download pre-built binaries for the Promscale
 Connector [on our release page](/releases).
 
 We recommend installing the [timescale_prometheus_extra](/extension)
@@ -32,9 +32,9 @@ remote_read:
 
 ## ⚙️ Configuration
 
-The Timescale-Prometheus Connector binary is configured either through
+The Promscale Connector binary is configured either through
 CLI flags or environment variables. The list of all available flags is
-displayed on the help `timescale-prometheus -h` command. All
+displayed on the help `promscale -h` command. All
 environment variables are prefixed with `TS_PROM`.
 
 ## 🛠 Building from source
@@ -43,19 +43,19 @@ Before building, make sure the following prerequisites are installed:
 
 * [Go](https://golang.org/dl/)
 
-The Timescale-Prometheus Connector is a Go project managed by go
+The Promscale Connector is a Go project managed by go
 modules. You can download it in
 any directory and on the first build it will download it's required
 dependencies.
 
 ```bash
-# Fetch the source code of Timescale-Prometheus in any directory
-$ git clone git@github.com:timescale/timescale-prometheus.git
-$ cd ./timescale-prometheus
+# Fetch the source code of Promscale in any directory
+$ git clone git@github.com:timescale/promscale.git
+$ cd ./promscale
 
-# Install the Timescale-Prometheus Connector binary (will automatically detect and download)
+# Install the Promscale Connector binary (will automatically detect and download)
 # dependencies.
-$ cd cmd/timescale-prometheus
+$ cd cmd/promscale
 $ go install
 
 # Building without installing will also fetch the required dependencies

@@ -6,9 +6,9 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
-	"github.com/timescale/timescale-prometheus/pkg/query"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/query"
 )
 
 func QueryRange(conf *Config, queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {

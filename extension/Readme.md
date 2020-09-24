@@ -1,14 +1,14 @@
 # Timescale-Prometheus Extra Extension #
 
 This [Postgres extension](https://www.postgresql.org/docs/12/extend-extensions.html)
-contains support functions to improve the performance of Timescale-Prometheus.
-While Timescale-Prometheus will run without it, adding this extension will
+contains support functions to improve the performance of Promscale.
+While Promscale will run without it, adding this extension will
 cause it to perform better.
 
 ## Requirements ##
 
 To run the extension:
-- PostgreSQL version 12 or newer. 
+- PostgreSQL version 12 or newer.
 
 To compile the extension:
 - Header files for PostgreSQL version 12 or newer. Headers are included in the `postgresql-server-dev-12` package in Debian or Ubuntu. For other platforms see the PostgreSQL [download page](https://www.postgresql.org/download/).
@@ -21,7 +21,7 @@ The extension is installed by default on the
 
 To compile and install from source run: `make && make install`.
 
-This extension will be created via `CREATE EXTENSION` automatically by the timescale-prometheus connector and should not be created manually.
+This extension will be created via `CREATE EXTENSION` automatically by the Promscale connector and should not be created manually.
 
 ## Common Compilation Issues ##
 

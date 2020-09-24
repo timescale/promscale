@@ -14,9 +14,9 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
-	"github.com/timescale/timescale-prometheus/pkg/api"
-	"github.com/timescale/timescale-prometheus/pkg/pgclient"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel"
 )
 
 type requestCase struct {

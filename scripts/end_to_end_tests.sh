@@ -33,7 +33,7 @@ cleanup() {
     rm $CONF
     docker stop e2e-prom || true
     if [ -n "$CONN_PID" ]; then
-        kill $CONN_PID 
+        kill $CONN_PID
     fi
     docker stop e2e-tsdb || true
 }
@@ -43,7 +43,7 @@ trap cleanup EXIT
 docker run --rm --name e2e-tsdb -p 5432:5432/tcp -e "POSTGRES_PASSWORD=postgres" timescale/timescaledb:latest-pg12  > /dev/null 2>&1 &
 docker run --rm --name e2e-prom --network="host" -p 9090:9090/tcp -v "$CONF:/etc/prometheus/prometheus.yml" prom/prometheus:latest > /dev/null 2>&1  &
 
-cd $ROOT_DIR/cmd/timescale-prometheus
+cd $ROOT_DIR/cmd/promscale
 go get ./...
 go build .
 
@@ -66,7 +66,7 @@ TS_PROM_DB_PASSWORD=postgres \
 TS_PROM_DB_NAME=postgres \
 TS_PROM_DB_SSL_MODE=disable \
 TS_PROM_WEB_TELEMETRY_PATH=/metrics \
-./timescale-prometheus &
+./promscale &
 
 CONN_PID=$!
 

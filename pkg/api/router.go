@@ -6,10 +6,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgclient"
-	"github.com/timescale/timescale-prometheus/pkg/query"
-	"github.com/timescale/timescale-prometheus/pkg/util"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) http.Handler {

@@ -1,14 +1,14 @@
-# Timescale-Prometheus
-[![Go](https://github.com/timescale/timescale-prometheus/workflows/Go/badge.svg)](https://github.com/timescale/timescale-prometheus/actions?query=workflow%3AGo)
-[![reviewdog - golangci](https://github.com/timescale/timescale-prometheus/workflows/reviewdog%20-%20golangci/badge.svg)](https://github.com/timescale/timescale-prometheus/actions?query=workflow%3A%22reviewdog+-+golangci%22)
-[![Go Report Card](https://goreportcard.com/badge/github.com/timescale/timescale-prometheus)](https://goreportcard.com/report/github.com/timescale/timescale-prometheus)
-[![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/timescale-prometheus/maintainability)
-[![GoDoc](https://godoc.org/github.com/timescale/timescale-prometheus?status.svg)](https://pkg.go.dev/github.com/timescale/timescale-prometheus)
+# Promscale
+[![Go](https://github.com/timescale/promscale/workflows/Go/badge.svg)](https://github.com/timescale/promscale/actions?query=workflow%3AGo)
+[![reviewdog - golangci](https://github.com/timescale/promscale/workflows/reviewdog%20-%20golangci/badge.svg)](https://github.com/timescale/promscale/actions?query=workflow%3A%22reviewdog+-+golangci%22)
+[![Go Report Card](https://goreportcard.com/badge/github.com/timescale/promscale)](https://goreportcard.com/report/github.com/timescale/promscale)
+[![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/promscale/maintainability)
+[![GoDoc](https://godoc.org/github.com/timescale/promscale?status.svg)](https://pkg.go.dev/github.com/timescale/promscale)
 
 This project connects Prometheus to TimescaleDB, creating an
 **analytical and long-term storage platform for Prometheus metrics**.
 
-<img src="./docs/timescale-prometheus-arch.png" alt="Timescale-Prometheus Architecture Diagram" width="800"/>
+<img src="./docs/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
 This platform is **horizontally-scalable**, **highly-compressed**, and
 **operationally mature**. By allowing a user to use SQL, in addition to
@@ -16,17 +16,17 @@ PromQL, this platform empowers the user to ask complex analytical
 queries from their metrics data, and thus extract more meaningful
 insights.
 
-✅  Timescale-Prometheus is currently the only long-term store for Prometheus data to have received a 
-[100% compliance test score](https://promlabs.com/promql-compliance-test-results-timescaledb) 
-(with no cross-cutting concerns) from PromLab's 
-[PromQL Compliance Test Suite](https://promlabs.com/promql-compliance-tests/). 
+✅  Promscale is currently the only long-term store for Prometheus data to have received a
+[100% compliance test score](https://promlabs.com/promql-compliance-test-results-timescaledb)
+(with no cross-cutting concerns) from PromLab's
+[PromQL Compliance Test Suite](https://promlabs.com/promql-compliance-tests/).
 
 For a detailed description of this architecture, please see [our design
 doc][design-doc].
 
 If you have any questions, please join the #prometheus channel on
 [TimescaleDB Slack](https://slack.timescale.com/), or the
-[Timescale-Prometheus Users Google Group](https://groups.google.com/forum/#!forum/timescale-prometheus-users).
+[Promscale Users Google Group](https://groups.google.com/forum/#!forum/promscale-users).
 
 ## 🐯 About TimescaleDB
 
@@ -56,14 +56,14 @@ backend datasource for Zabbix users and is natively supported in Grafana.
 
 ## 🔧 Choose your own (installation) adventure
 
-We have four main ways to set up Timescale-Prometheus:
+We have four main ways to set up Promscale:
 
 #### tobs (recommended for Kubernetes environments)
 
 [The Observability Suite for Kubernetes][tobs] is a
 CLI tool and Helm chart that makes installing a full observability suite into your
 Kubernetes cluster really easy. Tobs includes Prometheus, TimescaleDB,
-Timescale-Prometheus Connector, and Grafana.
+Promscale Connector, and Grafana.
 
 To get started, run the following in your terminal, then follow the on-screen instructions.
 
@@ -87,9 +87,9 @@ Instructions on how to use our prepackaged binaries are available [here](docs/bi
 
 You can also [build binaries from source](docs/binary.md#building-from-source).
 
-#### ⎈ Helm (sub)chart for Timescale-Prometheus Connector only
+#### ⎈ Helm (sub)chart for Promscale Connector only
 
-A Helm chart for only the Timescale-Prometheus Connector is available in
+A Helm chart for only the Promscale Connector is available in
 the [helm-chart directory](helm-chart/README.md) of this repository.
 
 This is used as a Helm dependency from the `tobs`
@@ -118,12 +118,12 @@ These setting can also be changed using the appropriate
 
 ### 🌐 Prometheus HTTP API
 
-The Timescale-Prometheus Connector can be used directly as a Prometheus Data
+The Promscale Connector can be used directly as a Prometheus Data
 Source in Grafana, or other software.
 
 The connector implements some endpoints of the currently stable (V1) [Prometheus HTTP
 API](https://prometheus.io/docs/prometheus/latest/querying/api). The API is
-accessible at `http://<timescale_prometheus_connector_address>:9201/api/v1` and can be
+accessible at `http://<promscale_connector_address>:9201/api/v1` and can be
 used to execute instant or range PromQL queries against the data in
 TimescaleDB, as well as retrieve the metadata for series, label names and
 label values.
@@ -144,7 +144,7 @@ which matches Golang process information exposed by exporters like
 
 ```
 remote_write:
- - url: "http://timescale_prometheus_connector:9201/write"
+ - url: "http://promscale_connector:9201/write"
    write_relabel_configs:
       - source_labels: [__name__]
         regex: 'go_.*'
@@ -157,12 +157,12 @@ Additional information about setting up relabel configs, the
 
 ## ✏️ Contributing
 
-We welcome contributions to the Timescale-Prometheus Connector, which is
+We welcome contributions to the Promscale Connector, which is
 licensed and released under the open-source Apache License, Version 2.
 The same [Contributor's
 Agreement](//github.com/timescale/timescaledb/blob/master/CONTRIBUTING.md)
 applies as in TimescaleDB; please sign the [Contributor License
-Agreement](https://cla-assistant.io/timescale/timescale-prometheus)
+Agreement](https://cla-assistant.io/timescale/promscale)
 (CLA) if you're a new contributor.
 
 [design-doc]: https://tsdb.co/prom-design-doc

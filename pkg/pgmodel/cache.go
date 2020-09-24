@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/timescale/timescale-prometheus/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/clockcache"
 )
 
 const (

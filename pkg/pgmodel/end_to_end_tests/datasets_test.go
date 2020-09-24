@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/golang/snappy"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (

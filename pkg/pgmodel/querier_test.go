@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 type mockQuerier struct {

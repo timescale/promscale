@@ -9,7 +9,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func TestRead(t *testing.T) {

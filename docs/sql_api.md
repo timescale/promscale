@@ -1,6 +1,6 @@
 # Function API Reference
 
-This page is a reference for the functions available in timescale-prometheus.
+This page is a reference for the functions available in Promscale.
 
 A description of the usage of these functions, and examples can be found in
 [our description of the sql schema](sql_schema.md)

@@ -1,4 +1,7 @@
-module github.com/timescale/timescale-prometheus
+module github.com/timescale/promscale
+
+//TODO remove after repo rename
+replace github.com/timescale/promscale => ./
 
 go 1.14
 

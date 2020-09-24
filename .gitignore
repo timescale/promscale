@@ -1,5 +1,5 @@
 *~
-/timescale-prometheus*
+/promscale*
 /vendor
 /version.properties
 /.target_os

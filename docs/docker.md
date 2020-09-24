@@ -2,8 +2,8 @@
 
 ## 🔧 Running Docker
 
-A docker image for the Timescale-Prometheus Connector is available
-on Docker Hub at [timescale/timescale-prometheus](https://hub.docker.com/r/timescale/timescale-prometheus/).
+A docker image for the Promscale Connector is available
+on Docker Hub at [timescale/promscale](https://hub.docker.com/r/timescale/promscale/).
 
 A docker image of TimescaleDB with the `timescale_prometheus_extra`
 extension is available at on Docker Hub at
@@ -31,7 +31,7 @@ remote_read:
 
 The docker image is configured either through CLI flags or environment variables.
 The list of all available flags is displayed when run with the `-h` flag
-(e.g. `docker run timescale/timescale-prometheus -h`). All
+(e.g. `docker run timescale/promscale -h`). All
 environment variables are prefixed with `TS_PROM`.
 
 ## 🛠 Building from source

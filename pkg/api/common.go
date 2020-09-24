@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
-	"github.com/timescale/timescale-prometheus/pkg/promql"
+	"github.com/timescale/promscale/pkg/promql"
 )
 
 var (

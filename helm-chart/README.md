@@ -1,27 +1,27 @@
-# Timescale Prometheus Helm chart
+# Promscale Helm chart
 
-This directory contains a Helm chart to deploy the Timescale Prometheus Connector
+This directory contains a Helm chart to deploy the Promscale Connector
 on Kubernetes. This chart will do the following:
 
 * Create a Kubernetes Deployment (by default) with one pod
-  * The pod has a container created using the [Timescale Prometheus Connector Docker Image][docker-image] 
+  * The pod has a container created using the [Promscale Connector Docker Image][docker-image]
 * Create a Kubernetes Service exposing access to the Connector pods
   * By default a LoadBalancer, but can be disabled to only a ClusterIP with a configurable port
-* Create a Kubernetes CronJob that deletes the data chunks that fall out of the retention period 
+* Create a Kubernetes CronJob that deletes the data chunks that fall out of the retention period
 
-## Prerequisites 
+## Prerequisites
 
 ### Database Name
 
-The name of the database the Timescale-Prometheus connector will connect to by default
+The name of the database the Promscale connector will connect to by default
 is set to `timescale`. You can change it by modifying the `connection.dbName` value.
 The database **must be created before** starting the connector.
 
 ### Password
 
-The chart expects that the password used to connect to TimescaleDB is stored in a 
-Kubernetes Secret created before the chart is deployed. 
-You can set the secret name by modifying the  `connection.password.secretTemplate` value. 
+The chart expects that the password used to connect to TimescaleDB is stored in a
+Kubernetes Secret created before the chart is deployed.
+You can set the secret name by modifying the  `connection.password.secretTemplate` value.
 Templating is supported and you can use:
 ```yaml
 connection:
@@ -63,7 +63,7 @@ helm install --name my-release -f myvalues.yaml .
 
 |       Parameter                   |           Description                       |               Default              |
 |-----------------------------------|---------------------------------------------|------------------------------------|
-| `image`                           | The image (with tag) to pull                | `timescale/timescale-prometheus`   |
+| `image`                           | The image (with tag) to pull                | `timescale/promscale`   |
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
 | `connection.password.secretTemplate`| The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
@@ -78,4 +78,4 @@ helm install --name my-release -f myvalues.yaml .
 | `resources`                       | Requests and limits for each of the pods    | `{}`                               |
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 
-[docker-image]: https://hub.docker.com/timescale/timescale-prometheus
+[docker-image]: https://hub.docker.com/timescale/promscale

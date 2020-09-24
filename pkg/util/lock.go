@@ -13,7 +13,7 @@ import (
 
 	pgx "github.com/jackc/pgx/v4"
 
-	"github.com/timescale/timescale-prometheus/pkg/log"
+	"github.com/timescale/promscale/pkg/log"
 )
 
 const (

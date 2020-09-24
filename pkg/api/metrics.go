@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/timescale/timescale-prometheus/pkg/util"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 const tickInterval = time.Second

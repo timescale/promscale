@@ -12,9 +12,9 @@ import (
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/util"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {

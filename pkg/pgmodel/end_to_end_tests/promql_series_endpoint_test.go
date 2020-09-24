@@ -12,7 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 )
 
 type seriesResponse struct {

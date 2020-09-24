@@ -17,9 +17,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/timescale-prometheus/pkg/clockcache"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
+	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (

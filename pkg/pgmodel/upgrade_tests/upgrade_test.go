@@ -23,15 +23,15 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/timescale/timescale-prometheus/pkg/internal/testhelpers"
-	"github.com/timescale/timescale-prometheus/pkg/log"
-	"github.com/timescale/timescale-prometheus/pkg/pgmodel"
-	"github.com/timescale/timescale-prometheus/pkg/prompb"
-	"github.com/timescale/timescale-prometheus/pkg/version"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/version"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 
-	. "github.com/timescale/timescale-prometheus/pkg/pgmodel"
+	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 var (
@@ -269,7 +269,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		}
 		db.Close()
 
-		connectorImage := "timescale/timescale-prometheus:" + prevVersion.String()
+		connectorImage := "timescale/promscale:" + prevVersion.String()
 		connector, err := testhelpers.StartConnectorWithImage(context.Background(), connectorImage, *printLogs, *testDatabase)
 		if err != nil {
 			log.Fatal(err.Error())
