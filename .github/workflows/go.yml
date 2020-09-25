@@ -23,7 +23,7 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Build extension image
-      run: cd extension && make -f DockerMakefile docker-image
+      run: git clone https://github.com/timescale/promscale_extension && cd promscale_extension && make -f DockerMakefile docker-image
 
     - name: Get dependencies
       run: |
