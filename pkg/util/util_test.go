@@ -17,7 +17,9 @@ const (
 )
 
 func init() {
-	err := log.Init("debug")
+	err := log.Init(log.Config{
+		Level: "debug",
+	})
 	if err != nil {
 		panic(err)
 	}

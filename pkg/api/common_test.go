@@ -12,7 +12,9 @@ import (
 )
 
 func TestCORSWrapper(t *testing.T) {
-	_ = log.Init("debug")
+	_ = log.Init(log.Config{
+		Level: "debug",
+	})
 	acceptSpecific, _ := regexp.Compile("^(?:" + "http://some-site.com" + ")$")
 	acceptAny, _ := regexp.Compile("^(?:" + ".*" + ")$")
 

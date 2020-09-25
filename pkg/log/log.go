@@ -6,6 +6,7 @@
 package log
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -25,16 +26,39 @@ var (
 	)
 )
 
-// Init starts logging given the minimum log level
-func Init(logLevel string) error {
-	l := log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
-	logLevelOption, err := parseLogLevel(logLevel)
+// Config represents a logger configuration used upon initialization.
+type Config struct {
+	Level  string
+	Format string
+}
+
+// ParseFlags parses the configuration flags for logging.
+func ParseFlags(cfg *Config) *Config {
+	flag.StringVar(&cfg.Level, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
+	flag.StringVar(&cfg.Format, "log-format", "logfmt", "The log format to use [ \"logfmt\", \"json\" ].")
+	return cfg
+}
+
+// Init starts logging given the configuration. By default, it uses logfmt format
+// and minimum logging level.
+func Init(cfg Config) error {
+	var l log.Logger
+	switch cfg.Format {
+	case "logfmt", "":
+		l = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	case "json":
+		l = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+	default:
+		return fmt.Errorf("unrecognized log format %s", cfg.Format)
+	}
+
+	logLevelOption, err := parseLogLevel(cfg.Level)
 	if err != nil {
 		return err
 	}
 
 	l = level.NewFilter(l, logLevelOption)
-	logger = log.With(l, "ts", timestampFormat, "caller", log.Caller(4))
+	logger = log.With(l, "ts", timestampFormat, "caller", log.DefaultCaller)
 	return nil
 }
 

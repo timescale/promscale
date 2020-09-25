@@ -4,7 +4,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
@@ -14,7 +13,6 @@ import (
 )
 
 func main() {
-	logLevel := flag.String("log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
 	cfg := &runner.Config{}
 	cfg, err := runner.ParseFlags(cfg)
 	if err != nil {
@@ -22,7 +20,7 @@ func main() {
 		fmt.Println("Fatal error: cannot parse flags ", err)
 		os.Exit(1)
 	}
-	err = log.Init(*logLevel)
+	err = log.Init(cfg.LogCfg)
 	if err != nil {
 		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
 		fmt.Println("Fatal error: cannot start logger", err)

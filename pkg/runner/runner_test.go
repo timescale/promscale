@@ -14,7 +14,9 @@ import (
 
 func TestMain(m *testing.M) {
 	flag.Parse()
-	err := log.Init("debug")
+	err := log.Init(log.Config{
+		Level: "debug",
+	})
 
 	if err != nil {
 		fmt.Println("Error initializing logger", err)

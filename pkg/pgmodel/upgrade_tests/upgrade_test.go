@@ -51,7 +51,9 @@ func TestMain(m *testing.M) {
 		prevDBImage = "timescaledev/timescale_prometheus_extra:0.1.1-pg12"
 	}
 	flag.Parse()
-	_ = log.Init("debug")
+	_ = log.Init(log.Config{
+		Level: "debug",
+	})
 	code = m.Run()
 	os.Exit(code)
 }

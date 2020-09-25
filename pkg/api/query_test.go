@@ -121,7 +121,9 @@ func TestParseDuration(t *testing.T) {
 }
 
 func TestQuery(t *testing.T) {
-	_ = log.Init("debug")
+	_ = log.Init(log.Config{
+		Level: "debug",
+	})
 	testCases := []struct {
 		name        string
 		timeout     string
