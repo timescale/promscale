@@ -1,5 +1,0 @@
-# promscale extension
-comment = 'Promscale support functions'
-default_version = '0.1.1'
-module_pathname = '$libdir/promscale'
-relocatable = false
