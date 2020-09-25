@@ -26,7 +26,7 @@ import (
 const (
 	timescaleInstall            = "CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;"
 	metadataUpdateWithExtension = "SELECT update_tsprom_metadata($1, $2, $3)"
-	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('timescale_prometheus_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
+	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 	createMigrationsTable       = "CREATE TABLE IF NOT EXISTS prom_schema_migrations (version text not null primary key)"
 	getVersion                  = "SELECT version FROM prom_schema_migrations LIMIT 1"
 	setVersion                  = "INSERT INTO prom_schema_migrations (version) VALUES ($1)"
