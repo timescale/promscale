@@ -24,7 +24,9 @@ import (
 )
 
 func TestWrite(t *testing.T) {
-	testutil.Ok(t, log.Init("debug"))
+	testutil.Ok(t, log.Init(log.Config{
+		Level: "debug",
+	}))
 	testCases := []struct {
 		name             string
 		responseCode     int

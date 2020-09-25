@@ -33,6 +33,7 @@ type Config struct {
 	ListenAddr        string
 	TelemetryPath     string
 	PgmodelCfg        pgclient.Config
+	LogCfg            log.Config
 	HaGroupLockID     int64
 	RestElection      bool
 	PrometheusTimeout time.Duration
@@ -57,6 +58,7 @@ var (
 
 func ParseFlags(cfg *Config) (*Config, error) {
 	pgclient.ParseFlags(&cfg.PgmodelCfg)
+	log.ParseFlags(&cfg.LogCfg)
 
 	flag.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")

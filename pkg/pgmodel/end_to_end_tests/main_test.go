@@ -41,7 +41,9 @@ func TestMain(m *testing.M) {
 	func() {
 		flag.Parse()
 		ctx := context.Background()
-		_ = log.Init("debug")
+		_ = log.Init(log.Config{
+			Level: "debug",
+		})
 		if !testing.Short() {
 			var err error
 
