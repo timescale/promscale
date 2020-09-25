@@ -150,7 +150,7 @@ func TestMigrateTwice(t *testing.T) {
 		}
 
 		var versionString string
-		err := db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='timescale_prometheus_version'").Scan(&versionString)
+		err := db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
 		if err != nil {
 			if err == pgx.ErrNoRows && !*useExtension {
 				//Without an extension, metadata will not be written if running as non-superuser
