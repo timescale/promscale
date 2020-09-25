@@ -1,4 +1,4 @@
 .deps
 src/*.o
-timescale_prometheus_extra.so
+promscale.so
 /target

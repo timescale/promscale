@@ -5,7 +5,7 @@
 You can download pre-built binaries for the Promscale
 Connector [on our release page](/releases).
 
-We recommend installing the [timescale_prometheus_extra](/extension)
+We recommend installing the [promscale](/extension)
 PostgreSQL extension into the TimescaleDB database you are connecting to.
 Instructions on how to compile and install the extension are in the
 extensions [README](/extension/Readme.md). While this isn't a requirement, it

@@ -28,7 +28,7 @@ var (
 	testDatabase      = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 	updateGoldenFiles = flag.Bool("update", false, "update the golden files of this test")
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
-	useExtension      = flag.Bool("use-extension", true, "use the timescale_prometheus_extra extension")
+	useExtension      = flag.Bool("use-extension", true, "use the promscale extension")
 	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	extendedTest      = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
 

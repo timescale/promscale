@@ -46,7 +46,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_INFO TO prom_reader;
 ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_INFO GRANT SELECT ON TABLES TO prom_reader;
 
 
--- the timescale_prometheus_extra extension contains optimized version of some
+-- the promscale extension contains optimized version of some
 -- of our functions and operators. To ensure the correct version of the are
 -- used, SCHEMA_EXT must be before all of our other schemas in the search path
 DO $$

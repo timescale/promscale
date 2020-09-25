@@ -1,5 +1,5 @@
 [package]
-name = "timescale_prometheus_extra_rs"
+name = "promscale_rs"
 version = "0.1.0"
 authors = ["Joshua Lockerman <josh@timescale.com>"]
 edition = "2018"

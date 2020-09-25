@@ -1,4 +1,4 @@
-# Timescale-Prometheus Extra Extension #
+# Promscale Extension #
 
 This [Postgres extension](https://www.postgresql.org/docs/12/extend-extensions.html)
 contains support functions to improve the performance of Promscale.
@@ -17,7 +17,7 @@ To compile the extension:
 ## Installation ##
 
 The extension is installed by default on the
-[`timescaledev/timescale_prometheus_extra:latest-pg12`](https://hub.docker.com/r/timescaledev/timescale_prometheus_extra) docker image.
+[`timescaledev/promscale-extension:latest-pg12`](https://hub.docker.com/r/timescaledev/promscale-extension) docker image.
 
 To compile and install from source run: `make && make install`.
 

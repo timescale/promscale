@@ -58,7 +58,7 @@ DO $$
 $$;
 
 CREATE OR REPLACE FUNCTION @extschema@.make_call_subquery_support(internal) RETURNS INTERNAL
-AS '$libdir/timescale_prometheus_extra', 'make_call_subquery_support'
+AS '$libdir/promscale', 'make_call_subquery_support'
 LANGUAGE C IMMUTABLE STRICT;
 GRANT EXECUTE ON FUNCTION @extschema@.make_call_subquery_support(internal) TO prom_reader;
 
@@ -156,7 +156,7 @@ RETURNS VOID
 AS $func$
     INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry)
     VALUES ('timescale_prometheus_' || meta_key,meta_value, send_telemetry)
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED
 $func$
 LANGUAGE SQL VOLATILE SECURITY DEFINER;
 
@@ -165,24 +165,24 @@ LANGUAGE SQL VOLATILE SECURITY DEFINER;
 CREATE FUNCTION @extschema@.prom_delta_transition(state internal, lowest_time timestamptz,
     greatest_time timestamptz, step bigint, range bigint,
     sample_time timestamptz, sample_value double precision)
-RETURNS internal AS '$libdir/timescale_prometheus_extra', 'gapfill_delta_transition'
+RETURNS internal AS '$libdir/promscale', 'gapfill_delta_transition'
 LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 CREATE FUNCTION @extschema@.prom_rate_transition(state internal, lowest_time timestamptz,
     greatest_time timestamptz, step bigint, range bigint,
     sample_time timestamptz, sample_value double precision)
-RETURNS internal AS '$libdir/timescale_prometheus_extra', 'gapfill_rate_transition'
+RETURNS internal AS '$libdir/promscale', 'gapfill_rate_transition'
 LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 CREATE FUNCTION @extschema@.prom_increase_transition(state internal, lowest_time timestamptz,
     greatest_time timestamptz, step bigint, range bigint,
     sample_time timestamptz, sample_value double precision)
-RETURNS internal AS '$libdir/timescale_prometheus_extra', 'gapfill_increase_transition'
+RETURNS internal AS '$libdir/promscale', 'gapfill_increase_transition'
 LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 CREATE FUNCTION @extschema@.prom_extrapolate_final(state internal)
 RETURNS DOUBLE PRECISION[]
-AS '$libdir/timescale_prometheus_extra', 'gapfill_delta_final'
+AS '$libdir/promscale', 'gapfill_delta_final'
 LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 

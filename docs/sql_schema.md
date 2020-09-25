@@ -13,7 +13,7 @@ We define several views to make working with prometheus data easier.
 Metric views allows access to the full time-series prometheus data for a
 given metric. By default, these views are found in the `prom_metric` schema.
 The `prom_metric` view is added to your search_path when you first install
-timescale_prometheus and so it is default view you see if you don't
+Promscale and so it is default view you see if you don't
 schema-qualify a view name. Each metric has a view named after the metric
 name (.e.g. the `cpu_usage` metric would have a `prom_metric.cpu_usage` or
 simply `cpu_usage` view). The view contains a the following column:

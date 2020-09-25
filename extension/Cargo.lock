@@ -132,6 +132,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "promscale_rs"
+version = "0.1.0"
+dependencies = [
+ "timescale-extension-utils",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -173,13 +180,6 @@ version = "0.1.0"
 source = "git+https://github.com/timescale/timescale-extension-utils#098962027183e1cd36acd6e1a47390f1caedbd33"
 dependencies = [
  "postgres-headers-rs",
-]
-
-[[package]]
-name = "timescale_prometheus_extra_rs"
-version = "0.1.0"
-dependencies = [
- "timescale-extension-utils",
 ]
 
 [[package]]

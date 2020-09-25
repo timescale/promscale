@@ -115,14 +115,13 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 	} else {
 		fmt.Print(string(l.Content))
 	}
-
 }
 
 // StartPGContainer starts a postgreSQL container for use in testing
 func StartPGContainer(ctx context.Context, withExtension bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
 	var image string
 	if withExtension {
-		image = "timescaledev/timescale_prometheus_extra:latest-pg12"
+		image = "timescaledev/promscale-extension:latest-pg12"
 	} else {
 		image = "timescale/timescaledb:latest-pg12"
 	}
@@ -148,7 +147,8 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		req.Cmd = []string{
 			"-c", "shared_preload_libraries=timescaledb",
 			"-c", "local_preload_libraries=pgextwlist",
-			"-c", "extwlist.extensions=timescale_prometheus_extra,timescaledb",
+			//timescale_prometheus_extra included for upgrade tests with old extension name
+			"-c", "extwlist.extensions=promscale,timescaledb,timescale_prometheus_extra",
 		}
 	}
 
