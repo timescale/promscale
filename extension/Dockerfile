@@ -28,15 +28,15 @@ RUN set -ex \
     && cp /pgextwlist/pgextwlist.so `pg_config --pkglibdir`/plugins \
     && rm -rf /pgextwlist
 
-COPY timescale_prometheus_extra.control Makefile dependencies.makefile /build/timescale-prometheus/
-COPY src/*.c src/*.h /build/timescale-prometheus/src/
-COPY Cargo.* /build/timescale-prometheus/
-COPY src/*.rs /build/timescale-prometheus/src/
-COPY sql/*.sql /build/timescale-prometheus/sql/
+COPY promscale.control Makefile dependencies.makefile /build/promscale/
+COPY src/*.c src/*.h /build/promscale/src/
+COPY Cargo.* /build/promscale/
+COPY src/*.rs /build/promscale/src/
+COPY sql/*.sql /build/promscale/sql/
 
 RUN set -ex \
-    && make -C /build/timescale-prometheus rust EXTRA_RUST_ARGS=--features=parse_headers \
-    && make -C /build/timescale-prometheus install \
+    && make -C /build/promscale rust EXTRA_RUST_ARGS=--features=parse_headers \
+    && make -C /build/promscale install \
     \
     && apk del .build-deps \
     && rm -rf /build

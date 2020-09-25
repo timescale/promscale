@@ -36,7 +36,7 @@ import (
 
 var (
 	testDatabase = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
-	useExtension = flag.Bool("use-extension", true, "use the timescale_prometheus_extra extension")
+	useExtension = flag.Bool("use-extension", true, "use the promscale extension")
 	printLogs    = flag.Bool("print-logs", false, "print TimescaleDB logs")
 )
 
@@ -46,8 +46,9 @@ var prevDBImage = "timescale/timescaledb:latest-pg12"
 func TestMain(m *testing.M) {
 	var code int
 	if *useExtension {
-		cleanImage = "timescaledev/timescale_prometheus_extra:latest-pg12"
-		prevDBImage = "timescaledev/timescale_prometheus_extra:0.1-pg12"
+		cleanImage = "timescaledev/promscale-extension:latest-pg12"
+		//TODO: note this uses the old timescale_prometheus_extra docker images
+		prevDBImage = "timescaledev/timescale_prometheus_extra:0.1.1-pg12"
 	}
 	flag.Parse()
 	_ = log.Init("debug")
@@ -187,6 +188,9 @@ func printDbInfoDifferences(t *testing.T, pristineDbInfo dbInfo, upgradedDbInfo 
 	t.Errorf("upgrade differences")
 	if !reflect.DeepEqual(upgradedDbInfo.schemaNames, pristineDbInfo.schemaNames) {
 		t.Logf("different schemas\nexpected:\n\t%v\ngot:\n\t%v", pristineDbInfo.schemaNames, upgradedDbInfo.schemaNames)
+	}
+	if !reflect.DeepEqual(upgradedDbInfo.extensions, pristineDbInfo.extensions) {
+		t.Logf("different extensions\nexpected:\n\t%v\ngot:\n\t%v", pristineDbInfo.extensions, upgradedDbInfo.extensions)
 	}
 	pristineSchemas := make(map[string]schemaInfo)
 	for _, schema := range pristineDbInfo.schemas {
@@ -490,6 +494,7 @@ var ourSchemas []string = []string{
 type dbInfo struct {
 	schemaNames []string
 	schemas     []schemaInfo
+	extensions  string // \dx
 }
 
 type schemaInfo struct {
@@ -518,6 +523,7 @@ func getDbInfo(t *testing.T, container testcontainers.Container, outputDir strin
 		)
 	}
 
+	info.extensions = getPsqlInfo(t, container, outputDir, "\\dx")
 	info.schemas = make([]schemaInfo, len(ourSchemas))
 	for i, schema := range ourSchemas {
 		info := &info.schemas[i]

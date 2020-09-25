@@ -4,22 +4,20 @@
 
 include dependencies.makefile
 
-EXTENSION=timescale_prometheus_extra
-
-EXT_VERSION = $(shell cat timescale_prometheus_extra.control | grep 'default' | sed "s/^.*'\(.*\)'$\/\1/g")
+EXT_VERSION = $(shell cat promscale.control | grep 'default' | sed "s/^.*'\(.*\)'$\/\1/g")
 
 PG_VER ?= pg12
 TIMESCALEDB_VER ?= 1.7.0
 
-DOCKER_IMAGE_NAME?=timescale_prometheus_extra
+DOCKER_IMAGE_NAME?=promscale-extension
 ORGANIZATION?=timescaledev
 
 docker-image: Dockerfile $(SQL_FILES) $(SRCS) Cargo.toml Cargo.lock $(RUST_SRCS)
 	docker build --build-arg TIMESCALEDB_VERSION=$(TIMESCALEDB_VER) --build-arg PG_VERSION_TAG=$(PG_VER) -t $(ORGANIZATION)/$(DOCKER_IMAGE_NAME):latest-$(PG_VER) .
-	docker tag $(ORGANIZATION)/$(EXTENSION):latest-$(PG_VER) $(ORGANIZATION)/$(EXTENSION):${EXT_VERSION}-$(PG_VER)
+	docker tag $(ORGANIZATION)/$(DOCKER_IMAGE_NAME):latest-$(PG_VER) $(ORGANIZATION)/$(DOCKER_IMAGE_NAME):${EXT_VERSION}-$(PG_VER)
 
 docker-push: docker-image
-	docker push $(ORGANIZATION)/$(EXTENSION):latest-$(PG_VER)
-	docker push $(ORGANIZATION)/$(EXTENSION):${EXT_VERSION}-$(PG_VER)
+	docker push $(ORGANIZATION)/$(DOCKER_IMAGE_NAME):latest-$(PG_VER)
+	docker push $(ORGANIZATION)/$(DOCKER_IMAGE_NAME):${EXT_VERSION}-$(PG_VER)
 
 .PHONY: docker-image docker-push
