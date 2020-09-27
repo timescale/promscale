@@ -436,7 +436,14 @@ func writeReqToHttp(r prompb.WriteRequest) *bytes.Reader {
 func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.TimeSeries) {
 	for _, data := range data {
 		body := writeReqToHttp(tsWriteReq(copyMetrics(data)))
-		resp, err := client.Post(url, "application/x-www-form-urlencoded; param=value", body)
+		req, err := http.NewRequest("POST", url, body)
+		if err != nil {
+			t.Errorf("Error creating request: %v", err)
+		}
+		req.Header.Add("Content-Encoding", "snappy")
+		req.Header.Set("Content-Type", "application/x-protobuf")
+		req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+		resp, err := client.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
