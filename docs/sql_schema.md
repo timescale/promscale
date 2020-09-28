@@ -43,7 +43,7 @@ For example:
 
 Example query for single point with their labels:
 
-```
+```SQL
 SELECT
     jsonb(labels) as labels,
     value
@@ -62,7 +62,7 @@ Results:
 
 Example query for a rollup:
 
-```
+```SQL
 SELECT
    val(node_id) as node,
    avg(value)
@@ -156,7 +156,6 @@ the following columns
  new_tag   | new_tag           | new_tag_id     | {value}
 ```
 
-
 ## Series Selectors
 
 We have added simple-to-use series selectors for filtering series in either of the two views above.
@@ -170,7 +169,7 @@ For example to find all metrics on in the dev namespace and on node pinky, run:
 ```SQL
 SELECT *
 FROM prom_series.cpu_usage  u
-WHERE labels @> jsonb '{"namespace":"dev", "node": "pinky"'}
+WHERE labels @> jsonb '{"namespace":"dev", "node": "pinky"}'
 ```
 
 ```
@@ -245,7 +244,7 @@ section above.
 
 This default data retention period can be changed by using the SQL function
 `set_default_retention_period(new interval)`.  For example,
-```
+```SQL
 SELECT set_default_retention_period(180 * INTERVAL '1 day')
 ```
 
