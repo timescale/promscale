@@ -20,6 +20,41 @@ var (
 	ExtensionIsInstalled = false
 )
 
+// checkVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
+func checkVersions(conn *pgx.Conn) error {
+	if err := checkPgVersion(conn); err != nil {
+		return fmt.Errorf("Problem checking PostgreSQL version: %w", err)
+	}
+	if err := checkExtensionsVersion(conn); err != nil {
+		return fmt.Errorf("Problem checking Promescale extension version: %w", err)
+	}
+	return nil
+}
+
+func checkPgVersion(conn *pgx.Conn) error {
+	var versionString string
+	if err := conn.QueryRow(context.Background(), "SHOW server_version_num;").Scan(&versionString); err != nil {
+		return fmt.Errorf("error fetching postgresql version: %w", err)
+	}
+	// Semver valid versions need to satisfy major, minor and patch numbers respectively. Also, none
+	// of these can be preceded by "0", otherwise would be rendered invalid.
+	//
+	// Postgres server_version_num outputs a 6 digit number. Out of the 6 digits, the first two and
+	// the last two are the significant ones. The ones in the middle are always 0 unless Postgres
+	// releases a 3 digit version (i.e., 100+ version). This means that middle two should be removed
+	// since if they are not, then they will lead to invalid parsing of semver version.
+	// Reference: https://bit.ly/3lOnUNh
+	versionString = fmt.Sprintf("%s.%s.0", versionString[:2], trimLeadingZeros(versionString[4:]))
+	v, err := semver.Parse(versionString)
+	if err != nil {
+		return fmt.Errorf("could not parse postgresql version string: %w", err)
+	}
+	if !version.VerifyPgVersion(v) {
+		return fmt.Errorf("Incompatible postgresql version. Supported server version %s", version.PgVersionNumRange)
+	}
+	return nil
+}
+
 // checkExtensionsVersion checks for the correct version and enables the extension if
 // it is at the right version
 func checkExtensionsVersion(conn *pgx.Conn) error {
@@ -208,4 +243,9 @@ func getNewExtensionVersion(availableVersions semver.Versions, validRange semver
 		}
 	}
 	return semver.Version{}, false
+}
+
+// trimLeadingZeros removes the leading zeros passed in the version number.
+func trimLeadingZeros(s string) string {
+	return strings.TrimLeft(s, "0")
 }
