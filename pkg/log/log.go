@@ -58,7 +58,9 @@ func Init(cfg Config) error {
 	}
 
 	l = level.NewFilter(l, logLevelOption)
-	logger = log.With(l, "ts", timestampFormat, "caller", log.DefaultCaller)
+	// NOTE: we add a level of indirection with our logging functions,
+	//       so we need additional caller depth
+	logger = log.With(l, "ts", timestampFormat, "caller", log.Caller(4))
 	return nil
 }
 
