@@ -372,12 +372,17 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 }
 
 func migrateToVersion(t testing.TB, connectURL string, version string, commitHash string) {
+	err := pgmodel.MigrateTimescaleDBExtension(connectURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	migratePool, err := pgx.Connect(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = migratePool.Close(context.Background()) }()
-	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash})
+	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, &pgmodel.MigrateOptions{InstallTimescaleDB: true})
 	if err != nil {
 		t.Fatal(err)
 	}

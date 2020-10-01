@@ -76,62 +76,70 @@ func checkPromscaleExtensionVersion(conn *pgx.Conn) error {
 	return nil
 }
 
-func migrateExtension(conn *pgx.Conn) error {
-	availableVersions, err := fetchAvailableExtensionVersions(conn)
-	ExtensionIsInstalled = false
+func migrateExtension(conn *pgx.Conn, extName string, extSchemaName string, validRange semver.Range, rangeString string) error {
+	availableVersions, err := fetchAvailableExtensionVersions(conn, extName)
 	if err != nil {
 		return err
 	}
 	if len(availableVersions) == 0 {
-		log.Warn("msg", "the promscale extension is not available, proceeding without extension")
-		return nil
+		return fmt.Errorf("the extension is not available")
 	}
 
-	newVersion, ok := getNewExtensionVersion(availableVersions)
+	newVersion, ok := getNewExtensionVersion(availableVersions, validRange)
 	if !ok {
-		log.Warn("msg", "the promscale extension is not available at the right version, need version: %v, proceeding without extension", version.ExtVersionRangeString)
-		return nil
+		return fmt.Errorf("the extension is not available at the right version, need version: %v", rangeString)
 	}
 
-	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "promscale")
+	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
 	if err != nil {
 		return fmt.Errorf("Could not get the installed extension version: %w", err)
 	}
 
 	if !isInstalled {
 		_, extErr := conn.Exec(context.Background(),
-			fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS promscale WITH SCHEMA %s VERSION '%s'",
-				extSchema, getSqlVersion(newVersion)))
+			fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s WITH SCHEMA %s VERSION '%s'",
+				extName, extSchemaName, getSqlVersion(newVersion, extName)))
 		if extErr != nil {
 			return extErr
 		}
-		return checkExtensionsVersion(conn)
+		return nil
 	}
 
 	comparator := currentVersion.Compare(newVersion)
 	if comparator > 0 {
 		//currentVersion greater than what we can handle, don't use the extension
-		log.Warn("msg", "the promscale extension at a greater version than supported by the connector: %v > %v, proceeding without extension", currentVersion, newVersion)
+		return fmt.Errorf("the extension at a greater version than supported by the connector: %v > %v", currentVersion, newVersion)
 	} else if comparator == 0 {
 		//Nothing to do we are at the correct version
+		return nil
 	} else {
 		//Upgrade to the right version
-		_, err := conn.Exec(context.Background(),
-			fmt.Sprintf("ALTER EXTENSION promscale UPDATE TO '%s'",
-				getSqlVersion(newVersion)))
+		connAlter := conn
+		if extName == "timescaledb" {
+			//TimescaleDB requires a fresh connection for altering
+			//Note: all previously opened connections will become invalid
+			connAlter, err = pgx.ConnectConfig(context.Background(), conn.Config())
+			if err != nil {
+				return err
+			}
+			defer func() { _ = connAlter.Close(context.Background()) }()
+		}
+		_, err := connAlter.Exec(context.Background(),
+			fmt.Sprintf("ALTER EXTENSION %s UPDATE TO '%s'", extName,
+				getSqlVersion(newVersion, extName)))
 		if err != nil {
 			return err
 		}
 	}
 
-	return checkExtensionsVersion(conn)
+	return nil
 }
 
-func fetchAvailableExtensionVersions(conn *pgx.Conn) (semver.Versions, error) {
+func fetchAvailableExtensionVersions(conn *pgx.Conn, extName string) (semver.Versions, error) {
 	var versionStrings []string
 	versions := make(semver.Versions, 0)
 	err := conn.QueryRow(context.Background(),
-		"SELECT array_agg(version) FROM pg_available_extension_versions WHERE name ='promscale'").Scan(&versionStrings)
+		"SELECT array_agg(version) FROM pg_available_extension_versions WHERE name = $1", extName).Scan(&versionStrings)
 
 	if err != nil {
 		return versions, err
@@ -141,7 +149,7 @@ func fetchAvailableExtensionVersions(conn *pgx.Conn) (semver.Versions, error) {
 	}
 
 	for i := range versionStrings {
-		vString := correctVersionString(versionStrings[i])
+		vString := correctVersionString(versionStrings[i], extName)
 		v, err := semver.Parse(vString)
 		if err != nil {
 			return versions, fmt.Errorf("Could not parse available extra extension version %v: %w", vString, err)
@@ -156,7 +164,7 @@ func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semve
 	var versionString string
 	if err := conn.QueryRow(
 		context.Background(),
-		"SELECT extversion FROM pg_extension WHERE extname=$1;",
+		"SELECT extversion FROM pg_extension WHERE extName=$1;",
 		extensionName,
 	).Scan(&versionString); err != nil {
 		if err == pgx.ErrNoRows {
@@ -165,9 +173,7 @@ func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semve
 		return semver.Version{}, true, err
 	}
 
-	if extensionName == "promscale" {
-		versionString = correctVersionString(versionString)
-	}
+	versionString = correctVersionString(versionString, extensionName)
 
 	v, err := semver.Parse(versionString)
 	if err != nil {
@@ -176,27 +182,27 @@ func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semve
 	return v, true, nil
 }
 
-func correctVersionString(v string) string {
+func correctVersionString(v string, extName string) string {
 	//we originally published the extension as "0.1" which isn't a valid semver
-	if v == "0.1" {
+	if extName == "promscale" && v == "0.1" {
 		return "0.1.0"
 	}
 	return v
 }
 
-func getSqlVersion(v semver.Version) string {
-	if v.String() == "0.1.0" {
+func getSqlVersion(v semver.Version, extName string) string {
+	if extName == "promscale" && v.String() == "0.1.0" {
 		return "0.1"
 	}
 	return v.String()
 }
 
-// getNewExtensionVersion returns the highest version allowed by ExtVersionRange
-func getNewExtensionVersion(availableVersions semver.Versions) (semver.Version, bool) {
+// getNewExtensionVersion returns the highest version allowed by validRange
+func getNewExtensionVersion(availableVersions semver.Versions, validRange semver.Range) (semver.Version, bool) {
 	//sort higher extensions first
 	sort.Sort(sort.Reverse(availableVersions))
 	for i := range availableVersions {
-		if version.ExtVersionRange(availableVersions[i]) {
+		if validRange(availableVersions[i]) {
 			return availableVersions[i], true
 		}
 	}

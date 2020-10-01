@@ -21,10 +21,10 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/migrations"
+	"github.com/timescale/promscale/pkg/version"
 )
 
 const (
-	timescaleInstall            = "CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;"
 	metadataUpdateWithExtension = "SELECT update_tsprom_metadata($1, $2, $3)"
 	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 	createMigrationsTable       = "CREATE TABLE IF NOT EXISTS prom_schema_migrations (version text not null primary key)"
@@ -82,6 +82,27 @@ func (p prefixedNames) getNames() []string {
 	return names
 }
 
+// MigrateTimescaleDBExtension installs or updates TimescaleDB
+// Note that after this call any previous connections can break
+// so this has to be called ahead of opening connections.
+//
+// Also this takes a connection string not a connection because for
+// updates the ALTER has to be the first command on the connection
+// thus we cannot reuse existing connections
+func MigrateTimescaleDBExtension(connstr string) error {
+	db, err := pgx.Connect(context.Background(), connstr)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close(context.Background()) }()
+
+	err = migrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString)
+	if err != nil {
+		return fmt.Errorf("could not install timescaledb: %w", err)
+	}
+	return nil
+}
+
 // Migrate performs a database migration to the latest version
 func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 	migrateMutex.Lock()
@@ -100,8 +121,13 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	err = migrateExtension(db)
+	ExtensionIsInstalled = false
+	err = migrateExtension(db, "promscale", extSchema, version.ExtVersionRange, version.ExtVersionRangeString)
 	if err != nil {
+		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
+	}
+
+	if err = checkExtensionsVersion(db); err != nil {
 		return fmt.Errorf("Error encountered while migrating extension: %w", err)
 	}
 
@@ -118,7 +144,11 @@ func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return err
 	}
 
-	return checkExtensionsVersion(db)
+	if err = checkExtensionsVersion(db); err != nil {
+		return err
+	}
+
+	return err
 }
 
 // CheckSchemaVersion checks the DB schema version without checking the extension
@@ -195,11 +225,6 @@ func (t *Migrator) Migrate(appVersion semver.Version) error {
 	defer func() {
 		_ = tx.Rollback(context.Background())
 	}()
-
-	_, err = tx.Exec(context.Background(), timescaleInstall)
-	if err != nil {
-		return fmt.Errorf("timescaledb failed to install due to %w", err)
-	}
 
 	// No version in DB.
 	if dbVersion.Compare(semver.Version{}) == 0 {

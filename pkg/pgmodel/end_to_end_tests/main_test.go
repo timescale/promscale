@@ -107,6 +107,10 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 }
 
 func performMigrate(t testing.TB, connectURL string) {
+	err := pgmodel.MigrateTimescaleDBExtension(connectURL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)

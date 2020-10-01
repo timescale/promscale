@@ -140,6 +140,17 @@ func Run(cfg *Config) error {
 }
 
 func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
+	//The TimescaleDB migration has to happen before other connections
+	//are open. Also, it has to happen as the first command on a connection
+	//thus, we cannot rely on a migration lock here. Instead we assume
+	//that upgrading TimescaleDB will not break existing connectors.
+	if cfg.InstallTimescaleDB {
+		err := pgmodel.MigrateTimescaleDBExtension(cfg.PgmodelCfg.GetConnectionStr())
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Migration lock logic:
 	// We don't want to upgrade the schema version while we still have connectors
 	// attached who think the schema is at the old version. To prevent this, as
