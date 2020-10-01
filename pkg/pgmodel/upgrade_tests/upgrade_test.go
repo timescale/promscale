@@ -382,7 +382,7 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 		t.Fatal(err)
 	}
 	defer func() { _ = migratePool.Close(context.Background()) }()
-	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, &pgmodel.MigrateOptions{InstallTimescaleDB: true})
+	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,18 +30,19 @@ import (
 )
 
 type Config struct {
-	ListenAddr        string
-	TelemetryPath     string
-	PgmodelCfg        pgclient.Config
-	LogCfg            log.Config
-	HaGroupLockID     int64
-	RestElection      bool
-	PrometheusTimeout time.Duration
-	ElectionInterval  time.Duration
-	Migrate           bool
-	StopAfterMigrate  bool
-	UseVersionLease   bool
-	CorsOrigin        *regexp.Regexp
+	ListenAddr         string
+	TelemetryPath      string
+	PgmodelCfg         pgclient.Config
+	LogCfg             log.Config
+	HaGroupLockID      int64
+	RestElection       bool
+	PrometheusTimeout  time.Duration
+	ElectionInterval   time.Duration
+	Migrate            bool
+	StopAfterMigrate   bool
+	UseVersionLease    bool
+	CorsOrigin         *regexp.Regexp
+	InstallTimescaleDB bool
 }
 
 const (
@@ -73,6 +74,7 @@ func ParseFlags(cfg *Config) (*Config, error) {
 	flag.DurationVar(&cfg.ElectionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
 	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
 	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Prevent race conditions during migration")
+	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update the TimescaleDB extension")
 	envy.Parse("TS_PROM")
 	flag.Parse()
 
