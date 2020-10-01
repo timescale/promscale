@@ -147,6 +147,7 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		req.Cmd = []string{
 			"-c", "shared_preload_libraries=timescaledb",
 			"-c", "local_preload_libraries=pgextwlist",
+			"-c", "max_connections=100",
 			//timescale_prometheus_extra included for upgrade tests with old extension name
 			"-c", "extwlist.extensions=promscale,timescaledb,timescale_prometheus_extra",
 		}
