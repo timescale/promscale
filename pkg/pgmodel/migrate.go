@@ -101,6 +101,7 @@ func MigrateTimescaleDBExtension(connstr string) error {
 		return fmt.Errorf("could not install timescaledb: %w", err)
 	}
 	return nil
+
 }
 
 // Migrate performs a database migration to the latest version
