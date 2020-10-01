@@ -18,6 +18,13 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_retention_period() TO prom_reader;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.is_timescaledb_installed()
+    RETURNS BOOLEAN
+AS $func$
+    SELECT count(*) > 0 FROM pg_extension WHERE extname='timescaledb';
+$func$
+LANGUAGE SQL STABLE;
+
 --Add 1% of randomness to the interval so that chunks are not aligned so that chunks are staggered for compression jobs.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(chunk_interval INTERVAL)
 RETURNS INTERVAL
@@ -76,15 +83,17 @@ BEGIN
             CONTINUE;
         END IF;
 
-        EXECUTE format($$
-            ALTER TABLE SCHEMA_DATA.%I SET (
-                timescaledb.compress,
-                timescaledb.compress_segmentby = 'series_id',
-                timescaledb.compress_orderby = 'time, value'
-            ); $$, r.table_name);
+        IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+            EXECUTE format($$
+                ALTER TABLE SCHEMA_DATA.%I SET (
+                    timescaledb.compress,
+                    timescaledb.compress_segmentby = 'series_id',
+                    timescaledb.compress_orderby = 'time, value'
+                ); $$, r.table_name);
 
-        --chunks where the end time is before now()-1 hour will be compressed
-        PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', r.table_name), INTERVAL '1 hour');
+            --chunks where the end time is before now()-1 hour will be compressed
+            PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', r.table_name), INTERVAL '1 hour');
+        END IF;
 
         --do this before taking exclusive lock to minimize work after taking lock
         UPDATE SCHEMA_CATALOG.metric SET creation_completed = TRUE WHERE id = r.id;
@@ -123,9 +132,12 @@ BEGIN
                     NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
-   PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
+
+   IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
                              chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                              create_default_indexes=>false);
+    END IF;
 
     SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
     INTO STRICT label_id;
@@ -747,13 +759,18 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TE
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name TEXT, new_interval INTERVAL)
 RETURNS void
 AS $func$
+BEGIN
+    IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        RAISE EXCEPTION 'cannot set chunk time interval without timescaledb installed';
+    END IF;
     --set interval while adding 1% of randomness to the interval so that chunks are not aligned so that
     --chunks are staggered for compression jobs.
-    SELECT set_chunk_time_interval(
+    EXECUTE set_chunk_time_interval(
         format('SCHEMA_DATA.%I',(SELECT table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)))::regclass,
          SCHEMA_CATALOG.get_staggered_chunk_interval(new_interval));
+END
 $func$
-LANGUAGE SQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_chunk_interval(chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -872,26 +889,28 @@ BEGIN
     SELECT older_than + INTERVAL '1 hour'
     INTO check_time;
 
-    --Get the time dimension id for the time dimension
-    SELECT d.id
-    INTO STRICT time_dimension_id
-    FROM _timescaledb_catalog.hypertable h
-    INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
-    WHERE h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table
-    ORDER BY d.id ASC
-    LIMIT 1;
+    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        --Get the time dimension id for the time dimension
+        SELECT d.id
+        INTO STRICT time_dimension_id
+        FROM _timescaledb_catalog.hypertable h
+        INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
+        WHERE h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table
+        ORDER BY d.id ASC
+        LIMIT 1;
 
-    --Get a tight older_than (EXCLUSIVE) because we want to know the
-    --exact cut-off where things will be dropped
-    SELECT _timescaledb_internal.to_timestamp(range_end)
-    INTO older_than
-    FROM _timescaledb_catalog.chunk c
-    INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
-    INNER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id)
-    --range_end is exclusive so this is everything < older_than (which is also exclusive)
-    WHERE ds.dimension_id = time_dimension_id AND ds.range_end <= _timescaledb_internal.to_unix_microseconds(older_than)
-    ORDER BY range_end DESC
-    LIMIT 1;
+        --Get a tight older_than (EXCLUSIVE) because we want to know the
+        --exact cut-off where things will be dropped
+        SELECT _timescaledb_internal.to_timestamp(range_end)
+        INTO older_than
+        FROM _timescaledb_catalog.chunk c
+        INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
+        INNER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id)
+        --range_end is exclusive so this is everything < older_than (which is also exclusive)
+        WHERE ds.dimension_id = time_dimension_id AND ds.range_end <= _timescaledb_internal.to_unix_microseconds(older_than)
+        ORDER BY range_end DESC
+        LIMIT 1;
+    END IF;
 
     IF older_than IS NULL THEN
         RETURN false;
@@ -947,7 +966,11 @@ BEGIN
         WHERE id IN (SELECT * FROM confirmed_drop_labels);
     $query$, metric_table) USING label_array;
 
-   PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than, cascade_to_materializations=>FALSE);
+   IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than, cascade_to_materializations=>FALSE);
+   ELSE
+        EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
+   END IF;
    RETURN true;
 END
 $func$
@@ -958,6 +981,17 @@ LANGUAGE PLPGSQL VOLATILE;
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
 RETURNS SETOF SCHEMA_CATALOG.metric
 AS $$
+BEGIN
+        IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
+                    -- no real shortcut to figure out if deletion needed, return all
+                    RETURN QUERY
+                    SELECT m.*
+                    FROM SCHEMA_CATALOG.metric m
+                    ORDER BY random();
+                    RETURN;
+        END IF;
+
+        RETURN QUERY
         SELECT m.*
         FROM SCHEMA_CATALOG.metric m
         WHERE EXISTS (
@@ -965,9 +999,10 @@ AS $$
             show_chunks(hypertable=>format('%I.%I', 'SCHEMA_DATA', m.table_name),
                          older_than=>NOW() - SCHEMA_CATALOG.get_metric_retention_period(m.metric_name)))
         --random order also to prevent starvation
-        ORDER BY random()
+        ORDER BY random();
+END
 $$
-LANGUAGE SQL STABLE;
+LANGUAGE PLPGSQL STABLE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk() TO prom_reader;
 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_data_retention_policy()
@@ -1154,35 +1189,72 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer
 
 --------------------------------- Views --------------------------------
 
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_view()
+RETURNS TABLE(id int, metric_name text, table_name name, retention_period  interval,
+                         chunk_interval interval, label_keys text[], size text, compression_ratio numeric,
+                         total_chunks bigint, compressed_chunks bigint)
+AS $func$
+BEGIN
+        IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
+                    RETURN QUERY
+                    SELECT
+                        m.id,
+                        m.metric_name,
+                        m.table_name,
+                        SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                        NULL::interval as chunk_interval,
+                        ARRAY(
+                            SELECT key
+                            FROM SCHEMA_CATALOG.label_key_position lkp
+                            WHERE lkp.metric_name = m.metric_name
+                            ORDER BY key) label_keys,
+                        hi.total_size as size,
+                        0.0 as compression_ratio,
+                        NULL::bigint as total_chunks,
+                        NULL::bigint as compressed_chunks
+                    FROM SCHEMA_CATALOG.metric m;
+                    RETURN;
+        END IF;
+
+        RETURN QUERY
+        SELECT
+            m.id,
+            m.metric_name,
+            m.table_name,
+            SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+            (
+                SELECT _timescaledb_internal.to_interval(interval_length)
+                FROM _timescaledb_catalog.dimension d
+                WHERE d.hypertable_id = h.id
+                ORDER BY d.id ASC
+                LIMIT 1
+            ) as chunk_interval,
+            ARRAY(
+                SELECT key
+                FROM SCHEMA_CATALOG.label_key_position lkp
+                WHERE lkp.metric_name = m.metric_name
+                ORDER BY key) label_keys,
+            hi.total_size as size,
+            (1.0 - (pg_size_bytes(chs.compressed_total_bytes)::numeric / pg_size_bytes(chs.uncompressed_total_bytes)::numeric)) * 100 as compression_ratio,
+            chs.total_chunks,
+            chs.number_compressed_chunks as compressed_chunks
+        FROM SCHEMA_CATALOG.metric m
+        LEFT JOIN timescaledb_information.hypertable hi ON
+                    (hi.table_schema = 'SCHEMA_DATA' AND hi.table_name = m.table_name)
+        LEFT JOIN timescaledb_information.compressed_hypertable_stats chs ON
+                    (chs.hypertable_name = format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass)
+        LEFT JOIN _timescaledb_catalog.hypertable h ON
+                    (h.schema_name = 'SCHEMA_DATA' AND h.table_name = m.table_name);
+END
+$func$
+LANGUAGE PLPGSQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.metric_view() TO prom_reader;
+
 CREATE OR REPLACE VIEW SCHEMA_INFO.metric AS
    SELECT
-     m.id,
-     m.metric_name,
-     m.table_name,
-     SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
-    (
-        SELECT _timescaledb_internal.to_interval(interval_length)
-        FROM _timescaledb_catalog.dimension d
-        WHERE d.hypertable_id = h.id
-        ORDER BY d.id ASC
-        LIMIT 1
-    ) as chunk_interval,
-     ARRAY(
-        SELECT key
-        FROM SCHEMA_CATALOG.label_key_position lkp
-        WHERE lkp.metric_name = m.metric_name
-        ORDER BY key) label_keys,
-    hi.total_size as size,
-    (1.0 - (pg_size_bytes(chs.compressed_total_bytes)::numeric / pg_size_bytes(chs.uncompressed_total_bytes)::numeric)) * 100 as compression_ratio,
-    chs.total_chunks,
-    chs.number_compressed_chunks as compressed_chunks
-   FROM SCHEMA_CATALOG.metric m
-   LEFT JOIN timescaledb_information.hypertable hi ON
-              (hi.table_schema = 'SCHEMA_DATA' AND hi.table_name = m.table_name)
-   LEFT JOIN timescaledb_information.compressed_hypertable_stats chs ON
-              (chs.hypertable_name = format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass)
-   LEFT JOIN _timescaledb_catalog.hypertable h ON
-              (h.schema_name = 'SCHEMA_DATA' AND h.table_name = m.table_name);
+     *
+    FROM SCHEMA_CATALOG.metric_view();
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
   SELECT
@@ -1219,9 +1291,9 @@ LANGUAGE PLPGSQL;
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ)
 AS $$
 DECLARE
-    chunk_row _timescaledb_catalog.chunk;
-    dimension_row _timescaledb_catalog.dimension;
-    hypertable_row _timescaledb_catalog.hypertable;
+    chunk_row record;
+    dimension_row record;
+    hypertable_row record;
     min_time_internal bigint;
 BEGIN
     SELECT h.* INTO STRICT hypertable_row FROM _timescaledb_catalog.hypertable h

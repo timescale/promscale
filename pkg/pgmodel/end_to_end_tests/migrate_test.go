@@ -149,17 +149,20 @@ func TestMigrateTwice(t *testing.T) {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 
-		var versionString string
-		err := db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
-		if err != nil {
-			if err == pgx.ErrNoRows && !*useExtension {
-				//Without an extension, metadata will not be written if running as non-superuser
-				return
+		if *useTimescaleDB {
+			var versionString string
+			err := db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
+			if err != nil {
+				if err == pgx.ErrNoRows && !*useExtension {
+					//Without an extension, metadata will not be written if running as non-superuser
+					return
+				}
+				t.Fatal(err)
 			}
-			t.Fatal(err)
-		}
-		if versionString != version.Version {
-			t.Fatalf("wrong version, expected %v got %v", version.Version, versionString)
+
+			if versionString != version.Version {
+				t.Fatalf("wrong version, expected %v got %v", version.Version, versionString)
+			}
 		}
 	})
 }

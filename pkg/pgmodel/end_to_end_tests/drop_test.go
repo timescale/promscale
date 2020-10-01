@@ -113,6 +113,9 @@ func TestSQLDropChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
+	if !*useTimescaleDB {
+		t.Skip("This test only runs on installs with TimescaleDB")
+	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		//a chunk way back in 2009
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
@@ -184,9 +187,90 @@ func TestSQLDropChunk(t *testing.T) {
 	})
 }
 
+func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if *useTimescaleDB {
+		t.Skip("This test only runs on installs without TimescaleDB")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		//a chunk way back in 2009
+		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
+
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.UnixNano()) - 1), Value: 0.1},
+					{Timestamp: int64(model.TimeFromUnixNano(time.Now().UnixNano()) - 1), Value: 0.1},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test2"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: int64(model.TimeFromUnixNano(time.Now().UnixNano()) - 1), Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := NewPgxIngestor(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		if err != nil {
+			t.Error(err)
+		}
+
+		cnt := 0
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM prom_data.test").Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cnt != 2 {
+			t.Errorf("Expected there to be a data")
+		}
+
+		_, err = db.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM prom_data.test").Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cnt != 1 {
+			t.Errorf("Expected some data to be dropped")
+		}
+		//noop works fine
+		_, err = db.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
+		if err != nil {
+			t.Fatal(err)
+		}
+		//test2 isn't affected
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM prom_data.test2").Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cnt != 1 {
+			t.Errorf("Expected data left")
+		}
+	})
+}
+
 func TestSQLDropMetricChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("This test only runs on installs with TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		//this is the range_end of a chunk boundary (exclusive)

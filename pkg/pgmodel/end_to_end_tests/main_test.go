@@ -29,6 +29,7 @@ var (
 	updateGoldenFiles = flag.Bool("update", false, "update the golden files of this test")
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
 	useExtension      = flag.Bool("use-extension", true, "use the promscale extension")
+	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
 	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	extendedTest      = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
 
@@ -107,9 +108,11 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 }
 
 func performMigrate(t testing.TB, connectURL string) {
-	err := pgmodel.MigrateTimescaleDBExtension(connectURL)
-	if err != nil {
-		t.Fatal(err)
+	if *useTimescaleDB {
+		err := pgmodel.MigrateTimescaleDBExtension(connectURL)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
 	if err != nil {

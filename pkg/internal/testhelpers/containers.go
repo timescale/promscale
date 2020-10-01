@@ -99,6 +99,18 @@ func DbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
+	//some docker images may have timescaledb installed in a template, which we don't always want
+	dbDrop, err := pgx.Connect(context.Background(), PgConnectURL(DBName, Superuser))
+	if err != nil {
+		return nil, err
+	}
+	if _, err = dbDrop.Exec(context.Background(), "DROP EXTENSION IF EXISTS timescaledb"); err != nil {
+		return nil, err
+	}
+	if err = dbDrop.Close(context.Background()); err != nil {
+		return nil, err
+	}
+
 	dbPool, err := pgxpool.Connect(context.Background(), PgConnectURL(DBName, superuser))
 	if err != nil {
 		return nil, err

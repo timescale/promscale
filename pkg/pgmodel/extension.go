@@ -38,7 +38,7 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
 	}
 	if !isInstalled {
-		return fmt.Errorf("timescaledb is not installed: %w", err)
+		return nil
 	}
 	switch version.VerifyTimescaleVersion(timescaleVersion) {
 	case version.Warn:
