@@ -132,6 +132,9 @@ func TestSQLChunkInterval(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
+	if !*useTimescaleDB {
+		t.Skip("chunk intervals meaningless without TimescaleDB")
+	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := []prompb.TimeSeries{
 			{
@@ -462,6 +465,9 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
+	if !*useTimescaleDB {
+		t.Skip("compression meaningless without TimescaleDB")
+	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := []prompb.TimeSeries{
 			{
@@ -564,6 +570,9 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 func TestInsertCompressed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("compression meaningless without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := []prompb.TimeSeries{

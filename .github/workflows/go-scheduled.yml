@@ -37,8 +37,11 @@ jobs:
     - name: Test
       run: go test -v -race ./...
 
-    - name: Test W/O Extension
+    - name: Test W/O Promscale Extension
       run: go test -v -race ./pkg/pgmodel/end_to_end_tests/ -use-extension=false
+
+    - name: Test W/O TimescaleDB Extension
+      run: go test -v -race ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescaledb=false
 
     - name: Test extended dataset
       run: go test -v -race ./pkg/pgmodel/end_to_end_tests/ -extended-test
