@@ -145,11 +145,7 @@ func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return err
 	}
 
-	if err = checkExtensionsVersion(db); err != nil {
-		return err
-	}
-
-	return err
+	return checkExtensionsVersion(db)
 }
 
 // CheckSchemaVersion checks the DB schema version without checking the extension

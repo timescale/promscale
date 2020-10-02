@@ -142,10 +142,12 @@ func Run(cfg *Config) error {
 }
 
 func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
-	//The TimescaleDB migration has to happen before other connections
-	//are open. Also, it has to happen as the first command on a connection
-	//thus, we cannot rely on a migration lock here. Instead we assume
-	//that upgrading TimescaleDB will not break existing connectors.
+	// The TimescaleDB migration has to happen before other connections
+	// are open, also it has to happen as the first command on a connection.
+	// Thus we cannot rely on the migration lock here. Instead we assume
+	// that upgrading TimescaleDB will not break existing connectors.
+	// (upgrading the DB will force-close all existing connections, so we may
+	// add a reconnect check that the DB has an appropriate version)
 	if cfg.InstallTimescaleDB {
 		err := pgmodel.MigrateTimescaleDBExtension(cfg.PgmodelCfg.GetConnectionStr())
 		if err != nil {
