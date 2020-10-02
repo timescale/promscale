@@ -38,6 +38,7 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
 	}
 	if !isInstalled {
+		log.Warn("Running Promscale without TimescaleDB. Some features will be disabled.")
 		return nil
 	}
 	switch version.VerifyTimescaleVersion(timescaleVersion) {
@@ -164,7 +165,7 @@ func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semve
 	var versionString string
 	if err := conn.QueryRow(
 		context.Background(),
-		"SELECT extversion FROM pg_extension WHERE extName=$1;",
+		"SELECT extversion FROM pg_extension WHERE extname=$1;",
 		extensionName,
 	).Scan(&versionString); err != nil {
 		if err == pgx.ErrNoRows {
