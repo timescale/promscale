@@ -154,15 +154,17 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		},
 		SkipReaper: false, /* switch to true not to kill docker container */
 	}
+	req.Cmd = []string{
+		"-c", "shared_preload_libraries=timescaledb",
+		"-c", "max_connections=100",
+	}
 
 	if withExtension {
-		req.Cmd = []string{
-			"-c", "shared_preload_libraries=timescaledb",
+		req.Cmd = append(req.Cmd,
 			"-c", "local_preload_libraries=pgextwlist",
-			"-c", "max_connections=100",
 			//timescale_prometheus_extra included for upgrade tests with old extension name
 			"-c", "extwlist.extensions=promscale,timescaledb,timescale_prometheus_extra",
-		}
+		)
 	}
 
 	req.BindMounts = make(map[string]string)

@@ -95,7 +95,7 @@ func TestMain(m *testing.M) {
 
 func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
 	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
-		performMigrate(t, connectURL)
+		performMigrate(t, connectURL, testhelpers.PgConnectURL(DBName, testhelpers.Superuser))
 
 		// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
 		db, err := pgxpool.Connect(context.Background(), connectURL)
@@ -107,9 +107,15 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 	})
 }
 
-func performMigrate(t testing.TB, connectURL string) {
+func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 	if *useTimescaleDB {
-		err := pgmodel.MigrateTimescaleDBExtension(connectURL)
+		migrateURL := connectURL
+		if !*useExtension {
+			//The docker image without an extension does not have pgextwlist
+			//Thus, you have to use the superuser to install TimescaleDB
+			migrateURL = superConnectURL
+		}
+		err := pgmodel.MigrateTimescaleDBExtension(migrateURL)
 		if err != nil {
 			t.Fatal(err)
 		}
