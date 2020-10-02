@@ -5,6 +5,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
@@ -91,6 +92,10 @@ func TestSQLGoldenFiles(t *testing.T) {
 			}
 
 			if string(expected) != string(actual) {
+				fmt.Println("Expected", expectedFile)
+				fmt.Println(string(expected))
+				fmt.Println("actual")
+				fmt.Println(string(actual))
 				t.Fatalf("Golden file does not match result: diff %s %s", expectedFile, actualFile)
 			}
 
