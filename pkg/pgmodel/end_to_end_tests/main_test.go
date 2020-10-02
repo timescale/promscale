@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 			if *useDocker {
 				pgContainerTestDataDir = generatePGTestDirFiles()
 
-				pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, pgContainerTestDataDir, *printLogs)
+				pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, *useTimescaleDB, pgContainerTestDataDir, *printLogs)
 				if err != nil {
 					fmt.Println("Error setting up container", err)
 					os.Exit(1)

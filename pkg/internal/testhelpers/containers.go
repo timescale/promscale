@@ -130,17 +130,19 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 }
 
 // StartPGContainer starts a postgreSQL container for use in testing
-func StartPGContainer(ctx context.Context, withExtension bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
+func StartPGContainer(ctx context.Context, usePromscaleExtension bool, useTimescaleDB bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
 	var image string
-	if withExtension {
+	if usePromscaleExtension && useTimescaleDB {
 		image = "timescaledev/promscale-extension:latest-pg12"
-	} else {
+	} else if useTimescaleDB {
 		image = "timescale/timescaledb:latest-pg12"
+	} else {
+		image = "postgres:12"
 	}
-	return StartPGContainerWithImage(ctx, image, testDataDir, "", printLogs, withExtension)
+	return StartPGContainerWithImage(ctx, image, testDataDir, "", printLogs, usePromscaleExtension, useTimescaleDB)
 }
 
-func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, dataDir string, printLogs bool, withExtension bool) (testcontainers.Container, error) {
+func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, dataDir string, printLogs bool, usePromscaleExtension bool, useTimescaleDB bool) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
 
 	req := testcontainers.ContainerRequest{
@@ -155,11 +157,16 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		SkipReaper: false, /* switch to true not to kill docker container */
 	}
 	req.Cmd = []string{
-		"-c", "shared_preload_libraries=timescaledb",
 		"-c", "max_connections=100",
 	}
 
-	if withExtension {
+	if useTimescaleDB {
+		req.Cmd = append(req.Cmd,
+			"-c", "shared_preload_libraries=timescaledb",
+		)
+	}
+
+	if usePromscaleExtension {
 		req.Cmd = append(req.Cmd,
 			"-c", "local_preload_libraries=pgextwlist",
 			//timescale_prometheus_extra included for upgrade tests with old extension name
