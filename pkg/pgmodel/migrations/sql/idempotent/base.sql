@@ -431,6 +431,29 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_unnest(label_array anyarray)
 AS $function$ SELECT unnest(label_array) $function$;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_unnest(anyarray) to prom_reader;
 
+-- approximate_row_count is used to count the approximate number of rows in a table (non-hypertable).
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.approximate_row_count(table_name REGCLASS)
+    RETURNS BIGINT
+    LANGUAGE SQL
+AS
+$$
+    SELECT reltuples::BIGINT FROM pg_class WHERE oid=table_name;
+$$ STABLE PARALLEL SAFE;
+
+-- safe_approximate_row_count returns the approximate row count of a hypertable if timescaledb is installed
+-- else returns the approximate row count in the normal table. This prevents errors in approximate count calculation
+-- if timescaledb is not installed, which is the case in plain postgres support.
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.safe_approximate_row_count(table_name REGCLASS) RETURNS BIGINT
+    LANGUAGE PLPGSQL
+AS
+$$
+BEGIN
+    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        RETURN (SELECT row_estimate FROM public.hypertable_approximate_row_count(table_name));
+    END IF;
+    RETURN (SELECT SCHEMA_PROM.approximate_row_count(table_name));
+END;
+$$;
 
 ---------------------------------------------------
 ------------------- Public APIs -------------------
@@ -483,6 +506,17 @@ AS $$
 $$
 LANGUAGE SQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(text, text) to prom_writer;
+
+-- label_cardinality returns the cardinality of a label_pair id in the series table.
+-- In simple terms, it means the number of times a label_pair/label_matcher is used
+-- across all the series.
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_cardinality(label_id INT)
+    RETURNS INT
+    LANGUAGE SQL
+AS
+$$
+    SELECT count(*)::INT FROM SCHEMA_CATALOG.series s WHERE s.labels @> array[label_id];
+$$ STABLE PARALLEL SAFE;
 
 --public function to get the array position for a label key if it exists
 --useful in case users want to group by a specific label key
@@ -1455,9 +1489,29 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
+-- CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_stats_view() RETURNS BOOLEAN
+--     LANGUAGE PLPGSQL
+-- AS
+-- $$
+-- BEGIN
+--     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+--         CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
+--             SELECT metric_name,
+--             SCHEMA_PROM.approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
+--             CASE WHEN SCHEMA_CATALOG.is_timescaledb_installed() = true THEN
+--             (SELECT row_estimate FROM public.hypertable_approximate_row_count(format('prom_data.%I',table_name)::regclass)) END num_samples_approx
+--             FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
+--         ELSE
+--         CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
+--             SELECT metric_name,
+--             SCHEMA_PROM.approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx
+--             FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
+--     END IF;
+--     RETURN true;
+-- END;
+-- $$;
 
 --------------------------------- Views --------------------------------
-
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_view()
 RETURNS TABLE(id int, metric_name text, table_name name, retention_period  interval,
@@ -1531,9 +1585,30 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
     lk.value_column_name,
     lk.id_column_name,
     ARRAY(SELECT value FROM SCHEMA_CATALOG.label l WHERE l.key = lk.key ORDER BY value)
-      AS values
-  FROM SCHEMA_CATALOG.label_key lk;
+      AS values,
+    cardinality(ARRAY(SELECT value FROM SCHEMA_CATALOG.label l WHERE l.key = lk.key))
+  FROM SCHEMA_CATALOG.label_key lk ORDER BY cardinality DESC;
 
+CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
+    SELECT
+    (
+        SELECT SCHEMA_PROM.approximate_row_count('_prom_catalog.series'::REGCLASS)
+    ) AS num_series_approx,
+    (
+        SELECT count(*) FROM SCHEMA_CATALOG.metric
+    ) AS num_metric,
+    (
+        SELECT count(*) FROM SCHEMA_CATALOG.label_key
+    ) AS num_label_keys,
+    (
+        SELECT count(*) FROM SCHEMA_CATALOG.label
+    ) AS num_labels;
+
+CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
+    SELECT metric_name,
+    SCHEMA_PROM.approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
+    (SELECT SCHEMA_CATALOG.safe_approximate_row_count(format('prom_data.%I',table_name)::regclass)) AS num_samples_approx
+    FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
 
 --this should the only thing run inside the transaction. It's important the txn ends after calling this function
 --to release locks
