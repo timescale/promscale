@@ -37,32 +37,31 @@ type Config struct {
 	MaxConnections          int
 }
 
-// ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
-func ParseFlags(cfg *Config) *Config {
-	flag.StringVar(&cfg.Host, "db-host", "localhost", "The TimescaleDB host")
-	flag.IntVar(&cfg.Port, "db-port", 5432, "The TimescaleDB port")
-	flag.StringVar(&cfg.User, "db-user", "postgres", "The TimescaleDB user")
-	flag.StringVar(&cfg.Password, "db-password", "", "The TimescaleDB password")
-	flag.StringVar(&cfg.Database, "db-name", "timescale", "The TimescaleDB database")
-	flag.StringVar(&cfg.SslMode, "db-ssl-mode", "require", "The TimescaleDB connection ssl mode")
-	flag.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
-	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
-	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
-	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
-	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "maximum number of metric names to cache")
-	flag.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "maximum number of database connections per go process writing to the database")
-	flag.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "maximum connections that can be open at once, defaults to 80% of the max the DB can handle")
-	return cfg
+// ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB.
+func ParseFlags(cfg *Config) {
+	flag.StringVar(&cfg.Host, "db-host", "localhost", "TimescaleDB host")
+	flag.IntVar(&cfg.Port, "db-port", 5432, "TimescaleDB port")
+	flag.StringVar(&cfg.User, "db-user", "postgres", "TimescaleDB user")
+	flag.StringVar(&cfg.Password, "db-password", "", "TimescaleDB password")
+	flag.StringVar(&cfg.Database, "db-name", "timescale", "TimescaleDB database")
+	flag.StringVar(&cfg.SslMode, "db-ssl-mode", "require", "TimescaleDB connection ssl mode")
+	flag.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "Maximum number of connection retries to the database")
+	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge before data is written to DB")
+	flag.IntVar(&cfg.ReportInterval, "treport-interval", 0, "Interval in seconds at which throughput should be reported")
+	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "Maximum number of labels to cache")
+	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "Maximum number of metric names to cache")
+	flag.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "Maximum number of database connections per go process writing to the database")
+	flag.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum connections that can be open at once. Defaults to 80% of the maximum the database can handle")
 }
 
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
+	ConnectionStr string
 	Connection    *pgxpool.Pool
 	ingestor      *pgmodel.DBIngestor
 	reader        *pgmodel.DBReader
 	queryable     *query.Queryable
 	cfg           *Config
-	ConnectionStr string
 	metricCache   *pgmodel.MetricNameCache
 }
 

@@ -51,7 +51,6 @@ type DBIngestor struct {
 // Ingest transforms and ingests the timeseries data into Timescale database.
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
 	data, totalRows, err := i.parseData(tts, req)
-
 	if err != nil {
 		return 0, err
 	}
@@ -67,42 +66,44 @@ func (i *DBIngestor) CompleteMetricCreation() error {
 	return i.db.CompleteMetricCreation()
 }
 
+// parseData parses the prompb metric samples to a map of metric_name corresponding to its samples slice.
 func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]samplesInfo, int, error) {
-	dataSamples := make(map[string][]samplesInfo)
-	rows := 0
+	var (
+		dataSamples = make(map[string][]samplesInfo)
+		numRows     int
+		t           *prompb.TimeSeries
+	)
 
 	for i := range tts {
-		t := &tts[i]
+		t = &tts[i]
 		if len(t.Samples) == 0 {
 			continue
 		}
 
 		seriesLabels, metricName, err := labelProtosToLabels(t.Labels)
 		if err != nil {
-			return nil, rows, err
+			return nil, numRows, err
 		}
 		if metricName == "" {
-			return nil, rows, ErrNoMetricName
+			return nil, numRows, ErrNoMetricName
 		}
 		sample := samplesInfo{
 			seriesLabels,
 			-1, //sentinel marking the seriesId as unset
 			t.Samples,
 		}
-		rows += len(t.Samples)
+		numRows += len(t.Samples)
 
 		dataSamples[metricName] = append(dataSamples[metricName], sample)
 		// we're going to free req after this, but we still need the samples,
 		// so nil the field
 		t.Samples = nil
 	}
-
-	FinishWriteRequest(req)
-
-	return dataSamples, rows, nil
+	go FinishWriteRequest(req)
+	return dataSamples, numRows, nil
 }
 
-// Close closes the ingestor
+// Close closes the ingestor.
 func (i *DBIngestor) Close() {
 	i.db.Close()
 }

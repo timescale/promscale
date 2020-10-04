@@ -16,14 +16,14 @@ func main() {
 	cfg := &runner.Config{}
 	cfg, err := runner.ParseFlags(cfg)
 	if err != nil {
-		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
-		fmt.Println("Fatal error: cannot parse flags ", err)
+		fmt.Fprintln(os.Stderr, "Version: ", version.Version, "Commit Hash: ", version.CommitHash)
+		fmt.Fprintln(os.Stderr, "Fatal error: cannot parse flags ", err)
 		os.Exit(1)
 	}
 	err = log.Init(cfg.LogCfg)
 	if err != nil {
-		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
-		fmt.Println("Fatal error: cannot start logger", err)
+		fmt.Fprintln(os.Stderr, "Version: ", version.Version, "Commit Hash: ", version.CommitHash)
+		fmt.Fprintln(os.Stderr, "Fatal error: cannot start logger", err)
 		os.Exit(1)
 	}
 	err = runner.Run(cfg)

@@ -18,13 +18,14 @@ func NewWriteRequest() *prompb.WriteRequest {
 
 func FinishWriteRequest(wr *prompb.WriteRequest) {
 	for i := range wr.Timeseries {
-		ts := &wr.Timeseries[i]
+		ts := wr.Timeseries[i]
 		for j := range ts.Labels {
 			ts.Labels[j] = prompb.Label{}
 		}
 		ts.Labels = ts.Labels[:0]
 		ts.Samples = ts.Samples[:0]
 		ts.XXX_unrecognized = nil
+		wr.Timeseries[i] = ts
 	}
 	wr.Timeseries = wr.Timeseries[:0]
 	wr.XXX_unrecognized = nil

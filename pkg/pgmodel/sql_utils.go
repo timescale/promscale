@@ -164,23 +164,19 @@ type MetricCache interface {
 }
 
 func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
-	res, err := conn.Query(
-		context.Background(),
-		getCreateMetricsTableWithNewSQL,
-		metric,
-	)
-
+	res, err := conn.Query(context.Background(), getCreateMetricsTableWithNewSQL, metric)
 	if err != nil {
 		return "", true, err
 	}
 
-	var tableName string
-	var possiblyNew bool
+	var (
+		tableName   string
+		possiblyNew bool
+	)
 	defer res.Close()
 	if !res.Next() {
 		return "", true, errMissingTableName
 	}
-
 	if err := res.Scan(&tableName, &possiblyNew); err != nil {
 		return "", true, err
 	}

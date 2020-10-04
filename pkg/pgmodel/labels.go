@@ -17,7 +17,8 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-// Labels stores a labels.Labels in its canonical string representation
+// Labels stores a labels.Labels whose canonical string representation can be used during caching.
+// TODO: consider TTL for unused Labels instances that pile up memory usages, like in high churns.
 type Labels struct {
 	names      []string
 	values     []string
@@ -41,7 +42,7 @@ func SetLabels(str string, lset *Labels) *Labels {
 	return val.(*Labels)
 }
 
-// LabelsFromSlice converts a labels.Labels to a Labels object
+// LabelsFromSlice converts a labels.Labels to a Labels object.
 func LabelsFromSlice(ls labels.Labels) (*Labels, error) {
 	ll := make([]prompb.Label, len(ls))
 	for i := range ls {
@@ -52,8 +53,8 @@ func LabelsFromSlice(ls labels.Labels) (*Labels, error) {
 	return l, err
 }
 
-// initLabels intializes labels
-func getStr(labels []prompb.Label) (string, error) {
+// getLabelsStringRepresentation returns the string representation of promb labels.
+func getLabelsStringRepresentation(labels []prompb.Label) (string, error) {
 	if len(labels) == 0 {
 		return "", nil
 	}
@@ -112,14 +113,16 @@ func getStr(labels []prompb.Label) (string, error) {
 	return builder.String(), nil
 }
 
+// labelProtosToLabels converts promb label-pairs to Label types. Labels type are created and stored in-memory
+// if they do not exist. If they exist, they are simply returned thereby preventing memory re-allocations.
 func labelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
-	str, err := getStr(labelPairs)
+	str, err := getLabelsStringRepresentation(labelPairs)
 	if err != nil {
 		return nil, "", err
 	}
 	labels := GetLabels(str)
 	if labels == nil {
-		labels = new(Labels)
+		labels = &Labels{}
 		labels.str = str
 		labels.names = make([]string, len(labelPairs))
 		labels.values = make([]string, len(labelPairs))
@@ -132,7 +135,6 @@ func labelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 		}
 		labels = SetLabels(str, labels)
 	}
-
 	return labels, labels.metricName, err
 }
 
