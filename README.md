@@ -76,13 +76,13 @@ on advanced configuration.
 
 #### 🐳 Docker
 
-We provide [docker images](/releases) with every release.
+We provide [docker images](https://github.com/timescale/promscale/releases) with every release.
 
 Instructions on how to use our docker images are available [here](docs/docker.md).
 
 #### 🔟 Binaries
 
-We have [pre-packaged binaries](/releases) available for MacOS and Linux on both the x86_64 and i386 architectures.
+We have [pre-packaged binaries](https://github.com/timescale/promscale/releases) available for MacOS and Linux on both the x86_64 and i386 architectures.
 Instructions on how to use our prepackaged binaries are available [here](docs/binary.md).
 
 You can also [build binaries from source](docs/binary.md#building-from-source).
