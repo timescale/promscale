@@ -244,7 +244,16 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					if labelSet.Fingerprint() != fingerprintRes {
 						t.Fatalf("Json not equal: id %v\n got\n%v\nexpected\n%v", seriesID, string(jsonRes), string(jsonOrig))
+					}
 
+					err = db.QueryRow(context.Background(), "SELECT jsonb(labels($1))", seriesID).Scan(&jsonRes)
+					if err != nil {
+						t.Fatal(err)
+					}
+					fingerprintRes = getFingerprintFromJSON(t, jsonRes)
+
+					if labelSet.Fingerprint() != fingerprintRes {
+						t.Fatalf("Json not equal: id %v\n got\n%v\nexpected\n%v", seriesID, string(jsonRes), string(jsonOrig))
 					}
 
 					err = db.QueryRow(context.Background(), "SELECT (key_value_array(labels)).* FROM _prom_catalog.series WHERE id=$1",

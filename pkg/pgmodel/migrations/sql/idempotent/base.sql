@@ -640,6 +640,20 @@ COMMENT ON FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
 IS 'converts a labels array to a JSONB object';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.jsonb(SCHEMA_PROM.label_array) TO prom_reader;
 
+--Returns the label_array given a series_id
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels(series_id BIGINT)
+RETURNS SCHEMA_PROM.label_array AS $$
+    SELECT
+        labels
+    FROM
+        SCHEMA_CATALOG.series
+    WHERE id = series_id
+$$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+COMMENT ON FUNCTION SCHEMA_PROM.labels(series_id BIGINT)
+IS 'fetches labels array for the given series id';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.labels(series_id BIGINT) TO prom_reader;
+
 --Do not call before checking that the series does not yet exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
         metric_id int,
