@@ -26,6 +26,7 @@ simply `cpu_usage` view). The view contains a the following column:
 
 A label value can be retrieved from the label name id using the `val`
 function. A full json for the series can be retrieved with `jsonb(labels)`.
+The array of labels can be retrieved from a series_id with `labels(series_id)`.
 
 For example:
 ```
