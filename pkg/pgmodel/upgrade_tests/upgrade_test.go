@@ -388,7 +388,13 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 	}
 }
 
+var firstVersion = semver.MustParse("0.1.0")
+
 func toPreviousVersion(version *semver.Version) {
+	if version.Equals(firstVersion) {
+		*version = semver.MustParse("0.1.0-beta.5")
+		return
+	}
 	// our versions must match the schema X.Y.Z[.<pre-release>.A][.dev.C]
 	// where capital letters are numbers, and <pre-release> is some arbitrary
 	// pre-release tag.
