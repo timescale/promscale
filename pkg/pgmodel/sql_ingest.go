@@ -539,7 +539,7 @@ func doInsert(conn pgxConn, req copyRequest) (err error) {
 	if len(times) != numRows {
 		panic("invalid insert request")
 	}
-	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
+	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
 	var ct pgconn.CommandTag
 	ct, err = conn.Exec(context.Background(), queryString, times, vals, series)
 	if err != nil {
