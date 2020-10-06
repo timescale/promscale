@@ -5,13 +5,18 @@
 [![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/promscale/maintainability)
 [![GoDoc](https://godoc.org/github.com/timescale/promscale?status.svg)](https://pkg.go.dev/github.com/timescale/promscale)
 
-This project connects Prometheus to TimescaleDB, creating an
-**analytical and long-term storage platform for Prometheus metrics**.
+Promscale is an open-source long-term store for Prometheus data designed for
+analytics. It is a **horizontally scalable**, **highly-compressed**, and
+**operationally mature** platform for Prometheus data that offers the
+combined power of PromQL and SQL, enabling developers to ask any question,
+create any dashboard, and achieve greater visibility into their systems.
+Promscale is built on top of [TimescaleDB](https://www.timescale.com/), the
+leading relational database for time-series.
+
 
 <img src="./docs/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
-This platform is **horizontally-scalable**, **highly-compressed**, and
-**operationally mature**. By allowing a user to use SQL, in addition to
+By allowing a user to use SQL, in addition to
 PromQL, this platform empowers the user to ask complex analytical
 queries from their metrics data, and thus extract more meaningful
 insights.
