@@ -20,9 +20,12 @@ func TestSQLGoldenFiles(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		files, err := filepath.Glob("testdata/sql/*")
+		files, err := filepath.Glob("../testdata/sql/*")
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(files) <= 0 {
+			t.Fatal("No sql files found")
 		}
 
 		for _, file := range files {
@@ -33,7 +36,18 @@ func TestSQLGoldenFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			expectedFile := filepath.Join("testdata/expected/", base+".out")
+			actualFile := filepath.Join(pgContainerTestDataDir, "out", base+".out")
+
+			actual, err := ioutil.ReadFile(actualFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			if i != 0 {
+				t.Logf("Failure in test %s", base)
+				t.Log(string(actual))
+
 				/* on psql failure print the logs */
 				rc, err := pgContainer.Logs(context.Background())
 				if err != nil {
@@ -48,9 +62,6 @@ func TestSQLGoldenFiles(t *testing.T) {
 				t.Log(string(msg))
 			}
 
-			expectedFile := filepath.Join("testdata/expected/", base+".out")
-			actualFile := filepath.Join(pgContainerTestDataDir, "out", base+".out")
-
 			if *updateGoldenFiles {
 				err = copyFile(actualFile, expectedFile)
 				if err != nil {
@@ -59,11 +70,6 @@ func TestSQLGoldenFiles(t *testing.T) {
 			}
 
 			expected, err := ioutil.ReadFile(expectedFile)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			actual, err := ioutil.ReadFile(actualFile)
 			if err != nil {
 				t.Fatal(err)
 			}

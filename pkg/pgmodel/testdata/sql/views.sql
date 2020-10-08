@@ -3,6 +3,7 @@
 
 SELECT _prom_catalog.get_or_create_metric_table_name('cpu_usage');
 SELECT _prom_catalog.get_or_create_metric_table_name('cpu_total');
+CALL _prom_catalog.finalize_metric_creation();
 INSERT INTO prom_data.cpu_usage
   SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"}')
   FROM generate_series(1,10) g;
