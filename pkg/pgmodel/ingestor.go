@@ -49,6 +49,10 @@ type DBIngestor struct {
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
+// input:
+//     tts the []Timeseries to insert
+//     req the WriteRequest backing tts. It will be added to our WriteRequest
+//         pool when it is no longer needed.
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
 	data, totalRows, err := i.parseData(tts, req)
 
@@ -63,10 +67,15 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (
 	return rowsInserted, err
 }
 
+// Parts of metric creation not needed to insert data
 func (i *DBIngestor) CompleteMetricCreation() error {
 	return i.db.CompleteMetricCreation()
 }
 
+// Parse data into a set of samplesInfo infos per-metric.
+// returns: map[metric name][]SamplesInfo, total rows to insert
+// NOTE: req will be added to our WriteRequest pool in this function, it must
+//       not be used afterwards.
 func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]samplesInfo, int, error) {
 	dataSamples := make(map[string][]samplesInfo)
 	rows := 0
@@ -77,6 +86,8 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 			continue
 		}
 
+		// Normalize and canonicalize t.Labels.
+		// After this point t.Labels should never be used again.
 		seriesLabels, metricName, err := labelProtosToLabels(t.Labels)
 		if err != nil {
 			return nil, rows, err
@@ -86,7 +97,7 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 		}
 		sample := samplesInfo{
 			seriesLabels,
-			-1, //sentinel marking the seriesId as unset
+			-1, // sentinel marking the seriesId as unset
 			t.Samples,
 		}
 		rows += len(t.Samples)
@@ -97,6 +108,12 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 		t.Samples = nil
 	}
 
+	// WriteRequests can contain pointers into the original buffer we deserialized
+	// them out of, and can be quite large in and of themselves. In order to prevent
+	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest
+	// here, allowing it to be either garbage collected or reused for a new request.
+	// In order for this to work correctly, any data we wish to keep using (e.g.
+	// samples) must no longer be reachable from req.
 	FinishWriteRequest(req)
 
 	return dataSamples, rows, nil

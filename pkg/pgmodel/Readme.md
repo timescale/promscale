@@ -76,3 +76,5 @@ Diagrammatically the write path cn be visualized as follows:
  | insert handler | ... | insert handler | ====> | DB (metric data) |
  +----------------+     +----------------+       +------------------+
 ```
+
+`TODO` metric table creation
