@@ -1223,7 +1223,7 @@ BEGIN
                             FROM SCHEMA_CATALOG.label_key_position lkp
                             WHERE lkp.metric_name = m.metric_name
                             ORDER BY key) label_keys,
-                        hi.total_size as size,
+                        pg_size_pretty(pg_total_relation_size(format('SCHEMA_DATA.%I', m.table_name)::regclass)) as size,
                         0.0 as compression_ratio,
                         NULL::bigint as total_chunks,
                         NULL::bigint as compressed_chunks

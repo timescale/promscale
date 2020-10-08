@@ -47,13 +47,6 @@ SELECT count(compress_chunk(i)) from show_chunks('prom_data.cpu_usage') i;
      1
 (1 row)
 
-SELECT * FROM prom_info.metric ORDER BY id;
- id | metric_name | table_name | retention_period | chunk_interval  |             label_keys              | size  |  compression_ratio   | total_chunks | compressed_chunks 
-----+-------------+------------+------------------+-----------------+-------------------------------------+-------+----------------------+--------------+-------------------
-  1 | cpu_usage   | cpu_usage  | 90 days          | 08:00:38.219879 | {__name__,namespace,new_tag,node}   | 40 kB | -33.3333333333333300 |            1 |                 1
-  2 | cpu_total   | cpu_total  | 90 days          | 07:58:54.72259  | {__name__,namespace,new_tag_2,node} | 24 kB |                      |              |                  
-(2 rows)
-
 SELECT * FROM cpu_usage ORDER BY time, series_id LIMIT 5;
           time          | value | series_id |  labels   | node_id | namespace_id | new_tag_id 
 ------------------------+-------+-----------+-----------+---------+--------------+------------
