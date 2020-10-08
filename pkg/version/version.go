@@ -33,7 +33,7 @@ var (
 	// since an app version must uniquely determine the state of the schema.
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
-	Version    = "0.1.0"
+	Version    = "0.1.1-dev.0"
 	CommitHash = ""
 
 	TimescaleVersionRangeString = struct {
