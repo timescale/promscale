@@ -3,12 +3,12 @@
 ## 🔧 Installing pre-built binaries
 
 You can download pre-built binaries for the Promscale
-Connector [on our release page](/releases).
+Connector [on our release page](https://github.com/timescale/promscale/releases).
 
-We recommend installing the [promscale](/extension)
+We recommend installing the [promscale](https://github.com/timescale/promscale_extension/releases)
 PostgreSQL extension into the TimescaleDB database you are connecting to.
 Instructions on how to compile and install the extension are in the
-extensions [README](/extension/Readme.md). While this isn't a requirement, it
+extensions [README](https://github.com/timescale/promscale_extension/blob/master/Readme.md). While this isn't a requirement, it
 does optimize certain queries.
 Please note that the extension requires Postgres version 12 of newer.
 
