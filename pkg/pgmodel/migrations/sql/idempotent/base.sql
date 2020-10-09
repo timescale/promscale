@@ -1116,6 +1116,8 @@ BEGIN
 
     --needs to be a separate query and not a CTE since this needs to "see"
     --the series rows deleted above as deleted.
+    --Note: we never delete metric name keys since there are check constraints that
+    --rely on those ids not changing.
     EXECUTE format($query$
     WITH confirmed_drop_labels AS (
             SELECT label_id
@@ -1128,7 +1130,7 @@ BEGIN
             )
         )
         DELETE FROM SCHEMA_CATALOG.label
-        WHERE id IN (SELECT * FROM confirmed_drop_labels);
+        WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
     $query$, metric_table) USING label_array;
 
    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN

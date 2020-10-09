@@ -381,3 +381,133 @@ func TestSQLDropMetricChunk(t *testing.T) {
 
 	})
 }
+
+// Tests case that all metric data was dropped and then the metric came back alive
+func TestSQLDropAllMetricData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		//this is the range_end of a chunk boundary (exclusive)
+		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
+
+		ts := []prompb.TimeSeries{
+			{
+				//this series will be deleted along with it's label
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					//this will be dropped (notice the - 1)
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.UnixNano()) - 1), Value: 0.1},
+				},
+			},
+		}
+		// Avoid randomness in chunk interval size by setting explicitly.
+		_, err := db.Exec(context.Background(), "SELECT _prom_catalog.get_or_create_metric_table_name($1)", "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if *useTimescaleDB {
+			_, err = db.Exec(context.Background(), "SELECT set_chunk_time_interval('prom_data.test', interval '8 hour')")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		ingestor, err := NewPgxIngestor(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer ingestor.Close()
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		if err != nil {
+			t.Error(err)
+		}
+
+		wasDropped := false
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5)).Scan(&wasDropped)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !wasDropped {
+			t.Errorf("Expected chunk to be dropped")
+		}
+
+		count := 0
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom_data.test`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 0 {
+			t.Errorf("unexpected row count: %v", count)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 0 {
+			t.Errorf("unexpected series count: %v", count)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.label`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 1 {
+			t.Errorf("unexpected label count: %v", count)
+		}
+
+		ts = []prompb.TimeSeries{
+			{
+				//this series will be deleted along with it's label
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					//this will remain after the drop
+					{Timestamp: int64(model.TimeFromUnixNano(chunkEnds.UnixNano())), Value: 0.2},
+				},
+			},
+		}
+
+		//Restart ingestor to avoid stale cache issues.
+		//Other tests should check for that
+		ingestor2, err := NewPgxIngestor(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer ingestor2.Close()
+		_, err = ingestor2.Ingest(copyMetrics(ts), NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom_data.test`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 1 {
+			t.Errorf("unexpected row count: %v", count)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series`).Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if count != 1 {
+			t.Errorf("unexpected series count: %v", count)
+		}
+	})
+}
