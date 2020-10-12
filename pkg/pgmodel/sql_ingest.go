@@ -129,7 +129,7 @@ func (p *pgxInserter) runCompleteMetricCreationWorker() {
 	for range p.completeMetricCreation {
 		err := p.CompleteMetricCreation()
 		if err != nil {
-			log.Warn("Got an error finalizing metric: %v", err)
+			log.Warn("msg", "Got an error finalizing metric", "err", err)
 		}
 	}
 }
@@ -222,7 +222,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 			}
 			close(errChan)
 			if err != nil {
-				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "error", err)
+				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "err", err)
 			} else if p.insertedDatapoints != nil {
 				atomic.AddInt64(p.insertedDatapoints, int64(numRows))
 			}
@@ -543,7 +543,7 @@ func runInserter(conn pgxConn, in chan copyRequest) {
 func insertErrorFallback(conn pgxConn, req copyRequest, err error) error {
 	err = tryRecovery(conn, req, err)
 	if err != nil {
-		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
+		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "err", err.Error())
 		return err
 	}
 
@@ -559,7 +559,7 @@ func tryRecovery(conn pgxConn, req copyRequest, err error) error {
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
 		errMsg := err.Error()
-		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.table), "error", errMsg)
+		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.table), "err", errMsg)
 		return err
 	}
 
@@ -574,7 +574,7 @@ func tryRecovery(conn pgxConn, req copyRequest, err error) error {
 		return nil
 	}
 
-	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "error", pgErr.Error())
+	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "err", pgErr.Error())
 	return err
 }
 
