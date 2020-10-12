@@ -38,7 +38,7 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
 	}
 	if !isInstalled {
-		log.Warn("Running Promscale without TimescaleDB. Some features will be disabled.")
+		log.Warn("msg", "Running Promscale without TimescaleDB. Some features will be disabled.")
 		return nil
 	}
 	switch version.VerifyTimescaleVersion(timescaleVersion) {
