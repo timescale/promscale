@@ -2384,7 +2384,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		},
 		{
 			name:  "complex query 1",
-			query: `sum by(instance) (metric_1) + on(foo) group_left(instance) metric_2`,
+			query: `sum by(instance) (metric_1) + on(instance) group_left(foo) metric_2`,
 		},
 		{
 			name:  "complex query 2",
