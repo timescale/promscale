@@ -624,6 +624,109 @@ func TestInsertCompressed(t *testing.T) {
 	})
 }
 
+func TestCompressionSetting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("compression meaningless without TimescaleDB")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		var compressionEnabled bool
+		err := db.QueryRow(context.Background(), "SELECT _prom_catalog.get_default_compression_setting()").Scan(&compressionEnabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !compressionEnabled {
+			t.Error("compression should be enabled by default, was not")
+
+		}
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_compression_setting(false)")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_default_compression_setting()").Scan(&compressionEnabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if compressionEnabled {
+			t.Error("compression should have been disabled")
+
+		}
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := NewPgxIngestor(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('test')").Scan(&compressionEnabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if compressionEnabled {
+			t.Error("metric compression should be disabled as per default, was not")
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_compression_setting('test', true)")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.test') i;")
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
+				//already compressed (could happen if policy already ran). This is fine
+			} else {
+				t.Fatal(err)
+			}
+		}
+
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('test')").Scan(&compressionEnabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !compressionEnabled {
+			t.Fatal("metric compression should be enabled manually, was not")
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_compression_setting('test')")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('test')").Scan(&compressionEnabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if compressionEnabled {
+			t.Error("metric compression should be disabled as per default, was not")
+		}
+	})
+}
+
 // deep copy the metrics since we mutate them, and don't want to invalidate the tests
 func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
 	out := make([]prompb.TimeSeries, len(metrics))

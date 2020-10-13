@@ -63,6 +63,7 @@ CREATE TABLE SCHEMA_CATALOG.metric (
     creation_completed BOOLEAN NOT NULL DEFAULT false,
     default_chunk_interval BOOLEAN NOT NULL DEFAULT true,
     retention_period INTERVAL DEFAULT NULL, --NULL to use the default retention_period
+    default_compression BOOLEAN NOT NULL DEFAULT true,
     UNIQUE (metric_name) INCLUDE (table_name),
     UNIQUE(table_name)
 );
@@ -74,4 +75,5 @@ CREATE TABLE SCHEMA_CATALOG.default (
 
 INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
 ('chunk_interval', (INTERVAL '8 hours')::text),
-('retention_period', (90 * INTERVAL '1 day')::text);
+('retention_period', (90 * INTERVAL '1 day')::text),
+('metric_compression', (exists(select * from pg_proc where proname = 'compress_chunk')::text));
