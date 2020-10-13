@@ -25,6 +25,14 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_compression_setting()
+    RETURNS BOOLEAN
+AS $func$
+    SELECT value::BOOLEAN FROM SCHEMA_CATALOG.default WHERE key='metric_compression';
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_compression_setting() TO prom_reader;
+
 --Add 1% of randomness to the interval so that chunks are not aligned so that chunks are staggered for compression jobs.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(chunk_interval INTERVAL)
 RETURNS INTERVAL
@@ -83,16 +91,8 @@ BEGIN
             CONTINUE;
         END IF;
 
-        IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-            EXECUTE format($$
-                ALTER TABLE SCHEMA_DATA.%I SET (
-                    timescaledb.compress,
-                    timescaledb.compress_segmentby = 'series_id',
-                    timescaledb.compress_orderby = 'time, value'
-                ); $$, r.table_name);
-
-            --chunks where the end time is before now()-1 hour will be compressed
-            PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', r.table_name), INTERVAL '1 hour');
+        IF SCHEMA_CATALOG.is_timescaledb_installed() AND SCHEMA_CATALOG.get_default_compression_setting() THEN
+            PERFORM SCHEMA_PROM.set_compression_on_metric_table(r.table_name, TRUE);
         END IF;
 
         --do this before taking exclusive lock to minimize work after taking lock
@@ -885,6 +885,157 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT)
 IS 'resets the retention period for a specific metric to using the default';
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_compression_setting(metric_name TEXT)
+RETURNS BOOLEAN
+AS $$
+DECLARE
+    can_compress boolean;
+    result boolean;
+    metric_table_name text;
+BEGIN
+    SELECT exists(select * from pg_proc where proname = 'compress_chunk')
+    INTO STRICT can_compress;
+
+    IF NOT can_compress THEN
+        RETURN FALSE;
+    END IF;
+
+    SELECT table_name 
+    INTO STRICT metric_table_name
+    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+
+    SELECT EXISTS ( 
+        SELECT FROM _timescaledb_catalog.hypertable h 
+        WHERE h.schema_name = 'SCHEMA_DATA' 
+        AND h.table_name = metric_table_name
+        AND h.compressed_hypertable_id IS NOT NULL)
+    INTO result;
+    RETURN result;
+END
+$$
+LANGUAGE PLPGSQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_compression_setting(TEXT) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_compression_setting(compression_setting BOOLEAN)
+RETURNS BOOLEAN
+AS $$
+DECLARE
+    can_compress BOOLEAN;
+BEGIN
+    IF compression_setting = SCHEMA_CATALOG.get_default_compression_setting() THEN
+        RETURN TRUE;
+    END IF;
+
+    SELECT exists(select * from pg_proc where proname = 'compress_chunk')
+    INTO STRICT can_compress;
+
+    IF NOT can_compress AND compression_setting THEN
+        RAISE EXCEPTION 'Cannot enable metrics compression, feature not found';
+    END IF;
+    
+    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES('metric_compression', compression_setting::text)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+    PERFORM SCHEMA_PROM.set_compression_on_metric_table(table_name, compression_setting)
+    FROM SCHEMA_CATALOG.metric
+    WHERE default_compression;
+    RETURN true;
+END
+$$
+LANGUAGE PLPGSQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_default_compression_setting(BOOLEAN)
+IS 'set the compression setting for any metrics (existing and new) without an explicit override';
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_compression_setting(metric_name TEXT, new_compression_setting BOOLEAN)
+RETURNS BOOLEAN
+AS $func$
+DECLARE
+    can_compress boolean;
+    metric_table_name text;
+BEGIN
+    --if already set to desired value, nothing to do
+    IF SCHEMA_CATALOG.get_metric_compression_setting(metric_name) = new_compression_setting THEN
+        RETURN TRUE;
+    END IF;
+
+    SELECT exists(select * from pg_proc where proname = 'compress_chunk')
+    INTO STRICT can_compress;
+
+    --if compression is missing, cannot enable it
+    IF NOT can_compress AND new_compression_setting THEN
+        RAISE EXCEPTION 'Cannot enable metrics compression, feature not found';
+    END IF;
+
+    --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
+    --needs to run before update so row exists before update.
+    SELECT table_name 
+    INTO STRICT metric_table_name
+    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_compression_setting.metric_name);
+
+    PERFORM SCHEMA_PROM.set_compression_on_metric_table(metric_table_name, new_compression_setting);
+
+    UPDATE SCHEMA_CATALOG.metric
+    SET default_compression = false
+    WHERE table_name = metric_table_name;
+
+    RETURN true;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_metric_compression_setting(TEXT, BOOLEAN)
+IS 'set a compression setting for a specific metric (this overrides the default)';
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN) 
+RETURNS void 
+AS $func$ 
+BEGIN
+    IF compression_setting THEN
+        EXECUTE format($$
+            ALTER TABLE SCHEMA_DATA.%I SET (
+                timescaledb.compress,
+                timescaledb.compress_segmentby = 'series_id',
+                timescaledb.compress_orderby = 'time, value'
+            ); $$, metric_table_name);
+        --chunks where the end time is before now()-1 hour will be compressed
+        PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+    ELSE
+        PERFORM remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
+        PERFORM decompress_chunk(i) from show_chunks(format('SCHEMA_DATA.%I', metric_table_name)) i;
+        EXECUTE format($$
+            ALTER TABLE SCHEMA_DATA.%I SET (
+                timescaledb.compress = false
+            ); $$, metric_table_name);
+    END IF;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN)
+IS 'set a compression for a specific metric table';
+
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_compression_setting(metric_name TEXT)
+RETURNS BOOLEAN
+AS $func$
+DECLARE
+    metric_table_name text;
+BEGIN
+    SELECT table_name 
+    INTO STRICT metric_table_name
+    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(reset_metric_compression_setting.metric_name);
+
+    UPDATE SCHEMA_CATALOG.metric
+    SET default_compression = true
+    WHERE table_name = metric_table_name;
+
+    PERFORM SCHEMA_PROM.set_compression_on_metric_table(metric_table_name, SCHEMA_CATALOG.get_default_compression_setting());
+    RETURN true;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_compression_setting(TEXT)
+IS 'resets the compression setting for a specific metric to using the default';
 
 --drop chunks from metrics tables and delete the appropriate series.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunks(metric_name TEXT, older_than TIMESTAMPTZ)
