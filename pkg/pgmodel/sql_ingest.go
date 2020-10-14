@@ -233,7 +233,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 }
 
 func (p *pgxInserter) insertMetricData(metric string, data []samplesInfo, finished *sync.WaitGroup, errChan chan error) {
-	inserter := p.getMetricInserter(metric, errChan)
+	inserter := p.getMetricInserter(metric)
 	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
 
@@ -293,7 +293,7 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 }
 
 // Get the handler for a given metric name, creating a new one if none exists
-func (p *pgxInserter) getMetricInserter(metric string, errChan chan error) chan insertDataRequest {
+func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
 	inserter, ok := p.inserters.Load(metric)
 	if !ok {
 		// The ordering is important here: we need to ensure that every call
@@ -305,7 +305,7 @@ func (p *pgxInserter) getMetricInserter(metric string, errChan chan error) chan 
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
-			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, errChan, p.metricTableNames, p.toCopiers)
+			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers)
 		}
 	}
 	return inserter.(chan insertDataRequest)
@@ -347,7 +347,7 @@ type copyRequest struct {
 	table string
 }
 
-func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, errChan chan error, metricTableNames MetricCache, toCopiers chan copyRequest) {
+func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames MetricCache, toCopiers chan copyRequest) {
 	var tableName string
 	var firstReq insertDataRequest
 	firstReqSet := false
@@ -355,10 +355,6 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 		var err error
 		tableName, err = initializeInserterRoutine(conn, metricName, completeMetricCreationSignal, metricTableNames)
 		if err != nil {
-			select {
-			case errChan <- err:
-			default:
-			}
 			firstReq.reportResult(fmt.Errorf("Initializing the insert routine has failed with %w", err))
 		} else {
 			firstReqSet = true
