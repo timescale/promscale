@@ -5,6 +5,7 @@ package pgmodel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -601,7 +602,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 					expErr = errMissingTableName
 				}
 
-				if err != expErr {
+				if !errors.Is(err, expErr) {
 					t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s", err, expErr)
 				}
 
