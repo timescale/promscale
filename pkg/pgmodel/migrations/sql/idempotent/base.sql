@@ -147,6 +147,7 @@ BEGIN
             id bigint NOT NULL,
             metric_id int NOT NULL,
             labels SCHEMA_PROM.label_array NOT NULL,
+            delete_epoch BIGINT NULL DEFAULT NULL,
             CHECK(labels[1] = %2$L AND labels[1] IS NOT NULL),
             CHECK(metric_id = %3$L),
             CONSTRAINT series_labels_id_%3$s UNIQUE(labels) INCLUDE (id),
@@ -741,19 +742,24 @@ BEGIN
    SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
    INTO metric_id, table_name;
 
-   --the data table could be locked during label key creation
-   --and must be locked before the series parent according to lock ordering
+   -- the data table could be locked during label key creation
+   -- and must be locked before the series parent according to lock ordering
    EXECUTE format($query$
         LOCK TABLE ONLY SCHEMA_DATA.%1$I IN ACCESS SHARE MODE
     $query$, table_name);
 
    EXECUTE format($query$
-    WITH CTE AS (
+    WITH cte AS (
         SELECT SCHEMA_CATALOG.get_or_create_label_array($1, $2, $3)
+    ), existing AS (
+        SELECT id, delete_epoch
+        FROM SCHEMA_DATA_SERIES.%1$I as series
+        WHERE labels = (SELECT * FROM cte)
+    ), updates AS (
+        UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = NULL
+        WHERE id IN (SELECT id FROM existing WHERE delete_epoch IS NOT NULL)
     )
-    SELECT id
-    FROM SCHEMA_DATA_SERIES.%1$I as series
-    WHERE labels = (SELECT * FROM cte)
+    SELECT id FROM existing
     UNION ALL
     SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, (SELECT * FROM cte))
     LIMIT 1
@@ -901,13 +907,13 @@ BEGIN
         RETURN FALSE;
     END IF;
 
-    SELECT table_name 
+    SELECT table_name
     INTO STRICT metric_table_name
     FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
 
-    SELECT EXISTS ( 
-        SELECT FROM _timescaledb_catalog.hypertable h 
-        WHERE h.schema_name = 'SCHEMA_DATA' 
+    SELECT EXISTS (
+        SELECT FROM _timescaledb_catalog.hypertable h
+        WHERE h.schema_name = 'SCHEMA_DATA'
         AND h.table_name = metric_table_name
         AND h.compressed_hypertable_id IS NOT NULL)
     INTO result;
@@ -933,7 +939,7 @@ BEGIN
     IF NOT can_compress AND compression_setting THEN
         RAISE EXCEPTION 'Cannot enable metrics compression, feature not found';
     END IF;
-    
+
     INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES('metric_compression', compression_setting::text)
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
@@ -969,7 +975,7 @@ BEGIN
 
     --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
     --needs to run before update so row exists before update.
-    SELECT table_name 
+    SELECT table_name
     INTO STRICT metric_table_name
     FROM SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_compression_setting.metric_name);
 
@@ -986,9 +992,9 @@ LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_compression_setting(TEXT, BOOLEAN)
 IS 'set a compression setting for a specific metric (this overrides the default)';
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN) 
-RETURNS void 
-AS $func$ 
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN)
+RETURNS void
+AS $func$
 BEGIN
     IF compression_setting THEN
         EXECUTE format($$
@@ -1021,7 +1027,7 @@ AS $func$
 DECLARE
     metric_table_name text;
 BEGIN
-    SELECT table_name 
+    SELECT table_name
     INTO STRICT metric_table_name
     FROM SCHEMA_CATALOG.get_or_create_metric_table_name(reset_metric_compression_setting.metric_name);
 
@@ -1037,50 +1043,24 @@ LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_compression_setting(TEXT)
 IS 'resets the compression setting for a specific metric to using the default';
 
---drop chunks from metrics tables and delete the appropriate series.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunks(metric_name TEXT, older_than TIMESTAMPTZ)
-    RETURNS BOOLEAN
-    AS $func$
-DECLARE
-    metric_table NAME;
-    check_time TIMESTAMPTZ;
-    time_dimension_id INT;
-    label_array int[];
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.epoch_abort(user_epoch BIGINT)
+RETURNS VOID AS $func$
+DECLARE db_epoch BIGINT;
 BEGIN
-    SELECT table_name
-    INTO STRICT metric_table
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+    SELECT current_epoch FROM ids_epoch LIMIT 1
+        INTO db_epoch;
+    RAISE EXCEPTION 'epoch % to old to continue INSERT, current: %',
+        user_epoch, db_epoch
+        USING ERRCODE='PS001';
+END;
+$func$ LANGUAGE PLPGSQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_CATALOG.epoch_abort(BIGINT)
+IS 'ABORT an INSERT transaction due to the ID epoch being out of date';
 
-    SELECT older_than + INTERVAL '1 hour'
-    INTO check_time;
-
-    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-        --Get the time dimension id for the time dimension
-        SELECT d.id
-        INTO STRICT time_dimension_id
-        FROM _timescaledb_catalog.hypertable h
-        INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
-        WHERE h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table
-        ORDER BY d.id ASC
-        LIMIT 1;
-
-        --Get a tight older_than (EXCLUSIVE) because we want to know the
-        --exact cut-off where things will be dropped
-        SELECT _timescaledb_internal.to_timestamp(range_end)
-        INTO older_than
-        FROM _timescaledb_catalog.chunk c
-        INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
-        INNER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id)
-        --range_end is exclusive so this is everything < older_than (which is also exclusive)
-        WHERE ds.dimension_id = time_dimension_id AND ds.range_end <= _timescaledb_internal.to_unix_microseconds(older_than)
-        ORDER BY range_end DESC
-        LIMIT 1;
-    END IF;
-
-    IF older_than IS NULL THEN
-        RETURN false;
-    END IF;
-
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.mark_unused_series(
+    metric_table TEXT, older_than TIMESTAMPTZ, check_time TIMESTAMPTZ
+) RETURNS VOID AS $func$
+BEGIN
     --chances are that the hour after the drop point will have the most similar
     --series to what is dropped, so first filter by all series that have been dropped
     --but that aren't in that first hour and then make sure they aren't in the dataset
@@ -1098,21 +1078,68 @@ BEGIN
             SELECT series_id
             FROM potentially_drop_series
             WHERE NOT EXISTS (
-                 SELECT 1
-                 FROM  SCHEMA_DATA.%1$I  data_exists
-                 WHERE data_exists.series_id = potentially_drop_series.series_id AND time >= %3$L
-                 --use chunk append + more likely to find something starting at earliest time
-                 ORDER BY time ASC
-                 LIMIT 1
+                SELECT 1
+                FROM  SCHEMA_DATA.%1$I  data_exists
+                WHERE data_exists.series_id = potentially_drop_series.series_id AND time >= %3$L
+                --use chunk append + more likely to find something starting at earliest time
+                ORDER BY time ASC
+                LIMIT 1
             )
+        ) -- we want this next statement to be the last one in the txn since it could block series fetch (both of them update delete_epoch)
+        UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = current_epoch+1
+        FROM SCHEMA_CATALOG.ids_epoch
+        WHERE delete_epoch IS NULL
+            AND id IN (SELECT * FROM confirmed_drop_series)
+    $query$, metric_table, older_than, check_time);
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_expired_series(
+    metric_table TEXT, ran_at TIMESTAMPTZ
+) RETURNS VOID AS $func$
+DECLARE
+    last_epoch_time TIMESTAMPTZ;
+    deletion_epoch BIGINT;
+    next_epoch BIGINT;
+    label_array int[];
+BEGIN
+    -- technically we can delete any ID <= current_epoch - 1
+    -- but it's always safe to leave them around for a bit longer
+    SELECT last_update_time, current_epoch-4, current_epoch+1
+        FROM SCHEMA_CATALOG.ids_epoch LIMIT 1
+        INTO last_epoch_time, deletion_epoch, next_epoch;
+
+    -- we don't want to delete too soon
+    IF ran_at < last_epoch_time + '1 hour' THEN
+        RETURN;
+    END IF;
+
+    EXECUTE format($query$
+        -- recheck that the series IDs we might delete are actually dead
+        WITH dead_series AS (
+            SELECT id FROM SCHEMA_DATA_SERIES.%1$I
+                WHERE delete_epoch <= %2$L
+                    AND NOT EXISTS (
+                        SELECT 1 FROM SCHEMA_DATA.%1$I
+                        WHERE id = series_id
+                        LIMIT 1
+                    )
         ), deleted_series AS (
-          DELETE from SCHEMA_DATA_SERIES.%1$I
-          WHERE id IN (SELECT series_id FROM confirmed_drop_series)
-          RETURNING id, labels
+            DELETE FROM SCHEMA_DATA_SERIES.%1$I
+            WHERE delete_epoch <= %2$L
+                AND id IN (SELECT id FROM dead_series) -- concurrency means we need this qual in both
+            RETURNING id, labels
+        ), resurrected_series AS (
+            UPDATE SCHEMA_DATA_SERIES.%1$I
+            SET delete_epoch = NULL
+            WHERE delete_epoch <= %2$L
+                AND id NOT IN (SELECT id FROM dead_series) -- concurrency means we need this qual in both
         )
         SELECT ARRAY(SELECT DISTINCT unnest(labels) as label_id
-        FROM deleted_series)
-    $query$, metric_table, older_than, check_time) INTO label_array;
+            FROM deleted_series)
+    $query$, metric_table, deletion_epoch) INTO label_array;
 
     --needs to be a separate query and not a CTE since this needs to "see"
     --the series rows deleted above as deleted.
@@ -1123,25 +1150,99 @@ BEGIN
             SELECT label_id
             FROM unnest($1) as labels(label_id)
             WHERE NOT EXISTS (
-                 SELECT 1
-                 FROM  SCHEMA_DATA_SERIES.%1$I series_exists
-                 WHERE series_exists.labels && ARRAY[labels.label_id]
-                 LIMIT 1
+                SELECT 1
+                FROM  SCHEMA_CATALOG.series series_exists
+                WHERE series_exists.labels && ARRAY[labels.label_id]
+                LIMIT 1
             )
         )
         DELETE FROM SCHEMA_CATALOG.label
         WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
     $query$, metric_table) USING label_array;
 
-   IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-        PERFORM drop_chunks(table_name=>metric_table, schema_name=> 'SCHEMA_DATA', older_than=>older_than, cascade_to_materializations=>FALSE);
-   ELSE
-        EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
-   END IF;
-   RETURN true;
+    -- wait for current insertions to be done, and ensure that all future
+    -- insertions will see the epoch change
+    LOCK TABLE SCHEMA_CATALOG.ids_epoch IN ACCESS EXCLUSIVE MODE;
+
+    UPDATE SCHEMA_CATALOG.ids_epoch
+        SET (current_epoch, last_update_time) = (next_epoch, now())
+        WHERE current_epoch < next_epoch;
+    RETURN;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
+
+
+--drop chunks from metrics tables and delete the appropriate series.
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(
+    metric_name TEXT, older_than TIMESTAMPTZ, ran_at TIMESTAMPTZ DEFAULT now()
+) AS $func$
+DECLARE
+    metric_table NAME;
+    check_time TIMESTAMPTZ;
+    time_dimension_id INT;
+BEGIN
+    SELECT table_name
+    INTO STRICT metric_table
+    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+
+    SELECT older_than + INTERVAL '1 hour'
+    INTO check_time;
+
+    -- transaction 1
+        IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+            --Get the time dimension id for the time dimension
+            SELECT d.id
+            INTO STRICT time_dimension_id
+            FROM _timescaledb_catalog.hypertable h
+            INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
+            WHERE h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table
+            ORDER BY d.id ASC
+            LIMIT 1;
+
+            --Get a tight older_than (EXCLUSIVE) because we want to know the
+            --exact cut-off where things will be dropped
+            SELECT _timescaledb_internal.to_timestamp(range_end)
+            INTO older_than
+            FROM _timescaledb_catalog.chunk c
+            INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
+            INNER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id)
+            --range_end is exclusive so this is everything < older_than (which is also exclusive)
+            WHERE ds.dimension_id = time_dimension_id AND ds.range_end <= _timescaledb_internal.to_unix_microseconds(older_than)
+            ORDER BY range_end DESC
+            LIMIT 1;
+        END IF;
+        -- end this txn so we're not holding any locks on the catalog
+    COMMIT;
+
+    IF older_than IS NULL THEN
+        -- even though there are no new Ids in need of deletion,
+        -- we may still have old ones to delete
+        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at);
+        RETURN;
+    END IF;
+
+    -- transaction 2
+        PERFORM SCHEMA_CATALOG.mark_unused_series(metric_table, older_than, check_time);
+    COMMIT;
+
+    -- transaction 3
+        IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+            PERFORM drop_chunks(table_name=>metric_table,
+                schema_name=> 'SCHEMA_DATA',
+                older_than=>older_than,
+                cascade_to_materializations=>FALSE);
+        ELSE
+            EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
+        END IF;
+    COMMIT;
+
+    -- transaction 4
+        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at);
+    RETURN;
+END
+$func$
+LANGUAGE PLPGSQL;
 
 --Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
@@ -1190,7 +1291,7 @@ BEGIN
 
         CONTINUE WHEN NOT FOUND;
 
-        PERFORM SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
+        CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
         COMMIT;
     END LOOP;
 
@@ -1198,7 +1299,7 @@ BEGIN
         SELECT *
         FROM SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
     LOOP
-        PERFORM SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
+        CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
         COMMIT;
     END LOOP;
 END;
@@ -1306,6 +1407,7 @@ BEGIN
             %2$s
         FROM
             SCHEMA_DATA_SERIES.%1$I AS series
+        WHERE delete_epoch IS NULL
     $$, view_name, label_value_cols);
     RETURN true;
 END
