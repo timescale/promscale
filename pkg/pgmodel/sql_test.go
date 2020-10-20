@@ -23,128 +23,85 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+type sqlRecorder struct {
+	queries   []sqlQuery
+	nextQuery int
+	lock      sync.Mutex
+	t         *testing.T
+}
+
+type sqlQuery struct {
+	sql     string
+	args    []interface{}
+	results rowResults
+	err     error
+}
+
 // rowResults represents a collection of a multi-column row result
 type rowResults [][]interface{}
 
-type mockPGXConn struct {
-	insertLock        sync.Mutex
-	queryLock         sync.Mutex
-	DBName            string
-	ExecSQLs          []string
-	ExecArgs          [][]interface{}
-	ExecErr           error
-	QuerySQLs         []string
-	QueryArgs         [][]interface{}
-	QueryResults      []rowResults
-	QueryResultsIndex int
-	QueryNoRows       bool
-	QueryErr          map[int]error // Mapping query call to error response.
-	CopyFromTableName []string
-	Times             []time.Time
-	Vals              []float64
-	Series            []int64
-	CopyFromResult    int64
-	CopyFromError     error
-	CopyFromRowsRows  [][]interface{}
-	Batch             []*mockBatch
+func newSqlRecorder(queries []sqlQuery, t *testing.T) *sqlRecorder {
+	return &sqlRecorder{queries: queries, t: t}
 }
 
-func (m *mockPGXConn) Close() {
+func (r *sqlRecorder) Close() {
 }
 
-func (m *mockPGXConn) UseDatabase(dbName string) {
-	m.DBName = dbName
+func (r *sqlRecorder) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	_, err := r.checkQuery(sql, arguments...)
+	return pgconn.CommandTag{}, err
 }
 
-func (m *mockPGXConn) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	if strings.HasPrefix(sql, "INSERT INTO ") && strings.HasSuffix(sql, "DO NOTHING") {
-		m.insertLock.Lock()
-		defer m.insertLock.Unlock()
-		if len(arguments) != 3 {
-			panic(fmt.Sprintf("invalid arguments: %v", arguments))
-		}
-		end := 0
-		for end < len(sql) && sql[end] != '(' {
-			end += 1
-		}
-		tableName := sql[len("INSERT INTO "):end]
-		m.CopyFromTableName = append(m.CopyFromTableName, tableName)
-
-		times := arguments[0].([]time.Time)
-		vals := arguments[1].([]float64)
-		series := arguments[2].([]int64)
-
-		m.Times = append(m.Times, times...)
-		m.Vals = append(m.Vals, vals...)
-		m.Series = append(m.Series, series...)
-
-		return pgconn.CommandTag([]byte{}), m.CopyFromError
-	} else {
-		m.ExecSQLs = append(m.ExecSQLs, sql)
-		m.ExecArgs = append(m.ExecArgs, arguments)
-		return pgconn.CommandTag([]byte{}), m.ExecErr
-	}
+func (r *sqlRecorder) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	rows, err := r.checkQuery(sql, args...)
+	return &mockRows{results: rows}, err
 }
 
-func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	m.queryLock.Lock()
-	defer m.queryLock.Unlock()
-	defer func() {
-		m.QueryResultsIndex++
-	}()
-	m.QuerySQLs = append(m.QuerySQLs, sql)
-	m.QueryArgs = append(m.QueryArgs, args)
-	if len(m.QueryResults) <= m.QueryResultsIndex {
-		return &mockRows{results: nil, noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
-
-	}
-	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
-}
-
-func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+func (m *sqlRecorder) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	panic("should never be called")
 }
 
-func (m *mockPGXConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
-	m.CopyFromRowsRows = rows
-	return pgx.CopyFromRows(rows)
+func (m *sqlRecorder) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
+	panic("should never be called")
 }
 
-func (m *mockPGXConn) NewBatch() pgxBatch {
+func (m *sqlRecorder) NewBatch() pgxBatch {
 	return &mockBatch{}
 }
 
-func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
-	m.queryLock.Lock()
-	defer m.queryLock.Unlock()
-	defer func() { m.QueryResultsIndex++ }()
+func (r *sqlRecorder) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	batch := b.(*mockBatch)
-	m.Batch = append(m.Batch, batch)
-	return &mockBatchResult{results: m.QueryResults}, m.QueryErr[m.QueryResultsIndex]
-}
 
-type mockMetricCache struct {
-	metricCache  map[string]string
-	getMetricErr error
-	setMetricErr error
-}
-
-func (m *mockMetricCache) Get(metric string) (string, error) {
-	if m.getMetricErr != nil {
-		return "", m.getMetricErr
+	results := make([]rowResults, 0, len(batch.items))
+	for _, q := range batch.items {
+		//TODO err
+		rows, _ := r.checkQuery(q.query, q.arguments...)
+		results = append(results, rows)
 	}
-
-	val, ok := m.metricCache[metric]
-	if !ok {
-		return "", ErrEntryNotFound
-	}
-
-	return val, nil
+	return &mockBatchResult{results: results}, nil
 }
 
-func (m *mockMetricCache) Set(metric string, tableName string) error {
-	m.metricCache[metric] = tableName
-	return m.setMetricErr
+func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, error) {
+	idx := r.nextQuery
+	if idx >= len(r.queries) {
+		r.t.Errorf("@ %d extra query: %s", idx, sql)
+		return nil, fmt.Errorf("extra query")
+	}
+	row := r.queries[idx]
+	r.nextQuery += 1
+	if sql != row.sql {
+		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
+	}
+	if !reflect.DeepEqual(args, row.args) {
+		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%v\nexpected:\n\t%v", idx, sql, args, row.args)
+	}
+	return row.results, row.err
 }
 
 type batchItem struct {
@@ -364,6 +321,34 @@ func (m *mockRows) Values() ([]interface{}, error) {
 func (m *mockRows) RawValues() [][]byte {
 	panic("not implemented")
 }
+
+type mockMetricCache struct {
+	metricCache  map[string]string
+	getMetricErr error
+	setMetricErr error
+}
+
+func (m *mockMetricCache) Get(metric string) (string, error) {
+	if m.getMetricErr != nil {
+		return "", m.getMetricErr
+	}
+
+	val, ok := m.metricCache[metric]
+	if !ok {
+		return "", ErrEntryNotFound
+	}
+
+	return val, nil
+}
+
+func (m *mockMetricCache) Set(metric string, tableName string) error {
+	m.metricCache[metric] = tableName
+	return m.setMetricErr
+}
+
+// test code start
+
+// sql_ingest tests
 
 func TestPGXInserterInsertSeries(t *testing.T) {
 	testCases := []struct {
@@ -762,83 +747,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 	}
 }
 
-type sqlRecorder struct {
-	queries   []sqlQuery
-	nextQuery int
-	lock      sync.Mutex
-	t         *testing.T
-}
-
-type sqlQuery struct {
-	sql     string
-	args    []interface{}
-	results rowResults
-	err     error
-}
-
-func newSqlRecorder(queries []sqlQuery, t *testing.T) *sqlRecorder {
-	return &sqlRecorder{queries: queries, t: t}
-}
-
-func (r *sqlRecorder) Close() {
-}
-
-func (r *sqlRecorder) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	_, err := r.checkQuery(sql, arguments...)
-	return pgconn.CommandTag{}, err
-}
-
-func (r *sqlRecorder) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	rows, err := r.checkQuery(sql, args...)
-	return &mockRows{results: rows}, err
-}
-
-func (m *sqlRecorder) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	panic("should never be called")
-}
-
-func (m *sqlRecorder) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
-	panic("should never be called")
-}
-
-func (m *sqlRecorder) NewBatch() pgxBatch {
-	return &mockBatch{}
-}
-
-func (r *sqlRecorder) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	batch := b.(*mockBatch)
-
-	results := make([]rowResults, 0, len(batch.items))
-	for _, q := range batch.items {
-		//TODO err
-		rows, _ := r.checkQuery(q.query, q.arguments...)
-		results = append(results, rows)
-	}
-	return &mockBatchResult{results: results}, nil
-}
-
-func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, error) {
-	idx := r.nextQuery
-	if idx >= len(r.queries) {
-		r.t.Errorf("@ %d extra query: %s", idx, sql)
-		return nil, fmt.Errorf("extra query")
-	}
-	row := r.queries[idx]
-	r.nextQuery += 1
-	if sql != row.sql {
-		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
-	}
-	if !reflect.DeepEqual(args, row.args) {
-		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%v\nexpected:\n\t%v", idx, sql, args, row.args)
-	}
-	return row.results, row.err
-}
+// sql_reader tests
 
 func TestPGXQuerierQuery(t *testing.T) {
 	testCases := []struct {
@@ -1600,6 +1509,7 @@ func testLabelMethods(t *testing.T, f func(*pgxQuerier) ([]string, error)) {
 		})
 	}
 }
+
 func toRowResults(labelNames []string, convertImproperly bool) []rowResults {
 	toReturn := make([]rowResults, 1)
 	toReturn[0] = make(rowResults, len(labelNames))
@@ -1611,4 +1521,97 @@ func toRowResults(labelNames []string, convertImproperly bool) []rowResults {
 		}
 	}
 	return toReturn
+}
+
+type mockPGXConn struct {
+	insertLock        sync.Mutex
+	queryLock         sync.Mutex
+	DBName            string
+	ExecSQLs          []string
+	ExecArgs          [][]interface{}
+	ExecErr           error
+	QuerySQLs         []string
+	QueryArgs         [][]interface{}
+	QueryResults      []rowResults
+	QueryResultsIndex int
+	QueryNoRows       bool
+	QueryErr          map[int]error // Mapping query call to error response.
+	CopyFromTableName []string
+	Times             []time.Time
+	Vals              []float64
+	Series            []int64
+	CopyFromResult    int64
+	CopyFromError     error
+	CopyFromRowsRows  [][]interface{}
+	Batch             []*mockBatch
+}
+
+func (m *mockPGXConn) Close() {
+}
+
+func (m *mockPGXConn) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+	if strings.HasPrefix(sql, "INSERT INTO ") && strings.HasSuffix(sql, "DO NOTHING") {
+		m.insertLock.Lock()
+		defer m.insertLock.Unlock()
+		if len(arguments) != 3 {
+			panic(fmt.Sprintf("invalid arguments: %v", arguments))
+		}
+		end := 0
+		for end < len(sql) && sql[end] != '(' {
+			end += 1
+		}
+		tableName := sql[len("INSERT INTO "):end]
+		m.CopyFromTableName = append(m.CopyFromTableName, tableName)
+
+		times := arguments[0].([]time.Time)
+		vals := arguments[1].([]float64)
+		series := arguments[2].([]int64)
+
+		m.Times = append(m.Times, times...)
+		m.Vals = append(m.Vals, vals...)
+		m.Series = append(m.Series, series...)
+
+		return pgconn.CommandTag([]byte{}), m.CopyFromError
+	} else {
+		m.ExecSQLs = append(m.ExecSQLs, sql)
+		m.ExecArgs = append(m.ExecArgs, arguments)
+		return pgconn.CommandTag([]byte{}), m.ExecErr
+	}
+}
+
+func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	m.queryLock.Lock()
+	defer m.queryLock.Unlock()
+	defer func() {
+		m.QueryResultsIndex++
+	}()
+	m.QuerySQLs = append(m.QuerySQLs, sql)
+	m.QueryArgs = append(m.QueryArgs, args)
+	if len(m.QueryResults) <= m.QueryResultsIndex {
+		return &mockRows{results: nil, noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
+
+	}
+	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
+}
+
+func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	panic("should never be called")
+}
+
+func (m *mockPGXConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
+	m.CopyFromRowsRows = rows
+	return pgx.CopyFromRows(rows)
+}
+
+func (m *mockPGXConn) NewBatch() pgxBatch {
+	return &mockBatch{}
+}
+
+func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+	m.queryLock.Lock()
+	defer m.queryLock.Unlock()
+	defer func() { m.QueryResultsIndex++ }()
+	batch := b.(*mockBatch)
+	m.Batch = append(m.Batch, batch)
+	return &mockBatchResult{results: m.QueryResults}, m.QueryErr[m.QueryResultsIndex]
 }
