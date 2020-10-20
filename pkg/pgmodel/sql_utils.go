@@ -42,6 +42,7 @@ type pgxConn interface {
 	Close()
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
 	CopyFromRows(rows [][]interface{}) pgx.CopyFromSource
 	NewBatch() pgxBatch
@@ -79,6 +80,18 @@ func (p *pgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}
 	}
 
 	return conn.Query(ctx, sql, args...)
+}
+
+func (p *pgxConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	conn := p.getConn()
+	if p.readHist != nil {
+		defer func(start time.Time, hist prometheus.ObserverVec, path string) {
+			elapsedMs := float64(time.Since(start).Milliseconds())
+			hist.WithLabelValues(path).Observe(elapsedMs)
+		}(time.Now(), p.readHist, sql[0:6])
+	}
+
+	return conn.QueryRow(ctx, sql, args...)
 }
 
 func (p *pgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
