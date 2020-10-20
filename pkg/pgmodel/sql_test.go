@@ -172,6 +172,10 @@ type mockBatchResult struct {
 
 // Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
 func (m *mockBatchResult) Exec() (pgconn.CommandTag, error) {
+	defer func() { m.idx++ }()
+	if len(m.results[m.idx]) != 0 {
+		panic("tried to return results using Exec")
+	}
 	return nil, nil
 }
 
@@ -241,11 +245,15 @@ func (m *mockRows) Scan(dest ...interface{}) error {
 	defer func() { m.idx++ }()
 
 	if m.idx >= len(m.results) {
-		return fmt.Errorf("scanning error, no more results: got %d wanted %d", m.idx, len(m.results))
+		return fmt.Errorf("mock scanning error, no more results in batch: got %d wanted %d", m.idx, len(m.results))
 	}
 
 	if len(dest) > len(m.results[m.idx]) {
-		return fmt.Errorf("scanning error, missing results for scanning: got %d wanted %d", len(m.results[m.idx]), len(dest))
+		return fmt.Errorf("mock scanning error, missing results for scanning: got %d %#v\nwanted %d",
+			len(m.results[m.idx]),
+			m.results[m.idx],
+			len(dest),
+		)
 	}
 
 	for i := range dest {
@@ -357,87 +365,167 @@ func (m *mockRows) RawValues() [][]byte {
 	panic("not implemented")
 }
 
-func createSeriesResults(x int64) []rowResults {
-	ret := make([]rowResults, 0, x)
-	var i int64 = 1
-	x++
-
-	for i < x {
-		ret = append(ret, rowResults{{"table", i}})
-		i++
-	}
-
-	return ret
-}
-
-func createSeries(x int) []*labels.Labels {
-	ret := make([]*labels.Labels, 0, x)
-	i := 1
-	x++
-
-	for i < x {
-		label := labels.Labels{
-			labels.Label{
-				Name:  fmt.Sprintf("name_%d", i),
-				Value: fmt.Sprintf("value_%d", i),
-			},
-			labels.Label{
-				Name:  fmt.Sprint(MetricNameLabelName),
-				Value: fmt.Sprintf("metric_%d", i),
-			},
-		}
-		ret = append(ret, &label)
-		i++
-	}
-
-	return ret
-}
-
 func TestPGXInserterInsertSeries(t *testing.T) {
 	testCases := []struct {
-		name         string
-		series       []*labels.Labels
-		queryResults []rowResults
-		queryErr     map[int]error
+		name       string
+		series     []labels.Labels
+		sqlQueries []sqlQuery
 	}{
 		{
 			name: "Zero series",
 		},
 		{
-			name:         "One series",
-			series:       createSeries(1),
-			queryResults: createSeriesResults(1),
+			name: "One series",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"},
+				},
+			},
+
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 		{
-			name:         "Two series",
-			series:       createSeries(2),
-			queryResults: createSeriesResults(2),
+			name: "Two series",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"},
+				},
+				{
+					{Name: "name_2", Value: "value_2"},
+					{Name: "__name__", Value: "metric_2"},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_2",
+						[]string{"__name__", "name_2"},
+						[]string{"metric_2", "value_2"},
+					},
+					results: rowResults{{"table", int64(2)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 		{
-			name:         "Double series",
-			series:       append(createSeries(2), createSeries(1)...),
-			queryResults: createSeriesResults(2),
+			name: "Double series",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"}},
+				{
+					{Name: "name_2", Value: "value_2"},
+					{Name: "__name__", Value: "metric_2"}},
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_2", []string{"__name__", "name_2"},
+						[]string{"metric_2", "value_2"},
+					},
+					results: rowResults{{"table", int64(2)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 		{
-			name:         "Query err",
-			series:       createSeries(2),
-			queryResults: createSeriesResults(2),
-			queryErr:     map[int]error{0: fmt.Errorf("some query error")},
+			name: "Query err",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"}},
+				{
+					{Name: "name_2", Value: "value_2"},
+					{Name: "__name__", Value: "metric_2"},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     fmt.Errorf("some query error"),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_2",
+						[]string{"__name__", "name_2"},
+						[]string{"metric_2", "value_2"},
+					},
+					results: rowResults{{"table", int64(2)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 	}
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			mock := &mockPGXConn{
-				QueryErr:     c.queryErr,
-				QueryResults: c.queryResults,
-			}
+			mock := newSqlRecorder(c.sqlQueries, t)
 
 			inserter := insertHandler{conn: mock, seriesCache: make(map[string]SeriesID)}
 
 			lsi := make([]samplesInfo, 0)
 			for _, ser := range c.series {
-				ls, err := LabelsFromSlice(*ser)
+				ls, err := LabelsFromSlice(ser)
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
@@ -446,27 +534,24 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			_, err := inserter.setSeriesIds(lsi)
 			if err != nil {
-				switch {
-				case len(c.queryErr) > 0:
-					for _, qErr := range c.queryErr {
-						if err != qErr {
-							t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, qErr)
+				foundErr := false
+				for _, q := range c.sqlQueries {
+					if q.err != nil {
+						foundErr = true
+						if err != q.err {
+							t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, q.err)
 						}
 					}
-					return
-				default:
+				}
+				if !foundErr {
 					t.Errorf("unexpected error: %v", err)
 				}
 			}
 
 			for _, si := range lsi {
 				if si.seriesID <= 0 {
-					t.Error("Series not set")
+					t.Error("Series not set", lsi)
 				}
-			}
-
-			if c.queryErr != nil {
-				t.Errorf("expected query error:\ngot\n%v\nwanted\n%v", err, c.queryErr)
 			}
 		})
 	}
@@ -658,6 +743,10 @@ type sqlQuery struct {
 	err     error
 }
 
+func newSqlRecorder(queries []sqlQuery, t *testing.T) *sqlRecorder {
+	return &sqlRecorder{queries: queries, t: t}
+}
+
 func (r *sqlRecorder) Close() {
 }
 
@@ -713,7 +802,7 @@ func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, e
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
 	}
 	if !reflect.DeepEqual(args, row.args) {
-		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%v\nexpected:\n\t%v", idx, sql, args, row.args)
+		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%#v\nexpected:\n\t%#v", idx, sql, args, row.args)
 	}
 	return row.results, row.err
 }
@@ -870,7 +959,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					err:     error(nil),
 				},
 			},
-			err: fmt.Errorf("scanning error, missing results for scanning: got 1 wanted 2"),
+			err: fmt.Errorf("mock scanning error, missing results for scanning: got 1 []interface {}{0}\nwanted 2"),
 		},
 		{
 			name:   "Empty query",
@@ -1367,7 +1456,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			mock := &sqlRecorder{queries: c.sqlQueries, t: t}
+			mock := newSqlRecorder(c.sqlQueries, t)
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &mockMetricCache{
 				metricCache: metricCache,
