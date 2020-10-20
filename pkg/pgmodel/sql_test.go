@@ -61,6 +61,13 @@ func (r *sqlRecorder) Query(ctx context.Context, sql string, args ...interface{}
 	return &mockRows{results: rows}, err
 }
 
+func (r *sqlRecorder) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	rows, err := r.checkQuery(sql, args...)
+	return &mockRows{results: rows, err: err}
+}
+
 func (m *sqlRecorder) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	panic("should never be called")
 }
@@ -166,6 +173,7 @@ type mockRows struct {
 	idx     int
 	noNext  bool
 	results rowResults
+	err     error
 }
 
 // Close closes the rows, making the connection ready for use again. It is safe
@@ -175,7 +183,7 @@ func (m *mockRows) Close() {
 
 // Err returns any error that occurred while reading.
 func (m *mockRows) Err() error {
-	return nil
+	return m.err
 }
 
 // CommandTag returns the command tag from this query. It is only available after Rows is closed.
@@ -200,6 +208,10 @@ func (m *mockRows) Next() bool {
 // copy the raw bytes received from PostgreSQL. nil will skip the value entirely.
 func (m *mockRows) Scan(dest ...interface{}) error {
 	defer func() { m.idx++ }()
+
+	if m.err != nil {
+		return m.err
+	}
 
 	if m.idx >= len(m.results) {
 		return fmt.Errorf("mock scanning error, no more results in batch: got %d wanted %d", m.idx, len(m.results))
@@ -1592,6 +1604,10 @@ func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}
 
 	}
 	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
+}
+
+func (m *mockPGXConn) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	panic("should never be called")
 }
 
 func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
