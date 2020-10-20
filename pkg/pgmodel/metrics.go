@@ -41,6 +41,22 @@ var (
 			Buckets:   []float64{1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 75, 100},
 		},
 	)
+	numRowsPerBatch = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Name:      "rows_per_batch",
+			Help:      "number of rows inserted in a single transaction",
+			Buckets:   prometheus.LinearBuckets(100, 500, 10),
+		},
+	)
+	dbBatchInsertDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Name:      "db_batch_insert_duration_seconds",
+			Help:      "Duration of sample batch insert calls to the DB.",
+			Buckets:   prometheus.DefBuckets,
+		},
+	)
 )
 
 func init() {
@@ -50,5 +66,7 @@ func init() {
 		decompressCalls,
 		decompressEarliest,
 		numInsertsPerBatch,
+		numRowsPerBatch,
+		dbBatchInsertDuration,
 	)
 }
