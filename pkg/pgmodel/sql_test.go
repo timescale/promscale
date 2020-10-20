@@ -557,110 +557,168 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	}
 }
 
-func createRows(x int) map[string][]samplesInfo {
-	return createRowsByMetric(x, 1)
-}
-
-func createRowsByMetric(x int, metricCount int) map[string][]samplesInfo {
-	ret := make(map[string][]samplesInfo)
-	i := 0
-
-	metrics := make([]string, 0, metricCount)
-
-	for metricCount > i {
-		metrics = append(metrics, fmt.Sprintf("metric_%d", i))
-		i++
-	}
-
-	i = 0
-
-	for i < x {
-		metricIndex := i % metricCount
-
-		ret[metrics[metricIndex]] = append(ret[metrics[metricIndex]], samplesInfo{samples: []prompb.Sample{{}}})
-		i++
-	}
-	return ret
-}
-
 func TestPGXInserterInsertData(t *testing.T) {
 	testCases := []struct {
-		name           string
-		rows           map[string][]samplesInfo
-		queryNoRows    bool
-		queryErr       map[int]error
-		copyFromResult int64
-		copyFromErr    error
-		metricsGetErr  error
-		metricsSetErr  error
+		name          string
+		rows          map[string][]samplesInfo
+		sqlQueries    []sqlQuery
+		metricsGetErr error
 	}{
 		{
 			name: "Zero data",
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+			},
 		},
 		{
 			name: "One data",
-			rows: createRows(1),
+			rows: map[string][]samplesInfo{
+				"metric_0": {{samples: make([]prompb.Sample, 1)}},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0)},
+						[]float64{0},
+						[]int64{0},
+					},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+			},
 		},
 		{
 			name: "Two data",
-			rows: createRows(2),
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0), time.Unix(0, 0)},
+						[]float64{0, 0},
+						[]int64{0, 0},
+					},
+					results: rowResults{},
+					err:     error(nil),
+				},
+			},
 		},
 		{
-			name:     "Create table error",
-			rows:     createRows(5),
-			queryErr: map[int]error{0: fmt.Errorf("create table error")},
+			name: "Create table error",
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{},
+					err:     fmt.Errorf("create table error"),
+				},
+			},
 		},
 		{
-			name:        "Copy from error",
-			rows:        createRows(5),
-			copyFromErr: fmt.Errorf("some error"),
+			name: "Copy from error",
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
+						make([]float64, 5),
+						make([]int64, 5),
+					},
+					results: rowResults{},
+					err:     fmt.Errorf("some INSERT error"),
+				},
+			},
 		},
 		{
-			name:           "Not all data inserted",
-			rows:           createRows(5),
-			copyFromResult: 4,
+			name: "Can't find/create table in DB",
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:  "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args: []interface{}{"metric_0"},
+					// no results is deliberate
+					results: rowResults{},
+					err:     error(nil),
+				},
+			},
 		},
 		{
-			name:        "Can't find/create table in DB",
-			rows:        createRows(5),
-			queryNoRows: true,
-		},
-		{
-			name:          "Metrics get error",
-			rows:          createRows(1),
+			name: "Metrics get error",
+			rows: map[string][]samplesInfo{
+				"metric_0": {{samples: make([]prompb.Sample, 1)}},
+			},
 			metricsGetErr: fmt.Errorf("some metrics error"),
-		},
-		{
-			name:          "Metrics set error",
-			rows:          createRows(1),
-			metricsSetErr: fmt.Errorf("some metrics error"),
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+			},
 		},
 	}
+
 	for _, co := range testCases {
 		c := co
 		t.Run(c.name, func(t *testing.T) {
-			mock := &mockPGXConn{
-				QueryNoRows:    c.queryNoRows,
-				QueryErr:       c.queryErr,
-				CopyFromResult: c.copyFromResult,
-				CopyFromError:  c.copyFromErr,
-			}
-
-			//The database will be queried for metricNames
-			results := make([]rowResults, 0, len(c.rows))
-			for metricName := range c.rows {
-				//create metric name
-				results = append(results, rowResults{{metricName, true}})
-				//send batch
-				results = append(results, rowResults{{}})
-			}
-			mock.QueryResults = results
+			mock := newSqlRecorder(c.sqlQueries, t)
 
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &mockMetricCache{
 				metricCache:  metricCache,
 				getMetricErr: c.metricsGetErr,
-				setMetricErr: c.metricsSetErr,
 			}
 			inserter, err := newPgxInserter(mock, mockMetrics, &Cfg{})
 			if err != nil {
@@ -669,24 +727,23 @@ func TestPGXInserterInsertData(t *testing.T) {
 
 			_, err = inserter.InsertData(c.rows)
 
-			if err != nil {
-				var expErr error
+			var expErr error
 
-				switch {
-				case c.metricsGetErr != nil:
-					expErr = c.metricsGetErr
-				case c.metricsSetErr != nil:
-					expErr = c.metricsSetErr
-				case c.copyFromErr != nil:
-					expErr = c.copyFromErr
-				case c.queryErr != nil:
-					for _, qErr := range c.queryErr {
-						expErr = qErr
+			switch {
+			case c.metricsGetErr != nil:
+				expErr = c.metricsGetErr
+			case c.name == "Can't find/create table in DB":
+				expErr = errMissingTableName
+			default:
+				for _, q := range c.sqlQueries {
+					if q.err != nil {
+						expErr = q.err
+						break
 					}
-				case c.queryNoRows:
-					expErr = errMissingTableName
 				}
+			}
 
+			if err != nil {
 				if !errors.Is(err, expErr) {
 					t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s", err, expErr)
 				}
@@ -694,36 +751,12 @@ func TestPGXInserterInsertData(t *testing.T) {
 				return
 			}
 
-			if c.copyFromErr != nil {
-				t.Errorf("expected error:\ngot\nnil\nwanted\n%s", c.copyFromErr)
+			if expErr != nil {
+				t.Errorf("expected error:\ngot\nnil\nwanted\n%s", expErr)
 			}
 
 			if len(c.rows) == 0 {
 				return
-			}
-
-			if len(mock.CopyFromTableName) != len(c.rows) {
-				t.Errorf("number of table names differs from input: got %d want %d\n", len(mock.CopyFromTableName), len(c.rows))
-			}
-
-			tNames := make([]pgx.Identifier, 0, len(c.rows))
-			for tableName := range c.rows {
-				realTableName, err := mockMetrics.Get(tableName)
-				if err != nil {
-					t.Fatalf("error when fetching metric table name: %s", err)
-				}
-				tNames = append(tNames, pgx.Identifier{dataSchema, realTableName})
-			}
-
-			// Sorting because range over a map gives random iteration order.
-			sort.Slice(tNames, func(i, j int) bool { return tNames[i][1] < tNames[j][1] })
-			sort.Slice(mock.CopyFromTableName, func(i, j int) bool { return mock.CopyFromTableName[i][1] < mock.CopyFromTableName[j][1] })
-			expectedNames := make([]string, len(tNames))
-			for i := range tNames {
-				expectedNames[i] = tNames[i].Sanitize()
-			}
-			if !reflect.DeepEqual(mock.CopyFromTableName, expectedNames) {
-				t.Errorf("unexpected copy table:\ngot\n%s\nwanted\n%s", mock.CopyFromTableName, tNames)
 			}
 		})
 	}
@@ -802,7 +835,7 @@ func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, e
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
 	}
 	if !reflect.DeepEqual(args, row.args) {
-		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%#v\nexpected:\n\t%#v", idx, sql, args, row.args)
+		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%v\nexpected:\n\t%v", idx, sql, args, row.args)
 	}
 	return row.results, row.err
 }
