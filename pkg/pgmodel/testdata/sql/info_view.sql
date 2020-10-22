@@ -19,3 +19,8 @@ INSERT INTO prom_data.cpu_total
 
 SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', label_keys, size , compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
 SELECT * FROM prom_info.label ORDER BY key;
+SELECT * FROM prom_info.metric_stats ORDER BY num_series_approx;
+SELECT * FROM prom_info.system_stats;
+SELECT prom_api.label_cardinality(1);
+SELECT prom_api.label_cardinality(2);
+SELECT prom_api.label_cardinality(1) + prom_api.label_cardinality(2);
