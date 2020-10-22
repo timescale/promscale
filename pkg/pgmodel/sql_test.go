@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1739,71 +1738,85 @@ func TestPGXQuerierQuery(t *testing.T) {
 }
 
 func TestPgxQuerierLabelsNames(t *testing.T) {
-	testLabelMethods(t, func(querier *pgxQuerier) ([]string, error) {
-		return querier.LabelNames()
-	})
-}
-
-func TestPgxQuerierLabelsValues(t *testing.T) {
-	testLabelMethods(t, func(querier *pgxQuerier) ([]string, error) {
-		return querier.LabelValues("m")
-	})
-}
-
-func testLabelMethods(t *testing.T, f func(*pgxQuerier) ([]string, error)) {
 	testCases := []struct {
-		name         string
-		expectedRes  []string
-		errorOnQuery bool
-		errorOnScan  bool
+		name        string
+		expectedRes []string
+		sqlQueries  []sqlQuery
 	}{
 		{
-			name:         "Error on query",
-			errorOnQuery: true,
+			name: "Error on query",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{},
+					err:     fmt.Errorf("some error"),
+				},
+			},
 		}, {
-			name:        "Error on scanning values",
-			errorOnScan: true,
-			expectedRes: []string{"a"},
+			name: "Error on scanning values",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{{1}},
+				},
+			},
 		}, {
-			name:        "Empty result, is ok",
+			name: "Empty result, is ok",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{},
+				},
+			},
 			expectedRes: []string{},
 		}, {
-			name:        "Result should be sorted",
-			expectedRes: []string{"b", "a"},
+			name: "Result should be sorted",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{{"b"}, {"a"}},
+				},
+			},
+			expectedRes: []string{"a", "b"},
 		},
 	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			queryResults := toRowResults(tc.expectedRes, tc.errorOnScan)
-			queryErr := make(map[int]error)
-			if tc.errorOnQuery {
-				queryErr[0] = fmt.Errorf("some error")
-			}
-			mock := &mockPGXConn{
-				QueryErr:     queryErr,
-				QueryResults: queryResults,
-			}
+			mock := newSqlRecorder(tc.sqlQueries, t)
 			querier := pgxQuerier{conn: mock}
-			res, err := f(&querier)
-			if tc.errorOnQuery && err == nil {
-				t.Error("unexpected lack of error")
-				return
-			} else if tc.errorOnScan && err == nil {
-				t.Error("unexpected lack of error")
-				return
-			} else if err != nil && !tc.errorOnQuery && !tc.errorOnScan {
-				t.Errorf("unexpected error: %v", err)
-				return
-			} else if tc.errorOnQuery || tc.errorOnScan {
+			res, err := querier.LabelNames()
+
+			var expectedErr error
+			for _, q := range tc.sqlQueries {
+				if q.err != nil {
+					expectedErr = err
+					break
+				}
+			}
+
+			if tc.name == "Error on scanning values" {
+				if err.Error() != "wrong value type int" {
+					expectedErr = fmt.Errorf("wrong value type int")
+					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
+					return
+				}
+			} else if expectedErr != err {
+				t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 				return
 			}
+
 			outputIsSorted := sort.SliceIsSorted(res, func(i, j int) bool {
 				return res[i] < res[j]
 			})
 			if !outputIsSorted {
-				t.Error("returned label names are not sorted")
+				t.Errorf("returned label names %v are not sorted", res)
 			}
-			sort.Strings(tc.expectedRes)
+
 			if !reflect.DeepEqual(tc.expectedRes, res) {
 				t.Errorf("expected: %v, got: %v", tc.expectedRes, res)
 			}
@@ -1811,112 +1824,89 @@ func testLabelMethods(t *testing.T, f func(*pgxQuerier) ([]string, error)) {
 	}
 }
 
-func toRowResults(labelNames []string, convertImproperly bool) []rowResults {
-	toReturn := make([]rowResults, 1)
-	toReturn[0] = make(rowResults, len(labelNames))
-	for i, labelName := range labelNames {
-		if convertImproperly {
-			toReturn[0][i] = []interface{}{1}
-		} else {
-			toReturn[0][i] = []interface{}{labelName}
-		}
+func TestPgxQuerierLabelsValues(t *testing.T) {
+	testCases := []struct {
+		name        string
+		expectedRes []string
+		sqlQueries  []sqlQuery
+	}{
+		{
+			name: "Error on query",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{},
+					err:     fmt.Errorf("some error"),
+				},
+			},
+		}, {
+			name: "Error on scanning values",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{{1}},
+				},
+			},
+		}, {
+			name: "Empty result, is ok",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{},
+				},
+			},
+			expectedRes: []string{},
+		}, {
+			name: "Result should be sorted",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{{"b"}, {"a"}},
+				},
+			},
+			expectedRes: []string{"a", "b"},
+		},
 	}
-	return toReturn
-}
 
-type mockPGXConn struct {
-	insertLock        sync.Mutex
-	queryLock         sync.Mutex
-	DBName            string
-	ExecSQLs          []string
-	ExecArgs          [][]interface{}
-	ExecErr           error
-	QuerySQLs         []string
-	QueryArgs         [][]interface{}
-	QueryResults      []rowResults
-	QueryResultsIndex int
-	QueryNoRows       bool
-	QueryErr          map[int]error // Mapping query call to error response.
-	CopyFromTableName []string
-	Times             []time.Time
-	Vals              []float64
-	Series            []int64
-	CopyFromResult    int64
-	CopyFromError     error
-	CopyFromRowsRows  [][]interface{}
-	Batch             []*mockBatch
-}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := newSqlRecorder(tc.sqlQueries, t)
+			querier := pgxQuerier{conn: mock}
+			res, err := querier.LabelValues("m")
 
-func (m *mockPGXConn) Close() {
-}
+			var expectedErr error
+			for _, q := range tc.sqlQueries {
+				if q.err != nil {
+					expectedErr = err
+					break
+				}
+			}
 
-func (m *mockPGXConn) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	if strings.HasPrefix(sql, "INSERT INTO ") && strings.HasSuffix(sql, "DO NOTHING") {
-		m.insertLock.Lock()
-		defer m.insertLock.Unlock()
-		if len(arguments) != 3 {
-			panic(fmt.Sprintf("invalid arguments: %v", arguments))
-		}
-		end := 0
-		for end < len(sql) && sql[end] != '(' {
-			end += 1
-		}
-		tableName := sql[len("INSERT INTO "):end]
-		m.CopyFromTableName = append(m.CopyFromTableName, tableName)
+			if tc.name == "Error on scanning values" {
+				if err.Error() != "wrong value type int" {
+					expectedErr = fmt.Errorf("wrong value type int")
+					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
+					return
+				}
+			} else if expectedErr != err {
+				t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
+				return
+			}
 
-		times := arguments[0].([]time.Time)
-		vals := arguments[1].([]float64)
-		series := arguments[2].([]int64)
+			outputIsSorted := sort.SliceIsSorted(res, func(i, j int) bool {
+				return res[i] < res[j]
+			})
+			if !outputIsSorted {
+				t.Errorf("returned label names %v are not sorted", res)
+			}
 
-		m.Times = append(m.Times, times...)
-		m.Vals = append(m.Vals, vals...)
-		m.Series = append(m.Series, series...)
-
-		return pgconn.CommandTag([]byte{}), m.CopyFromError
-	} else {
-		m.ExecSQLs = append(m.ExecSQLs, sql)
-		m.ExecArgs = append(m.ExecArgs, arguments)
-		return pgconn.CommandTag([]byte{}), m.ExecErr
+			if !reflect.DeepEqual(tc.expectedRes, res) {
+				t.Errorf("expected: %v, got: %v", tc.expectedRes, res)
+			}
+		})
 	}
-}
-
-func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	m.queryLock.Lock()
-	defer m.queryLock.Unlock()
-	defer func() {
-		m.QueryResultsIndex++
-	}()
-	m.QuerySQLs = append(m.QuerySQLs, sql)
-	m.QueryArgs = append(m.QueryArgs, args)
-	if len(m.QueryResults) <= m.QueryResultsIndex {
-		return &mockRows{results: nil, noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
-
-	}
-	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
-}
-
-func (m *mockPGXConn) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	panic("should never be called")
-}
-
-func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	panic("should never be called")
-}
-
-func (m *mockPGXConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
-	m.CopyFromRowsRows = rows
-	return pgx.CopyFromRows(rows)
-}
-
-func (m *mockPGXConn) NewBatch() pgxBatch {
-	return &mockBatch{}
-}
-
-func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
-	m.queryLock.Lock()
-	defer m.queryLock.Unlock()
-	defer func() { m.QueryResultsIndex++ }()
-	batch := b.(*mockBatch)
-	m.Batch = append(m.Batch, batch)
-	return &mockBatchResult{results: m.QueryResults}, m.QueryErr[m.QueryResultsIndex]
 }
