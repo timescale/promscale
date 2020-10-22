@@ -24,6 +24,12 @@ spec:
         - image: {{ .Values.image }}
           imagePullPolicy: IfNotPresent
           name: promscale-connector
+          {{- if .Values.args }}
+          args:
+            {{- range .Values.args }}
+              - {{ . }}
+            {{- end }}
+          {{- end}}
           {{- if .Values.resources }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
