@@ -49,8 +49,24 @@ func (r *sqlRecorder) Close() {
 func (r *sqlRecorder) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	_, err := r.checkQuery(sql, arguments...)
-	return pgconn.CommandTag{}, err
+
+	results, err := r.checkQuery(sql, arguments...)
+
+	if len(results) == 0 {
+		return nil, err
+	}
+	if len(results) != 1 {
+		r.t.Errorf("mock exec: too many return rows %v\n in Exec\n %v\n args %v",
+			results, sql, arguments)
+		return nil, err
+	}
+	if len(results[0]) != 1 {
+		r.t.Errorf("mock exec: too many return values %v\n in Exec\n %v\n args %v",
+			results, sql, arguments)
+		return nil, err
+	}
+
+	return results[0][0].(pgconn.CommandTag), err
 }
 
 func (r *sqlRecorder) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
@@ -84,16 +100,12 @@ func (r *sqlRecorder) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResul
 	defer r.lock.Unlock()
 	batch := b.(*mockBatch)
 
-	results := make([]rowResults, 0, len(batch.items))
-	errors := make([]error, 0, len(batch.items))
+	start := r.nextQuery
 	for _, q := range batch.items {
-		//TODO err
-		rows, err := r.checkQuery(q.query, q.arguments...)
-		results = append(results, rows)
-		errors = append(errors, err)
+		_, _ = r.checkQuery(q.query, q.arguments...)
 	}
 	// TODO switch to q.query[] subslice
-	return &mockBatchResult{results: results, errors: errors}, nil
+	return &mockBatchResult{queries: r.queries[start:r.nextQuery]}, nil
 }
 
 func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, error) {
@@ -121,11 +133,11 @@ type batchItem struct {
 // Batch queries are a way of bundling multiple queries together to avoid
 // unnecessary network round trips.
 type mockBatch struct {
-	items []*batchItem
+	items []batchItem
 }
 
 func (b *mockBatch) Queue(query string, arguments ...interface{}) {
-	b.items = append(b.items, &batchItem{
+	b.items = append(b.items, batchItem{
 		query:     query,
 		arguments: arguments,
 	})
@@ -133,42 +145,37 @@ func (b *mockBatch) Queue(query string, arguments ...interface{}) {
 
 type mockBatchResult struct {
 	idx     int
-	results []rowResults
-	errors  []error
+	queries []sqlQuery
+	t       *testing.T
 }
 
 // Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
 func (m *mockBatchResult) Exec() (pgconn.CommandTag, error) {
 	defer func() { m.idx++ }()
-	var err error
-	if m.errors != nil && m.idx < len(m.errors) {
-		err = m.errors[m.idx]
+
+	q := m.queries[m.idx]
+
+	if len(q.results) == 0 {
+		return nil, q.err
+	}
+	if len(q.results) != 1 {
+		m.t.Errorf("mock exec: too many return rows %v\n in batch Exec\n %+v", q.results, q)
+		return nil, q.err
+	}
+	if len(q.results[0]) != 1 {
+		m.t.Errorf("mock exec: too many return values %v\n in batch Exec\n %+v", q.results, q)
+		return nil, q.err
 	}
 
-	if len(m.results[m.idx]) == 0 {
-		return nil, err
-	}
-	if len(m.results[m.idx]) != 1 {
-		return nil, fmt.Errorf("mock exec: too many return rows %v", m.results[m.idx])
-	}
-	if len(m.results[m.idx][0]) != 1 {
-		return nil, fmt.Errorf("mock exec: too many return values %v", m.results[m.idx][0])
-	}
-
-	return m.results[m.idx][0][0].(pgconn.CommandTag), err
+	return q.results[0][0].(pgconn.CommandTag), q.err
 }
 
 // Query reads the results from the next query in the batch as if the query has been sent with Conn.Query.
 func (m *mockBatchResult) Query() (pgx.Rows, error) {
 	defer func() { m.idx++ }()
-	var err error
-	if m.idx < len(m.errors) {
-		err = m.errors[m.idx]
-	}
-	if len(m.results) <= m.idx {
-		return &mockRows{results: nil, noNext: false}, err
-	}
-	return &mockRows{results: m.results[m.idx], noNext: false}, err
+
+	q := m.queries[m.idx]
+	return &mockRows{results: q.results, noNext: false}, q.err
 }
 
 // Close closes the batch operation. This must be called before the underlying connection can be used again. Any error
@@ -181,15 +188,8 @@ func (m *mockBatchResult) Close() error {
 // QueryRow reads the results from the next query in the batch as if the query has been sent with Conn.QueryRow.
 func (m *mockBatchResult) QueryRow() pgx.Row {
 	defer func() { m.idx++ }()
-	var err error
-	if m.idx < len(m.errors) {
-		err = m.errors[m.idx]
-	}
-	if len(m.results) <= m.idx {
-		return &mockRows{results: nil, noNext: false, err: err}
-
-	}
-	return &mockRows{results: m.results[m.idx], noNext: false, err: err}
+	q := m.queries[m.idx]
+	return &mockRows{results: q.results, err: q.err, noNext: false}
 }
 
 type mockRows struct {
