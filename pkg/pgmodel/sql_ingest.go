@@ -711,6 +711,7 @@ func (pending *pendingBuffer) reportResults(err error) {
 	}
 	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0]}
 	pending.batch.ResetPosition()
+	pending.epoch = -1
 }
 
 // Set all seriesIds for a samplesInfo, fetching any missing ones from the DB,
