@@ -5,7 +5,6 @@ package end_to_end_tests
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
@@ -17,7 +16,7 @@ import (
 )
 
 var outputDifferWithoutTimescale = map[string]bool{"info_view": true}
-var requiresTimescaleDB = map[string]bool{"views": true}
+var requiresTimescaleDB = map[string]bool{"views": true, "info_view": true}
 
 func TestSQLGoldenFiles(t *testing.T) {
 	if testing.Short() {
@@ -92,10 +91,6 @@ func TestSQLGoldenFiles(t *testing.T) {
 			}
 
 			if string(expected) != string(actual) {
-				fmt.Println("Expected", expectedFile)
-				fmt.Println(string(expected))
-				fmt.Println("actual")
-				fmt.Println(string(actual))
 				t.Fatalf("Golden file does not match result: diff %s %s", expectedFile, actualFile)
 			}
 

@@ -431,27 +431,21 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_unnest(label_array anyarray)
 AS $function$ SELECT unnest(label_array) $function$;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_unnest(anyarray) to prom_reader;
 
--- approximate_row_count is used to count the approximate number of rows in a table (non-hypertable).
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.approximate_row_count(table_name REGCLASS)
-    RETURNS BIGINT
-    LANGUAGE SQL
-AS
-$$
-    SELECT reltuples::BIGINT FROM pg_class WHERE oid=table_name;
-$$ STABLE PARALLEL SAFE;
-
 -- safe_approximate_row_count returns the approximate row count of a hypertable if timescaledb is installed
 -- else returns the approximate row count in the normal table. This prevents errors in approximate count calculation
 -- if timescaledb is not installed, which is the case in plain postgres support.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.safe_approximate_row_count(table_name REGCLASS) RETURNS BIGINT
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.safe_approximate_row_count(table_name_input REGCLASS) RETURNS BIGINT
     LANGUAGE PLPGSQL
 AS
 $$
 BEGIN
-    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-        RETURN (SELECT row_estimate FROM public.hypertable_approximate_row_count(table_name));
+        IF SCHEMA_CATALOG.is_timescaledb_installed()
+    AND
+        (SELECT count(*) > 0 from _timescaledb_catalog.hypertable WHERE format('%I.%I', schema_name, table_name)::regclass=table_name_input)
+    THEN
+            RETURN (SELECT row_estimate FROM hypertable_approximate_row_count(table_name_input));
     END IF;
-    RETURN (SELECT SCHEMA_PROM.approximate_row_count(table_name));
+    RETURN (SELECT reltuples::BIGINT FROM pg_class WHERE oid=table_name_input);
 END;
 $$;
 
@@ -1489,28 +1483,6 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
--- CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_stats_view() RETURNS BOOLEAN
---     LANGUAGE PLPGSQL
--- AS
--- $$
--- BEGIN
---     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
---         CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
---             SELECT metric_name,
---             SCHEMA_PROM.approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
---             CASE WHEN SCHEMA_CATALOG.is_timescaledb_installed() = true THEN
---             (SELECT row_estimate FROM public.hypertable_approximate_row_count(format('prom_data.%I',table_name)::regclass)) END num_samples_approx
---             FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
---         ELSE
---         CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
---             SELECT metric_name,
---             SCHEMA_PROM.approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx
---             FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
---     END IF;
---     RETURN true;
--- END;
--- $$;
-
 --------------------------------- Views --------------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_view()
@@ -1580,19 +1552,20 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.metric AS
     FROM SCHEMA_CATALOG.metric_view();
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
-  SELECT
-    lk.key,
-    lk.value_column_name,
-    lk.id_column_name,
-    ARRAY(SELECT value FROM SCHEMA_CATALOG.label l WHERE l.key = lk.key ORDER BY value)
-      AS values,
-    cardinality(ARRAY(SELECT value FROM SCHEMA_CATALOG.label l WHERE l.key = lk.key))
-  FROM SCHEMA_CATALOG.label_key lk ORDER BY cardinality DESC;
+    SELECT
+        lk.key,
+        lk.value_column_name,
+        lk.id_column_name,
+        va.values as values,
+        cardinality(va.values) as num_values
+    FROM SCHEMA_CATALOG.label_key lk 
+    INNER JOIN LATERAL(SELECT key, array_agg(value ORDER BY value) as values FROM SCHEMA_CATALOG.label GROUP BY key) 
+    AS va ON (va.key = lk.key) ORDER BY num_values DESC;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
     SELECT
     (
-        SELECT SCHEMA_PROM.approximate_row_count('_prom_catalog.series'::REGCLASS)
+        SELECT SCHEMA_CATALOG.safe_approximate_row_count('_prom_catalog.series'::REGCLASS)
     ) AS num_series_approx,
     (
         SELECT count(*) FROM SCHEMA_CATALOG.metric
@@ -1606,7 +1579,7 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
     SELECT metric_name,
-    SCHEMA_PROM.approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
+    SCHEMA_CATALOG.safe_approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
     (SELECT SCHEMA_CATALOG.safe_approximate_row_count(format('prom_data.%I',table_name)::regclass)) AS num_samples_approx
     FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
 
