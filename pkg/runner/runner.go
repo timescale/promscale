@@ -35,7 +35,6 @@ type Config struct {
 	PgmodelCfg         pgclient.Config
 	LogCfg             log.Config
 	HaGroupLockID      int64
-	RestElection       bool
 	PrometheusTimeout  time.Duration
 	ElectionInterval   time.Duration
 	Migrate            bool
@@ -70,7 +69,6 @@ func ParseFlags(cfg *Config) (*Config, error) {
 	flag.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
 	flag.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
 		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
-	flag.BoolVar(&cfg.RestElection, "leader-election-rest", false, "Enable REST interface for the leader election")
 	flag.DurationVar(&cfg.ElectionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
 	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
 	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Prevent race conditions during migration")
@@ -260,12 +258,6 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 }
 
 func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
-	if cfg.RestElection && cfg.HaGroupLockID != 0 {
-		return nil, fmt.Errorf("Use either REST or PgAdvisoryLock for the leader election")
-	}
-	if cfg.RestElection {
-		return util.NewElector(util.NewRestElection()), nil
-	}
 	if cfg.HaGroupLockID == 0 {
 		return nil, nil
 	}

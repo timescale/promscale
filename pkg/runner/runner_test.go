@@ -9,7 +9,6 @@ import (
 
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/util"
 )
 
 func TestMain(m *testing.M) {
@@ -34,22 +33,6 @@ func TestInitElector(t *testing.T) {
 		shouldError  bool
 		electionType reflect.Type
 	}{
-		{
-			name: "Cannot create REST election with a group lock ID",
-			cfg: &Config{
-				HaGroupLockID: 1,
-				RestElection:  true,
-			},
-			shouldError: true,
-		},
-		{
-			name: "Create REST elector",
-			cfg: &Config{
-				HaGroupLockID: 0,
-				RestElection:  true,
-			},
-			electionType: reflect.TypeOf(&util.RestElection{}),
-		},
 		{
 			name: "Cannot create scheduled elector, no group lock ID and not rest election",
 			cfg: &Config{
