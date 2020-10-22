@@ -19,11 +19,17 @@ type Reader interface {
 // Querier queries the data using the provided query data and returns the
 // matching timeseries.
 type Querier interface {
+	// Query returns resulting timeseries for a query.
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
+	// Select returns a series set that matches the supplied query parameters.
 	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node)
+	// LabelNames returns all the distinct label names in the system.
 	LabelNames() ([]string, error)
+	// LabelValues returns all the distinct values for a given label name.
 	LabelValues(labelName string) ([]string, error)
+	// NumCachedLabels returns the number of labels cached in the system.
 	NumCachedLabels() int
+	// LabelsCacheCapacity returns the capacity of the labels cache.
 	LabelsCacheCapacity() int
 }
 
