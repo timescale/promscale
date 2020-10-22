@@ -519,14 +519,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Error("expected ingest to fail due to old epoch")
 		}
 
-		ingestor.Close()
-		ingestor2, err := NewPgxIngestor(db)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer ingestor2.Close()
-
-		_, err = ingestor2.Ingest(copyMetrics(resurrected), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(resurrected), NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
