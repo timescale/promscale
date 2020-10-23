@@ -17,8 +17,8 @@ const (
 )
 
 var (
-	maskPasswordRegex1 = regexp.MustCompile(`password=(\s*?)'([^']+?)'`)
-	maskPasswordRegex2 = regexp.MustCompile(`password:(\s*?)([^\s]+?)( |$)`)
+	maskPasswordRegex1 = regexp.MustCompile(`[p|P]assword=(\s*?)'([^']+?)'`)
+	maskPasswordRegex2 = regexp.MustCompile(`[p|P]assword:(\s*?)([^\s]+?)( |$)`)
 )
 
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
