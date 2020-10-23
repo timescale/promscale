@@ -62,6 +62,7 @@ func TestMaskPassword(t *testing.T) {
 	testData := map[string]string{
 		"password='foobar' host='localhost'":   "password='****' host='localhost'",
 		"password='foo bar' host='localhost'":  "password='****' host='localhost'",
+		"Password='foo bar' host='localhost'":  "password='****' host='localhost'",
 		"password='foo'bar' host='localhost'":  "password='****'bar' host='localhost'",
 		"password= 'foobar' host='localhost'":  "password= '****' host='localhost'",
 		"password=  'foobar' host='localhost'": "password=  '****' host='localhost'",
@@ -73,6 +74,7 @@ func TestMaskPassword(t *testing.T) {
 		"password:  foobar  host: localhost":   "password:  ****  host: localhost",
 		"pass:foobar host: localhost":          "pass:foobar host: localhost",
 		"host: localhost password: foobar":     "host: localhost password: ****",
+		"host: localhost Password: foobar":     "host: localhost password: ****",
 	}
 
 	for input, expected := range testData {
