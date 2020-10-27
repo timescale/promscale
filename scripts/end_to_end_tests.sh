@@ -5,6 +5,7 @@ set -euf -o pipefail
 PASSED=0
 FAILED=0
 
+TIMESCALE_IMAGE=${1:-"timescale/timescaledb:latest-pg12"}
 SCRIPT_DIR=$(cd $(dirname ${0}) && pwd)
 ROOT_DIR=$(dirname ${SCRIPT_DIR})
 DB_URL="localhost:5432"
@@ -14,6 +15,8 @@ PROM_URL="localhost:9090"
 CONF=$(mktemp)
 
 chmod 777 $CONF
+
+echo "running tests against ${TIMESCALE_IMAGE}"
 
 echo "scrape_configs:
   - job_name: 'connector'
@@ -40,7 +43,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-docker run --rm --name e2e-tsdb -p 5432:5432/tcp -e "POSTGRES_PASSWORD=postgres" timescale/timescaledb:latest-pg12  > /dev/null 2>&1 &
+docker run --rm --name e2e-tsdb -p 5432:5432/tcp -e "POSTGRES_PASSWORD=postgres" "${TIMESCALE_IMAGE}"  > /dev/null 2>&1 &
 docker run --rm --name e2e-prom --network="host" -p 9090:9090/tcp -v "$CONF:/etc/prometheus/prometheus.yml" prom/prometheus:latest > /dev/null 2>&1  &
 
 cd $ROOT_DIR/cmd/promscale

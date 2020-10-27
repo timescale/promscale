@@ -130,9 +130,11 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 }
 
 // StartPGContainer starts a postgreSQL container for use in testing
-func StartPGContainer(ctx context.Context, usePromscaleExtension bool, useTimescaleDB bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
+func StartPGContainer(ctx context.Context, usePromscaleExtension bool, useTimescaleDB bool, useTimescale2 bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
 	var image string
-	if usePromscaleExtension && useTimescaleDB {
+	if useTimescale2 {
+		image = "timescale/timescaledb:2.0.0-rc2-pg12"
+	} else if usePromscaleExtension && useTimescaleDB {
 		image = "timescaledev/promscale-extension:latest-pg12"
 	} else if useTimescaleDB {
 		image = "timescale/timescaledb:latest-pg12"

@@ -21,7 +21,11 @@ jobs:
 
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
-      
-    - name: Run the test
+
+    - name: Test against latest
       run: ./scripts/end_to_end_tests.sh
+      shell: bash
+
+    - name: Test against TimescaleDB 2.0
+      run: ./scripts/end_to_end_tests.sh timescale/timescaledb:2.0.0-rc2-pg12
       shell: bash

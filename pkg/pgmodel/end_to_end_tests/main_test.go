@@ -30,6 +30,7 @@ var (
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
 	useExtension      = flag.Bool("use-extension", true, "use the promscale extension")
 	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
+	useTimescale2     = flag.Bool("use-timescale2", false, "use TimescaleDB 2.0")
 	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	extendedTest      = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
 
@@ -51,7 +52,12 @@ func TestMain(m *testing.M) {
 			if *useDocker {
 				pgContainerTestDataDir = generatePGTestDirFiles()
 
-				pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, *useTimescaleDB, pgContainerTestDataDir, *printLogs)
+				if *useTimescale2 && *useExtension {
+					fmt.Println("promscale extension not yet supported on TimescaleDB 2")
+					os.Exit(1)
+				}
+
+				pgContainer, err = testhelpers.StartPGContainer(ctx, *useExtension, *useTimescaleDB, *useTimescale2, pgContainerTestDataDir, *printLogs)
 				if err != nil {
 					fmt.Println("Error setting up container", err)
 					os.Exit(1)
