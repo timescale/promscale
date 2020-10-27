@@ -35,9 +35,10 @@ import (
 )
 
 var (
-	testDatabase = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
-	useExtension = flag.Bool("use-extension", true, "use the promscale extension")
-	printLogs    = flag.Bool("print-logs", false, "print TimescaleDB logs")
+	testDatabase  = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
+	useExtension  = flag.Bool("use-extension", true, "use the promscale extension")
+	useTimescale2 = flag.Bool("use-timescale2", false, "use TimescaleDB 2.0")
+	printLogs     = flag.Bool("print-logs", false, "print TimescaleDB logs")
 )
 
 var cleanImage = "timescale/timescaledb:latest-pg12"
@@ -45,6 +46,7 @@ var prevDBImage = "timescale/timescaledb:latest-pg12"
 
 func TestMain(m *testing.M) {
 	var code int
+	// TODO Timescale 2.0 and regular postgres
 	if *useExtension {
 		cleanImage = "timescaledev/promscale-extension:latest-pg12"
 		//TODO: note this uses the old timescale_prometheus_extra docker images

@@ -127,16 +127,34 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
     AS $func$
 DECLARE
   label_id INT;
+  is_distributed BOOLEAN = false;
 BEGIN
    EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL)',
                     NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
 
-   IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-        PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
-                             chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
-                             create_default_indexes=>false);
+    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        BEGIN
+            SELECT count(*) > 0 FROM timescaledb_information.data_nodes
+            INTO is_distributed;
+        EXCEPTION WHEN SQLSTATE '42P01' THEN
+        END;
+        IF is_distributed THEN
+            PERFORM distributed_create_hypertable(
+                format('SCHEMA_DATA.%I', NEW.table_name),
+                'time',
+                chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
+                create_default_indexes=>false
+            );
+        ELSE
+            PERFORM create_hypertable(
+                format('SCHEMA_DATA.%I', NEW.table_name),
+                'time',
+                chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
+                create_default_indexes=>false
+            );
+        END IF;
     END IF;
 
     SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
@@ -995,6 +1013,8 @@ IS 'set a compression setting for a specific metric (this overrides the default)
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN)
 RETURNS void
 AS $func$
+DECLARE
+    new_compress_policy BOOLEAN = false;
 BEGIN
     IF compression_setting THEN
         EXECUTE format($$
@@ -1003,8 +1023,16 @@ BEGIN
                 timescaledb.compress_segmentby = 'series_id',
                 timescaledb.compress_orderby = 'time, value'
             ); $$, metric_table_name);
+
+        SELECT count(*) > 0 FROM pg_catalog.pg_proc WHERE proname='add_compression_policy'
+            INTO new_compress_policy;
+
         --chunks where the end time is before now()-1 hour will be compressed
-        PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+        IF new_compress_policy THEN
+            PERFORM add_compression_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+        ELSE
+            PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+        END IF;
     ELSE
         PERFORM remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
         PERFORM decompress_chunk(i) from show_chunks(format('SCHEMA_DATA.%I', metric_table_name)) i;
