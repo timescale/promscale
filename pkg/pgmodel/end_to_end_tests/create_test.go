@@ -614,7 +614,14 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 		var nextStartAfter time.Time
-		err = db.QueryRow(context.Background(), "SELECT next_start FROM timescaledb_information.policy_stats WHERE hypertable = $1::text::regclass", pgx.Identifier{"prom_data", "test"}.Sanitize()).Scan(&nextStartAfter)
+		var statsQuery string
+		if *useTimescale2 {
+			statsQuery = "SELECT next_start FROM timescaledb_information.job_stats WHERE hypertable_schema=$1::text AND hypertable_name = $2::text"
+			err = db.QueryRow(context.Background(), statsQuery, "prom_data", "test").Scan(&nextStartAfter)
+		} else {
+			statsQuery = "SELECT next_start FROM timescaledb_information.policy_stats WHERE hypertable = $1::text::regclass"
+			err = db.QueryRow(context.Background(), statsQuery, pgx.Identifier{"prom_data", "test"}.Sanitize()).Scan(&nextStartAfter)
+		}
 		if err != nil {
 			t.Fatal(err)
 		}

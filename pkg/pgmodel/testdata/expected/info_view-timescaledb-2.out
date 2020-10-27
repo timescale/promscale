@@ -1,0 +1,79 @@
+\set ON_ERROR_STOP 1
+SELECT _prom_catalog.get_or_create_metric_table_name('cpu_usage');
+ get_or_create_metric_table_name 
+---------------------------------
+ (1,cpu_usage,t)
+(1 row)
+
+SELECT _prom_catalog.get_or_create_metric_table_name('cpu_total');
+ get_or_create_metric_table_name 
+---------------------------------
+ (2,cpu_total,t)
+(1 row)
+
+CALL _prom_catalog.finalize_metric_creation();
+CALL
+INSERT INTO prom_data.cpu_usage
+  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"}')
+  FROM generate_series(1,10) g;
+INSERT 0 10
+INSERT INTO prom_data.cpu_usage
+  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"production", "node": "pinky", "new_tag":"foo"}')
+  FROM generate_series(1,10) g;
+INSERT 0 10
+INSERT INTO prom_data.cpu_total
+  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"dev", "node": "brain"}')
+  FROM generate_series(1,10) g;
+INSERT 0 10
+INSERT INTO prom_data.cpu_total
+  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"production", "node": "pinky", "new_tag_2":"bar"}')
+  FROM generate_series(1,10) g;
+INSERT 0 10
+SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', label_keys, size , compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
+ id | metric_name | table_name | retention_period | ?column? |             label_keys              | size  | compression_ratio | total_chunks | compressed_chunks 
+----+-------------+------------+------------------+----------+-------------------------------------+-------+-------------------+--------------+-------------------
+  1 | cpu_usage   | cpu_usage  | 90 days          | t        | {__name__,namespace,new_tag,node}   | 24 kB |                   |            1 |                 0
+  2 | cpu_total   | cpu_total  | 90 days          | t        | {__name__,namespace,new_tag_2,node} | 24 kB |                   |            1 |                 0
+(2 rows)
+
+SELECT * FROM prom_info.label ORDER BY key;
+    key    | value_column_name | id_column_name |        values         | num_values 
+-----------+-------------------+----------------+-----------------------+------------
+ __name__  | __name__          | __name___id    | {cpu_total,cpu_usage} |          2
+ namespace | namespace         | namespace_id   | {dev,production}      |          2
+ new_tag   | new_tag           | new_tag_id     | {foo}                 |          1
+ new_tag_2 | new_tag_2         | new_tag_2_id   | {bar}                 |          1
+ node      | node              | node_id        | {brain,pinky}         |          2
+(5 rows)
+
+SELECT * FROM prom_info.metric_stats ORDER BY num_series_approx;
+ metric_name | num_series_approx | num_samples_approx 
+-------------+-------------------+--------------------
+ cpu_total   |                 0 |                  0
+ cpu_usage   |                 0 |                  0
+(2 rows)
+
+SELECT * FROM prom_info.system_stats;
+ num_series_approx | num_metric | num_label_keys | num_labels 
+-------------------+------------+----------------+------------
+                 0 |          2 |              5 |          8
+(1 row)
+
+SELECT prom_api.label_cardinality(1);
+ label_cardinality 
+-------------------
+                 2
+(1 row)
+
+SELECT prom_api.label_cardinality(2);
+ label_cardinality 
+-------------------
+                 2
+(1 row)
+
+SELECT prom_api.label_cardinality(1) + prom_api.label_cardinality(2);
+ ?column? 
+----------
+        4
+(1 row)
+

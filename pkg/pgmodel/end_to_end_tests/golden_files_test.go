@@ -69,10 +69,15 @@ func TestSQLGoldenFiles(t *testing.T) {
 				t.Log(string(msg))
 			}
 
-			expectedFile := filepath.Join("../testdata/expected/", base+".out")
+			mod := ""
+			if *useTimescale2 {
+				mod = "-2"
+			}
+
+			expectedFile := filepath.Join("../testdata/expected/", base+mod+".out")
 			if outputDifferWithoutTimescale[base] {
 				if *useTimescaleDB {
-					expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb.out")
+					expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+mod+".out")
 				} else {
 					expectedFile = filepath.Join("../testdata/expected/", base+"-postgres.out")
 				}

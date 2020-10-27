@@ -6,6 +6,7 @@ DO $$
         RETURN;
     END
 $$;
+
 DO $$
     BEGIN
         CREATE ROLE prom_writer;
