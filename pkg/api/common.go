@@ -83,6 +83,16 @@ func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Wa
 	}
 }
 
+func respond(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(&response{
+		Status: http.StatusText(status),
+		Data:   message,
+	})
+}
+
 func respondError(w http.ResponseWriter, status int, err error, errType string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -94,10 +104,23 @@ func respondError(w http.ResponseWriter, status int, err error, errType string) 
 	})
 }
 
+func respondErrorWithMessage(w http.ResponseWriter, status int, err error, errType string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(&errResponse{
+		Status:    "error",
+		ErrorType: errType,
+		Error:     err.Error(),
+		Message:   message,
+	})
+}
+
 type errResponse struct {
 	Status    string `json:"status"`
 	ErrorType string `json:"errorType"`
 	Error     string `json:"error"`
+	Message   string `json:"message,omitempty"`
 }
 
 type response struct {
