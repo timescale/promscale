@@ -45,6 +45,7 @@ var prevDBImage = "timescale/timescaledb:latest-pg12"
 
 func TestMain(m *testing.M) {
 	var code int
+	// TODO Timescale 2.0 and regular postgres
 	if *useExtension {
 		cleanImage = "timescaledev/promscale-extension:latest-pg12"
 		//TODO: note this uses the old timescale_prometheus_extra docker images
