@@ -60,6 +60,7 @@ type Client struct {
 	Connection    *pgxpool.Pool
 	ingestor      *pgmodel.DBIngestor
 	reader        *pgmodel.DBReader
+	deleter       *pgmodel.DBDeleter
 	queryable     *query.Queryable
 	cfg           *Config
 	ConnectionStr string
@@ -113,6 +114,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, pool *pgxpool.Pool) (*Client
 		return nil, err
 	}
 	reader := pgmodel.NewPgxReaderWithMetricCache(pool, cache, cfg.LabelsCacheSize)
+	deleter := pgmodel.NewPgxDeleter(pool)
 
 	queryable := query.NewQueryable(reader.GetQuerier())
 
@@ -120,6 +122,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, pool *pgxpool.Pool) (*Client
 		Connection:  pool,
 		ingestor:    ingestor,
 		reader:      reader,
+		deleter:     deleter,
 		queryable:   queryable,
 		cfg:         cfg,
 		metricCache: cache,
@@ -200,6 +203,10 @@ func (c *Client) Close() {
 // Ingest writes the timeseries object into the DB
 func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
 	return c.ingestor.Ingest(tts, req)
+}
+
+func (c *Client) Deleter() *pgmodel.DBDeleter {
+	return c.deleter
 }
 
 // Read returns the promQL query results

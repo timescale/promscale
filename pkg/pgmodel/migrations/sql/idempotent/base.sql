@@ -1547,6 +1547,33 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(series_id bigint, metric_name text)
+RETURNS BIGINT
+LANGUAGE PLPGSQL
+AS
+$$
+DECLARE
+    delete_stmt text;
+    num_chunks_touched bigint := 0;
+BEGIN
+    FOR delete_stmt in
+        SELECT FORMAT('DELETE FROM %1$I.%2$I WHERE series_id = %3$s', schema_name, table_name, series_id)
+        FROM (
+            SELECT (COALESCE(chc, ch)).* FROM pg_class c
+                INNER JOIN pg_namespace n ON c.relnamespace = n.oid
+                INNER JOIN _timescaledb_catalog.chunk ch ON (ch.schema_name, ch.table_name) = (n.nspname, c.relname)
+                LEFT JOIN _timescaledb_catalog.chunk chc ON ch.compressed_chunk_id = chc.id
+            WHERE c.oid IN (SELECT show_chunks(metric_name)::oid)
+        ) a
+    LOOP
+        EXECUTE delete_stmt;
+        num_chunks_touched = num_chunks_touched + 1;
+    END LOOP;
+    DELETE FROM SCHEMA_CATALOG.series WHERE id=series_id;
+    RETURN num_chunks_touched;
+END;
+$$;
+
 --------------------------------- Views --------------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_view()
