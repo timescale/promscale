@@ -1492,6 +1492,8 @@ RETURNS TABLE(id int, metric_name text, table_name name, retention_period  inter
                          chunk_interval interval, label_keys text[], size text, compression_ratio numeric,
                          total_chunks bigint, compressed_chunks bigint)
 AS $func$
+DECLARE
+    new_ht_info_view BOOLEAN;
 BEGIN
         IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
                     RETURN QUERY
@@ -1514,35 +1516,74 @@ BEGIN
                     RETURN;
         END IF;
 
-        RETURN QUERY
-        SELECT
-            m.id,
-            m.metric_name,
-            m.table_name,
-            SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
-            (
-                SELECT _timescaledb_internal.to_interval(interval_length)
-                FROM _timescaledb_catalog.dimension d
-                WHERE d.hypertable_id = h.id
-                ORDER BY d.id ASC
-                LIMIT 1
-            ) as chunk_interval,
-            ARRAY(
-                SELECT key
-                FROM SCHEMA_CATALOG.label_key_position lkp
-                WHERE lkp.metric_name = m.metric_name
-                ORDER BY key) label_keys,
-            hi.total_size as size,
-            (1.0 - (pg_size_bytes(chs.compressed_total_bytes)::numeric / pg_size_bytes(chs.uncompressed_total_bytes)::numeric)) * 100 as compression_ratio,
-            chs.total_chunks,
-            chs.number_compressed_chunks as compressed_chunks
-        FROM SCHEMA_CATALOG.metric m
-        LEFT JOIN timescaledb_information.hypertable hi ON
-                    (hi.table_schema = 'SCHEMA_DATA' AND hi.table_name = m.table_name)
-        LEFT JOIN timescaledb_information.compressed_hypertable_stats chs ON
-                    (chs.hypertable_name = format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass)
-        LEFT JOIN _timescaledb_catalog.hypertable h ON
-                    (h.schema_name = 'SCHEMA_DATA' AND h.table_name = m.table_name);
+        -- the info view on hypertables changed names in Timescale 2.0 to hypertables
+        SELECT count(*) > 0 FROM pg_class, pg_namespace ns
+        WHERE relnamespace=ns.oid
+          AND nspname='timescaledb_information'
+          AND relname='hypertables'
+        INTO new_ht_info_view;
+
+        IF new_ht_info_view THEN
+            RETURN QUERY
+            SELECT
+                m.id,
+                m.metric_name,
+                m.table_name,
+                SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                (
+                    SELECT _timescaledb_internal.to_interval(interval_length)
+                    FROM _timescaledb_catalog.dimension d
+                    WHERE d.hypertable_id = h.id
+                    ORDER BY d.id ASC
+                    LIMIT 1
+                ) as chunk_interval,
+                ARRAY(
+                    SELECT key
+                    FROM SCHEMA_CATALOG.label_key_position lkp
+                    WHERE lkp.metric_name = m.metric_name
+                    ORDER BY key) label_keys,
+                pg_size_pretty(hds.total_bytes) as size,
+                (1.0 - (hcs.after_compression_total_bytes::NUMERIC / hcs.before_compression_total_bytes::NUMERIC)) * 100 as compression_ratio,
+                hcs.total_chunks,
+                hcs.number_compressed_chunks as compressed_chunks
+            FROM SCHEMA_CATALOG.metric m
+            LEFT JOIN timescaledb_information.hypertables hi ON
+                        (hi.hypertable_schema = 'SCHEMA_DATA' AND hi.hypertable_name = m.table_name)
+            LEFT JOIN LATERAL hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) hds ON true
+            LEFT JOIN LATERAL hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) hcs ON true
+            LEFT JOIN _timescaledb_catalog.hypertable h ON
+                        (h.schema_name = 'SCHEMA_DATA' AND h.table_name = m.table_name);
+        ELSE
+            RETURN QUERY
+            SELECT
+                m.id,
+                m.metric_name,
+                m.table_name,
+                SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                (
+                    SELECT _timescaledb_internal.to_interval(interval_length)
+                    FROM _timescaledb_catalog.dimension d
+                    WHERE d.hypertable_id = h.id
+                    ORDER BY d.id ASC
+                    LIMIT 1
+                ) as chunk_interval,
+                ARRAY(
+                    SELECT key
+                    FROM SCHEMA_CATALOG.label_key_position lkp
+                    WHERE lkp.metric_name = m.metric_name
+                    ORDER BY key) label_keys,
+                hi.total_size as size,
+                (1.0 - (pg_size_bytes(chs.compressed_total_bytes)::numeric / pg_size_bytes(chs.uncompressed_total_bytes)::numeric)) * 100 as compression_ratio,
+                chs.total_chunks,
+                chs.number_compressed_chunks as compressed_chunks
+            FROM SCHEMA_CATALOG.metric m
+            LEFT JOIN timescaledb_information.hypertable hi ON
+                        (hi.table_schema = 'SCHEMA_DATA' AND hi.table_name = m.table_name)
+            LEFT JOIN timescaledb_information.compressed_hypertable_stats chs ON
+                        (chs.hypertable_name = format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass)
+            LEFT JOIN _timescaledb_catalog.hypertable h ON
+                        (h.schema_name = 'SCHEMA_DATA' AND h.table_name = m.table_name);
+        END IF;
 END
 $func$
 LANGUAGE PLPGSQL STABLE;
