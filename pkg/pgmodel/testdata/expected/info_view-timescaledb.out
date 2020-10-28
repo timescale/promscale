@@ -12,8 +12,6 @@ SELECT _prom_catalog.get_or_create_metric_table_name('cpu_total');
 (1 row)
 
 CALL _prom_catalog.finalize_metric_creation();
-psql:/testdata/sql/info_view.sql:6: NOTICE:  adding index _compressed_hypertable_3_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_3 USING BTREE(series_id, _ts_meta_sequence_num)
-psql:/testdata/sql/info_view.sql:6: NOTICE:  adding index _compressed_hypertable_4_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_4 USING BTREE(series_id, _ts_meta_sequence_num)
 CALL
 INSERT INTO prom_data.cpu_usage
   SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"}')
@@ -34,8 +32,8 @@ INSERT 0 10
 SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', label_keys, size , compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
  id | metric_name | table_name | retention_period | ?column? |             label_keys              | size  | compression_ratio | total_chunks | compressed_chunks 
 ----+-------------+------------+------------------+----------+-------------------------------------+-------+-------------------+--------------+-------------------
-  1 | cpu_usage   | cpu_usage  | 90 days          | t        | {__name__,namespace,new_tag,node}   | 24 kB |                   |              |                  
-  2 | cpu_total   | cpu_total  | 90 days          | t        | {__name__,namespace,new_tag_2,node} | 24 kB |                   |              |                  
+  1 | cpu_usage   | cpu_usage  | 90 days          | t        | {__name__,namespace,new_tag,node}   | 24 kB |                   |            1 |                 0
+  2 | cpu_total   | cpu_total  | 90 days          | t        | {__name__,namespace,new_tag_2,node} | 24 kB |                   |            1 |                 0
 (2 rows)
 
 SELECT * FROM prom_info.label ORDER BY key;
