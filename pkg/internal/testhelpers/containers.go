@@ -132,7 +132,9 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 // StartPGContainer starts a postgreSQL container for use in testing
 func StartPGContainer(ctx context.Context, usePromscaleExtension bool, useTimescaleDB bool, useTimescale2 bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
 	var image string
-	if useTimescale2 {
+	if usePromscaleExtension && useTimescale2 {
+		panic("not yet implemented")
+	} else if useTimescale2 {
 		image = "timescale/timescaledb:2.0.0-rc2-pg12"
 	} else if usePromscaleExtension && useTimescaleDB {
 		image = "timescaledev/promscale-extension:latest-pg12"
@@ -149,6 +151,7 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 
 	req := testcontainers.ContainerRequest{
 		Image:        image,
+		Cmd:          []string{"postgres", "-c", "timescaledb.max_background_workers=0"},
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
 			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
