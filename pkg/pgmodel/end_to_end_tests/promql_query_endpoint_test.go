@@ -2424,12 +2424,12 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 			return
 		}
 
-		router, err := buildRouter(readOnly)
-
+		router, pgClient, err := buildRouter(readOnly)
 		if err != nil {
 			t.Fatalf("Cannot run test, unable to build router: %s", err)
 			return
 		}
+		defer pgClient.Close()
 
 		ts := httptest.NewServer(router)
 		defer ts.Close()
