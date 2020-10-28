@@ -229,7 +229,7 @@ func dateHeadersMatch(expected, actual []string) bool {
 }
 
 // buildRouter builds a testing router from a connection pool.
-func buildRouter(pool *pgxpool.Pool) (http.Handler, error) {
+func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 	apiConfig := &api.Config{
 		AllowedOrigin: regexp.MustCompile(".*"),
 	}
@@ -246,8 +246,8 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, error) {
 	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool)
 
 	if err != nil {
-		return nil, errors.New("Cannot run test, cannot instantiate pgClient")
+		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")
 	}
 
-	return api.GenerateRouter(apiConfig, metrics, pgClient, nil), nil
+	return api.GenerateRouter(apiConfig, metrics, pgClient, nil), pgClient, nil
 }

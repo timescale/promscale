@@ -328,7 +328,6 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		defer ingestor.Close()
 		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Error(err)
@@ -520,6 +519,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Error("expected ingest to fail due to old epoch")
 		}
 
+		ingestor.Close()
 		ingestor2, err := NewPgxIngestor(db)
 		if err != nil {
 			t.Fatal(err)
@@ -575,7 +575,6 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		defer ingestor.Close()
 		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
 		if err != nil {
 			t.Error(err)
@@ -643,6 +642,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 
 		//Restart ingestor to avoid stale cache issues.
 		//Other tests should check for that
+		ingestor.Close()
 		ingestor2, err := NewPgxIngestor(db)
 		if err != nil {
 			t.Fatal(err)
