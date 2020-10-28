@@ -908,6 +908,24 @@ func TestPGXInserterInsertData(t *testing.T) {
 					err:     error(nil),
 				},
 				{
+					//this is the attempt on the full batch
+					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}{int64(-1)},
+					results: rowResults{{[]byte{}}},
+					err:     fmt.Errorf("epoch error"),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0)},
+						[]float64{0},
+						[]int64{0},
+					},
+					results: rowResults{},
+					err:     error(nil),
+				},
+				{
+					//this is the attempt on the individual copyRequests
 					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
 					args:    []interface{}{int64(-1)},
 					results: rowResults{{[]byte{}}},
@@ -946,6 +964,24 @@ func TestPGXInserterInsertData(t *testing.T) {
 					err:     error(nil),
 				},
 				{
+					// this is the entire batch insert
+					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}{int64(-1)},
+					results: rowResults{{[]byte{}}},
+					err:     error(nil),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
+						make([]float64, 5),
+						make([]int64, 5),
+					},
+					results: rowResults{{pgconn.CommandTag{'1'}}},
+					err:     fmt.Errorf("some INSERT error"),
+				},
+				{
+					// this is the retry on individual copy requests
 					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
 					args:    []interface{}{int64(-1)},
 					results: rowResults{{[]byte{}}},
@@ -1011,6 +1047,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer inserter.Close()
 
 			_, err = inserter.InsertData(c.rows)
 
@@ -1025,7 +1062,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 				for _, q := range c.sqlQueries {
 					if q.err != nil {
 						expErr = q.err
-						break
 					}
 				}
 			}
