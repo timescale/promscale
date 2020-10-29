@@ -245,13 +245,13 @@ func StartPGContainer(
 	var image string
 	switch extensionState {
 	case MultinodeAndPromscale:
-		image = "timescaledev/promscale-extension:2.0.0-rc2-pg12"
+		image = "timescaledev/promscale-extension:2.0.0-rc3-pg12"
 	case Multinode:
-		image = "timescale/timescaledb:2.0.0-rc2-pg12"
+		image = "timescale/timescaledb:2.0.0-rc3-pg12"
 	case Timescale2AndPromscale:
-		image = "timescaledev/promscale-extension:2.0.0-rc2-pg12"
+		image = "timescaledev/promscale-extension:2.0.0-rc3-pg12"
 	case Timescale2:
-		image = "timescale/timescaledb:2.0.0-rc2-pg12"
+		image = "timescale/timescaledb:2.0.0-rc3-pg12"
 	case Timescale1AndPromscale:
 		image = "timescaledev/promscale-extension:latest-pg12"
 	case Timescale1:

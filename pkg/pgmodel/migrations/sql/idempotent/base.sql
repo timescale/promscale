@@ -493,6 +493,21 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_catalog_row(
+    metric_table name,
+    series_ids bigint[]
+) RETURNS VOID AS
+$$
+BEGIN
+    EXECUTE FORMAT(
+        'UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = current_epoch+1 FROM SCHEMA_CATALOG.ids_epoch WHERE delete_epoch IS NULL AND id = ANY($1)',
+        metric_table
+    ) USING series_ids;
+    RETURN;
+END;
+$$
+LANGUAGE PLPGSQL;
+
 ---------------------------------------------------
 ------------------- Public APIs -------------------
 ---------------------------------------------------
@@ -1547,30 +1562,41 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(series_id bigint, metric_name text)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(name text, series_ids bigint[])
 RETURNS BIGINT
 LANGUAGE PLPGSQL
 AS
 $$
 DECLARE
+    metric_table name;
     delete_stmt text;
-    num_chunks_touched bigint := 0;
+    delete_query text;
+    rows_affected bigint;
+    num_rows_deleted bigint := 0;
 BEGIN
-    FOR delete_stmt in
-        SELECT FORMAT('DELETE FROM %1$I.%2$I WHERE series_id = %3$s', schema_name, table_name, series_id)
-        FROM (
-            SELECT (COALESCE(chc, ch)).* FROM pg_class c
-                INNER JOIN pg_namespace n ON c.relnamespace = n.oid
-                INNER JOIN _timescaledb_catalog.chunk ch ON (ch.schema_name, ch.table_name) = (n.nspname, c.relname)
-                LEFT JOIN _timescaledb_catalog.chunk chc ON ch.compressed_chunk_id = chc.id
-            WHERE c.oid IN (SELECT show_chunks(metric_name)::oid)
-        ) a
-    LOOP
-        EXECUTE delete_stmt;
-        num_chunks_touched = num_chunks_touched + 1;
-    END LOOP;
-    DELETE FROM SCHEMA_CATALOG.series WHERE id=series_id;
-    RETURN num_chunks_touched;
+    SELECT table_name INTO metric_table FROM SCHEMA_CATALOG.metric m WHERE m.metric_name=name;
+    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        FOR delete_stmt IN
+            SELECT FORMAT('DELETE FROM %1$I.%2$I WHERE series_id = ANY($1)', schema_name, table_name)
+            FROM (
+                SELECT (COALESCE(chc, ch)).* FROM pg_class c
+                    INNER JOIN pg_namespace n ON c.relnamespace = n.oid
+                    INNER JOIN _timescaledb_catalog.chunk ch ON (ch.schema_name, ch.table_name) = (n.nspname, c.relname)
+                    LEFT JOIN _timescaledb_catalog.chunk chc ON ch.compressed_chunk_id = chc.id
+                WHERE c.oid IN (SELECT show_chunks(format('%I.%I','SCHEMA_DATA', metric_table))::oid)
+                ) a
+        LOOP
+            EXECUTE delete_stmt USING series_ids;
+            GET DIAGNOSTICS rows_affected = ROW_COUNT;
+            num_rows_deleted = num_rows_deleted + rows_affected;
+        END LOOP;
+    ELSE
+        EXECUTE FORMAT('DELETE FROM SCHEMA_DATA.%1$I WHERE series_id = ANY($1)', metric_table) USING series_ids;
+        GET DIAGNOSTICS rows_affected = ROW_COUNT;
+        num_rows_deleted = num_rows_deleted + rows_affected;
+    END IF;
+    PERFORM SCHEMA_CATALOG.delete_series_catalog_row(name, series_ids);
+    RETURN num_rows_deleted;
 END;
 $$;
 
