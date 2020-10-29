@@ -44,7 +44,7 @@ jobs:
       run: go test -v -race ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescaledb=false
 
     - name: Test extended dataset
-      run: go test -v -race ./pkg/pgmodel/end_to_end_tests/ -extended-test
+      run: go test -v -race -timeout=30m ./pkg/pgmodel/end_to_end_tests/ -extended-test
 
     - name: Generated
       run: |

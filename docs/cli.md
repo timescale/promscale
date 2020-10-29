@@ -19,6 +19,7 @@ You can also find information on flags with `promscale_<version> -help`
 | use-schema-version-lease | boolean | true | Use schema version lease to prevent race conditions during migration. |
 | tput-report | integer | 0 (disabled) | Interval in seconds at which throughput should be reported. |
 | web-cors-origin | string | `.*` |  Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com' |
+| web-enable-admin-api | boolean | false | Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series. |
 | web-listen-address | string | `:9201` | Address to listen on for web endpoints. |
 | web-telemetry-path | string | `/metrics` | Web endpoint for exposing Promscale's Prometheus metrics. |
 

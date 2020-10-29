@@ -43,6 +43,7 @@ type Config struct {
 	CorsOrigin         *regexp.Regexp
 	InstallTimescaleDB bool
 	ReadOnly           bool
+	AdminAPIEnabled    bool
 }
 
 const (
@@ -74,6 +75,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
 	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update TimescaleDB extension.")
 	flag.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
+	flag.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
 	envy.Parse("TS_PROM")
 	// Ignore errors; CommandLine is set for ExitOnError.
 	_ = flag.CommandLine.Parse(args)
@@ -140,8 +142,9 @@ func Run(cfg *Config) error {
 	defer client.Close()
 
 	apiConf := &api.Config{
-		AllowedOrigin: cfg.CorsOrigin,
-		ReadOnly:      cfg.ReadOnly,
+		AllowedOrigin:   cfg.CorsOrigin,
+		ReadOnly:        cfg.ReadOnly,
+		AdminAPIEnabled: cfg.AdminAPIEnabled,
 	}
 	router := api.GenerateRouter(apiConf, promMetrics, client, elector)
 

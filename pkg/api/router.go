@@ -29,7 +29,7 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Post("/read", readHandler)
 
 	deleteHandler := timeHandler(metrics.HTTPRequestDuration, "delete_series", Delete(apiConf, client))
-	router.Get("/delete_series", deleteHandler)
+	router.Put("/delete_series", deleteHandler)
 	router.Post("/delete_series", deleteHandler)
 
 	queryable := client.GetQueryable()

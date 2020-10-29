@@ -33,17 +33,18 @@ actually perform some calculations.
 
 ## Implemented Endpoints
 
-|               Name               |                Endpoint               |                      Description                      |
-|----------------------------------|---------------------------------------|-------------------------------------------------------|
-|[Instant Queries][instant-queries]|`GET,POST /api/v1/query`               |Evaluate an instant query at a single point in time    |
-|[Range Queries][range-queries]    |`GET,POST /api/v1/query_range`         |Evaluate an expression query over a range of time      |
-|[Series][series]                  |`GET,POST /api/v1/series`              |Return a list of time series that match a label set    |
-|[Label Names][label-names]        |`GET,POST /api/v1/labels`              |Return a list of label names                           |
-|[Label Values][label-values]      |`GET /api/v1/label/<label_name>/values`|Return a list of label values for a provided label name|
-
+|               Name               |                Endpoint                    |                      Description                      |
+|----------------------------------|--------------------------------------------|-------------------------------------------------------|
+|[Instant Queries][instant-queries]|`GET,POST /api/v1/query`                    |Evaluate an instant query at a single point in time    |
+|[Range Queries][range-queries]    |`GET,POST /api/v1/query_range`              |Evaluate an expression query over a range of time      |
+|[Series][series]                  |`GET,POST /api/v1/series`                   |Return a list of time series that match a label set    |
+|[Label Names][label-names]        |`GET,POST /api/v1/labels`                   |Return a list of label names                           |
+|[Label Values][label-values]      |`GET /api/v1/label/<label_name>/values`     |Return a list of label values for a provided label name|
+|[Delete Series][delete-series]    |`PUT, POST /api/v1/admin/tsdb/delete_series`|Deletes sets whose label_set matches the provided matchers|
 
 [instant-queries]: (https://prometheus.io/docs/prometheus/latest/querying/api/#instant-queries)
 [range-queries]: (https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries)
 [series]: (https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers)
 [label-names]: (https://prometheus.io/docs/prometheus/latest/querying/api/#getting-label-names)
 [label-values]: (https://prometheus.io/docs/prometheus/latest/querying/api/#querying-label-values)
+[delete-series]: (https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series)
