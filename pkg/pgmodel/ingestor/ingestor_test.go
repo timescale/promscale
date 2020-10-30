@@ -7,31 +7,32 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
 type mockCache struct {
-	seriesCache  map[string]SeriesID
+	seriesCache  map[string]utils.SeriesID
 	getSeriesErr error
 	setSeriesErr error
 }
 
 var _ SeriesCache = (*mockCache)(nil)
 
-func (m *mockCache) GetSeries(lset Labels) (SeriesID, error) {
+func (m *mockCache) GetSeries(lset utils.Labels) (utils.SeriesID, error) {
 	if m.getSeriesErr != nil {
 		return 0, m.getSeriesErr
 	}
 
 	val, ok := m.seriesCache[lset.String()]
 	if !ok {
-		return 0, ErrEntryNotFound
+		return 0, utils.ErrEntryNotFound
 	}
 
 	return val, nil
 }
 
-func (m *mockCache) SetSeries(lset Labels, id SeriesID) error {
+func (m *mockCache) SetSeries(lset utils.Labels, id utils.SeriesID) error {
 	m.seriesCache[lset.String()] = id
 	return m.setSeriesErr
 }
@@ -45,8 +46,8 @@ func (m *mockCache) Capacity() int {
 }
 
 type mockInserter struct {
-	insertedSeries  map[string]SeriesID
-	insertedData    []map[string][]samplesInfo
+	insertedSeries  map[string]utils.SeriesID
+	insertedData    []map[string][]utils.SamplesInfo
 	insertSeriesErr error
 	insertDataErr   error
 }
@@ -55,7 +56,7 @@ func (m *mockInserter) Close() {
 
 }
 
-func (m *mockInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
+func (m *mockInserter) InsertNewData(rows map[string][]utils.SamplesInfo) (uint64, error) {
 	return m.InsertData(rows)
 }
 
@@ -63,15 +64,15 @@ func (m *mockInserter) CompleteMetricCreation() error {
 	return nil
 }
 
-func (m *mockInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
+func (m *mockInserter) InsertData(rows map[string][]utils.SamplesInfo) (uint64, error) {
 	for _, v := range rows {
 		for i, si := range v {
-			id, ok := m.insertedSeries[si.labels.String()]
+			id, ok := m.insertedSeries[si.Labels.String()]
 			if !ok {
-				id = SeriesID(len(m.insertedSeries))
-				m.insertedSeries[si.labels.String()] = id
+				id = utils.SeriesID(len(m.insertedSeries))
+				m.insertedSeries[si.Labels.String()] = id
 			}
-			v[i].seriesID = id
+			v[i].SeriesID = id
 		}
 	}
 	if m.insertSeriesErr != nil {
@@ -81,7 +82,7 @@ func (m *mockInserter) InsertData(rows map[string][]samplesInfo) (uint64, error)
 	ret := 0
 	for _, data := range rows {
 		for _, si := range data {
-			ret += len(si.samples)
+			ret += len(si.Samples)
 		}
 	}
 	if m.insertDataErr != nil {
@@ -110,7 +111,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -125,7 +126,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -136,7 +137,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -145,7 +146,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -161,7 +162,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -178,7 +179,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -187,7 +188,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -203,7 +204,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -220,7 +221,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelKey, Value: "test"},
+						{Name: utils.MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -251,7 +252,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			inserter := mockInserter{
 				insertSeriesErr: c.insertSeriesErr,
 				insertDataErr:   c.insertDataErr,
-				insertedSeries:  make(map[string]SeriesID),
+				insertedSeries:  make(map[string]utils.SeriesID),
 			}
 
 			i := DBIngestor{
@@ -276,7 +277,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				if err == ErrNoMetricName {
 					for _, ts := range c.metrics {
 						for _, label := range ts.Labels {
-							if label.Name == MetricNameLabelKey {
+							if label.Name == utils.MetricNameLabelKey {
 								t.Errorf("returning missing metric name when one was found for metric name: %s\n", label.Name)
 							}
 						}
