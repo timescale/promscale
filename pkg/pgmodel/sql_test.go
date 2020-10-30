@@ -115,7 +115,7 @@ func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, e
 		return nil, fmt.Errorf("extra query")
 	}
 	row := r.queries[idx]
-	r.nextQuery += 1
+	r.nextQuery++
 	if sql != row.sql {
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
 	}
@@ -1065,7 +1065,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelKey, Value: "bar"},
 				},
 			},
 			sqlQueries: []sqlQuery{
@@ -1090,7 +1090,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelKey, Value: "bar"},
 				},
 			},
 			sqlQueries: []sqlQuery{
@@ -1186,7 +1186,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelKey, Value: "bar"},
 				},
 			},
 			sqlQueries: []sqlQuery{
@@ -1240,7 +1240,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelKey, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{},
@@ -1259,12 +1259,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelKey, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelKey, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -1314,12 +1314,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelKey, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelKey, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -1357,16 +1357,16 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_RE, Name: MetricNameLabelName, Value: ""},
+					{Type: prompb.LabelMatcher_RE, Name: MetricNameLabelKey, Value: ""},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelKey, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelKey, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -1441,17 +1441,17 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "foo"},
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelKey, Value: "foo"},
+					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelKey, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelKey, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: MetricNameLabelKey, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},

@@ -15,6 +15,8 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	ingestor "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	pgutils "github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -49,7 +51,7 @@ func ParseFlags(cfg *Config) *Config {
 	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
 	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
 	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
-	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "maximum number of metric names to cache")
+	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgutils.DefaultMetricCacheSize, "maximum number of metric names to cache")
 	flag.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "maximum number of database connections per go process writing to the database")
 	flag.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "maximum connections that can be open at once, defaults to 80% of the max the DB can handle")
 	return cfg
@@ -58,12 +60,12 @@ func ParseFlags(cfg *Config) *Config {
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
 	Connection    *pgxpool.Pool
-	ingestor      *pgmodel.DBIngestor
+	ingestor      *ingestor.DBIngestor
 	reader        *pgmodel.DBReader
 	queryable     *query.Queryable
 	cfg           *Config
 	ConnectionStr string
-	metricCache   *pgmodel.MetricNameCache
+	metricCache   *pgutils.MetricNameCache
 }
 
 // Post connect validation function, useful for things such as acquiring locks
@@ -99,15 +101,15 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
 func NewClientWithPool(cfg *Config, numCopiers int, pool *pgxpool.Pool) (*Client, error) {
-	cache := &pgmodel.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
+	cache := &pgutils.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
 
-	c := pgmodel.Cfg{
+	c := ingestor.Config{
 		AsyncAcks:       cfg.AsyncAcks,
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
 	}
-	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(pool, cache, &c)
+	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(pool, cache, &c)
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err

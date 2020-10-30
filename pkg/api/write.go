@@ -14,6 +14,7 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -59,7 +60,7 @@ func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) h
 			return
 		}
 
-		req := pgmodel.NewWriteRequest()
+		req := ingestor.NewWriteRequest()
 		if err := proto.Unmarshal(reqBuf, req); err != nil {
 			log.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)

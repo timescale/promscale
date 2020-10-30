@@ -38,7 +38,7 @@ func (t *dataGenerator) generateTimeseries() []prompb.TimeSeries {
 	for metric := 0; metric < t.metricsPerGroup; metric++ {
 		for instance := 0; instance < t.labelSetsPerMetric; instance++ {
 			labelSet := []prompb.Label{
-				{Name: pgmodel.MetricNameLabelName, Value: fmt.Sprintf("metric_%d_%d", t.metricGroup, metric)},
+				{Name: pgmodel.MetricNameLabelKey, Value: fmt.Sprintf("metric_%d_%d", t.metricGroup, metric)},
 				{Name: "foo", Value: fmt.Sprintf("bar_%d", t.queueID)}, //queues have non-overlapping label sets
 				{Name: "instance", Value: fmt.Sprintf("%d", instance)},
 			}
@@ -135,7 +135,7 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 		values := []string{}
 		for labelIdx := range ts.Labels {
 			label := ts.Labels[labelIdx]
-			if label.Name == pgmodel.MetricNameLabelName {
+			if label.Name == pgmodel.MetricNameLabelKey {
 				name = label.Value
 
 			}

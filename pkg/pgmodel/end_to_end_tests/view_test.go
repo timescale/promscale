@@ -34,7 +34,7 @@ func TestSQLView(t *testing.T) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "no tags"},
+					{Name: MetricNameLabelKey, Value: "no tags"},
 				},
 				Samples: []prompb.Sample{
 					{Timestamp: 10, Value: 0.1},
@@ -42,7 +42,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "reserved tags"},
+					{Name: MetricNameLabelKey, Value: "reserved tags"},
 					{Name: "foo", Value: "bar"},
 					{Name: "labels", Value: "val1"},
 					{Name: "series_id", Value: "vaL2"},
@@ -56,7 +56,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "long tags names"},
+					{Name: MetricNameLabelKey, Value: "long tags names"},
 					{Name: "foo", Value: "bar"},
 					{Name: strings.Repeat("long", 20) + "suffix1", Value: "val1"},
 					{Name: strings.Repeat("long", 20) + "suffix2", Value: "val2"},
@@ -68,7 +68,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tag and tag id"},
+					{Name: MetricNameLabelKey, Value: "tag and tag id"},
 					{Name: "foo", Value: "bar"},
 					{Name: "foo_id", Value: "bar2"},
 				},
@@ -79,7 +79,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "add tag key"},
+					{Name: MetricNameLabelKey, Value: "add tag key"},
 					{Name: "foo", Value: "bar"},
 				},
 				Samples: []prompb.Sample{
@@ -89,7 +89,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "add tag key"},
+					{Name: MetricNameLabelKey, Value: "add tag key"},
 					{Name: "foo", Value: "bar"},
 					{Name: "baz", Value: "bar2"},
 				},
@@ -100,7 +100,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: MetricNameLabelKey, Value: "cpu_usage"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -111,7 +111,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: MetricNameLabelKey, Value: "cpu_usage"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},
@@ -122,7 +122,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: MetricNameLabelKey, Value: "cpu_total"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -133,7 +133,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: MetricNameLabelKey, Value: "cpu_total"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},
@@ -159,7 +159,7 @@ func TestSQLView(t *testing.T) {
 		for _, ts := range metrics {
 			name := ""
 			for _, label := range ts.Labels {
-				if label.Name == MetricNameLabelName {
+				if label.Name == MetricNameLabelKey {
 					name = label.Value
 				}
 			}
@@ -167,7 +167,7 @@ func TestSQLView(t *testing.T) {
 			pointCount := 0
 			for _, ts2 := range metrics {
 				for _, label := range ts2.Labels {
-					if label.Name == MetricNameLabelName && label.Value == name {
+					if label.Name == MetricNameLabelKey && label.Value == name {
 						seriesCount++
 						pointCount += len(ts2.Samples)
 					}
@@ -188,7 +188,7 @@ func TestSQLViewSelectors(t *testing.T) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: MetricNameLabelKey, Value: "cpu_usage"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -199,7 +199,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: MetricNameLabelKey, Value: "cpu_usage"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},
@@ -210,7 +210,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: MetricNameLabelKey, Value: "cpu_usage"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "brain"},
 					{Name: "new_tag", Value: "value"},
@@ -221,7 +221,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: MetricNameLabelKey, Value: "cpu_total"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -232,7 +232,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: MetricNameLabelKey, Value: "cpu_total"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},

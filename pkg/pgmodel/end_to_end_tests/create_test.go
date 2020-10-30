@@ -139,7 +139,7 @@ func TestSQLChunkInterval(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelKey, Value: "test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -149,7 +149,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test2"},
+					{Name: MetricNameLabelKey, Value: "test2"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -244,7 +244,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -259,7 +259,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -270,7 +270,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -279,7 +279,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -295,7 +295,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -312,7 +312,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -329,7 +329,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -338,7 +338,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -354,7 +354,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test1"},
+						{Name: MetricNameLabelKey, Value: "test1"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "test"},
 						{Name: "key2", Value: "val1"},
@@ -365,7 +365,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test2"},
+						{Name: MetricNameLabelKey, Value: "test2"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "val2"},
 						{Name: "key3", Value: "val3"},
@@ -424,7 +424,7 @@ func TestSQLIngest(t *testing.T) {
 				tables := make(map[string]bool)
 				for _, ts := range tcase.metrics {
 					for _, l := range ts.Labels {
-						if len(ts.Samples) > 0 && l.Name == MetricNameLabelName {
+						if len(ts.Samples) > 0 && l.Name == MetricNameLabelKey {
 							tables[l.Value] = true
 						}
 					}
@@ -472,7 +472,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tEsT"},
+					{Name: MetricNameLabelKey, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -507,7 +507,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tEsT"},
+					{Name: MetricNameLabelKey, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -528,7 +528,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tEsT"},
+					{Name: MetricNameLabelKey, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -578,7 +578,7 @@ func TestInsertCompressed(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelKey, Value: "test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -657,7 +657,7 @@ func TestCompressionSetting(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelKey, Value: "test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{

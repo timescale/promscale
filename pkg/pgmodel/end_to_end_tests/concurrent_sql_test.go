@@ -202,7 +202,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: metric},
+				{Name: MetricNameLabelKey, Value: metric},
 				{Name: "node", Value: "brain"},
 			},
 			Samples: []prompb.Sample{
@@ -211,7 +211,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: metric},
+				{Name: MetricNameLabelKey, Value: metric},
 				{Name: "node", Value: "pinky"},
 			},
 			Samples: []prompb.Sample{
@@ -235,7 +235,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: MetricNameLabelKey, Value: "cpu_usage_a"},
 				{Name: "namespace", Value: "production"},
 				{Name: "node", Value: "brain"},
 			},
@@ -246,7 +246,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: MetricNameLabelKey, Value: "cpu_usage_a"},
 				{Name: "namespace", Value: "dev"},
 				{Name: "node", Value: "pinky"},
 			},
@@ -257,7 +257,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: MetricNameLabelKey, Value: "cpu_total_a"},
 				{Name: "namespace", Value: "production"},
 				{Name: "node", Value: "brain"},
 			},
@@ -268,7 +268,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: MetricNameLabelKey, Value: "cpu_total_a"},
 				{Name: "namespace", Value: "dev"},
 				{Name: "node", Value: "pinky"},
 			},

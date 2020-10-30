@@ -9,10 +9,11 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 )
 
 const (
-	// Postgres time zero is Sat Jan 01 00:00:00 2000 UTC.
+	// PostgresUnixEpoch postgres time zero is Sat Jan 01 00:00:00 2000 UTC.
 	// This is the offset of the Unix epoch in milliseconds from the Postgres zero.
 	PostgresUnixEpoch = -946684800000
 )
@@ -45,7 +46,7 @@ func (p *pgxSeriesSet) Next() bool {
 	if p.rowIdx >= len(p.rows) {
 		return false
 	}
-	p.rowIdx += 1
+	p.rowIdx++
 	if p.rowIdx >= len(p.rows) {
 		return false
 	}
@@ -151,7 +152,7 @@ func (p *pgxSeriesIterator) Seek(t int64) bool {
 
 // getTs returns a Unix timestamp in milliseconds.
 func (p *pgxSeriesIterator) getTs() int64 {
-	return timestamptzToMs(p.times.Elements[p.cur])
+	return utils.TimestamptzToMs(p.times.Elements[p.cur])
 }
 
 func (p *pgxSeriesIterator) getVal() float64 {

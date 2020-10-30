@@ -1,7 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package pgmodel
+package ingestor
 
 import (
 	"fmt"
@@ -110,7 +110,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -125,7 +125,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -136,7 +136,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -145,7 +145,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -161,7 +161,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -178,7 +178,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -187,7 +187,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -203,7 +203,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -220,7 +220,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelKey, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -276,7 +276,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				if err == ErrNoMetricName {
 					for _, ts := range c.metrics {
 						for _, label := range ts.Labels {
-							if label.Name == MetricNameLabelName {
+							if label.Name == MetricNameLabelKey {
 								t.Errorf("returning missing metric name when one was found for metric name: %s\n", label.Name)
 							}
 						}

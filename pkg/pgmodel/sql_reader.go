@@ -20,22 +20,23 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
-	getMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_metric_table_name_if_exists($1)"
-	getLabelNamesSQL   = "SELECT distinct key from " + catalogSchema + ".label"
-	getLabelValuesSQL  = "SELECT value from " + catalogSchema + ".label WHERE key = $1"
+	getMetricsTableSQL = "SELECT table_name FROM " + utils.CatalogSchema + ".get_metric_table_name_if_exists($1)"
+	getLabelNamesSQL   = "SELECT distinct key from " + utils.CatalogSchema + ".label"
+	getLabelValuesSQL  = "SELECT value from " + utils.CatalogSchema + ".label WHERE key = $1"
 	getLabelsSQL       = "SELECT (labels_info($1::int[])).*"
 )
 
 // NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
 // and caches metric table names using the supplied cacher.
-func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache, labelsCacheSize uint64) *DBReader {
+func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache utils.MetricCache, labelsCacheSize uint64) *DBReader {
 	pi := &pgxQuerier{
-		conn: &pgxConnImpl{
-			conn: c,
+		conn: &utils.PgxConnImpl{
+			Conn: c,
 		},
 		metricTableNames: cache,
 		labels:           clockcache.WithMax(labelsCacheSize),
@@ -48,7 +49,7 @@ func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache, labelsCache
 
 // NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
 func NewPgxReader(c *pgxpool.Pool, readHist prometheus.ObserverVec, labelsCacheSize uint64) *DBReader {
-	cache := &MetricNameCache{clockcache.WithMax(DefaultMetricCacheSize)}
+	cache := &utils.MetricNameCache{clockcache.WithMax(utils.DefaultMetricCacheSize)}
 	return NewPgxReaderWithMetricCache(c, cache, labelsCacheSize)
 }
 
@@ -59,8 +60,8 @@ type metricTimeRangeFilter struct {
 }
 
 type pgxQuerier struct {
-	conn             pgxConn
-	metricTableNames MetricCache
+	conn             utils.PgxConn
+	metricTableNames utils.MetricCache
 	// contains [int64]labels.Label
 	labels *clockcache.Cache
 }
@@ -189,7 +190,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	tableName, err := q.getMetricTableName(metric)
 	if err != nil {
 		// If the metric table is missing, there are no results for this query.
-		if err == errMissingTableName {
+		if err == utils.ErrMissingTableName {
 			return nil, nil, nil
 		}
 
@@ -246,7 +247,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 		tableName, err := q.getMetricTableName(metric)
 		if err != nil {
 			// If the metric table is missing, there are no results for this query.
-			if err == errMissingTableName {
+			if err == utils.ErrMissingTableName {
 				continue
 			}
 			return nil, nil, err
@@ -254,7 +255,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 		filter.metric = tableName
 		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
 		batch.Queue(sqlQuery)
-		numQueries += 1
+		numQueries++
 	}
 
 	batchResults, err := q.conn.SendBatch(context.Background(), batch)
@@ -312,7 +313,7 @@ func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {
 		return tableName, nil
 	}
 
-	if err != ErrEntryNotFound {
+	if err != utils.ErrEntryNotFound {
 		return "", err
 	}
 
@@ -341,7 +342,7 @@ func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
 	var tableName string
 	defer res.Close()
 	if !res.Next() {
-		return "", errMissingTableName
+		return "", utils.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName); err != nil {

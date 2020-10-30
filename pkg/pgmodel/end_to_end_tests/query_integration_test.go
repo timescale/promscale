@@ -114,7 +114,7 @@ func TestSQLQuery(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "nonExistantMetric",
 							},
 						},
@@ -135,7 +135,7 @@ func TestSQLQuery(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "firstMetric",
 							},
 						},
@@ -148,7 +148,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -170,7 +170,7 @@ func TestSQLQuery(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "first.*",
 							},
 						},
@@ -183,7 +183,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -205,7 +205,7 @@ func TestSQLQuery(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_NEQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "firstMetric",
 							},
 						},
@@ -218,7 +218,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -237,7 +237,7 @@ func TestSQLQuery(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_NRE,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "first.*",
 							},
 						},
@@ -250,7 +250,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -283,7 +283,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -295,7 +295,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -320,7 +320,7 @@ func TestSQLQuery(t *testing.T) {
 							},
 							{
 								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: ".*Metric",
 							},
 						},
@@ -333,7 +333,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -345,7 +345,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -375,7 +375,7 @@ func TestSQLQuery(t *testing.T) {
 							},
 							{
 								Type:  prompb.LabelMatcher_NRE,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "non-existent",
 							},
 						},
@@ -388,7 +388,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -400,7 +400,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -438,7 +438,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -451,7 +451,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -490,7 +490,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -503,7 +503,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -545,7 +545,7 @@ func TestSQLQuery(t *testing.T) {
 				Results: createQueryResult([]*prompb.TimeSeries{
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
+							{Name: MetricNameLabelKey, Value: "firstMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "empty", Value: ""},
 							{Name: "foo", Value: "bar"},
@@ -560,7 +560,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
+							{Name: MetricNameLabelKey, Value: "secondMetric"},
 							{Name: "common", Value: "tag"},
 							{Name: "foo", Value: "baz"},
 						},
@@ -661,7 +661,7 @@ func TestPromQL(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_1",
 							},
 						},
@@ -679,7 +679,7 @@ func TestPromQL(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_.*",
 							},
 						},
@@ -697,7 +697,7 @@ func TestPromQL(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_.*",
 							},
 							{
@@ -838,7 +838,7 @@ func TestPromQL(t *testing.T) {
 							},
 							{
 								Type:  prompb.LabelMatcher_NEQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_1",
 							},
 						},
@@ -861,7 +861,7 @@ func TestPromQL(t *testing.T) {
 							},
 							{
 								Type:  prompb.LabelMatcher_NEQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_1",
 							},
 						},
@@ -917,7 +917,7 @@ func TestPromQL(t *testing.T) {
 							},
 							{
 								Type:  prompb.LabelMatcher_NRE,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_3",
 							},
 						},
@@ -935,17 +935,17 @@ func TestPromQL(t *testing.T) {
 						Matchers: []*prompb.LabelMatcher{
 							{
 								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_1",
 							},
 							{
 								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_2",
 							},
 							{
 								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
+								Name:  MetricNameLabelKey,
 								Value: "metric_3",
 							},
 						},

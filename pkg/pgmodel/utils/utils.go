@@ -1,7 +1,8 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package pgmodel
+
+package utils
 
 import (
 	"context"
@@ -15,62 +16,60 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
-	promSchema       = "prom_api"
-	seriesViewSchema = "prom_series"
-	metricViewSchema = "prom_metric"
-	dataSchema       = "prom_data"
-	dataSeriesSchema = "prom_data_series"
-	infoSchema       = "prom_info"
-	catalogSchema    = "_prom_catalog"
-	extSchema        = "_prom_ext"
+	PromSchema       = "prom_api"
+	SeriesViewSchema = "prom_series"
+	MetricViewSchema = "prom_metric"
+	DataSchema       = "prom_data"
+	DataSeriesSchema = "prom_data_series"
+	InfoSchema       = "prom_info"
+	CatalogSchema    = "_prom_catalog"
+	ExtSchema        = "_prom_ext"
 
-	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
+	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + CatalogSchema + ".get_or_create_metric_table_name($1)"
 )
 
-var (
-	errMissingTableName = fmt.Errorf("missing metric table name")
-)
+var ErrMissingTableName = fmt.Errorf("missing metric table name")
 
-type pgxBatch interface {
+type PgxBatch interface {
 	Queue(query string, arguments ...interface{})
 }
 
-type pgxConn interface {
+type PgxConn interface {
 	Close()
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
 	CopyFromRows(rows [][]interface{}) pgx.CopyFromSource
-	NewBatch() pgxBatch
-	SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error)
+	NewBatch() PgxBatch
+	SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error)
 }
 
-type pgxConnImpl struct {
-	conn     *pgxpool.Pool
+type PgxConnImpl struct {
+	Conn     *pgxpool.Pool
 	readHist prometheus.ObserverVec
 }
 
-func (p *pgxConnImpl) getConn() *pgxpool.Pool {
-	return p.conn
+func (p *PgxConnImpl) getConn() *pgxpool.Pool {
+	return p.Conn
 }
 
-func (p *pgxConnImpl) Close() {
+func (p *PgxConnImpl) Close() {
 	conn := p.getConn()
-	p.conn = nil
+	p.Conn = nil
 	conn.Close()
 }
 
-func (p *pgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+func (p *PgxConnImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
 	conn := p.getConn()
-
 	return conn.Exec(ctx, sql, arguments...)
 }
 
-func (p *pgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (p *PgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
 	conn := p.getConn()
 	if p.readHist != nil {
 		defer func(start time.Time, hist prometheus.ObserverVec, path string) {
@@ -78,11 +77,10 @@ func (p *pgxConnImpl) Query(ctx context.Context, sql string, args ...interface{}
 			hist.WithLabelValues(path).Observe(elapsedMs)
 		}(time.Now(), p.readHist, sql[0:6])
 	}
-
 	return conn.Query(ctx, sql, args...)
 }
 
-func (p *pgxConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (p *PgxConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
 	conn := p.getConn()
 	if p.readHist != nil {
 		defer func(start time.Time, hist prometheus.ObserverVec, path string) {
@@ -90,56 +88,65 @@ func (p *pgxConnImpl) QueryRow(ctx context.Context, sql string, args ...interfac
 			hist.WithLabelValues(path).Observe(elapsedMs)
 		}(time.Now(), p.readHist, sql[0:6])
 	}
-
 	return conn.QueryRow(ctx, sql, args...)
 }
 
-func (p *pgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+func (p *PgxConnImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	conn := p.getConn()
-
 	return conn.CopyFrom(ctx, tableName, columnNames, rowSrc)
 }
 
-func (p *pgxConnImpl) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
+func (p *PgxConnImpl) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
 	return pgx.CopyFromRows(rows)
 }
 
-func (p *pgxConnImpl) NewBatch() pgxBatch {
+func (p *PgxConnImpl) NewBatch() PgxBatch {
 	return &pgx.Batch{}
 }
 
-func (p *pgxConnImpl) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+func (p *PgxConnImpl) SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error) {
 	conn := p.getConn()
 
 	return conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 
+// SeriesID represents a globally unique id for the series. This should be equivalent
+// to the PostgreSQL type in the series table (currently BIGINT).
+type SeriesID int64
+
+// SamplesInfo information about the samples.
+type SamplesInfo struct {
+	Labels   *Labels
+	SeriesID SeriesID
+	Samples  []prompb.Sample
+}
+
 // SampleInfoIterator is an iterator over a collection of sampleInfos that returns
 // data in the format expected for the data table row.
 type SampleInfoIterator struct {
-	sampleInfos     []samplesInfo
+	SampleInfos     []SamplesInfo
 	sampleInfoIndex int
 	sampleIndex     int
-	minSeen         int64
+	MinSeen         int64
 }
 
 // NewSampleInfoIterator is the constructor
 func NewSampleInfoIterator() SampleInfoIterator {
-	si := SampleInfoIterator{sampleInfos: make([]samplesInfo, 0)}
+	si := SampleInfoIterator{SampleInfos: make([]SamplesInfo, 0)}
 	si.ResetPosition()
 	return si
 }
 
 //Append adds a sample info to the back of the iterator
-func (t *SampleInfoIterator) Append(s samplesInfo) {
-	t.sampleInfos = append(t.sampleInfos, s)
+func (t *SampleInfoIterator) Append(s SamplesInfo) {
+	t.SampleInfos = append(t.SampleInfos, s)
 }
 
 //ResetPosition resets the iteration position to the beginning
 func (t *SampleInfoIterator) ResetPosition() {
 	t.sampleIndex = -1
 	t.sampleInfoIndex = 0
-	t.minSeen = math.MaxInt64
+	t.MinSeen = math.MaxInt64
 }
 
 // Next returns true if there is another row and makes the next row data
@@ -147,21 +154,21 @@ func (t *SampleInfoIterator) ResetPosition() {
 // has occurred it returns false.
 func (t *SampleInfoIterator) Next() bool {
 	t.sampleIndex++
-	if t.sampleInfoIndex < len(t.sampleInfos) && t.sampleIndex >= len(t.sampleInfos[t.sampleInfoIndex].samples) {
+	if t.sampleInfoIndex < len(t.SampleInfos) && t.sampleIndex >= len(t.SampleInfos[t.sampleInfoIndex].Samples) {
 		t.sampleInfoIndex++
 		t.sampleIndex = 0
 	}
-	return t.sampleInfoIndex < len(t.sampleInfos)
+	return t.sampleInfoIndex < len(t.SampleInfos)
 }
 
 // Values returns the values for the current row
 func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID) {
-	info := t.sampleInfos[t.sampleInfoIndex]
-	sample := info.samples[t.sampleIndex]
-	if t.minSeen > sample.Timestamp {
-		t.minSeen = sample.Timestamp
+	info := t.SampleInfos[t.sampleInfoIndex]
+	sample := info.Samples[t.sampleIndex]
+	if t.MinSeen > sample.Timestamp {
+		t.MinSeen = sample.Timestamp
 	}
-	return model.Time(sample.Timestamp).Time(), sample.Value, info.seriesID
+	return model.Time(sample.Timestamp).Time(), sample.Value, info.SeriesID
 }
 
 // Err returns any error that has been encountered by the CopyFromSource. If
@@ -176,7 +183,8 @@ type MetricCache interface {
 	Set(metric string, tableName string) error
 }
 
-func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
+// GetMetricTableName returns the metrics table name and a bool that indicates whether the metric was newly created.
+func GetMetricTableName(conn PgxConn, metric string) (string, bool, error) {
 	res, err := conn.Query(
 		context.Background(),
 		getCreateMetricsTableWithNewSQL,
@@ -191,7 +199,7 @@ func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
 	var possiblyNew bool
 	defer res.Close()
 	if !res.Next() {
-		return "", true, errMissingTableName
+		return "", true, ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName, &possiblyNew); err != nil {
@@ -201,7 +209,8 @@ func getMetricTableName(conn pgxConn, metric string) (string, bool, error) {
 	return tableName, possiblyNew, nil
 }
 
-func timestamptzToMs(t pgtype.Timestamptz) int64 {
+// TimestamptzToMs converts Timestamp in pgtype to milliseconds.
+func TimestamptzToMs(t pgtype.Timestamptz) int64 {
 	switch t.InfinityModifier {
 	case pgtype.NegativeInfinity:
 		return math.MinInt64

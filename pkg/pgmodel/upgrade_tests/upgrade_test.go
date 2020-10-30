@@ -140,7 +140,7 @@ var (
 	preUpgradeData1 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test"},
+				{Name: MetricNameLabelKey, Value: "test"},
 				{Name: "test", Value: "test"},
 			},
 			Samples: []prompb.Sample{
@@ -152,7 +152,7 @@ var (
 	preUpgradeData2 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test2"},
+				{Name: MetricNameLabelKey, Value: "test2"},
 				{Name: "foo", Value: "bar"},
 			},
 			Samples: []prompb.Sample{
@@ -164,7 +164,7 @@ var (
 	postUpgradeData1 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test"},
+				{Name: MetricNameLabelKey, Value: "test"},
 				{Name: "testB", Value: "testB"},
 			},
 			Samples: []prompb.Sample{
@@ -176,7 +176,7 @@ var (
 	postUpgradeData2 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "test3"},
+				{Name: MetricNameLabelKey, Value: "test3"},
 				{Name: "baz", Value: "quf"},
 			},
 			Samples: []prompb.Sample{

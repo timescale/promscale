@@ -54,7 +54,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: metricName},
+					{Name: MetricNameLabelKey, Value: metricName},
 					{Name: "foo", Value: "bar"},
 					{Name: "common", Value: "tag"},
 					{Name: "empty", Value: ""},
@@ -82,7 +82,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		matchers := []*prompb.LabelMatcher{
 			{
 				Type:  prompb.LabelMatcher_EQ,
-				Name:  MetricNameLabelName,
+				Name:  MetricNameLabelKey,
 				Value: metricName,
 			},
 		}
