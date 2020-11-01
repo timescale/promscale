@@ -90,7 +90,7 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections)
 
 	if err != nil {
-		log.Error("err creating connection pool for new client", util.MaskPassword(err.Error()))
+		log.Error("msg", "err creating connection pool for new client", "err", util.MaskPassword(err.Error()))
 		return nil, err
 	}
 
@@ -109,7 +109,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, pool *pgxpool.Pool) (*Client
 	}
 	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(pool, cache, &c)
 	if err != nil {
-		log.Error("err starting ingestor", err)
+		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
 	reader := pgmodel.NewPgxReaderWithMetricCache(pool, cache, cfg.LabelsCacheSize)
@@ -192,7 +192,7 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 
 // Close closes the client and performs cleanup
 func (c *Client) Close() {
-	log.Info("Shutting down Client")
+	log.Info("msg", "Shutting down Client")
 	c.ingestor.Close()
 	c.Connection.Close()
 }

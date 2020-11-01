@@ -33,8 +33,11 @@ var (
 	// since an app version must uniquely determine the state of the schema.
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
-	Version    = "0.1.0"
+	Version    = "0.1.2-dev.0"
 	CommitHash = ""
+
+	PgVersionNumRange       = "=12.x" // Corresponds to range within pg 12.0 to pg 12.99
+	pgAcceptedVersionsRange = semver.MustParseRange(PgVersionNumRange)
 
 	TimescaleVersionRangeString = struct {
 		Safe, Warn string
@@ -52,6 +55,11 @@ var (
 	ExtVersionRangeString = "=0.1.x"
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 )
+
+// VerifyPgVersion verifies the Postgresql version compatibility.
+func VerifyPgVersion(version semver.Version) bool {
+	return pgAcceptedVersionsRange(version)
+}
 
 // VerifyTimescaleVersion verifies version compatibility with Timescaledb.
 func VerifyTimescaleVersion(version semver.Version) uint {

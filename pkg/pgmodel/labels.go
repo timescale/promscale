@@ -6,7 +6,6 @@ package pgmodel
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -27,6 +26,10 @@ type Labels struct {
 
 var LabelsInterner = sync.Map{}
 
+// Get the canonical version of a Labels if one exists.
+// input: the string representation of a Labels as defined by getStr()
+// This function should not be called directly, use labelProtosToLabels() or
+// LabelsFromSlice() instead.
 func GetLabels(str string) (l *Labels) {
 	val, ok := LabelsInterner.Load(str)
 	if !ok {
@@ -36,12 +39,17 @@ func GetLabels(str string) (l *Labels) {
 	return
 }
 
+// Try to set a Labels as the canonical Labels for a given string
+// representation, returning the canonical version (which can be different in
+// the even of multiple goroutines setting labels concurrently).
+// This function should not be called directly, use labelProtosToLabels() or
+// LabelsFromSlice() instead.
 func SetLabels(str string, lset *Labels) *Labels {
 	val, _ := LabelsInterner.LoadOrStore(str, lset)
 	return val.(*Labels)
 }
 
-// LabelsFromSlice converts a labels.Labels to a Labels object
+// LabelsFromSlice converts a labels.Labels to a canonical Labels object
 func LabelsFromSlice(ls labels.Labels) (*Labels, error) {
 	ll := make([]prompb.Label, len(ls))
 	for i := range ls {
@@ -52,7 +60,9 @@ func LabelsFromSlice(ls labels.Labels) (*Labels, error) {
 	return l, err
 }
 
-// initLabels intializes labels
+// Get a string representation for hashing and comparison
+// This representation is guaranteed to uniquely represent the underlying label
+// set, though need not human-readable, or indeed, valid utf-8
 func getStr(labels []prompb.Label) (string, error) {
 	if len(labels) == 0 {
 		return "", nil
@@ -112,6 +122,7 @@ func getStr(labels []prompb.Label) (string, error) {
 	return builder.String(), nil
 }
 
+// labelProtosToLabels converts a prompb.Label to a canonical Labels object
 func labelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 	str, err := getStr(labelPairs)
 	if err != nil {
@@ -136,6 +147,9 @@ func labelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 	return labels, labels.metricName, err
 }
 
+// Get a string representation for hashing and comparison
+// This representation is guaranteed to uniquely represent the underlying label
+// set, though need not human-readable, or indeed, valid utf-8
 func (l *Labels) String() string {
 	return l.str
 }
@@ -151,6 +165,7 @@ func (l *Labels) Equal(b *Labels) bool {
 }
 
 // Labels implements sort.Interface
+var _ sort.Interface = (*Labels)(nil)
 
 func (l *Labels) Len() int {
 	return len(l.names)
@@ -163,30 +178,4 @@ func (l *Labels) Less(i, j int) bool {
 func (l *Labels) Swap(i, j int) {
 	l.names[j], l.names[i] = l.names[i], l.names[j]
 	l.values[j], l.values[i] = l.values[i], l.values[j]
-}
-
-// FromLabelMatchers parses protobuf label matchers to Prometheus label matchers.
-func FromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, error) {
-	result := make([]*labels.Matcher, 0, len(matchers))
-	for _, matcher := range matchers {
-		var mtype labels.MatchType
-		switch matcher.Type {
-		case prompb.LabelMatcher_EQ:
-			mtype = labels.MatchEqual
-		case prompb.LabelMatcher_NEQ:
-			mtype = labels.MatchNotEqual
-		case prompb.LabelMatcher_RE:
-			mtype = labels.MatchRegexp
-		case prompb.LabelMatcher_NRE:
-			mtype = labels.MatchNotRegexp
-		default:
-			return nil, errors.New("invalid matcher type")
-		}
-		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, matcher)
-	}
-	return result, nil
 }

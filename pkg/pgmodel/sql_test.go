@@ -5,10 +5,10 @@ package pgmodel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,128 +22,107 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+type sqlRecorder struct {
+	queries   []sqlQuery
+	nextQuery int
+	lock      sync.Mutex
+	t         *testing.T
+}
+
+type sqlQuery struct {
+	sql     string
+	args    []interface{}
+	results rowResults
+	err     error
+}
+
 // rowResults represents a collection of a multi-column row result
 type rowResults [][]interface{}
 
-type mockPGXConn struct {
-	insertLock        sync.Mutex
-	queryLock         sync.Mutex
-	DBName            string
-	ExecSQLs          []string
-	ExecArgs          [][]interface{}
-	ExecErr           error
-	QuerySQLs         []string
-	QueryArgs         [][]interface{}
-	QueryResults      []rowResults
-	QueryResultsIndex int
-	QueryNoRows       bool
-	QueryErr          map[int]error // Mapping query call to error response.
-	CopyFromTableName []string
-	Times             []time.Time
-	Vals              []float64
-	Series            []int64
-	CopyFromResult    int64
-	CopyFromError     error
-	CopyFromRowsRows  [][]interface{}
-	Batch             []*mockBatch
+func newSqlRecorder(queries []sqlQuery, t *testing.T) *sqlRecorder {
+	return &sqlRecorder{queries: queries, t: t}
 }
 
-func (m *mockPGXConn) Close() {
+func (r *sqlRecorder) Close() {
 }
 
-func (m *mockPGXConn) UseDatabase(dbName string) {
-	m.DBName = dbName
-}
+func (r *sqlRecorder) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 
-func (m *mockPGXConn) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	if strings.HasPrefix(sql, "INSERT INTO ") && strings.HasSuffix(sql, "DO NOTHING") {
-		m.insertLock.Lock()
-		defer m.insertLock.Unlock()
-		if len(arguments) != 3 {
-			panic(fmt.Sprintf("invalid arguments: %v", arguments))
-		}
-		end := 0
-		for end < len(sql) && sql[end] != '(' {
-			end += 1
-		}
-		tableName := sql[len("INSERT INTO "):end]
-		m.CopyFromTableName = append(m.CopyFromTableName, tableName)
+	results, err := r.checkQuery(sql, arguments...)
 
-		times := arguments[0].([]time.Time)
-		vals := arguments[1].([]float64)
-		series := arguments[2].([]int64)
-
-		m.Times = append(m.Times, times...)
-		m.Vals = append(m.Vals, vals...)
-		m.Series = append(m.Series, series...)
-
-		return pgconn.CommandTag([]byte{}), m.CopyFromError
-	} else {
-		m.ExecSQLs = append(m.ExecSQLs, sql)
-		m.ExecArgs = append(m.ExecArgs, arguments)
-		return pgconn.CommandTag([]byte{}), m.ExecErr
+	if len(results) == 0 {
+		return nil, err
 	}
-}
-
-func (m *mockPGXConn) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	m.queryLock.Lock()
-	defer m.queryLock.Unlock()
-	defer func() {
-		m.QueryResultsIndex++
-	}()
-	m.QuerySQLs = append(m.QuerySQLs, sql)
-	m.QueryArgs = append(m.QueryArgs, args)
-	if len(m.QueryResults) <= m.QueryResultsIndex {
-		return &mockRows{results: nil, noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
-
+	if len(results) != 1 {
+		r.t.Errorf("mock exec: too many return rows %v\n in Exec\n %v\n args %v",
+			results, sql, arguments)
+		return nil, err
 	}
-	return &mockRows{results: m.QueryResults[m.QueryResultsIndex], noNext: m.QueryNoRows}, m.QueryErr[m.QueryResultsIndex]
+	if len(results[0]) != 1 {
+		r.t.Errorf("mock exec: too many return values %v\n in Exec\n %v\n args %v",
+			results, sql, arguments)
+		return nil, err
+	}
+
+	return results[0][0].(pgconn.CommandTag), err
 }
 
-func (m *mockPGXConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+func (r *sqlRecorder) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	rows, err := r.checkQuery(sql, args...)
+	return &mockRows{results: rows}, err
+}
+
+func (r *sqlRecorder) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	rows, err := r.checkQuery(sql, args...)
+	return &mockRows{results: rows, err: err}
+}
+
+func (m *sqlRecorder) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	panic("should never be called")
 }
 
-func (m *mockPGXConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
-	m.CopyFromRowsRows = rows
-	return pgx.CopyFromRows(rows)
+func (m *sqlRecorder) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
+	panic("should never be called")
 }
 
-func (m *mockPGXConn) NewBatch() pgxBatch {
+func (m *sqlRecorder) NewBatch() pgxBatch {
 	return &mockBatch{}
 }
 
-func (m *mockPGXConn) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
-	m.queryLock.Lock()
-	defer m.queryLock.Unlock()
-	defer func() { m.QueryResultsIndex++ }()
+func (r *sqlRecorder) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	batch := b.(*mockBatch)
-	m.Batch = append(m.Batch, batch)
-	return &mockBatchResult{results: m.QueryResults}, m.QueryErr[m.QueryResultsIndex]
-}
 
-type mockMetricCache struct {
-	metricCache  map[string]string
-	getMetricErr error
-	setMetricErr error
-}
-
-func (m *mockMetricCache) Get(metric string) (string, error) {
-	if m.getMetricErr != nil {
-		return "", m.getMetricErr
+	start := r.nextQuery
+	for _, q := range batch.items {
+		_, _ = r.checkQuery(q.query, q.arguments...)
 	}
-
-	val, ok := m.metricCache[metric]
-	if !ok {
-		return "", ErrEntryNotFound
-	}
-
-	return val, nil
+	// TODO switch to q.query[] subslice
+	return &mockBatchResult{queries: r.queries[start:r.nextQuery]}, nil
 }
 
-func (m *mockMetricCache) Set(metric string, tableName string) error {
-	m.metricCache[metric] = tableName
-	return m.setMetricErr
+func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, error) {
+	idx := r.nextQuery
+	if idx >= len(r.queries) {
+		r.t.Errorf("@ %d extra query: %s", idx, sql)
+		return nil, fmt.Errorf("extra query")
+	}
+	row := r.queries[idx]
+	r.nextQuery += 1
+	if sql != row.sql {
+		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
+	}
+	if !reflect.DeepEqual(args, row.args) {
+		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%#v\nexpected:\n\t%#v", idx, sql, args, row.args)
+	}
+	return row.results, row.err
 }
 
 type batchItem struct {
@@ -154,11 +133,11 @@ type batchItem struct {
 // Batch queries are a way of bundling multiple queries together to avoid
 // unnecessary network round trips.
 type mockBatch struct {
-	items []*batchItem
+	items []batchItem
 }
 
 func (b *mockBatch) Queue(query string, arguments ...interface{}) {
-	b.items = append(b.items, &batchItem{
+	b.items = append(b.items, batchItem{
 		query:     query,
 		arguments: arguments,
 	})
@@ -166,21 +145,37 @@ func (b *mockBatch) Queue(query string, arguments ...interface{}) {
 
 type mockBatchResult struct {
 	idx     int
-	results []rowResults
+	queries []sqlQuery
+	t       *testing.T
 }
 
 // Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
 func (m *mockBatchResult) Exec() (pgconn.CommandTag, error) {
-	return nil, nil
+	defer func() { m.idx++ }()
+
+	q := m.queries[m.idx]
+
+	if len(q.results) == 0 {
+		return nil, q.err
+	}
+	if len(q.results) != 1 {
+		m.t.Errorf("mock exec: too many return rows %v\n in batch Exec\n %+v", q.results, q)
+		return nil, q.err
+	}
+	if len(q.results[0]) != 1 {
+		m.t.Errorf("mock exec: too many return values %v\n in batch Exec\n %+v", q.results, q)
+		return nil, q.err
+	}
+
+	return q.results[0][0].(pgconn.CommandTag), q.err
 }
 
 // Query reads the results from the next query in the batch as if the query has been sent with Conn.Query.
 func (m *mockBatchResult) Query() (pgx.Rows, error) {
 	defer func() { m.idx++ }()
-	if len(m.results) <= m.idx {
-		return &mockRows{results: nil, noNext: false}, nil
-	}
-	return &mockRows{results: m.results[m.idx], noNext: false}, nil
+
+	q := m.queries[m.idx]
+	return &mockRows{results: q.results, noNext: false}, q.err
 }
 
 // Close closes the batch operation. This must be called before the underlying connection can be used again. Any error
@@ -193,17 +188,15 @@ func (m *mockBatchResult) Close() error {
 // QueryRow reads the results from the next query in the batch as if the query has been sent with Conn.QueryRow.
 func (m *mockBatchResult) QueryRow() pgx.Row {
 	defer func() { m.idx++ }()
-	if len(m.results) <= m.idx {
-		return &mockRows{results: nil, noNext: false}
-
-	}
-	return &mockRows{results: m.results[m.idx], noNext: false}
+	q := m.queries[m.idx]
+	return &mockRows{results: q.results, err: q.err, noNext: false}
 }
 
 type mockRows struct {
 	idx     int
 	noNext  bool
 	results rowResults
+	err     error
 }
 
 // Close closes the rows, making the connection ready for use again. It is safe
@@ -213,7 +206,7 @@ func (m *mockRows) Close() {
 
 // Err returns any error that occurred while reading.
 func (m *mockRows) Err() error {
-	return nil
+	return m.err
 }
 
 // CommandTag returns the command tag from this query. It is only available after Rows is closed.
@@ -239,12 +232,20 @@ func (m *mockRows) Next() bool {
 func (m *mockRows) Scan(dest ...interface{}) error {
 	defer func() { m.idx++ }()
 
+	if m.err != nil {
+		return m.err
+	}
+
 	if m.idx >= len(m.results) {
-		return fmt.Errorf("scanning error, no more results: got %d wanted %d", m.idx, len(m.results))
+		return fmt.Errorf("mock scanning error, no more results in batch: got %d wanted %d", m.idx, len(m.results))
 	}
 
 	if len(dest) > len(m.results[m.idx]) {
-		return fmt.Errorf("scanning error, missing results for scanning: got %d wanted %d", len(m.results[m.idx]), len(dest))
+		return fmt.Errorf("mock scanning error, missing results for scanning: got %d %#v\nwanted %d",
+			len(m.results[m.idx]),
+			m.results[m.idx],
+			len(dest),
+		)
 	}
 
 	for i := range dest {
@@ -324,7 +325,7 @@ func (m *mockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetUint(m.results[m.idx][i].(uint64))
 		case int64:
-			_, ok1 := dest[i].(int64)
+			_, ok1 := dest[i].(*int64)
 			_, ok2 := dest[i].(*SeriesID)
 			if !ok1 && !ok2 {
 				return fmt.Errorf("wrong value type int64")
@@ -356,225 +357,655 @@ func (m *mockRows) RawValues() [][]byte {
 	panic("not implemented")
 }
 
-func createSeriesResults(x int64) []rowResults {
-	ret := make([]rowResults, 0, x)
-	var i int64 = 1
-	x++
-
-	for i < x {
-		ret = append(ret, rowResults{{"table", i}})
-		i++
-	}
-
-	return ret
+type mockMetricCache struct {
+	metricCache  map[string]string
+	getMetricErr error
+	setMetricErr error
 }
 
-func createSeries(x int) []*labels.Labels {
-	ret := make([]*labels.Labels, 0, x)
-	i := 1
-	x++
-
-	for i < x {
-		label := labels.Labels{
-			labels.Label{
-				Name:  fmt.Sprintf("name_%d", i),
-				Value: fmt.Sprintf("value_%d", i),
-			},
-			labels.Label{
-				Name:  fmt.Sprint(MetricNameLabelName),
-				Value: fmt.Sprintf("metric_%d", i),
-			},
-		}
-		ret = append(ret, &label)
-		i++
+func (m *mockMetricCache) Get(metric string) (string, error) {
+	if m.getMetricErr != nil {
+		return "", m.getMetricErr
 	}
 
-	return ret
+	val, ok := m.metricCache[metric]
+	if !ok {
+		return "", ErrEntryNotFound
+	}
+
+	return val, nil
 }
+
+func (m *mockMetricCache) Set(metric string, tableName string) error {
+	m.metricCache[metric] = tableName
+	return m.setMetricErr
+}
+
+// test code start
+
+// sql_ingest tests
 
 func TestPGXInserterInsertSeries(t *testing.T) {
 	testCases := []struct {
-		name         string
-		series       []*labels.Labels
-		queryResults []rowResults
-		queryErr     map[int]error
+		name       string
+		series     []labels.Labels
+		sqlQueries []sqlQuery
 	}{
 		{
 			name: "Zero series",
 		},
 		{
-			name:         "One series",
-			series:       createSeries(1),
-			queryResults: createSeriesResults(1),
+			name: "One series",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"},
+				},
+			},
+
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}(nil),
+					results: rowResults{{int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 		{
-			name:         "Two series",
-			series:       createSeries(2),
-			queryResults: createSeriesResults(2),
+			name: "Two series",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"},
+				},
+				{
+					{Name: "name_2", Value: "value_2"},
+					{Name: "__name__", Value: "metric_2"},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}(nil),
+					results: rowResults{{int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_2",
+						[]string{"__name__", "name_2"},
+						[]string{"metric_2", "value_2"},
+					},
+					results: rowResults{{"table", int64(2)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 		{
-			name:         "Double series",
-			series:       append(createSeries(2), createSeries(1)...),
-			queryResults: createSeriesResults(2),
+			name: "Double series",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"}},
+				{
+					{Name: "name_2", Value: "value_2"},
+					{Name: "__name__", Value: "metric_2"}},
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}(nil),
+					results: rowResults{{int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_2", []string{"__name__", "name_2"},
+						[]string{"metric_2", "value_2"},
+					},
+					results: rowResults{{"table", int64(2)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 		{
-			name:         "Query err",
-			series:       createSeries(2),
-			queryResults: createSeriesResults(2),
-			queryErr:     map[int]error{0: fmt.Errorf("some query error")},
+			name: "Query err",
+			series: []labels.Labels{
+				{
+					{Name: "name_1", Value: "value_1"},
+					{Name: "__name__", Value: "metric_1"}},
+				{
+					{Name: "name_2", Value: "value_2"},
+					{Name: "__name__", Value: "metric_2"},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "BEGIN;"},
+				{
+					sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}(nil),
+					results: rowResults{{int64(1)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_1",
+						[]string{"__name__", "name_1"},
+						[]string{"metric_1", "value_1"},
+					},
+					results: rowResults{{"table", int64(1)}},
+					err:     fmt.Errorf("some query error"),
+				},
+				{sql: "COMMIT;"},
+				{sql: "BEGIN;"},
+				{
+					sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					args: []interface{}{
+						"metric_2",
+						[]string{"__name__", "name_2"},
+						[]string{"metric_2", "value_2"},
+					},
+					results: rowResults{{"table", int64(2)}},
+					err:     error(nil),
+				},
+				{sql: "COMMIT;"},
+			},
 		},
 	}
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			mock := &mockPGXConn{
-				QueryErr:     c.queryErr,
-				QueryResults: c.queryResults,
-			}
+			mock := newSqlRecorder(c.sqlQueries, t)
 
-			inserter := insertHandler{conn: mock, seriesCache: make(map[string]SeriesID)}
+			inserter := insertHandler{
+				conn:             mock,
+				seriesCache:      make(map[string]SeriesID),
+				seriesCacheEpoch: -1,
+			}
 
 			lsi := make([]samplesInfo, 0)
 			for _, ser := range c.series {
-				ls, err := LabelsFromSlice(*ser)
+				ls, err := LabelsFromSlice(ser)
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
 				lsi = append(lsi, samplesInfo{labels: ls, seriesID: -1})
 			}
 
-			_, err := inserter.setSeriesIds(lsi)
+			_, _, err := inserter.setSeriesIds(lsi)
 			if err != nil {
-				switch {
-				case len(c.queryErr) > 0:
-					for _, qErr := range c.queryErr {
-						if err != qErr {
-							t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, qErr)
+				foundErr := false
+				for _, q := range c.sqlQueries {
+					if q.err != nil {
+						foundErr = true
+						if err != q.err {
+							t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, q.err)
 						}
 					}
-					return
-				default:
+				}
+				if !foundErr {
 					t.Errorf("unexpected error: %v", err)
 				}
 			}
 
-			for _, si := range lsi {
-				if si.seriesID <= 0 {
-					t.Error("Series not set")
+			if err == nil {
+				for _, si := range lsi {
+					if si.seriesID <= 0 {
+						t.Error("Series not set", lsi)
+					}
 				}
-			}
-
-			if c.queryErr != nil {
-				t.Errorf("expected query error:\ngot\n%v\nwanted\n%v", err, c.queryErr)
 			}
 		})
 	}
 }
 
-func createRows(x int) map[string][]samplesInfo {
-	return createRowsByMetric(x, 1)
-}
+func TestPGXInserterCacheReset(t *testing.T) {
 
-func createRowsByMetric(x int, metricCount int) map[string][]samplesInfo {
-	ret := make(map[string][]samplesInfo)
-	i := 0
-
-	metrics := make([]string, 0, metricCount)
-
-	for metricCount > i {
-		metrics = append(metrics, fmt.Sprintf("metric_%d", i))
-		i++
+	series := []labels.Labels{
+		{
+			{Name: "__name__", Value: "metric_1"},
+			{Name: "name_1", Value: "value_1"},
+		},
+		{
+			{Name: "name_1", Value: "value_2"},
+			{Name: "__name__", Value: "metric_1"},
+		},
 	}
 
-	i = 0
+	sqlQueries := []sqlQuery{
 
-	for i < x {
-		metricIndex := i % metricCount
+		// first series cache fetch
+		{sql: "BEGIN;"},
+		{
+			sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+			args:    []interface{}(nil),
+			results: rowResults{{int64(1)}},
+			err:     error(nil),
+		},
+		{sql: "COMMIT;"},
+		{sql: "BEGIN;"},
+		{
+			sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			args: []interface{}{
+				"metric_1",
+				[]string{"__name__", "name_1"},
+				[]string{"metric_1", "value_1"},
+			},
+			results: rowResults{{"table", int64(1)}},
+			err:     error(nil),
+		},
+		{sql: "COMMIT;"},
+		{sql: "BEGIN;"},
+		{
+			sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			args: []interface{}{
+				"metric_1",
+				[]string{"__name__", "name_1"},
+				[]string{"metric_1", "value_2"},
+			},
+			results: rowResults{{"table", int64(2)}},
+			err:     error(nil),
+		},
+		{sql: "COMMIT;"},
 
-		ret[metrics[metricIndex]] = append(ret[metrics[metricIndex]], samplesInfo{samples: []prompb.Sample{{}}})
-		i++
+		// first labels cache refresh, does not trash
+		{
+			sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+			args:    []interface{}(nil),
+			results: rowResults{{int64(1)}},
+			err:     error(nil),
+		},
+
+		// second labels cache refresh, trash the cache
+		{
+			sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+			args:    []interface{}(nil),
+			results: rowResults{{int64(2)}},
+			err:     error(nil),
+		},
+
+		// repopulate the cache
+		{sql: "BEGIN;"},
+		{
+			sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
+			args:    []interface{}(nil),
+			results: rowResults{{int64(2)}},
+			err:     error(nil),
+		},
+		{sql: "COMMIT;"},
+		{sql: "BEGIN;"},
+		{
+			sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			args: []interface{}{
+				"metric_1",
+				[]string{"__name__", "name_1"},
+				[]string{"metric_1", "value_1"},
+			},
+			results: rowResults{{"table", int64(3)}},
+			err:     error(nil),
+		},
+		{sql: "COMMIT;"},
+		{sql: "BEGIN;"},
+		{
+			sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			args: []interface{}{
+				"metric_1",
+				[]string{"__name__", "name_1"},
+				[]string{"metric_1", "value_2"},
+			},
+			results: rowResults{{"table", int64(4)}},
+			err:     error(nil),
+		},
+		{sql: "COMMIT;"},
 	}
-	return ret
+
+	mock := newSqlRecorder(sqlQueries, t)
+
+	inserter := insertHandler{
+		conn:             mock,
+		seriesCache:      make(map[string]SeriesID),
+		seriesCacheEpoch: -1,
+	}
+
+	makeSamples := func(series []labels.Labels) []samplesInfo {
+		lsi := make([]samplesInfo, 0)
+		for _, ser := range series {
+			ls, err := LabelsFromSlice(ser)
+			if err != nil {
+				t.Errorf("invalid labels %+v, %v", ls, err)
+			}
+			lsi = append(lsi, samplesInfo{labels: ls, seriesID: -1})
+		}
+		return lsi
+	}
+
+	samples := makeSamples(series)
+	_, _, err := inserter.setSeriesIds(samples)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedIds := map[string]SeriesID{
+		"value_1": SeriesID(1),
+		"value_2": SeriesID(2),
+	}
+
+	for _, si := range samples {
+		value := si.labels.values[1]
+		expectedId := expectedIds[value]
+		if si.seriesID != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.seriesID, expectedId)
+		}
+	}
+
+	// refreshing during the same epoch givesthe same IDs without checking the DB
+	inserter.refreshSeriesCache()
+
+	samples = makeSamples(series)
+	_, _, err = inserter.setSeriesIds(samples)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, si := range samples {
+		value := si.labels.values[1]
+		expectedId := expectedIds[value]
+		if si.seriesID != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.seriesID, expectedId)
+		}
+	}
+
+	// trash the cache
+	inserter.refreshSeriesCache()
+
+	// retrying rechecks the DB and uses the new IDs
+	samples = makeSamples(series)
+	_, _, err = inserter.setSeriesIds(samples)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedIds = map[string]SeriesID{
+		"value_1": SeriesID(3),
+		"value_2": SeriesID(4),
+	}
+
+	for _, si := range samples {
+		value := si.labels.values[1]
+		expectedId := expectedIds[value]
+		if si.seriesID != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.seriesID, expectedId)
+		}
+	}
 }
 
 func TestPGXInserterInsertData(t *testing.T) {
 	testCases := []struct {
-		name           string
-		rows           map[string][]samplesInfo
-		queryNoRows    bool
-		queryErr       map[int]error
-		copyFromResult int64
-		copyFromErr    error
-		metricsGetErr  error
-		metricsSetErr  error
+		name          string
+		rows          map[string][]samplesInfo
+		sqlQueries    []sqlQuery
+		metricsGetErr error
 	}{
 		{
 			name: "Zero data",
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+			},
 		},
 		{
 			name: "One data",
-			rows: createRows(1),
+			rows: map[string][]samplesInfo{
+				"metric_0": {{samples: make([]prompb.Sample, 1)}},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+				{
+					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}{int64(-1)},
+					results: rowResults{{[]byte{}}},
+					err:     error(nil),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0)},
+						[]float64{0},
+						[]int64{0},
+					},
+					results: rowResults{{pgconn.CommandTag{'1'}}},
+					err:     error(nil),
+				},
+			},
 		},
 		{
 			name: "Two data",
-			rows: createRows(2),
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+				{
+					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}{int64(-1)},
+					results: rowResults{{[]byte{}}},
+					err:     error(nil),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0), time.Unix(0, 0)},
+						[]float64{0, 0},
+						[]int64{0, 0},
+					},
+					results: rowResults{{pgconn.CommandTag{'1'}}},
+					err:     error(nil),
+				},
+			},
 		},
 		{
-			name:     "Create table error",
-			rows:     createRows(5),
-			queryErr: map[int]error{0: fmt.Errorf("create table error")},
+			name: "Create table error",
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{},
+					err:     fmt.Errorf("create table error"),
+				},
+			},
 		},
 		{
-			name:        "Copy from error",
-			rows:        createRows(5),
-			copyFromErr: fmt.Errorf("some error"),
+			name: "Epoch Error",
+			rows: map[string][]samplesInfo{
+				"metric_0": {{samples: make([]prompb.Sample, 1)}},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+				{
+					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}{int64(-1)},
+					results: rowResults{{[]byte{}}},
+					err:     fmt.Errorf("epoch error"),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0)},
+						[]float64{0},
+						[]int64{0},
+					},
+					results: rowResults{},
+					err:     error(nil),
+				},
+			},
 		},
 		{
-			name:           "Not all data inserted",
-			rows:           createRows(5),
-			copyFromResult: 4,
+			name: "Copy from error",
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args:    []interface{}{"metric_0"},
+					results: rowResults{{"metric_0", true}},
+					err:     error(nil),
+				},
+				{
+					sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					args:    []interface{}{int64(-1)},
+					results: rowResults{{[]byte{}}},
+					err:     error(nil),
+				},
+				{
+					sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					args: []interface{}{
+						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
+						make([]float64, 5),
+						make([]int64, 5),
+					},
+					results: rowResults{{pgconn.CommandTag{'1'}}},
+					err:     fmt.Errorf("some INSERT error"),
+				},
+			},
 		},
 		{
-			name:        "Can't find/create table in DB",
-			rows:        createRows(5),
-			queryNoRows: true,
+			name: "Can't find/create table in DB",
+			rows: map[string][]samplesInfo{
+				"metric_0": {
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+					{samples: make([]prompb.Sample, 1)},
+				},
+			},
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					sql:  "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					args: []interface{}{"metric_0"},
+					// no results is deliberate
+					results: rowResults{},
+					err:     error(nil),
+				},
+			},
 		},
 		{
-			name:          "Metrics get error",
-			rows:          createRows(1),
+			name: "Metrics get error",
+			rows: map[string][]samplesInfo{
+				"metric_0": {{samples: make([]prompb.Sample, 1)}},
+			},
 			metricsGetErr: fmt.Errorf("some metrics error"),
-		},
-		{
-			name:          "Metrics set error",
-			rows:          createRows(1),
-			metricsSetErr: fmt.Errorf("some metrics error"),
+			sqlQueries: []sqlQuery{
+				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
+			},
 		},
 	}
+
 	for _, co := range testCases {
 		c := co
 		t.Run(c.name, func(t *testing.T) {
-			mock := &mockPGXConn{
-				QueryNoRows:    c.queryNoRows,
-				QueryErr:       c.queryErr,
-				CopyFromResult: c.copyFromResult,
-				CopyFromError:  c.copyFromErr,
-			}
-
-			//The database will be queried for metricNames
-			results := make([]rowResults, 0, len(c.rows))
-			for metricName := range c.rows {
-				//create metric name
-				results = append(results, rowResults{{metricName, true}})
-				//send batch
-				results = append(results, rowResults{{}})
-			}
-			mock.QueryResults = results
+			mock := newSqlRecorder(c.sqlQueries, t)
 
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &mockMetricCache{
 				metricCache:  metricCache,
 				getMetricErr: c.metricsGetErr,
-				setMetricErr: c.metricsSetErr,
 			}
 			inserter, err := newPgxInserter(mock, mockMetrics, &Cfg{})
 			if err != nil {
@@ -583,139 +1014,42 @@ func TestPGXInserterInsertData(t *testing.T) {
 
 			_, err = inserter.InsertData(c.rows)
 
-			if err != nil {
-				var expErr error
+			var expErr error
 
-				switch {
-				case c.metricsGetErr != nil:
-					expErr = c.metricsGetErr
-				case c.metricsSetErr != nil:
-					expErr = c.metricsSetErr
-				case c.copyFromErr != nil:
-					expErr = c.copyFromErr
-				case c.queryErr != nil:
-					for _, qErr := range c.queryErr {
-						expErr = qErr
+			switch {
+			case c.metricsGetErr != nil:
+				expErr = c.metricsGetErr
+			case c.name == "Can't find/create table in DB":
+				expErr = errMissingTableName
+			default:
+				for _, q := range c.sqlQueries {
+					if q.err != nil {
+						expErr = q.err
+						break
 					}
-				case c.queryNoRows:
-					expErr = errMissingTableName
 				}
+			}
 
-				if err != expErr {
+			if err != nil {
+				if !errors.Is(err, expErr) {
 					t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s", err, expErr)
 				}
 
 				return
 			}
 
-			if c.copyFromErr != nil {
-				t.Errorf("expected error:\ngot\nnil\nwanted\n%s", c.copyFromErr)
+			if expErr != nil {
+				t.Errorf("expected error:\ngot\nnil\nwanted\n%s", expErr)
 			}
 
 			if len(c.rows) == 0 {
 				return
 			}
-
-			if len(mock.CopyFromTableName) != len(c.rows) {
-				t.Errorf("number of table names differs from input: got %d want %d\n", len(mock.CopyFromTableName), len(c.rows))
-			}
-
-			tNames := make([]pgx.Identifier, 0, len(c.rows))
-			for tableName := range c.rows {
-				realTableName, err := mockMetrics.Get(tableName)
-				if err != nil {
-					t.Fatalf("error when fetching metric table name: %s", err)
-				}
-				tNames = append(tNames, pgx.Identifier{dataSchema, realTableName})
-			}
-
-			// Sorting because range over a map gives random iteration order.
-			sort.Slice(tNames, func(i, j int) bool { return tNames[i][1] < tNames[j][1] })
-			sort.Slice(mock.CopyFromTableName, func(i, j int) bool { return mock.CopyFromTableName[i][1] < mock.CopyFromTableName[j][1] })
-			expectedNames := make([]string, len(tNames))
-			for i := range tNames {
-				expectedNames[i] = tNames[i].Sanitize()
-			}
-			if !reflect.DeepEqual(mock.CopyFromTableName, expectedNames) {
-				t.Errorf("unexpected copy table:\ngot\n%s\nwanted\n%s", mock.CopyFromTableName, tNames)
-			}
 		})
 	}
 }
 
-type sqlRecorder struct {
-	queries   []sqlQuery
-	nextQuery int
-	lock      sync.Mutex
-	t         *testing.T
-}
-
-type sqlQuery struct {
-	sql     string
-	args    []interface{}
-	results rowResults
-	err     error
-}
-
-func (r *sqlRecorder) Close() {
-}
-
-func (r *sqlRecorder) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	_, err := r.checkQuery(sql, arguments...)
-	return pgconn.CommandTag{}, err
-}
-
-func (r *sqlRecorder) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	rows, err := r.checkQuery(sql, args...)
-	return &mockRows{results: rows}, err
-}
-
-func (m *sqlRecorder) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	panic("should never be called")
-}
-
-func (m *sqlRecorder) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
-	panic("should never be called")
-}
-
-func (m *sqlRecorder) NewBatch() pgxBatch {
-	return &mockBatch{}
-}
-
-func (r *sqlRecorder) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	batch := b.(*mockBatch)
-
-	results := make([]rowResults, 0, len(batch.items))
-	for _, q := range batch.items {
-		//TODO err
-		rows, _ := r.checkQuery(q.query, q.arguments...)
-		results = append(results, rows)
-	}
-	return &mockBatchResult{results: results}, nil
-}
-
-func (r *sqlRecorder) checkQuery(sql string, args ...interface{}) (rowResults, error) {
-	idx := r.nextQuery
-	if idx >= len(r.queries) {
-		r.t.Errorf("@ %d extra query: %s", idx, sql)
-		return nil, fmt.Errorf("extra query")
-	}
-	row := r.queries[idx]
-	r.nextQuery += 1
-	if sql != row.sql {
-		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
-	}
-	if !reflect.DeepEqual(args, row.args) {
-		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%v\nexpected:\n\t%v", idx, sql, args, row.args)
-	}
-	return row.results, row.err
-}
+// sql_reader tests
 
 func TestPGXQuerierQuery(t *testing.T) {
 	testCases := []struct {
@@ -869,7 +1203,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					err:     error(nil),
 				},
 			},
-			err: fmt.Errorf("scanning error, missing results for scanning: got 1 wanted 2"),
+			err: fmt.Errorf("mock scanning error, missing results for scanning: got 1 []interface {}{0}\nwanted 2"),
 		},
 		{
 			name:   "Empty query",
@@ -1366,7 +1700,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			mock := &sqlRecorder{queries: c.sqlQueries, t: t}
+			mock := newSqlRecorder(c.sqlQueries, t)
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &mockMetricCache{
 				metricCache: metricCache,
@@ -1396,9 +1730,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						t.Errorf("unexpected error:\ngot\n\t%v\nwanted\n\t%v", err, c.err)
 					}
 				}
-			}
-
-			if !reflect.DeepEqual(result, c.result) {
+			} else if !reflect.DeepEqual(result, c.result) {
 				t.Errorf("unexpected result:\ngot\n%#v\nwanted\n%+v", result, c.result)
 			}
 		})
@@ -1406,86 +1738,175 @@ func TestPGXQuerierQuery(t *testing.T) {
 }
 
 func TestPgxQuerierLabelsNames(t *testing.T) {
-	testLabelMethods(t, func(querier *pgxQuerier) ([]string, error) {
-		return querier.LabelNames()
-	})
-}
-
-func TestPgxQuerierLabelsValues(t *testing.T) {
-	testLabelMethods(t, func(querier *pgxQuerier) ([]string, error) {
-		return querier.LabelValues("m")
-	})
-}
-
-func testLabelMethods(t *testing.T, f func(*pgxQuerier) ([]string, error)) {
 	testCases := []struct {
-		name         string
-		expectedRes  []string
-		errorOnQuery bool
-		errorOnScan  bool
+		name        string
+		expectedRes []string
+		sqlQueries  []sqlQuery
 	}{
 		{
-			name:         "Error on query",
-			errorOnQuery: true,
+			name: "Error on query",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{},
+					err:     fmt.Errorf("some error"),
+				},
+			},
 		}, {
-			name:        "Error on scanning values",
-			errorOnScan: true,
-			expectedRes: []string{"a"},
+			name: "Error on scanning values",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{{1}},
+				},
+			},
 		}, {
-			name:        "Empty result, is ok",
+			name: "Empty result, is ok",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{},
+				},
+			},
 			expectedRes: []string{},
 		}, {
-			name:        "Result should be sorted",
-			expectedRes: []string{"b", "a"},
+			name: "Result should be sorted",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT distinct key from _prom_catalog.label",
+					args:    []interface{}(nil),
+					results: rowResults{{"b"}, {"a"}},
+				},
+			},
+			expectedRes: []string{"a", "b"},
 		},
 	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			queryResults := toRowResults(tc.expectedRes, tc.errorOnScan)
-			queryErr := make(map[int]error)
-			if tc.errorOnQuery {
-				queryErr[0] = fmt.Errorf("some error")
-			}
-			mock := &mockPGXConn{
-				QueryErr:     queryErr,
-				QueryResults: queryResults,
-			}
+			mock := newSqlRecorder(tc.sqlQueries, t)
 			querier := pgxQuerier{conn: mock}
-			res, err := f(&querier)
-			if tc.errorOnQuery && err == nil {
-				t.Error("unexpected lack of error")
-				return
-			} else if tc.errorOnScan && err == nil {
-				t.Error("unexpected lack of error")
-				return
-			} else if err != nil && !tc.errorOnQuery && !tc.errorOnScan {
-				t.Errorf("unexpected error: %v", err)
-				return
-			} else if tc.errorOnQuery || tc.errorOnScan {
+			res, err := querier.LabelNames()
+
+			var expectedErr error
+			for _, q := range tc.sqlQueries {
+				if q.err != nil {
+					expectedErr = err
+					break
+				}
+			}
+
+			if tc.name == "Error on scanning values" {
+				if err.Error() != "wrong value type int" {
+					expectedErr = fmt.Errorf("wrong value type int")
+					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
+					return
+				}
+			} else if expectedErr != err {
+				t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 				return
 			}
+
 			outputIsSorted := sort.SliceIsSorted(res, func(i, j int) bool {
 				return res[i] < res[j]
 			})
 			if !outputIsSorted {
-				t.Error("returned label names are not sorted")
+				t.Errorf("returned label names %v are not sorted", res)
 			}
-			sort.Strings(tc.expectedRes)
+
 			if !reflect.DeepEqual(tc.expectedRes, res) {
 				t.Errorf("expected: %v, got: %v", tc.expectedRes, res)
 			}
 		})
 	}
 }
-func toRowResults(labelNames []string, convertImproperly bool) []rowResults {
-	toReturn := make([]rowResults, 1)
-	toReturn[0] = make(rowResults, len(labelNames))
-	for i, labelName := range labelNames {
-		if convertImproperly {
-			toReturn[0][i] = []interface{}{1}
-		} else {
-			toReturn[0][i] = []interface{}{labelName}
-		}
+
+func TestPgxQuerierLabelsValues(t *testing.T) {
+	testCases := []struct {
+		name        string
+		expectedRes []string
+		sqlQueries  []sqlQuery
+	}{
+		{
+			name: "Error on query",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{},
+					err:     fmt.Errorf("some error"),
+				},
+			},
+		}, {
+			name: "Error on scanning values",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{{1}},
+				},
+			},
+		}, {
+			name: "Empty result, is ok",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{},
+				},
+			},
+			expectedRes: []string{},
+		}, {
+			name: "Result should be sorted",
+			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					args:    []interface{}{"m"},
+					results: rowResults{{"b"}, {"a"}},
+				},
+			},
+			expectedRes: []string{"a", "b"},
+		},
 	}
-	return toReturn
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := newSqlRecorder(tc.sqlQueries, t)
+			querier := pgxQuerier{conn: mock}
+			res, err := querier.LabelValues("m")
+
+			var expectedErr error
+			for _, q := range tc.sqlQueries {
+				if q.err != nil {
+					expectedErr = err
+					break
+				}
+			}
+
+			if tc.name == "Error on scanning values" {
+				if err.Error() != "wrong value type int" {
+					expectedErr = fmt.Errorf("wrong value type int")
+					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
+					return
+				}
+			} else if expectedErr != err {
+				t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
+				return
+			}
+
+			outputIsSorted := sort.SliceIsSorted(res, func(i, j int) bool {
+				return res[i] < res[j]
+			})
+			if !outputIsSorted {
+				t.Errorf("returned label names %v are not sorted", res)
+			}
+
+			if !reflect.DeepEqual(tc.expectedRes, res) {
+				t.Errorf("expected: %v, got: %v", tc.expectedRes, res)
+			}
+		})
+	}
 }

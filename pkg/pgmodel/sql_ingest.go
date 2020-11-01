@@ -1,6 +1,9 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
+// See the section on the Write path in the Readme for a high level overview of
+// this file.
 package pgmodel
 
 import (
@@ -24,6 +27,7 @@ const (
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
 	finalizeMetricCreation   = "CALL " + catalogSchema + ".finalize_metric_creation()"
 	getSeriesIDForLabelSQL   = "SELECT * FROM " + catalogSchema + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
+	getEpochSQL              = "SELECT current_epoch FROM " + catalogSchema + ".ids_epoch LIMIT 1"
 )
 
 type Cfg struct {
@@ -63,6 +67,11 @@ func newPgxInserter(conn pgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, er
 		log.Warn("msg", "num copiers less than 1, setting to 1")
 		numCopiers = 1
 	}
+
+	// We run inserters bus-style: all of them competing to grab requests off a
+	// single channel. This should offer a decent compromise between batching
+	// and balancing: if an inserter is awake and has little work, it'll be more
+	// likely to win the race, while one that's busy or asleep won't.
 	toCopiers := make(chan copyRequest, numCopiers)
 	for i := 0; i < numCopiers; i++ {
 		go runInserter(conn, toCopiers)
@@ -121,7 +130,7 @@ func (p *pgxInserter) runCompleteMetricCreationWorker() {
 	for range p.completeMetricCreation {
 		err := p.CompleteMetricCreation()
 		if err != nil {
-			log.Warn("Got an error finalizing metric: %v", err)
+			log.Warn("msg", "Got an error finalizing metric", "err", err)
 		}
 	}
 }
@@ -161,6 +170,9 @@ type insertDataTask struct {
 	errChan  chan error
 }
 
+// Report that this task is completed, along with any error that may have
+// occured. Since this is a backedge on the goroutine graph, it
+// _must never block_: blocking here will cause deadlocks.
 func (idt *insertDataTask) reportResult(err error) {
 	if err != nil {
 		select {
@@ -171,15 +183,26 @@ func (idt *insertDataTask) reportResult(err error) {
 	idt.finished.Done()
 }
 
+// Insert a batch of data into the DB.
+// The data should be grouped by metric name.
+// returns the number of rows we intended to insert (_not_ how many were
+// actually inserted) and any error.
+// Though we may insert data to multiple tables concurrently, if asyncAcks is
+// unset this function will wait until _all_ the insert attempts have completed.
 func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
 	workFinished.Add(len(rows))
+	// we only allocate enough space for a single error message here as we only
+	// report one error back upstream. The inserter should not block on this
+	// channel, but only insert if it's empty, anything else can deadlock.
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
 		for _, si := range data {
 			numRows += uint64(len(si.samples))
 		}
+		// insertMetricData() is expected to be non-blocking,
+		// just a channel insert
 		p.insertMetricData(metricName, data, workFinished, errChan)
 	}
 
@@ -200,7 +223,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 			}
 			close(errChan)
 			if err != nil {
-				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "error", err)
+				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "err", err)
 			} else if p.insertedDatapoints != nil {
 				atomic.AddInt64(p.insertedDatapoints, int64(numRows))
 			}
@@ -211,7 +234,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 }
 
 func (p *pgxInserter) insertMetricData(metric string, data []samplesInfo, finished *sync.WaitGroup, errChan chan error) {
-	inserter := p.getMetricInserter(metric, errChan)
+	inserter := p.getMetricInserter(metric)
 	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
 
@@ -270,34 +293,50 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 	return tableName, err
 }
 
-func (p *pgxInserter) getMetricInserter(metric string, errChan chan error) chan insertDataRequest {
+// Get the handler for a given metric name, creating a new one if none exists
+func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
 	inserter, ok := p.inserters.Load(metric)
 	if !ok {
+		// The ordering is important here: we need to ensure that every call
+		// to getMetricInserter() returns the same inserter. Therefore, we can
+		// only start up the inserter routine if we know that we won the race
+		// to create the inserter, anything else will leave a zombie inserter
+		// lying around.
 		c := make(chan insertDataRequest, 1000)
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
-			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, errChan, p.metricTableNames, p.toCopiers)
+			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers)
 		}
 	}
 	return inserter.(chan insertDataRequest)
 }
 
 type insertHandler struct {
-	conn            pgxConn
-	input           chan insertDataRequest
-	pending         *pendingBuffer
-	seriesCache     map[string]SeriesID
-	metricTableName string
-	toCopiers       chan copyRequest
+	conn               pgxConn
+	input              chan insertDataRequest
+	pending            *pendingBuffer
+	seriesCache        map[string]SeriesID
+	seriesCacheEpoch   Epoch
+	seriesCacheRefresh *time.Ticker
+	metricTableName    string
+	toCopiers          chan copyRequest
 }
+
+// epoch for the ID caches, -1 means that the epoch was not set
+type Epoch = int64
 
 type pendingBuffer struct {
 	needsResponse []insertDataTask
 	batch         SampleInfoIterator
+	epoch         Epoch
 }
 
 const (
+	// maximum number of insertDataRequests that should be buffered before the
+	// insertHandler flushes to the next layer. We don't want too many as this
+	// increases the number of lost writes if the connector dies. This number
+	// was chosen arbitrarily.
 	flushSize = 2000
 )
 
@@ -306,6 +345,7 @@ var pendingBuffers = sync.Pool{
 		pb := new(pendingBuffer)
 		pb.needsResponse = make([]insertDataTask, 0)
 		pb.batch = NewSampleInfoIterator()
+		pb.epoch = -1
 		return pb
 	},
 }
@@ -315,7 +355,7 @@ type copyRequest struct {
 	table string
 }
 
-func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, errChan chan error, metricTableNames MetricCache, toCopiers chan copyRequest) {
+func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames MetricCache, toCopiers chan copyRequest) {
 	var tableName string
 	var firstReq insertDataRequest
 	firstReqSet := false
@@ -323,10 +363,6 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 		var err error
 		tableName, err = initializeInserterRoutine(conn, metricName, completeMetricCreationSignal, metricTableNames)
 		if err != nil {
-			select {
-			case errChan <- err:
-			default:
-			}
 			firstReq.reportResult(fmt.Errorf("Initializing the insert routine has failed with %w", err))
 		} else {
 			firstReqSet = true
@@ -340,16 +376,27 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 	}
 
 	handler := insertHandler{
-		conn:            conn,
-		input:           input,
-		pending:         pendingBuffers.Get().(*pendingBuffer),
-		seriesCache:     make(map[string]SeriesID),
-		metricTableName: tableName,
-		toCopiers:       toCopiers,
+		conn:             conn,
+		input:            input,
+		pending:          pendingBuffers.Get().(*pendingBuffer),
+		seriesCache:      make(map[string]SeriesID),
+		seriesCacheEpoch: -1,
+		// set to run at half our deletion interval
+		seriesCacheRefresh: time.NewTicker(30 * time.Minute),
+		metricTableName:    tableName,
+		toCopiers:          toCopiers,
 	}
 
 	handler.handleReq(firstReq)
 
+	// Grab new requests from our channel and handle them. We do this hot-load
+	// style: we keep grabbing requests off the channel while we can do so
+	// without blocking, and flush them to the next layer when we run out, or
+	// reach a predetermined threshold. The theory is that wake/sleep and
+	// flushing is relatively expensive, and can be easily amortized over
+	// multiple requests, so it pays to batch as much as we are able. However,
+	// writes to a given metric can be relatively rare, so if we don't have
+	// additional requests immediately we're likely not going to for a while.
 	for {
 		if !handler.hasPendingReqs() {
 			stillAlive := handler.blockingHandleReq()
@@ -370,6 +417,9 @@ func runInserterRoutine(conn pgxConn, input chan insertDataRequest, metricName s
 	}
 }
 
+// Create the metric table for the metric we handle, if it does not already
+// exist. This only does the most critical part of metric table creation, the
+// rest is handled by completeMetricTableCreation().
 func initializeInserterRoutine(conn pgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames MetricCache) (tableName string, err error) {
 	tableName, err = metricTableNames.Get(metricName)
 	if err == ErrEntryNotFound {
@@ -400,14 +450,20 @@ func (h *insertHandler) hasPendingReqs() bool {
 }
 
 func (h *insertHandler) blockingHandleReq() bool {
-	req, ok := <-h.input
-	if !ok {
-		return false
+	for {
+		select {
+		case req, ok := <-h.input:
+			if !ok {
+				return false
+			}
+
+			h.handleReq(req)
+
+			return true
+		case <-h.seriesCacheRefresh.C:
+			h.refreshSeriesCache()
+		}
 	}
-
-	h.handleReq(req)
-
-	return true
 }
 
 func (h *insertHandler) nonblockingHandleReq() bool {
@@ -421,8 +477,11 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 }
 
 func (h *insertHandler) handleReq(req insertDataRequest) bool {
-	h.fillKnowSeriesIds(req.data)
-	needsFlush := h.pending.addReq(req)
+	// we fill in any SeriesIds we have in cache now so we can free any Labels
+	// that are no longer needed, and because the SeriesIds might get flushed.
+	// (neither of these are that critical at the moment)
+	_, epoch := h.fillKnownSeriesIds(req.data)
+	needsFlush := h.pending.addReq(req, epoch)
 	if needsFlush {
 		h.flushPending()
 		return true
@@ -430,8 +489,15 @@ func (h *insertHandler) handleReq(req insertDataRequest) bool {
 	return false
 }
 
-func (h *insertHandler) fillKnowSeriesIds(sampleInfos []samplesInfo) (numMissingSeries int) {
+// Fill in any SeriesIds we already have in cache.
+// This must be idempotent: if called a second time it should not affect any
+// sampleInfo whose series was already set.
+func (h *insertHandler) fillKnownSeriesIds(sampleInfos []samplesInfo) (numMissingSeries int, epoch Epoch) {
+	epoch = h.seriesCacheEpoch
 	for i, series := range sampleInfos {
+		// When we first create the sampleInfos we should have set the seriesID
+		// to -1 for any series whose labels field is nil. Real seriesIds must
+		// always be greater than 0.
 		if series.seriesID > -1 {
 			continue
 		}
@@ -453,18 +519,26 @@ func (h *insertHandler) flush() {
 	h.flushPending()
 }
 
+// Set all unset SeriesIds and flush to the next layer
 func (h *insertHandler) flushPending() {
-	_, err := h.setSeriesIds(h.pending.batch.sampleInfos)
+	_, epoch, err := h.setSeriesIds(h.pending.batch.sampleInfos)
 	if err != nil {
 		h.pending.reportResults(err)
 		return
 	}
 
+	h.pending.addEpoch(epoch)
+
 	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
 	h.pending = pendingBuffers.Get().(*pendingBuffer)
 }
 
+// Handles actual insertion into the DB.
+// We have one of these per connection reserved for insertion.
 func runInserter(conn pgxConn, in chan copyRequest) {
+	// We grab copyRequests off the channel one at a time. This, and the name is
+	// a legacy from when we used CopyFrom to perform the insetions, and may
+	// change in the future.
 	for {
 		req, ok := <-in
 		if !ok {
@@ -485,16 +559,14 @@ func runInserter(conn pgxConn, in chan copyRequest) {
 func insertErrorFallback(conn pgxConn, req copyRequest, err error) error {
 	err = tryRecovery(conn, req, err)
 	if err != nil {
-		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
+		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "err", err.Error())
 		return err
 	}
 
 	return doInsert(conn, req)
 }
 
-// we can currently recover from two error:
-// If we inserted duplicate data we switch to using INSERT ... ON CONFLICT DO NOTHING
-// to skip redundant data points and try again.
+// we can currently recover from one error:
 // If we inserted into a compressed chunk, we decompress the chunk and try again.
 // Since a single batch can have both errors, we need to remember the insert method
 // we're using, so that we deduplicate if needed.
@@ -503,7 +575,7 @@ func tryRecovery(conn pgxConn, req copyRequest, err error) error {
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
 		errMsg := err.Error()
-		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.table), "error", errMsg)
+		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.table), "err", errMsg)
 		return err
 	}
 
@@ -518,15 +590,28 @@ func tryRecovery(conn pgxConn, req copyRequest, err error) error {
 		return nil
 	}
 
-	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "error", pgErr.Error())
+	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "err", pgErr.Error())
 	return err
 }
 
+// Perform the actual insertion into the DB.
 func doInsert(conn pgxConn, req copyRequest) (err error) {
 	numRows := 0
 	for i := range req.data.batch.sampleInfos {
 		numRows += len(req.data.batch.sampleInfos[i].samples)
 	}
+	// flatten the various series into arrays.
+	// there are four main bottlenecks for insertion:
+	//   1. The round trip time.
+	//   2. The number of requests sent.
+	//   3. The number of individual INSERT statements.
+	//   4. The amount of data sent.
+	// While the first two of these can be handled by batching, for the latter
+	// two we need to actually reduce the work done. It turns out that simply
+	// collecting all the data into a postgres array and performing a single
+	// INSERT using that overcomes most of the performance issues for sending
+	// multiple data, and brings INSERT nearly on par with CopyFrom. In the
+	// future we may wish to send compressed data instead.
 	times := make([]time.Time, 0, numRows)
 	vals := make([]float64, 0, numRows)
 	series := make([]int64, 0, numRows)
@@ -539,9 +624,31 @@ func doInsert(conn pgxConn, req copyRequest) (err error) {
 	if len(times) != numRows {
 		panic("invalid insert request")
 	}
-	queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
+
+	batch := conn.NewBatch()
+
+	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", catalogSchema, catalogSchema)
+	batch.Queue(epochCheck, req.data.epoch)
+
+	dataInsert := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
+	batch.Queue(dataInsert, times, vals, series)
+
 	var ct pgconn.CommandTag
-	ct, err = conn.Exec(context.Background(), queryString, times, vals, series)
+	var res pgx.BatchResults
+	res, err = conn.SendBatch(context.Background(), batch)
+	if err != nil {
+		return
+	}
+	defer func() { _ = res.Close() }()
+
+	var val []byte
+	row := res.QueryRow()
+	err = row.Scan(&val)
+	if err != nil {
+		return
+	}
+
+	ct, err = res.Exec()
 	if err != nil {
 		return
 	}
@@ -554,6 +661,9 @@ func doInsert(conn pgxConn, req copyRequest) (err error) {
 	return nil
 }
 
+// In the event we filling in old data and the chunk we want to INSERT into has
+// already been compressed, we decompress the chunk and try again. When we do
+// this we delay the recompression to give us time to insert additional data.
 func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error {
 	minTime := model.Time(pending.batch.minSeen).Time()
 
@@ -585,6 +695,9 @@ func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error 
 	return nil
 }
 
+// Report completion of an insert batch to all goroutines that may be waiting
+// on it, along with any error that may have occurred.
+// This function also resets the pending in preperation for the next batch.
 func (pending *pendingBuffer) reportResults(err error) {
 	for i := 0; i < len(pending.needsResponse); i++ {
 		pending.needsResponse[i].reportResult(err)
@@ -598,13 +711,18 @@ func (pending *pendingBuffer) reportResults(err error) {
 	}
 	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0]}
 	pending.batch.ResetPosition()
+	pending.epoch = -1
 }
 
-func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) {
-	numMissingSeries := h.fillKnowSeriesIds(sampleInfos)
+// Set all seriesIds for a samplesInfo, fetching any missing ones from the DB,
+// and repopulating the cache accordingly.
+// returns: the tableName for the metric being inserted into
+// TODO move up to the rest of insertHandler
+func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, Epoch, error) {
+	numMissingSeries, epoch := h.fillKnownSeriesIds(sampleInfos)
 
 	if numMissingSeries == 0 {
-		return "", nil
+		return "", epoch, nil
 	}
 
 	seriesToInsert := make([]*samplesInfo, 0, numMissingSeries)
@@ -616,6 +734,13 @@ func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) 
 	var lastSeenLabel *Labels
 
 	batch := h.conn.NewBatch()
+
+	// The epoch will never decrease, so we can check it once at the beginning,
+	// at worst we'll store too small an epoch, which is always safe
+	batch.Queue("BEGIN;")
+	batch.Queue(getEpochSQL)
+	batch.Queue("COMMIT;")
+
 	numSQLFunctionCalls := 0
 	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
 	// in a different transaction, thus deadlocks are not an issue.
@@ -640,44 +765,111 @@ func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, error) 
 		lastSeenLabel = curr.labels
 	}
 
+	if numSQLFunctionCalls != len(batchSeries) {
+		return "", epoch, fmt.Errorf("unexpected difference in numQueries and batchSeries")
+	}
+
 	br, err := h.conn.SendBatch(context.Background(), batch)
 	if err != nil {
-		return "", err
+		return "", epoch, err
 	}
 	defer br.Close()
 
-	if numSQLFunctionCalls != len(batchSeries) {
-		return "", fmt.Errorf("unexpected difference in numQueries and batchSeries")
+	// BEGIN;
+	_, err = br.Exec()
+	if err != nil {
+		return "", epoch, err
+	}
+
+	var newEpoch int64
+	row := br.QueryRow()
+	err = row.Scan(&newEpoch)
+	if err != nil {
+		return "", epoch, err
+	}
+	if epoch == -1 || newEpoch < epoch {
+		epoch = newEpoch
+	}
+	if h.seriesCacheEpoch == -1 || newEpoch < h.seriesCacheEpoch {
+		h.seriesCacheEpoch = newEpoch
+	}
+
+	// COMMIT;
+	_, err = br.Exec()
+	if err != nil {
+		return "", epoch, err
 	}
 
 	var tableName string
 	for i := 0; i < numSQLFunctionCalls; i++ {
+		// BEGIN;
 		_, err = br.Exec()
 		if err != nil {
-			return "", err
+			return "", epoch, err
 		}
-		row := br.QueryRow()
 
 		var id SeriesID
+		row = br.QueryRow()
 		err = row.Scan(&tableName, &id)
 		if err != nil {
-			return "", err
+			return "", epoch, err
 		}
-		h.seriesCache[batchSeries[i][0].labels.String()] = id
+		seriesString := batchSeries[i][0].labels.String()
+		h.seriesCache[seriesString] = id
 		for _, lsi := range batchSeries[i] {
 			lsi.seriesID = id
 		}
+
+		// COMMIT;
 		_, err = br.Exec()
 		if err != nil {
-			return "", err
+			return "", epoch, err
 		}
 	}
 
-	return tableName, nil
+	return tableName, epoch, nil
 }
 
-func (p *pendingBuffer) addReq(req insertDataRequest) bool {
+func (h *insertHandler) refreshSeriesCache() {
+	newEpoch, err := h.getServerEpoch()
+	if err != nil {
+		// we don't have any great place to report this error, and if the
+		// connection recovers we can still make progress, so we'll just log it
+		// and continue execution
+		msg := fmt.Sprintf("error refreshing the series cache for %s", h.metricTableName)
+		log.Error("msg", msg, "metric_table", h.metricTableName, "err", err)
+		// Trash the cache just in case an epoch change occured, seems safer
+		h.seriesCache = map[string]SeriesID{}
+		h.seriesCacheEpoch = -1
+		return
+	}
+
+	if newEpoch != h.seriesCacheEpoch {
+		h.seriesCache = map[string]SeriesID{}
+		h.seriesCacheEpoch = newEpoch
+	}
+}
+
+func (h *insertHandler) getServerEpoch() (Epoch, error) {
+	var newEpoch int64
+	row := h.conn.QueryRow(context.Background(), getEpochSQL)
+	err := row.Scan(&newEpoch)
+	if err != nil {
+		return -1, err
+	}
+
+	return newEpoch, nil
+}
+
+func (p *pendingBuffer) addReq(req insertDataRequest, epoch Epoch) bool {
+	p.addEpoch(epoch)
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.sampleInfos = append(p.batch.sampleInfos, req.data...)
 	return len(p.batch.sampleInfos) > flushSize
+}
+
+func (p *pendingBuffer) addEpoch(epoch Epoch) {
+	if p.epoch == -1 || epoch < p.epoch {
+		p.epoch = epoch
+	}
 }

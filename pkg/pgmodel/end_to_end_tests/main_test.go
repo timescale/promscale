@@ -151,7 +151,7 @@ func generatePGTestDirFiles() string {
 		log.Fatal(err)
 	}
 
-	files, err := filepath.Glob("testdata/sql/*")
+	files, err := filepath.Glob("../testdata/sql/*")
 	if err != nil {
 		log.Fatal(err)
 	}

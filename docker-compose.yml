@@ -1,33 +1,36 @@
+version: '3.0'
+
 services:
   db:
+    image: timescaledev/promscale-extension:latest-pg12
+    ports:
+      - 5432:5432/tcp
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-    image: timescale/timescaledb:latest-pg12
-    ports:
-    - 5432:5432/tcp
+      POSTGRES_DB: timescale
+
   prometheus:
     image: prom/prometheus:latest
     ports:
-    - 9090:9090/tcp
+      - 9090:9090/tcp
     volumes:
-    - ./sample-docker-prometheus:/etc/prometheus/prometheus:ro
+      - ./sample-docker-prometheus:/etc/prometheus/prometheus:ro
+
   promscale-connector:
+    image: timescale/promscale:latest
+    ports:
+      - 9201:9201/tcp
     build:
       context: .
-    command: -db-ssl-mode=allow
     restart: on-failure
     depends_on:
-    - db
-    - prometheus
+      - db
+      - prometheus
     environment:
       TS_PROM_LOG_LEVEL: debug
       TS_PROM_DB_CONNECT_RETRIES: 10
       TS_PROM_DB_HOST: db
       TS_PROM_DB_PASSWORD: postgres
-      TS_PROM_DB_NAME: postgres
       TS_PROM_WEB_TELEMETRY_PATH: /metrics-text
-    image: timescale/promscale:latest
-    ports:
-    - 9201:9201/tcp
-version: '3.0'
+      TS_PROM_DB_SSL_MODE: allow
