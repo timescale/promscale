@@ -25,6 +25,113 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func TestParseFlags(t *testing.T) {
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	defaultConfig, err := ParseFlags(&Config{}, []string{})
+
+	if err != nil {
+		t.Fatal("error occured on default config with no arguments")
+	}
+
+	testCases := []struct {
+		name        string
+		args        []string
+		result      func(Config) Config
+		shouldError bool
+	}{
+		{
+			name:   "Default config",
+			args:   []string{},
+			result: func(c Config) Config { return c },
+		},
+		{
+			name:        "CORS Origin regex error",
+			args:        []string{"-web-cors-origin", "["},
+			shouldError: true,
+		},
+		{
+			name: "Don't migrate",
+			args: []string{"-migrate", "false"},
+			result: func(c Config) Config {
+				c.Migrate = false
+				return c
+			},
+		},
+		{
+			name: "Only migrate",
+			args: []string{"-migrate", "only"},
+			result: func(c Config) Config {
+				c.Migrate = true
+				c.StopAfterMigrate = true
+				return c
+			},
+		},
+		{
+			name:        "Invalid migrate option",
+			args:        []string{"-migrate", "invalid"},
+			shouldError: true,
+		},
+		{
+			name: "Read-only mode",
+			args: []string{"-read-only"},
+			result: func(c Config) Config {
+				c.ReadOnly = true
+				c.Migrate = false
+				c.StopAfterMigrate = false
+				c.UseVersionLease = false
+				c.InstallTimescaleDB = false
+				return c
+			},
+		},
+		{
+			name: "Running HA and read-only error",
+			args: []string{
+				"-leader-election-pg-advisory-lock-id", "1",
+				"-read-only",
+			},
+			shouldError: true,
+		},
+		{
+			name: "Running migrate and read-only error",
+			args: []string{
+				"-migrate", "true",
+				"-read-only",
+			},
+			shouldError: true,
+		},
+		{
+			name: "Running install TimescaleDB and read-only error",
+			args: []string{
+				"-install-timescaledb",
+				"-read-only",
+			},
+			shouldError: true,
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+			config, err := ParseFlags(&Config{}, c.args)
+
+			if c.shouldError {
+				if err == nil {
+					t.Fatal("Unexpected error result, should not be nil")
+				}
+				return
+			} else if err != nil {
+				t.Fatalf("Unexpected returned error: %s", err.Error())
+			}
+
+			expected := c.result(*defaultConfig)
+			if !reflect.DeepEqual(*config, expected) {
+				t.Fatalf("Unexpected config returned\nwanted:\n%+v\ngot:\n%+v\n", expected, *config)
+			}
+		})
+	}
+
+}
+
 func TestInitElector(t *testing.T) {
 	// TODO: refactor the function to be fully testable without using a DB.
 	testCases := []struct {

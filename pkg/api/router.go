@@ -14,7 +14,14 @@ import (
 
 func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) http.Handler {
 	router := route.New()
+
 	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, elector, metrics))
+
+	// If we are running in read-only mode, log and send NotFound status.
+	if apiConf.ReadOnly {
+		writeHandler = withWarnLog("trying to send metrics to write API while connector is in read-only mode", http.NotFoundHandler())
+	}
+
 	router.Post("/write", writeHandler)
 
 	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(client, metrics))
@@ -45,6 +52,13 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Get("/healthz", Health(client))
 
 	return router
+}
+
+func withWarnLog(msg string, handler http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Warn("msg", msg)
+		handler.ServeHTTP(w, r)
+	}
 }
 
 // timeHandler uses Prometheus histogram to track request time

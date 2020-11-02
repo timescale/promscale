@@ -28,6 +28,7 @@ var (
 
 type Config struct {
 	AllowedOrigin *regexp.Regexp
+	ReadOnly      bool
 }
 
 func corsWrapper(conf *Config, f http.HandlerFunc) http.HandlerFunc {
