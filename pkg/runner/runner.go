@@ -42,6 +42,7 @@ type Config struct {
 	UseVersionLease    bool
 	CorsOrigin         *regexp.Regexp
 	InstallTimescaleDB bool
+	ReadOnly           bool
 }
 
 const (
@@ -56,7 +57,7 @@ var (
 	startupError       = fmt.Errorf("startup error")
 )
 
-func ParseFlags(cfg *Config) (*Config, error) {
+func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	pgclient.ParseFlags(&cfg.PgmodelCfg)
 	log.ParseFlags(&cfg.LogCfg)
 
@@ -73,8 +74,10 @@ func ParseFlags(cfg *Config) (*Config, error) {
 	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
 	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Prevent race conditions during migration")
 	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update the TimescaleDB extension")
+	flag.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode. Don't write to database. Useful when pointing adapter to read replica")
 	envy.Parse("TS_PROM")
-	flag.Parse()
+	// Ignore errors; CommandLine is set for ExitOnError.
+	_ = flag.CommandLine.Parse(args)
 
 	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
 	if err != nil {
@@ -94,12 +97,34 @@ func ParseFlags(cfg *Config) (*Config, error) {
 	} else {
 		return nil, fmt.Errorf("Invalid option for migrate: %v. Valid options are [true, false, only]", migrateOption)
 	}
+
+	if cfg.ReadOnly {
+		flagset := make(map[string]bool)
+		flag.Visit(func(f *flag.Flag) { flagset[f.Name] = true })
+		if flagset["migrate"] || flagset["use-schema-version-lease"] {
+			return nil, fmt.Errorf("Migration flags not supported in read-only mode")
+		}
+		if flagset["install-timescaledb"] {
+			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
+		}
+		if flagset["leader-election-pg-advisory-lock-id"] {
+			return nil, fmt.Errorf("Invalid option for HA group lock ID, cannot enable HA mode and read-only mode")
+		}
+		cfg.Migrate = false
+		cfg.StopAfterMigrate = false
+		cfg.UseVersionLease = false
+		cfg.InstallTimescaleDB = false
+	}
 	return cfg, nil
 }
 
 func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
+
+	if cfg.ReadOnly {
+		log.Info("msg", "Migrations disabled for read-only mode")
+	}
 
 	promMetrics := api.InitMetrics()
 
@@ -115,7 +140,10 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
-	apiConf := &api.Config{AllowedOrigin: cfg.CorsOrigin}
+	apiConf := &api.Config{
+		AllowedOrigin: cfg.CorsOrigin,
+		ReadOnly:      cfg.ReadOnly,
+	}
 	router := api.GenerateRouter(apiConf, promMetrics, client, elector)
 
 	log.Info("msg", "Starting up...")
@@ -235,7 +263,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		return nil, fmt.Errorf("elector init error: %w", err)
 	}
 
-	if elector == nil {
+	if elector == nil && !cfg.ReadOnly {
 		log.Warn(
 			"msg",
 			"No adapter leader election. Group lock id is not set. "+
