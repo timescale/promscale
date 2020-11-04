@@ -37,11 +37,6 @@ jobs:
       run: |
         diff -u <(echo -n) <(gofmt -d .)
 
-    - name: Lint
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.30.0
-        /home/runner/go/bin/golangci-lint run --skip-dirs=pkg/promql --skip-dirs=pkg/promb
-
     - name: Build
       run: go build -v ./...
 
@@ -50,10 +45,36 @@ jobs:
         go generate ./...
         git diff --exit-code
 
+  Lint:
+    needs: Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - run: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.30.0
+        /home/runner/go/bin/golangci-lint run --skip-dirs=pkg/promql --skip-dirs=pkg/promb
+
   Test:
     needs: Build
     runs-on: ubuntu-latest
     steps:
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
     - run: go test -v -race ./...
 
   TestWoPromscale:
@@ -61,6 +82,15 @@ jobs:
     runs-on: ubuntu-latest
     name: Test W/O Promscale Extension
     steps:
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
     - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false
 
   TestWoExtension:
@@ -68,6 +98,15 @@ jobs:
     runs-on: ubuntu-latest
     name: Test W/O TimescaleDB Extension
     steps:
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
     - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescaledb=false
 
   TestTimescale2:
@@ -75,6 +114,15 @@ jobs:
     runs-on: ubuntu-latest
     name: Test on TimescaleDB 2.0 W/O TimescaleDB Extension
     steps:
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
     - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-timescale2
 
   TestTimescale2WoExtension:
@@ -82,4 +130,13 @@ jobs:
     runs-on: ubuntu-latest
     name: Test on TimescaleDB 2.0 W/O Promscale Extension
     steps:
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
     - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescale2
