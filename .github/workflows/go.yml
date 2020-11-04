@@ -45,22 +45,41 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Test
-      run: go test -v -race ./...
-
-    - name: Test W/O Promscale Extension
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false
-
-    - name: Test W/O TimescaleDB Extension
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescaledb=false
-
-    - name: Test on TimescaleDB 2.0 W/O TimescaleDB Extension
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-timescale2
-
-    - name: Test on TimescaleDB 2.0 W/O TimescaleDB Extension
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescale2
-
     - name: Generated
       run: |
         go generate ./...
         git diff --exit-code
+
+  Test:
+    needs: Build
+    runs-on: ubuntu-latest
+    steps:
+    - run: go test -v -race ./...
+
+  TestWoPromscale:
+    needs: Build
+    runs-on: ubuntu-latest
+    name: Test W/O Promscale Extension
+    steps:
+    - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false
+
+  TestWoExtension:
+    needs: Build
+    runs-on: ubuntu-latest
+    name: Test W/O TimescaleDB Extension
+    steps:
+    - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescaledb=false
+
+  TestTimescale2:
+    needs: Build
+    runs-on: ubuntu-latest
+    name: Test on TimescaleDB 2.0 W/O TimescaleDB Extension
+    steps:
+    - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-timescale2
+
+  TestTimescale2WoExtension:
+    needs: Build
+    runs-on: ubuntu-latest
+    name: Test on TimescaleDB 2.0 W/O Promscale Extension
+    steps:
+    - run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescale2
