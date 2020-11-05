@@ -88,8 +88,7 @@ func TestUpgradeFromPrevNoData(t *testing.T) {
 func getUpgradedDbInfo(t *testing.T, noData bool) (upgradedDbInfo dbInfo) {
 	// we test that upgrading from the previous version gives the correct output
 	// by induction, this property should hold true for any chain of versions
-	prevVersion := semver.MustParse(version.Version)
-	toPreviousVersion(&prevVersion)
+	prevVersion := semver.MustParse(version.EarliestUpgradeTestVersion)
 
 	// TODO we could probably improve performance of this test by 2x if we
 	//      gathered the db info in parallel. Unfortunately our db runner doesn't
@@ -416,50 +415,6 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-var firstVersion = semver.MustParse("0.1.0")
-
-func toPreviousVersion(version *semver.Version) {
-	if version.Equals(firstVersion) {
-		*version = semver.MustParse("0.1.0-beta.5")
-		return
-	}
-	// our versions must match the schema X.Y.Z[.<pre-release>.A][.dev.C]
-	// where capital letters are numbers, and <pre-release> is some arbitrary
-	// pre-release tag.
-	// We skip .dev versions as they won't have a docker image, and go to the
-	// last "released" one
-	if len(version.Pre) >= 2 && version.Pre[len(version.Pre)-2].VersionStr == "dev" {
-		version.Pre = version.Pre[:len(version.Pre)-2]
-	}
-
-	if len(version.Pre) > 0 {
-		if len(version.Pre) != 2 ||
-			!version.Pre[len(version.Pre)-1].IsNum ||
-			version.Pre[len(version.Pre)-2].IsNum {
-			panic(fmt.Sprintf("version \"%v\" does not match our version spec", version))
-		}
-		lastPreDigit := &version.Pre[len(version.Pre)-1]
-		if lastPreDigit.VersionNum > 0 {
-			lastPreDigit.VersionNum -= 1
-			return
-		}
-	}
-
-	version.Pre = nil
-
-	if version.Patch > 0 {
-		version.Patch = 0
-		return
-	}
-
-	if version.Minor > 0 {
-		version.Minor -= 1
-		return
-	}
-
-	version.Major -= 1
 }
 
 func tsWriteReq(ts []prompb.TimeSeries) prompb.WriteRequest {
