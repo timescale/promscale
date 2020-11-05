@@ -33,8 +33,9 @@ var (
 	// since an app version must uniquely determine the state of the schema.
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
-	Version    = "0.1.3-dev.1"
-	CommitHash = ""
+	Version                    = "0.1.3-dev.1"
+	CommitHash                 = ""
+	EarliestUpgradeTestVersion = "0.1.0"
 
 	PgVersionNumRange       = "=12.x" // Corresponds to range within pg 12.0 to pg 12.99
 	pgAcceptedVersionsRange = semver.MustParseRange(PgVersionNumRange)
