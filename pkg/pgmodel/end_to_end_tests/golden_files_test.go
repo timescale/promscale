@@ -16,6 +16,7 @@ import (
 )
 
 var outputDifferWithoutTimescale = map[string]bool{"info_view": true}
+var outputDifferWithMultinode = map[string]bool{"views": true, "info_view": true}
 var requiresTimescaleDB = map[string]bool{"views": true, "info_view": true}
 
 func TestSQLGoldenFiles(t *testing.T) {
@@ -81,6 +82,9 @@ func TestSQLGoldenFiles(t *testing.T) {
 				} else {
 					expectedFile = filepath.Join("../testdata/expected/", base+"-postgres.out")
 				}
+			}
+			if outputDifferWithMultinode[base] && *useMultinode {
+				expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+mod+"-multinode.out")
 			}
 
 			if *updateGoldenFiles {

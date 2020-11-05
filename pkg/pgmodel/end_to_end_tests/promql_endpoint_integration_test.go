@@ -209,7 +209,7 @@ func compareHTTPHeaders(t *testing.T, expected, actual http.Header) {
 }
 
 // dateHeadersMatch checks if the date headers from two HTTP responses match
-// and are within a tolerance of one second.
+// and are within a tolerance of 10 seconds.
 func dateHeadersMatch(expected, actual []string) bool {
 	if len(expected) != 1 {
 		return false
@@ -225,8 +225,7 @@ func dateHeadersMatch(expected, actual []string) bool {
 		return false
 	}
 
-	return expectedDate.Sub(actualDate) <= time.Second
-
+	return expectedDate.Sub(actualDate) <= 10*time.Second
 }
 
 // buildRouter builds a testing router from a connection pool.

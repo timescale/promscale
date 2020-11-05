@@ -32,6 +32,25 @@ AS $func$
     SELECT count(*) > 0 FROM pg_extension WHERE extname='timescaledb';
 $func$
 LANGUAGE SQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.is_timescaledb_installed() TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.is_multinode()
+    RETURNS BOOLEAN
+AS $func$
+DECLARE
+    is_distributed BOOLEAN = false;
+BEGIN
+    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+        SELECT count(*) > 0 FROM timescaledb_information.data_nodes
+            INTO is_distributed;
+    END IF;
+    RETURN is_distributed;
+EXCEPTION WHEN SQLSTATE '42P01' THEN -- Timescale 1.x, never distributed
+    RETURN false;
+END
+$func$
+LANGUAGE PLPGSQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.is_multinode() TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_compression_setting()
     RETURNS BOOLEAN
@@ -100,7 +119,10 @@ BEGIN
         END IF;
 
         IF SCHEMA_CATALOG.is_timescaledb_installed() AND SCHEMA_CATALOG.get_default_compression_setting() THEN
-            PERFORM SCHEMA_PROM.set_compression_on_metric_table(r.table_name, TRUE);
+            -- TODO custom compression
+            IF NOT SCHEMA_CATALOG.is_multinode() THEN
+                PERFORM SCHEMA_PROM.set_compression_on_metric_table(r.table_name, TRUE);
+            END IF;
         END IF;
 
         --do this before taking exclusive lock to minimize work after taking lock
@@ -142,9 +164,18 @@ BEGIN
                     NEW.id, NEW.table_name);
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-        PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
+        IF SCHEMA_CATALOG.is_multinode() THEN
+            PERFORM create_distributed_hypertable(
+                format('SCHEMA_DATA.%I', NEW.table_name),
+                'time',
+                chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
+                create_default_indexes=>false
+            );
+        ELSE
+            PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
             chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                              create_default_indexes=>false);
+        END IF;
     END IF;
 
     SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
@@ -1519,7 +1550,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer
 --------------------------------- Views --------------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_view()
-RETURNS TABLE(id int, metric_name text, table_name name, retention_period  interval,
+RETURNS TABLE(id int, metric_name text, table_name name, retention_period interval,
                          chunk_interval interval, label_keys text[], size text, compression_ratio numeric,
                          total_chunks bigint, compressed_chunks bigint)
 AS $func$
@@ -1560,13 +1591,21 @@ BEGIN
                     ORDER BY key) label_keys,
                 pg_size_pretty(hds.total_bytes) as size,
                 (1.0 - (hcs.after_compression_total_bytes::NUMERIC / hcs.before_compression_total_bytes::NUMERIC)) * 100 as compression_ratio,
-                hcs.total_chunks,
-                hcs.number_compressed_chunks as compressed_chunks
+                hcs.total_chunks::BIGINT,
+                hcs.number_compressed_chunks::BIGINT as compressed_chunks
             FROM SCHEMA_CATALOG.metric m
             LEFT JOIN timescaledb_information.dimensions dims ON
                     (dims.hypertable_schema = 'SCHEMA_DATA' AND dims.hypertable_name = m.table_name)
-            LEFT JOIN LATERAL hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) hds ON true
-            LEFT JOIN LATERAL hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) hcs ON true;
+            LEFT JOIN LATERAL (SELECT SUM(h.total_bytes) as total_bytes
+                FROM hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+            ) hds ON true
+            LEFT JOIN LATERAL (SELECT
+                    SUM(h.after_compression_total_bytes) as after_compression_total_bytes,
+                    SUM(h.before_compression_total_bytes) as before_compression_total_bytes,
+                    SUM(h.total_chunks) as total_chunks,
+                    SUM(h.number_compressed_chunks) as number_compressed_chunks
+                FROM hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+            ) hcs ON true;
         ELSE
             RETURN QUERY
             SELECT

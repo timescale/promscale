@@ -468,6 +468,9 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
+	if *useMultinode {
+		t.Skip("compression not yet enabled for multinode")
+	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := []prompb.TimeSeries{
 			{
@@ -574,6 +577,9 @@ func TestInsertCompressed(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
+	if *useMultinode {
+		t.Skip("compression not yet enabled for multinode")
+	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := []prompb.TimeSeries{
 			{
@@ -637,6 +643,9 @@ func TestCompressionSetting(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
+	}
+	if *useMultinode {
+		t.Skip("compression not yet enabled for multinode")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		var compressionEnabled bool

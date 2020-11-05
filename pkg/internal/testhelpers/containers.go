@@ -7,6 +7,7 @@ package testhelpers
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -35,12 +36,82 @@ const (
 	NoSuperuser = false
 )
 
+type ExtensionState int
+
+const (
+	timescaleBit  = 1 << iota
+	promscaleBit  = 1 << iota
+	timescale2Bit = 1 << iota
+	multinodeBit  = 1 << iota
+)
+
+const (
+	VanillaPostgres        ExtensionState = 0
+	Timescale1             ExtensionState = timescaleBit
+	Timescale1AndPromscale ExtensionState = timescaleBit | promscaleBit
+	Timescale2             ExtensionState = timescaleBit | timescale2Bit
+	Timescale2AndPromscale ExtensionState = timescaleBit | timescale2Bit | promscaleBit
+	Multinode              ExtensionState = timescaleBit | timescale2Bit | multinodeBit
+	MultinodeAndPromscale  ExtensionState = timescaleBit | timescale2Bit | multinodeBit | promscaleBit
+)
+
+func (e *ExtensionState) UseTimescaleDB() {
+	*e |= timescaleBit
+}
+
+func (e *ExtensionState) UsePromscale() {
+	*e |= timescaleBit | promscaleBit
+}
+
+func (e *ExtensionState) UseTimescale2() {
+	*e |= timescaleBit | timescale2Bit
+}
+
+func (e *ExtensionState) UseMultinode() {
+	*e |= timescaleBit | timescale2Bit | multinodeBit
+}
+
+func (e ExtensionState) usesTimescaleDB() bool {
+	switch e {
+	case VanillaPostgres:
+		return false
+	default:
+		return true
+	}
+}
+
+func (e ExtensionState) usesMultinode() bool {
+	switch e {
+	case Multinode:
+		return true
+	case MultinodeAndPromscale:
+		return true
+	default:
+		return false
+	}
+}
+
+func (e ExtensionState) usesPromscale() bool {
+	switch e {
+	case Timescale1AndPromscale:
+		return true
+	case Timescale2AndPromscale:
+		return true
+	case MultinodeAndPromscale:
+		return true
+	default:
+		return false
+	}
+}
+
 var (
 	PromHost          = "localhost"
 	PromPort nat.Port = "9090/tcp"
 
 	pgHost          = "localhost"
 	pgPort nat.Port = "5432/tcp"
+
+	multinode = false
 )
 
 type SuperuserStatus = bool
@@ -79,35 +150,70 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 }
 
 func DbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
-	db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
+	defaultDb, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
+	if err != nil {
+		return nil, err
+	}
+	err = func() error {
+		_, err = defaultDb.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", DBName))
+		if err != nil {
+			return err
+		}
+
+		if multinode {
+			dropDistributed := "CALL distributed_exec($$ DROP DATABASE IF EXISTS %s $$, transactional => false)"
+			_, err = defaultDb.Exec(context.Background(), fmt.Sprintf(dropDistributed, DBName))
+			if err != nil {
+				return err
+			}
+		}
+
+		_, err = defaultDb.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s OWNER %s", DBName, promUser))
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}()
+
+	if err != nil {
+		_ = defaultDb.Close(context.Background())
+		return nil, err
+	}
+
+	err = defaultDb.Close(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", DBName))
+	ourDb, err := pgx.Connect(context.Background(), PgConnectURL(DBName, Superuser))
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s OWNER %s", DBName, promUser))
-	if err != nil {
-		return nil, err
+	if multinode {
+		// Multinode requires the administrator to set up data nodes, so in
+		// that case timescaledb should always be installed by the time the
+		// connector runs. We just set up the data nodes here.
+		err = attachDataNodes(ourDb, DBName)
+		if err != nil {
+			_ = ourDb.Close(context.Background())
+			return nil, err
+		}
+	} else {
+		// some docker images may have timescaledb installed in a template,
+		// but we want to test our own timescale installation.
+		// (Multinode requires the administrator to set up data nodes, so in
+		// that case timescaledb should always be installed by the time the
+		// connector runs)
+		_, err = ourDb.Exec(context.Background(), "DROP EXTENSION IF EXISTS timescaledb")
+		if err != nil {
+			_ = ourDb.Close(context.Background())
+			return nil, err
+		}
 	}
 
-	err = db.Close(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	//some docker images may have timescaledb installed in a template, which we don't always want
-	dbDrop, err := pgx.Connect(context.Background(), PgConnectURL(DBName, Superuser))
-	if err != nil {
-		return nil, err
-	}
-	if _, err = dbDrop.Exec(context.Background(), "DROP EXTENSION IF EXISTS timescaledb"); err != nil {
-		return nil, err
-	}
-	if err = dbDrop.Close(context.Background()); err != nil {
+	if err = ourDb.Close(context.Background()); err != nil {
 		return nil, err
 	}
 
@@ -130,24 +236,145 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 }
 
 // StartPGContainer starts a postgreSQL container for use in testing
-func StartPGContainer(ctx context.Context, usePromscaleExtension bool, useTimescaleDB bool, useTimescale2 bool, testDataDir string, printLogs bool) (testcontainers.Container, error) {
+func StartPGContainer(
+	ctx context.Context,
+	extensionState ExtensionState,
+	testDataDir string,
+	printLogs bool,
+) (testcontainers.Container, io.Closer, error) {
 	var image string
-	if usePromscaleExtension && useTimescale2 {
+	switch extensionState {
+	case MultinodeAndPromscale:
 		image = "timescaledev/promscale-extension:2.0.0-rc2-pg12"
-	} else if useTimescale2 {
+	case Multinode:
 		image = "timescale/timescaledb:2.0.0-rc2-pg12"
-	} else if usePromscaleExtension && useTimescaleDB {
+	case Timescale2AndPromscale:
+		image = "timescaledev/promscale-extension:2.0.0-rc2-pg12"
+	case Timescale2:
+		image = "timescale/timescaledb:2.0.0-rc2-pg12"
+	case Timescale1AndPromscale:
 		image = "timescaledev/promscale-extension:latest-pg12"
-	} else if useTimescaleDB {
+	case Timescale1:
 		image = "timescale/timescaledb:latest-pg12"
-	} else {
+	case VanillaPostgres:
 		image = "postgres:12"
 	}
-	return StartPGContainerWithImage(ctx, image, testDataDir, "", printLogs, usePromscaleExtension, useTimescaleDB)
+
+	return StartDatabaseImage(ctx, image, testDataDir, "", printLogs, extensionState)
 }
 
-func StartPGContainerWithImage(ctx context.Context, image string, testDataDir string, dataDir string, printLogs bool, usePromscaleExtension bool, useTimescaleDB bool) (testcontainers.Container, error) {
+func StartDatabaseImage(ctx context.Context,
+	image string,
+	testDataDir string,
+	dataDir string,
+	printLogs bool,
+	extensionState ExtensionState,
+) (testcontainers.Container, io.Closer, error) {
+
+	multinode = extensionState.usesMultinode()
+
+	c := CloseAll{}
+	var networks []string
+	if multinode {
+		networkName, closer, err := createMultinodeNetwork()
+		if err != nil {
+			return nil, c, err
+		}
+		c.Append(closer)
+		networks = []string{networkName}
+	}
+
+	startContainer := func(containerPort nat.Port) (testcontainers.Container, error) {
+		container, closer, err := startPGInstance(
+			ctx,
+			image,
+			testDataDir,
+			dataDir,
+			extensionState,
+			printLogs,
+			networks,
+			containerPort,
+		)
+		if closer != nil {
+			c.Append(closer)
+		}
+		return container, err
+	}
+
+	if multinode {
+		containerPort := nat.Port("5433/tcp")
+		_, err := startContainer(containerPort)
+		if err != nil {
+			_ = c.Close()
+			return nil, nil, err
+		}
+		containerPort = nat.Port("5434/tcp")
+		_, err = startContainer(containerPort)
+		if err != nil {
+			_ = c.Close()
+			return nil, nil, err
+		}
+	}
+
 	containerPort := nat.Port("5432/tcp")
+	container, err := startContainer(containerPort)
+	if err != nil {
+		_ = c.Close()
+		return nil, nil, err
+	}
+
+	if multinode {
+		db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
+		if err != nil {
+			_ = c.Close()
+			return nil, nil, err
+		}
+
+		err = attachDataNodes(db, defaultDB)
+		if err != nil {
+			_ = c.Close()
+			return nil, nil, err
+		}
+
+		err = db.Close(context.Background())
+		if err != nil {
+			_ = c.Close()
+			return nil, nil, err
+		}
+	}
+
+	return container, c, nil
+}
+
+func createMultinodeNetwork() (networkName string, closer func(), err error) {
+	networkName = "promscale-network"
+	networkRequest := testcontainers.GenericNetworkRequest{
+		NetworkRequest: testcontainers.NetworkRequest{
+			Driver:     "bridge",
+			Name:       networkName,
+			Attachable: true,
+		},
+	}
+	network, err := testcontainers.GenericNetwork(context.Background(), networkRequest)
+	if err != nil {
+		return "", nil, err
+	}
+	closer = func() { _ = network.Remove(context.Background()) }
+	return networkName, closer, nil
+}
+
+func startPGInstance(
+	ctx context.Context,
+	image string,
+	testDataDir string,
+	dataDir string,
+	extensionState ExtensionState,
+	printLogs bool,
+	networks []string,
+	containerPort nat.Port,
+) (container testcontainers.Container, closer func(), err error) {
+	// we map the access node to port 5432 and the others to other ports
+	isDataNode := containerPort.Port() != "5432"
 
 	req := testcontainers.ContainerRequest{
 		Image:        image,
@@ -158,20 +385,25 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
 		},
-		SkipReaper: false, /* switch to true not to kill docker container */
+		Networks:       networks,
+		NetworkAliases: map[string][]string{"promscale-network": {"db" + containerPort.Port()}},
+		SkipReaper:     false, /* switch to true not to kill docker container */
 	}
 	req.Cmd = []string{
 		"-c", "max_connections=100",
+		"-c", "port=" + containerPort.Port(),
+		"-c", "max_prepared_transactions=150",
+		"-i",
 	}
 
-	if useTimescaleDB {
+	if extensionState.usesTimescaleDB() {
 		req.Cmd = append(req.Cmd,
 			"-c", "shared_preload_libraries=timescaledb",
 			"-c", "timescaledb.max_background_workers=0",
 		)
 	}
 
-	if usePromscaleExtension {
+	if extensionState.usesPromscale() {
 		req.Cmd = append(req.Cmd,
 			"-c", "local_preload_libraries=pgextwlist",
 			//timescale_prometheus_extra included for upgrade tests with old extension name
@@ -187,12 +419,12 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		req.BindMounts[dataDir] = "/var/lib/postgresql/data"
 	}
 
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	container, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          false,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if printLogs {
@@ -209,22 +441,37 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 
 	err = container.Start(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	closer = func() {
+		if printLogs {
+			_ = container.StopLogProducer()
+		}
+
+		_ = container.Terminate(ctx)
+	}
+
+	if isDataNode {
+		err = setDataNodePermissions(container)
+		if err != nil {
+			return nil, closer, err
+		}
 	}
 
 	pgHost, err = container.Host(ctx)
 	if err != nil {
-		return nil, err
+		return nil, closer, err
 	}
 
 	pgPort, err = container.MappedPort(ctx, containerPort)
 	if err != nil {
-		return nil, err
+		return nil, closer, err
 	}
 
 	db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 	if err != nil {
-		return nil, err
+		return nil, closer, err
 	}
 
 	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE USER %s WITH NOSUPERUSER CREATEROLE PASSWORD 'password'", promUser))
@@ -232,16 +479,82 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 		//ignore duplicate errors
 		pgErr, ok := err.(*pgconn.PgError)
 		if !ok || pgErr.Code != "42710" {
-			return nil, err
+			return nil, closer, err
+		}
+	}
+
+	if isDataNode {
+		// reload the pg_hba.conf settings we changed in setDataNodePermissions
+		_, err = db.Exec(context.Background(), "SELECT pg_reload_conf()")
+		if err != nil {
+			return nil, closer, err
 		}
 	}
 
 	err = db.Close(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, closer, err
 	}
 
-	return container, nil
+	return container, closer, nil
+}
+
+func attachDataNodes(db *pgx.Conn, database string) error {
+	_, err := db.Exec(context.Background(), "SELECT add_data_node('dn0', host => 'db5433', port => 5433);")
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(context.Background(), "SELECT add_data_node('dn1', host => 'db5434', port => 5434);")
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(context.Background(), "GRANT USAGE ON FOREIGN SERVER dn0, dn1 TO "+promUser)
+	if err != nil {
+		return err
+	}
+
+	grantDistributed := "CALL distributed_exec($$ GRANT ALL ON DATABASE %s TO %s $$, transactional => false)"
+	_, err = db.Exec(context.Background(), fmt.Sprintf(grantDistributed, database, promUser))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func setDataNodePermissions(container testcontainers.Container) error {
+	// trust all incoming connections on the datanodes so we can add them to
+	// the cluster without too much hassle. We'll reload the pg_hba.conf later
+	// NOTE: the setting must be prepended to pg_hba.conf so it overrides
+	//       the latter, stricter, settings
+	code, err := container.Exec(context.Background(), []string{
+		"bash",
+		"-c",
+		"echo -e \"host all all 0.0.0.0/0 trust\n$(cat /var/lib/postgresql/data/pg_hba.conf)\"" +
+			"> /var/lib/postgresql/data/pg_hba.conf"})
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("docker exec error. exit code: %d", code)
+	}
+	return nil
+}
+
+type CloseAll struct {
+	toClose []func()
+}
+
+func (c *CloseAll) Append(closer func()) {
+	c.toClose = append(c.toClose, closer)
+}
+
+func (c CloseAll) Close() error {
+	for i := len(c.toClose) - 1; i >= 0; i-- {
+		c.toClose[i]()
+	}
+	return nil
 }
 
 // StartPromContainer starts a Prometheus container for use in testing

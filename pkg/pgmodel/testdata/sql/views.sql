@@ -19,7 +19,9 @@ INSERT INTO prom_data.cpu_total
 
 SELECT * FROM prom_info.label ORDER BY key;
 
+\set ON_ERROR_STOP 0
 SELECT count(compress_chunk(i)) from show_chunks('prom_data.cpu_usage') i;
+\set ON_ERROR_STOP 0
 
 SELECT * FROM cpu_usage ORDER BY time, series_id LIMIT 5;
 SELECT time, value, jsonb(labels), val(namespace_id) FROM cpu_usage ORDER BY time, series_id LIMIT 5;

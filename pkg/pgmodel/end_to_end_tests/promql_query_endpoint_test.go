@@ -2436,7 +2436,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 
 		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
 		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
-		client := &http.Client{Timeout: 20 * time.Second}
+		client := &http.Client{Timeout: 300 * time.Second}
 
 		start := time.Unix(startTime/1000, 0)
 		end := time.Unix(endTime/1000, 0)

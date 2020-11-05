@@ -62,7 +62,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
-		pgContainer, err := StartPGContainer(ctx, true, true, false, "", false)
+		_, closer, err := StartPGContainer(ctx, Timescale1AndPromscale, "", false)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
@@ -90,10 +90,7 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 		defer func() {
-			err := pgContainer.Terminate(ctx)
-			if err != nil {
-				panic(err)
-			}
+			_ = closer.Close()
 			err = promContainer.Terminate(ctx)
 			if err != nil {
 				panic(err)
