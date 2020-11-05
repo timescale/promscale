@@ -41,12 +41,14 @@ SELECT * FROM prom_info.label ORDER BY key;
  node      | node              | node_id        | {brain,pinky}         |          2
 (5 rows)
 
+\set ON_ERROR_STOP 0
 SELECT count(compress_chunk(i)) from show_chunks('prom_data.cpu_usage') i;
  count 
 -------
      1
 (1 row)
 
+\set ON_ERROR_STOP 0
 SELECT * FROM cpu_usage ORDER BY time, series_id LIMIT 5;
           time          | value | series_id |  labels   | node_id | namespace_id | new_tag_id 
 ------------------------+-------+-----------+-----------+---------+--------------+------------

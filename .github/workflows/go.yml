@@ -54,11 +54,14 @@ jobs:
     - name: Test W/O TimescaleDB Extension
       run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescaledb=false
 
-    - name: Test on TimescaleDB 2.0 W/O TimescaleDB Extension
+    - name: Test on TimescaleDB 2.0
       run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-timescale2
 
-    - name: Test on TimescaleDB 2.0 W/O TimescaleDB Extension
+    - name: Test on TimescaleDB 2.0 W/O Promscale Extension
       run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescale2
+
+    - name: Test on TimescaleDB 2.0 multinode
+      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-multinode
 
     - name: Generated
       run: |

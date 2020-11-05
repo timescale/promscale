@@ -147,17 +147,13 @@ func TestMain(m *testing.M) {
 	}
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
-		container, err := testhelpers.StartPGContainer(ctx, true, true, false, "", false)
+
+		_, closer, err := testhelpers.StartPGContainer(ctx, testhelpers.Timescale1AndPromscale, "", false)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
 		}
-		defer func() {
-			err := container.Terminate(ctx)
-			if err != nil {
-				panic(err)
-			}
-		}()
+		defer closer.Close()
 	}
 	code := m.Run()
 	os.Exit(code)

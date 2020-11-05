@@ -36,9 +36,10 @@ import (
 )
 
 var (
-	testDatabase = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
-	useExtension = flag.Bool("use-extension", true, "use the promscale extension")
-	printLogs    = flag.Bool("print-logs", false, "print TimescaleDB logs")
+	testDatabase   = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
+	useExtension   = flag.Bool("use-extension", true, "use the promscale extension")
+	printLogs      = flag.Bool("print-logs", false, "print TimescaleDB logs")
+	extensionState testhelpers.ExtensionState
 )
 
 var cleanImage = "timescale/timescaledb:latest-pg12"
@@ -53,6 +54,10 @@ func TestMain(m *testing.M) {
 		prevDBImage = "timescaledev/timescale_prometheus_extra:0.1.1-pg12"
 	}
 	flag.Parse()
+	extensionState.UseTimescaleDB()
+	if *useExtension {
+		extensionState.UsePromscale()
+	}
 	_ = log.Init(log.Config{
 		Level: "debug",
 	})
@@ -286,12 +291,12 @@ func withDBStartingAtOldVersionAndUpgrading(
 	// Start a db with the prev extension and a prev connector as well
 	// Then run preUpgrade and shut everything down.
 	func() {
-		dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, prevDBImage, tmpDir, dataDir, *printLogs, *useExtension, true)
+		dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, prevDBImage, tmpDir, dataDir, *printLogs, extensionState)
 		if err != nil {
 			t.Fatal("Error setting up container", err)
 		}
 
-		defer testhelpers.StopContainer(ctx, dbContainer, *printLogs)
+		defer func() { _ = closer.Close() }()
 
 		db, err := testhelpers.DbSetup(*testDatabase, testhelpers.NoSuperuser)
 		if err != nil {
@@ -324,12 +329,12 @@ func withDBStartingAtOldVersionAndUpgrading(
 
 	//Start a new connector and migrate.
 	//Then run postUpgrade
-	dbContainer, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, *useExtension, true)
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}
 
-	defer testhelpers.StopContainer(ctx, dbContainer, *printLogs)
+	defer func() { _ = closer.Close() }()
 
 	t.Logf("upgrading versions %v => %v", prevVersion, version.Version)
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
@@ -361,13 +366,13 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 	}
 
 	func() {
-		container, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, *useExtension, true)
+		container, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
 		}
 
-		defer testhelpers.StopContainer(ctx, container, *printLogs)
+		defer func() { _ = closer.Close() }()
 		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 			migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
 
@@ -380,13 +385,13 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 			preRestart(container, connectURL, db, tmpDir)
 		})
 	}()
-	container, err := testhelpers.StartPGContainerWithImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, *useExtension, true)
+	container, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
 	if err != nil {
 		fmt.Println("Error setting up container", err)
 		os.Exit(1)
 	}
 
-	defer testhelpers.StopContainer(ctx, container, *printLogs)
+	defer func() { _ = closer.Close() }()
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 	db, err := pgxpool.Connect(context.Background(), connectURL)
 	if err != nil {
