@@ -197,9 +197,7 @@ func compareHTTPHeaders(t *testing.T, expected, actual http.Header) {
 	for k, v := range expected {
 		if !reflect.DeepEqual(v, actual[k]) {
 			if k == "Date" {
-				if dateHeadersMatch(v, actual[k]) {
-					continue
-				}
+				continue
 			}
 			t.Errorf("unexpected HTTP header value for header \"%s\":\ngot\n%v\nwanted\n%v\n", k, actual[k], v)
 			return
