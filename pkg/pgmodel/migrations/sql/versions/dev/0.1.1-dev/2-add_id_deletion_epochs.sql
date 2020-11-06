@@ -64,7 +64,7 @@ DECLARE
     metric_names TEXT[];
     metric_name  TEXT;
 BEGIN
-    SELECT array_agg(m.metric_name) FROM SCHEMA_CATALOG.metric m
+    SELECT coalesce(array_agg(m.metric_name), array[]::TEXT[]) FROM SCHEMA_CATALOG.metric m
         INTO metric_names;
 
     FOREACH metric_name IN ARRAY metric_names

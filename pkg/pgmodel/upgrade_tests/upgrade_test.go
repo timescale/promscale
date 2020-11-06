@@ -60,15 +60,26 @@ func TestMain(m *testing.M) {
 }
 
 func TestUpgradeFromPrev(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t)
-	pristineDbInfo := getPristineDbInfo(t)
+	upgradedDbInfo := getUpgradedDbInfo(t, false)
+	pristineDbInfo := getPristineDbInfo(t, false)
 
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
 		printDbInfoDifferences(t, pristineDbInfo, upgradedDbInfo)
 	}
 }
 
-func getUpgradedDbInfo(t *testing.T) (upgradedDbInfo dbInfo) {
+// TestUpgradeFromPrevNoData tests migrations with no ingested data.
+// See issue: https://github.com/timescale/promscale/issues/330
+func TestUpgradeFromPrevNoData(t *testing.T) {
+	upgradedDbInfo := getUpgradedDbInfo(t, true)
+	pristineDbInfo := getPristineDbInfo(t, true)
+
+	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
+		printDbInfoDifferences(t, pristineDbInfo, upgradedDbInfo)
+	}
+}
+
+func getUpgradedDbInfo(t *testing.T, noData bool) (upgradedDbInfo dbInfo) {
 	// we test that upgrading from the previous version gives the correct output
 	// by induction, this property should hold true for any chain of versions
 	prevVersion := semver.MustParse(version.Version)
@@ -80,6 +91,9 @@ func getUpgradedDbInfo(t *testing.T) (upgradedDbInfo dbInfo) {
 	withDBStartingAtOldVersionAndUpgrading(t, *testDatabase, prevVersion,
 		/* preUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string, connectorHost string, connectorPort nat.Port) {
+			if noData {
+				return
+			}
 			client := http.Client{}
 			defer client.CloseIdleConnections()
 
@@ -96,23 +110,30 @@ func getUpgradedDbInfo(t *testing.T) (upgradedDbInfo dbInfo) {
 				t.Fatal(err)
 			}
 			defer db.Close()
-			ingestor, err := pgmodel.NewPgxIngestor(db)
-			if err != nil {
-				t.Fatalf("error connecting to DB: %v", err)
+
+			if !noData {
+				ingestor, err := pgmodel.NewPgxIngestor(db)
+				if err != nil {
+					t.Fatalf("error connecting to DB: %v", err)
+				}
+
+				doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
+
+				ingestor.Close()
+
 			}
-
-			doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
-
-			ingestor.Close()
 			upgradedDbInfo = getDbInfo(t, dbContainer, dbTmpDir, db)
 		})
 	return
 }
 
-func getPristineDbInfo(t *testing.T) (pristineDbInfo dbInfo) {
+func getPristineDbInfo(t *testing.T, noData bool) (pristineDbInfo dbInfo) {
 	withNewDBAtCurrentVersion(t, *testDatabase,
 		/* preRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
+			if noData {
+				return
+			}
 			ingestor, err := pgmodel.NewPgxIngestor(db)
 			if err != nil {
 				t.Fatalf("error connecting to DB: %v", err)
@@ -123,13 +144,15 @@ func getPristineDbInfo(t *testing.T) (pristineDbInfo dbInfo) {
 		},
 		/* postRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
-			ingestor, err := pgmodel.NewPgxIngestor(db)
-			if err != nil {
-				t.Fatalf("error connecting to DB: %v", err)
-			}
-			defer ingestor.Close()
+			if !noData {
+				ingestor, err := pgmodel.NewPgxIngestor(db)
+				if err != nil {
+					t.Fatalf("error connecting to DB: %v", err)
+				}
+				defer ingestor.Close()
 
-			doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
+				doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
+			}
 			pristineDbInfo = getDbInfo(t, container, tmpDir, db)
 		})
 	return
@@ -421,7 +444,7 @@ func toPreviousVersion(version *semver.Version) {
 	version.Pre = nil
 
 	if version.Patch > 0 {
-		version.Patch -= 1
+		version.Patch = 0
 		return
 	}
 
