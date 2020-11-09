@@ -31,8 +31,12 @@ require (
 	github.com/stretchr/testify v1.6.1
 	github.com/testcontainers/testcontainers-go v0.5.1
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
-	go.uber.org/goleak v1.1.10
-	golang.org/x/sys v0.0.0-20201126233918-771906719818 // indirect
-	golang.org/x/tools v0.0.0-20201125231158-b5590deeca9b // indirect
+	go.uber.org/atomic v1.6.0
+	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
+	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
+	golang.org/x/sys v0.0.0-20200908134130-d2e65c121b96 // indirect
+	golang.org/x/tools v0.0.0-20200908211811-12e1bf57a112 // indirect
+	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
+	google.golang.org/grpc v1.32.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )
