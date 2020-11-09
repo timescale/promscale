@@ -121,12 +121,17 @@ func migrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 		return fmt.Errorf("the extension is not available")
 	}
 
+	defaultVersion, err := fetchDefaultExtensionVersions(conn, extName)
+	if err != nil {
+		return err
+	}
+
 	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
 	if err != nil {
 		return fmt.Errorf("Could not get the installed extension version: %w", err)
 	}
 
-	newVersion, ok := getNewExtensionVersion(extName, availableVersions, validRange, isInstalled, currentVersion)
+	newVersion, ok := getNewExtensionVersion(extName, availableVersions, defaultVersion, validRange, isInstalled, currentVersion)
 	if !ok {
 		return fmt.Errorf("the extension is not available at the right version, need version: %v", rangeString)
 	}
@@ -188,12 +193,29 @@ func fetchAvailableExtensionVersions(conn *pgx.Conn, extName string) (semver.Ver
 		vString := correctVersionString(versionStrings[i], extName)
 		v, err := semver.Parse(vString)
 		if err != nil {
-			return versions, fmt.Errorf("Could not parse available extra extension version %v: %w", vString, err)
+			return versions, fmt.Errorf("Could not parse available extension version %v: %w", vString, err)
 		}
 		versions = append(versions, v)
 	}
 
 	return versions, nil
+}
+
+func fetchDefaultExtensionVersions(conn *pgx.Conn, extName string) (semver.Version, error) {
+	var versionString string
+	err := conn.QueryRow(context.Background(),
+		"SELECT default_version FROM pg_available_extensions WHERE name = $1", extName).Scan(&versionString)
+	if err != nil {
+		return semver.Version{}, err
+	}
+
+	versionString = correctVersionString(versionString, extName)
+	v, err := semver.Parse(versionString)
+	if err != nil {
+		return v, fmt.Errorf("Could not parse default extension version %v: %w", versionString, err)
+	}
+
+	return v, nil
 }
 
 func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semver.Version, bool, error) {
@@ -234,11 +256,20 @@ func getSqlVersion(v semver.Version, extName string) string {
 }
 
 // getNewExtensionVersion returns the highest version allowed by validRange
-func getNewExtensionVersion(extName string, availableVersions semver.Versions, validRange semver.Range, validCurrentVersion bool, currentVersion semver.Version) (semver.Version, bool) {
+func getNewExtensionVersion(extName string,
+	availableVersions semver.Versions,
+	defaultVersion semver.Version,
+	validRange semver.Range,
+	validCurrentVersion bool,
+	currentVersion semver.Version) (semver.Version, bool) {
 	//sort higher extensions first
 	sort.Sort(sort.Reverse(availableVersions))
 	printedWarning := false
 	for i := range availableVersions {
+		/* skip any versions above the default version for auto-upgrade */
+		if availableVersions[i].GT(defaultVersion) {
+			continue
+		}
 		/* Do not auto-upgrade across Major versions of extensions */
 		if validCurrentVersion && currentVersion.Major != availableVersions[i].Major {
 			/* Print a warning if there is a a non-prerelease newer major version available */
