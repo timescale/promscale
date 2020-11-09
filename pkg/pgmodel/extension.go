@@ -121,14 +121,14 @@ func migrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 		return fmt.Errorf("the extension is not available")
 	}
 
-	newVersion, ok := getNewExtensionVersion(availableVersions, validRange)
-	if !ok {
-		return fmt.Errorf("the extension is not available at the right version, need version: %v", rangeString)
-	}
-
 	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
 	if err != nil {
 		return fmt.Errorf("Could not get the installed extension version: %w", err)
+	}
+
+	newVersion, ok := getNewExtensionVersion(extName, availableVersions, validRange, isInstalled, currentVersion)
+	if !ok {
+		return fmt.Errorf("the extension is not available at the right version, need version: %v", rangeString)
 	}
 
 	if !isInstalled {
@@ -234,10 +234,21 @@ func getSqlVersion(v semver.Version, extName string) string {
 }
 
 // getNewExtensionVersion returns the highest version allowed by validRange
-func getNewExtensionVersion(availableVersions semver.Versions, validRange semver.Range) (semver.Version, bool) {
+func getNewExtensionVersion(extName string, availableVersions semver.Versions, validRange semver.Range, validCurrentVersion bool, currentVersion semver.Version) (semver.Version, bool) {
 	//sort higher extensions first
 	sort.Sort(sort.Reverse(availableVersions))
+	printedWarning := false
 	for i := range availableVersions {
+		/* Do not auto-upgrade across Major versions of extensions */
+		if validCurrentVersion && currentVersion.Major != availableVersions[i].Major {
+			/* Print a warning if there is a a non-prerelease newer major version available */
+			if !printedWarning && availableVersions[i].Major > currentVersion.Major && len(availableVersions[i].Pre) == 0 {
+				log.Warn("msg", "Newer major version of "+extName+" is available, but has to be upgraded manually with ALTER EXTENSION (we do not upgrade across major versions automatically).",
+					"available_version", availableVersions[i].String())
+				printedWarning = true
+			}
+			continue
+		}
 		if validRange(availableVersions[i]) {
 			return availableVersions[i], true
 		}
