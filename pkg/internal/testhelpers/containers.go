@@ -245,6 +245,7 @@ func StartPGContainerWithImage(ctx context.Context, image string, testDataDir st
 }
 
 // StartPromContainer starts a Prometheus container for use in testing
+// #nosec
 func StartPromContainer(storagePath string, ctx context.Context) (testcontainers.Container, error) {
 	// Set the storage directories permissions so Prometheus can write to them.
 	err := os.Chmod(storagePath, 0777)
