@@ -88,7 +88,7 @@ func newPgxInserter(conn pgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, er
 		inserter.insertedDatapoints = new(int64)
 		reportInterval := int64(cfg.ReportInterval)
 		go func() {
-			log.Info("msg", fmt.Sprintf("outputting throughpput info once every %ds", reportInterval))
+			log.Info("msg", fmt.Sprintf("outputting throughput info once every %ds", reportInterval))
 			tick := time.Tick(time.Duration(reportInterval) * time.Second)
 			for range tick {
 				inserted := atomic.SwapInt64(inserter.insertedDatapoints, 0)
