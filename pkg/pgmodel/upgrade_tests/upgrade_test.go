@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/blang/semver/v4"
@@ -556,6 +557,8 @@ type tableInfo struct {
 	values []string
 }
 
+var replaceChildren = regexp.MustCompile("timescaledb_internal\\._hyper_.*\n")
+
 func getDbInfo(t *testing.T, container testcontainers.Container, outputDir string, db *pgxpool.Pool) (info dbInfo) {
 
 	info.schemaNames = getSchemas(t, db)
@@ -573,6 +576,7 @@ func getDbInfo(t *testing.T, container testcontainers.Container, outputDir strin
 		info := &info.schemas[i]
 		info.name = schema
 		info.tables = getPsqlInfo(t, container, outputDir, "\\d+ "+schema+".*")
+		info.tables = replaceChildren.ReplaceAllLiteralString(info.tables, "timescaledb_internal._hyper_*\n")
 		info.functions = getPsqlInfo(t, container, outputDir, "\\df+ "+schema+".*")
 		info.privileges = getPsqlInfo(t, container, outputDir, "\\dp "+schema+".*")
 		// not using \di+ since the sizes are too noisy, and the descriptions
