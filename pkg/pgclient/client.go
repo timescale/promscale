@@ -39,19 +39,19 @@ type Config struct {
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
 func ParseFlags(cfg *Config) *Config {
-	flag.StringVar(&cfg.Host, "db-host", "localhost", "The TimescaleDB host")
-	flag.IntVar(&cfg.Port, "db-port", 5432, "The TimescaleDB port")
-	flag.StringVar(&cfg.User, "db-user", "postgres", "The TimescaleDB user")
-	flag.StringVar(&cfg.Password, "db-password", "", "The TimescaleDB password")
-	flag.StringVar(&cfg.Database, "db-name", "timescale", "The TimescaleDB database")
-	flag.StringVar(&cfg.SslMode, "db-ssl-mode", "require", "The TimescaleDB connection ssl mode")
-	flag.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "How many times to retry connecting to the database")
-	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Ack before data is written to DB")
-	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "interval in seconds at which throughput should be reported")
-	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "maximum number of labels to cache")
-	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "maximum number of metric names to cache")
-	flag.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "maximum number of database connections per go process writing to the database")
-	flag.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "maximum connections that can be open at once, defaults to 80% of the max the DB can handle")
+	flag.StringVar(&cfg.Host, "db-host", "localhost", "Host for TimescaleDB/Vanilla Postgres.")
+	flag.IntVar(&cfg.Port, "db-port", 5432, "TimescaleDB/Vanilla Postgres connection password.")
+	flag.StringVar(&cfg.User, "db-user", "postgres", "TimescaleDB/Vanilla Postgres user.")
+	flag.StringVar(&cfg.Password, "db-password", "", "Password for connecting to TimescaleDB/Vanilla Postgres.")
+	flag.StringVar(&cfg.Database, "db-name", "timescale", "Database name.")
+	flag.StringVar(&cfg.SslMode, "db-ssl-mode", "require", "TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass 'allow' as value.")
+	flag.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "Number of retries Promscale should make for establishing connection with the database.")
+	flag.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
+	flag.IntVar(&cfg.ReportInterval, "tput-report", 0, "Interval in seconds at which throughput should be reported.")
+	flag.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "Maximum number of labels to cache.")
+	flag.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", pgmodel.DefaultMetricCacheSize, "Maximum number of metric names to cache.")
+	flag.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "Maximum number of database connections for writing per go process.")
+	flag.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle.")
 	return cfg
 }
 

@@ -62,19 +62,18 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	log.ParseFlags(&cfg.LogCfg)
 
 	flag.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
-	flag.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
+	flag.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
 	var corsOriginFlag string
 	var migrateOption string
 	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	flag.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Unique advisory lock id per adapter high-availability group. Set it if you want to use leader election implementation based on PostgreSQL advisory lock.")
-	flag.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
-		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
-	flag.DurationVar(&cfg.ElectionInterval, "scheduled-election-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
-	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL to the latest version. Valid options are: [true, false, only]")
-	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Prevent race conditions during migration")
-	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update the TimescaleDB extension")
-	flag.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode. Don't write to database. Useful when pointing adapter to read replica")
+	flag.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
+	flag.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not respond within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips.")
+	flag.DurationVar(&cfg.ElectionInterval, "leader-election-scheduled-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
+	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only].")
+	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
+	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update TimescaleDB extension.")
+	flag.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
 	envy.Parse("TS_PROM")
 	// Ignore errors; CommandLine is set for ExitOnError.
 	_ = flag.CommandLine.Parse(args)
