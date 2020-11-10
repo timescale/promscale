@@ -1,0 +1,30 @@
+version: '3.4'
+services:
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes: 
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command: 
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=8h
+
+  promscale: 
+    image: timescale/promscale:latest
+    environment: 
+      TS_PROM_DB_HOST: "timescaleDB"
+      TS_PROM_DB_PASSWORD: "postgres"
+      TS_PROM_DB_USER: "postgres"
+      TS_PROM_DB_SSL_MODE: "disable"
+    depends_on: 
+      - timescaleDB 
+    restart: on-failure # TimescaleDB container is up but db process isn't, causes promscale to fail
+
+  timescaleDB:
+    image: timescaledev/promscale-extension:latest-pg12
+    environment: 
+      POSTGRES_PASSWORD: "postgres"
+    ports: 
+      - "5432:5432"
+    volumes: 
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
