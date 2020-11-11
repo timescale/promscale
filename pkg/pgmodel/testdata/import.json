@@ -1,0 +1,3 @@
+{"metric":{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"},"values":[100,99,98],"timestamps":[1577836800000,1577836801000,1577836802000]}
+{"metric":{"__name__": "cpu_usage", "namespace":"prod", "node": "brain"},"values":[100,99,98],"timestamps":[1577836800000,1577836801000,1577836802000]}
+{"metric":{"__name__": "cpu_usage", "namespace":"stage", "node": "brain"},"values":[100,99,98],"timestamps":[1577836800000,1577836801000,1577836802000]}

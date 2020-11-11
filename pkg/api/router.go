@@ -16,13 +16,16 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router := route.New()
 
 	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, elector, metrics))
+	importHandler := timeHandler(metrics.HTTPRequestDuration, "import", Import(client, elector, metrics))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {
 		writeHandler = withWarnLog("trying to send metrics to write API while connector is in read-only mode", http.NotFoundHandler())
+		importHandler = withWarnLog("trying to send metrics to import API while connector is in read-only mode", http.NotFoundHandler())
 	}
 
 	router.Post("/write", writeHandler)
+	router.Post("/import", importHandler)
 
 	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(client, metrics))
 	router.Get("/read", readHandler)
