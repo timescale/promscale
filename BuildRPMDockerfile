@@ -1,0 +1,16 @@
+# Go binary builder
+FROM promscale_builder AS builder
+ARG VERSION
+RUN mkdir /promscale-$VERSION \
+    && mv /promscale /promscale-$VERSION/ \
+    && tar -czf promscale-$VERSION.tgz /promscale-$VERSION
+
+# RPM builder
+FROM centos:8
+ARG VERSION
+COPY --from=builder /promscale-$VERSION.tgz /root/rpmbuild/SOURCES/
+COPY promscale.spec promscale.spec
+RUN yum -y install rpm-build
+RUN sed -i "s/_VERSION_/$VERSION/g" promscale.spec
+RUN rpmbuild -ba promscale.spec
+ENTRYPOINT ["tail", "-f", "/dev/null"]

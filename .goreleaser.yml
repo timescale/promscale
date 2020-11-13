@@ -4,13 +4,21 @@
 # 2) goreleaser          //--skip-publish for dry-run
 before:
   hooks:
+    # lock file that makes sure rpm is built only once
+    - rm -f .buildrpmstarted
     - go mod download
     #make sure generate up to date
     - go generate ./...
+
 builds:
 - env:
   - CGO_ENABLED=0
   main: ./cmd/promscale/
+  hooks:
+    # build el8 rpm
+    # will be triggered multiple times but we need
+    # {{ .Tag }} to ensure same version is used
+    post: bash build_rpm.sh {{ .Tag }}
 
 #don't publish scoop but overwrite the weird names
 scoop:
@@ -54,3 +62,6 @@ dockers:
   - "timescale/promscale:{{ .Major }}.{{ .Minor }}"
   - "timescale/promscale:latest"
 
+release:
+  extra_files:
+    - glob: ./dist/rpm/*
