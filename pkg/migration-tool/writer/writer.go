@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/planner"
 )
 
@@ -51,38 +52,41 @@ func New(remoteWriteUrl string, plan *planner.Plan, sigRead, sigWrite chan struc
 	return write, nil
 }
 
+// Run runs the remote-writer. It waits for the remote-reader to give access to the in-memory
+// data-block that is written after the most recent fetch. After reading the block and storing
+// the data locally, it gives back the writing access to the remote-reader for further fetches.
 func (rw *RemoteWrite) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
-	fmt.Println("writer is up")
+	log.Info("msg", "writer is up")
 	defer func() {
-		close(rw.sigBlockWrite)
 		wg.Done()
 	}()
 	for {
 		if _, ok := <-rw.sigBlockRead; !ok {
 			break
 		}
-		fmt.Println("receiving read signal")
 		var buf []byte
 		blockRef := rw.plan.CurrentBlock()
+		blockRef.SetDescription("pushing...", 1)
 		ts := timeseriesRefToTimeseries(blockRef.Timeseries)
 		if err := rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
 			return fmt.Errorf("remote-write run: %w", err)
 		}
+		if err := blockRef.Done(); err != nil {
+			return fmt.Errorf("remote-write: %w", err)
+		}
+		rw.sigBlockWrite <- struct{}{}
 		if !readerUp.Load() {
-			fmt.Println("reader down, exiting..")
 			break
 		}
-		fmt.Println("sending write signal")
-		rw.sigBlockWrite <- struct{}{}
 	}
-	fmt.Println("writer is down")
+	log.Info("msg", "writer is down")
 	return nil
 }
 
 // sendSamples to the remote storage with backoff for recoverable errors.
 func (rw *RemoteWrite) sendSamplesWithBackoff(ctx context.Context, samples []prompb.TimeSeries, buf *[]byte) error {
 	// TODO: Add metrics similar to upstream for tool details.
-	req, _, err := buildWriteRequest(samples, *buf)
+	req, err := buildWriteRequest(samples, *buf)
 	if err != nil {
 		// Failing to build the write request is non-recoverable, since it will
 		// only error if marshaling the proto to bytes fails.
@@ -92,9 +96,6 @@ func (rw *RemoteWrite) sendSamplesWithBackoff(ctx context.Context, samples []pro
 	backoff := BackOffRetryDuration
 	*buf = req
 
-	// An anonymous function allows us to defer the completion of our per-try spans
-	// without causing a memory leak, and it has the nice effect of not propagating any
-	// parameters for sendSamplesWithBackoff/3.
 	attemptStore := func() error {
 		if err := rw.client.Store(ctx, *buf); err != nil {
 			return err
@@ -125,21 +126,13 @@ func (rw *RemoteWrite) sendSamplesWithBackoff(ctx context.Context, samples []pro
 	}
 }
 
-func buildWriteRequest(samples []prompb.TimeSeries, buf []byte) ([]byte, int64, error) {
-	var highest int64
-	for _, ts := range samples {
-		// At the moment we only ever append a TimeSeries with a single sample in it.
-		if ts.Samples[0].Timestamp > highest {
-			highest = ts.Samples[0].Timestamp
-		}
-	}
+func buildWriteRequest(samples []prompb.TimeSeries, buf []byte) ([]byte, error) {
 	req := &prompb.WriteRequest{
 		Timeseries: samples,
 	}
-
 	data, err := proto.Marshal(req)
 	if err != nil {
-		return nil, highest, err
+		return nil, err
 	}
 
 	// snappy uses len() to see if it needs to allocate a new slice. Make the
@@ -148,7 +141,7 @@ func buildWriteRequest(samples []prompb.TimeSeries, buf []byte) ([]byte, int64, 
 		buf = buf[0:cap(buf)]
 	}
 	compressed := snappy.Encode(buf, data)
-	return compressed, highest, nil
+	return compressed, nil
 }
 
 func timeseriesRefToTimeseries(tsr []*prompb.TimeSeries) (ts []prompb.TimeSeries) {

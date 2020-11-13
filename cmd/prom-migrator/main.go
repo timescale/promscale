@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
@@ -26,44 +27,49 @@ func main() {
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.Parse()
-	fmt.Fprintln(os.Stdout, conf)
+	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	log.Info("msg", fmt.Sprintf("%v+", conf))
 	if err := validateConf(conf); err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parsing flags: %w", err).Error())
+		log.Error("msg", fmt.Errorf("parsing flags: %w", err).Error())
 		os.Exit(1)
 	}
 	planner, err := plan.CreatePlan(conf.mint, conf.maxt)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("create-plan: %w", err).Error())
+		log.Error("msg", fmt.Errorf("create-plan: %w", err).Error())
 		os.Exit(2)
 	}
-	var isReaderUp atomic.Bool
-	sigBlockRead := make(chan struct{})
-	sigBlockWrite := make(chan struct{})
+	var (
+		isReaderUp    atomic.Bool
+		sigBlockRead  = make(chan struct{})
+		sigBlockWrite = make(chan struct{})
+	)
 	read, err := reader.New(conf.readURL, planner, sigBlockRead, sigBlockWrite)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("creating reader: %w", err).Error())
+		log.Error("msg", fmt.Errorf("creating reader: %w", err).Error())
 	}
 	write, err := writer.New(conf.writeURL, planner, sigBlockRead, sigBlockWrite)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("creating writer: %w", err).Error())
+		log.Error("msg", fmt.Errorf("creating writer: %w", err).Error())
 	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
-		fmt.Println("launching reader")
+
 		if err = read.Run(&wg, &isReaderUp); err != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("running reader: %w", err).Error())
+			log.Error("msg", fmt.Errorf("running reader: %w", err).Error())
 			os.Exit(2)
 		}
 	}()
 	go func() {
 		if err = write.Run(&wg, &isReaderUp); err != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("running writer: %w", err).Error())
+			log.Error("msg", fmt.Errorf("running writer: %w", err).Error())
 			os.Exit(2)
 		}
 	}()
 	wg.Wait()
-	fmt.Println("completed, exiting")
+	log.Info("msg", "exiting!")
 }
 
 func validateConf(conf *config) error {
