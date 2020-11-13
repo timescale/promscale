@@ -1,7 +1,11 @@
 # Promscale Helm chart
 
-This directory contains a Helm chart to deploy the Promscale Connector
-on Kubernetes. This chart will do the following:
+This directory contains a Helm chart to deploy the Promscale Connector on Kubernetes.
+If you are looking to deploy an entire observability suite including Prometheus,
+Promscale, Grafana and other tools, we suggest using
+[The Observability Suite for Kubernetes (tobs)][https://github.com/timescale/tobs].
+
+This chart will do the following:
 
 * Create a Kubernetes Deployment (by default) with one pod
   * The pod has a container created using the [Promscale Connector Docker Image][docker-image]

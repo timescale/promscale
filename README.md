@@ -33,6 +33,27 @@ If you have any questions, please join the #prometheus channel on
 [TimescaleDB Slack](https://slack.timescale.com/), or the
 [Promscale Users Google Group](https://groups.google.com/forum/#!forum/promscale-users).
 
+
+# Documentation
+
+* **[About TimescaleDB](#-about-timescaledb)**
+* **[Features](#-features)**
+* **[Installation](#-choose-your-own-installation-adventure)**
+  * [The Observability Suite for Kubernetes][tobs]
+  * [Docker](docs/docker.md)
+  * [Binaries](docs/binary.md)
+  * [Source](docs/binary.md#building-from-source)
+  * [Helm](helm-chart/README.md)
+* **[Analyzing Data Using SQL](docs/sql_schema.md)**
+  * [Data Model](docs/sql_schema.md#data-model-schema)
+  * [Filtering Series](docs/sql_schema.md#filtering-series)
+  * [Data Retention](docs/sql_schema.md#data-retention)
+* **[Quick Tips](#-quick-tips)**
+* **[High Availability](docs/high-avaliability/prometheus-HA.md)**
+* **[FAQ](docs/faq.md)**
+* **[Contributing](#%EF%B8%8F-contributing)**
+
+
 ## 🐯 About TimescaleDB
 
 **[TimescaleDB](https://github.com/timescale/timescaledb)** is a
@@ -58,6 +79,24 @@ time-series data. AppDynamics (now part of Cisco Systems and one of the
 largest application performance monitoring providers) relies on TimescaleDB
 as its main metrics database. TimescaleDB is also the preferred (recommended)
 backend datasource for Zabbix users and is natively supported in Grafana.
+
+## 🌟 Features
+
+Click the video below for an overview of Promscale:
+
+<p align="center">
+<a href="https://www.youtube.com/watch?v=FWZju1De5lc&list=PLsceB9ac9MHTrmU-q7WCEvies-o7"> <img src="https://media.giphy.com/media/aLIuNJwflN425UvYjR/giphy.gif"> </a>
+</p>
+
+* **Analysis in PromQL and SQL** get the ability to analyze data in both query languages. Use PromQL for monitoring and alerting and
+  SQL for deeper analytics and compatibility with a huge ecosystem of data visualization, analysis, and AI/ML tools.
+* **Rock-solid stability** due to being built on top of PostgreSQL, with 30+ years of development work.
+* **Support for backfilling** to ingest data from the past.
+* **High-Availability** support for [Promethus HA deployments](docs/high-avaliability/prometheus-HA.md) as well as
+  high-availability deployments of [TimescaleDB itself](https://blog.timescale.com/blog/high-availability-timescaledb-postgresql-patroni-a4572264a831/).
+* **Simple architecture**. Unlike some other long-term stores, our architecture consists of only three components: Prometheus, Promscale, and TimescaleDB.
+* **ACID compliance** to ensure consistency of your data.
+* **Horizontal scalability** using [multiinode support](https://blog.timescale.com/blog/timescaledb-2-0-a-multi-node-petabyte-scale-completely-free-relational-database-for-time-series/) with TimescaleDB version 2.0.
 
 ## 🔧 Choose your own (installation) adventure
 
