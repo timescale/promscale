@@ -1,10 +1,10 @@
 package planner
 
 import (
-	"encoding/json"
-	"github.com/prometheus/prometheus/prompb"
 	"go.uber.org/atomic"
 	"sync"
+
+	"github.com/prometheus/prometheus/prompb"
 )
 
 // Plan represents the plannings done by the planner.
@@ -36,21 +36,12 @@ func (p *Plan) LastPushedMaxt() int64 {
 	return p.lastPushedT.Load()
 }
 
-// Marshal marshals the plan-meta into byte format.
-func (p *Plan) marshal() ([]byte, error) {
-	b, err := json.Marshal(p)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
 // CreateBlock creates a new block and returns reference to the block for faster write and read operations.
 func (p *Plan) CreateBlock(mint, maxt int64) (reference *Block) {
 	reference = &Block{
 		ID:   p.blockCounts.Add(1),
-		Mint: mint,
-		Maxt: maxt,
+		mint: mint,
+		maxt: maxt,
 	}
 	p.currentBlock = reference
 	return
@@ -74,8 +65,8 @@ func (p *Plan) Clear() {
 // Block provides the metadata of a block.
 type Block struct {
 	ID         int64
-	Mint       int64
-	Maxt       int64
+	mint       int64
+	maxt       int64
 	Timeseries []*prompb.TimeSeries
 }
 
