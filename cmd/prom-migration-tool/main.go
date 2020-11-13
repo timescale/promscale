@@ -3,25 +3,24 @@ package main
 import (
 	"flag"
 	"fmt"
-	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
-	"github.com/timescale/promscale/pkg/migration-tool/reader"
-	"github.com/timescale/promscale/pkg/migration-tool/writer"
 	"go.uber.org/atomic"
 	"os"
 	"sync"
+
+	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
+	"github.com/timescale/promscale/pkg/migration-tool/reader"
+	"github.com/timescale/promscale/pkg/migration-tool/writer"
 )
 
 type config struct {
-	mint         int64
-	maxt         int64
-	readURL      string
-	writeURL     string
-	plannerPath  string
-	inMemoryOnly bool
+	mint     int64
+	maxt     int64
+	readURL  string
+	writeURL string
 }
 
 func main() {
-	conf := &config{}
+	conf := new(config)
 	flag.Int64Var(&conf.mint, "mint", -1, "Minimum timestamp for carrying out data migration. Setting this value less than zero will indicate all data upto the maxt. Setting mint and maxt less than zero will migrate all data available in the read storage.")
 	flag.Int64Var(&conf.maxt, "maxt", -1, "Maximum timestamp for carrying out data migration. Setting this value less than zero will indicate all data from mint upto now. Setting mint and maxt less than zero will migrate all data available in the read storage.")
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
@@ -40,8 +39,6 @@ func main() {
 	var isReaderUp atomic.Bool
 	sigBlockRead := make(chan struct{})
 	sigBlockWrite := make(chan struct{})
-	fmt.Println("one")
-	fmt.Println("two")
 	read, err := reader.New(conf.readURL, planner, sigBlockRead, sigBlockWrite)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("creating reader: %w", err).Error())
@@ -50,12 +47,6 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("creating writer: %w", err).Error())
 	}
-	//go func() {
-	//	for {
-	//		sigBlockWrite <- struct{}{}
-	//		time.Sleep(time.Second * 1)
-	//	}
-	//}()
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -71,7 +62,6 @@ func main() {
 			os.Exit(2)
 		}
 	}()
-	sigBlockWrite <- struct{}{}
 	wg.Wait()
 	fmt.Println("completed, exiting")
 }
@@ -80,8 +70,8 @@ func validateConf(conf *config) error {
 	if conf.readURL == "" {
 		return fmt.Errorf("remote read storage url needs to be specified. Without read storage url, data migration cannot begin")
 	}
-	//if conf.writeURL == "" {
-	//	return fmt.Errorf("remote write storage url needs to be specified. Without write storage url, data migration cannot begin")
-	//}
+	if conf.writeURL == "" {
+		return fmt.Errorf("remote write storage url needs to be specified. Without write storage url, data migration cannot begin")
+	}
 	return nil
 }

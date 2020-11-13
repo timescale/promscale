@@ -23,7 +23,7 @@ import (
 const (
 	DefaultReadTimeout     = time.Minute * 5
 	ResponseDataSizeLimit  = 1024 * 1024 * 25 // 25 Mega-bytes.
-	MaxTimeRangeDeltaLimit = time.Minute * 64
+	MaxTimeRangeDeltaLimit = time.Minute * 32
 )
 
 type RemoteRead struct {
@@ -71,11 +71,10 @@ func (rr *RemoteRead) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
 		wg.Done()
 	}()
 	timeRangeMinutesDelta := time.Minute.Milliseconds()
+	count := 0
 	for i := rr.plan.Mint; i <= rr.plan.Maxt; {
-		fmt.Println("waiting for write signal")
-		<-rr.sigBlockWrite
-		fmt.Println("receiving write signal")
-		fmt.Println("sending with delta", timeRangeMinutesDelta/(60*1000))
+		count++
+		fmt.Println(count, i, i <= rr.plan.Maxt, "sending with delta", timeRangeMinutesDelta/(60*1000))
 		mint := i
 		maxt := mint + timeRangeMinutesDelta
 		fetch := rr.createFetch(rr.url, mint, maxt)
@@ -86,8 +85,8 @@ func (rr *RemoteRead) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
 		if len(result.Timeseries) == 0 {
 			if timeRangeMinutesDelta < MaxTimeRangeDeltaLimit.Milliseconds() {
 				timeRangeMinutesDelta *= 2
-				i += timeRangeMinutesDelta + 1
 			}
+			i += timeRangeMinutesDelta + 1
 			continue
 		}
 		blockRef := rr.plan.CreateBlock(mint, maxt)
@@ -98,7 +97,8 @@ func (rr *RemoteRead) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
 		}
 		fmt.Println("sending read signal")
 		rr.sigBlockRead <- struct{}{}
-		fmt.Println("post sending read signal")
+		<-rr.sigBlockWrite
+		fmt.Println("received write signal")
 		qResultSize := result.Size() * 4
 		if qResultSize < ResponseDataSizeLimit && timeRangeMinutesDelta >= MaxTimeRangeDeltaLimit.Milliseconds() {
 			i += timeRangeMinutesDelta + 1
@@ -141,7 +141,6 @@ func (rr *RemoteRead) series(mint, maxt int64) ([]map[string]string, error) {
 type fetch struct {
 	url        string
 	mint, maxt int64
-	matchers   []*labels.Matcher
 	clientCopy remote.ReadClient // Maintain a copy of remote client.
 }
 
@@ -173,41 +172,6 @@ func (f *fetch) start(context context.Context, matchers []*labels.Matcher) (*pro
 	}
 	return result, nil
 }
-
-//func read(c context.Context, url *url.URL, query *prompb.Query) (*prompb.QueryResult, error) {
-//	req := &prompb.ReadRequest{
-//		// TODO: Support batching multiple queries into one read request,
-//		// as the protobuf interface allows for it.
-//		Queries: []*prompb.Query{
-//			query,
-//		},
-//	}
-//	data, err := proto.Marshal(req)
-//	if err != nil {
-//		return nil, errors.Wrapf(err, "unable to marshal read request")
-//	}
-//	compressed := snappy.Encode(nil, data)
-//	httpReq, err := http.NewRequest("POST", url.String(), bytes.NewReader(compressed))
-//	if err != nil {
-//		return nil, errors.Wrap(err, "unable to create request")
-//	}
-//	httpReq.Header.Add("Content-Encoding", "snappy")
-//	httpReq.Header.Add("Accept-Encoding", "snappy")
-//	httpReq.Header.Set("Content-Type", "application/x-protobuf")
-//	httpReq.Header.Set("User-Agent", UserAgent)
-//	httpReq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
-//
-//	ctx, cancel := context.WithTimeout(c, DefaultReadTimeout)
-//	defer cancel()
-//
-//	httpReq = httpReq.WithContext(ctx)
-//
-//	start := time.Now()
-//	httpResp, err := .Do(httpReq)
-//	if err != nil {
-//		return nil, errors.Wrap(err, "error sending request")
-//	}emote.NewReadClient()
-//}
 
 func toLabelMatchers(matchers []*labels.Matcher) ([]*prompb.LabelMatcher, error) {
 	pbMatchers := make([]*prompb.LabelMatcher, 0, len(matchers))
