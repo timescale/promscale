@@ -157,7 +157,7 @@ the following columns
  new_tag   | new_tag           | new_tag_id     | {value}
 ```
 
-## Series Selectors
+## Filtering Series
 
 We have added simple-to-use series selectors for filtering series in either of the two views above.
 
@@ -241,7 +241,7 @@ Therefore you need to provide the entire json object if using the
 function above. For partial matches see the Containment
 section above.
 
-## Data retention
+## Data Retention
 
 This default data retention period can be changed by using the SQL function
 `set_default_retention_period(new interval)`.  For example,
