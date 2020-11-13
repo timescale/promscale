@@ -25,16 +25,16 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.15.0
-	github.com/prometheus/prometheus v1.8.2-0.20201112142552-bef9d4e18226
+	github.com/prometheus/common v0.13.0
+	github.com/prometheus/prometheus v1.8.2-0.20200907175821-8219b442c864
+	github.com/schollz/progressbar v1.0.0
+	github.com/schollz/progressbar/v3 v3.7.0
 	github.com/spf13/cobra v0.0.7 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/testcontainers/testcontainers-go v0.5.1
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	go.uber.org/atomic v1.6.0
-	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
 	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
-	golang.org/x/sys v0.0.0-20200908134130-d2e65c121b96 // indirect
 	golang.org/x/tools v0.0.0-20200908211811-12e1bf57a112 // indirect
 	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
 	google.golang.org/grpc v1.32.0
