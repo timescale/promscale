@@ -119,10 +119,7 @@ BEGIN
         END IF;
 
         IF SCHEMA_CATALOG.is_timescaledb_installed() AND SCHEMA_CATALOG.get_default_compression_setting() THEN
-            -- TODO custom compression
-            IF NOT SCHEMA_CATALOG.is_multinode() THEN
-                PERFORM SCHEMA_PROM.set_compression_on_metric_table(r.table_name, TRUE);
-            END IF;
+            PERFORM SCHEMA_PROM.set_compression_on_metric_table(r.table_name, TRUE);
         END IF;
 
         --do this before taking exclusive lock to minimize work after taking lock
@@ -143,6 +140,26 @@ $proc$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
 IS 'Finalizes metric creation. This procedure should be run by the connector automatically';
 GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.finalize_metric_creation() TO prom_writer;
+
+-- in early versions of timescale multinode we could not enable compression in
+-- functions, so this function allows us to detect non-finalized tables and
+-- enable compression in a seperate statement
+-- we can't use the normal timescaledb info views becaue they also don't work
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.needs_compression_enable()
+RETURNS TEXT[] AS $func$
+DECLARE
+    tables TEXT[];
+BEGIN
+    IF SCHEMA_CATALOG.is_timescaledb_installed() AND SCHEMA_CATALOG.is_multinode() THEN
+        SELECT array_agg(format('%I', table_name))
+        FROM SCHEMA_CATALOG.metric
+        WHERE NOT creation_completed
+        INTO tables;
+    END IF;
+
+    RETURN tables;
+END
+$func$ LANGUAGE PLPGSQL;
 
 --This function is called by a trigger when a new metric is created. It
 --sets up the metric just enough to insert data into it. Metric creation
@@ -998,12 +1015,26 @@ BEGIN
     INTO STRICT metric_table_name
     FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
 
-    SELECT EXISTS (
-        SELECT FROM _timescaledb_catalog.hypertable h
-        WHERE h.schema_name = 'SCHEMA_DATA'
-        AND h.table_name = metric_table_name
-        AND h.compressed_hypertable_id IS NOT NULL)
-    INTO result;
+    IF SCHEMA_CATALOG.is_multinode() THEN
+        -- FXIME in early versions of multinode the access node catalog would
+        -- not be updated with compression info for distributed hypertables.
+        -- To work around this issue, this functions will track the existence
+        -- of the compression job in that case until the underlyting issue is
+        -- fixed: https://github.com/timescale/timescaledb/issues/2660
+        SELECT EXISTS (
+            SELECT FROM timescaledb_information.jobs
+            WHERE proc_schema='SCHEMA_CATALOG'
+                AND proc_name = 'compression_job'
+                AND config->>'metric_table' = metric_table_name
+        ) INTO result;
+    ELSE
+        SELECT EXISTS (
+            SELECT FROM _timescaledb_catalog.hypertable h
+            WHERE h.schema_name = 'SCHEMA_DATA'
+            AND h.table_name = metric_table_name
+            AND h.compressed_hypertable_id IS NOT NULL)
+        INTO result;
+    END IF;
     RETURN result;
 END
 $$
@@ -1082,6 +1113,8 @@ IS 'set a compression setting for a specific metric (this overrides the default)
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN)
 RETURNS void
 AS $func$
+DECLARE
+    compression_job INT;
 BEGIN
     IF compression_setting THEN
         EXECUTE format($$
@@ -1093,13 +1126,23 @@ BEGIN
 
         --chunks where the end time is before now()-1 hour will be compressed
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-            PERFORM add_compression_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+            PERFORM add_job(
+                'SCHEMA_CATALOG.compression_job'::regproc,
+                INTERVAL '1 hour',
+                config => jsonb_build_object('metric_table', metric_table_name)
+            );
         ELSE
             PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
         END IF;
     ELSE
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-            PERFORM remove_compression_policy(format('SCHEMA_DATA.%I', metric_table_name));
+            SELECT job_id
+            FROM timescaledb_information.jobs
+            WHERE proc_schema='SCHEMA_CATALOG'
+                AND proc_name = 'compression_job'
+                AND config->>'metric_table' = metric_table_name
+            INTO compression_job;
+            PERFORM delete_job(compression_job);
         ELSE
             PERFORM remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
         END IF;
@@ -1740,12 +1783,12 @@ DECLARE
     bgw_job_id int;
 BEGIN
     IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-        SELECT p.id INTO bgw_job_id
-        FROM _timescaledb_config.bgw_job p
-        INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = p.hypertable_id)
-        WHERE p.proc_name = 'policy_compression'
-          AND h.schema_name = 'SCHEMA_DATA'
-          AND h.table_name = ht_table;
+        SELECT job_id
+        INTO bgw_job_id
+        FROM timescaledb_information.jobs
+        WHERE proc_schema='SCHEMA_CATALOG'
+            AND proc_name = 'compression_job'
+            AND config->>'metric_table' = ht_table;
 
         PERFORM pg_advisory_xact_lock(12377, bgw_job_id);
 
@@ -1765,48 +1808,112 @@ END
 $$
 LANGUAGE PLPGSQL;
 
---Decompression should take place in a procedure because we don't want locks held across
---decompress_chunk calls since that function takes some heavier locks at the end.
+CALL execute_everywhere($ee$
+    --Decompression should take place in a procedure because we don't want locks held across
+    --decompress_chunk calls since that function takes some heavier locks at the end.
+    CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.do_decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ)
+    AS $$
+    DECLARE
+        chunk_row record;
+        dimension_row record;
+        hypertable_row record;
+        min_time_internal bigint;
+    BEGIN
+        SELECT h.* INTO STRICT hypertable_row FROM _timescaledb_catalog.hypertable h
+        WHERE table_name = metric_table AND schema_name = 'SCHEMA_DATA';
+
+        SELECT d.* INTO STRICT dimension_row FROM _timescaledb_catalog.dimension d WHERE hypertable_id = hypertable_row.id ORDER BY id LIMIT 1;
+
+        SELECT _timescaledb_internal.time_to_internal(min_time) INTO STRICT min_time_internal;
+
+        FOR chunk_row IN
+            SELECT c.*
+            FROM _timescaledb_catalog.dimension_slice ds
+            INNER JOIN _timescaledb_catalog.chunk_constraint cc ON cc.dimension_slice_id = ds.id
+            INNER JOIN _timescaledb_catalog.chunk c ON cc.chunk_id = c.id
+            WHERE dimension_id = dimension_row.id
+            -- the range_starts are inclusive
+            AND min_time_internal >= ds.range_start
+            AND c.compressed_chunk_id IS NOT NULL
+            ORDER BY ds.range_start
+        LOOP
+
+            --lock the chunk exclusive.
+            EXECUTE format('LOCK %I.%I;', chunk_row.schema_name, chunk_row.table_name);
+            --double check it's still compressed.
+            PERFORM c.*
+            FROM _timescaledb_catalog.chunk c
+            WHERE c.id = chunk_row.id AND c.compressed_chunk_id IS NOT NULL;
+
+            IF FOUND THEN
+                RAISE NOTICE 'Promscale is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
+                PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
+            END IF;
+
+            COMMIT;
+        END LOOP;
+    END;
+    $$ LANGUAGE PLPGSQL;
+$ee$);
+
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ)
-AS $$
-DECLARE
-    chunk_row record;
-    dimension_row record;
-    hypertable_row record;
-    min_time_internal bigint;
+AS $proc$
 BEGIN
-    SELECT h.* INTO STRICT hypertable_row FROM _timescaledb_catalog.hypertable h
-    WHERE table_name = metric_table AND schema_name = 'SCHEMA_DATA';
+    -- In early versions of timescale multinode the access node catalog does not
+    -- store whether chunks were compressed, so we need to run the actual search
+    -- for nodes in need of decompression on the data nodes, and /not/ the
+    -- access node; right now executing on the access node will do a lot of work
+    -- and locking for no result.
+    IF SCHEMA_CATALOG.is_multinode() THEN
+        CALL distributed_exec(
+            format(
+                $dist$ CALL do_decompress_chunks_after(%L, %L) $dist$,
+                metric_table, min_time),
+            transactional => false);
+    ELSE
+        CALL do_decompress_chunks_after(metric_table, min_time);
+    END IF;
+END
+$proc$ LANGUAGE PLPGSQL;
 
-    SELECT d.* INTO STRICT dimension_row FROM _timescaledb_catalog.dimension d WHERE hypertable_id = hypertable_row.id ORDER BY id LIMIT 1;
+CALL execute_everywhere($ee$
+    CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
+    AS $$
+    DECLARE
+        chunk TEXT;
+        chunk_num INT;
+    BEGIN
+        FOR chunk, chunk_num IN
+            SELECT
+                format('%I.%I', chunk_schema, chunk_name),
+                row_number() OVER (ORDER BY range_end DESC)
+            FROM timescaledb_information.chunks
+            WHERE hypertable_schema = 'SCHEMA_DATA'
+                AND hypertable_name = metric_table
+                AND NOT is_compressed
+                AND range_end <= compress_before
+            ORDER BY range_end ASC
+        LOOP
+            CONTINUE WHEN chunk_num <= 1;
+            PERFORM compress_chunk(chunk, if_not_compressed => true);
+            COMMIT;
+        END LOOP;
+    END;
+    $$ LANGUAGE PLPGSQL;
+$ee$);
 
-    SELECT _timescaledb_internal.time_to_internal(min_time) INTO STRICT min_time_internal;
-
-    FOR chunk_row IN
-        SELECT c.*
-        FROM _timescaledb_catalog.dimension_slice ds
-        INNER JOIN _timescaledb_catalog.chunk_constraint cc ON cc.dimension_slice_id = ds.id
-        INNER JOIN _timescaledb_catalog.chunk c ON cc.chunk_id = c.id
-        WHERE dimension_id = dimension_row.id
-        -- the range_starts are inclusive
-        AND min_time_internal >= ds.range_start
-        AND c.compressed_chunk_id IS NOT NULL
-        ORDER BY ds.range_start
-    LOOP
-
-        --lock the chunk exclusive.
-        EXECUTE format('LOCK %I.%I;', chunk_row.schema_name, chunk_row.table_name);
-        --double check it's still compressed.
-        PERFORM c.*
-        FROM _timescaledb_catalog.chunk c
-        WHERE c.id = chunk_row.id AND c.compressed_chunk_id IS NOT NULL;
-
-        IF FOUND THEN
-            RAISE NOTICE 'Promscale is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
-            PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
-        END IF;
-
-        COMMIT;
-    END LOOP;
-END;
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compression_job(job_id int, config jsonb)
+AS $$
+BEGIN
+    -- as of timescaledb-2.0-rc3 the is_compressed column of the chunks view is
+    -- not updated on the access node, therefore we need to one the compressor
+    -- on all the datanodes to search for uncompressed chunks
+    IF SCHEMA_CATALOG.is_multinode() THEN
+        CALL distributed_exec(format($dist$
+            CALL SCHEMA_CATALOG.compress_old_chunks(%L, now() - INTERVAL '1 hour')
+        $dist$, config->>'metric_table'), transactional => false);
+    ELSE
+        CALL SCHEMA_CATALOG.compress_old_chunks(config->>'metric_table', now() - INTERVAL '1 hour');
+    END IF;
+END
 $$ LANGUAGE PLPGSQL;
