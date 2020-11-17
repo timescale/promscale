@@ -805,6 +805,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "Zero data",
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 			},
 		},
@@ -814,6 +818,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 				"metric_0": {{samples: make([]prompb.Sample, 1)}},
 			},
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -848,6 +856,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -885,6 +897,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -900,6 +916,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 				"metric_0": {{samples: make([]prompb.Sample, 1)}},
 			},
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -956,6 +976,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -1011,6 +1035,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					sql:  "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -1028,6 +1056,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 			metricsGetErr: fmt.Errorf("some metrics error"),
 			sqlQueries: []sqlQuery{
+				{
+					sql:     "SELECT _prom_catalog.needs_compression_enable()",
+					results: rowResults{{nil}},
+				},
 				{sql: "CALL _prom_catalog.finalize_metric_creation()"},
 			},
 		},
