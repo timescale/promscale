@@ -77,7 +77,7 @@ cat > %{buildroot}%{_sysconfdir}/sysconfig/%{name} <<- EOT
 # TS_PROM_DB_NAME="timescale"
 # TS_PROM_DB_PASSWORD=""
 # TS_PROM_DB_PORT="5432"
-TS_PROM_DB_SSL_MODE="disable"
+TS_PROM_DB_SSL_MODE="prefer"
 # TS_PROM_DB_USER="postgres"
 # TS_PROM_DB_WRITER_CONNECTION_CONCURRENCY="4"
 # TS_PROM_INSTALL_TIMESCALEDB="true"
