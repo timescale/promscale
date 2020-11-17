@@ -27,7 +27,6 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.13.0
 	github.com/prometheus/prometheus v1.8.2-0.20200907175821-8219b442c864
-	github.com/schollz/progressbar v1.0.0
 	github.com/schollz/progressbar/v3 v3.7.0
 	github.com/spf13/cobra v0.0.7 // indirect
 	github.com/stretchr/testify v1.6.1

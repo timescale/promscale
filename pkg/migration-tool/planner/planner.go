@@ -1,38 +1,98 @@
 package planner
 
 import (
+	"context"
 	"fmt"
 	"go.uber.org/atomic"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/schollz/progressbar/v3"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
 // Plan represents the plannings done by the planner.
 type Plan struct {
-	mux          sync.RWMutex
-	Mint         int64
-	Maxt         int64
-	currentBlock *Block
-	blockCounts  atomic.Int64
-	lastPushedT  atomic.Int64
+	mux  sync.RWMutex
+	Mint int64
+	Maxt int64
+	//queryURL string // URL for query endpoint at the remote-write storage.
+	//pMetricName string // Metric for tracking the last pushed max timestamp to remote-write storage.
+	readClient         remote.ReadClient // Used to fetch last maxt pushed.
+	progressMetricName string
+	currentBlock       *Block
+	blockCounts        atomic.Int64
+	lastPushedT        atomic.Int64
 }
 
 // CreatePlan creates a planner in the provided planner-path. It checks for planner config in the
 // provided planner path. If found, it loads the config and verifies the validity. If found invalid,
 // a new planner config is created with updated details. Older planner config and related data are
 // deleted if the validity is unable to hold true.
-func CreatePlan(mint, maxt int64) (*Plan, error) {
+func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL string) (*Plan, bool, error) {
+	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", remoteWriteStorageReadURL, model.Duration(time.Minute*2))
+	if err != nil {
+		return nil, false, fmt.Errorf("create last-pushed-maxt reader: %w", err)
+	}
 	plan := &Plan{
-		Mint: mint,
-		Maxt: maxt,
+		Mint:               mint,
+		Maxt:               maxt,
+		readClient:         rc,
+		progressMetricName: progressMetricName,
 	}
 	plan.blockCounts.Store(0)
 	plan.lastPushedT.Store(0)
-	return plan, nil
+	if remoteWriteStorageReadURL != "" {
+		lastPushedMaxt, found, err := plan.fetchLastPushedMaxt()
+		if err != nil {
+			return nil, false, fmt.Errorf("create plan: %w", err)
+		}
+		if found && lastPushedMaxt > plan.Mint && lastPushedMaxt < plan.Maxt {
+			log.Warn("msg", fmt.Sprintf("progress-metric found on the write storage. Last push was on %d."+
+				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, lastPushedMaxt+1, plan.Maxt, (plan.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
+			plan.Mint = lastPushedMaxt + 1
+		} else {
+			log.Warn("msg", "progress-metric not found on the write storage. Continuing with the provided mint and maxt.")
+		}
+	}
+	if plan.Mint >= plan.Maxt {
+		log.Info("msg", "mint greater than or equal to maxt. This given time-range migration has already been carried out. Hence, stopping.")
+	}
+	return plan, true, nil
+}
+
+// fetchLastPushedMaxt fetches the maxt of the last block pushed to remote-write storage. At present, this is developed
+// for a single migration job (i.e., not supporting multiple migration metrics).
+func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err error) {
+	query, err := utils.CreatePrombQuery(p.Mint, p.Maxt, []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, p.progressMetricName)})
+	if err != nil {
+		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
+	}
+	result, err := p.readClient.Read(context.Background(), query)
+	if err != nil {
+		return -1, false, fmt.Errorf("fetch-last-pushed-maxt query result: %w", err)
+	}
+	ts := result.Timeseries
+	if len(ts) == 0 {
+		return -1, false, nil
+	}
+	for _, series := range ts {
+		for i := len(series.Samples) - 1; i >= 0; i-- {
+			if series.Samples[i].Timestamp > lastPushedMaxt {
+				lastPushedMaxt = series.Samples[i].Timestamp
+			}
+		}
+	}
+	if lastPushedMaxt == 0 {
+		return -1, false, nil
+	}
+	return lastPushedMaxt, true, nil
 }
 
 // GetRecentBlockPushed returns the metadata of the most recent block that was pushed to the remote write storage.
@@ -60,7 +120,6 @@ func (p *Plan) CreateBlock(mint, maxt int64) (reference *Block) {
 		pbarInitDetails: fmt.Sprintf("block-%d time-range: %d mins | mint: %d | maxt: %d", p.blockCounts.Load(), (maxt-mint)/time.Minute.Milliseconds(), mint, maxt),
 		pbar: progressbar.NewOptions(
 			6,
-			//progressbar.OptionSetRenderBlankState(true),
 			progressbar.OptionOnCompletion(func() {
 				fmt.Fprint(os.Stderr, "\n")
 			}),
@@ -123,4 +182,8 @@ func (b *Block) Done() error {
 		return fmt.Errorf("bar-done: %w", err)
 	}
 	return nil
+}
+
+func (b *Block) Maxt() int64 {
+	return b.maxt
 }
