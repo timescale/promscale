@@ -4,18 +4,17 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/atomic"
-	"net/url"
 	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/planner"
+	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
 const (
@@ -24,30 +23,27 @@ const (
 )
 
 type RemoteWrite struct {
-	sigBlockRead  chan struct{}
-	sigBlockWrite chan struct{} // To the reader.
-	plan          *planner.Plan
-	client        remote.WriteClient
+	sigBlockRead       chan struct{}
+	sigBlockWrite      chan struct{} // To the reader.
+	plan               *planner.Plan
+	client             remote.WriteClient
+	progressMetricName string // Metric name to main the last pushed maxt to remote write storage.
+	migrationJobName   string // Label value to the progress metric.
 }
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
-func New(remoteWriteUrl string, plan *planner.Plan, sigRead, sigWrite chan struct{}) (*RemoteWrite, error) {
-	parsedUrl, err := url.Parse(remoteWriteUrl)
-	if err != nil {
-		return nil, fmt.Errorf("url-parse: %w", err)
-	}
-	wc, err := remote.NewWriteClient(fmt.Sprintf("writer-%d", 1), &remote.ClientConfig{
-		URL:     &config.URL{URL: parsedUrl},
-		Timeout: model.Duration(DefaultWriteTimeout),
-	})
+func New(remoteWriteUrl, progressMetricName, migrationJobName string, plan *planner.Plan, sigRead, sigWrite chan struct{}) (*RemoteWrite, error) {
+	wc, err := utils.CreateWriteClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, model.Duration(DefaultWriteTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating write-client: %w", err)
 	}
 	write := &RemoteWrite{
-		plan:          plan,
-		client:        wc,
-		sigBlockRead:  sigRead,
-		sigBlockWrite: sigWrite,
+		plan:               plan,
+		client:             wc,
+		sigBlockRead:       sigRead,
+		sigBlockWrite:      sigWrite,
+		migrationJobName:   migrationJobName,
+		progressMetricName: progressMetricName,
 	}
 	return write, nil
 }
@@ -67,6 +63,12 @@ func (rw *RemoteWrite) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
 		var buf []byte
 		blockRef := rw.plan.CurrentBlock()
 		blockRef.SetDescription("pushing...", 1)
+		ps, err := utils.GetorGenerateProgressTimeseries(rw.progressMetricName, rw.migrationJobName)
+		if err != nil {
+			return fmt.Errorf("get or create progress time-series: %w", err)
+		}
+		ps.Append(1, blockRef.Maxt())
+		utils.MergeWithTimeseries(&blockRef.Timeseries, ps.TimeSeries)
 		ts := timeseriesRefToTimeseries(blockRef.Timeseries)
 		if err := rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
 			return fmt.Errorf("remote-write run: %w", err)

@@ -4,17 +4,16 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/atomic"
-	"net/url"
 	"sync"
 	"time"
 
-	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
+	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
 const (
@@ -36,16 +35,9 @@ type RemoteRead struct {
 // New creates a new RemoteRead. It creates a ReadClient that is imported from Prometheus remote storage.
 // RemoteRead takes help of plan to understand how to create fetchers.
 func New(readStorageUrl string, p *plan.Plan, sigRead, sigWrite chan struct{}) (*RemoteRead, error) {
-	parsedUrl, err := url.Parse(readStorageUrl)
+	rc, err := utils.CreateReadClient(fmt.Sprintf("reader-%d", 1), readStorageUrl, model.Duration(DefaultReadTimeout))
 	if err != nil {
-		return nil, fmt.Errorf("url-parse: %w", err)
-	}
-	rc, err := remote.NewReadClient(fmt.Sprintf("reader-%d", 1), &remote.ClientConfig{
-		URL:     &config.URL{URL: parsedUrl},
-		Timeout: model.Duration(DefaultReadTimeout),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating remote-client: %w", err)
+		return nil, fmt.Errorf("creating read-client: %w", err)
 	}
 	read := &RemoteRead{
 		url:           readStorageUrl,
@@ -132,43 +124,13 @@ func (rr *RemoteRead) createFetch(url string, mint, maxt int64) *fetch {
 
 // start starts fetching the samples from remote read storage as client based on the matchers.
 func (f *fetch) start(context context.Context, matchers []*labels.Matcher) (*prompb.QueryResult, error) {
-	ms, err := toLabelMatchers(matchers)
+	readRequest, err := utils.CreatePrombQuery(f.mint, f.maxt, matchers)
 	if err != nil {
-		return nil, fmt.Errorf("fetch: %w", err)
-	}
-	readRequest := &prompb.Query{
-		StartTimestampMs: f.mint,
-		EndTimestampMs:   f.maxt,
-		Matchers:         ms,
+		return nil, fmt.Errorf("create promb query: %w", err)
 	}
 	result, err := f.clientCopy.Read(context, readRequest)
 	if err != nil {
 		return nil, fmt.Errorf("executing client-read: %w", err)
 	}
 	return result, nil
-}
-
-func toLabelMatchers(matchers []*labels.Matcher) ([]*prompb.LabelMatcher, error) {
-	pbMatchers := make([]*prompb.LabelMatcher, 0, len(matchers))
-	for _, m := range matchers {
-		var mType prompb.LabelMatcher_Type
-		switch m.Type {
-		case labels.MatchEqual:
-			mType = prompb.LabelMatcher_EQ
-		case labels.MatchNotEqual:
-			mType = prompb.LabelMatcher_NEQ
-		case labels.MatchRegexp:
-			mType = prompb.LabelMatcher_RE
-		case labels.MatchNotRegexp:
-			mType = prompb.LabelMatcher_NRE
-		default:
-			return nil, fmt.Errorf("invalid matcher type")
-		}
-		pbMatchers = append(pbMatchers, &prompb.LabelMatcher{
-			Type:  mType,
-			Name:  m.Name,
-			Value: m.Value,
-		})
-	}
-	return pbMatchers, nil
 }
