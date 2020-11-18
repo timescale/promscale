@@ -35,6 +35,7 @@ type Config struct {
 	SeriesCacheSize         uint64
 	WriteConnectionsPerProc int
 	MaxConnections          int
+	UsesHA                  bool
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -166,6 +167,12 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 			log.Warn("err", err, "msg", "invalid value from postgres max_connections")
 			max = 100
 		}
+
+		//In HA setups
+		if cfg.UsesHA {
+			max = max / 2
+		}
+
 		if max <= 1 {
 			log.Warn("msg", "database can only handle 1 connection")
 			return 1, 1, 1, nil

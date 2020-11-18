@@ -116,6 +116,8 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		cfg.UseVersionLease = false
 		cfg.InstallTimescaleDB = false
 	}
+
+	cfg.PgmodelCfg.UsesHA = cfg.HaGroupLockID != 0
 	return cfg, nil
 }
 
