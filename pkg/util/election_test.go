@@ -30,7 +30,7 @@ func TestPgLeaderLock(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer lock.Close()
-		if !lock.Locked() {
+		if !lock.locked() {
 			t.Error("Couldn't obtain the lock")
 		}
 
@@ -39,24 +39,24 @@ func TestPgLeaderLock(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer newLock.Close()
-		if newLock.Locked() {
+		if newLock.locked() {
 			t.Error("Lock should have already been taken")
 		}
 
-		if err = lock.Release(); err != nil {
+		if err = lock.release(); err != nil {
 			t.Errorf("Failed to release a lock. Error: %v", err)
 		}
 
-		if lock.Locked() {
+		if lock.locked() {
 			t.Error("Should be unlocked after release")
 		}
 
-		_, err = newLock.TryLock()
+		_, err = newLock.tryLock()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if !newLock.Locked() {
+		if !newLock.locked() {
 			t.Error("New lock should take over")
 		}
 	})
