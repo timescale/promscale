@@ -102,11 +102,15 @@ func (l *PgLeaderLock) TryLock() (bool, error) {
 	}
 
 	gotLock, err := l.getAdvisoryLock()
-
-	if !gotLock || err != nil {
+	if err != nil {
 		l.obtained = false
 		l.connCleanUp()
 		return false, err
+	}
+
+	if !gotLock {
+		l.obtained = false
+		return false, nil
 	}
 
 	if !l.obtained {
@@ -133,7 +137,6 @@ func (l *PgLeaderLock) Locked() bool {
 func (l *PgLeaderLock) Release() error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	defer l.connCleanUp()
 	if !l.obtained {
 		return fmt.Errorf("can't release while not holding the lock")
 	}
@@ -142,6 +145,7 @@ func (l *PgLeaderLock) Release() error {
 
 	unlocked, err := l.unlock()
 	if err != nil {
+		l.connCleanUp()
 		return err
 	}
 	if !unlocked {
