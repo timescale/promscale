@@ -63,7 +63,7 @@ func NewPgLeaderLock(groupLockID int64, connStr string, afterConnect AfterConnec
 		},
 		false,
 	}
-	_, err := lock.TryLock()
+	_, err := lock.tryLock()
 	if err != nil {
 		return nil, err
 	}
@@ -77,18 +77,23 @@ func (l *PgLeaderLock) ID() string {
 
 // BecomeLeader tries to become a leader by acquiring the lock.
 func (l *PgLeaderLock) BecomeLeader() (bool, error) {
-	return l.TryLock()
+	return l.tryLock()
 }
 
 // IsLeader returns the current leader status for this instance.
 func (l *PgLeaderLock) IsLeader() (bool, error) {
-	return l.TryLock()
+	return l.tryLock()
 }
 
-// TryLock tries to obtain the lock if its not already the leader. In the case
+// Resign releases the leader status of this instance.
+func (l *PgLeaderLock) Resign() error {
+	return l.release()
+}
+
+// tryLock tries to obtain the lock if its not already the leader. In the case
 // that it is the leader, it verifies the connection to make sure the lock hasn't
 // been already lost.
-func (l *PgLeaderLock) TryLock() (bool, error) {
+func (l *PgLeaderLock) tryLock() (bool, error) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -96,6 +101,8 @@ func (l *PgLeaderLock) TryLock() (bool, error) {
 		// we already hold the lock verify the connection
 		err := l.conn.QueryRow(context.Background(), "SELECT").Scan()
 		if err != nil {
+			l.obtained = false
+			l.connCleanUp()
 			return false, err
 		}
 		return true, nil
@@ -115,32 +122,28 @@ func (l *PgLeaderLock) TryLock() (bool, error) {
 
 	if !l.obtained {
 		l.obtained = true
-		log.Debug("msg", fmt.Sprintf("Lock obtained for group id %d", l.groupLockID))
+		log.Info("msg", fmt.Sprintf("Lock obtained for group id %d", l.groupLockID))
 	}
 
 	return true, nil
 }
 
-// Resign releases the leader status of this instance.
-func (l *PgLeaderLock) Resign() error {
-	return l.Release()
-}
-
 // Locked returns if the instance was able to obtain the locks.
-func (l *PgLeaderLock) Locked() bool {
+// Does NOT verify the lock.
+func (l *PgLeaderLock) locked() bool {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
 	return l.obtained
 }
 
 // Release releases the already obtained locks.
-func (l *PgLeaderLock) Release() error {
+func (l *PgLeaderLock) release() error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+
 	if !l.obtained {
 		return fmt.Errorf("can't release while not holding the lock")
 	}
-
 	defer func() { l.obtained = false }()
 
 	unlocked, err := l.unlock()
@@ -149,7 +152,7 @@ func (l *PgLeaderLock) Release() error {
 		return err
 	}
 	if !unlocked {
-		log.Debug("msg", fmt.Sprintf("false release for group id %d", l.groupLockID))
+		log.Debug("msg", fmt.Sprintf("release for a lock that was not held: group id %d", l.groupLockID))
 	}
 
 	return nil
