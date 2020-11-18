@@ -46,7 +46,8 @@ func GetSharedLease(ctx context.Context, conn *pgx.Conn, id int64) error {
 // Recommended architecture when using PgLeaderLock is to have one adapter instance for one Prometheus instance.
 type PgLeaderLock struct {
 	PgAdvisoryLock
-	obtained bool
+	obtained        bool
+	numLockAttempts int
 }
 
 type AfterConnectFunc = func(ctx context.Context, conn *pgx.Conn) error
@@ -62,6 +63,7 @@ func NewPgLeaderLock(groupLockID int64, connStr string, afterConnect AfterConnec
 			afterConnect: afterConnect,
 		},
 		false,
+		0,
 	}
 	_, err := lock.tryLock()
 	if err != nil {
@@ -87,6 +89,7 @@ func (l *PgLeaderLock) IsLeader() (bool, error) {
 
 // Resign releases the leader status of this instance.
 func (l *PgLeaderLock) Resign() error {
+	log.Info("msg", "Resigning as the leader (will no longer be writing)", "component", "leader_election", "status", "follower", "group_id", l.groupLockID)
 	return l.release()
 }
 
@@ -96,6 +99,7 @@ func (l *PgLeaderLock) Resign() error {
 func (l *PgLeaderLock) tryLock() (bool, error) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+	defer func() { l.numLockAttempts++ }()
 
 	if l.obtained && l.conn != nil {
 		// we already hold the lock verify the connection
@@ -116,13 +120,18 @@ func (l *PgLeaderLock) tryLock() (bool, error) {
 	}
 
 	if !gotLock {
+		if l.numLockAttempts == 0 {
+			log.Info("msg", "I am starting as a follower (will not be writing until I become the leader)", "component", "leader_election", "status", "follower", "group_id", l.groupLockID)
+		} else if l.obtained {
+			log.Info("msg", "I have lost the leader lock and am now a follower (will not be writing)", "component", "leader_election", "status", "follower", "group_id", l.groupLockID)
+		}
 		l.obtained = false
 		return false, nil
 	}
 
 	if !l.obtained {
 		l.obtained = true
-		log.Info("msg", fmt.Sprintf("Lock obtained for group id %d", l.groupLockID))
+		log.Info("msg", "I have become the leader (starting to write incoming data)", "component", "leader_election", "status", "leader", "group_id", l.groupLockID)
 	}
 
 	return true, nil

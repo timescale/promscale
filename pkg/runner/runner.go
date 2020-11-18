@@ -299,8 +299,8 @@ func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.HaGroupLockID, err)
 	}
+	log.Info("msg", "Initializing leader election based on PostgreSQL advisory lock")
 	scheduledElector := util.NewScheduledElector(lock, cfg.ElectionInterval)
-	log.Info("msg", "Initialized leader election based on PostgreSQL advisory lock")
 	if cfg.PrometheusTimeout != 0 {
 		go func() {
 			ticker := time.NewTicker(promLivenessCheck)
