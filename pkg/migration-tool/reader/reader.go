@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/atomic"
-	"sync"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -17,10 +16,9 @@ import (
 )
 
 const (
-	megaByte                  = 1024 * 1024
-	ResponseDataSizeHalfLimit = megaByte * 25
 	DefaultReadTimeout        = time.Minute * 5
-	MaxTimeRangeDeltaLimit    = time.Minute * 32
+	MaxTimeRangeDeltaLimit    = time.Minute * 120
+	ResponseDataSizeHalfLimit = utils.Megabyte * 25
 )
 
 type RemoteRead struct {
@@ -29,12 +27,12 @@ type RemoteRead struct {
 	plan            *plan.Plan
 	fetchersRunning atomic.Uint32
 	sigBlockWrite   chan struct{}
-	sigBlockRead    chan struct{} // To the writer.
+	sigBlockRead    chan *plan.Block // To the writer.
 }
 
 // New creates a new RemoteRead. It creates a ReadClient that is imported from Prometheus remote storage.
 // RemoteRead takes help of plan to understand how to create fetchers.
-func New(readStorageUrl string, p *plan.Plan, sigRead, sigWrite chan struct{}) (*RemoteRead, error) {
+func New(readStorageUrl string, p *plan.Plan, sigRead chan *plan.Block, sigWrite chan struct{}) (*RemoteRead, error) {
 	rc, err := utils.CreateReadClient(fmt.Sprintf("reader-%d", 1), readStorageUrl, model.Duration(DefaultReadTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
@@ -51,25 +49,24 @@ func New(readStorageUrl string, p *plan.Plan, sigRead, sigWrite chan struct{}) (
 }
 
 // Run runs the remote read and starts fetching the samples from the read storage.
-func (rr *RemoteRead) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
+func (rr *RemoteRead) Run() error {
 	defer func() {
 		close(rr.sigBlockRead)
 		close(rr.sigBlockWrite)
-		readerUp.Store(false)
-		wg.Done()
 	}()
-	readerUp.Store(true)
 	log.Info("msg", "reader is up")
 	timeRangeMinutesDelta := time.Minute.Milliseconds()
-	for i := rr.plan.Mint; i <= rr.plan.Maxt; {
+	for i := rr.plan.Mint; i <= rr.plan.Maxt-timeRangeMinutesDelta; {
 		var (
-			mint     = i
-			maxt     = mint + timeRangeMinutesDelta
-			fetch    = rr.createFetch(rr.url, mint, maxt)
-			blockRef = rr.plan.CreateBlock(mint, maxt)
+			mint = i
+			maxt = mint + timeRangeMinutesDelta
 		)
+		blockRef, err := rr.plan.CreateBlock(mint, maxt)
+		if err != nil {
+			return fmt.Errorf("remote-run run: %w", err)
+		}
 		blockRef.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
-		result, err := fetch.start(context.Background(), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "", ".*")})
+		result, err := rr.fetch(context.Background(), mint, maxt, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "", ".*")})
 		if err != nil {
 			return fmt.Errorf("remote-read run: %w", err)
 		}
@@ -81,54 +78,50 @@ func (rr *RemoteRead) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
 			}
 			continue
 		}
-		qResultSize := result.Size() // Assuming each character corresponds to one byte.
-		rr.plan.UpdateLastPushedMaxt(i)
-		blockRef.SetDescription(fmt.Sprintf("received %d MB with delta %d mins...", qResultSize/megaByte, timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
+		qResultBytes, err := result.Marshal()
+		if err != nil {
+			return fmt.Errorf("marshalling prompb query result: %w", err)
+		}
+		rr.plan.SetLastPushedT(i)
+		numBytes := len(qResultBytes)
+		blockRef.SetBytes(numBytes)
+		blockRef.SetDescription(fmt.Sprintf("received %.2f MB with delta %d mins...", float64(numBytes)/float64(utils.Megabyte), timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
 		blockRef.Timeseries = result.Timeseries
-		rr.sigBlockRead <- struct{}{}
+		rr.sigBlockRead <- blockRef
 		<-rr.sigBlockWrite
 		if err := rr.plan.Clear(); err != nil {
 			return fmt.Errorf("remote-read run: %w", err)
 		}
+		// TODO: optimize the ideal delta method.
 		switch {
-		case qResultSize < ResponseDataSizeHalfLimit && timeRangeMinutesDelta >= MaxTimeRangeDeltaLimit.Milliseconds():
+		case numBytes < ResponseDataSizeHalfLimit && timeRangeMinutesDelta >= MaxTimeRangeDeltaLimit.Milliseconds():
+			// The balanced scenario where the time-range is neither too long to cause OOM nor too less
+			// to slow down the migration process.
 			i += timeRangeMinutesDelta + 1
-		case qResultSize < ResponseDataSizeHalfLimit:
+		case numBytes < ResponseDataSizeHalfLimit:
 			i += timeRangeMinutesDelta + 1
+			// We increase the time-range for the next fetch if the current time-range fetch resulted in size that is
+			// less than half the aimed maximum size of the in-memory block. This continues till we reach the
+			// maximum time-range delta.
 			timeRangeMinutesDelta *= 2
 		default:
 			i += timeRangeMinutesDelta + 1
-			timeRangeMinutesDelta /= 2
+			// Decrease the time-range delta if the current fetch size exceeds the half aimed. This is done so that
+			// we reach an ideal time-range as the block numbers grow and successively reach the balanced scenario.
+			timeRangeMinutesDelta /= 3
 		}
 	}
 	log.Info("msg", "reader is down")
 	return nil
 }
 
-type fetch struct {
-	url        string
-	mint, maxt int64
-	clientCopy remote.ReadClient // Maintain a copy of remote client for parallel fetching.
-}
-
-func (rr *RemoteRead) createFetch(url string, mint, maxt int64) *fetch {
-	f := &fetch{
-		url:        url,
-		mint:       mint,
-		maxt:       maxt,
-		clientCopy: rr.client,
-	}
-	rr.fetchersRunning.Add(1)
-	return f
-}
-
-// start starts fetching the samples from remote read storage as client based on the matchers.
-func (f *fetch) start(context context.Context, matchers []*labels.Matcher) (*prompb.QueryResult, error) {
-	readRequest, err := utils.CreatePrombQuery(f.mint, f.maxt, matchers)
+// fetch starts fetching the samples from remote read storage based on the matchers.
+func (rr *RemoteRead) fetch(context context.Context, mint, maxt int64, matchers []*labels.Matcher) (*prompb.QueryResult, error) {
+	readRequest, err := utils.CreatePrombQuery(mint, maxt, matchers)
 	if err != nil {
 		return nil, fmt.Errorf("create promb query: %w", err)
 	}
-	result, err := f.clientCopy.Read(context, readRequest)
+	result, err := rr.client.Read(context, readRequest)
 	if err != nil {
 		return nil, fmt.Errorf("executing client-read: %w", err)
 	}

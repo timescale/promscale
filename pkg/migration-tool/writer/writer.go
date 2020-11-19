@@ -3,8 +3,6 @@ package writer
 import (
 	"context"
 	"fmt"
-	"go.uber.org/atomic"
-	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -23,7 +21,7 @@ const (
 )
 
 type RemoteWrite struct {
-	sigBlockRead       chan struct{}
+	sigBlockRead       chan *planner.Block
 	sigBlockWrite      chan struct{} // To the reader.
 	plan               *planner.Plan
 	client             remote.WriteClient
@@ -32,7 +30,7 @@ type RemoteWrite struct {
 }
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
-func New(remoteWriteUrl, progressMetricName, migrationJobName string, plan *planner.Plan, sigRead, sigWrite chan struct{}) (*RemoteWrite, error) {
+func New(remoteWriteUrl, progressMetricName, migrationJobName string, plan *planner.Plan, sigRead chan *planner.Block, sigWrite chan struct{}) (*RemoteWrite, error) {
 	wc, err := utils.CreateWriteClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, model.Duration(DefaultWriteTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating write-client: %w", err)
@@ -51,17 +49,14 @@ func New(remoteWriteUrl, progressMetricName, migrationJobName string, plan *plan
 // Run runs the remote-writer. It waits for the remote-reader to give access to the in-memory
 // data-block that is written after the most recent fetch. After reading the block and storing
 // the data locally, it gives back the writing access to the remote-reader for further fetches.
-func (rw *RemoteWrite) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
+func (rw *RemoteWrite) Run() error {
 	log.Info("msg", "writer is up")
-	defer func() {
-		wg.Done()
-	}()
 	for {
-		if _, ok := <-rw.sigBlockRead; !ok {
+		blockRef, ok := <-rw.sigBlockRead
+		if !ok {
 			break
 		}
 		var buf []byte
-		blockRef := rw.plan.CurrentBlock()
 		blockRef.SetDescription("pushing...", 1)
 		ps, err := utils.GetorGenerateProgressTimeseries(rw.progressMetricName, rw.migrationJobName)
 		if err != nil {
@@ -77,9 +72,6 @@ func (rw *RemoteWrite) Run(wg *sync.WaitGroup, readerUp *atomic.Bool) error {
 			return fmt.Errorf("remote-write: %w", err)
 		}
 		rw.sigBlockWrite <- struct{}{}
-		if !readerUp.Load() {
-			break
-		}
 	}
 	log.Info("msg", "writer is down")
 	return nil

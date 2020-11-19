@@ -14,6 +14,8 @@ import (
 
 var interner = sync.Map{}
 
+const Megabyte = 1024 * 1024
+
 // CreateReadClient creates a new read client that can be used to fetch promb samples.
 func CreateReadClient(name, urlString string, readTimeout model.Duration) (remote.ReadClient, error) {
 	parsedUrl, err := url.Parse(urlString)
@@ -68,16 +70,16 @@ type ProgressSeries struct {
 // if no time-series is present in the interner. To add a sample, call the append sample function.
 func GetorGenerateProgressTimeseries(metricName, migrationJobName string) (*ProgressSeries, error) {
 	if ps, ok := interner.Load(labels.MetricName); ok {
+		ps.(*ProgressSeries).Samples = make([]prompb.Sample, 0)
 		return ps.(*ProgressSeries), nil
 	}
 	lset := labels.Labels{
 		labels.Label{Name: labels.MetricName, Value: metricName},
 		labels.Label{Name: "migration-job", Value: migrationJobName},
 	}
-	samples := make([]prompb.Sample, 0)
 	ps := &ProgressSeries{&prompb.TimeSeries{
 		Labels:  labelsToLabelsProto(lset),
-		Samples: samples,
+		Samples: make([]prompb.Sample, 0),
 	}}
 	interner.Store(labels.MetricName, ps)
 	return ps, nil

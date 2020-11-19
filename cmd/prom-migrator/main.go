@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go.uber.org/atomic"
 	"os"
 	"strings"
 	"sync"
@@ -40,43 +39,48 @@ func main() {
 	flag.Parse()
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	log.Info("msg", fmt.Sprintf("%v+", conf))
 	if err := validateConf(conf); err != nil {
-		log.Error("msg", fmt.Errorf("parsing flags: %w", err).Error())
+		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
 	}
+
 	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.writerReadURL)
 	if err != nil {
-		log.Error("msg", fmt.Errorf("create-plan: %w", err).Error())
+		log.Error("msg", "could not create plan", "error", err)
 		os.Exit(2)
 	}
 	if !proceed {
-		os.Exit(1)
+		os.Exit(0)
 	}
+
 	var (
-		isReaderUp    atomic.Bool
-		sigBlockRead  = make(chan struct{})
+		wg            sync.WaitGroup
+		sigBlockRead  = make(chan *plan.Block)
 		sigBlockWrite = make(chan struct{})
 	)
 	read, err := reader.New(conf.readURL, planner, sigBlockRead, sigBlockWrite)
 	if err != nil {
-		log.Error("msg", fmt.Errorf("creating reader: %w", err).Error())
+		log.Error("msg", "could not create reader", "error", err)
 	}
 	write, err := writer.New(conf.writeURL, conf.progressMetricName, conf.name, planner, sigBlockRead, sigBlockWrite)
 	if err != nil {
-		log.Error("msg", fmt.Errorf("creating writer: %w", err).Error())
+		log.Error("msg", "could not create writer", "error", err)
 	}
-	var wg sync.WaitGroup
+
 	wg.Add(2)
 	go func() {
-		if err = read.Run(&wg, &isReaderUp); err != nil {
+		defer wg.Done()
+		if err = read.Run(); err != nil {
 			log.Error("msg", fmt.Errorf("running reader: %w", err).Error())
 			os.Exit(2)
 		}
 	}()
 	go func() {
-		if err = write.Run(&wg, &isReaderUp); err != nil {
+		defer wg.Done()
+		if err = write.Run(); err != nil {
 			log.Error("msg", fmt.Errorf("running writer: %w", err).Error())
 			os.Exit(2)
 		}
