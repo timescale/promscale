@@ -110,6 +110,19 @@ func (rr *RemoteRead) Run() error {
 			// we reach an ideal time-range as the block numbers grow and successively reach the balanced scenario.
 			timeRangeMinutesDelta /= 3
 		}
+		if timeRangeMinutesDelta > MaxTimeRangeDeltaLimit.Milliseconds() {
+			// Avoid too much RAM buffering when time-range doubling is considered, in a way that
+			// timeRangeMinutesDelta = (MaxTimeRangeDeltaLimit - 1), which will lead to
+			// timeRangeMinutesDelta going almost doubling the expected size, thereby
+			// increasing RAM by large margins.
+			// Example:
+			// Let MaxTimeRangeDeltaLimit = 120.
+			// Assume, for some scenario, the timeRangeMinutesDelta is 119, so it falls in second case,
+			// where doubling is done. This will lead to 238 minutes for time-range delta, which can be
+			// too much to buffer. Hence, such scenarios should reset to the max permitted time-range
+			// for safety concerns.
+			timeRangeMinutesDelta = MaxTimeRangeDeltaLimit.Milliseconds()
+		}
 	}
 	log.Info("msg", "reader is down")
 	return nil

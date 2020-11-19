@@ -146,13 +146,6 @@ func (p *Plan) validateT(mint, maxt int64) error {
 	return nil
 }
 
-// CurrentBlock returns the current in-memory block that is opened for read/write operations.
-func (p *Plan) CurrentBlock() *Block {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-	return p.currentBlock
-}
-
 // Clear clears the current in-memory block and dereferences it. This makes the block accessible to
 // garbage collector for freeing the memory.
 func (p *Plan) Clear() error {
