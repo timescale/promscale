@@ -19,22 +19,18 @@ import (
 
 // Plan represents the plannings done by the planner.
 type Plan struct {
-	mux  sync.RWMutex
-	Mint int64
-	Maxt int64
-	//queryURL string // URL for query endpoint at the remote-write storage.
-	//pMetricName string // Metric for tracking the last pushed max timestamp to remote-write storage.
-	readClient         remote.ReadClient // Used to fetch last maxt pushed.
-	progressMetricName string
+	Mint               int64
+	Maxt               int64
+	mux                sync.RWMutex
+	readClient         remote.ReadClient // Used to fetch last maxt pushed from write storage.
+	progressMetricName string            // Name for progress metric.
 	currentBlock       *Block
-	blockCounts        atomic.Int64
-	lastPushedT        atomic.Int64
+	blockCounts        atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
+	lastPushedT        atomic.Int64 // Maxt of the last pushed in-memory block.
 }
 
-// CreatePlan creates a planner in the provided planner-path. It checks for planner config in the
-// provided planner path. If found, it loads the config and verifies the validity. If found invalid,
-// a new planner config is created with updated details. Older planner config and related data are
-// deleted if the validity is unable to hold true.
+// CreatePlan creates an in-memory planner. It is responsible for fetching the last pushed maxt and based on that, updates
+// the mint for the provided migration.
 func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL string) (*Plan, bool, error) {
 	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", remoteWriteStorageReadURL, model.Duration(time.Minute*2))
 	if err != nil {
@@ -54,7 +50,7 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 			return nil, false, fmt.Errorf("create plan: %w", err)
 		}
 		if found && lastPushedMaxt > plan.Mint && lastPushedMaxt < plan.Maxt {
-			log.Warn("msg", fmt.Sprintf("progress-metric found on the write storage. Last push was on %d."+
+			log.Warn("msg", fmt.Sprintf("progress-metric found on the write storage. Last push was on %d. "+
 				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, lastPushedMaxt+1, plan.Maxt, (plan.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
 			plan.Mint = lastPushedMaxt + 1
 		} else {
@@ -68,7 +64,7 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 }
 
 // fetchLastPushedMaxt fetches the maxt of the last block pushed to remote-write storage. At present, this is developed
-// for a single migration job (i.e., not supporting multiple migration metrics).
+// for a single migration job (i.e., not supporting multiple migration metrics and successive migrations).
 func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err error) {
 	query, err := utils.CreatePrombQuery(p.Mint, p.Maxt, []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, p.progressMetricName)})
 	if err != nil {
@@ -95,12 +91,12 @@ func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err erro
 	return lastPushedMaxt, true, nil
 }
 
-// GetRecentBlockPushed returns the metadata of the most recent block that was pushed to the remote write storage.
-func (p *Plan) LastPushedMaxt() int64 {
+// LastPushedT returns the maximum timestamp of the most recent block that was pushed to the remote write storage.
+func (p *Plan) LastPushedT() int64 {
 	return p.lastPushedT.Load()
 }
 
-func (p *Plan) UpdateLastPushedMaxt(t int64) {
+func (p *Plan) SetLastPushedT(t int64) {
 	p.lastPushedT.Store(t)
 }
 
@@ -109,15 +105,21 @@ func (p *Plan) DecrementBlockCount() {
 }
 
 // CreateBlock creates a new block and returns reference to the block for faster write and read operations.
-func (p *Plan) CreateBlock(mint, maxt int64) (reference *Block) {
+func (p *Plan) CreateBlock(mint, maxt int64) (reference *Block, err error) {
+	if err = p.validateT(mint, maxt); err != nil {
+		return nil, fmt.Errorf("create-block: %w", err)
+	}
+	id := p.blockCounts.Add(1)
+	timeRangeInMinutes := (maxt - mint) / time.Minute.Milliseconds()
 	percent := float64(maxt-p.Mint) * 100 / float64(p.Maxt-p.Mint)
 	if percent > 100 {
 		percent = 100
 	}
+	baseDescription := fmt.Sprintf("block-%d time-range: %d mins | mint: %d | maxt: %d", id, timeRangeInMinutes, mint, maxt)
 	reference = &Block{
-		ID:              p.blockCounts.Add(1),
+		id:              id,
 		percent:         percent,
-		pbarInitDetails: fmt.Sprintf("block-%d time-range: %d mins | mint: %d | maxt: %d", p.blockCounts.Load(), (maxt-mint)/time.Minute.Milliseconds(), mint, maxt),
+		pbarInitDetails: baseDescription,
 		pbar: progressbar.NewOptions(
 			6,
 			progressbar.OptionOnCompletion(func() {
@@ -127,9 +129,21 @@ func (p *Plan) CreateBlock(mint, maxt int64) (reference *Block) {
 		mint: mint,
 		maxt: maxt,
 	}
-	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", (maxt-mint)/time.Minute.Milliseconds()), 1)
+	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeInMinutes), 1)
 	p.currentBlock = reference
 	return
+}
+
+func (p *Plan) validateT(mint, maxt int64) error {
+	switch {
+	case p.Mint > mint || p.Maxt < mint:
+		return fmt.Errorf("invalid mint")
+	case p.Mint > maxt || p.Maxt < maxt:
+		return fmt.Errorf("invalid maxt")
+	case mint > maxt:
+		return fmt.Errorf("mint cannot be greater than maxt")
+	}
+	return nil
 }
 
 // CurrentBlock returns the current in-memory block that is opened for read/write operations.
@@ -146,18 +160,19 @@ func (p *Plan) Clear() error {
 	defer p.mux.Unlock()
 	if !p.currentBlock.done {
 		if err := p.currentBlock.Done(); err != nil {
-			return fmt.Errorf("clear: %w", err)
+			return fmt.Errorf("clear current in-memory block: %w", err)
 		}
 	}
 	p.currentBlock = nil
 	return nil
 }
 
-// Block provides the metadata of a block.
+// Block represents an in-memory storage for data that is fetched by the reader.
 type Block struct {
-	ID              int64
+	id              int64
 	mint            int64
 	maxt            int64
+	numBytes        int
 	done            bool
 	percent         float64
 	pbarInitDetails string
@@ -174,12 +189,16 @@ func (b *Block) SetDescription(description string, proceed int) {
 	b.pbar.Describe(fmt.Sprintf("progress: %.3f%% | %s | %s", b.percent, b.pbarInitDetails, description))
 }
 
+func (b *Block) SetBytes(num int) {
+	b.numBytes = num
+}
+
 // Done updates the text and sets the spinner to done.
 func (b *Block) Done() error {
 	b.done = true
-	b.SetDescription("pushed", 1)
+	b.SetDescription(fmt.Sprintf("pushed %.2f MB", float64(b.numBytes)/float64(utils.Megabyte)), 1)
 	if err := b.pbar.Finish(); err != nil {
-		return fmt.Errorf("bar-done: %w", err)
+		return fmt.Errorf("finish block-lifecycle: %w", err)
 	}
 	return nil
 }
