@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -23,10 +24,226 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
+func TestImportSampleUnmarshalJSON(t *testing.T) {
+	testCases := []struct {
+		name        string
+		input       string
+		timestamp   int64
+		value       float64
+		shouldError bool
+	}{
+		{
+			name:      "happy path",
+			input:     "[1000, 2.3]",
+			timestamp: 1000,
+			value:     2.3,
+		},
+		{
+			name:        "empty JSON",
+			input:       "",
+			shouldError: true,
+		},
+		{
+			name:        "empty array",
+			input:       "[]",
+			shouldError: true,
+		},
+		{
+			name:        "missing value",
+			input:       "[1000]",
+			shouldError: true,
+		},
+		{
+			name:        "more than two input values",
+			input:       "[1,2,3]",
+			shouldError: true,
+		},
+		{
+			name:        "invalid timestamp",
+			input:       `["1",2]`,
+			shouldError: true,
+		},
+		{
+			name:        "invalid value",
+			input:       `[1,"2"]`,
+			shouldError: true,
+		},
+		{
+			name:        "timestamp should not contain decimal place",
+			input:       `[10.1,10.2]`,
+			shouldError: true,
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			i := &importSample{}
+
+			err := i.UnmarshalJSON([]byte(c.input))
+
+			if err != nil {
+				if !c.shouldError {
+					t.Errorf("unexpected error found: %s", err.Error())
+				}
+				return
+			} else {
+				if c.shouldError {
+					t.Errorf("expected error for test case, found nil")
+					return
+				}
+			}
+
+			if c.timestamp != i.Timestamp {
+				t.Errorf("invalid timestamp found, wanted %d, got %d", c.timestamp, i.Timestamp)
+			}
+
+			if c.value != i.Value {
+				t.Errorf("invalid value found, wanted %f, got %f", c.value, i.Value)
+			}
+		})
+
+	}
+}
+
+func TestAppendImportPayload(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  importPayload
+		result prompb.WriteRequest
+	}{
+		{
+			name:   "empty payload",
+			result: prompb.WriteRequest{},
+		},
+		{
+			name: "empty samples",
+			input: importPayload{
+				Labels: map[string]string{
+					"labelName": "labelValue",
+				},
+			},
+			result: prompb.WriteRequest{},
+		},
+		{
+			name: "empty labels",
+			input: importPayload{
+				Samples: []importSample{
+					{
+						Timestamp: 1,
+						Value:     2,
+					},
+				},
+			},
+			result: prompb.WriteRequest{},
+		},
+		{
+			name: "happy path",
+			input: importPayload{
+				Labels: map[string]string{
+					"labelName": "labelValue",
+				},
+				Samples: []importSample{
+					{
+						Timestamp: 1,
+						Value:     2.3,
+					},
+				},
+			},
+			result: prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					prompb.TimeSeries{
+						Labels: []prompb.Label{
+							prompb.Label{
+								Name:  "labelName",
+								Value: "labelValue",
+							},
+						},
+						Samples: []prompb.Sample{
+							prompb.Sample{
+								Timestamp: 1,
+								Value:     2.3,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			wr := &prompb.WriteRequest{}
+			got := appendImportPayload(c.input, wr)
+
+			if !reflect.DeepEqual(c.result, *got) {
+				t.Errorf("unexpected result\ngot:\n%v\nwanted:\n%v\n", *got, c.result)
+
+			}
+		})
+	}
+
+}
+
+func TestDetectSnappyStreamFormat(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  []byte
+		result bool
+	}{
+		{
+			name:   "empty input",
+			result: false,
+		},
+		{
+			name:   "invalid input",
+			input:  []byte("foo"),
+			result: false,
+		},
+		{
+			name:   "block format",
+			input:  snappy.Encode(nil, []byte("snappy")),
+			result: false,
+		},
+		{
+			name:   "too short stream format",
+			input:  []byte(getSnappyStreamEncoded("happy path"))[:9],
+			result: false,
+		},
+		{
+			name:   "stream format",
+			input:  []byte(getSnappyStreamEncoded("happy path")),
+			result: true,
+		},
+		{
+			name:   "invalid contents can still be snappy stream formatted",
+			input:  []byte(getSnappyStreamEncoded("happy path"))[:11],
+			result: true,
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.result != detectSnappyStreamFormat(c.input) {
+				t.Errorf("invalid snappy stream format detection, result should be %v", c.result)
+			}
+		})
+	}
+
+}
+
 func TestWrite(t *testing.T) {
 	testutil.Ok(t, log.Init(log.Config{
 		Level: "debug",
 	}))
+
+	protobufHeaders := map[string]string{
+		"Content-Encoding":                  "snappy",
+		"Content-Type":                      "application/x-protobuf",
+		"X-Prometheus-Remote-Write-Version": "0.1.0",
+	}
+	jsonHeaders := map[string]string{
+		"Content-Type": "application/json",
+	}
 	testCases := []struct {
 		name             string
 		responseCode     int
@@ -35,11 +252,12 @@ func TestWrite(t *testing.T) {
 		inserterErr      error
 		isLeader         bool
 		electionErr      error
+		customHeaders    map[string]string
 	}{
 		{
 			name:         "write request body error",
 			isLeader:     true,
-			responseCode: http.StatusInternalServerError,
+			responseCode: http.StatusBadRequest,
 		},
 		{
 			name:         "malformed compression data",
@@ -58,6 +276,9 @@ func TestWrite(t *testing.T) {
 			isLeader:     false,
 			responseCode: http.StatusBadRequest,
 			requestBody:  string(snappy.Encode(nil, []byte("test"))),
+			customHeaders: map[string]string{
+				"foo": "bar",
+			},
 		},
 		{
 			name:         "write error",
@@ -78,6 +299,37 @@ func TestWrite(t *testing.T) {
 			responseCode: http.StatusOK,
 		},
 		{
+			name:         "bad content type header",
+			responseCode: http.StatusBadRequest,
+			customHeaders: map[string]string{
+				"Content-Type": "foo",
+			},
+		},
+		{
+			name:         "bad content encoding header",
+			responseCode: http.StatusBadRequest,
+			customHeaders: map[string]string{
+				"Content-Type": "application/x-protobuf",
+			},
+		},
+		{
+			name:         "missing remote write version",
+			responseCode: http.StatusBadRequest,
+			customHeaders: map[string]string{
+				"Content-Type":     "application/x-protobuf",
+				"Content-Encoding": "snappy",
+			},
+		},
+		{
+			name:         "bad remote write version",
+			responseCode: http.StatusBadRequest,
+			customHeaders: map[string]string{
+				"Content-Type":                      "application/x-protobuf",
+				"Content-Encoding":                  "snappy",
+				"X-Prometheus-Remote-Write-Version": "0.0.0",
+			},
+		},
+		{
 			name:             "happy path",
 			isLeader:         true,
 			responseCode:     http.StatusOK,
@@ -89,6 +341,41 @@ func TestWrite(t *testing.T) {
 					},
 				},
 			),
+		},
+		{
+			name:          "malformed JSON",
+			isLeader:      true,
+			responseCode:  http.StatusBadRequest,
+			requestBody:   ``,
+			customHeaders: jsonHeaders,
+		},
+		{
+			name:             "happy path JSON",
+			isLeader:         true,
+			responseCode:     http.StatusOK,
+			inserterResponse: 3,
+			requestBody:      `{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`,
+			customHeaders:    jsonHeaders,
+		},
+		{
+			name:         "happy path JSON with snappy (stream format)",
+			isLeader:     true,
+			responseCode: http.StatusOK,
+			requestBody:  getSnappyStreamEncoded(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`),
+			customHeaders: map[string]string{
+				"Content-Type":     "application/json",
+				"Content-Encoding": "snappy",
+			},
+		},
+		{
+			name:         "happy path JSON with snappy (block format)",
+			isLeader:     true,
+			responseCode: http.StatusOK,
+			requestBody:  string(snappy.Encode(nil, []byte(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`))),
+			customHeaders: map[string]string{
+				"Content-Type":     "application/json",
+				"Content-Encoding": "snappy",
+			},
 		},
 	}
 
@@ -121,7 +408,13 @@ func TestWrite(t *testing.T) {
 				WriteThroughput:   util.NewThroughputCalc(time.Second),
 			})
 
-			test := GenerateWriteHandleTester(t, handler, c.name == "bad header")
+			headers := protobufHeaders
+			if len(c.customHeaders) != 0 {
+				headers = c.customHeaders
+
+			}
+
+			test := GenerateWriteHandleTester(t, handler, headers)
 
 			w := test("POST", getReader(c.requestBody))
 
@@ -158,16 +451,16 @@ func writeRequestToString(r *prompb.WriteRequest) string {
 
 type HandleTester func(method string, body io.Reader) *httptest.ResponseRecorder
 
-func GenerateWriteHandleTester(t *testing.T, handleFunc http.Handler, badHeaders bool) HandleTester {
+func GenerateWriteHandleTester(t *testing.T, handleFunc http.Handler, headers map[string]string) HandleTester {
 	return func(method string, body io.Reader) *httptest.ResponseRecorder {
 		req, err := http.NewRequest(method, "", body)
 		if err != nil {
 			t.Errorf("%v", err)
 		}
-		if !badHeaders {
-			req.Header.Add("Content-Encoding", "snappy")
-			req.Header.Set("Content-Type", "application/x-protobuf")
-			req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+
+		for name, value := range headers {
+			req.Header.Add(name, value)
+
 		}
 		w := httptest.NewRecorder()
 		handleFunc.ServeHTTP(w, req)
@@ -214,6 +507,18 @@ func getReader(s string) io.Reader {
 		_, _ = r.Read([]byte{})
 	}
 	return r
+}
+
+func getSnappyStreamEncoded(s string) string {
+	b := strings.Builder{}
+
+	w := snappy.NewBufferedWriter(&b)
+
+	_, _ = w.Write([]byte(s))
+
+	w.Close()
+	return b.String()
+
 }
 
 type mockMetric struct {

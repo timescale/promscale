@@ -88,6 +88,13 @@ curl -v \
     --data-binary "@${ROOT_DIR}/pkg/pgmodel/testdata/real-dataset.sz" \
     "${CONNECTOR_URL}/write"
 
+echo "sending import request"
+
+curl -v \
+    -H "Content-Type: application/json" \
+    --data-binary "@${ROOT_DIR}/pkg/pgmodel/testdata/import.json" \
+    "${CONNECTOR_URL}/write"
+
 compare_connector_and_prom() {
     QUERY=${1}
     CONNECTOR_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/${QUERY}")
@@ -117,9 +124,8 @@ compare_connector_and_prom "query?query=up&time=$START_TIME"
 compare_connector_and_prom "series?match%5B%5D=ts_prom_sent_samples_total"
 
 # Labels endpoint cannot be compared to Prometheus becuase it will always differ due to direct backfilling of the real dataset.
-# We have to compare it to the correct expected output.
-
-EXPECTED_OUTPUT='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","path","quantile","status","version"]}'
+# We have to compare it to the correct expected output. Note that `namespace` and `node` labels are from JSON import payload.
+EXPECTED_OUTPUT='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
 LABELS_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/labels")
 echo "  labels response: ${LABELS_OUTPUT}"
 echo "expected response: ${EXPECTED_OUTPUT}"
