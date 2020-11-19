@@ -14,7 +14,7 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.1
-	github.com/golang/snappy v0.0.1
+	github.com/golang/snappy v0.0.2
 	github.com/google/go-cmp v0.5.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.14.8
 	github.com/jackc/pgconn v1.6.3

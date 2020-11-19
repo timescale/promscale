@@ -1,0 +1,4 @@
+{"labels":{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"},"samples":[[1577836800000,100],[1577836801000,99],[1577836802000,98]]}
+{"labels":{"__name__": "cpu_usage", "namespace":"prod", "node": "brain"},"samples":[[1577836800000,100],[1577836801000,99],[1577836802000,98]]}
+{"labels":{"__name__": "cpu_usage", "namespace":"stage", "node": "brain"},"samples":[[1577836800000,100],[1577836801000,99],[1577836802000,98]]}
+
