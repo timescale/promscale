@@ -75,7 +75,7 @@ func GetorGenerateProgressTimeseries(metricName, migrationJobName string) (*Prog
 	}
 	lset := labels.Labels{
 		labels.Label{Name: labels.MetricName, Value: metricName},
-		labels.Label{Name: "migration-job", Value: migrationJobName},
+		labels.Label{Name: "migration_job", Value: migrationJobName},
 	}
 	ps := &ProgressSeries{&prompb.TimeSeries{
 		Labels:  labelsToLabelsProto(lset),
