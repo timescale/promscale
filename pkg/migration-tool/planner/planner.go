@@ -31,7 +31,7 @@ type Plan struct {
 
 // CreatePlan creates an in-memory planner. It is responsible for fetching the last pushed maxt and based on that, updates
 // the mint for the provided migration.
-func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL string) (*Plan, bool, error) {
+func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL string, ignoreProgress bool) (*Plan, bool, error) {
 	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", remoteWriteStorageReadURL, model.Duration(time.Minute*2))
 	if err != nil {
 		return nil, false, fmt.Errorf("create last-pushed-maxt reader: %w", err)
@@ -44,7 +44,10 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 	}
 	plan.blockCounts.Store(0)
 	plan.lastPushedT.Store(0)
-	if remoteWriteStorageReadURL != "" {
+	if ignoreProgress {
+		log.Info("msg", "ignoring progress-metric. Continuing migration with the provided time-range.")
+	}
+	if remoteWriteStorageReadURL != "" && !ignoreProgress {
 		lastPushedMaxt, found, err := plan.fetchLastPushedMaxt()
 		if err != nil {
 			return nil, false, fmt.Errorf("create plan: %w", err)

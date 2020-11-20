@@ -14,13 +14,14 @@ import (
 )
 
 type config struct {
-	name               string
-	mint               int64
-	maxt               int64
-	readURL            string
-	writeURL           string
-	writerReadURL      string
-	progressMetricName string
+	name                 string
+	mint                 int64
+	maxt                 int64
+	readURL              string
+	writeURL             string
+	writerReadURL        string
+	ignoreProgressMetric bool
+	progressMetricName   string
 }
 
 func main() {
@@ -36,6 +37,8 @@ func main() {
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", "progress_metric", "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+
 		"This is used to resume the migration process after a failure.")
 	flag.StringVar(&conf.writerReadURL, "writer-read-url", "", "Read URL of the write storage. This is used to fetch the progress-metric that represents the last pushed maximum timestamp.")
+	flag.BoolVar(&conf.ignoreProgressMetric, "ignore-progress", false, "This flag tells the migrator, whether or not to ignore the progress-metric. It is helpful if you want to "+
+		"carry out migration with the same time-range. Without this, the migrator will resume the migration from the last time, where it as stopped.")
 	flag.Parse()
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -47,7 +50,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.writerReadURL)
+	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.writerReadURL, conf.ignoreProgressMetric)
 	if err != nil {
 		log.Error("msg", "could not create plan", "error", err)
 		os.Exit(2)

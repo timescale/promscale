@@ -66,7 +66,7 @@ func (rr *RemoteRead) Run() error {
 			return fmt.Errorf("remote-run run: %w", err)
 		}
 		blockRef.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
-		result, err := rr.fetch(context.Background(), mint, maxt, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "", ".*")})
+		result, err := rr.fetch(context.Background(), mint, maxt, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
 		if err != nil {
 			return fmt.Errorf("remote-read run: %w", err)
 		}
