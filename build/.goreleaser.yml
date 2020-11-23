@@ -18,7 +18,7 @@ builds:
     # build el8 rpm
     # will be triggered multiple times but we need
     # {{ .Tag }} to ensure same version is used
-    post: bash build_rpm.sh {{ .Tag }}
+    post: bash ./build/rpm/build_rpm.sh {{ .Tag }}
 
 #don't publish scoop but overwrite the weird names
 scoop:
@@ -51,6 +51,7 @@ dockers:
   binaries:
   - promscale
   skip_push: false
+  dockerfile: ./build/Dockerfile
   extra_files:
   - .git
   - go.sum
