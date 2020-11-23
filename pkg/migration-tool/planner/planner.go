@@ -4,20 +4,16 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/atomic"
-	"os"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
-	"github.com/schollz/progressbar/v3"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
 const (
-	DefaultReadTimeout        = time.Minute * 5
 	MaxTimeRangeDeltaLimit    = time.Minute * 120
 	ResponseDataSizeHalfLimit = utils.Megabyte * 25
 )
@@ -114,6 +110,17 @@ func (p *Plan) DecrementBlockCount() {
 	p.blockCounts.Sub(1)
 }
 
+// ShouldProceed reports whether the fetching process should proceeds further. If any time-range is left to be
+// fetched from the provided time-range, it returns true, else false.
+func (p *Plan) ShouldProceed() bool {
+	return p.lastMaxT < p.Maxt
+}
+
+// Update updates the details of the planner that are dependent on previous fetch stats.
+func (p *Plan) Update(numBytes int) {
+	p.lastNumBytes = numBytes
+}
+
 // NewBlock returns a new block after allocating the time-range for fetch.
 func (p *Plan) NextBlock() (reference *Block, err error, delta int64) {
 	timeDelta := determineTimeDelta(p.lastNumBytes, p.lastTimeRangeDelta)
@@ -131,24 +138,21 @@ func (p *Plan) NextBlock() (reference *Block, err error, delta int64) {
 	return bRef, nil, timeDelta
 }
 
-// ShouldProceed reports whether the fetching process should proceeds further. If any time-range is left to be
-// fetched from the provided time-range, it returns true, else false.
-func (p *Plan) ShouldProceed() bool {
-	return p.lastMaxT < p.Maxt
-}
-
-// Update updates the details of the planner that are dependent on previous fetch stats.
-func (p *Plan) Update(numBytes int) {
-	p.lastNumBytes = numBytes
-}
-
 func determineTimeDelta(numBytes int, prevTimeDelta int64) int64 {
 	// TODO: add explanation of logic as an overview.
 	switch {
-	case numBytes < ResponseDataSizeHalfLimit && prevTimeDelta >= MaxTimeRangeDeltaLimit.Milliseconds():
+	case numBytes == ResponseDataSizeHalfLimit:
+		return prevTimeDelta
+	case numBytes < ResponseDataSizeHalfLimit && prevTimeDelta == MaxTimeRangeDeltaLimit.Milliseconds():
 		// The balanced scenario where the time-range is neither too long to cause OOM nor too less
 		// to slow down the migration process.
+		// An important thing to note is that the priority of size is more than that of time. That means,
+		// if both bytes and time are greater than the respective limits, then we down size the time so that
+		// bytes size can be controlled.
 		return prevTimeDelta
+	case numBytes < ResponseDataSizeHalfLimit && prevTimeDelta > MaxTimeRangeDeltaLimit.Milliseconds():
+		// Though the bytes count is less than the limit, the time range delta is more, hence we leave here
+		// unchanged so that it can be reset back to the MaxTimeRangeDeltaLimit.
 	case numBytes < ResponseDataSizeHalfLimit:
 		// We increase the time-range linearly for the next fetch if the current time-range fetch resulted in size that is
 		// less than half the aimed maximum size of the in-memory block. This continues till we reach the
@@ -160,111 +164,8 @@ func determineTimeDelta(numBytes int, prevTimeDelta int64) int64 {
 		return prevTimeDelta / 2
 	}
 	if prevTimeDelta > MaxTimeRangeDeltaLimit.Milliseconds() {
-		// Avoid too much RAM buffering when time-range doubling is considered, in a way that
-		// timeRangeMinutesDelta = (MaxTimeRangeDeltaLimit - 1), which will lead to
-		// timeRangeMinutesDelta going almost doubling the expected size, thereby
-		// increasing RAM by large margins.
-		// Example:
-		// Let MaxTimeRangeDeltaLimit = 120.
-		// Assume, for some scenario, the timeRangeMinutesDelta is 119, so it falls in second case,
-		// where doubling is done. This will lead to 238 minutes for time-range delta, which can be
-		// too much to buffer. Hence, such scenarios should reset to the max permitted time-range
-		// for safety concerns.
+		// Reset the time delta to the maximum permittable value.
 		prevTimeDelta = MaxTimeRangeDeltaLimit.Milliseconds()
 	}
 	return prevTimeDelta
-}
-
-// createBlock creates a new block and returns reference to the block for faster write and read operations.
-func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
-	if err = p.validateT(mint, maxt); err != nil {
-		return nil, fmt.Errorf("create-block: %w", err)
-	}
-	id := p.blockCounts.Add(1)
-	timeRangeInMinutes := (maxt - mint) / time.Minute.Milliseconds()
-	percent := float64(maxt-p.Mint) * 100 / float64(p.Maxt-p.Mint)
-	if percent > 100 {
-		percent = 100
-	}
-	baseDescription := fmt.Sprintf("block-%d time-range: %d mins | mint: %d | maxt: %d", id, timeRangeInMinutes, mint, maxt)
-	reference = &Block{
-		id:              id,
-		percent:         percent,
-		pbarInitDetails: baseDescription,
-		pbar: progressbar.NewOptions(
-			6,
-			progressbar.OptionOnCompletion(func() {
-				fmt.Fprint(os.Stderr, "\n")
-			}),
-		),
-		mint: mint,
-		maxt: maxt,
-	}
-	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeInMinutes), 1)
-	p.currentBlock = reference
-	return
-}
-
-func (p *Plan) validateT(mint, maxt int64) error {
-	switch {
-	case p.Mint > mint || p.Maxt < mint:
-		return fmt.Errorf("invalid mint: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
-	case p.Mint > maxt || p.Maxt < maxt:
-		return fmt.Errorf("invalid maxt: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
-	case mint > maxt:
-		return fmt.Errorf("mint cannot be greater than maxt: mint: %d and maxt: %d", mint, maxt)
-	}
-	return nil
-}
-
-// Block represents an in-memory storage for data that is fetched by the reader.
-type Block struct {
-	id              int64
-	mint            int64
-	maxt            int64
-	numBytes        int
-	done            bool
-	percent         float64
-	pbarInitDetails string
-	pbar            *progressbar.ProgressBar
-	Timeseries      []*prompb.TimeSeries
-}
-
-func (b *Block) SetData(timeseries []*prompb.TimeSeries) {
-	b.Timeseries = timeseries
-}
-
-func (b *Block) SetDescription(description string, proceed int) {
-	_ = b.pbar.Add(proceed)
-	b.pbar.Describe(fmt.Sprintf("progress: %.3f%% | %s | %s", b.percent, b.pbarInitDetails, description))
-}
-
-// SetBytes sets the number of bytes of the block.
-func (b *Block) SetBytes(num int) {
-	b.numBytes = num
-}
-
-// Bytes returns the number of bytes of the block.
-func (b *Block) Bytes() int {
-	return b.numBytes
-}
-
-// Done updates the text and sets the spinner to done.
-func (b *Block) Done() error {
-	b.SetDescription(fmt.Sprintf("pushed %.2f MB", float64(b.numBytes)/float64(utils.Megabyte)), 1)
-	b.done = true
-	if err := b.pbar.Finish(); err != nil {
-		return fmt.Errorf("finish block-lifecycle: %w", err)
-	}
-	return nil
-}
-
-// Mint returns the mint of the block.
-func (b *Block) Mint() int64 {
-	return b.mint
-}
-
-// Maxt returns the maxt of the block.
-func (b *Block) Maxt() int64 {
-	return b.maxt
 }
