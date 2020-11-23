@@ -644,15 +644,13 @@ func insertBatchErrorFallback(conn pgxConn, reqs ...copyRequest) {
 
 // certain errors are recoverable, handle those we can
 //   1. if the table is compressed, decompress and retry the insertion
-func insertErrorFallback(conn pgxConn, err error, reqs ...copyRequest) error {
-	for _, req := range reqs {
-		err = tryRecovery(conn, err, req)
-		if err != nil {
-			log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
-			return err
-		}
+func insertErrorFallback(conn pgxConn, err error, req copyRequest) error {
+	err = tryRecovery(conn, err, req)
+	if err != nil {
+		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
+		return err
 	}
-	return doInsert(conn, reqs...)
+	return doInsert(conn, req)
 }
 
 // we can currently recover from one error:
