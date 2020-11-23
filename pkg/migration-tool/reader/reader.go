@@ -15,11 +15,7 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-const (
-	DefaultReadTimeout        = time.Minute * 5
-	MaxTimeRangeDeltaLimit    = time.Minute * 120
-	ResponseDataSizeHalfLimit = utils.Megabyte * 25
-)
+const DefaultReadTimeout = time.Minute * 5
 
 type RemoteRead struct {
 	url             string
