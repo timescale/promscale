@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"go.uber.org/atomic"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -17,16 +16,25 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
+const (
+	DefaultReadTimeout        = time.Minute * 5
+	MaxTimeRangeDeltaLimit    = time.Minute * 120
+	ResponseDataSizeHalfLimit = utils.Megabyte * 25
+)
+
 // Plan represents the plannings done by the planner.
 type Plan struct {
 	Mint               int64
 	Maxt               int64
-	mux                sync.RWMutex
 	readClient         remote.ReadClient // Used to fetch last maxt pushed from write storage.
 	progressMetricName string            // Name for progress metric.
 	currentBlock       *Block
 	blockCounts        atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
 	lastPushedT        atomic.Int64 // Maxt of the last pushed in-memory block.
+	// Block time-range vars.
+	lastMaxT           int64
+	lastNumBytes       int
+	lastTimeRangeDelta int64
 }
 
 // CreatePlan creates an in-memory planner. It is responsible for fetching the last pushed maxt and based on that, updates
@@ -52,17 +60,16 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 		if err != nil {
 			return nil, false, fmt.Errorf("create plan: %w", err)
 		}
-		if found && lastPushedMaxt > plan.Mint && lastPushedMaxt < plan.Maxt {
+		if found && lastPushedMaxt > plan.Mint && lastPushedMaxt <= plan.Maxt {
 			log.Warn("msg", fmt.Sprintf("progress-metric found on the write storage. Last push was on %d. "+
 				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, lastPushedMaxt+1, plan.Maxt, (plan.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
 			plan.Mint = lastPushedMaxt + 1
-		} else {
-			log.Warn("msg", "progress-metric not found on the write storage. Continuing with the provided mint and maxt.")
 		}
 	}
 	if plan.Mint >= plan.Maxt {
 		log.Info("msg", "mint greater than or equal to maxt. This given time-range migration has already been carried out. Hence, stopping.")
 	}
+	plan.lastMaxT = plan.Mint - 1 // Since block creation starts with (lastMaxT + 1), the first block will miss one millisecond if we do not subtract from here.
 	return plan, true, nil
 }
 
@@ -107,8 +114,69 @@ func (p *Plan) DecrementBlockCount() {
 	p.blockCounts.Sub(1)
 }
 
-// CreateBlock creates a new block and returns reference to the block for faster write and read operations.
-func (p *Plan) CreateBlock(mint, maxt int64) (reference *Block, err error) {
+// NewBlock returns a new block after allocating the time-range for fetch.
+func (p *Plan) NextBlock() (reference *Block, err error, delta int64) {
+	timeDelta := determineTimeDelta(p.lastNumBytes, p.lastTimeRangeDelta)
+	mint := p.lastMaxT + 1
+	maxt := mint + timeDelta
+	if maxt > p.Maxt {
+		maxt = p.Maxt
+	}
+	p.lastMaxT = maxt
+	p.lastTimeRangeDelta = timeDelta
+	bRef, err := p.createBlock(mint, maxt)
+	if err != nil {
+		return nil, fmt.Errorf("next-block: %w", err), timeDelta
+	}
+	return bRef, nil, timeDelta
+}
+
+// ShouldProceed reports whether the fetching process should proceeds further. If any time-range is left to be
+// fetched from the provided time-range, it returns true, else false.
+func (p *Plan) ShouldProceed() bool {
+	return p.lastMaxT < p.Maxt
+}
+
+// Update updates the details of the planner that are dependent on previous fetch stats.
+func (p *Plan) Update(numBytes int) {
+	p.lastNumBytes = numBytes
+}
+
+func determineTimeDelta(numBytes int, prevTimeDelta int64) int64 {
+	// TODO: add explanation of logic as an overview.
+	switch {
+	case numBytes < ResponseDataSizeHalfLimit && prevTimeDelta >= MaxTimeRangeDeltaLimit.Milliseconds():
+		// The balanced scenario where the time-range is neither too long to cause OOM nor too less
+		// to slow down the migration process.
+		return prevTimeDelta
+	case numBytes < ResponseDataSizeHalfLimit:
+		// We increase the time-range linearly for the next fetch if the current time-range fetch resulted in size that is
+		// less than half the aimed maximum size of the in-memory block. This continues till we reach the
+		// maximum time-range delta.
+		prevTimeDelta += time.Minute.Milliseconds()
+	default:
+		// Decrease the time-range delta exponentially if the current fetch size exceeds the half aimed. This is done so that
+		// we reach an ideal time-range as the block numbers grow and successively reach the balanced scenario.
+		return prevTimeDelta / 2
+	}
+	if prevTimeDelta > MaxTimeRangeDeltaLimit.Milliseconds() {
+		// Avoid too much RAM buffering when time-range doubling is considered, in a way that
+		// timeRangeMinutesDelta = (MaxTimeRangeDeltaLimit - 1), which will lead to
+		// timeRangeMinutesDelta going almost doubling the expected size, thereby
+		// increasing RAM by large margins.
+		// Example:
+		// Let MaxTimeRangeDeltaLimit = 120.
+		// Assume, for some scenario, the timeRangeMinutesDelta is 119, so it falls in second case,
+		// where doubling is done. This will lead to 238 minutes for time-range delta, which can be
+		// too much to buffer. Hence, such scenarios should reset to the max permitted time-range
+		// for safety concerns.
+		prevTimeDelta = MaxTimeRangeDeltaLimit.Milliseconds()
+	}
+	return prevTimeDelta
+}
+
+// createBlock creates a new block and returns reference to the block for faster write and read operations.
+func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 	if err = p.validateT(mint, maxt); err != nil {
 		return nil, fmt.Errorf("create-block: %w", err)
 	}
@@ -140,26 +208,12 @@ func (p *Plan) CreateBlock(mint, maxt int64) (reference *Block, err error) {
 func (p *Plan) validateT(mint, maxt int64) error {
 	switch {
 	case p.Mint > mint || p.Maxt < mint:
-		return fmt.Errorf("invalid mint")
+		return fmt.Errorf("invalid mint: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
 	case p.Mint > maxt || p.Maxt < maxt:
-		return fmt.Errorf("invalid maxt")
+		return fmt.Errorf("invalid maxt: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
 	case mint > maxt:
-		return fmt.Errorf("mint cannot be greater than maxt")
+		return fmt.Errorf("mint cannot be greater than maxt: mint: %d and maxt: %d", mint, maxt)
 	}
-	return nil
-}
-
-// Clear clears the current in-memory block and dereferences it. This makes the block accessible to
-// garbage collector for freeing the memory.
-func (p *Plan) Clear() error {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-	if !p.currentBlock.done {
-		if err := p.currentBlock.Done(); err != nil {
-			return fmt.Errorf("clear current in-memory block: %w", err)
-		}
-	}
-	p.currentBlock = nil
 	return nil
 }
 
@@ -185,20 +239,32 @@ func (b *Block) SetDescription(description string, proceed int) {
 	b.pbar.Describe(fmt.Sprintf("progress: %.3f%% | %s | %s", b.percent, b.pbarInitDetails, description))
 }
 
+// SetBytes sets the number of bytes of the block.
 func (b *Block) SetBytes(num int) {
 	b.numBytes = num
 }
 
+// Bytes returns the number of bytes of the block.
+func (b *Block) Bytes() int {
+	return b.numBytes
+}
+
 // Done updates the text and sets the spinner to done.
 func (b *Block) Done() error {
-	b.done = true
 	b.SetDescription(fmt.Sprintf("pushed %.2f MB", float64(b.numBytes)/float64(utils.Megabyte)), 1)
+	b.done = true
 	if err := b.pbar.Finish(); err != nil {
 		return fmt.Errorf("finish block-lifecycle: %w", err)
 	}
 	return nil
 }
 
+// Mint returns the mint of the block.
+func (b *Block) Mint() int64 {
+	return b.mint
+}
+
+// Maxt returns the maxt of the block.
 func (b *Block) Maxt() int64 {
 	return b.maxt
 }

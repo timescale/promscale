@@ -55,74 +55,32 @@ func (rr *RemoteRead) Run() error {
 		close(rr.sigBlockWrite)
 	}()
 	log.Info("msg", "reader is up")
-	timeRangeMinutesDelta := time.Minute.Milliseconds()
-	for i := rr.plan.Mint; i <= rr.plan.Maxt-timeRangeMinutesDelta; {
-		var (
-			mint = i
-			maxt = mint + timeRangeMinutesDelta
-		)
-		blockRef, err := rr.plan.CreateBlock(mint, maxt)
+	for rr.plan.ShouldProceed() {
+		blockRef, err, timeRangeMinutesDelta := rr.plan.NextBlock()
 		if err != nil {
 			return fmt.Errorf("remote-run run: %w", err)
 		}
 		blockRef.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
-		result, err := rr.fetch(context.Background(), mint, maxt, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
+		result, err := rr.fetch(context.Background(), blockRef.Mint(), blockRef.Maxt(), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
 		if err != nil {
 			return fmt.Errorf("remote-read run: %w", err)
 		}
 		if len(result.Timeseries) == 0 {
 			rr.plan.DecrementBlockCount()
-			i += timeRangeMinutesDelta + 1
-			if timeRangeMinutesDelta < MaxTimeRangeDeltaLimit.Milliseconds() {
-				timeRangeMinutesDelta *= 2
-			}
+			rr.plan.Update(0)
 			continue
 		}
 		qResultBytes, err := result.Marshal()
 		if err != nil {
 			return fmt.Errorf("marshalling prompb query result: %w", err)
 		}
-		rr.plan.SetLastPushedT(i)
 		numBytes := len(qResultBytes)
-		blockRef.SetBytes(numBytes)
 		blockRef.SetDescription(fmt.Sprintf("received %.2f MB with delta %d mins...", float64(numBytes)/float64(utils.Megabyte), timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
 		blockRef.Timeseries = result.Timeseries
+		blockRef.SetBytes(numBytes)
+		rr.plan.Update(numBytes)
 		rr.sigBlockRead <- blockRef
 		<-rr.sigBlockWrite
-		if err := rr.plan.Clear(); err != nil {
-			return fmt.Errorf("remote-read run: %w", err)
-		}
-		// TODO: optimize the ideal delta method.
-		switch {
-		case numBytes < ResponseDataSizeHalfLimit && timeRangeMinutesDelta >= MaxTimeRangeDeltaLimit.Milliseconds():
-			// The balanced scenario where the time-range is neither too long to cause OOM nor too less
-			// to slow down the migration process.
-			i += timeRangeMinutesDelta + 1
-		case numBytes < ResponseDataSizeHalfLimit:
-			i += timeRangeMinutesDelta + 1
-			// We increase the time-range for the next fetch if the current time-range fetch resulted in size that is
-			// less than half the aimed maximum size of the in-memory block. This continues till we reach the
-			// maximum time-range delta.
-			timeRangeMinutesDelta *= 2
-		default:
-			i += timeRangeMinutesDelta + 1
-			// Decrease the time-range delta if the current fetch size exceeds the half aimed. This is done so that
-			// we reach an ideal time-range as the block numbers grow and successively reach the balanced scenario.
-			timeRangeMinutesDelta /= 3
-		}
-		if timeRangeMinutesDelta > MaxTimeRangeDeltaLimit.Milliseconds() {
-			// Avoid too much RAM buffering when time-range doubling is considered, in a way that
-			// timeRangeMinutesDelta = (MaxTimeRangeDeltaLimit - 1), which will lead to
-			// timeRangeMinutesDelta going almost doubling the expected size, thereby
-			// increasing RAM by large margins.
-			// Example:
-			// Let MaxTimeRangeDeltaLimit = 120.
-			// Assume, for some scenario, the timeRangeMinutesDelta is 119, so it falls in second case,
-			// where doubling is done. This will lead to 238 minutes for time-range delta, which can be
-			// too much to buffer. Hence, such scenarios should reset to the max permitted time-range
-			// for safety concerns.
-			timeRangeMinutesDelta = MaxTimeRangeDeltaLimit.Milliseconds()
-		}
 	}
 	log.Info("msg", "reader is down")
 	return nil

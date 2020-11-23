@@ -57,7 +57,7 @@ func (rw *RemoteWrite) Run() error {
 			break
 		}
 		var buf []byte
-		blockRef.SetDescription("pushing...", 1)
+		blockRef.SetDescription(fmt.Sprintf("pushing %.2f...", float64(blockRef.Bytes())/float64(utils.Megabyte)), 1)
 		ps, err := utils.GetorGenerateProgressTimeseries(rw.progressMetricName, rw.migrationJobName)
 		if err != nil {
 			return fmt.Errorf("get or create progress time-series: %w", err)
