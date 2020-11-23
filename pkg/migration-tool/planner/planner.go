@@ -51,6 +51,7 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 	if ignoreProgress {
 		log.Info("msg", "ignoring progress-metric. Continuing migration with the provided time-range.")
 	}
+	var found bool
 	if remoteWriteStorageReadURL != "" && !ignoreProgress {
 		lastPushedMaxt, found, err := plan.fetchLastPushedMaxt()
 		if err != nil {
@@ -62,10 +63,16 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 			plan.Mint = lastPushedMaxt + 1
 		}
 	}
-	if plan.Mint >= plan.Maxt {
-		log.Info("msg", "mint greater than or equal to maxt. This given time-range migration has already been carried out. Hence, stopping.")
-	}
 	plan.lastMaxT = plan.Mint - 1 // Since block creation starts with (lastMaxT + 1), the first block will miss one millisecond if we do not subtract from here.
+	if plan.Mint > plan.Maxt {
+		return nil, false, fmt.Errorf("invalid: mint greater than maxt")
+	}
+	if plan.Mint == plan.Maxt && !found {
+		// progress_metric does not exists. This means that the migration is expected to be an instant query.
+		log.Info("msg", "mint equal to maxt. Considering this as instant query.")
+		return plan, true, nil
+	}
+
 	return plan, true, nil
 }
 
