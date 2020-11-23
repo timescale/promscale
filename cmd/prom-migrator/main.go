@@ -26,7 +26,6 @@ type config struct {
 
 func main() {
 	conf := new(config)
-	fmt.Println("args are", os.Args[1:])
 	parseFlags(conf, os.Args[1:])
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
