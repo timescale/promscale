@@ -1,6 +1,5 @@
 *~
 /promscale*
-!promscale.spec
 /dist
 /vendor
 /version.properties

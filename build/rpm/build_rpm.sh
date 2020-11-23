@@ -7,7 +7,6 @@ if [ -f ".buildrpmstarted" ]; then
     echo "Already running, exiting"
     exit 0
 fi
-touch .buildrpmstarted
 
 if [[ -z "${1}" ]]; then
   echo "Usage 'build_rpm.sh <VERSION>' you must specify the version to build"
@@ -16,16 +15,18 @@ else
   VERSION="${1}"
 fi
 
+touch .buildrpmstarted
+
 if [ ! -d ./dist/rpm ];
 then
 	mkdir -p dist/rpm
 fi
 
 echo "Building docker image that will build the Promscale binary"
-docker build --tag=promscale_builder --file=Dockerfile .
+docker build --tag=promscale_builder --file=./build/Dockerfile .
 
 echo "Building docker image that will build the rpm"
-docker build --build-arg VERSION=$VERSION --tag=promscale_rpm_builder --file=BuildRPMDockerfile .
+docker build --build-arg VERSION=$VERSION --tag=promscale_rpm_builder --file=./build/rpm/BuildRPMDockerfile .
 
 echo "Starting container"
 docker run --name rpm_builder -d promscale_rpm_builder

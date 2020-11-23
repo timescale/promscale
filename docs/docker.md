@@ -37,4 +37,4 @@ our docs or by running with the `-h` flag (e.g. `docker run timescale/promscale 
 
 ## 🛠 Building from source
 
-You can build the Docker container using the [Dockerfile](/Dockerfile)
+You can build the Docker container using the [Dockerfile](build/Dockerfile)
