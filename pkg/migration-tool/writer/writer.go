@@ -3,6 +3,7 @@ package writer
 import (
 	"context"
 	"fmt"
+	"go.uber.org/atomic"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -25,6 +26,7 @@ type RemoteWrite struct {
 	sigBlockWrite      chan struct{} // To the reader.
 	plan               *planner.Plan
 	client             remote.WriteClient
+	blocksPushed       atomic.Int64
 	progressMetricName string // Metric name to main the last pushed maxt to remote write storage.
 	migrationJobName   string // Label value to the progress metric.
 }
@@ -43,6 +45,7 @@ func New(remoteWriteUrl, progressMetricName, migrationJobName string, plan *plan
 		migrationJobName:   migrationJobName,
 		progressMetricName: progressMetricName,
 	}
+	write.blocksPushed.Store(0)
 	return write, nil
 }
 
@@ -68,6 +71,7 @@ func (rw *RemoteWrite) Run() error {
 		if err := rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
 			return fmt.Errorf("remote-write run: %w", err)
 		}
+		rw.blocksPushed.Add(1)
 		if err := blockRef.Done(); err != nil {
 			return fmt.Errorf("remote-write: %w", err)
 		}
@@ -75,6 +79,11 @@ func (rw *RemoteWrite) Run() error {
 	}
 	log.Info("msg", "writer is down")
 	return nil
+}
+
+// Blocks returns the total number of blocks pushed to the remote-write storage.
+func (rw *RemoteWrite) Blocks() int64 {
+	return rw.blocksPushed.Load()
 }
 
 // sendSamples to the remote storage with backoff for recoverable errors.
