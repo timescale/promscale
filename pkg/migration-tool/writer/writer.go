@@ -17,33 +17,37 @@ import (
 )
 
 const (
-	DefaultWriteTimeout  = time.Minute * 5
-	BackOffRetryDuration = time.Millisecond * 100
+	defaultWriteTimeout  = time.Minute * 5
+	backOffRetryDuration = time.Millisecond * 100
 )
 
 type RemoteWrite struct {
+	c                  context.Context
 	sigBlockRead       chan *planner.Block
 	sigBlockWrite      chan struct{} // To the reader.
-	plan               *planner.Plan
 	client             remote.WriteClient
 	blocksPushed       atomic.Int64
 	progressMetricName string // Metric name to main the last pushed maxt to remote write storage.
 	migrationJobName   string // Label value to the progress metric.
+	progressTimeSeries *prompb.TimeSeries
 }
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
-func New(remoteWriteUrl, progressMetricName, migrationJobName string, plan *planner.Plan, sigRead chan *planner.Block, sigWrite chan struct{}) (*RemoteWrite, error) {
-	wc, err := utils.CreateWriteClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, model.Duration(DefaultWriteTimeout))
+func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, sigRead chan *planner.Block, sigWrite chan struct{}) (*RemoteWrite, error) {
+	wc, err := utils.CreateWriteClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, model.Duration(defaultWriteTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating write-client: %w", err)
 	}
 	write := &RemoteWrite{
-		plan:               plan,
+		c:                  c,
 		client:             wc,
 		sigBlockRead:       sigRead,
 		sigBlockWrite:      sigWrite,
 		migrationJobName:   migrationJobName,
 		progressMetricName: progressMetricName,
+		progressTimeSeries: &prompb.TimeSeries{
+			Labels: utils.LabelSet(progressMetricName, migrationJobName),
+		},
 	}
 	write.blocksPushed.Store(0)
 	return write, nil
@@ -52,33 +56,41 @@ func New(remoteWriteUrl, progressMetricName, migrationJobName string, plan *plan
 // Run runs the remote-writer. It waits for the remote-reader to give access to the in-memory
 // data-block that is written after the most recent fetch. After reading the block and storing
 // the data locally, it gives back the writing access to the remote-reader for further fetches.
-func (rw *RemoteWrite) Run() error {
-	log.Info("msg", "writer is up")
-	for {
-		blockRef, ok := <-rw.sigBlockRead
-		if !ok {
-			break
+func (rw *RemoteWrite) Run(errChan chan<- error) {
+	var (
+		buf []byte
+		err error
+		ts  []prompb.TimeSeries
+	)
+	go func() {
+		log.Info("msg", "writer is up")
+		for {
+			select {
+			case <-rw.c.Done():
+				break
+			case blockRef, ok := <-rw.sigBlockRead:
+				if !ok {
+					log.Info("msg", "writer is down")
+					break
+				}
+				blockRef.SetDescription(fmt.Sprintf("pushing %.2f...", float64(blockRef.Bytes())/float64(utils.Megabyte)), 1)
+				rw.progressTimeSeries.Samples = []prompb.Sample{{Timestamp: blockRef.Maxt(), Value: 1}} // One sample per block, else it will lead to duplicate samples.
+				blockRef.Timeseries = append(blockRef.Timeseries, rw.progressTimeSeries)
+				ts = timeseriesRefToTimeseries(blockRef.Timeseries)
+				buf = []byte{}
+				if err = rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
+					errChan <- fmt.Errorf("remote-write run: %w", err)
+					return
+				}
+				rw.blocksPushed.Add(1)
+				if err = blockRef.Done(); err != nil {
+					errChan <- fmt.Errorf("remote-write run: %w", err)
+					return
+				}
+				rw.sigBlockWrite <- struct{}{}
+			}
 		}
-		var buf []byte
-		blockRef.SetDescription(fmt.Sprintf("pushing %.2f...", float64(blockRef.Bytes())/float64(utils.Megabyte)), 1)
-		ps, err := utils.GetorGenerateProgressTimeseries(rw.progressMetricName, rw.migrationJobName)
-		if err != nil {
-			return fmt.Errorf("get or create progress time-series: %w", err)
-		}
-		ps.Append(1, blockRef.Maxt())
-		utils.MergeWithTimeseries(&blockRef.Timeseries, ps.TimeSeries)
-		ts := timeseriesRefToTimeseries(blockRef.Timeseries)
-		if err := rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
-			return fmt.Errorf("remote-write run: %w", err)
-		}
-		rw.blocksPushed.Add(1)
-		if err := blockRef.Done(); err != nil {
-			return fmt.Errorf("remote-write: %w", err)
-		}
-		rw.sigBlockWrite <- struct{}{}
-	}
-	log.Info("msg", "writer is down")
-	return nil
+	}()
 }
 
 // Blocks returns the total number of blocks pushed to the remote-write storage.
@@ -96,7 +108,7 @@ func (rw *RemoteWrite) sendSamplesWithBackoff(ctx context.Context, samples []pro
 		return err
 	}
 
-	backoff := BackOffRetryDuration
+	backoff := backOffRetryDuration
 	*buf = req
 
 	attemptStore := func() error {

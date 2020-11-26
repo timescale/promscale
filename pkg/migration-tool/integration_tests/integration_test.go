@@ -1,7 +1,7 @@
 package integration_tests
 
 import (
-	"sync"
+	"context"
 	"testing"
 
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
@@ -18,27 +18,27 @@ func TestReaderWriterPlannerIntegrationWithoutHaults(t *testing.T) {
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
-		name                 string
-		mint                 int64
-		maxt                 int64
-		readURL              string
-		writeURL             string
-		writerReadURL        string
-		progressMetricName   string
-		ignoreProgressMetric bool
+		name               string
+		mint               int64
+		maxt               int64
+		readURL            string
+		writeURL           string
+		writerReadURL      string
+		progressMetricName string
+		progressEnabled    bool
 	}{
-		name:                 "ci-migration",
-		mint:                 tsMint,
-		maxt:                 tsMaxt,
-		readURL:              readURL,
-		writeURL:             writeURL,
-		writerReadURL:        "",
-		progressMetricName:   "progress_metric",
-		ignoreProgressMetric: true,
+		name:               "ci-migration",
+		mint:               tsMint,
+		maxt:               tsMaxt,
+		readURL:            readURL,
+		writeURL:           writeURL,
+		writerReadURL:      "",
+		progressMetricName: "progress_metric",
+		progressEnabled:    false,
 	}
 
 	// Replicate main.
-	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.writerReadURL, conf.ignoreProgressMetric)
+	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled)
 	if err != nil {
 		t.Fatal("msg", "could not create plan", "error", err.Error())
 	}
@@ -47,35 +47,35 @@ func TestReaderWriterPlannerIntegrationWithoutHaults(t *testing.T) {
 	}
 
 	var (
-		wg            sync.WaitGroup
-		sigBlockRead  = make(chan *plan.Block)
+		sigFinish     = make(chan struct{})
 		sigBlockWrite = make(chan struct{})
+		sigBlockRead  = make(chan *plan.Block)
+		readErrChan   = make(chan error)
+		writeErrChan  = make(chan error)
 	)
-	read, err := reader.New(conf.readURL, planner, sigBlockRead, sigBlockWrite)
+	cont, cancelFunc := context.WithCancel(context.Background())
+	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead, sigBlockWrite)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err := writer.New(conf.writeURL, conf.progressMetricName, conf.name, planner, sigBlockRead, sigBlockWrite)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead, sigBlockWrite)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	wg.Add(2)
-	// nolint:staticcheck
-	go func() {
-		defer wg.Done()
-		if err = read.Run(); err != nil {
-			t.Fatal("msg", "running reader", "error", err.Error())
-		}
-	}()
-	// nolint:staticcheck
-	go func() {
-		defer wg.Done()
-		if err = write.Run(); err != nil {
-			t.Fatal("msg", "running writer", "error", err.Error())
-		}
-	}()
-	wg.Wait()
+	read.Run(readErrChan, sigFinish)
+	write.Run(writeErrChan)
+
+	select {
+	case err = <-readErrChan:
+		cancelFunc()
+		t.Fatal("msg", "running reader", "error", err.Error())
+	case err = <-writeErrChan:
+		cancelFunc()
+		t.Fatal("msg", "running writer", "error", err.Error())
+	case <-sigFinish:
+		cancelFunc()
+	}
 
 	// Cross-verify the migration stats.
 	// Verify series count.
