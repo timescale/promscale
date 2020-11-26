@@ -1,56 +1,15 @@
 package planner
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"time"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage/remote"
 
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/schollz/progressbar/v3"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
-
-// createBlock creates a new block and returns reference to the block for faster write and read operations.
-func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
-	if err = p.validateT(mint, maxt); err != nil {
-		return nil, fmt.Errorf("create-block: %w", err)
-	}
-	id := p.blockCounts.Add(1)
-	timeRangeInMinutes := (maxt - mint) / time.Minute.Milliseconds()
-	percent := float64(maxt-p.Mint) * 100 / float64(p.Maxt-p.Mint)
-	if percent > 100 {
-		percent = 100
-	}
-	baseDescription := fmt.Sprintf("block-%d time-range: %d mins | mint: %d | maxt: %d", id, timeRangeInMinutes, mint, maxt)
-	reference = &Block{
-		id:              id,
-		percent:         percent,
-		pbarInitDetails: baseDescription,
-		pbar: progressbar.NewOptions(
-			6,
-			progressbar.OptionOnCompletion(func() {
-				fmt.Fprint(os.Stderr, "\n")
-			}),
-		),
-		mint: mint,
-		maxt: maxt,
-	}
-	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeInMinutes), 1)
-	p.currentBlock = reference
-	return
-}
-
-func (p *Plan) validateT(mint, maxt int64) error {
-	switch {
-	case p.Mint > mint || p.Maxt < mint:
-		return fmt.Errorf("invalid mint: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
-	case p.Mint > maxt || p.Maxt < maxt:
-		return fmt.Errorf("invalid maxt: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
-	case mint > maxt:
-		return fmt.Errorf("mint cannot be greater than maxt: mint: %d and maxt: %d", mint, maxt)
-	}
-	return nil
-}
 
 // Block represents an in-memory storage for data that is fetched by the reader.
 type Block struct {
@@ -63,6 +22,19 @@ type Block struct {
 	pbarInitDetails string
 	pbar            *progressbar.ProgressBar
 	Timeseries      []*prompb.TimeSeries
+}
+
+// Fetch starts fetching the samples from remote read storage based on the matchers.
+func (b *Block) Fetch(context context.Context, client remote.ReadClient, mint, maxt int64, matchers []*labels.Matcher) (*prompb.QueryResult, error) {
+	readRequest, err := utils.CreatePrombQuery(mint, maxt, matchers)
+	if err != nil {
+		return nil, fmt.Errorf("create promb query: %w", err)
+	}
+	result, err := client.Read(context, readRequest)
+	if err != nil {
+		return nil, fmt.Errorf("executing client-read: %w", err)
+	}
+	return result, nil
 }
 
 func (b *Block) SetData(timeseries []*prompb.TimeSeries) {

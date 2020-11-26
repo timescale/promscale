@@ -184,7 +184,7 @@ func TestNumBlockCreation(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		plan, _, err := CreatePlan(c.startT, c.endT, "", "", false)
+		plan, _, err := CreatePlan(c.startT, c.endT, "", "", "", false)
 		if c.fails {
 			testutil.NotOk(t, err)
 			continue

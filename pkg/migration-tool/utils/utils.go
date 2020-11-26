@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	"net/url"
-	"sync"
 
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -12,9 +11,10 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 )
 
-var interner = sync.Map{}
-
-const Megabyte = 1024 * 1024
+const (
+	Megabyte = 1024 * 1024
+	LabelJob = "job"
+)
 
 // CreateReadClient creates a new read client that can be used to fetch promb samples.
 func CreateReadClient(name, urlString string, readTimeout model.Duration) (remote.ReadClient, error) {
@@ -61,38 +61,12 @@ func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Que
 	}, nil
 }
 
-// ProgressSeries is the series that represents the progress metric series.
-type ProgressSeries struct {
-	*prompb.TimeSeries
-}
-
-// GetorGenerateProgressTimeseries returns the progress timeseries. It creates a new time-series based on input
-// if no time-series is present in the interner. To add a sample, call the append sample function.
-func GetorGenerateProgressTimeseries(metricName, migrationJobName string) (*ProgressSeries, error) {
-	if ps, ok := interner.Load(labels.MetricName); ok {
-		ps.(*ProgressSeries).Samples = make([]prompb.Sample, 0)
-		return ps.(*ProgressSeries), nil
+// LabelSet creates a new label_set for the provided metric name and job name.
+func LabelSet(metricName, migrationJobName string) []prompb.Label {
+	return []prompb.Label{
+		{Name: labels.MetricName, Value: metricName},
+		{Name: LabelJob, Value: migrationJobName},
 	}
-	lset := labels.Labels{
-		labels.Label{Name: labels.MetricName, Value: metricName},
-		labels.Label{Name: "migration_job", Value: migrationJobName},
-	}
-	ps := &ProgressSeries{&prompb.TimeSeries{
-		Labels:  labelsToLabelsProto(lset),
-		Samples: make([]prompb.Sample, 0),
-	}}
-	interner.Store(labels.MetricName, ps)
-	return ps, nil
-}
-
-// MergeWithTimeseries merges the new series with the time-series.
-func MergeWithTimeseries(ts *[]*prompb.TimeSeries, newTS *prompb.TimeSeries) {
-	*ts = append(*ts, newTS)
-}
-
-// Append appends the new sample inside the progress series.
-func (ps *ProgressSeries) Append(v float64, t int64) {
-	ps.Samples = append(ps.Samples, prompb.Sample{Timestamp: t, Value: v})
 }
 
 func toLabelMatchers(matchers []*labels.Matcher) ([]*prompb.LabelMatcher, error) {
@@ -118,15 +92,4 @@ func toLabelMatchers(matchers []*labels.Matcher) ([]*prompb.LabelMatcher, error)
 		})
 	}
 	return pbMatchers, nil
-}
-
-func labelsToLabelsProto(labels labels.Labels) []prompb.Label {
-	result := make([]prompb.Label, 0, len(labels))
-	for _, l := range labels {
-		result = append(result, prompb.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-	}
-	return result
 }

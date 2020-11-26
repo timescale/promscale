@@ -3,7 +3,10 @@ package planner
 import (
 	"context"
 	"fmt"
+	"github.com/schollz/progressbar/v3"
 	"go.uber.org/atomic"
+	"math"
+	"os"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -23,10 +26,9 @@ type Plan struct {
 	Mint               int64
 	Maxt               int64
 	readClient         remote.ReadClient // Used to fetch last maxt pushed from write storage.
-	progressMetricName string            // Name for progress metric.
-	currentBlock       *Block
+	jobName            string
+	progressMetricName string       // Name for progress metric.
 	blockCounts        atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
-	lastPushedT        atomic.Int64 // Maxt of the last pushed in-memory block.
 	// Block time-range vars.
 	lastMaxT           int64
 	lastNumBytes       int
@@ -35,7 +37,7 @@ type Plan struct {
 
 // CreatePlan creates an in-memory planner. It is responsible for fetching the last pushed maxt and based on that, updates
 // the mint for the provided migration.
-func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL string, ignoreProgress bool) (*Plan, bool, error) {
+func CreatePlan(mint, maxt int64, progressMetricName, jobName, remoteWriteStorageReadURL string, progressEnabled bool) (*Plan, bool, error) {
 	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", remoteWriteStorageReadURL, model.Duration(time.Minute*2))
 	if err != nil {
 		return nil, false, fmt.Errorf("create last-pushed-maxt reader: %w", err)
@@ -44,26 +46,29 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 		Mint:               mint,
 		Maxt:               maxt,
 		readClient:         rc,
+		jobName:            jobName,
 		progressMetricName: progressMetricName,
 	}
 	plan.blockCounts.Store(0)
-	plan.lastPushedT.Store(0)
-	if ignoreProgress {
-		log.Info("msg", "ignoring progress-metric. Continuing migration with the provided time-range.")
+	if progressEnabled && remoteWriteStorageReadURL == "" {
+		return nil, false, fmt.Errorf("read url for remote-write storage should be provided when progress metric is enabled")
+	}
+	if !progressEnabled {
+		log.Info("msg", "Resuming from where we left off is turned off. Starting at the beginning of the provided time-range.")
 	}
 	var found bool
-	if remoteWriteStorageReadURL != "" && !ignoreProgress {
+	if remoteWriteStorageReadURL != "" && progressEnabled {
 		lastPushedMaxt, found, err := plan.fetchLastPushedMaxt()
 		if err != nil {
 			return nil, false, fmt.Errorf("create plan: %w", err)
 		}
 		if found && lastPushedMaxt > plan.Mint && lastPushedMaxt <= plan.Maxt {
-			log.Warn("msg", fmt.Sprintf("progress-metric found on the write storage. Last push was on %d. "+
-				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, lastPushedMaxt+1, plan.Maxt, (plan.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
 			plan.Mint = lastPushedMaxt + 1
+			log.Warn("msg", fmt.Sprintf("Resuming from where we left off. Last push was on %d. "+
+				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, plan.Mint, plan.Maxt, (plan.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
 		}
 	}
-	plan.lastMaxT = plan.Mint - 1 // Since block creation starts with (lastMaxT + 1), the first block will miss one millisecond if we do not subtract from here.
+	plan.lastMaxT = math.MinInt64
 	if plan.Mint > plan.Maxt {
 		return nil, false, fmt.Errorf("invalid: mint greater than maxt")
 	}
@@ -79,7 +84,10 @@ func CreatePlan(mint, maxt int64, progressMetricName, remoteWriteStorageReadURL 
 // fetchLastPushedMaxt fetches the maxt of the last block pushed to remote-write storage. At present, this is developed
 // for a single migration job (i.e., not supporting multiple migration metrics and successive migrations).
 func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err error) {
-	query, err := utils.CreatePrombQuery(p.Mint, p.Maxt, []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, p.progressMetricName)})
+	query, err := utils.CreatePrombQuery(p.Mint, p.Maxt, []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, p.progressMetricName),
+		labels.MustNewMatcher(labels.MatchEqual, utils.LabelJob, p.jobName),
+	})
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
@@ -104,15 +112,6 @@ func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err erro
 	return lastPushedMaxt, true, nil
 }
 
-// LastPushedT returns the maximum timestamp of the most recent block that was pushed to the remote write storage.
-func (p *Plan) LastPushedT() int64 {
-	return p.lastPushedT.Load()
-}
-
-func (p *Plan) SetLastPushedT(t int64) {
-	p.lastPushedT.Store(t)
-}
-
 func (p *Plan) DecrementBlockCount() {
 	p.blockCounts.Sub(1)
 }
@@ -131,7 +130,12 @@ func (p *Plan) Update(numBytes int) {
 // NewBlock returns a new block after allocating the time-range for fetch.
 func (p *Plan) NextBlock() (reference *Block, err error, delta int64) {
 	timeDelta := determineTimeDelta(p.lastNumBytes, p.lastTimeRangeDelta)
-	mint := p.lastMaxT + 1
+	var mint int64
+	if p.lastMaxT == math.MinInt64 {
+		mint = p.Mint
+	} else {
+		mint = p.lastMaxT + 1
+	}
 	maxt := mint + timeDelta
 	if maxt > p.Maxt {
 		maxt = p.Maxt
@@ -143,6 +147,47 @@ func (p *Plan) NextBlock() (reference *Block, err error, delta int64) {
 		return nil, fmt.Errorf("next-block: %w", err), timeDelta
 	}
 	return bRef, nil, timeDelta
+}
+
+// createBlock creates a new block and returns reference to the block for faster write and read operations.
+func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
+	if err = p.validateT(mint, maxt); err != nil {
+		return nil, fmt.Errorf("create-block: %w", err)
+	}
+	id := p.blockCounts.Add(1)
+	timeRangeInMinutes := (maxt - mint) / time.Minute.Milliseconds()
+	percent := float64(maxt-p.Mint) * 100 / float64(p.Maxt-p.Mint)
+	if percent > 100 {
+		percent = 100
+	}
+	baseDescription := fmt.Sprintf("block-%d time-range: %d mins | mint: %d | maxt: %d", id, timeRangeInMinutes, mint, maxt)
+	reference = &Block{
+		id:              id,
+		percent:         percent,
+		pbarInitDetails: baseDescription,
+		pbar: progressbar.NewOptions(
+			6,
+			progressbar.OptionOnCompletion(func() {
+				fmt.Fprint(os.Stderr, "\n")
+			}),
+		),
+		mint: mint,
+		maxt: maxt,
+	}
+	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeInMinutes), 1)
+	return
+}
+
+func (p *Plan) validateT(mint, maxt int64) error {
+	switch {
+	case p.Mint > mint || p.Maxt < mint:
+		return fmt.Errorf("invalid mint: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
+	case p.Mint > maxt || p.Maxt < maxt:
+		return fmt.Errorf("invalid maxt: %d: global-mint: %d and global-maxt: %d", mint, p.Mint, p.Maxt)
+	case mint > maxt:
+		return fmt.Errorf("mint cannot be greater than maxt: mint: %d and maxt: %d", mint, maxt)
+	}
+	return nil
 }
 
 func determineTimeDelta(numBytes int, prevTimeDelta int64) int64 {
