@@ -11,7 +11,6 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
@@ -25,7 +24,7 @@ const (
 type Plan struct {
 	Mint               int64
 	Maxt               int64
-	readClient         remote.ReadClient // Used to fetch last maxt pushed from write storage.
+	readClient         *utils.Client // Used to fetch last maxt pushed from write storage.
 	jobName            string
 	progressMetricName string       // Name for progress metric.
 	blockCounts        atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
@@ -91,7 +90,7 @@ func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err erro
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
-	result, err := p.readClient.Read(context.Background(), query)
+	result, _, _, err := p.readClient.Read(context.Background(), query)
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt query result: %w", err)
 	}
@@ -168,7 +167,7 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 		pbar: progressbar.NewOptions(
 			6,
 			progressbar.OptionOnCompletion(func() {
-				fmt.Fprint(os.Stderr, "\n")
+				_, _ = fmt.Fprint(os.Stderr, "\n")
 			}),
 		),
 		mint: mint,

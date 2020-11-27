@@ -25,7 +25,7 @@ type RemoteWrite struct {
 	c                  context.Context
 	sigBlockRead       chan *planner.Block
 	sigBlockWrite      chan struct{} // To the reader.
-	client             remote.WriteClient
+	client             *utils.Client
 	blocksPushed       atomic.Int64
 	progressMetricName string // Metric name to main the last pushed maxt to remote write storage.
 	migrationJobName   string // Label value to the progress metric.
@@ -73,7 +73,7 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 					log.Info("msg", "writer is down")
 					break
 				}
-				blockRef.SetDescription(fmt.Sprintf("pushing %.2f...", float64(blockRef.Bytes())/float64(utils.Megabyte)), 1)
+				blockRef.SetDescription(fmt.Sprintf("pushing %.2f...", float64(blockRef.BytesCompressed())/float64(utils.Megabyte)), 1)
 				rw.progressTimeSeries.Samples = []prompb.Sample{{Timestamp: blockRef.Maxt(), Value: 1}} // One sample per block, else it will lead to duplicate samples.
 				blockRef.Timeseries = append(blockRef.Timeseries, rw.progressTimeSeries)
 				ts = timeseriesRefToTimeseries(blockRef.Timeseries)
