@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
@@ -20,7 +19,7 @@ const defaultReadTimeout = time.Minute * 5
 type RemoteRead struct {
 	c               context.Context
 	url             string
-	client          remote.ReadClient
+	client          *utils.Client
 	plan            *plan.Plan
 	fetchersRunning atomic.Uint32
 	sigBlockWrite   chan struct{}
@@ -52,9 +51,9 @@ func (rr *RemoteRead) Run(errChan chan<- error, sigFinish chan<- struct{}) {
 		err                   error
 		blockRef              *plan.Block
 		result                *prompb.QueryResult
-		qResultBytes          []byte
-		numBytes              int
 		timeRangeMinutesDelta int64
+		bytesCompressed       int
+		bytesUncompressed     int
 	)
 	go func() {
 		defer func() {
@@ -81,7 +80,7 @@ func (rr *RemoteRead) Run(errChan chan<- error, sigFinish chan<- struct{}) {
 				return
 			}
 			blockRef.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
-			result, err = blockRef.Fetch(context.Background(), rr.client, blockRef.Mint(), blockRef.Maxt(), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
+			result, bytesCompressed, bytesUncompressed, err = blockRef.Fetch(context.Background(), rr.client, blockRef.Mint(), blockRef.Maxt(), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
@@ -91,16 +90,15 @@ func (rr *RemoteRead) Run(errChan chan<- error, sigFinish chan<- struct{}) {
 				rr.plan.Update(0)
 				continue
 			}
-			qResultBytes, err = result.Marshal()
-			if err != nil {
-				errChan <- fmt.Errorf("marshalling prompb query result: %w", err)
-				return
-			}
-			numBytes = len(qResultBytes)
-			blockRef.SetDescription(fmt.Sprintf("received %.2f MB with delta %d mins...", float64(numBytes)/float64(utils.Megabyte), timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
+			blockRef.SetDescription(fmt.Sprintf("received %.2f MB with delta %d mins...", float64(bytesCompressed)/float64(utils.Megabyte), timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
 			blockRef.Timeseries = result.Timeseries
-			blockRef.SetBytes(numBytes)
-			rr.plan.Update(numBytes)
+			// We set compressed bytes in block since those are the bytes that will be pushed over the network to the write storage after snappy compression.
+			// The pushed bytes are not exactly the bytesCompressed since while pushing, we add the progress metric. But,
+			// the size of progress metric along with the sample is negligible. So, it is safe to consider bytesCompressed
+			// in such a scenario.
+			blockRef.SetBytesCompressed(bytesCompressed)
+			blockRef.SetBytesUncompressed(bytesUncompressed)
+			rr.plan.Update(bytesUncompressed)
 			rr.sigBlockRead <- blockRef
 			blockRef = nil
 			<-rr.sigBlockWrite

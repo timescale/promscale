@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote"
 )
 
 const (
@@ -17,35 +16,35 @@ const (
 )
 
 // CreateReadClient creates a new read client that can be used to fetch promb samples.
-func CreateReadClient(name, urlString string, readTimeout model.Duration) (remote.ReadClient, error) {
+func CreateReadClient(name, urlString string, readTimeout model.Duration) (*Client, error) {
 	parsedUrl, err := url.Parse(urlString)
 	if err != nil {
 		return nil, fmt.Errorf("parsing-url: %w", err)
 	}
-	rc, err := remote.NewReadClient(name, &remote.ClientConfig{
+	readClient, err := NewClient(name, "read", &clientConfig{
 		URL:     &config.URL{URL: parsedUrl},
 		Timeout: readTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new read-client: %w", err)
 	}
-	return rc, nil
+	return readClient, nil
 }
 
 // CreateWriteClient creates a new write client that can be used to push promb samples.
-func CreateWriteClient(name, urlString string, readTimeout model.Duration) (remote.WriteClient, error) {
+func CreateWriteClient(name, urlString string, readTimeout model.Duration) (*Client, error) {
 	parsedUrl, err := url.Parse(urlString)
 	if err != nil {
 		return nil, fmt.Errorf("parsing-url: %w", err)
 	}
-	wc, err := remote.NewWriteClient(name, &remote.ClientConfig{
+	writeClient, err := NewClient(name, "write", &clientConfig{
 		URL:     &config.URL{URL: parsedUrl},
 		Timeout: readTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new write-client: %w", err)
 	}
-	return wc, nil
+	return writeClient, nil
 }
 
 // CreatePrombRequest creates a new promb query based on the matchers.
