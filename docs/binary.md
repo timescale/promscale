@@ -5,6 +5,26 @@
 You can download pre-built binaries for the Promscale
 Connector [on our release page](https://github.com/timescale/promscale/releases).
 
+Downlaod Promscale
+
+```
+curl -L -o promscale https://github.com/timescale/promscale/releases/download/<VERSION>/<PROMSCALE_DISTRIBUTION>
+```
+
+Grant executable permissions to Promscale:
+
+```
+chmod +x promscale
+```
+
+To deploy Promscale, run the following command:
+```
+./promscale --db-name <DBNAME> --db-password <DB-Password> --db-ssl-mode allow
+```
+Note that the flags `db-name` and `db-password` refer to the name and password of your TimescaleDB database.
+
+Further note that the command above is to deploy Promscale with SSL mode disabled. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and drop the `--db-ssl-mode` flag.  Promscale will then authenticate via SSL by default.
+
 We recommend installing the [promscale](https://github.com/timescale/promscale_extension/releases)
 PostgreSQL extension into the TimescaleDB database you are connecting to.
 Instructions on how to compile and install the extension are in the
@@ -18,6 +38,34 @@ Binary installations also need to make sure the `execute_maintenance()`
 procedure on a regular basis (e.g. via cron). We recommend executing it every
 30 minutes. This is necessary to execute maintenance tasks such as enforcing
 data retention policies according to the configured policy.
+
+Add the below code snippet to the file `prom-execute-maintenance.sh` and add the database password in place of `<PASSWORD>`:
+
+```
+#/bin/sh
+export PGPASSWORD=<PASSWORD>
+psql --host localhost --port 5432 --dbname postgres --user postgres -c 'CALL prom_api.execute_maintenance();'
+```
+
+Create an other script with the below code snippet to the file `install-crontab.sh` This script will create a crontab for the above defined task:
+
+```
+#/bin/sh
+echo "0,30 * * * * ./prom-execute-maintenance.sh" | crontab -
+```
+
+Then, grant executable privileges to both files:
+
+```
+chmod +x prom-execute-maintenance.sh
+chmod +x install-crontab.sh
+```
+
+Running compress crontab:
+
+```
+./install-crontab.sh
+```
 
 ## 🔥 Configuring Prometheus to use this remote storage connector
 
