@@ -2,19 +2,18 @@ package integration_tests
 
 import (
 	"context"
-	"testing"
-
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
+	"testing"
 )
 
 var largeTimeSeries, tsMint, tsMaxt = generateLargeTimeseries()
 
-func TestReaderWriterPlannerIntegrationWithoutHaults(t *testing.T) {
+func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries)
 	defer remoteReadStorage.Close()
-	remoteWriteStorage, writeURL := createRemoteWriteServer(t)
+	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t)
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
@@ -32,7 +31,7 @@ func TestReaderWriterPlannerIntegrationWithoutHaults(t *testing.T) {
 		maxt:               tsMaxt,
 		readURL:            readURL,
 		writeURL:           writeURL,
-		writerReadURL:      "",
+		writerReadURL:      progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    false,
 	}
@@ -47,7 +46,6 @@ func TestReaderWriterPlannerIntegrationWithoutHaults(t *testing.T) {
 	}
 
 	var (
-		sigFinish     = make(chan struct{})
 		sigBlockWrite = make(chan struct{})
 		sigBlockRead  = make(chan *plan.Block)
 		readErrChan   = make(chan error)
@@ -63,18 +61,18 @@ func TestReaderWriterPlannerIntegrationWithoutHaults(t *testing.T) {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan, sigFinish)
+	read.Run(readErrChan)
 	write.Run(writeErrChan)
 
 	select {
-	case err = <-readErrChan:
+	case err, ok := <-readErrChan:
+		if ok {
+			t.Fatal("msg", "running reader", "error", err.Error())
+		}
 		cancelFunc()
-		t.Fatal("msg", "running reader", "error", err.Error())
 	case err = <-writeErrChan:
 		cancelFunc()
 		t.Fatal("msg", "running writer", "error", err.Error())
-	case <-sigFinish:
-		cancelFunc()
 	}
 
 	// Cross-verify the migration stats.
@@ -85,5 +83,9 @@ func TestReaderWriterPlannerIntegrationWithoutHaults(t *testing.T) {
 	// Verify net samples count.
 	if remoteReadStorage.Samples() != remoteWriteStorage.Samples()-int(write.Blocks()) {
 		t.Fatalf("read-storage series and write-storage series do not match: read-storage series: %d and write-storage series: %d", remoteReadStorage.Samples(), remoteWriteStorage.Samples()-int(write.Blocks()))
+	}
+	// Verify the progress metric samples count.
+	if remoteWriteStorage.SamplesProgress() != int(write.Blocks()) {
+		t.Fatalf("progress-metric samples count do not match the number of blocks created")
 	}
 }

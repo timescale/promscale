@@ -47,7 +47,6 @@ func main() {
 	}
 
 	var (
-		sigFinish     = make(chan struct{})
 		sigBlockWrite = make(chan struct{})
 		sigBlockRead  = make(chan *plan.Block)
 		readErrChan   = make(chan error)
@@ -63,24 +62,22 @@ func main() {
 		log.Error("msg", "could not create writer", "error", err)
 	}
 
-	read.Run(readErrChan, sigFinish)
+	read.Run(readErrChan)
 	write.Run(writeErrChan)
 
 	select {
-	case err = <-readErrChan:
+	case err, ok := <-readErrChan:
+		if ok {
+			log.Error("msg", fmt.Errorf("running reader: %w", err).Error())
+			os.Exit(2)
+		}
 		cancelFunc()
-		log.Error("msg", fmt.Errorf("running reader: %w", err).Error())
-		os.Exit(2)
 	case err = <-writeErrChan:
 		cancelFunc()
 		log.Error("msg", fmt.Errorf("running writer: %w", err).Error())
 		os.Exit(2)
-	case <-sigFinish:
-		// TODO: (optional feature via flags) Add stats at the end of migration. Warn for the probable overhead.
-		cancelFunc()
-		log.Info("msg", "migration successfully carried out")
 	}
-
+	log.Info("msg", "migration successfully carried out")
 	log.Info("msg", "exiting!")
 }
 
