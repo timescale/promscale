@@ -7,6 +7,7 @@ import (
 	"go.uber.org/atomic"
 	"math"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -32,11 +33,13 @@ type Plan struct {
 	lastMaxT           int64
 	lastNumBytes       int
 	lastTimeRangeDelta int64
+	pbarMux            *sync.Mutex
+	isTest             bool
 }
 
 // CreatePlan creates an in-memory planner. It is responsible for fetching the last pushed maxt and based on that, updates
 // the mint for the provided migration.
-func CreatePlan(mint, maxt int64, progressMetricName, jobName, remoteWriteStorageReadURL string, progressEnabled bool) (*Plan, bool, error) {
+func CreatePlan(mint, maxt int64, progressMetricName, jobName, remoteWriteStorageReadURL string, progressEnabled, isTest bool) (*Plan, bool, error) {
 	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", remoteWriteStorageReadURL, model.Duration(time.Minute*2))
 	if err != nil {
 		return nil, false, fmt.Errorf("create last-pushed-maxt reader: %w", err)
@@ -47,6 +50,8 @@ func CreatePlan(mint, maxt int64, progressMetricName, jobName, remoteWriteStorag
 		readClient:         rc,
 		jobName:            jobName,
 		progressMetricName: progressMetricName,
+		pbarMux:            new(sync.Mutex),
+		isTest:             isTest,
 	}
 	plan.blockCounts.Store(0)
 	if progressEnabled && remoteWriteStorageReadURL == "" {
@@ -170,8 +175,13 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 				_, _ = fmt.Fprint(os.Stderr, "\n")
 			}),
 		),
-		mint: mint,
-		maxt: maxt,
+		mint:    mint,
+		maxt:    maxt,
+		pbarMux: p.pbarMux,
+	}
+	if p.isTest {
+		reference.pbar = nil
+		reference.pbarInitDetails = ""
 	}
 	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeInMinutes), 1)
 	return
