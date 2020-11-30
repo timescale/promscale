@@ -1155,6 +1155,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 			// Matrix evaluation always returns the evaluation time,
 			// so this function needs special handling when given
 			// a vector selector.
+			unwrapParenExpr(&e.Args[0])
 			vs, ok := e.Args[0].(*parser.VectorSelector)
 			if ok {
 				return ev.rangeEval(func(v []parser.Value, enh *EvalNodeHelper) (Vector, storage.Warnings) {
@@ -1948,7 +1949,7 @@ func scalarBinop(op parser.ItemType, lhs, rhs float64) float64 {
 		return math.Pow(lhs, rhs)
 	case parser.MOD:
 		return math.Mod(lhs, rhs)
-	case parser.EQL:
+	case parser.EQLC:
 		return btos(lhs == rhs)
 	case parser.NEQ:
 		return btos(lhs != rhs)
@@ -1979,7 +1980,7 @@ func vectorElemBinop(op parser.ItemType, lhs, rhs float64) (float64, bool) {
 		return math.Pow(lhs, rhs), true
 	case parser.MOD:
 		return math.Mod(lhs, rhs), true
-	case parser.EQL:
+	case parser.EQLC:
 		return lhs, lhs == rhs
 	case parser.NEQ:
 		return lhs, lhs != rhs
