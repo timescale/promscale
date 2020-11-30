@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/log"
 
 	"github.com/timescale/promscale/pkg/prompb"
@@ -232,7 +232,7 @@ func TestDetectSnappyStreamFormat(t *testing.T) {
 }
 
 func TestWrite(t *testing.T) {
-	testutil.Ok(t, log.Init(log.Config{
+	require.NoError(t, log.Init(log.Config{
 		Level: "debug",
 	}))
 
