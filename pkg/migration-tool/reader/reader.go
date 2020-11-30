@@ -46,7 +46,7 @@ func New(c context.Context, readStorageUrl string, p *plan.Plan, sigRead chan *p
 }
 
 // Run runs the remote read and starts fetching the samples from the read storage.
-func (rr *RemoteRead) Run(errChan chan<- error, sigFinish chan<- struct{}) {
+func (rr *RemoteRead) Run(errChan chan<- error) {
 	var (
 		err                   error
 		blockRef              *plan.Block
@@ -60,7 +60,7 @@ func (rr *RemoteRead) Run(errChan chan<- error, sigFinish chan<- struct{}) {
 			close(rr.sigBlockRead)
 			close(rr.sigBlockWrite)
 			log.Info("msg", "reader is down")
-			sigFinish <- struct{}{}
+			close(errChan)
 		}()
 		log.Info("msg", "reader is up")
 		select {
@@ -80,7 +80,7 @@ func (rr *RemoteRead) Run(errChan chan<- error, sigFinish chan<- struct{}) {
 				return
 			}
 			blockRef.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
-			result, bytesCompressed, bytesUncompressed, err = blockRef.Fetch(context.Background(), rr.client, blockRef.Mint(), blockRef.Maxt(), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
+			result, bytesCompressed, bytesUncompressed, err = blockRef.Fetch(rr.c, rr.client, blockRef.Mint(), blockRef.Maxt(), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return

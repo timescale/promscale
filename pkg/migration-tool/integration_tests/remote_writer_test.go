@@ -16,21 +16,26 @@ import (
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
+const matcherProgress = `[{__name__ progress_metric {} [] 0} {job ci-migration {} [] 0}]`
+
 type remoteWriteServer struct {
 	mux                    sync.RWMutex
 	writeServer            *httptest.Server
+	progressServer         *httptest.Server
 	writeStorageTimeSeries map[string]prompb.TimeSeries
 }
 
 // createRemoteWriteServer creates a write server that exposes a /write endpoint for ingesting samples. It returns a server
 // which is expected to be closed by the caller.
-func createRemoteWriteServer(t *testing.T) (*remoteWriteServer, string) {
+func createRemoteWriteServer(t *testing.T) (*remoteWriteServer, string, string) {
 	rws := &remoteWriteServer{
 		writeStorageTimeSeries: make(map[string]prompb.TimeSeries),
 	}
 	s := httptest.NewServer(getWriteHandler(t, rws))
+	spg := httptest.NewServer(getProgressHandler(t, rws, matcherProgress))
 	rws.writeServer = s
-	return rws, s.URL
+	rws.progressServer = spg
+	return rws, s.URL, spg.URL
 }
 
 // Series returns the number of series in the remoteWriteServer.
@@ -51,9 +56,17 @@ func (rwss *remoteWriteServer) Samples() int {
 	return numSamples
 }
 
+// Samples returns the number of samples in the remoteWriteServer.
+func (rwss *remoteWriteServer) SamplesProgress() int {
+	rwss.mux.RLock()
+	defer rwss.mux.RUnlock()
+	return len(rwss.writeStorageTimeSeries[matcherProgress].Samples)
+}
+
 // Close closes the server(s).
 func (rwss *remoteWriteServer) Close() {
 	rwss.writeServer.Close()
+	rwss.progressServer.Close()
 }
 
 func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
@@ -61,7 +74,7 @@ func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
 
 		// we treat invalid requests as the same as no request for
 		// leadership-timeout purposes
-		if !validateWriteHeaders(t, w, r) {
+		if !validateWriteHeaders(t, r) {
 			t.Fatal("could not validate write headers")
 		}
 
@@ -87,6 +100,65 @@ func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
 			}
 		}
 		FinishWriteRequest(req)
+	})
+}
+
+func getProgressHandler(t *testing.T, rws *remoteWriteServer, labels string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !validateReadHeaders(t, w, r) {
+			t.Fatal("invalid read headers")
+		}
+
+		compressed, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal("msg", "read header validation error", "err", err.Error())
+		}
+
+		reqBuf, err := snappy.Decode(nil, compressed)
+		if err != nil {
+			t.Fatal("msg", "snappy decode error", "err", err.Error())
+		}
+
+		var req prompb.ReadRequest
+		if err := proto.Unmarshal(reqBuf, &req); err != nil {
+			t.Fatal("msg", "proto unmarshal error", "err", err.Error())
+		}
+		resp := &prompb.ReadResponse{
+			Results: make([]*prompb.QueryResult, len(req.Queries)),
+		}
+
+		// Since the matchers would be ""=~.* which means that all available matchers.
+		// In order to avoid creating another reader and then facing the dupicate enum issue due to
+		// importing promscale.prompb and prometheus.prompb, we just listen to the start and end
+		// timestamps only.
+		startTs := req.Queries[0].StartTimestampMs
+		endTs := req.Queries[0].EndTimestampMs
+		ts := make([]*prompb.TimeSeries, 1) // Since the response is going to be the number of time-series.
+		serie, ok := rws.writeStorageTimeSeries[labels]
+		if ok {
+			for _, s := range serie.Samples {
+				if s.Timestamp >= startTs && s.Timestamp <= endTs {
+					ts[0].Samples = append(ts[0].Samples, s)
+				}
+			}
+			ts[0].Labels = serie.Labels
+		}
+		if len(resp.Results) == 0 {
+			t.Fatal("queries num is 0")
+		}
+		resp.Results[0] = &prompb.QueryResult{Timeseries: ts}
+		data, err := proto.Marshal(resp)
+		if err != nil {
+			t.Fatal("msg", "internal server error", "err", err.Error())
+		}
+
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		w.Header().Set("Content-Encoding", "snappy")
+
+		compressed = snappy.Encode(nil, data)
+		if _, err := w.Write(compressed); err != nil {
+			t.Fatal("msg", "snappy encode: internal server error", "err", err.Error())
+		}
 	})
 }
 
@@ -129,7 +201,7 @@ func decodeSnappyBody(r io.Reader) ([]byte, error, string) {
 	return buf, nil, ""
 }
 
-func validateWriteHeaders(t *testing.T, w http.ResponseWriter, r *http.Request) bool {
+func validateWriteHeaders(t *testing.T, r *http.Request) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
 	if r.Method != "POST" {
 		t.Fatalf("HTTP Method %s instead of POST", r.Method)
