@@ -486,6 +486,7 @@ func (h *insertHandler) blockingHandleReq() bool {
 		case <-h.seriesCacheRefresh.C:
 			h.refreshSeriesCache()
 		case <-h.epochAbort:
+			panic("ea")
 			h.refreshSeriesCache()
 		}
 	}
