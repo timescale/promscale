@@ -37,7 +37,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled)
+	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled, false)
 	if err != nil {
 		log.Error("msg", "could not create plan", "error", err)
 		os.Exit(2)
@@ -47,17 +47,16 @@ func main() {
 	}
 
 	var (
-		sigBlockWrite = make(chan struct{})
-		sigBlockRead  = make(chan *plan.Block)
-		readErrChan   = make(chan error)
-		writeErrChan  = make(chan error)
+		readErrChan  = make(chan error)
+		writeErrChan = make(chan error)
+		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead, sigBlockWrite)
+	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create reader", "error", err)
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead, sigBlockWrite)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create writer", "error", err)
 	}
@@ -65,18 +64,25 @@ func main() {
 	read.Run(readErrChan)
 	write.Run(writeErrChan)
 
-	select {
-	case err, ok := <-readErrChan:
-		if ok {
-			log.Error("msg", fmt.Errorf("running reader: %w", err).Error())
-			os.Exit(2)
+loop:
+	for {
+		select {
+		case err = <-readErrChan:
+			if err != nil {
+				cancelFunc()
+				log.Error("msg", fmt.Errorf("running reader: %w", err).Error())
+				os.Exit(2)
+			}
+		case err, ok := <-writeErrChan:
+			cancelFunc() // As in any ideal case, the reader will always exit normally first.
+			if ok {
+				log.Error("msg", fmt.Errorf("running writer: %w", err).Error())
+				os.Exit(2)
+			}
+			break loop
 		}
-		cancelFunc()
-	case err = <-writeErrChan:
-		cancelFunc()
-		log.Error("msg", fmt.Errorf("running writer: %w", err).Error())
-		os.Exit(2)
 	}
+
 	log.Info("msg", "migration successfully carried out")
 	log.Info("msg", "exiting!")
 }

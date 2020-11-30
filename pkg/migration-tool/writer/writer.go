@@ -24,7 +24,6 @@ const (
 type RemoteWrite struct {
 	c                  context.Context
 	sigBlockRead       chan *planner.Block
-	sigBlockWrite      chan struct{} // To the reader.
 	client             *utils.Client
 	blocksPushed       atomic.Int64
 	progressMetricName string // Metric name to main the last pushed maxt to remote write storage.
@@ -33,7 +32,7 @@ type RemoteWrite struct {
 }
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
-func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, sigRead chan *planner.Block, sigWrite chan struct{}) (*RemoteWrite, error) {
+func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, sigRead chan *planner.Block) (*RemoteWrite, error) {
 	wc, err := utils.CreateWriteClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, model.Duration(defaultWriteTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating write-client: %w", err)
@@ -42,7 +41,6 @@ func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName
 		c:                  c,
 		client:             wc,
 		sigBlockRead:       sigRead,
-		sigBlockWrite:      sigWrite,
 		migrationJobName:   migrationJobName,
 		progressMetricName: progressMetricName,
 		progressTimeSeries: &prompb.TimeSeries{
@@ -63,6 +61,10 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 		ts  []prompb.TimeSeries
 	)
 	go func() {
+		defer func() {
+			log.Info("msg", "writer is down")
+			close(errChan)
+		}()
 		log.Info("msg", "writer is up")
 		for {
 			select {
@@ -70,8 +72,7 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 				break
 			case blockRef, ok := <-rw.sigBlockRead:
 				if !ok {
-					log.Info("msg", "writer is down")
-					break
+					return
 				}
 				blockRef.SetDescription(fmt.Sprintf("pushing %.2f...", float64(blockRef.BytesCompressed())/float64(utils.Megabyte)), 1)
 				rw.progressTimeSeries.Samples = []prompb.Sample{{Timestamp: blockRef.Maxt(), Value: 1}} // One sample per block, else it will lead to duplicate samples.
@@ -87,7 +88,6 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 					errChan <- fmt.Errorf("remote-write run: %w", err)
 					return
 				}
-				rw.sigBlockWrite <- struct{}{}
 			}
 		}
 	}()

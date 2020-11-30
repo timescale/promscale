@@ -22,24 +22,23 @@ type RemoteRead struct {
 	client          *utils.Client
 	plan            *plan.Plan
 	fetchersRunning atomic.Uint32
-	sigBlockWrite   chan struct{}
 	sigBlockRead    chan *plan.Block // To the writer.
+	SigForceStop    chan struct{}
 }
 
 // New creates a new RemoteRead. It creates a ReadClient that is imported from Prometheus remote storage.
 // RemoteRead takes help of plan to understand how to create fetchers.
-func New(c context.Context, readStorageUrl string, p *plan.Plan, sigRead chan *plan.Block, sigWrite chan struct{}) (*RemoteRead, error) {
+func New(c context.Context, readStorageUrl string, p *plan.Plan, sigRead chan *plan.Block) (*RemoteRead, error) {
 	rc, err := utils.CreateReadClient(fmt.Sprintf("reader-%d", 1), readStorageUrl, model.Duration(defaultReadTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
 	}
 	read := &RemoteRead{
-		c:             c,
-		url:           readStorageUrl,
-		plan:          p,
-		client:        rc,
-		sigBlockRead:  sigRead,
-		sigBlockWrite: sigWrite,
+		c:            c,
+		url:          readStorageUrl,
+		plan:         p,
+		client:       rc,
+		sigBlockRead: sigRead,
 	}
 	read.fetchersRunning.Store(0)
 	return read, nil
@@ -58,7 +57,6 @@ func (rr *RemoteRead) Run(errChan chan<- error) {
 	go func() {
 		defer func() {
 			close(rr.sigBlockRead)
-			close(rr.sigBlockWrite)
 			log.Info("msg", "reader is down")
 			close(errChan)
 		}()
@@ -71,7 +69,9 @@ func (rr *RemoteRead) Run(errChan chan<- error) {
 		for rr.plan.ShouldProceed() {
 			select {
 			case <-rr.c.Done():
-				break
+				return
+			case <-rr.SigForceStop:
+				return
 			default:
 			}
 			blockRef, err, timeRangeMinutesDelta = rr.plan.NextBlock()
@@ -101,7 +101,6 @@ func (rr *RemoteRead) Run(errChan chan<- error) {
 			rr.plan.Update(bytesUncompressed)
 			rr.sigBlockRead <- blockRef
 			blockRef = nil
-			<-rr.sigBlockWrite
 		}
 	}()
 }

@@ -37,7 +37,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	}
 
 	// Replicate main.
-	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled)
+	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled, false)
 	if err != nil {
 		t.Fatal("msg", "could not create plan", "error", err.Error())
 	}
@@ -46,33 +46,37 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	}
 
 	var (
-		sigBlockWrite = make(chan struct{})
-		sigBlockRead  = make(chan *plan.Block)
-		readErrChan   = make(chan error)
-		writeErrChan  = make(chan error)
+		readErrChan  = make(chan error)
+		writeErrChan = make(chan error)
+		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead, sigBlockWrite)
+	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead, sigBlockWrite)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
 	read.Run(readErrChan)
 	write.Run(writeErrChan)
-
-	select {
-	case err, ok := <-readErrChan:
-		if ok {
-			t.Fatal("msg", "running reader", "error", err.Error())
+loop:
+	for {
+		select {
+		case err = <-readErrChan:
+			if err != nil {
+				cancelFunc()
+				t.Fatal("msg", "running reader", "error", err.Error())
+			}
+		case err, ok := <-writeErrChan:
+			cancelFunc() // As in any ideal case, the reader will always exit normally first.
+			if ok {
+				t.Fatal("msg", "running writer", "error", err.Error())
+			}
+			break loop
 		}
-		cancelFunc()
-	case err = <-writeErrChan:
-		cancelFunc()
-		t.Fatal("msg", "running writer", "error", err.Error())
 	}
 
 	// Cross-verify the migration stats.

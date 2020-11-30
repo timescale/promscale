@@ -3,6 +3,7 @@ package planner
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -22,6 +23,7 @@ type Block struct {
 	Timeseries           []*prompb.TimeSeries
 	numBytesCompressed   int
 	numBytesUncompressed int
+	pbarMux              *sync.Mutex
 }
 
 // Fetch starts fetching the samples from remote read storage based on the matchers.
@@ -42,6 +44,11 @@ func (b *Block) SetData(timeseries []*prompb.TimeSeries) {
 }
 
 func (b *Block) SetDescription(description string, proceed int) {
+	b.pbarMux.Lock()
+	defer b.pbarMux.Unlock()
+	if b.pbarInitDetails == "" {
+		return
+	}
 	_ = b.pbar.Add(proceed)
 	b.pbar.Describe(fmt.Sprintf("progress: %.3f%% | %s | %s", b.percent, b.pbarInitDetails, description))
 }
@@ -68,6 +75,9 @@ func (b *Block) BytesUncompressed() int {
 
 // Done updates the text and sets the spinner to done.
 func (b *Block) Done() error {
+	if b.pbarInitDetails == "" {
+		return nil
+	}
 	b.SetDescription(
 		fmt.Sprintf("pushed %.2f MB. Memory footprint: %.2f MB.", float64(b.numBytesCompressed)/float64(utils.Megabyte), float64(b.numBytesUncompressed)/float64(utils.Megabyte)),
 		1,
