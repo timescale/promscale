@@ -23,7 +23,7 @@ To deploy Promscale, run the following command:
 ```
 Note that the flags `db-name` and `db-password` refer to the name and password of your TimescaleDB database.
 
-Further note that the command above is to deploy Promscale with SSL mode disabled. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and drop the `--db-ssl-mode` flag.  Promscale will then authenticate via SSL by default.
+Further note that the command above is to deploy Promscale with SSL mode being allowed but not required. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and drop the `--db-ssl-mode` flag.  Promscale will then authenticate via SSL by default.
 
 We recommend installing the [promscale](https://github.com/timescale/promscale_extension/releases)
 PostgreSQL extension into the TimescaleDB database you are connecting to.
@@ -47,11 +47,11 @@ export PGPASSWORD=<PASSWORD>
 psql --host localhost --port 5432 --dbname postgres --user postgres -c 'CALL prom_api.execute_maintenance();'
 ```
 
-Create an other script with the below code snippet to the file `install-crontab.sh` This script will create a crontab for the above defined task:
+Create an other script with the below code snippet to the file install-crontab.sh and configure the absolute path to the above script. This script will create a crontab for the above defined task:
 
 ```
 #/bin/sh
-echo "0,30 * * * * ./prom-execute-maintenance.sh" | crontab -
+echo "0,30 * * * * /<ABSOLUTE_PATH>/prom-execute-maintenance.sh" | crontab -
 ```
 
 Then, grant executable privileges to both files:
