@@ -3,7 +3,6 @@ package planner
 import (
 	"context"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"go.uber.org/atomic"
 	"math"
 	"os"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/schollz/progressbar/v3"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
@@ -23,74 +23,69 @@ const (
 
 // Plan represents the plannings done by the planner.
 type Plan struct {
-	Mint               int64
-	Maxt               int64
-	readClient         *utils.Client // Used to fetch last maxt pushed from write storage.
-	jobName            string
-	progressMetricName string       // Name for progress metric.
-	blockCounts        atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
+	Mint                      int64
+	Maxt                      int64
+	JobName                   string
+	ProgressMetricName        string // Name for progress metric.
+	ProgressEnabled           bool
+	RemoteWriteStorageReadURL string
+	readClient                *utils.Client // Used to fetch last maxt pushed from write storage.
+	blockCounts               atomic.Int64  // Used in maintaining the ID of the in-memory blocks.
 	// Block time-range vars.
 	lastMaxT           int64
 	lastNumBytes       int
 	lastTimeRangeDelta int64
 	pbarMux            *sync.Mutex
-	isTest             bool
+	IsTest             bool
 }
 
-// CreatePlan creates an in-memory planner. It is responsible for fetching the last pushed maxt and based on that, updates
+// InitPlan creates an in-memory planner nad initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
 // the mint for the provided migration.
-func CreatePlan(mint, maxt int64, progressMetricName, jobName, remoteWriteStorageReadURL string, progressEnabled, isTest bool) (*Plan, bool, error) {
-	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", remoteWriteStorageReadURL, model.Duration(time.Minute*2))
+func Init(config *Plan) (bool, error) {
+	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", config.RemoteWriteStorageReadURL, model.Duration(time.Minute*2))
 	if err != nil {
-		return nil, false, fmt.Errorf("create last-pushed-maxt reader: %w", err)
+		return false, fmt.Errorf("create last-pushed-maxt reader: %w", err)
 	}
-	plan := &Plan{
-		Mint:               mint,
-		Maxt:               maxt,
-		readClient:         rc,
-		jobName:            jobName,
-		progressMetricName: progressMetricName,
-		pbarMux:            new(sync.Mutex),
-		isTest:             isTest,
+	config.readClient = rc
+	config.pbarMux = new(sync.Mutex)
+	config.blockCounts.Store(0)
+	if config.ProgressEnabled && config.RemoteWriteStorageReadURL == "" {
+		return false, fmt.Errorf("read url for remote-write storage should be provided when progress metric is enabled")
 	}
-	plan.blockCounts.Store(0)
-	if progressEnabled && remoteWriteStorageReadURL == "" {
-		return nil, false, fmt.Errorf("read url for remote-write storage should be provided when progress metric is enabled")
-	}
-	if !progressEnabled {
+	if !config.ProgressEnabled {
 		log.Info("msg", "Resuming from where we left off is turned off. Starting at the beginning of the provided time-range.")
 	}
 	var found bool
-	if remoteWriteStorageReadURL != "" && progressEnabled {
-		lastPushedMaxt, found, err := plan.fetchLastPushedMaxt()
+	if config.RemoteWriteStorageReadURL != "" && config.ProgressEnabled {
+		lastPushedMaxt, found, err := config.fetchLastPushedMaxt()
 		if err != nil {
-			return nil, false, fmt.Errorf("create plan: %w", err)
+			return false, fmt.Errorf("create plan: %w", err)
 		}
-		if found && lastPushedMaxt > plan.Mint && lastPushedMaxt <= plan.Maxt {
-			plan.Mint = lastPushedMaxt + 1
+		if found && lastPushedMaxt > config.Mint && lastPushedMaxt <= config.Maxt {
+			config.Mint = lastPushedMaxt + 1
 			log.Warn("msg", fmt.Sprintf("Resuming from where we left off. Last push was on %d. "+
-				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, plan.Mint, plan.Maxt, (plan.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
+				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, config.Mint, config.Maxt, (config.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
 		}
 	}
-	plan.lastMaxT = math.MinInt64
-	if plan.Mint > plan.Maxt {
-		return nil, false, fmt.Errorf("invalid: mint greater than maxt")
+	config.lastMaxT = math.MinInt64
+	if config.Mint > config.Maxt {
+		return false, fmt.Errorf("invalid: mint greater than maxt")
 	}
-	if plan.Mint == plan.Maxt && !found {
+	if config.Mint == config.Maxt && !found {
 		// progress_metric does not exists. This means that the migration is expected to be an instant query.
 		log.Info("msg", "mint equal to maxt. Considering this as instant query.")
-		return plan, true, nil
+		return true, nil
 	}
 
-	return plan, true, nil
+	return true, nil
 }
 
 // fetchLastPushedMaxt fetches the maxt of the last block pushed to remote-write storage. At present, this is developed
 // for a single migration job (i.e., not supporting multiple migration metrics and successive migrations).
 func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err error) {
 	query, err := utils.CreatePrombQuery(p.Mint, p.Maxt, []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, p.progressMetricName),
-		labels.MustNewMatcher(labels.MatchEqual, utils.LabelJob, p.jobName),
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, p.ProgressMetricName),
+		labels.MustNewMatcher(labels.MatchEqual, utils.LabelJob, p.JobName),
 	})
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
@@ -179,7 +174,7 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 		maxt:    maxt,
 		pbarMux: p.pbarMux,
 	}
-	if p.isTest {
+	if p.IsTest {
 		reference.pbar = nil
 		reference.pbarInitDetails = ""
 	}

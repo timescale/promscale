@@ -1,9 +1,11 @@
 package planner
 
 import (
-	"github.com/prometheus/prometheus/util/testutil"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/prometheus/prometheus/util/testutil"
 )
 
 func TestCreateBlock(t *testing.T) {
@@ -48,8 +50,9 @@ func TestCreateBlock(t *testing.T) {
 	mint := 100 * minute
 	maxt := 110 * minute
 	plan := &Plan{
-		Mint: mint,
-		Maxt: maxt,
+		Mint:    mint,
+		Maxt:    maxt,
+		pbarMux: new(sync.Mutex),
 	}
 
 	for _, c := range cases {

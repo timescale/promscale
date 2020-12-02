@@ -37,7 +37,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled, false)
+	planner := &plan.Plan{
+		Mint:    conf.mint,
+		Maxt:    conf.maxt,
+		JobName: conf.name,
+		// Progress metric configs.
+		ProgressMetricName:        conf.progressMetricName,
+		ProgressEnabled:           conf.progressEnabled,
+		RemoteWriteStorageReadURL: conf.writerReadURL,
+	}
+	proceed, err := plan.Init(planner)
 	if err != nil {
 		log.Error("msg", "could not create plan", "error", err)
 		os.Exit(2)
