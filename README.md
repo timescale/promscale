@@ -41,8 +41,8 @@ If you have any questions, please join the #promscale channel on
 * **[Installation](#-choose-your-own-installation-adventure)**
   * [The Observability Suite for Kubernetes][tobs]
   * [Docker](docs/docker.md)
-  * [Binaries](docs/binary.md)
-  * [Source](docs/binary.md#building-from-source)
+  * [Binaries](docs/getting-started.md)
+  * [Source](docs/getting-started.md#building-from-source)
   * [Helm](helm-chart/README.md)
 * **[Analyzing Data Using SQL](docs/sql_schema.md)**
   * [Data Model](docs/sql_schema.md#data-model-schema)
@@ -127,9 +127,9 @@ Instructions on how to use our docker images are available [here](docs/docker.md
 #### 🔟 Binaries
 
 We have [pre-packaged binaries](https://github.com/timescale/promscale/releases) available for MacOS and Linux on both the x86_64 and i386 architectures.
-Instructions on how to use our prepackaged binaries are available [here](docs/binary.md).
+Instructions on how to use our prepackaged binaries are available [here](docs/getting-started.md).
 
-You can also [build binaries from source](docs/binary.md#building-from-source).
+You can also [build binaries from source](docs/getting-started.md#building-from-source).
 
 #### ⎈ Helm (sub)chart for Promscale Connector only
 
