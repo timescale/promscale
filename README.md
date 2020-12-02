@@ -21,9 +21,9 @@ PromQL, this platform empowers the user to ask complex analytical
 queries from their metrics data, and thus extract more meaningful
 insights.
 
-✅  Promscale is currently the only long-term store for Prometheus data to have received a
-[100% compliance test score](https://promlabs.com/promql-compliance-test-results-timescaledb)
-(with no cross-cutting concerns) from PromLab's
+✅  Promscale has consistently been one of the only long-term stores for Prometheus data that continue to maintain its top-performance, receiving
+[100% compliance test score](https://promlabs.com/promql-compliance-test-results/2020-12-01/promscale)
+each time (with no cross-cutting concerns) from PromLab's
 [PromQL Compliance Test Suite](https://promlabs.com/promql-compliance-tests/).
 
 For a detailed description of this architecture, please see [our design

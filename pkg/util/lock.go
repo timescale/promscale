@@ -46,7 +46,8 @@ func GetSharedLease(ctx context.Context, conn *pgx.Conn, id int64) error {
 // Recommended architecture when using PgLeaderLock is to have one adapter instance for one Prometheus instance.
 type PgLeaderLock struct {
 	PgAdvisoryLock
-	obtained bool
+	obtained        bool
+	numLockAttempts int
 }
 
 type AfterConnectFunc = func(ctx context.Context, conn *pgx.Conn) error
@@ -62,8 +63,9 @@ func NewPgLeaderLock(groupLockID int64, connStr string, afterConnect AfterConnec
 			afterConnect: afterConnect,
 		},
 		false,
+		0,
 	}
-	_, err := lock.TryLock()
+	_, err := lock.tryLock()
 	if err != nil {
 		return nil, err
 	}
@@ -77,75 +79,89 @@ func (l *PgLeaderLock) ID() string {
 
 // BecomeLeader tries to become a leader by acquiring the lock.
 func (l *PgLeaderLock) BecomeLeader() (bool, error) {
-	return l.TryLock()
+	return l.tryLock()
 }
 
 // IsLeader returns the current leader status for this instance.
 func (l *PgLeaderLock) IsLeader() (bool, error) {
-	return l.TryLock()
+	return l.tryLock()
 }
 
-// TryLock tries to obtain the lock if its not already the leader. In the case
+// Resign releases the leader status of this instance.
+func (l *PgLeaderLock) Resign() error {
+	log.Info("msg", "Resigning as the leader (will no longer be writing)", "component", "leader_election", "status", "follower", "group_id", l.groupLockID)
+	return l.release()
+}
+
+// tryLock tries to obtain the lock if its not already the leader. In the case
 // that it is the leader, it verifies the connection to make sure the lock hasn't
 // been already lost.
-func (l *PgLeaderLock) TryLock() (bool, error) {
+func (l *PgLeaderLock) tryLock() (bool, error) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+	defer func() { l.numLockAttempts++ }()
 
 	if l.obtained && l.conn != nil {
 		// we already hold the lock verify the connection
 		err := l.conn.QueryRow(context.Background(), "SELECT").Scan()
 		if err != nil {
+			l.obtained = false
+			l.connCleanUp()
 			return false, err
 		}
 		return true, nil
 	}
 
 	gotLock, err := l.getAdvisoryLock()
-
-	if !gotLock || err != nil {
+	if err != nil {
 		l.obtained = false
 		l.connCleanUp()
 		return false, err
 	}
 
+	if !gotLock {
+		if l.numLockAttempts == 0 {
+			log.Info("msg", "I am starting as a follower (will not be writing until I become the leader)", "component", "leader_election", "status", "follower", "group_id", l.groupLockID)
+		} else if l.obtained {
+			log.Info("msg", "I have lost the leader lock and am now a follower (will not be writing)", "component", "leader_election", "status", "follower", "group_id", l.groupLockID)
+		}
+		l.obtained = false
+		return false, nil
+	}
+
 	if !l.obtained {
 		l.obtained = true
-		log.Debug("msg", fmt.Sprintf("Lock obtained for group id %d", l.groupLockID))
+		log.Info("msg", "I have become the leader (starting to write incoming data)", "component", "leader_election", "status", "leader", "group_id", l.groupLockID)
 	}
 
 	return true, nil
 }
 
-// Resign releases the leader status of this instance.
-func (l *PgLeaderLock) Resign() error {
-	return l.Release()
-}
-
 // Locked returns if the instance was able to obtain the locks.
-func (l *PgLeaderLock) Locked() bool {
+// Does NOT verify the lock.
+func (l *PgLeaderLock) locked() bool {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
 	return l.obtained
 }
 
 // Release releases the already obtained locks.
-func (l *PgLeaderLock) Release() error {
+func (l *PgLeaderLock) release() error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	defer l.connCleanUp()
+
 	if !l.obtained {
 		return fmt.Errorf("can't release while not holding the lock")
 	}
-
 	defer func() { l.obtained = false }()
 
 	unlocked, err := l.unlock()
 	if err != nil {
+		l.connCleanUp()
 		return err
 	}
 	if !unlocked {
-		log.Debug("msg", fmt.Sprintf("false release for group id %d", l.groupLockID))
+		log.Debug("msg", fmt.Sprintf("release for a lock that was not held: group id %d", l.groupLockID))
 	}
 
 	return nil

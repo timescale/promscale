@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.14.1-alpine AS builder
+FROM golang:1.15.4-alpine AS builder
 COPY ./.git promscale/.git
 COPY ./pkg promscale/pkg
 COPY ./cmd promscale/cmd

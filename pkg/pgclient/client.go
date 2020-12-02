@@ -35,6 +35,7 @@ type Config struct {
 	SeriesCacheSize         uint64
 	WriteConnectionsPerProc int
 	MaxConnections          int
+	UsesHA                  bool
 }
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -64,6 +65,7 @@ type Client struct {
 	cfg           *Config
 	ConnectionStr string
 	metricCache   *pgmodel.MetricNameCache
+	closePool     bool
 }
 
 // Post connect validation function, useful for things such as acquiring locks
@@ -94,7 +96,12 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 		return nil, err
 	}
 
-	return NewClientWithPool(cfg, numCopiers, connectionPool)
+	client, err := NewClientWithPool(cfg, numCopiers, connectionPool)
+	if err != nil {
+		return client, err
+	}
+	client.closePool = true
+	return client, err
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
@@ -160,6 +167,12 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 			log.Warn("err", err, "msg", "invalid value from postgres max_connections")
 			max = 100
 		}
+
+		//In HA setups
+		if cfg.UsesHA {
+			max = max / 2
+		}
+
 		if max <= 1 {
 			log.Warn("msg", "database can only handle 1 connection")
 			return 1, 1, 1, nil
@@ -194,7 +207,9 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 func (c *Client) Close() {
 	log.Info("msg", "Shutting down Client")
 	c.ingestor.Close()
-	c.Connection.Close()
+	if c.closePool {
+		c.Connection.Close()
+	}
 }
 
 // Ingest writes the timeseries object into the DB

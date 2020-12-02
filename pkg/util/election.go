@@ -78,6 +78,12 @@ type ScheduledElector struct {
 // NewScheduledElector is the constructor
 func NewScheduledElector(election Election, electionInterval time.Duration) *ScheduledElector {
 	scheduledElector := &ScheduledElector{Elector: Elector{election}, ticker: time.NewTicker(electionInterval)}
+	leader := scheduledElector.elect()
+	if leader {
+		log.Info("msg", "leader election started: acting as leader")
+	} else {
+		log.Info("msg", "leader election started: acting as follower (will not write until I become leader)")
+	}
 	go scheduledElector.scheduledElection()
 	return scheduledElector
 }

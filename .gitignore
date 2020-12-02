@@ -1,5 +1,6 @@
 *~
 /promscale*
+/dist
 /vendor
 /version.properties
 /.target_os

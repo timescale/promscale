@@ -113,12 +113,12 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 			return
 		}
 
-		router, err := buildRouter(readOnly)
-
+		router, pgClient, err := buildRouter(readOnly)
 		if err != nil {
 			t.Fatalf("Cannot run test, error building router: %s", err)
 			return
 		}
+		defer pgClient.Close()
 
 		ts := httptest.NewServer(router)
 		defer ts.Close()

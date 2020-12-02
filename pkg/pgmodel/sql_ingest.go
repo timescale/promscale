@@ -26,8 +26,10 @@ import (
 const (
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
 	finalizeMetricCreation   = "CALL " + catalogSchema + ".finalize_metric_creation()"
+	needsCompressionEnable   = "SELECT " + catalogSchema + ".needs_compression_enable()"
 	getSeriesIDForLabelSQL   = "SELECT * FROM " + catalogSchema + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
 	getEpochSQL              = "SELECT current_epoch FROM " + catalogSchema + ".ids_epoch LIMIT 1"
+	maxCopyRequestsPerTxn    = 100
 )
 
 type Cfg struct {
@@ -72,7 +74,7 @@ func newPgxInserter(conn pgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, er
 	// single channel. This should offer a decent compromise between batching
 	// and balancing: if an inserter is awake and has little work, it'll be more
 	// likely to win the race, while one that's busy or asleep won't.
-	toCopiers := make(chan copyRequest, numCopiers)
+	toCopiers := make(chan copyRequest, numCopiers*maxCopyRequestsPerTxn)
 	for i := 0; i < numCopiers; i++ {
 		go runInserter(conn, toCopiers)
 	}
@@ -119,7 +121,25 @@ type pgxInserter struct {
 }
 
 func (p *pgxInserter) CompleteMetricCreation() error {
-	_, err := p.conn.Exec(
+	var tables []string
+	err := p.conn.QueryRow(context.Background(), needsCompressionEnable).Scan(&tables)
+	if err != nil {
+		return err
+	}
+	for _, table := range tables {
+		_, err = p.conn.Exec(
+			context.Background(),
+			fmt.Sprintf("ALTER TABLE prom_data.%s SET ("+
+				"timescaledb.compress,"+
+				"timescaledb.compress_segmentby = 'series_id',"+
+				"timescaledb.compress_orderby = 'time, value')",
+				table),
+		)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = p.conn.Exec(
 		context.Background(),
 		finalizeMetricCreation,
 	)
@@ -524,6 +544,8 @@ func (h *insertHandler) flushPending() {
 	_, epoch, err := h.setSeriesIds(h.pending.batch.sampleInfos)
 	if err != nil {
 		h.pending.reportResults(err)
+		h.pending.release()
+		h.pending = pendingBuffers.Get().(*pendingBuffer)
 		return
 	}
 
@@ -539,30 +561,114 @@ func runInserter(conn pgxConn, in chan copyRequest) {
 	// We grab copyRequests off the channel one at a time. This, and the name is
 	// a legacy from when we used CopyFrom to perform the insetions, and may
 	// change in the future.
+	insertBatch := make([]copyRequest, 0, maxCopyRequestsPerTxn)
 	for {
-		req, ok := <-in
+		var ok bool
+		insertBatch, ok = inserterGetBatch(insertBatch, in)
 		if !ok {
 			return
 		}
-		err := doInsert(conn, req)
+
+		// sort to prevent deadlocks
+		sort.Slice(insertBatch, func(i, j int) bool {
+			return insertBatch[i].table < insertBatch[j].table
+		})
+
+		//merge tables to prevent deadlocks (on row order) and for efficiency
+
+		// invariant: there's a gap-free prefix containing data we want to insert
+		//            in table order, Following this is a gap which once contained
+		//            batches we compacted away, following this is the
+		//            uncompacted data.
+		dst := 0
+		for src := 1; src < len(insertBatch); src++ {
+			if insertBatch[dst].table == insertBatch[src].table {
+				insertBatch[dst].data.absorb(insertBatch[src].data)
+				insertBatch[src].data.release()
+				insertBatch[src] = copyRequest{}
+			} else {
+				dst++
+				if dst != src {
+					insertBatch[dst] = insertBatch[src]
+					insertBatch[src] = copyRequest{}
+				}
+			}
+		}
+		insertBatch = insertBatch[:dst+1]
+
+		doInsertOrFallback(conn, insertBatch...)
+		for i := range insertBatch {
+			insertBatch[i] = copyRequest{}
+		}
+		insertBatch = insertBatch[:0]
+	}
+}
+
+var getBatchMutex = &sync.Mutex{}
+
+func inserterGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, bool) {
+	//This mutex is not for safety, but rather for better batching.
+	//It guarantees that only one copier is reading from the channel at one time
+	//This ensures bigger batches as well as less spread of a
+	//single http request to multiple copiers, decreasing latency via less sync
+	//overhead especially on low-pressure systems.
+	getBatchMutex.Lock()
+	defer getBatchMutex.Unlock()
+	req, ok := <-in
+	if !ok {
+		return batch, false
+	}
+	batch = append(batch, req)
+
+	//we use a small timeout to prevent low-pressure systems from using up too many
+	//txns and putting pressure on system
+	timeout := time.After(20 * time.Millisecond)
+hot_gather:
+	for len(batch) < cap(batch) {
+		select {
+		case r2 := <-in:
+			batch = append(batch, r2)
+		case <-timeout:
+			break hot_gather
+		}
+	}
+	return batch, true
+}
+
+func doInsertOrFallback(conn pgxConn, reqs ...copyRequest) {
+	err := doInsert(conn, reqs...)
+	if err != nil {
+		insertBatchErrorFallback(conn, reqs...)
+		return
+	}
+
+	for i := range reqs {
+		reqs[i].data.reportResults(nil)
+		reqs[i].data.release()
+	}
+}
+
+func insertBatchErrorFallback(conn pgxConn, reqs ...copyRequest) {
+	for i := range reqs {
+		reqs[i].data.batch.ResetPosition()
+		err := doInsert(conn, reqs[i])
 		if err != nil {
-			err = insertErrorFallback(conn, req, err)
+			err = insertErrorFallback(conn, err, reqs[i])
 		}
 
-		req.data.reportResults(err)
-		pendingBuffers.Put(req.data)
+		reqs[i].data.reportResults(err)
+		reqs[i].data.release()
 	}
 }
 
 // certain errors are recoverable, handle those we can
 //   1. if the table is compressed, decompress and retry the insertion
-func insertErrorFallback(conn pgxConn, req copyRequest, err error) error {
-	err = tryRecovery(conn, req, err)
+func insertErrorFallback(conn pgxConn, err error, req copyRequest) error {
+	err = tryRecovery(conn, err, req)
 	if err != nil {
-		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "err", err.Error())
+		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
 		return err
 	}
-
 	return doInsert(conn, req)
 }
 
@@ -570,7 +676,7 @@ func insertErrorFallback(conn pgxConn, req copyRequest, err error) error {
 // If we inserted into a compressed chunk, we decompress the chunk and try again.
 // Since a single batch can have both errors, we need to remember the insert method
 // we're using, so that we deduplicate if needed.
-func tryRecovery(conn pgxConn, req copyRequest, err error) error {
+func tryRecovery(conn pgxConn, err error, req copyRequest) error {
 	// we only recover from postgres errors right now
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
@@ -594,70 +700,102 @@ func tryRecovery(conn pgxConn, req copyRequest, err error) error {
 	return err
 }
 
-// Perform the actual insertion into the DB.
-func doInsert(conn pgxConn, req copyRequest) (err error) {
-	numRows := 0
-	for i := range req.data.batch.sampleInfos {
-		numRows += len(req.data.batch.sampleInfos[i].samples)
-	}
-	// flatten the various series into arrays.
-	// there are four main bottlenecks for insertion:
-	//   1. The round trip time.
-	//   2. The number of requests sent.
-	//   3. The number of individual INSERT statements.
-	//   4. The amount of data sent.
-	// While the first two of these can be handled by batching, for the latter
-	// two we need to actually reduce the work done. It turns out that simply
-	// collecting all the data into a postgres array and performing a single
-	// INSERT using that overcomes most of the performance issues for sending
-	// multiple data, and brings INSERT nearly on par with CopyFrom. In the
-	// future we may wish to send compressed data instead.
-	times := make([]time.Time, 0, numRows)
-	vals := make([]float64, 0, numRows)
-	series := make([]int64, 0, numRows)
-	for req.data.batch.Next() {
-		time, val, serie := req.data.batch.Values()
-		times = append(times, time)
-		vals = append(vals, val)
-		series = append(series, int64(serie))
-	}
-	if len(times) != numRows {
-		panic("invalid insert request")
-	}
+/*
+Useful output for debugging batching issues
+func debugInsert() {
+	m := &dto.Metric{}
+	dbBatchInsertDuration.Write(m)
+	durs := time.Duration(*m.Histogram.SampleSum * float64(time.Second))
+	cnt := *m.Histogram.SampleCount
+	numRowsPerBatch.Write(m)
+	rows := *m.Histogram.SampleSum
+	numInsertsPerBatch.Write(m)
+	inserts := *m.Histogram.SampleSum
 
+	fmt.Println("avg:  duration/row", durs/time.Duration(rows), "rows/batch", uint64(rows)/cnt, "inserts/batch", uint64(inserts)/cnt, "rows/insert", rows/inserts)
+}
+*/
+
+// Perform the actual insertion into the DB.
+func doInsert(conn pgxConn, reqs ...copyRequest) (err error) {
 	batch := conn.NewBatch()
+	lowestEpoch := reqs[0].data.epoch
+	for _, req := range reqs {
+		if req.data.epoch < lowestEpoch {
+			lowestEpoch = req.data.epoch
+		}
+	}
 
 	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", catalogSchema, catalogSchema)
-	batch.Queue(epochCheck, req.data.epoch)
+	batch.Queue(epochCheck, lowestEpoch)
 
-	dataInsert := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
-	batch.Queue(dataInsert, times, vals, series)
-
-	var ct pgconn.CommandTag
-	var res pgx.BatchResults
-	res, err = conn.SendBatch(context.Background(), batch)
-	if err != nil {
-		return
+	numRowsPerInsert := make([]int, 0, len(reqs))
+	numRowsTotal := 0
+	for r := range reqs {
+		req := &reqs[r]
+		numRows := 0
+		for i := range req.data.batch.sampleInfos {
+			numRows += len(req.data.batch.sampleInfos[i].samples)
+		}
+		// flatten the various series into arrays.
+		// there are four main bottlenecks for insertion:
+		//   1. The round trip time.
+		//   2. The number of requests sent.
+		//   3. The number of individual INSERT statements.
+		//   4. The amount of data sent.
+		// While the first two of these can be handled by batching, for the latter
+		// two we need to actually reduce the work done. It turns out that simply
+		// collecting all the data into a postgres array and performing a single
+		// INSERT using that overcomes most of the performance issues for sending
+		// multiple data, and brings INSERT nearly on par with CopyFrom. In the
+		// future we may wish to send compressed data instead.
+		times := make([]time.Time, 0, numRows)
+		vals := make([]float64, 0, numRows)
+		series := make([]int64, 0, numRows)
+		for req.data.batch.Next() {
+			time, val, serie := req.data.batch.Values()
+			times = append(times, time)
+			vals = append(vals, val)
+			series = append(series, int64(serie))
+		}
+		if len(times) != numRows {
+			panic("invalid insert request")
+		}
+		numRowsTotal += numRows
+		numRowsPerInsert = append(numRowsPerInsert, numRows)
+		queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
+		batch.Queue(queryString, times, vals, series)
 	}
-	defer func() { _ = res.Close() }()
+
+	numRowsPerBatch.Observe(float64(numRowsTotal))
+	numInsertsPerBatch.Observe(float64(len(reqs)))
+	start := time.Now()
+	results, err := conn.SendBatch(context.Background(), batch)
+	if err != nil {
+		return err
+	}
+	defer results.Close()
 
 	var val []byte
-	row := res.QueryRow()
+	row := results.QueryRow()
 	err = row.Scan(&val)
 	if err != nil {
-		return
+		return err
 	}
 
-	ct, err = res.Exec()
-	if err != nil {
-		return
+	for i, numRows := range numRowsPerInsert {
+		ct, err := results.Exec()
+		if err != nil {
+			return err
+		}
+		if int64(numRows) != ct.RowsAffected() {
+			log.Warn("msg", "duplicate data in sample", "table", reqs[i].table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
+			duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
+			duplicateWrites.Inc()
+		}
 	}
+	dbBatchInsertDuration.Observe(time.Since(start).Seconds())
 
-	if int64(numRows) != ct.RowsAffected() {
-		log.Warn("msg", "duplicate data in sample", "table", req.table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
-		duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
-		duplicateWrites.Inc()
-	}
 	return nil
 }
 
@@ -701,6 +839,11 @@ func decompressChunks(conn pgxConn, pending *pendingBuffer, table string) error 
 func (pending *pendingBuffer) reportResults(err error) {
 	for i := 0; i < len(pending.needsResponse); i++ {
 		pending.needsResponse[i].reportResult(err)
+	}
+}
+
+func (pending *pendingBuffer) release() {
+	for i := 0; i < len(pending.needsResponse); i++ {
 		pending.needsResponse[i] = insertDataTask{}
 	}
 	pending.needsResponse = pending.needsResponse[:0]
@@ -712,6 +855,7 @@ func (pending *pendingBuffer) reportResults(err error) {
 	pending.batch = SampleInfoIterator{sampleInfos: pending.batch.sampleInfos[:0]}
 	pending.batch.ResetPosition()
 	pending.epoch = -1
+	pendingBuffers.Put(pending)
 }
 
 // Set all seriesIds for a samplesInfo, fetching any missing ones from the DB,
@@ -872,4 +1016,10 @@ func (p *pendingBuffer) addEpoch(epoch Epoch) {
 	if p.epoch == -1 || epoch < p.epoch {
 		p.epoch = epoch
 	}
+}
+
+func (p *pendingBuffer) absorb(other *pendingBuffer) {
+	p.addEpoch(other.epoch)
+	p.needsResponse = append(p.needsResponse, other.needsResponse...)
+	p.batch.sampleInfos = append(p.batch.sampleInfos, other.batch.sampleInfos...)
 }

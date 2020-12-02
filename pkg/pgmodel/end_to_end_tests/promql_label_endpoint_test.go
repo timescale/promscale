@@ -58,6 +58,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		if *extendedTest {
 			dataset = append(dataset, generateRealTimeseries()...)
 		}
+
 		ingestQueryTestDataset(db, t, dataset)
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
@@ -70,12 +71,12 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 			return
 		}
 
-		router, err := buildRouter(readOnly)
-
+		router, pgClient, err := buildRouter(readOnly)
 		if err != nil {
 			t.Fatalf("Cannot run test, unable to build router: %s", err)
 			return
 		}
+		defer pgClient.Close()
 
 		ts := httptest.NewServer(router)
 		defer ts.Close()
