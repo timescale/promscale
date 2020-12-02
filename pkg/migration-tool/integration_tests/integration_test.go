@@ -2,7 +2,6 @@ package integration_tests
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -40,7 +39,17 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	}
 
 	// Replicate main.
-	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled, true)
+	planner := &plan.Plan{
+		Mint:    conf.mint,
+		Maxt:    conf.maxt,
+		JobName: conf.name,
+		// Progress metric configs.
+		ProgressMetricName:        conf.progressMetricName,
+		ProgressEnabled:           conf.progressEnabled,
+		RemoteWriteStorageReadURL: conf.writerReadURL,
+		IsTest:                    true,
+	}
+	proceed, err := plan.Init(planner)
 	if err != nil {
 		t.Fatal("msg", "could not create plan", "error", err.Error())
 	}
@@ -95,7 +104,6 @@ loop:
 	if remoteWriteStorage.SamplesProgress() != int(write.Blocks()) {
 		t.Fatalf("progress-metric samples count do not match the number of blocks created")
 	}
-	fmt.Println("blocks are", write.Blocks())
 }
 
 func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
@@ -125,7 +133,17 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	}
 
 	// Replicate main.
-	planner, proceed, err := plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled, true)
+	planner := &plan.Plan{
+		Mint:    conf.mint,
+		Maxt:    conf.maxt,
+		JobName: conf.name,
+		// Progress metric configs.
+		ProgressMetricName:        conf.progressMetricName,
+		ProgressEnabled:           conf.progressEnabled,
+		RemoteWriteStorageReadURL: conf.writerReadURL,
+		IsTest:                    true,
+	}
+	proceed, err := plan.Init(planner)
 	if err != nil {
 		t.Fatal("msg", "could not create plan", "error", err.Error())
 	}
@@ -155,9 +173,10 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	time.Sleep(time.Millisecond * 100)
 	read.SigForceStop <- struct{}{}
 	time.Sleep(time.Millisecond * 100)
+	cancelFunc()
 	previousWriteBlocks := write.Blocks()
 
-	planner, proceed, err = plan.CreatePlan(conf.mint, conf.maxt, conf.progressMetricName, conf.name, conf.writerReadURL, conf.progressEnabled, true)
+	proceed, err = plan.Init(planner)
 	if err != nil {
 		t.Fatal("msg", "could not create plan", "error", err.Error())
 	}
@@ -165,7 +184,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		t.Fatal("could not proceed")
 	}
 
-	readErrChan  = make(chan error)
+	readErrChan = make(chan error)
 	writeErrChan = make(chan error)
 	sigBlockRead = make(chan *plan.Block)
 
@@ -204,11 +223,11 @@ loop:
 		t.Fatalf("read-storage series and write-storage series do not match: read-storage series: %d and write-storage series: %d", remoteReadStorage.Series(), remoteWriteStorage.Series()-1)
 	}
 	// Verify net samples count.
-	if remoteReadStorage.Samples() != remoteWriteStorage.Samples()-int(write.Blocks() + previousWriteBlocks) {
-		t.Fatalf("read-storage samples and write-storage samples do not match: read-storage samples: %d and write-storage samples: %d", remoteReadStorage.Samples(), remoteWriteStorage.Samples()-int(write.Blocks() + previousWriteBlocks))
+	if remoteReadStorage.Samples() != remoteWriteStorage.Samples()-int(write.Blocks()+previousWriteBlocks) {
+		t.Fatalf("read-storage samples and write-storage samples do not match: read-storage samples: %d and write-storage samples: %d", remoteReadStorage.Samples(), remoteWriteStorage.Samples()-int(write.Blocks()+previousWriteBlocks))
 	}
 	// Verify the progress metric samples count.
-	if remoteWriteStorage.SamplesProgress() != int(write.Blocks()) {
-		t.Fatalf("progress-metric samples count do not match the number of blocks created")
+	if remoteWriteStorage.SamplesProgress() != int(write.Blocks()+previousWriteBlocks) {
+		t.Fatalf("progress-metric samples count do not match the number of blocks created: progress metric samples: %d and write blocks: %d", remoteWriteStorage.SamplesProgress(), write.Blocks())
 	}
 }

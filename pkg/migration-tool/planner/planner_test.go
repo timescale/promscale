@@ -184,7 +184,8 @@ func TestNumBlockCreation(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		plan, _, err := CreatePlan(c.startT, c.endT, "", "", "", false, true)
+		planConfig := &Plan{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, IsTest: true}
+		_, err := Init(planConfig)
 		if c.fails {
 			testutil.NotOk(t, err)
 			continue
@@ -192,11 +193,11 @@ func TestNumBlockCreation(t *testing.T) {
 		testutil.Ok(t, err)
 		blockCount := 0
 		bytesPrev := 0
-		for plan.ShouldProceed() {
-			_, err, _ = plan.NextBlock()
+		for planConfig.ShouldProceed() {
+			_, err, _ = planConfig.NextBlock()
 			// Assume fetching happened here.
 			bytesPrev += c.bytesIncrement
-			plan.Update(bytesPrev)
+			planConfig.Update(bytesPrev)
 			if bytesPrev > ResponseDataSizeHalfLimit {
 				// In ideal condition, the drop in time range will drop the size by the same amount.
 				bytesPrev /= 2
