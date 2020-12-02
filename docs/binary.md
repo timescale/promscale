@@ -39,20 +39,9 @@ procedure on a regular basis (e.g. via cron). We recommend executing it every
 30 minutes. This is necessary to execute maintenance tasks such as enforcing
 data retention policies according to the configured policy.
 
-Add the below code snippet to the file `prom-execute-maintenance.sh` and add the database password in place of `<PASSWORD>`:
+Copy the code snippet from the file [docs/scripts/prom-execute-maintenance.sh](/docs/scripts/prom-execute-maintenance.sh) and add the database password in place of `<PASSWORD>`.
 
-```
-#/bin/sh
-export PGPASSWORD=<PASSWORD>
-psql --host localhost --port 5432 --dbname postgres --user postgres -c 'CALL prom_api.execute_maintenance();'
-```
-
-Create an other script with the below code snippet to the file install-crontab.sh and configure the absolute path to the above script. This script will create a crontab for the above defined task:
-
-```
-#/bin/sh
-echo "0,30 * * * * /<ABSOLUTE_PATH>/prom-execute-maintenance.sh" | crontab -
-```
+Create an other script with the code snippet from the file [docs/scripts/install-crontab.sh](/docs/scripts/install-crontab.sh) and make sure to configure the absolute path to `prom-execute-maintenance.sh` in the script. This script will create a crontab for the above defined task.
 
 Then, grant executable privileges to both files:
 
