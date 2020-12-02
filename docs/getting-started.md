@@ -3,9 +3,9 @@
 ## 🔧 Installing pre-built binaries
 
 You can download pre-built binaries for the Promscale
-Connector [on our release page](https://github.com/timescale/promscale/releases).
+Connector [from our release page](https://github.com/timescale/promscale/releases).
 
-Downlaod Promscale
+Download Promscale
 
 ```
 curl -L -o promscale https://github.com/timescale/promscale/releases/download/<VERSION>/<PROMSCALE_DISTRIBUTION>
