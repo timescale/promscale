@@ -1,5 +1,5 @@
 build:
-	go build -o bin/promscale ./cmd/promscale
+	go build -o dist/promscale ./cmd/promscale
 
 test:
 	go test -v -race ./...
