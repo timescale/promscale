@@ -134,6 +134,7 @@ func getProgressHandler(t *testing.T, rws *remoteWriteServer, labels string) htt
 		startTs := req.Queries[0].StartTimestampMs
 		endTs := req.Queries[0].EndTimestampMs
 		ts := make([]*prompb.TimeSeries, 1) // Since the response is going to be the number of time-series.
+		ts[0] = new(prompb.TimeSeries)
 		serie, ok := rws.writeStorageTimeSeries[labels]
 		if ok {
 			for _, s := range serie.Samples {
@@ -141,8 +142,8 @@ func getProgressHandler(t *testing.T, rws *remoteWriteServer, labels string) htt
 					ts[0].Samples = append(ts[0].Samples, s)
 				}
 			}
-			ts[0].Labels = serie.Labels
 		}
+		ts[0].Labels = serie.Labels
 		if len(resp.Results) == 0 {
 			t.Fatal("queries num is 0")
 		}
