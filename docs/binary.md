@@ -50,7 +50,7 @@ chmod +x prom-execute-maintenance.sh
 chmod +x install-crontab.sh
 ```
 
-Running compress crontab:
+Install the cron job:
 
 ```
 ./install-crontab.sh
