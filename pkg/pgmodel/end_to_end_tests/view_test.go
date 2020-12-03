@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"strings"
 	"testing"
 
@@ -144,7 +145,7 @@ func TestSQLView(t *testing.T) {
 			},
 		}
 
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +244,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 		}
 
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}

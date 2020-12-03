@@ -3,10 +3,10 @@ package pgmodel
 import (
 	"context"
 	"fmt"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"time"
 
-	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -20,7 +20,7 @@ var (
 
 // PgDelete deletes the series based on matchers.
 type PgDelete struct {
-	Conn *pgxpool.Pool
+	Conn pgxconn.PgxConn
 }
 
 // DeleteSeries deletes the series that matches the provided label_matchers.

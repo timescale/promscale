@@ -13,7 +13,6 @@ require (
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/snappy v0.0.2
-	github.com/grpc-ecosystem/grpc-gateway v1.15.0
 	github.com/jackc/pgconn v1.6.3
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
 	github.com/jackc/pgproto3/v2 v2.0.2
@@ -35,7 +34,5 @@ require (
 	go.uber.org/goleak v1.1.10
 	golang.org/x/sys v0.0.0-20201126233918-771906719818 // indirect
 	golang.org/x/tools v0.0.0-20201125231158-b5590deeca9b // indirect
-	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
-	google.golang.org/grpc v1.32.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )

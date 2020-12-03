@@ -3,6 +3,8 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/clockcache"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"testing"
 	"time"
@@ -16,16 +18,11 @@ import (
 	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
-func getSingleSampleValue(t testing.TB, resp *prompb.ReadResponse) float64 {
-	res := resp.GetResults()
-	if len(res) != 1 {
-		t.Fatal("Expect one result")
-	}
-	ts := res[0].GetTimeseries()
-	if len(ts) != 1 {
+func getSingleSampleValue(t testing.TB, resp []*prompb.TimeSeries) float64 {
+	if len(resp) != 1 {
 		t.Fatal("Expect one timeseries")
 	}
-	samples := ts[0].GetSamples()
+	samples := resp[0].GetSamples()
 	if len(samples) != 1 {
 		t.Fatal("Expect one sample")
 	}
@@ -68,7 +65,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			},
 		}
 
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,52 +85,42 @@ func TestSQLStaleNaN(t *testing.T) {
 		}
 
 		query := []struct {
-			rrq        prompb.ReadRequest
+			query      *prompb.Query
 			isNaN      bool
 			isStaleNaN bool
 		}{
 			{
 				isStaleNaN: true,
-				rrq: prompb.ReadRequest{
-					Queries: []*prompb.Query{
-						{
-							Matchers:         matchers,
-							StartTimestampMs: 19,
-							EndTimestampMs:   21,
-						},
-					},
+				query: &prompb.Query{
+					Matchers:         matchers,
+					StartTimestampMs: 19,
+					EndTimestampMs:   21,
 				},
 			},
 			{
 				isNaN: true,
-				rrq: prompb.ReadRequest{
-					Queries: []*prompb.Query{
-						{
-							Matchers:         matchers,
-							StartTimestampMs: 29,
-							EndTimestampMs:   31,
-						},
-					},
+				query: &prompb.Query{
+					Matchers:         matchers,
+					StartTimestampMs: 29,
+					EndTimestampMs:   31,
 				},
 			},
 			{
-				rrq: prompb.ReadRequest{
-					Queries: []*prompb.Query{
-						{
-							Matchers:         matchers,
-							StartTimestampMs: 39,
-							EndTimestampMs:   41,
-						},
-					},
+				query: &prompb.Query{
+					Matchers:         matchers,
+					StartTimestampMs: 39,
+					EndTimestampMs:   41,
 				},
 			},
 		}
 
 		for _, c := range query {
-			r := NewPgxReader(db, nil, 100)
-			resp, err := r.Read(&c.rrq)
-			startMs := c.rrq.Queries[0].StartTimestampMs
-			endMs := c.rrq.Queries[0].EndTimestampMs
+			mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+			lCache := clockcache.WithMax(100)
+			r := NewQuerierWithCaches(pgxconn.NewPgxConn(db), mCache, lCache)
+			resp, err := r.Query(c.query)
+			startMs := c.query.StartTimestampMs
+			endMs := c.query.EndTimestampMs
 			timeClause := "time >= 'epoch'::timestamptz + $1 AND time <= 'epoch'::timestamptz + $2"
 
 			if err != nil {

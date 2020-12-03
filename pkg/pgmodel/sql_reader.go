@@ -7,18 +7,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"sort"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -30,26 +28,16 @@ const (
 	getLabelsSQL       = "SELECT (labels_info($1::int[])).*"
 )
 
-// NewPgxReaderWithMetricCache returns a new DBReader that reads from PostgreSQL using PGX
-// and caches metric table names using the supplied cacher.
-func NewPgxReaderWithMetricCache(c *pgxpool.Pool, cache MetricCache, labelsCacheSize uint64) *DBReader {
+// NewQuerierWithCaches returns a new pgxQuerier that reads from PostgreSQL using PGX
+// and caches metric table names, and label sets using the supplied caches.
+func NewQuerierWithCaches(conn pgxconn.PgxConn, metricCache MetricCache, labelsCache LabelsCache) Querier {
 	pi := &pgxQuerier{
-		conn: &pgxConnImpl{
-			conn: c,
-		},
-		metricTableNames: cache,
-		labels:           clockcache.WithMax(labelsCacheSize),
+		conn:             conn,
+		metricTableNames: metricCache,
+		labels:           labelsCache,
 	}
 
-	return &DBReader{
-		db: pi,
-	}
-}
-
-// NewPgxReader returns a new DBReader that reads that from PostgreSQL using PGX.
-func NewPgxReader(c *pgxpool.Pool, readHist prometheus.ObserverVec, labelsCacheSize uint64) *DBReader {
-	cache := &MetricNameCache{clockcache.WithMax(DefaultMetricCacheSize)}
-	return NewPgxReaderWithMetricCache(c, cache, labelsCacheSize)
+	return pi
 }
 
 type metricTimeRangeFilter struct {
@@ -59,35 +47,13 @@ type metricTimeRangeFilter struct {
 }
 
 type pgxQuerier struct {
-	conn             pgxConn
+	conn             pgxconn.PgxConn
 	metricTableNames MetricCache
 	// contains [int64]labels.Label
-	labels *clockcache.Cache
+	labels LabelsCache
 }
 
 var _ Querier = (*pgxQuerier)(nil)
-
-// HealthCheck implements the HealthChecker interface.
-func (q *pgxQuerier) HealthCheck() error {
-	rows, err := q.conn.Query(context.Background(), "SELECT")
-
-	if err != nil {
-		return err
-	}
-
-	rows.Close()
-	return nil
-}
-
-// NumCachedLabels implements the Querier interface.
-func (q *pgxQuerier) NumCachedLabels() int {
-	return q.labels.Len()
-}
-
-// LabelsCacheCapacity implements the Querier interface.
-func (q *pgxQuerier) LabelsCacheCapacity() int {
-	return q.labels.Cap()
-}
 
 // Select implements the Querier interface. It is the entry point for our
 // own version of the Prometheus engine.
