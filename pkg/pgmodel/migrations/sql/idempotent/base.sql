@@ -1832,8 +1832,8 @@ CALL execute_everywhere($ee$
             INNER JOIN _timescaledb_catalog.chunk_constraint cc ON cc.dimension_slice_id = ds.id
             INNER JOIN _timescaledb_catalog.chunk c ON cc.chunk_id = c.id
             WHERE dimension_id = dimension_row.id
-            -- the range_starts are inclusive
-            AND min_time_internal >= ds.range_start
+            -- the range_ends are non-inclusive
+            AND min_time_internal < ds.range_end
             AND c.compressed_chunk_id IS NOT NULL
             ORDER BY ds.range_start
         LOOP

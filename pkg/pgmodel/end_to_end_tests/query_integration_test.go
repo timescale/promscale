@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/tsdb"
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -1143,7 +1143,7 @@ func TestPushdown(t *testing.T) {
 				}
 
 				res := qry.Exec(context.Background())
-				testutil.Equals(t, tc.res, *res)
+				require.Equal(t, tc.res, *res)
 			})
 		}
 	})

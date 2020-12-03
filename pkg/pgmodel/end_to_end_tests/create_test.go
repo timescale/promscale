@@ -476,7 +476,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
-					{Timestamp: 10000000, Value: 1.0},
+					{Timestamp: 100000000, Value: 1.0},
 				},
 			},
 		}
@@ -525,6 +525,16 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
+
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
+				//already compressed (could happen if policy already ran). This is fine
+			} else {
+				t.Fatal(err)
+			}
+		}
+
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -534,8 +544,8 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 				Samples: []prompb.Sample{
 					{Timestamp: 1, Value: 0.2},
 					{Timestamp: 10, Value: 3.0},
-					{Timestamp: 10000000, Value: 4.0},
-					{Timestamp: 10000001, Value: 5.0},
+					{Timestamp: 100000000, Value: 4.0},
+					{Timestamp: 100000001, Value: 5.0},
 				},
 			},
 		}
@@ -581,8 +591,11 @@ func TestInsertCompressed(t *testing.T) {
 					{Name: MetricNameLabelName, Value: "test"},
 					{Name: "test", Value: "test"},
 				},
+				// Two samples that, by default, end up in different chunks.
+				// This is to check that decompression works on all necessary chunks.
 				Samples: []prompb.Sample{
 					{Timestamp: 1, Value: 0.1},
+					{Timestamp: 100000000, Value: 0.1},
 				},
 			},
 		}

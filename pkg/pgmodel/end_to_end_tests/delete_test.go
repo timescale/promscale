@@ -15,7 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/require"
 	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
@@ -89,19 +89,19 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			var countBeforeDelete, countAfterDelete int
 			pgDelete := &PgDelete{Conn: db}
 			matcher, err := getMatchers(m.matchers)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, MaxTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.%s", m.name)).Scan(&countBeforeDelete)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.%s", m.name)).Scan(&countAfterDelete)
-			testutil.Ok(t, err)
-			testutil.Equals(t, m.expectedReturn, fmt.Sprintf("%v %v %v %v", touchedMetrics, len(deletedSeriesIDs), countBeforeDelete, countAfterDelete), "expected returns does not match in", m.name)
-			testutil.Assert(t, countBeforeDelete != countAfterDelete, "samples count should not be similar: before %d | after %d in", countBeforeDelete, countAfterDelete, m.name)
+			require.NoError(t, err)
+			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v %v %v", touchedMetrics, len(deletedSeriesIDs), countBeforeDelete, countAfterDelete), "expected returns does not match in", m.name)
+			require.True(t, countBeforeDelete != countAfterDelete, "samples count should not be similar: before %d | after %d in", countBeforeDelete, countAfterDelete, m.name)
 		}
 	})
 }
@@ -174,7 +174,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		for _, m := range matchers {
 			var tableName string
 			err = db.QueryRow(context.Background(), "SELECT table_name from _prom_catalog.metric WHERE metric_name=$1", m.name).Scan(&tableName)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			_, err = db.Exec(context.Background(), fmt.Sprintf("SELECT compress_chunk(i) from show_chunks('prom_data.%s') i;", tableName))
 			if err != nil {
 				if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -185,15 +185,15 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			}
 			pgDelete := &PgDelete{Conn: db}
 			matcher, err := getMatchers(m.matchers)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, MaxTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
-			testutil.Equals(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
+			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
 		}
 	})
 }
@@ -254,18 +254,18 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			}
 			pgDelete := &PgDelete{Conn: db}
 			matcher, err := getMatchers(m.matchers)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, MaxTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
-			testutil.Equals(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
+			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
 			if m.name == "delete_all_regex" {
-				testutil.Equals(t, 1025, len(deletedSeriesIDs), "delete all series does not match in", m.name)
-				testutil.Equals(t, 62, len(touchedMetrics), "delete all metrics does not match in", m.name)
+				require.Equal(t, 1025, len(deletedSeriesIDs), "delete all series does not match in", m.name)
+				require.Equal(t, 62, len(touchedMetrics), "delete all metrics does not match in", m.name)
 			}
 		})
 	}
@@ -378,15 +378,15 @@ func TestDeleteMixins(t *testing.T) {
 			}
 			pgDelete := &PgDelete{Conn: db}
 			matcher, err := getMatchers(m.matchers)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, MaxTimeProm)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
-			testutil.Ok(t, err)
+			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
-			testutil.Equals(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
+			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
 		})
 	}
 }
