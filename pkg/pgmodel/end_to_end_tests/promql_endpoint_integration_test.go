@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"errors"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -243,7 +244,7 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 		MaxConnections:          -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool)
+	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool))
 
 	if err != nil {
 		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")

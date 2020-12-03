@@ -1,10 +1,11 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package pgmodel
+package pgclient
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel"
 	"reflect"
 	"testing"
 
@@ -15,14 +16,13 @@ import (
 )
 
 type mockQuerier struct {
-	tts               []*prompb.TimeSeries
-	err               error
-	healthCheckCalled bool
-	labelNames        []string
-	labelNamesErr     error
+	tts           []*prompb.TimeSeries
+	err           error
+	labelNames    []string
+	labelNamesErr error
 }
 
-var _ Querier = (*mockQuerier)(nil)
+var _ pgmodel.Querier = (*mockQuerier)(nil)
 
 func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	return nil, nil
@@ -40,17 +40,21 @@ func (q *mockQuerier) LabelValues(string) ([]string, error) {
 	return nil, nil
 }
 
-func (q *mockQuerier) HealthCheck() error {
-	q.healthCheckCalled = true
-	return nil
-}
-
 func (q *mockQuerier) NumCachedLabels() int {
 	return 0
 }
 
 func (q *mockQuerier) LabelsCacheCapacity() int {
 	return 0
+}
+
+type mockHealthChecker struct {
+	healthCheckCalled bool
+}
+
+func (hc *mockHealthChecker) HealthCheck() error {
+	hc.healthCheckCalled = true
+	return nil
 }
 
 func TestDBReaderRead(t *testing.T) {
@@ -134,7 +138,7 @@ func TestDBReaderRead(t *testing.T) {
 				err: c.err,
 			}
 
-			r := DBReader{mq}
+			r := Client{querier: mq}
 
 			res, err := r.Read(c.req)
 
@@ -172,16 +176,16 @@ func TestDBReaderRead(t *testing.T) {
 }
 
 func TestHealthCheck(t *testing.T) {
-	mq := &mockQuerier{}
+	mhc := &mockHealthChecker{}
 
-	r := DBReader{mq}
+	r := Client{healthChecker: mhc}
 
 	err := r.HealthCheck()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !mq.healthCheckCalled {
+	if !mhc.healthCheckCalled {
 		t.Fatal("health check method not called when expected")
 	}
 }

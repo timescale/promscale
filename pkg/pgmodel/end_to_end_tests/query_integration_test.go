@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/clockcache"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -95,484 +97,416 @@ func TestSQLQuery(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		readRequest    prompb.ReadRequest
-		expectResponse prompb.ReadResponse
+		query          *prompb.Query
+		expectResponse []*prompb.TimeSeries
 		expectErr      error
 	}{
 		{
-			name:        "empty request",
-			readRequest: prompb.ReadRequest{},
-			expectResponse: prompb.ReadResponse{
-				Results: make([]*prompb.QueryResult, 0),
-			},
+			name:      "empty request",
+			query:     &prompb.Query{},
+			expectErr: fmt.Errorf("no clauses generated"),
 		},
 		{
 			name: "empty response",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
-								Value: "nonExistantMetric",
-							},
-						},
-						StartTimestampMs: 1,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  MetricNameLabelName,
+						Value: "nonExistantMetric",
 					},
 				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{}),
-			},
+			expectResponse: []*prompb.TimeSeries{},
 		},
 		{
 			name: "one matcher, exact metric",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
-								Value: "firstMetric",
-							},
-						},
-						StartTimestampMs: 1,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  MetricNameLabelName,
+						Value: "firstMetric",
 					},
 				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 0.1},
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-				}),
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
+					},
+				},
 			},
 		},
 		{
 			name: "one matcher, regex metric",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
-								Value: "first.*",
-							},
-						},
-						StartTimestampMs: 1,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  MetricNameLabelName,
+						Value: "first.*",
 					},
 				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 0.1},
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-				}),
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
+					},
+				},
 			},
 		},
 		{
 			name: "one matcher, no exact metric",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_NEQ,
-								Name:  MetricNameLabelName,
-								Value: "firstMetric",
-							},
-						},
-						StartTimestampMs: 1,
-						EndTimestampMs:   1,
+						Type:  prompb.LabelMatcher_NEQ,
+						Name:  MetricNameLabelName,
+						Value: "firstMetric",
 					},
 				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   1,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 1.1},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
 					},
-				}),
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 1.1},
+					},
+				},
 			},
 		},
 		{
 			name: "one matcher, not regex metric",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_NRE,
-								Name:  MetricNameLabelName,
-								Value: "first.*",
-							},
-						},
-						StartTimestampMs: 1,
-						EndTimestampMs:   2,
+						Type:  prompb.LabelMatcher_NRE,
+						Name:  MetricNameLabelName,
+						Value: "first.*",
 					},
 				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   2,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 1.1},
-							{Timestamp: 2, Value: 1.2},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
 					},
-				}),
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 1.1},
+						{Timestamp: 2, Value: 1.2},
+					},
+				},
 			},
 		},
 		{
 			name: "one matcher, both metrics",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "common",
-								Value: "tag",
-							},
-						},
-						StartTimestampMs: 2,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "common",
+						Value: "tag",
 					},
 				},
+				StartTimestampMs: 2,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 2, Value: 1.2},
-							{Timestamp: 3, Value: 1.3},
-						},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
 					},
-				}),
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 1.2},
+						{Timestamp: 3, Value: 1.3},
+					},
+				},
 			},
 		},
 		{
 			name: "two matchers",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "common",
-								Value: "tag",
-							},
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
-								Value: ".*Metric",
-							},
-						},
-						StartTimestampMs: 2,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "common",
+						Value: "tag",
+					},
+					{
+						Type:  prompb.LabelMatcher_RE,
+						Name:  MetricNameLabelName,
+						Value: ".*Metric",
 					},
 				},
+				StartTimestampMs: 2,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 2, Value: 1.2},
-							{Timestamp: 3, Value: 1.3},
-						},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
 					},
-				}),
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 1.2},
+						{Timestamp: 3, Value: 1.3},
+					},
+				},
 			},
 		},
 		{
 			name: "three matchers",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "common",
-								Value: "tag",
-							},
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "foo",
-								Value: "bar|baz",
-							},
-							{
-								Type:  prompb.LabelMatcher_NRE,
-								Name:  MetricNameLabelName,
-								Value: "non-existent",
-							},
-						},
-						StartTimestampMs: 2,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "common",
+						Value: "tag",
+					},
+					{
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "foo",
+						Value: "bar|baz",
+					},
+					{
+						Type:  prompb.LabelMatcher_NRE,
+						Name:  MetricNameLabelName,
+						Value: "non-existent",
 					},
 				},
+				StartTimestampMs: 2,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 2, Value: 1.2},
-							{Timestamp: 3, Value: 1.3},
-						},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
 					},
-				}),
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 2, Value: 1.2},
+						{Timestamp: 3, Value: 1.3},
+					},
+				},
 			},
 		},
 		{
 			name: "one matcher, match empty value",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "empty",
-								Value: "",
-							},
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "common",
-								Value: "tag",
-							},
-						},
-						StartTimestampMs: 1,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "empty",
+						Value: "",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "common",
+						Value: "tag",
 					},
 				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 0.1},
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 1.1},
-							{Timestamp: 2, Value: 1.2},
-							{Timestamp: 3, Value: 1.3},
-						},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
 					},
-				}),
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 1.1},
+						{Timestamp: 2, Value: 1.2},
+						{Timestamp: 3, Value: 1.3},
+					},
+				},
 			},
 		},
 		{
 			name: "one matcher, regex match empty value",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "empty",
-								Value: ".*",
-							},
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "common",
-								Value: "tag",
-							},
-						},
-						StartTimestampMs: 1,
-						EndTimestampMs:   3,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "empty",
+						Value: ".*",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "common",
+						Value: "tag",
 					},
 				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 0.1},
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 1.1},
-							{Timestamp: 2, Value: 1.2},
-							{Timestamp: 3, Value: 1.3},
-						},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
 					},
-				}),
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 1.1},
+						{Timestamp: 2, Value: 1.2},
+						{Timestamp: 3, Value: 1.3},
+					},
+				},
 			},
 		},
 		// https://github.com/timescale/promscale/issues/125
 		{
 			name: "min start and max end timestamps",
-			readRequest: prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "empty",
-								Value: ".*",
-							},
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "common",
-								Value: "tag",
-							},
-						},
-						// Prometheus setting start and end timestamp to min/max values when missing:
-						// https://github.com/prometheus/prometheus/blob/master/web/api/v1/api.go#L555-L556
-						StartTimestampMs: timestamp.FromTime(time.Unix(math.MinInt64/1000+62135596801, 0).UTC()),
-						EndTimestampMs:   timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()),
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "empty",
+						Value: ".*",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "common",
+						Value: "tag",
 					},
 				},
+				// Prometheus setting start and end timestamp to min/max values when missing:
+				// https://github.com/prometheus/prometheus/blob/master/web/api/v1/api.go#L555-L556
+				StartTimestampMs: timestamp.FromTime(time.Unix(math.MinInt64/1000+62135596801, 0).UTC()),
+				EndTimestampMs:   timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()),
 			},
-			expectResponse: prompb.ReadResponse{
-				Results: createQueryResult([]*prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "firstMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "empty", Value: ""},
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 0.1},
-							{Timestamp: 2, Value: 0.2},
-							{Timestamp: 3, Value: 0.3},
-							{Timestamp: 4, Value: 0.4},
-							{Timestamp: 5, Value: 0.5},
-						},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
 					},
-					{
-						Labels: []prompb.Label{
-							{Name: MetricNameLabelName, Value: "secondMetric"},
-							{Name: "common", Value: "tag"},
-							{Name: "foo", Value: "baz"},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: 1, Value: 1.1},
-							{Timestamp: 2, Value: 1.2},
-							{Timestamp: 3, Value: 1.3},
-							{Timestamp: 4, Value: 1.4},
-							{Timestamp: 5, Value: 1.5},
-						},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
+						{Timestamp: 4, Value: 0.4},
+						{Timestamp: 5, Value: 0.5},
 					},
-				}),
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "foo", Value: "baz"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 1.1},
+						{Timestamp: 2, Value: 1.2},
+						{Timestamp: 3, Value: 1.3},
+						{Timestamp: 4, Value: 1.4},
+						{Timestamp: 5, Value: 1.5},
+					},
+				},
 			},
 		},
 	}
@@ -590,16 +524,18 @@ func TestSQLQuery(t *testing.T) {
 			t.Fatalf("Cannot run test, not an instance of testing.T")
 		}
 
-		r := NewPgxReader(readOnly, nil, 100)
+		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax(100)
+		r := NewQuerierWithCaches(pgxconn.NewPgxConn(readOnly), mCache, lCache)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
-				resp, err := r.Read(&c.readRequest)
+				resp, err := r.Query(c.query)
 
-				if err != nil && err != c.expectErr {
+				if err != nil && err.Error() != c.expectErr.Error() {
 					t.Fatalf("unexpected error returned:\ngot\n%s\nwanted\n%s", err, c.expectErr)
 				}
 
-				if !reflect.DeepEqual(resp, &c.expectResponse) {
+				if !reflect.DeepEqual(resp, c.expectResponse) {
 					t.Fatalf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, &c.expectResponse)
 				}
 
@@ -608,16 +544,8 @@ func TestSQLQuery(t *testing.T) {
 	})
 }
 
-func createQueryResult(ts []*prompb.TimeSeries) []*prompb.QueryResult {
-	return []*prompb.QueryResult{
-		{
-			Timeseries: ts,
-		},
-	}
-}
-
 func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.TimeSeries) {
-	ingestor, err := NewPgxIngestor(db)
+	ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -651,309 +579,253 @@ func TestPromQL(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name        string
-		readRequest *prompb.ReadRequest
+		name  string
+		query *prompb.Query
 	}{
 		{
 			name: "Simple metric name matcher",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
-								Value: "metric_1",
-							},
-						},
-						StartTimestampMs: 30000,
-						EndTimestampMs:   31000,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  MetricNameLabelName,
+						Value: "metric_1",
 					},
 				},
+				StartTimestampMs: 30000,
+				EndTimestampMs:   31000,
 			},
 		},
 		{
 			name: "Regex metric name matcher",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
-								Value: "metric_.*",
-							},
-						},
-						StartTimestampMs: 30000,
-						EndTimestampMs:   1160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  MetricNameLabelName,
+						Value: "metric_.*",
 					},
 				},
+				StartTimestampMs: 30000,
+				EndTimestampMs:   1160000,
 			},
 		},
 		{
 			name: "Metrics without foo label or value empty",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  MetricNameLabelName,
-								Value: "metric_.*",
-							},
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "foo",
-								Value: "",
-							},
-						},
-						StartTimestampMs: 30000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  MetricNameLabelName,
+						Value: "metric_.*",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "foo",
+						Value: "",
 					},
 				},
+				StartTimestampMs: 30000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Instance 1 or 2",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "instance",
-								Value: "(1|2)",
-							},
-						},
-						StartTimestampMs: 70000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "instance",
+						Value: "(1|2)",
 					},
 				},
+				StartTimestampMs: 70000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Test match empty on EQ",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "foo",
-								Value: "",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "foo",
+						Value: "",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Test match empty on NEQ",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_NEQ,
-								Name:  "foo",
-								Value: "bar",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_NEQ,
+						Name:  "foo",
+						Value: "bar",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Test match empty on RE",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "foo",
-								Value: "",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "foo",
+						Value: "",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Test match empty on NRE",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_NRE,
-								Name:  "foo",
-								Value: "bar",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_NRE,
+						Name:  "foo",
+						Value: "bar",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Test error regex matcher",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "foo",
-								Value: "*",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "foo",
+						Value: "*",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Complex query 1",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "instance",
-								Value: "(1|2)",
-							},
-							{
-								Type:  prompb.LabelMatcher_NRE,
-								Name:  "foo",
-								Value: "ba.*",
-							},
-							{
-								Type:  prompb.LabelMatcher_NEQ,
-								Name:  MetricNameLabelName,
-								Value: "metric_1",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "instance",
+						Value: "(1|2)",
+					},
+					{
+						Type:  prompb.LabelMatcher_NRE,
+						Name:  "foo",
+						Value: "ba.*",
+					},
+					{
+						Type:  prompb.LabelMatcher_NEQ,
+						Name:  MetricNameLabelName,
+						Value: "metric_1",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Complex query 2",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "instance",
-								Value: "(1|2)",
-							},
-							{
-								Type:  prompb.LabelMatcher_NEQ,
-								Name:  MetricNameLabelName,
-								Value: "metric_1",
-							},
-						},
-						StartTimestampMs: 9000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "instance",
+						Value: "(1|2)",
+					},
+					{
+						Type:  prompb.LabelMatcher_NEQ,
+						Name:  MetricNameLabelName,
+						Value: "metric_1",
 					},
 				},
+				StartTimestampMs: 9000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Complex query 3",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "instance",
-								Value: "(1|2)",
-							},
-							{
-								Type:  prompb.LabelMatcher_NEQ,
-								Name:  "instance",
-								Value: "3",
-							},
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "foo",
-								Value: ".*r",
-							},
-						},
-						StartTimestampMs: 190000,
-						EndTimestampMs:   260000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "instance",
+						Value: "(1|2)",
+					},
+					{
+						Type:  prompb.LabelMatcher_NEQ,
+						Name:  "instance",
+						Value: "3",
+					},
+					{
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "foo",
+						Value: ".*r",
 					},
 				},
+				StartTimestampMs: 190000,
+				EndTimestampMs:   260000,
 			},
 		},
 		{
 			name: "Complex query 4",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_RE,
-								Name:  "instance",
-								Value: "(1|3)",
-							},
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  "instance",
-								Value: "1",
-							},
-							{
-								Type:  prompb.LabelMatcher_NRE,
-								Name:  MetricNameLabelName,
-								Value: "metric_3",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "instance",
+						Value: "(1|3)",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  "instance",
+						Value: "1",
+					},
+					{
+						Type:  prompb.LabelMatcher_NRE,
+						Name:  MetricNameLabelName,
+						Value: "metric_3",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 		{
 			name: "Empty results complex query",
-			readRequest: &prompb.ReadRequest{
-				Queries: []*prompb.Query{
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
 					{
-						Matchers: []*prompb.LabelMatcher{
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
-								Value: "metric_1",
-							},
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
-								Value: "metric_2",
-							},
-							{
-								Type:  prompb.LabelMatcher_EQ,
-								Name:  MetricNameLabelName,
-								Value: "metric_3",
-							},
-						},
-						StartTimestampMs: 90000,
-						EndTimestampMs:   160000,
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  MetricNameLabelName,
+						Value: "metric_1",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  MetricNameLabelName,
+						Value: "metric_2",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  MetricNameLabelName,
+						Value: "metric_3",
 					},
 				},
+				StartTimestampMs: 90000,
+				EndTimestampMs:   160000,
 			},
 		},
 	}
@@ -972,11 +844,15 @@ func TestPromQL(t *testing.T) {
 			return
 		}
 
-		r := NewPgxReader(readOnly, nil, 100)
+		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax(100)
+		r := NewQuerierWithCaches(pgxconn.NewPgxConn(readOnly), mCache, lCache)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
-				connResp, connErr := r.Read(c.readRequest)
-				promResp, promErr := promClient.Read(c.readRequest)
+				connResp, connErr := r.Query(c.query)
+				promResp, promErr := promClient.Read(&prompb.ReadRequest{
+					Queries: []*prompb.Query{c.query},
+				})
 
 				// If a query returns an error on both sides, its considered an
 				// expected result. The errors don't need to be identical.
@@ -994,8 +870,8 @@ func TestPromQL(t *testing.T) {
 
 				// Length checking is for case when query returns an empty results,
 				// DeepEqual check fails even though the values are the same.
-				if !reflect.DeepEqual(connResp, promResp) &&
-					(len(connResp.Results[0].Timeseries)+len(promResp.Results[0].Timeseries) > 0) {
+				if !reflect.DeepEqual(connResp, promResp.Results[0].Timeseries) &&
+					len(promResp.Results[0].Timeseries)+len(connResp) > 0 {
 					t.Errorf("unexpected response:\ngot\n%v\nwanted\n%v", connResp, promResp)
 				}
 			})
@@ -1123,8 +999,10 @@ func TestPushdown(t *testing.T) {
 			return
 		}
 
-		r := NewPgxReader(readOnly, nil, 100)
-		queryable := query.NewQueryable(r.GetQuerier())
+		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax(100)
+		r := NewQuerierWithCaches(pgxconn.NewPgxConn(readOnly), mCache, lCache)
+		queryable := query.NewQueryable(r)
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 
 		for _, c := range testCases {

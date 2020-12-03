@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"io"
 	"io/ioutil"
 	"net"
@@ -117,7 +118,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool) (upgradedDbInfo dbInfo) {
 			defer db.Close()
 
 			if !noData {
-				ingestor, err := pgmodel.NewPgxIngestor(db)
+				ingestor, err := pgmodel.NewPgxIngestor(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatalf("error connecting to DB: %v", err)
 				}
@@ -139,7 +140,7 @@ func getPristineDbInfo(t *testing.T, noData bool) (pristineDbInfo dbInfo) {
 			if noData {
 				return
 			}
-			ingestor, err := pgmodel.NewPgxIngestor(db)
+			ingestor, err := pgmodel.NewPgxIngestor(pgxconn.NewPgxConn(db))
 			if err != nil {
 				t.Fatalf("error connecting to DB: %v", err)
 			}
@@ -150,7 +151,7 @@ func getPristineDbInfo(t *testing.T, noData bool) (pristineDbInfo dbInfo) {
 		/* postRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
 			if !noData {
-				ingestor, err := pgmodel.NewPgxIngestor(db)
+				ingestor, err := pgmodel.NewPgxIngestor(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatalf("error connecting to DB: %v", err)
 				}

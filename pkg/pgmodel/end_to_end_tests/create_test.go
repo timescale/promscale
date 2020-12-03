@@ -6,6 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"reflect"
 	"testing"
 	"time"
@@ -158,7 +159,7 @@ func TestSQLChunkInterval(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -398,7 +399,7 @@ func TestSQLIngest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
-				ingestor, err := NewPgxIngestor(db)
+				ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -480,7 +481,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -599,7 +600,7 @@ func TestInsertCompressed(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -711,7 +712,7 @@ func TestCompressionSetting(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -837,7 +838,7 @@ func TestCustomCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"runtime"
 	"strconv"
 
@@ -58,13 +59,15 @@ func ParseFlags(cfg *Config) *Config {
 
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
-	Connection    *pgxpool.Pool
+	Connection    pgxconn.PgxConn
 	ingestor      *pgmodel.DBIngestor
-	reader        *pgmodel.DBReader
+	querier       pgmodel.Querier
+	healthChecker pgmodel.HealthChecker
 	queryable     *query.Queryable
 	cfg           *Config
 	ConnectionStr string
-	metricCache   *pgmodel.MetricNameCache
+	metricCache   pgmodel.MetricCache
+	labelsCache   pgmodel.LabelsCache
 	closePool     bool
 }
 
@@ -84,6 +87,7 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 	pgConfig, err := pgxpool.ParseConfig(connectionStr + fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
 	if err != nil {
 		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
+		return nil, err
 	}
 
 	pgConfig.AfterConnect = schemaLocker
@@ -96,7 +100,8 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 		return nil, err
 	}
 
-	client, err := NewClientWithPool(cfg, numCopiers, connectionPool)
+	dbConn := pgxconn.NewPgxConn(connectionPool)
+	client, err := NewClientWithPool(cfg, numCopiers, dbConn)
 	if err != nil {
 		return client, err
 	}
@@ -105,31 +110,34 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, pool *pgxpool.Pool) (*Client, error) {
-	cache := &pgmodel.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
-
+func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
+	metricsCache := &pgmodel.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
+	labelsCache := clockcache.WithMax(cfg.LabelsCacheSize)
 	c := pgmodel.Cfg{
 		AsyncAcks:       cfg.AsyncAcks,
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
 	}
-	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(pool, cache, &c)
+	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
-	reader := pgmodel.NewPgxReaderWithMetricCache(pool, cache, cfg.LabelsCacheSize)
+	querier := pgmodel.NewQuerierWithCaches(dbConn, metricsCache, labelsCache)
 
-	queryable := query.NewQueryable(reader.GetQuerier())
+	queryable := query.NewQueryable(querier)
 
+	healthChecker := pgmodel.NewHealthChecker(dbConn)
 	client := &Client{
-		Connection:  pool,
-		ingestor:    ingestor,
-		reader:      reader,
-		queryable:   queryable,
-		cfg:         cfg,
-		metricCache: cache,
+		Connection:    dbConn,
+		ingestor:      ingestor,
+		querier:       querier,
+		healthChecker: healthChecker,
+		queryable:     queryable,
+		cfg:           cfg,
+		metricCache:   metricsCache,
+		labelsCache:   labelsCache,
 	}
 
 	InitClientMetrics(client)
@@ -219,32 +227,50 @@ func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint
 
 // Read returns the promQL query results
 func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
-	return c.reader.Read(req)
+	if req == nil {
+		return nil, nil
+	}
+
+	resp := prompb.ReadResponse{
+		Results: make([]*prompb.QueryResult, len(req.Queries)),
+	}
+
+	for i, q := range req.Queries {
+		tts, err := c.querier.Query(q)
+		if err != nil {
+			return nil, err
+		}
+		resp.Results[i] = &prompb.QueryResult{
+			Timeseries: tts,
+		}
+	}
+
+	return &resp, nil
 }
 
 func (c *Client) NumCachedMetricNames() int {
-	return c.metricCache.NumElements()
+	return c.metricCache.Len()
 }
 
 func (c *Client) MetricNamesCacheCapacity() int {
-	return c.metricCache.Capacity()
+	return c.metricCache.Cap()
 }
 
 func (c *Client) NumCachedLabels() int {
-	return c.reader.GetQuerier().NumCachedLabels()
+	return c.labelsCache.Len()
 }
 
 func (c *Client) LabelsCacheCapacity() int {
-	return c.reader.GetQuerier().LabelsCacheCapacity()
+	return c.labelsCache.Cap()
 }
 
 // HealthCheck checks that the client is properly connected
 func (c *Client) HealthCheck() error {
-	return c.reader.HealthCheck()
+	return c.healthChecker.HealthCheck()
 }
 
 // GetQueryable returns the Prometheus storage.Queryable interface thats running
-// with the same underlying Querier as the DBReader.
+// with the same underlying Querier as the Reader.
 func (c *Client) GetQueryable() *query.Queryable {
 	return c.queryable
 }

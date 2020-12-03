@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"sort"
 	"strconv"
@@ -77,7 +78,7 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
 
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -87,7 +88,7 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 		}
 		for _, m := range matchers {
 			var countBeforeDelete, countAfterDelete int
-			pgDelete := &PgDelete{Conn: db}
+			pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
@@ -159,7 +160,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
-		ingestor, err := NewPgxIngestor(db)
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +184,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			pgDelete := &PgDelete{Conn: db}
+			pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
@@ -244,7 +245,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 	for _, m := range matchers {
 		withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 			ts := generateRealTimeseries()
-			ingestor, err := NewPgxIngestor(db)
+			ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -252,7 +253,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			if _, err := ingestor.Ingest(copyMetrics(ts), NewWriteRequest()); err != nil {
 				t.Fatal(err)
 			}
-			pgDelete := &PgDelete{Conn: db}
+			pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
@@ -368,7 +369,7 @@ func TestDeleteMixins(t *testing.T) {
 	for _, m := range matchers {
 		withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 			ts := generateRealTimeseries()
-			ingestor, err := NewPgxIngestor(db)
+			ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -376,7 +377,7 @@ func TestDeleteMixins(t *testing.T) {
 			if _, err := ingestor.Ingest(copyMetrics(ts), NewWriteRequest()); err != nil {
 				t.Fatal(err)
 			}
-			pgDelete := &PgDelete{Conn: db}
+			pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)

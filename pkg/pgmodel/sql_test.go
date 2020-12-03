@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pgconn2 "github.com/timescale/promscale/pkg/pgxconn"
 	"reflect"
 	"sort"
 	"sync"
@@ -91,11 +92,11 @@ func (m *sqlRecorder) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
 	panic("should never be called")
 }
 
-func (m *sqlRecorder) NewBatch() pgxBatch {
+func (m *sqlRecorder) NewBatch() pgconn2.PgxBatch {
 	return &mockBatch{}
 }
 
-func (r *sqlRecorder) SendBatch(ctx context.Context, b pgxBatch) (pgx.BatchResults, error) {
+func (r *sqlRecorder) SendBatch(ctx context.Context, b pgconn2.PgxBatch) (pgx.BatchResults, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	batch := b.(*mockBatch)
@@ -361,6 +362,14 @@ type mockMetricCache struct {
 	metricCache  map[string]string
 	getMetricErr error
 	setMetricErr error
+}
+
+func (m *mockMetricCache) Len() int {
+	return len(m.metricCache)
+}
+
+func (m *mockMetricCache) Cap() int {
+	return len(m.metricCache)
 }
 
 func (m *mockMetricCache) Get(metric string) (string, error) {
