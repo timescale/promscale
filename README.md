@@ -48,6 +48,7 @@ If you have any questions, please join the #promscale channel on
   * [Data Model](docs/sql_schema.md#data-model-schema)
   * [Filtering Series](docs/sql_schema.md#filtering-series)
   * [Data Retention](docs/sql_schema.md#data-retention)
+* **[Writing Data to Promscale](docs/writing_to_promscale.md)**
 * **[Quick Tips](#-quick-tips)**
 * **[High Availability](docs/high-avaliability/prometheus-HA.md)**
 * **[FAQ](docs/faq.md)**
