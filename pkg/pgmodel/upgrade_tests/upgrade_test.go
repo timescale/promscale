@@ -8,7 +8,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"io"
 	"io/ioutil"
 	"net"
@@ -28,6 +27,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/version"
 

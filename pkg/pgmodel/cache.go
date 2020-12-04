@@ -31,7 +31,17 @@ type MetricCache interface {
 }
 
 type LabelsCache interface {
+	// GetValues tries to get a batch of keys and store the corresponding values is valuesOut
+	// returns the number of keys that were actually found.
+	// NOTE: this function does _not_ preserve the order of keys; the first numFound
+	//       keys will be the keys whose values are present, while the remainder
+	//       will be the keys not present in the cache
 	GetValues(keys []interface{}, valuesOut []interface{}) (numFound int)
+	// InsertBatch inserts a batch of keys with their corresponding values.
+	// This function will _overwrite_ the keys and values slices with their
+	// canonical versions.
+	// returns the number of elements inserted, is lower than len(keys) if insertion
+	// starved
 	InsertBatch(keys []interface{}, values []interface{}) (numInserted int)
 	// Len returns the number of labels cached in the system.
 	Len() int

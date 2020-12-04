@@ -9,7 +9,6 @@ package pgmodel
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +20,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const (

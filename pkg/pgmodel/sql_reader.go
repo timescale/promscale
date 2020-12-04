@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"sort"
 
 	"github.com/jackc/pgconn"
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -31,13 +31,11 @@ const (
 // NewQuerierWithCaches returns a new pgxQuerier that reads from PostgreSQL using PGX
 // and caches metric table names, and label sets using the supplied caches.
 func NewQuerierWithCaches(conn pgxconn.PgxConn, metricCache MetricCache, labelsCache LabelsCache) Querier {
-	pi := &pgxQuerier{
+	return &pgxQuerier{
 		conn:             conn,
-		metricTableNames: metricCache,
 		labels:           labelsCache,
+		metricTableNames: metricCache,
 	}
-
-	return pi
 }
 
 type metricTimeRangeFilter struct {

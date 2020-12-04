@@ -3,11 +3,11 @@ package pgmodel
 import (
 	"context"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const queryDeleteSeries = "SELECT _prom_catalog.delete_series_from_metric($1, $2)"

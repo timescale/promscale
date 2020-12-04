@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	pgconn2 "github.com/timescale/promscale/pkg/pgxconn"
 	"reflect"
 	"sort"
 	"sync"
@@ -20,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -92,11 +92,11 @@ func (m *sqlRecorder) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
 	panic("should never be called")
 }
 
-func (m *sqlRecorder) NewBatch() pgconn2.PgxBatch {
+func (m *sqlRecorder) NewBatch() pgxconn.PgxBatch {
 	return &mockBatch{}
 }
 
-func (r *sqlRecorder) SendBatch(ctx context.Context, b pgconn2.PgxBatch) (pgx.BatchResults, error) {
+func (r *sqlRecorder) SendBatch(ctx context.Context, b pgxconn.PgxBatch) (pgx.BatchResults, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	batch := b.(*mockBatch)

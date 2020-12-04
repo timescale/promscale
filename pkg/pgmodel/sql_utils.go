@@ -6,12 +6,12 @@ package pgmodel
 import (
 	"context"
 	"fmt"
-	pgconn2 "github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"time"
 
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const (
@@ -87,7 +87,7 @@ func (t *SampleInfoIterator) Err() error {
 	return nil
 }
 
-func getMetricTableName(conn pgconn2.PgxConn, metric string) (string, bool, error) {
+func getMetricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
 	res, err := conn.Query(
 		context.Background(),
 		getCreateMetricsTableWithNewSQL,
