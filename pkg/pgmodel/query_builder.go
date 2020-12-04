@@ -172,7 +172,7 @@ func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
 }
 
-func buildTimeSeries(rows []timescaleRow, q *pgxQuerier) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []timescaleRow, lr LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 
 	for _, row := range rows {
@@ -184,7 +184,7 @@ func buildTimeSeries(rows []timescaleRow, q *pgxQuerier) ([]*prompb.TimeSeries, 
 			return nil, fmt.Errorf("query returned a mismatch in timestamps and values")
 		}
 
-		promLabels, err := q.getPrompbLabelsForIds(row.labelIds)
+		promLabels, err := lr.PrompbLabelsForIds(row.labelIds)
 		if err != nil {
 			return nil, err
 		}

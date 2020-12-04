@@ -268,7 +268,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					t.Fatal("unexpected type for storage.Series")
 				}
 
-				expectedLabels, _ := mapQuerier{labelMapping}.getLabelsForIds(c.labels)
+				expectedLabels, _ := mapQuerier{labelMapping}.LabelsForIds(c.labels)
 				expectedMap := expectedLabels.Map()
 				if !reflect.DeepEqual(ss.Labels().Map(), expectedMap) {
 					t.Fatalf("unexpected labels values: got %+v, wanted %+v\n", ss.Labels().Map(), expectedMap)
@@ -371,7 +371,7 @@ type mapQuerier struct {
 	}
 }
 
-func (m mapQuerier) getLabelsForIds(ids []int64) (labels.Labels, error) {
+func (m mapQuerier) LabelsForIds(ids []int64) (labels.Labels, error) {
 	lls := make([]labels.Label, len(ids))
 	for i, id := range ids {
 		kv, ok := m.mapping[id]

@@ -526,7 +526,9 @@ func TestSQLQuery(t *testing.T) {
 
 		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
-		r := NewQuerierWithCaches(pgxconn.NewPgxConn(readOnly), mCache, lCache)
+		dbConn := pgxconn.NewPgxConn(readOnly)
+		labelsReader := NewLabelsReader(dbConn, lCache)
+		r := NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Query(c.query)
@@ -846,7 +848,9 @@ func TestPromQL(t *testing.T) {
 
 		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
-		r := NewQuerierWithCaches(pgxconn.NewPgxConn(readOnly), mCache, lCache)
+		dbConn := pgxconn.NewPgxConn(readOnly)
+		labelsReader := NewLabelsReader(dbConn, lCache)
+		r := NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Query(c.query)
@@ -1001,8 +1005,10 @@ func TestPushdown(t *testing.T) {
 
 		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
-		r := NewQuerierWithCaches(pgxconn.NewPgxConn(readOnly), mCache, lCache)
-		queryable := query.NewQueryable(r)
+		dbConn := pgxconn.NewPgxConn(readOnly)
+		labelsReader := NewLabelsReader(dbConn, lCache)
+		r := NewQuerier(dbConn, mCache, labelsReader)
+		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 
 		for _, c := range testCases {

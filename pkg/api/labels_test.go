@@ -19,25 +19,28 @@ func TestLabels(t *testing.T) {
 		Level: "debug",
 	})
 	testCases := []struct {
-		name        string
-		querier     *mockQuerier
-		expectCode  int
-		expectError string
+		name         string
+		querier      *mockQuerier
+		labelsReader *mockLabelsReader
+		expectCode   int
+		expectError  string
 	}{
 		{
-			name:        "Error on get label names",
-			expectCode:  http.StatusInternalServerError,
-			expectError: "internal",
-			querier:     &mockQuerier{labelNamesErr: fmt.Errorf("error on label names")},
+			name:         "Error on get label names",
+			expectCode:   http.StatusInternalServerError,
+			expectError:  "internal",
+			querier:      &mockQuerier{},
+			labelsReader: &mockLabelsReader{labelNamesErr: fmt.Errorf("error on label names")},
 		}, {
-			name:       "All good",
-			expectCode: http.StatusOK,
-			querier:    &mockQuerier{labelNames: []string{"a"}},
+			name:         "All good",
+			expectCode:   http.StatusOK,
+			querier:      &mockQuerier{},
+			labelsReader: &mockLabelsReader{labelNames: []string{"a"}},
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := labelsHandler(query.NewQueryable(tc.querier))
+			handler := labelsHandler(query.NewQueryable(nil, tc.labelsReader))
 			w := doLabels(t, handler)
 
 			if w.Code != tc.expectCode {
@@ -61,8 +64,8 @@ func TestLabels(t *testing.T) {
 			for _, s := range res.Data.([]interface{}) {
 				resStr = append(resStr, s.(string))
 			}
-			if !reflect.DeepEqual(resStr, tc.querier.labelNames) {
-				t.Errorf("expected: %v, got: %v", tc.querier.labelNames, res.Data)
+			if !reflect.DeepEqual(resStr, tc.labelsReader.labelNames) {
+				t.Errorf("expected: %v, got: %v", tc.labelsReader.labelNames, res.Data)
 			}
 		})
 
