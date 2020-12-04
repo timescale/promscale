@@ -4,18 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"runtime"
 	"strconv"
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-
 	"github.com/timescale/promscale/pkg/clockcache"
-	"github.com/timescale/promscale/pkg/prompb"
-
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -62,7 +60,7 @@ type Client struct {
 	Connection    pgxconn.PgxConn
 	ingestor      *pgmodel.DBIngestor
 	querier       pgmodel.Querier
-	healthChecker pgmodel.HealthChecker
+	healthCheck   pgmodel.HealthCheckerFn
 	queryable     *query.Queryable
 	cfg           *Config
 	ConnectionStr string
@@ -130,14 +128,14 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 
 	healthChecker := pgmodel.NewHealthChecker(dbConn)
 	client := &Client{
-		Connection:    dbConn,
-		ingestor:      ingestor,
-		querier:       querier,
-		healthChecker: healthChecker,
-		queryable:     queryable,
-		cfg:           cfg,
-		metricCache:   metricsCache,
-		labelsCache:   labelsCache,
+		Connection:  dbConn,
+		ingestor:    ingestor,
+		querier:     querier,
+		healthCheck: healthChecker,
+		queryable:   queryable,
+		cfg:         cfg,
+		metricCache: metricsCache,
+		labelsCache: labelsCache,
 	}
 
 	InitClientMetrics(client)
@@ -266,11 +264,11 @@ func (c *Client) LabelsCacheCapacity() int {
 
 // HealthCheck checks that the client is properly connected
 func (c *Client) HealthCheck() error {
-	return c.healthChecker.HealthCheck()
+	return c.healthCheck()
 }
 
-// GetQueryable returns the Prometheus storage.Queryable interface thats running
+// Queryable returns the Prometheus storage.Queryable interface that's running
 // with the same underlying Querier as the Reader.
-func (c *Client) GetQueryable() *query.Queryable {
+func (c *Client) Queryable() *query.Queryable {
 	return c.queryable
 }

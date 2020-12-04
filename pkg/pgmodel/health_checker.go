@@ -9,29 +9,18 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-//HealthChecker allows checking for proper operations.
-type HealthChecker interface {
-	HealthCheck() error
-}
+//HealthCheckerFn allows checking for proper db operations.
+type HealthCheckerFn func() error
 
-func NewHealthChecker(conn pgxconn.PgxConn) HealthChecker {
-	return &pgxHealthChecker{
-		conn: conn,
+func NewHealthChecker(conn pgxconn.PgxConn) HealthCheckerFn {
+	return func() error {
+		rows, err := conn.Query(context.Background(), "SELECT")
+
+		if err != nil {
+			return err
+		}
+
+		rows.Close()
+		return nil
 	}
-}
-
-type pgxHealthChecker struct {
-	conn pgxconn.PgxConn
-}
-
-// HealthCheck implements the HealthChecker interface.
-func (hc *pgxHealthChecker) HealthCheck() error {
-	rows, err := hc.conn.Query(context.Background(), "SELECT")
-
-	if err != nil {
-		return err
-	}
-
-	rows.Close()
-	return nil
 }
