@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateBlock(t *testing.T) {
@@ -58,9 +58,9 @@ func TestCreateBlock(t *testing.T) {
 	for _, c := range cases {
 		_, err := plan.createBlock(c.mint, c.maxt)
 		if c.fails {
-			testutil.NotOk(t, err)
+			assert.Error(t, err)
 			continue
 		}
-		testutil.Ok(t, err)
+		assert.NoError(t, err)
 	}
 }

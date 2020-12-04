@@ -13,7 +13,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 const matcherProgress = `[{__name__ progress_metric {} [] 0} {job ci-migration {} [] 0}]`
@@ -84,7 +84,7 @@ func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
 		}
 		req := NewWriteRequest()
 		err = proto.Unmarshal(reqBuf, req)
-		testutil.Ok(t, err)
+		assert.NoError(t, err)
 
 		rws.mux.Lock()
 		defer rws.mux.Unlock()

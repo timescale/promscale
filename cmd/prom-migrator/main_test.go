@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseFlags(t *testing.T) {
@@ -33,12 +34,74 @@ func TestParseFlags(t *testing.T) {
 			failsValidation: false,
 		},
 		{
-			name:  "fail_all_default",
+			name:  "pass_normal_regex",
+			input: []string{"-mint=1000", "-maxt=1001", "-read-url=http://localhost:9090/api/v1/read", "-write-url=http://localhost:9201/write", "-progress-enabled=false", "-progress-metric-name=progress_migration_up"},
+			expectedConf: &config{
+				name:               "prom-migrator",
+				mint:               1000,
+				maxt:               1001,
+				readURL:            "http://localhost:9090/api/v1/read",
+				writeURL:           "http://localhost:9201/write",
+				progressMetricName: "progress_migration_up",
+				writerReadURL:      "",
+				progressEnabled:    false,
+			},
+			failsValidation: false,
+		},
+		{
+			name:  "fail_invalid_regex",
+			input: []string{"-mint=1000", "-maxt=1001", "-read-url=http://localhost:9090/api/v1/read", "-write-url=http://localhost:9201/write", "-progress-enabled=false", "-progress-metric-name=_progress_migration-_up"},
+			expectedConf: &config{
+				name:               "prom-migrator",
+				mint:               1000,
+				maxt:               1001,
+				readURL:            "http://localhost:9090/api/v1/read",
+				writeURL:           "http://localhost:9201/write",
+				progressMetricName: "_progress_migration-_up",
+				writerReadURL:      "",
+				progressEnabled:    false,
+			},
+			failsValidation: true,
+			errMessage:      `invalid metric-name regex match: prom metric must match ^[a-zA-Z_:][a-zA-Z0-9_:]*$: recieved: _progress_migration-_up`,
+		},
+		{
+			name:  "fail_invalid_regex",
+			input: []string{"-mint=1000", "-maxt=1001", "-read-url=http://localhost:9090/api/v1/read", "-write-url=http://localhost:9201/write", "-progress-enabled=false", "-progress-metric-name=0_progress_migration_up"},
+			expectedConf: &config{
+				name:               "prom-migrator",
+				mint:               1000,
+				maxt:               1001,
+				readURL:            "http://localhost:9090/api/v1/read",
+				writeURL:           "http://localhost:9201/write",
+				progressMetricName: "0_progress_migration_up",
+				writerReadURL:      "",
+				progressEnabled:    false,
+			},
+			failsValidation: true,
+			errMessage:      `invalid metric-name regex match: prom metric must match ^[a-zA-Z_:][a-zA-Z0-9_:]*$: recieved: 0_progress_migration_up`,
+		},
+		{
+			name:  "fail_no_mint",
 			input: []string{""},
 			expectedConf: &config{
 				name:               "prom-migrator",
-				mint:               -1,
-				maxt:               -1,
+				maxt:               time.Now().Unix(),
+				readURL:            "",
+				writeURL:           "",
+				progressMetricName: "prom_migrator_progress",
+				writerReadURL:      "",
+				progressEnabled:    true,
+			},
+			failsValidation: true,
+			errMessage:      `mint should be provided for the migration to begin`,
+		},
+		{
+			name:  "fail_all_default",
+			input: []string{"-mint=1"},
+			expectedConf: &config{
+				name:               "prom-migrator",
+				mint:               1,
+				maxt:               time.Now().Unix(),
 				readURL:            "",
 				writeURL:           "",
 				progressMetricName: "prom_migrator_progress",
@@ -50,11 +113,11 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "fail_all_default_space",
-			input: []string{"-read-url=  ", "-write-url= "},
+			input: []string{"-mint=1", "-read-url=  ", "-write-url= "},
 			expectedConf: &config{
 				name:               "prom-migrator",
-				mint:               -1,
-				maxt:               -1,
+				mint:               1,
+				maxt:               time.Now().Unix(),
 				readURL:            "  ",
 				writeURL:           " ",
 				progressMetricName: "prom_migrator_progress",
@@ -66,11 +129,11 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "fail_empty_read_url",
-			input: []string{"-write-url=http://localhost:9201/write"},
+			input: []string{"-mint=1", "-write-url=http://localhost:9201/write"},
 			expectedConf: &config{
 				name:               "prom-migrator",
-				mint:               -1,
-				maxt:               -1,
+				mint:               1,
+				maxt:               time.Now().Unix(),
 				readURL:            "",
 				writeURL:           "http://localhost:9201/write",
 				progressMetricName: "prom_migrator_progress",
@@ -82,11 +145,11 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "fail_empty_write_url",
-			input: []string{"-read-url=http://localhost:9090/api/v1/read"},
+			input: []string{"-mint=1", "-read-url=http://localhost:9090/api/v1/read"},
 			expectedConf: &config{
 				name:               "prom-migrator",
-				mint:               -1,
-				maxt:               -1,
+				mint:               1,
+				maxt:               time.Now().Unix(),
 				readURL:            "http://localhost:9090/api/v1/read",
 				writeURL:           "",
 				progressMetricName: "prom_migrator_progress",
@@ -98,11 +161,11 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "fail_mint_greater_than_maxt",
-			input: []string{"-mint=1000000000001", "-maxt=1000000000000", "-read-url=http://localhost:9090/api/v1/read", "-write-url=http://localhost:9201/write"},
+			input: []string{"-mint=1000000001", "-maxt=1000000000", "-read-url=http://localhost:9090/api/v1/read", "-write-url=http://localhost:9201/write"},
 			expectedConf: &config{
 				name:               "prom-migrator",
-				mint:               1000000000001,
-				maxt:               1000000000000,
+				mint:               1000000001,
+				maxt:               1000000000,
 				readURL:            "http://localhost:9090/api/v1/read",
 				writeURL:           "http://localhost:9201/write",
 				progressMetricName: "prom_migrator_progress",
@@ -150,16 +213,17 @@ func TestParseFlags(t *testing.T) {
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 		config := new(config)
 		parseFlags(config, c.input)
-		testutil.Equals(t, c.expectedConf, config, fmt.Sprintf("parse-flags: %s", c.name))
+		optimizeConf(c.expectedConf)
+		assert.Equal(t, c.expectedConf, config, fmt.Sprintf("parse-flags: %s", c.name))
 		err := validateConf(config)
 		if c.failsValidation {
 			if err == nil {
-				t.Errorf(fmt.Sprintf("%s should have failed", c.name))
+				t.Fatalf(fmt.Sprintf("%s should have failed", c.name))
 			}
-			testutil.Equals(t, c.errMessage, err.Error(), fmt.Sprintf("validation: %s", c.name))
+			assert.Equal(t, c.errMessage, err.Error(), fmt.Sprintf("validation: %s", c.name))
 		}
 		if err != nil && !c.failsValidation {
-			testutil.Ok(t, err)
+			assert.NoError(t, err)
 		}
 	}
 }

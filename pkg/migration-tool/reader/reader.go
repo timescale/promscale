@@ -29,7 +29,7 @@ type RemoteRead struct {
 // New creates a new RemoteRead. It creates a ReadClient that is imported from Prometheus remote storage.
 // RemoteRead takes help of plan to understand how to create fetchers.
 func New(c context.Context, readStorageUrl string, p *plan.Plan, sigRead chan *plan.Block) (*RemoteRead, error) {
-	rc, err := utils.CreateReadClient(fmt.Sprintf("reader-%d", 1), readStorageUrl, model.Duration(defaultReadTimeout))
+	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), "reader", readStorageUrl, model.Duration(defaultReadTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
 	}
@@ -47,12 +47,9 @@ func New(c context.Context, readStorageUrl string, p *plan.Plan, sigRead chan *p
 // Run runs the remote read and starts fetching the samples from the read storage.
 func (rr *RemoteRead) Run(errChan chan<- error) {
 	var (
-		err                   error
-		blockRef              *plan.Block
-		result                *prompb.QueryResult
-		timeRangeMinutesDelta int64
-		bytesCompressed       int
-		bytesUncompressed     int
+		err      error
+		blockRef *plan.Block
+		result   *prompb.QueryResult
 	)
 	go func() {
 		defer func() {
@@ -74,31 +71,21 @@ func (rr *RemoteRead) Run(errChan chan<- error) {
 				return
 			default:
 			}
-			blockRef, err, timeRangeMinutesDelta = rr.plan.NextBlock()
+			blockRef, err = rr.plan.NextBlock()
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
-			blockRef.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
-			result, bytesCompressed, bytesUncompressed, err = blockRef.Fetch(rr.c, rr.client, blockRef.Mint(), blockRef.Maxt(), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")})
+			ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")}
+			result, err = blockRef.Fetch(rr.c, rr.client, blockRef.Mint(), blockRef.Maxt(), ms)
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
 			if len(result.Timeseries) == 0 {
 				rr.plan.DecrementBlockCount()
-				rr.plan.Update(0)
 				continue
 			}
-			blockRef.SetDescription(fmt.Sprintf("received %.2f MB with delta %d mins...", float64(bytesCompressed)/float64(utils.Megabyte), timeRangeMinutesDelta/time.Minute.Milliseconds()), 1)
-			blockRef.Timeseries = result.Timeseries
-			// We set compressed bytes in block since those are the bytes that will be pushed over the network to the write storage after snappy compression.
-			// The pushed bytes are not exactly the bytesCompressed since while pushing, we add the progress metric. But,
-			// the size of progress metric along with the sample is negligible. So, it is safe to consider bytesCompressed
-			// in such a scenario.
-			blockRef.SetBytesCompressed(bytesCompressed)
-			blockRef.SetBytesUncompressed(bytesUncompressed)
-			rr.plan.Update(bytesUncompressed)
 			rr.sigBlockRead <- blockRef
 			blockRef = nil
 		}
