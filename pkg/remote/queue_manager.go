@@ -957,7 +957,7 @@ func (s *shards) runShard(ctx context.Context, shardID int, queue chan sample) {
 			nPending++
 
 			if nPending >= max {
-				level.Debug(s.qm.logger).Log("msg", "Send samples to remote storage...", "count", nPending, "shard_id", shardID)
+				//level.Debug(s.qm.logger).Log("msg", "Send samples to remote storage...", "count", nPending, "shard_id", shardID)
 				s.sendSamples(ctx, pendingSamples, &buf)
 				nPending = 0
 				s.qm.metrics.pendingSamples.Sub(float64(max))
