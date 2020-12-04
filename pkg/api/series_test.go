@@ -86,7 +86,7 @@ func TestSeries(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := series(query.NewQueryable(tc.querier))
+			handler := series(query.NewQueryable(tc.querier, nil))
 			queryUrl := constructSeriesRequest(tc.start, tc.end, tc.matchers)
 			w := doSeriesRequest(t, handler, queryUrl)
 

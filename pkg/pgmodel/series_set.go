@@ -79,7 +79,7 @@ func (p *pgxSeriesSet) At() storage.Series {
 	// this should pretty much always be non-empty due to __name__, but it
 	// costs little to check here
 	if len(row.labelIds) != 0 {
-		lls, err := p.querier.getLabelsForIds(row.labelIds)
+		lls, err := p.querier.LabelsForIds(row.labelIds)
 		if err != nil {
 			log.Error("err", err)
 			return nil

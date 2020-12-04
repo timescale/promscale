@@ -53,7 +53,8 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	labelValuesHandler := timeHandler(metrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
 	router.Get("/api/v1/label/:name/values", labelValuesHandler)
 
-	router.Get("/healthz", Health(client))
+	healthChecker := func() error { return client.HealthCheck() }
+	router.Get("/healthz", Health(healthChecker))
 
 	return router
 }

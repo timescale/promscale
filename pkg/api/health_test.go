@@ -18,14 +18,6 @@ var (
 	}
 )
 
-type mockHealthChecker struct {
-	returnErr error
-}
-
-func (m *mockHealthChecker) HealthCheck() error {
-	return m.returnErr
-}
-
 func TestHealth(t *testing.T) {
 	_ = log.Init(log.Config{
 		Level: "debug",
@@ -49,9 +41,7 @@ func TestHealth(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			mock := &mockHealthChecker{
-				returnErr: c.healthCheckerReturnErr,
-			}
+			mock := func() error { return c.healthCheckerReturnErr }
 
 			healthHandle := Health(mock)
 

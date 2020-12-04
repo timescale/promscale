@@ -104,9 +104,10 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator)
 		tester.Run("get label names", testMethod)
 
-		mCache := &pgmodel.MetricNameCache{Metrics: clockcache.WithMax(pgmodel.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
-		labelNames, err := pgmodel.NewQuerierWithCaches(pgxconn.NewPgxConn(readOnly), mCache, lCache).LabelNames()
+		dbConn := pgxconn.NewPgxConn(readOnly)
+		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelNames, err := labelsReader.LabelNames()
 		if err != nil {
 			t.Fatalf("could not get label names from querier")
 		}

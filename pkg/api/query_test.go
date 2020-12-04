@@ -46,19 +46,9 @@ func (m mockSeriesSet) Warnings() storage.Warnings {
 type mockQuerier struct {
 	timeToSleepOnSelect time.Duration
 	selectErr           error
-	labelNames          []string
-	labelNamesErr       error
 }
 
 var _ pgmodel.Querier = (*mockQuerier)(nil)
-
-func (m mockQuerier) LabelNames() ([]string, error) {
-	return m.labelNames, m.labelNamesErr
-}
-
-func (m mockQuerier) LabelValues(string) ([]string, error) {
-	return nil, nil
-}
 
 func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
@@ -69,12 +59,25 @@ func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, []parser.N
 	return &mockSeriesSet{err: m.selectErr}, nil
 }
 
-func (m mockQuerier) NumCachedLabels() int {
-	return 0
+type mockLabelsReader struct {
+	labelNames    []string
+	labelNamesErr error
 }
 
-func (m mockQuerier) LabelsCacheCapacity() int {
-	return 0
+func (m mockLabelsReader) PrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error) {
+	return nil, nil
+}
+
+func (m mockLabelsReader) LabelsForIds(ids []int64) (lls labels.Labels, err error) {
+	return nil, nil
+}
+
+func (m mockLabelsReader) LabelNames() ([]string, error) {
+	return m.labelNames, m.labelNamesErr
+}
+
+func (m mockLabelsReader) LabelValues(string) ([]string, error) {
+	return nil, nil
 }
 
 func TestParseDuration(t *testing.T) {
@@ -125,14 +128,15 @@ func TestQuery(t *testing.T) {
 		Level: "debug",
 	})
 	testCases := []struct {
-		name        string
-		timeout     string
-		querier     *mockQuerier
-		metric      string
-		time        string
-		expectCode  int
-		expectError string
-		canceled    bool
+		name         string
+		timeout      string
+		querier      *mockQuerier
+		labelsReader *mockLabelsReader
+		metric       string
+		time         string
+		expectCode   int
+		expectError  string
+		canceled     bool
 	}{
 		{
 			name:        "Time is unparsable",
@@ -199,7 +203,7 @@ func TestQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			handler := queryHandler(engine, query.NewQueryable(tc.querier))
+			handler := queryHandler(engine, query.NewQueryable(tc.querier, tc.labelsReader))
 			queryURL := constructQuery(tc.metric, tc.time, tc.timeout)
 			w := doQuery(t, handler, queryURL, tc.canceled)
 

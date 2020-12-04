@@ -22,16 +22,17 @@ func TestRangedQuery(t *testing.T) {
 		Level: "debug",
 	})
 	testCases := []struct {
-		name        string
-		timeout     string
-		querier     *mockQuerier
-		metric      string
-		start       string
-		end         string
-		step        string
-		expectCode  int
-		expectError string
-		canceled    bool
+		name         string
+		timeout      string
+		querier      *mockQuerier
+		labelsReader *mockLabelsReader
+		metric       string
+		start        string
+		end          string
+		step         string
+		expectCode   int
+		expectError  string
+		canceled     bool
 	}{
 		{
 			name:        "Start is unparsable",
@@ -156,7 +157,7 @@ func TestRangedQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			handler := queryRange(engine, query.NewQueryable(tc.querier))
+			handler := queryRange(engine, query.NewQueryable(tc.querier, nil))
 			queryUrl := constructRangedQuery(tc.metric, tc.start, tc.end, tc.step, tc.timeout)
 			w := doRangedQuery(t, handler, queryUrl, tc.canceled)
 

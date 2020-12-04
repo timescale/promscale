@@ -117,7 +117,9 @@ func TestSQLStaleNaN(t *testing.T) {
 		for _, c := range query {
 			mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
 			lCache := clockcache.WithMax(100)
-			r := NewQuerierWithCaches(pgxconn.NewPgxConn(db), mCache, lCache)
+			dbConn := pgxconn.NewPgxConn(db)
+			labelsReader := NewLabelsReader(dbConn, lCache)
+			r := NewQuerier(dbConn, mCache, labelsReader)
 			resp, err := r.Query(c.query)
 			startMs := c.query.StartTimestampMs
 			endMs := c.query.EndTimestampMs

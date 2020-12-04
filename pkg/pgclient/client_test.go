@@ -48,15 +48,6 @@ func (q *mockQuerier) LabelsCacheCapacity() int {
 	return 0
 }
 
-type mockHealthChecker struct {
-	healthCheckCalled bool
-}
-
-func (hc *mockHealthChecker) HealthCheck() error {
-	hc.healthCheckCalled = true
-	return nil
-}
-
 func TestDBReaderRead(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -176,16 +167,19 @@ func TestDBReaderRead(t *testing.T) {
 }
 
 func TestHealthCheck(t *testing.T) {
-	mhc := &mockHealthChecker{}
+	healthCheckCalled := false
 
-	r := Client{healthChecker: mhc}
+	r := Client{healthCheck: func() error {
+		healthCheckCalled = true
+		return nil
+	}}
 
 	err := r.HealthCheck()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !mhc.healthCheckCalled {
+	if !healthCheckCalled {
 		t.Fatal("health check method not called when expected")
 	}
 }

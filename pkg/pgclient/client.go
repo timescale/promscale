@@ -60,6 +60,7 @@ type Client struct {
 	Connection    pgxconn.PgxConn
 	ingestor      *pgmodel.DBIngestor
 	querier       pgmodel.Querier
+	labelsReader  pgmodel.LabelsReader
 	healthCheck   pgmodel.HealthCheckerFn
 	queryable     *query.Queryable
 	cfg           *Config
@@ -122,9 +123,9 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
-	querier := pgmodel.NewQuerierWithCaches(dbConn, metricsCache, labelsCache)
-
-	queryable := query.NewQueryable(querier)
+	labelsReader := pgmodel.NewLabelsReader(dbConn, labelsCache)
+	querier := pgmodel.NewQuerier(dbConn, metricsCache, labelsReader)
+	queryable := query.NewQueryable(querier, labelsReader)
 
 	healthChecker := pgmodel.NewHealthChecker(dbConn)
 	client := &Client{
