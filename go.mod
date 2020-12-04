@@ -12,7 +12,6 @@ require (
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.1
-	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/golang/snappy v0.0.2
 	github.com/jackc/pgconn v1.6.3
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
@@ -27,16 +26,15 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.13.0
-	github.com/prometheus/prometheus v1.8.2-0.20200907175821-8219b442c864
-	github.com/schollz/progressbar/v3 v3.7.0
+	github.com/prometheus/common v0.15.0
+	github.com/prometheus/prometheus v1.8.2-0.20201112142552-bef9d4e18226
+	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/spf13/cobra v0.0.7 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/testcontainers/testcontainers-go v0.5.1
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
-	go.uber.org/atomic v1.6.0
-	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
-	golang.org/x/tools v0.0.0-20200908211811-12e1bf57a112 // indirect
+	go.uber.org/atomic v1.7.0
+	go.uber.org/goleak v1.1.10
 	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
 	google.golang.org/grpc v1.32.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect

@@ -16,9 +16,11 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-const (
-	MaxTimeRangeDeltaLimit    = time.Minute * 120
-	ResponseDataSizeHalfLimit = utils.Megabyte * 25
+var (
+	laIncrement                     = time.Minute.Milliseconds()
+	maxTimeRangeDeltaLimit          = time.Minute.Milliseconds() * 120
+	responseDataSizeHalfLimit int64 = utils.Megabyte * 500
+	premittableSizeBounds           = responseDataSizeHalfLimit / 20
 )
 
 // Plan represents the plannings done by the planner.
@@ -29,24 +31,18 @@ type Plan struct {
 	ProgressMetricName        string // Name for progress metric.
 	ProgressEnabled           bool
 	RemoteWriteStorageReadURL string
-	readClient                *utils.Client // Used to fetch last maxt pushed from write storage.
-	blockCounts               atomic.Int64  // Used in maintaining the ID of the in-memory blocks.
+	blockCounts               atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
 	// Block time-range vars.
 	lastMaxT           int64
-	lastNumBytes       int
+	lastNumBytes       atomic.Int64
 	lastTimeRangeDelta int64
 	pbarMux            *sync.Mutex
 	IsTest             bool
 }
 
-// InitPlan creates an in-memory planner nad initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
+// InitPlan creates an in-memory planner and initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
 // the mint for the provided migration.
 func Init(config *Plan) (bool, error) {
-	rc, err := utils.CreateReadClient("reader-last-maxt-pushed", config.RemoteWriteStorageReadURL, model.Duration(time.Minute*2))
-	if err != nil {
-		return false, fmt.Errorf("create last-pushed-maxt reader: %w", err)
-	}
-	config.readClient = rc
 	config.pbarMux = new(sync.Mutex)
 	config.blockCounts.Store(0)
 	if config.ProgressEnabled && config.RemoteWriteStorageReadURL == "" {
@@ -68,13 +64,12 @@ func Init(config *Plan) (bool, error) {
 		}
 	}
 	config.lastMaxT = math.MinInt64
-	if config.Mint > config.Maxt {
-		return false, fmt.Errorf("invalid: mint greater than maxt")
-	}
-	if config.Mint == config.Maxt && !found {
-		// progress_metric does not exists. This means that the migration is expected to be an instant query.
-		log.Info("msg", "mint equal to maxt. Considering this as instant query.")
-		return true, nil
+	if config.Mint >= config.Maxt && found {
+		log.Info("msg", "mint greater than or equal to maxt. Migration has already been carried out.")
+		return false, nil
+	} else if config.Mint >= config.Maxt && !found {
+		// Extra sanitary check, even though this will be caught by the validateConf().
+		return false, fmt.Errorf("mint cannot be greater than maxt: mint %d maxt %d", config.Mint, config.Mint)
 	}
 
 	return true, nil
@@ -90,7 +85,11 @@ func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err erro
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
-	result, _, _, err := p.readClient.Read(context.Background(), query)
+	readClient, err := utils.NewClient("reader-last-maxt-pushed", "fetch_last_maxt", p.RemoteWriteStorageReadURL, model.Duration(time.Minute*2))
+	if err != nil {
+		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
+	}
+	result, _, _, err := readClient.Read(context.Background(), query)
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt query result: %w", err)
 	}
@@ -121,14 +120,14 @@ func (p *Plan) ShouldProceed() bool {
 	return p.lastMaxT < p.Maxt
 }
 
-// Update updates the details of the planner that are dependent on previous fetch stats.
-func (p *Plan) Update(numBytes int) {
-	p.lastNumBytes = numBytes
+// update updates the details of the planner that are dependent on previous fetch stats.
+func (p *Plan) update(numBytes int) {
+	p.lastNumBytes.Store(int64(numBytes))
 }
 
 // NewBlock returns a new block after allocating the time-range for fetch.
-func (p *Plan) NextBlock() (reference *Block, err error, delta int64) {
-	timeDelta := determineTimeDelta(p.lastNumBytes, p.lastTimeRangeDelta)
+func (p *Plan) NextBlock() (reference *Block, err error) {
+	timeDelta := determineTimeDelta(p.lastNumBytes.Load(), p.lastTimeRangeDelta)
 	var mint int64
 	if p.lastMaxT == math.MinInt64 {
 		mint = p.Mint
@@ -143,9 +142,9 @@ func (p *Plan) NextBlock() (reference *Block, err error, delta int64) {
 	p.lastTimeRangeDelta = timeDelta
 	bRef, err := p.createBlock(mint, maxt)
 	if err != nil {
-		return nil, fmt.Errorf("next-block: %w", err), timeDelta
+		return nil, fmt.Errorf("next-block: %w", err)
 	}
-	return bRef, nil, timeDelta
+	return bRef, nil
 }
 
 // createBlock creates a new block and returns reference to the block for faster write and read operations.
@@ -161,9 +160,9 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 	}
 	baseDescription := fmt.Sprintf("block-%d time-range: %d mins | mint: %d | maxt: %d", id, timeRangeInMinutes, mint, maxt)
 	reference = &Block{
-		id:              id,
-		percent:         percent,
-		pbarInitDetails: baseDescription,
+		id:                    id,
+		percent:               percent,
+		pbarDescriptionPrefix: baseDescription,
 		pbar: progressbar.NewOptions(
 			6,
 			progressbar.OptionOnCompletion(func() {
@@ -173,10 +172,11 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 		mint:    mint,
 		maxt:    maxt,
 		pbarMux: p.pbarMux,
+		plan:    p,
 	}
 	if p.IsTest {
 		reference.pbar = nil
-		reference.pbarInitDetails = ""
+		reference.pbarDescriptionPrefix = ""
 	}
 	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeInMinutes), 1)
 	return
@@ -194,34 +194,35 @@ func (p *Plan) validateT(mint, maxt int64) error {
 	return nil
 }
 
-func determineTimeDelta(numBytes int, prevTimeDelta int64) int64 {
-	// TODO: add explanation of logic as an overview.
+func determineTimeDelta(numBytes int64, prevTimeDelta int64) int64 {
 	switch {
-	case numBytes == ResponseDataSizeHalfLimit:
-		return prevTimeDelta
-	case numBytes < ResponseDataSizeHalfLimit && prevTimeDelta == MaxTimeRangeDeltaLimit.Milliseconds():
-		// The balanced scenario where the time-range is neither too long to cause OOM nor too less
-		// to slow down the migration process.
-		// An important thing to note is that the priority of size is more than that of time. That means,
-		// if both bytes and time are greater than the respective limits, then we down size the time so that
-		// bytes size can be controlled.
-		return prevTimeDelta
-	case numBytes < ResponseDataSizeHalfLimit && prevTimeDelta > MaxTimeRangeDeltaLimit.Milliseconds():
-		// Though the bytes count is less than the limit, the time range delta is more, hence we leave here
-		// unchanged so that it can be reset back to the MaxTimeRangeDeltaLimit.
-	case numBytes < ResponseDataSizeHalfLimit:
+	case numBytes < responseDataSizeHalfLimit:
 		// We increase the time-range linearly for the next fetch if the current time-range fetch resulted in size that is
 		// less than half the aimed maximum size of the in-memory block. This continues till we reach the
 		// maximum time-range delta.
-		prevTimeDelta += time.Minute.Milliseconds()
-	default:
-		// Decrease the time-range delta exponentially if the current fetch size exceeds the half aimed. This is done so that
-		// we reach an ideal time-range as the block numbers grow and successively reach the balanced scenario.
+		if prevTimeDelta >= maxTimeRangeDeltaLimit {
+			return maxTimeRangeDeltaLimit
+		}
+		return clampTimeDelta(prevTimeDelta, laIncrement)
+	case numBytes > responseDataSizeHalfLimit && numBytes <= (responseDataSizeHalfLimit+premittableSizeBounds):
+		// We continue the previous time-delta if the increase in numBytes is only 5% more than the responseDataSizeHalfLimit.
+		// Example: if the size at current pull is 515 MB, decreasing by twice will take to 257 MB, which is much slower.
+		// Hence, we allow to continue at that limit till its within the permittable bounds.
+		return prevTimeDelta
+	case numBytes > responseDataSizeHalfLimit:
+		// The priority of size is more than that of time. That means, even if both bytes and time are greater than
+		// the respective limits, then we down size the time so that bytes size can be controlled (preventing OOM).
 		return prevTimeDelta / 2
 	}
-	if prevTimeDelta > MaxTimeRangeDeltaLimit.Milliseconds() {
-		// Reset the time delta to the maximum permittable value.
-		prevTimeDelta = MaxTimeRangeDeltaLimit.Milliseconds()
-	}
+	// The ideal scenario where the time-range is neither too long to cause OOM nor too less
+	// to slow down the migration process.
 	return prevTimeDelta
+}
+
+func clampTimeDelta(t int64, incr int64) int64 {
+	t += incr
+	if t > maxTimeRangeDeltaLimit {
+		return maxTimeRangeDeltaLimit
+	}
+	return t
 }

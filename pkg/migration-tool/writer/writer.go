@@ -33,7 +33,7 @@ type RemoteWrite struct {
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
 func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, sigRead chan *planner.Block) (*RemoteWrite, error) {
-	wc, err := utils.CreateWriteClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, model.Duration(defaultWriteTimeout))
+	wc, err := utils.NewClient(fmt.Sprintf("writer-%d", 1), "writer", remoteWriteUrl, model.Duration(defaultWriteTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating write-client: %w", err)
 	}
@@ -69,15 +69,12 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 		for {
 			select {
 			case <-rw.c.Done():
-				break
+				return
 			case blockRef, ok := <-rw.sigBlockRead:
 				if !ok {
 					return
 				}
-				blockRef.SetDescription(fmt.Sprintf("pushing %.2f...", float64(blockRef.BytesCompressed())/float64(utils.Megabyte)), 1)
-				rw.progressTimeSeries.Samples = []prompb.Sample{{Timestamp: blockRef.Maxt(), Value: 1}} // One sample per block, else it will lead to duplicate samples.
-				blockRef.Timeseries = append(blockRef.Timeseries, rw.progressTimeSeries)
-				ts = timeseriesRefToTimeseries(blockRef.Timeseries)
+				ts = timeseriesRefToTimeseries(blockRef.MergeProgressSeries(rw.progressTimeSeries))
 				buf = []byte{}
 				if err = rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
 					errChan <- fmt.Errorf("remote-write run: %w", err)

@@ -2,50 +2,15 @@ package utils
 
 import (
 	"fmt"
-	"net/url"
 
-	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 )
 
 const (
-	Megabyte = 1024 * 1024
 	LabelJob = "job"
+	Megabyte = 1024 * 1024
 )
-
-// CreateReadClient creates a new read client that can be used to fetch promb samples.
-func CreateReadClient(name, urlString string, readTimeout model.Duration) (*Client, error) {
-	parsedUrl, err := url.Parse(urlString)
-	if err != nil {
-		return nil, fmt.Errorf("parsing-url: %w", err)
-	}
-	readClient, err := NewClient(name, "read", &clientConfig{
-		URL:     &config.URL{URL: parsedUrl},
-		Timeout: readTimeout,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("new read-client: %w", err)
-	}
-	return readClient, nil
-}
-
-// CreateWriteClient creates a new write client that can be used to push promb samples.
-func CreateWriteClient(name, urlString string, readTimeout model.Duration) (*Client, error) {
-	parsedUrl, err := url.Parse(urlString)
-	if err != nil {
-		return nil, fmt.Errorf("parsing-url: %w", err)
-	}
-	writeClient, err := NewClient(name, "write", &clientConfig{
-		URL:     &config.URL{URL: parsedUrl},
-		Timeout: readTimeout,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("new write-client: %w", err)
-	}
-	return writeClient, nil
-}
 
 // CreatePrombRequest creates a new promb query based on the matchers.
 func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Query, error) {
