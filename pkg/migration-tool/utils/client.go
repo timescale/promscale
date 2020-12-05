@@ -25,7 +25,13 @@ import (
 
 var userAgent = fmt.Sprintf("Prometheus/%s", version.Version)
 
-const maxErrMsgLen = 512
+const (
+	maxErrMsgLen = 512
+	// Read defines the type of client. It is used to fetch the auth from authStore.
+	Read = iota
+	// Write defines the type of client. It is used to fetch the auth from authStore.
+	Write
+)
 
 type Client struct {
 	remoteName string
@@ -41,17 +47,22 @@ type clientConfig struct {
 	HTTPClientConfig configutil.HTTPClientConfig
 }
 
-// NewClient creates a new read or write client. The `clientType` should be either `read` or `write`.
-func NewClient(remoteName, clientType, urlString string, timeout model.Duration) (*Client, error) {
+// NewClient creates a new read or write client. The `clientType` should be either `read` or `write`. The client type
+// is used to get the auth from the auth store. If the `clientType` is other than the ones specified, then auth may not work.
+func NewClient(remoteName, urlString string, clientType uint, timeout model.Duration) (*Client, error) {
 	parsedUrl, err := url.Parse(urlString)
 	if err != nil {
-		return nil, fmt.Errorf("parsing-%s-url: %w", clientType, err)
+		return nil, fmt.Errorf("parsing-%d-url: %w", clientType, err)
 	}
 	conf := &clientConfig{
 		URL:     &config.URL{URL: parsedUrl},
 		Timeout: timeout,
 	}
-	httpClient, err := configutil.NewClientFromConfig(conf.HTTPClientConfig, fmt.Sprintf("remote_storage_%s_client", clientType), false, false)
+	clientConfig, ok := authStore.Load(clientType)
+	if ok {
+		conf.HTTPClientConfig = clientConfig.(configutil.HTTPClientConfig)
+	}
+	httpClient, err := configutil.NewClientFromConfig(conf.HTTPClientConfig, fmt.Sprintf("remote_storage_%d_client", clientType), false, false)
 	if err != nil {
 		return nil, err
 	}
