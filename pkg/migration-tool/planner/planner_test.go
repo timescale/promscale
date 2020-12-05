@@ -244,7 +244,6 @@ func TestNumBlockCreation(t *testing.T) {
 			b, err := planConfig.NextBlock()
 			// Assume fetching happened here.
 			bytesPrev += c.bytesIncrement
-			//fmt.Println(c.name, (b.maxt-b.mint)/minute, b.numBytesUncompressed/utils.Megabyte)
 			b.plan.update(int(bytesPrev))
 			if bytesPrev > responseDataSizeHalfLimit {
 				// In ideal condition, the drop in time range will drop the size by the same amount.

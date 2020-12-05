@@ -33,7 +33,7 @@ type RemoteWrite struct {
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
 func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, sigRead chan *planner.Block) (*RemoteWrite, error) {
-	wc, err := utils.NewClient(fmt.Sprintf("writer-%d", 1), "writer", remoteWriteUrl, model.Duration(defaultWriteTimeout))
+	wc, err := utils.NewClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, utils.Write, model.Duration(defaultWriteTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating write-client: %w", err)
 	}

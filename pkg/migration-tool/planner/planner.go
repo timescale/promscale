@@ -85,7 +85,7 @@ func (p *Plan) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err erro
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
-	readClient, err := utils.NewClient("reader-last-maxt-pushed", "fetch_last_maxt", p.RemoteWriteStorageReadURL, model.Duration(time.Minute*2))
+	readClient, err := utils.NewClient("reader-last-maxt-pushed", p.RemoteWriteStorageReadURL, utils.Write, model.Duration(time.Minute*2))
 	if err != nil {
 		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
 	}

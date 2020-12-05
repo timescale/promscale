@@ -12,7 +12,14 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
+	"github.com/timescale/promscale/pkg/migration-tool/utils"
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
+)
+
+const (
+	migrationJobName     = "prom-migrator"
+	progressMetricName   = "prom_migrator_progress"
+	validMetricNameRegex = `^[a-zA-Z_:][a-zA-Z0-9_:]*$`
 )
 
 type config struct {
@@ -24,13 +31,9 @@ type config struct {
 	writerReadURL      string
 	progressEnabled    bool
 	progressMetricName string
+	readerAuth         utils.Auth
+	writerAuth         utils.Auth
 }
-
-const (
-	migrationJobName     = "prom-migrator"
-	progressMetricName   = "prom_migrator_progress"
-	validMetricNameRegex = `^[a-zA-Z_:][a-zA-Z0-9_:]*$`
-)
 
 func main() {
 	conf := new(config)
@@ -42,6 +45,14 @@ func main() {
 	log.Info("msg", fmt.Sprintf("%v+", conf))
 	if err := validateConf(conf); err != nil {
 		log.Error("msg", "could not parse flags", "error", err)
+		os.Exit(1)
+	}
+	if err := utils.SetAuthStore(utils.Read, conf.readerAuth.ToHTTPClientConfig()); err != nil {
+		log.Error("msg", "could not set read-auth in authStore", "error", err)
+		os.Exit(1)
+	}
+	if err := utils.SetAuthStore(utils.Write, conf.readerAuth.ToHTTPClientConfig()); err != nil {
+		log.Error("msg", "could not set write-auth in authStore", "error", err)
 		os.Exit(1)
 	}
 
@@ -72,10 +83,12 @@ func main() {
 	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create reader", "error", err)
+		os.Exit(2)
 	}
 	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create writer", "error", err)
+		os.Exit(2)
 	}
 
 	read.Run(readErrChan)
@@ -116,6 +129,13 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.writerReadURL, "writer-read-url", "", "Read URL of the write storage. This is used to fetch the progress-metric that represents the last pushed maximum timestamp.")
 	flag.BoolVar(&conf.progressEnabled, "progress-enabled", true, "This flag tells the migrator, whether or not to use the progress mechanism. It is helpful if you want to "+
 		"carry out migration with the same time-range. Without this, the migrator will resume the migration from the last time, where it as stopped.")
+	// Authentication.
+	flag.StringVar(&conf.readerAuth.Username, "read-auth-username", "", "Auth username for remote-read storage.")
+	flag.StringVar(&conf.readerAuth.Password, "read-auth-password", "", "Auth password for remote-read storage.")
+	flag.StringVar(&conf.readerAuth.BearerToken, "read-auth-bearer-token", "", "Auth username for remote-read storage. This should be mutually exclusive with username and password.")
+	flag.StringVar(&conf.writerAuth.Username, "write-auth-username", "", "Auth username for remote-write storage.")
+	flag.StringVar(&conf.writerAuth.Password, "write-auth-password", "", "Auth password for remote-write storage.")
+	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Auth username for remote-write storage. This should be mutually exclusive with username and password.")
 	_ = flag.CommandLine.Parse(args)
 	optimizeConf(conf)
 }
@@ -148,6 +168,14 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("invalid input: minimum timestamp value (mint) cannot be greater than the maximum timestamp value (maxt)")
 	case conf.progressEnabled && strings.TrimSpace(conf.writerReadURL) == "":
 		return fmt.Errorf("invalid input: read url for remote-write storage should be provided when progress metric is enabled. To disable progress metric, use -progress-enabled=false")
+	}
+	httpConfig := conf.readerAuth.ToHTTPClientConfig()
+	if err := httpConfig.Validate(); err != nil {
+		return fmt.Errorf("reader auth validation: %w", err)
+	}
+	httpConfig = conf.writerAuth.ToHTTPClientConfig()
+	if err := httpConfig.Validate(); err != nil {
+		return fmt.Errorf("writer auth validation: %w", err)
 	}
 	return nil
 }

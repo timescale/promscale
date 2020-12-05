@@ -29,7 +29,7 @@ type RemoteRead struct {
 // New creates a new RemoteRead. It creates a ReadClient that is imported from Prometheus remote storage.
 // RemoteRead takes help of plan to understand how to create fetchers.
 func New(c context.Context, readStorageUrl string, p *plan.Plan, sigRead chan *plan.Block) (*RemoteRead, error) {
-	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), "reader", readStorageUrl, model.Duration(defaultReadTimeout))
+	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), readStorageUrl, utils.Read, model.Duration(defaultReadTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
 	}
