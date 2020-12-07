@@ -85,14 +85,14 @@ curl -v \
     -H "Content-Type: application/x-protobuf" \
     -H "Content-Encoding: snappy" \
     -H "X-Prometheus-Remote-Write-Version: 0.1.0" \
-    --data-binary "@${ROOT_DIR}/pkg/pgmodel/testdata/real-dataset.sz" \
+    --data-binary "@${ROOT_DIR}/pkg/tests/testdata/real-dataset.sz" \
     "${CONNECTOR_URL}/write"
 
 echo "sending import request"
 
 curl -v \
     -H "Content-Type: application/json" \
-    --data-binary "@${ROOT_DIR}/pkg/pgmodel/testdata/import.json" \
+    --data-binary "@${ROOT_DIR}/pkg/tests/testdata/import.json" \
     "${CONNECTOR_URL}/write"
 
 compare_connector_and_prom() {
