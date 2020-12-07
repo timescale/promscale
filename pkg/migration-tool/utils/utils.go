@@ -27,13 +27,19 @@ type Auth struct {
 
 // Convert converts the auth credentials to HTTP client compatible format.
 func (a *Auth) ToHTTPClientConfig() config.HTTPClientConfig {
-	return config.HTTPClientConfig{
-		BasicAuth: &config.BasicAuth{
+	conf := config.HTTPClientConfig{}
+	if a.Password != "" {
+		conf.BasicAuth = &config.BasicAuth{
 			Username: a.Username,
 			Password: config.Secret(a.Password),
-		},
-		BearerToken: config.Secret(a.BearerToken),
+		}
 	}
+	if a.BearerToken != "" {
+		// Since Password and BearerToken are mutually exclusive, we assign both on input flag condition
+		// and leave upto the HTTPClientConfig.Validate() for validation.
+		conf.BearerToken = config.Secret(a.BearerToken)
+	}
+	return conf
 }
 
 // SetAuthStore sets the authStore map.
@@ -53,7 +59,7 @@ func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Que
 	}
 	return &prompb.Query{
 		StartTimestampMs: mint,
-		EndTimestampMs:   maxt,
+		EndTimestampMs:   maxt - 1,
 		Matchers:         ms,
 	}, nil
 }

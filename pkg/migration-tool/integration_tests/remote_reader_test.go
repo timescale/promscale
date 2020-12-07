@@ -84,7 +84,7 @@ func getReadHandler(t *testing.T, series []prompb.TimeSeries) http.Handler {
 			serie := &prompb.TimeSeries{}
 			var samples []prompb.Sample
 			for _, sample := range s.Samples {
-				if sample.Timestamp >= startTs && sample.Timestamp <= endTs {
+				if sample.Timestamp >= startTs && sample.Timestamp < endTs {
 					// Considering including of time boundaries. Prometheus excludes the end boundary.
 					// TODO: check this with the Brian's comments in design doc.
 					samples = append(samples, sample)

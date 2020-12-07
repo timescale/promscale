@@ -8,8 +8,7 @@ import (
 )
 
 var (
-	blockSizeLimit        int64 = utils.Megabyte * 500
-	permittableSizeBounds       = blockSizeLimit / 20
+	blockSizeLimit int64 = utils.Megabyte * 500
 )
 
 func TestTimeDeltaDetermination(t *testing.T) {
@@ -35,7 +34,7 @@ func TestTimeDeltaDetermination(t *testing.T) {
 			name:               "bytes_less_than_limit_2",
 			numBytes:           utils.Megabyte*500 - 1,
 			prevTimeDelta:      11 * minute,
-			expOutputTimeDelta: 12 * minute,
+			expOutputTimeDelta: 11 * minute,
 		},
 		{
 			name:               "bytes_equal_than_limit",
@@ -44,26 +43,44 @@ func TestTimeDeltaDetermination(t *testing.T) {
 			expOutputTimeDelta: 11 * minute,
 		},
 		{
-			name:               "bytes_greater_than_limit_but_within_permittable_bounds",
+			name:               "bytes_greater_than_limit",
 			numBytes:           utils.Megabyte*500 + 1,
 			prevTimeDelta:      10 * minute,
-			expOutputTimeDelta: 10 * minute,
+			expOutputTimeDelta: 5 * minute,
 		},
 		{
-			name:               "bytes_greater_than_limit_but_within_permittable_bounds_2",
-			numBytes:           utils.Megabyte*525 - 1, // 5% of total is the permittable bounds limit.
+			name:               "bytes_greater_than_limit_inc_region",
+			numBytes:           utils.Megabyte*250 + 1,
 			prevTimeDelta:      10 * minute,
 			expOutputTimeDelta: 10 * minute,
 		},
 		{
-			name:               "bytes_greater_than_limit_but_equal_to_permittable_bounds",
-			numBytes:           utils.Megabyte * 525,
+			name:               "bytes_equal_to_limit_inc_region",
+			numBytes:           utils.Megabyte * 250,
+			prevTimeDelta:      10 * minute,
+			expOutputTimeDelta: 11 * minute,
+		},
+		{
+			name:               "bytes_less_than_limit_inc_region",
+			numBytes:           utils.Megabyte*250 - 1,
+			prevTimeDelta:      10 * minute,
+			expOutputTimeDelta: 11 * minute,
+		},
+		{
+			name:               "bytes_less_than_just_limit",
+			numBytes:           utils.Megabyte*500 - 1,
 			prevTimeDelta:      10 * minute,
 			expOutputTimeDelta: 10 * minute,
 		},
 		{
-			name:               "bytes_greater_than_limit_and_beyond_permittable_bounds",
-			numBytes:           utils.Megabyte*525 + 1,
+			name:               "bytes_equal_to_limit",
+			numBytes:           utils.Megabyte * 500,
+			prevTimeDelta:      10 * minute,
+			expOutputTimeDelta: 10 * minute,
+		},
+		{
+			name:               "bytes_greater_than_limit",
+			numBytes:           utils.Megabyte*500 + 1,
 			prevTimeDelta:      10 * minute,
 			expOutputTimeDelta: 5 * minute,
 		},
@@ -87,7 +104,7 @@ func TestTimeDeltaDetermination(t *testing.T) {
 		},
 		{
 			name:               "time_and_bytes_greater_than_respective_limits",
-			numBytes:           utils.Megabyte*525 + 1,
+			numBytes:           utils.Megabyte*500 + 1,
 			prevTimeDelta:      120*minute + 1,
 			expOutputTimeDelta: 60 * minute,
 		},
@@ -100,13 +117,12 @@ func TestTimeDeltaDetermination(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		outTimeDelta := determineTimeDelta(int64(c.numBytes), blockSizeLimit, permittableSizeBounds, c.prevTimeDelta)
+		outTimeDelta := determineTimeDelta(int64(c.numBytes), blockSizeLimit, c.prevTimeDelta)
 		assert.Equal(t, c.expOutputTimeDelta, outTimeDelta, c.name)
 	}
 }
 
 func TestNumBlockCreation(t *testing.T) {
-	// TODO: Make sure that block progress bars do not get created during tests. They fill the logs and make things untidy.
 	cases := []struct {
 		name                       string
 		startT                     int64
@@ -202,25 +218,25 @@ func TestNumBlockCreation(t *testing.T) {
 			expectedNumBlocksCreations: 14,
 		},
 		{
-			name:                       "normal_time_range_10",
+			name:                       "normal_time_range_10_1",
 			startT:                     100 * minute,
 			endT:                       110 * minute,
 			bytesIncrement:             100 * utils.Megabyte,
-			expectedNumBlocksCreations: 4,
+			expectedNumBlocksCreations: 5,
 		},
 		{
 			name:                       "normal_time_range_11",
 			startT:                     100 * minute,
 			endT:                       110 * minute,
 			bytesIncrement:             200 * utils.Megabyte,
-			expectedNumBlocksCreations: 7,
+			expectedNumBlocksCreations: 6,
 		},
 		{
-			name:                       "normal_time_range_11",
+			name:                       "normal_time_range_11_1",
 			startT:                     100 * minute,
 			endT:                       110 * minute,
 			bytesIncrement:             250 * utils.Megabyte,
-			expectedNumBlocksCreations: 32,
+			expectedNumBlocksCreations: 6,
 		},
 		{
 			name:                       "start_less_than_end",
@@ -233,26 +249,29 @@ func TestNumBlockCreation(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		planConfig := &Plan{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, IsTest: true, BlockSizeLimitBytes: blockSizeLimit}
-		_, err := Init(planConfig)
+		planConfig := &Config{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, BlockSizeLimitBytes: blockSizeLimit}
+		plan, _, err := Init(planConfig)
 		if c.fails {
 			assert.Error(t, err, c.name)
 			continue
 		}
+		plan.Quite = true
 		assert.NoError(t, err, c.name)
 		blockCount := 0
 		var bytesPrev int64 = 0
-		for planConfig.ShouldProceed() {
-			b, err := planConfig.NextBlock()
+		for plan.ShouldProceed() {
+			b, err := plan.NextBlock()
+			blockCount++
 			// Assume fetching happened here.
-			bytesPrev += c.bytesIncrement
+			if bytesPrev <= blockSizeLimit/2 {
+				bytesPrev += c.bytesIncrement
+			}
 			b.plan.update(int(bytesPrev))
 			if bytesPrev > blockSizeLimit {
 				// In ideal condition, the drop in time range will drop the size by the same amount.
 				bytesPrev /= 2
 			}
 			assert.NoError(t, err)
-			blockCount++
 		}
 		assert.Equal(t, c.expectedNumBlocksCreations, blockCount, c.name)
 	}
