@@ -48,9 +48,12 @@ func TestCreateBlock(t *testing.T) {
 	mint := 100 * minute
 	maxt := 110 * minute
 	plan := &Plan{
-		Mint:    mint,
-		Maxt:    maxt,
+		config: &Config{
+			Mint: mint,
+			Maxt: maxt,
+		},
 		pbarMux: new(sync.Mutex),
+		Quite:   true,
 	}
 
 	for _, c := range cases {

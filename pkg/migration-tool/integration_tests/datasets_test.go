@@ -98,3 +98,126 @@ func generateSamples(index int) []prompb.Sample {
 
 	return samples
 }
+
+// This function is used to generate timeseries used for ingesting into
+// Prometheus and the connector to verify same results are being returned.
+func generateVeryLargeTimeseries() (ts []prompb.TimeSeries, mint, maxt int64) {
+	metrics := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: "aaa", Value: "000"},
+				{Name: labels.MetricName, Value: "metric_1"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "1"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_1"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "2"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_1"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "3"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_2"},
+				{Name: "foo", Value: "bat"},
+				{Name: "instance", Value: "1"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_2"},
+				{Name: "foo", Value: "bat"},
+				{Name: "instance", Value: "2"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_2"},
+				{Name: "foo", Value: "bat"},
+				{Name: "instance", Value: "3"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_3"},
+				{Name: "instance", Value: "1"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_3"},
+				{Name: "instance", Value: "2"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: "aaa", Value: "000"},
+				{Name: labels.MetricName, Value: "metric_1_a"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "1"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_1_a"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "2"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_1_a"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "3"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_2_a"},
+				{Name: "foo", Value: "bat"},
+				{Name: "instance", Value: "1"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_2_a"},
+				{Name: "foo", Value: "bat"},
+				{Name: "instance", Value: "2"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_2_a"},
+				{Name: "foo", Value: "bat"},
+				{Name: "instance", Value: "3"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_3_a"},
+				{Name: "instance", Value: "1"},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: labels.MetricName, Value: "metric_3_a"},
+				{Name: "instance", Value: "2"},
+			},
+		},
+	}
+
+	for i := range metrics {
+		metrics[i].Samples = generateSamples(i + 1)
+	}
+
+	return metrics, startTime, endTime
+}

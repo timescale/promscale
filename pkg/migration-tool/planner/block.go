@@ -68,7 +68,7 @@ func (b *Block) SetDescription(description string, proceed int) {
 		return
 	}
 	_ = b.pbar.Add(proceed)
-	b.pbar.Describe(fmt.Sprintf("progress: %.3f%% | %s | %s", b.percent, b.pbarDescriptionPrefix, description))
+	b.pbar.Describe(fmt.Sprintf("%s | %s", b.pbarDescriptionPrefix, description))
 }
 
 // SetBytes sets the number of bytes of the a compressed block.
