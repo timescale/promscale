@@ -2,12 +2,13 @@ package api
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
-	"net/http"
 )
 
 func Delete(conf *Config, client *pgclient.Client) http.Handler {

@@ -8,15 +8,14 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/promql"
-	"github.com/timescale/promscale/pkg/query"
 )
 
-func Query(conf *Config, queryEngine *promql.Engine, queryable *query.Queryable) http.Handler {
+func Query(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable) http.Handler {
 	hf := corsWrapper(conf, queryHandler(queryEngine, queryable))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryHandler(queryEngine *promql.Engine, queryable *query.Queryable) http.HandlerFunc {
+func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
 		var err error

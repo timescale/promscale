@@ -10,15 +10,14 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 	"github.com/timescale/promscale/pkg/promql"
-	"github.com/timescale/promscale/pkg/query"
 )
 
-func LabelValues(conf *Config, queryable *query.Queryable) http.Handler {
+func LabelValues(conf *Config, queryable promql.Queryable) http.Handler {
 	hf := corsWrapper(conf, labelValues(queryable))
 	return gziphandler.GzipHandler(hf)
 }
 
-func labelValues(queryable *query.Queryable) http.HandlerFunc {
+func labelValues(queryable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		name := route.Param(ctx, "name")

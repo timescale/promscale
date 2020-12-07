@@ -8,15 +8,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/promql"
-	"github.com/timescale/promscale/pkg/query"
 )
 
-func QueryRange(conf *Config, queryEngine *promql.Engine, queriable *query.Queryable) http.Handler {
+func QueryRange(conf *Config, queryEngine *promql.Engine, queriable promql.Queryable) http.Handler {
 	hf := corsWrapper(conf, queryRange(queryEngine, queriable))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryRange(queryEngine *promql.Engine, queriable *query.Queryable) http.HandlerFunc {
+func queryRange(queryEngine *promql.Engine, queriable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
