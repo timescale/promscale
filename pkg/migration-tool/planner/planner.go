@@ -17,27 +17,28 @@ import (
 )
 
 var (
-	laIncrement                     = time.Minute.Milliseconds()
-	maxTimeRangeDeltaLimit          = time.Minute.Milliseconds() * 120
-	responseDataSizeHalfLimit int64 = utils.Megabyte * 500
-	premittableSizeBounds           = responseDataSizeHalfLimit / 20
+	minute                 = time.Minute.Milliseconds()
+	laIncrement            = minute
+	maxTimeRangeDeltaLimit = minute * 120
 )
 
 // Plan represents the plannings done by the planner.
 type Plan struct {
 	Mint                      int64
 	Maxt                      int64
+	BlockSizeLimitBytes       int64
 	JobName                   string
 	ProgressMetricName        string // Name for progress metric.
 	ProgressEnabled           bool
 	RemoteWriteStorageReadURL string
 	blockCounts               atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
 	// Block time-range vars.
-	lastMaxT           int64
-	lastNumBytes       atomic.Int64
-	lastTimeRangeDelta int64
-	pbarMux            *sync.Mutex
-	IsTest             bool
+	lastMaxT              int64
+	lastNumBytes          atomic.Int64
+	lastTimeRangeDelta    int64
+	permittableSizeBounds int64
+	pbarMux               *sync.Mutex
+	IsTest                bool
 }
 
 // InitPlan creates an in-memory planner and initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
@@ -71,7 +72,7 @@ func Init(config *Plan) (bool, error) {
 		// Extra sanitary check, even though this will be caught by the validateConf().
 		return false, fmt.Errorf("mint cannot be greater than maxt: mint %d maxt %d", config.Mint, config.Mint)
 	}
-
+	config.permittableSizeBounds = config.BlockSizeLimitBytes / 20 // 5% of the total block size limit.
 	return true, nil
 }
 
@@ -127,7 +128,7 @@ func (p *Plan) update(numBytes int) {
 
 // NewBlock returns a new block after allocating the time-range for fetch.
 func (p *Plan) NextBlock() (reference *Block, err error) {
-	timeDelta := determineTimeDelta(p.lastNumBytes.Load(), p.lastTimeRangeDelta)
+	timeDelta := determineTimeDelta(p.lastNumBytes.Load(), p.BlockSizeLimitBytes, p.permittableSizeBounds, p.lastTimeRangeDelta)
 	var mint int64
 	if p.lastMaxT == math.MinInt64 {
 		mint = p.Mint
@@ -194,9 +195,9 @@ func (p *Plan) validateT(mint, maxt int64) error {
 	return nil
 }
 
-func determineTimeDelta(numBytes int64, prevTimeDelta int64) int64 {
+func determineTimeDelta(numBytes, limit, permittable int64, prevTimeDelta int64) int64 {
 	switch {
-	case numBytes < responseDataSizeHalfLimit:
+	case numBytes < limit:
 		// We increase the time-range linearly for the next fetch if the current time-range fetch resulted in size that is
 		// less than half the aimed maximum size of the in-memory block. This continues till we reach the
 		// maximum time-range delta.
@@ -204,14 +205,15 @@ func determineTimeDelta(numBytes int64, prevTimeDelta int64) int64 {
 			return maxTimeRangeDeltaLimit
 		}
 		return clampTimeDelta(prevTimeDelta, laIncrement)
-	case numBytes > responseDataSizeHalfLimit && numBytes <= (responseDataSizeHalfLimit+premittableSizeBounds):
-		// We continue the previous time-delta if the increase in numBytes is only 5% more than the responseDataSizeHalfLimit.
+	case numBytes > limit && numBytes <= (limit+permittable):
+		// We continue the previous time-delta if the increase in numBytes is only 5% more than the BlockSizeHalfLimit.
 		// Example: if the size at current pull is 515 MB, decreasing by twice will take to 257 MB, which is much slower.
 		// Hence, we allow to continue at that limit till its within the permittable bounds.
 		return prevTimeDelta
-	case numBytes > responseDataSizeHalfLimit:
+	case numBytes > limit:
 		// The priority of size is more than that of time. That means, even if both bytes and time are greater than
 		// the respective limits, then we down size the time so that bytes size can be controlled (preventing OOM).
+		log.Info("msg", fmt.Sprintf("decreasing time-range delta to %d minute(s) since size beyond permittable limits", prevTimeDelta/(2*minute)))
 		return prevTimeDelta / 2
 	}
 	// The ideal scenario where the time-range is neither too long to cause OOM nor too less

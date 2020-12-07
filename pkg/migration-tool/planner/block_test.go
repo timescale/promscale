@@ -3,13 +3,11 @@ package planner
 import (
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateBlock(t *testing.T) {
-	minute := time.Minute.Milliseconds()
 	cases := []struct {
 		name       string
 		mint       int64

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/inhies/go-bytesize"
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
@@ -26,6 +27,8 @@ type config struct {
 	name               string
 	mint               int64
 	maxt               int64
+	maxBlockSizeBytes  int64
+	maxBlockSize       string
 	readURL            string
 	writeURL           string
 	writerReadURL      string
@@ -42,11 +45,11 @@ func main() {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	log.Info("msg", fmt.Sprintf("%v+", conf))
 	if err := validateConf(conf); err != nil {
 		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
 	}
+	log.Info("msg", fmt.Sprintf("%v+", conf))
 	if err := utils.SetAuthStore(utils.Read, conf.readerAuth.ToHTTPClientConfig()); err != nil {
 		log.Error("msg", "could not set read-auth in authStore", "error", err)
 		os.Exit(1)
@@ -64,6 +67,8 @@ func main() {
 		ProgressMetricName:        conf.progressMetricName,
 		ProgressEnabled:           conf.progressEnabled,
 		RemoteWriteStorageReadURL: conf.writerReadURL,
+		// Block config.
+		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
 	}
 	proceed, err := plan.Init(planner)
 	if err != nil {
@@ -122,6 +127,8 @@ func parseFlags(conf *config, args []string) {
 	flag.Int64Var(&conf.mint, "mint", 0, "Minimum timestamp (in seconds) for carrying out data migration.")
 	flag.Int64Var(&conf.maxt, "maxt", time.Now().Unix(), "Maximum timestamp (in seconds) for carrying out data migration. Setting this value less than zero will indicate all data from mint upto now. "+
 		"Setting mint and maxt less than zero will migrate all data available in the read storage.")
+	flag.StringVar(&conf.maxBlockSize, "max-block-size", "500MB", "Maximum size of in-memory block. More the size of the block, greater will be the memory usage "+
+		"and greater will be the data migrated in a single moment.")
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+
@@ -154,6 +161,8 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("invalid mint: %d", conf.mint)
 	case conf.maxt < 0:
 		return fmt.Errorf("invalid maxt: %d", conf.maxt)
+	case conf.mint > conf.maxt:
+		return fmt.Errorf("invalid input: minimum timestamp value (mint) cannot be greater than the maximum timestamp value (maxt)")
 	case conf.progressMetricName != progressMetricName:
 		if !regexp.MustCompile(validMetricNameRegex).MatchString(conf.progressMetricName) {
 			return fmt.Errorf("invalid metric-name regex match: prom metric must match %s: recieved: %s", validMetricNameRegex, conf.progressMetricName)
@@ -164,8 +173,6 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("remote read storage url needs to be specified. Without read storage url, data migration cannot begin")
 	case strings.TrimSpace(conf.writeURL) == "":
 		return fmt.Errorf("remote write storage url needs to be specified. Without write storage url, data migration cannot begin")
-	case conf.mint > conf.maxt:
-		return fmt.Errorf("invalid input: minimum timestamp value (mint) cannot be greater than the maximum timestamp value (maxt)")
 	case conf.progressEnabled && strings.TrimSpace(conf.writerReadURL) == "":
 		return fmt.Errorf("invalid input: read url for remote-write storage should be provided when progress metric is enabled. To disable progress metric, use -progress-enabled=false")
 	}
@@ -177,5 +184,11 @@ func validateConf(conf *config) error {
 	if err := httpConfig.Validate(); err != nil {
 		return fmt.Errorf("writer auth validation: %w", err)
 	}
+
+	maxBlockSizeBytes, err := bytesize.Parse(conf.maxBlockSize)
+	if err != nil {
+		return fmt.Errorf("parsing byte-size: %w", err)
+	}
+	conf.maxBlockSizeBytes = int64(maxBlockSizeBytes)
 	return nil
 }
