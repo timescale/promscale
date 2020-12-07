@@ -5,38 +5,7 @@ import (
 	"reflect"
 	"sort"
 	"testing"
-
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/timescale/promscale/pkg/prompb"
 )
-
-type mockLabelsReader struct {
-	toReturn   [][]string
-	errors     []error
-	currentRow int
-}
-
-func (m mockLabelsReader) LabelNames() ([]string, error) {
-	panic("LabelNames not implemented")
-}
-
-func (m mockLabelsReader) LabelValues(labelName string) ([]string, error) {
-	panic("LabelValues not implemented")
-}
-
-func (m mockLabelsReader) PrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error) {
-	var pbs []prompb.Label
-	curr := m.currentRow
-	m.currentRow++
-	for _, label := range m.toReturn[curr] {
-		pbs = append(pbs, prompb.Label{Name: "name", Value: label})
-	}
-	return pbs, m.errors[curr]
-}
-
-func (m mockLabelsReader) LabelsForIds(ids []int64) (lls labels.Labels, err error) {
-	panic("LabelsForIds not implemented")
-}
 
 func TestLabelsReaderLabelsNames(t *testing.T) {
 	testCases := []struct {

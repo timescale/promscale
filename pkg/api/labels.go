@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/promql"
-	"github.com/timescale/promscale/pkg/query"
 )
 
 type labelsValue []string
@@ -24,12 +23,12 @@ func (l labelsValue) String() string {
 	return strings.Join(l, "\n")
 }
 
-func Labels(conf *Config, queryable *query.Queryable) http.Handler {
+func Labels(conf *Config, queryable promql.Queryable) http.Handler {
 	hf := corsWrapper(conf, labelsHandler(queryable))
 	return gziphandler.GzipHandler(hf)
 }
 
-func labelsHandler(queryable *query.Queryable) http.HandlerFunc {
+func labelsHandler(queryable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		querier, err := queryable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
 		if err != nil {

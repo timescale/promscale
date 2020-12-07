@@ -10,16 +10,16 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewQueryable(q pgmodel.Querier, labelsReader pgmodel.LabelsReader) *Queryable {
-	return &Queryable{querier: q, labelsReader: labelsReader}
+func NewQueryable(q pgmodel.Querier, labelsReader pgmodel.LabelsReader) promql.Queryable {
+	return &queryable{querier: q, labelsReader: labelsReader}
 }
 
-type Queryable struct {
+type queryable struct {
 	querier      pgmodel.Querier
 	labelsReader pgmodel.LabelsReader
 }
 
-func (q Queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querier, error) {
+func (q queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querier, error) {
 	return &querier{
 		ctx: ctx, mint: mint, maxt: maxt,
 		metricsReader: q.querier,

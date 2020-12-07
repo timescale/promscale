@@ -13,15 +13,14 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/promql"
-	"github.com/timescale/promscale/pkg/query"
 )
 
-func Series(conf *Config, queryable *query.Queryable) http.Handler {
+func Series(conf *Config, queryable promql.Queryable) http.Handler {
 	seriesHandler := corsWrapper(conf, series(queryable))
 	return gziphandler.GzipHandler(seriesHandler)
 }
 
-func series(queryable *query.Queryable) http.HandlerFunc {
+func series(queryable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			respondError(w, http.StatusBadRequest, errors.Wrap(err, "error parsing form values"), "bad_data")
