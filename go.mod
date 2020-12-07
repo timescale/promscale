@@ -13,6 +13,7 @@ require (
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/snappy v0.0.2
+	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
 	github.com/jackc/pgconn v1.6.3
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
 	github.com/jackc/pgproto3/v2 v2.0.2

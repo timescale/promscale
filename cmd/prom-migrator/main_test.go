@@ -29,6 +29,7 @@ func TestParseFlags(t *testing.T) {
 				writeURL:           "http://localhost:9201/write",
 				progressMetricName: "prom_migrator_progress",
 				writerReadURL:      "",
+				maxBlockSize:       "500MB",
 				progressEnabled:    false,
 			},
 			failsValidation: false,

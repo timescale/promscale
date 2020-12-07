@@ -2,13 +2,15 @@ package planner
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-var minute = time.Minute.Milliseconds()
+var (
+	blockSizeLimit        int64 = utils.Megabyte * 500
+	permittableSizeBounds       = blockSizeLimit / 20
+)
 
 func TestTimeDeltaDetermination(t *testing.T) {
 	cases := []struct {
@@ -98,7 +100,7 @@ func TestTimeDeltaDetermination(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		outTimeDelta := determineTimeDelta(int64(c.numBytes), c.prevTimeDelta)
+		outTimeDelta := determineTimeDelta(int64(c.numBytes), blockSizeLimit, permittableSizeBounds, c.prevTimeDelta)
 		assert.Equal(t, c.expOutputTimeDelta, outTimeDelta, c.name)
 	}
 }
@@ -125,7 +127,7 @@ func TestNumBlockCreation(t *testing.T) {
 			name:                       "instant_query_violate_limit",
 			startT:                     155 * minute,
 			endT:                       155 * minute,
-			bytesIncrement:             responseDataSizeHalfLimit,
+			bytesIncrement:             blockSizeLimit,
 			expectedNumBlocksCreations: 1,
 			fails:                      true,
 		},
@@ -231,7 +233,7 @@ func TestNumBlockCreation(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		planConfig := &Plan{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, IsTest: true}
+		planConfig := &Plan{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, IsTest: true, BlockSizeLimitBytes: blockSizeLimit}
 		_, err := Init(planConfig)
 		if c.fails {
 			assert.Error(t, err, c.name)
@@ -245,7 +247,7 @@ func TestNumBlockCreation(t *testing.T) {
 			// Assume fetching happened here.
 			bytesPrev += c.bytesIncrement
 			b.plan.update(int(bytesPrev))
-			if bytesPrev > responseDataSizeHalfLimit {
+			if bytesPrev > blockSizeLimit {
 				// In ideal condition, the drop in time range will drop the size by the same amount.
 				bytesPrev /= 2
 			}
