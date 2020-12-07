@@ -49,19 +49,19 @@ jobs:
       run: go test -v -race ./...
 
     - name: Test W/O Promscale Extension
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false
+      run: go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false
 
     - name: Test W/O TimescaleDB Extension
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescaledb=false
+      run: go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false -use-timescaledb=false
 
     - name: Test on TimescaleDB 2.0
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-timescale2
+      run: go test -v ./pkg/tests/end_to_end_tests/ -use-timescale2
 
     - name: Test on TimescaleDB 2.0 W/O Promscale Extension
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-extension=false -use-timescale2
+      run: go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false -use-timescale2
 
     - name: Test on TimescaleDB 2.0 multinode
-      run: go test -v ./pkg/pgmodel/end_to_end_tests/ -use-multinode
+      run: go test -v ./pkg/tests/end_to_end_tests/ -use-multinode
 
     - name: Generated
       run: |

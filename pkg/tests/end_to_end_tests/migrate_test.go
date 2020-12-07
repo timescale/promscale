@@ -16,8 +16,8 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
-	"github.com/timescale/promscale/pkg/pgmodel/test_migrations"
 	"github.com/timescale/promscale/pkg/runner"
+	"github.com/timescale/promscale/pkg/tests/test_migrations"
 	"github.com/timescale/promscale/pkg/version"
 )
 
