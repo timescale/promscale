@@ -766,6 +766,11 @@ func TestCompressionSetting(t *testing.T) {
 			t.Errorf("unexpected jobs, expected 2 got %v", jobs)
 		}
 
+		if *useMultinode {
+			//TODO turning compression off in multinode is broken upstream.
+			return
+		}
+
 		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_compression_setting('test')")
 		if err != nil {
 			t.Fatal(err)

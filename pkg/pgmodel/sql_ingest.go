@@ -26,7 +26,6 @@ import (
 const (
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + catalogSchema + ".get_or_create_metric_table_name($1)"
 	finalizeMetricCreation   = "CALL " + catalogSchema + ".finalize_metric_creation()"
-	needsCompressionEnable   = "SELECT " + catalogSchema + ".needs_compression_enable()"
 	getSeriesIDForLabelSQL   = "SELECT * FROM " + catalogSchema + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
 	getEpochSQL              = "SELECT current_epoch FROM " + catalogSchema + ".ids_epoch LIMIT 1"
 	maxCopyRequestsPerTxn    = 100
@@ -121,25 +120,7 @@ type pgxInserter struct {
 }
 
 func (p *pgxInserter) CompleteMetricCreation() error {
-	var tables []string
-	err := p.conn.QueryRow(context.Background(), needsCompressionEnable).Scan(&tables)
-	if err != nil {
-		return err
-	}
-	for _, table := range tables {
-		_, err = p.conn.Exec(
-			context.Background(),
-			fmt.Sprintf("ALTER TABLE prom_data.%s SET ("+
-				"timescaledb.compress,"+
-				"timescaledb.compress_segmentby = 'series_id',"+
-				"timescaledb.compress_orderby = 'time, value')",
-				table),
-		)
-		if err != nil {
-			return err
-		}
-	}
-	_, err = p.conn.Exec(
+	_, err := p.conn.Exec(
 		context.Background(),
 		finalizeMetricCreation,
 	)

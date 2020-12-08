@@ -245,13 +245,13 @@ func StartPGContainer(
 	var image string
 	switch extensionState {
 	case MultinodeAndPromscale:
-		image = "timescaledev/promscale-extension:2.0.0-rc3-pg12"
+		image = "timescaledev/promscale-extension:2.0.0-rc4-pg12"
 	case Multinode:
-		image = "timescale/timescaledb:2.0.0-rc3-pg12"
+		image = "timescale/timescaledb:2.0.0-rc4-pg12"
 	case Timescale2AndPromscale:
-		image = "timescaledev/promscale-extension:2.0.0-rc3-pg12"
+		image = "timescaledev/promscale-extension:2.0.0-rc4-pg12"
 	case Timescale2:
-		image = "timescale/timescaledb:2.0.0-rc3-pg12"
+		image = "timescale/timescaledb:2.0.0-rc4-pg12"
 	case Timescale1AndPromscale:
 		image = "timescaledev/promscale-extension:latest-pg12"
 	case Timescale1:
@@ -375,6 +375,10 @@ func startPGInstance(
 ) (container testcontainers.Container, closer func(), err error) {
 	// we map the access node to port 5432 and the others to other ports
 	isDataNode := containerPort.Port() != "5432"
+	nodeType := "AN"
+	if isDataNode {
+		nodeType = "DN"
+	}
 
 	req := testcontainers.ContainerRequest{
 		Image:        image,
@@ -393,6 +397,7 @@ func startPGInstance(
 		"-c", "max_connections=100",
 		"-c", "port=" + containerPort.Port(),
 		"-c", "max_prepared_transactions=150",
+		"-c", "log_line_prefix=" + nodeType + " %m [%d]",
 		"-i",
 	}
 
@@ -431,17 +436,17 @@ func startPGInstance(
 		container.FollowOutput(stdoutLogConsumer{})
 	}
 
+	err = container.Start(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if printLogs {
 		err = container.StartLogProducer(context.Background())
 		if err != nil {
 			fmt.Println("Error setting up logger", err)
 			os.Exit(1)
 		}
-	}
-
-	err = container.Start(context.Background())
-	if err != nil {
-		return nil, nil, err
 	}
 
 	closer = func() {
@@ -635,17 +640,17 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 		container.FollowOutput(stdoutLogConsumer{})
 	}
 
+	err = container.Start(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
 	if printLogs {
 		err = container.StartLogProducer(context.Background())
 		if err != nil {
 			fmt.Println("Error setting up logger", err)
 			os.Exit(1)
 		}
-	}
-
-	err = container.Start(context.Background())
-	if err != nil {
-		return nil, err
 	}
 
 	return container, nil
