@@ -3,19 +3,17 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/clockcache"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/prometheus/pkg/value"
-	"github.com/timescale/promscale/pkg/prompb"
-
+	"github.com/timescale/promscale/pkg/clockcache"
 	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func getSingleSampleValue(t testing.TB, resp []*prompb.TimeSeries) float64 {

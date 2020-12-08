@@ -6,7 +6,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"reflect"
 	"testing"
 	"time"
@@ -15,11 +14,10 @@ import (
 	"github.com/jackc/pgerrcode"
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/promscale/pkg/prompb"
-
 	_ "github.com/jackc/pgx/v4/stdlib"
-
 	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func TestSQLGetOrCreateMetricTableName(t *testing.T) {

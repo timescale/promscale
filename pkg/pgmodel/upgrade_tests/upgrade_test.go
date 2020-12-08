@@ -23,17 +23,15 @@ import (
 	"github.com/golang/snappy"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	. "github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/version"
-
-	_ "github.com/jackc/pgx/v4/stdlib"
-
-	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 var (

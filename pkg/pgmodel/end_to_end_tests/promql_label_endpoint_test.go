@@ -3,8 +3,6 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/timescale/promscale/pkg/clockcache"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,8 +11,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type labelsResponse struct {

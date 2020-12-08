@@ -3,7 +3,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"sort"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type deleteStr struct {

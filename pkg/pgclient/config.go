@@ -4,11 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"runtime"
+	"strconv"
+
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
-	"runtime"
-	"strconv"
 )
 
 // Config for the database

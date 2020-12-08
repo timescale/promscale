@@ -6,17 +6,15 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
-	"github.com/timescale/promscale/pkg/prompb"
-
 	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func TestSQLRetentionPeriod(t *testing.T) {

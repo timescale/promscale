@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/clockcache"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -23,13 +21,14 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
+	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
-
-	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 // PromClient is a wrapper around http.Client for sending read requests.

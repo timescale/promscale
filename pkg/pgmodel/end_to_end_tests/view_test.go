@@ -3,16 +3,14 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/timescale/promscale/pkg/prompb"
-
 	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func getViewRowCount(t testing.TB, db *pgxpool.Pool, view string, where string, expected int) {
