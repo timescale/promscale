@@ -41,9 +41,11 @@ SELECT * FROM prom_info.label ORDER BY key;
 
 \set ON_ERROR_STOP 0
 SELECT count(compress_chunk(i)) from show_chunks('prom_data.cpu_usage') i;
-psql:/testdata/sql/views.sql:23: ERROR:  [dn0]: compression not enabled on "cpu_usage"
-DETAIL:  It is not possible to compress chunks on a hypertable that does not have compression enabled.
-HINT:  Enable compression using ALTER TABLE with the timescaledb.compress option.
+ count 
+-------
+     1
+(1 row)
+
 \set ON_ERROR_STOP 0
 SELECT * FROM cpu_usage ORDER BY time, series_id LIMIT 5;
           time          | value | series_id |  labels   | node_id | namespace_id | new_tag_id 

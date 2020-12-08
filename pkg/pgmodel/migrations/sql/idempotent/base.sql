@@ -141,26 +141,6 @@ COMMENT ON PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
 IS 'Finalizes metric creation. This procedure should be run by the connector automatically';
 GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.finalize_metric_creation() TO prom_writer;
 
--- in early versions of timescale multinode we could not enable compression in
--- functions, so this function allows us to detect non-finalized tables and
--- enable compression in a seperate statement
--- we can't use the normal timescaledb info views becaue they also don't work
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.needs_compression_enable()
-RETURNS TEXT[] AS $func$
-DECLARE
-    tables TEXT[];
-BEGIN
-    IF SCHEMA_CATALOG.is_timescaledb_installed() AND SCHEMA_CATALOG.is_multinode() THEN
-        SELECT array_agg(format('%I', table_name))
-        FROM SCHEMA_CATALOG.metric
-        WHERE NOT creation_completed
-        INTO tables;
-    END IF;
-
-    RETURN tables;
-END
-$func$ LANGUAGE PLPGSQL;
-
 --This function is called by a trigger when a new metric is created. It
 --sets up the metric just enough to insert data into it. Metric creation
 --is completed in finalize_metric_creation() above. See the comments
@@ -1015,18 +995,12 @@ BEGIN
     INTO STRICT metric_table_name
     FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
 
-    IF SCHEMA_CATALOG.is_multinode() THEN
-        -- FXIME in early versions of multinode the access node catalog would
-        -- not be updated with compression info for distributed hypertables.
-        -- To work around this issue, this functions will track the existence
-        -- of the compression job in that case until the underlyting issue is
-        -- fixed: https://github.com/timescale/timescaledb/issues/2660
-        SELECT EXISTS (
-            SELECT FROM timescaledb_information.jobs
-            WHERE proc_schema='SCHEMA_CATALOG'
-                AND proc_name = 'compression_job'
-                AND config->>'metric_table' = metric_table_name
-        ) INTO result;
+    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2  THEN
+        SELECT compression_enabled
+        FROM timescaledb_information.hypertables
+        WHERE hypertable_schema ='SCHEMA_DATA'
+          AND hypertable_name = metric_table_name
+        INTO STRICT result;
     ELSE
         SELECT EXISTS (
             SELECT FROM _timescaledb_catalog.hypertable h
@@ -1123,6 +1097,19 @@ BEGIN
                 timescaledb.compress_segmentby = 'series_id',
                 timescaledb.compress_orderby = 'time, value'
             ); $$, metric_table_name);
+
+        --rc4 of multinode doesn't properly hand down compression when turned on
+        --inside of a function; this gets around that.
+        IF SCHEMA_CATALOG.is_multinode() THEN
+            CALL distributed_exec(
+                format($$
+                ALTER TABLE SCHEMA_DATA.%I SET (
+                    timescaledb.compress,
+                   timescaledb.compress_segmentby = 'series_id',
+                   timescaledb.compress_orderby = 'time, value'
+               ); $$, metric_table_name),
+               transactional => false);
+        END IF;
 
         --chunks where the end time is before now()-1 hour will be compressed
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
