@@ -3,7 +3,6 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"errors"
-	pgxconn "github.com/timescale/promscale/pkg/pgxconn"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type requestCase struct {

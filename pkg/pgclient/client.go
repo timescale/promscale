@@ -3,6 +3,7 @@ package pgclient
 import (
 	"context"
 	"fmt"
+
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/clockcache"

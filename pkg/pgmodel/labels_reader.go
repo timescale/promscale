@@ -6,11 +6,12 @@ package pgmodel
 import (
 	"context"
 	"fmt"
+	"sort"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
-	"sort"
 )
 
 const (

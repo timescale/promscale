@@ -5,13 +5,13 @@ package pgclient
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"reflect"
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 

@@ -6,6 +6,7 @@ package pgmodel
 
 import (
 	"context"
+
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
