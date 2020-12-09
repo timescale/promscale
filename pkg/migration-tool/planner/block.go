@@ -15,10 +15,9 @@ import (
 // Block represents an in-memory storage for data that is fetched by the reader.
 type Block struct {
 	id                    int64
-	mint                  int64
-	maxt                  int64
+	mint                  int64 // inclusive.
+	maxt                  int64 // exclusive.
 	done                  bool
-	percent               float64
 	pbarDescriptionPrefix string
 	pbar                  *progressbar.ProgressBar
 	timeseries            []*prompb.TimeSeries
@@ -107,12 +106,12 @@ func (b *Block) Done() error {
 	return nil
 }
 
-// Mint returns the mint of the block.
+// Mint returns the mint of the block (inclusive).
 func (b *Block) Mint() int64 {
 	return b.mint
 }
 
-// Maxt returns the maxt of the block.
+// Maxt returns the maxt of the block (exclusive).
 func (b *Block) Maxt() int64 {
 	return b.maxt
 }

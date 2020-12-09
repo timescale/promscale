@@ -255,7 +255,7 @@ func TestNumBlockCreation(t *testing.T) {
 			assert.Error(t, err, c.name)
 			continue
 		}
-		plan.Quite = true
+		plan.Quiet = true
 		assert.NoError(t, err, c.name)
 		blockCount := 0
 		var bytesPrev int64 = 0

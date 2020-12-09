@@ -32,7 +32,7 @@ type Plan struct {
 	lastTimeRangeDelta int64
 	deltaIncRegion     int64 // Time region for which the time-range delta can continue to increase by laIncrement.
 	// Test configs.
-	Quite         bool   // Avoid progress-bars during logs.
+	Quiet         bool   // Avoid progress-bars during logs.
 	TestCheckFunc func() // Helps peek into planner during testing. It is called at createBlock() to check the stats of the last block.
 }
 
@@ -68,7 +68,7 @@ func Init(config *Config) (*Plan, bool, error) {
 		log.Info("msg", "Resuming from where we left off is turned off. Starting at the beginning of the provided time-range.")
 	}
 	if config.Mint >= config.Maxt && found {
-		log.Info("msg", "mint greater than or equal to maxt. Migration has already been carried out.")
+		log.Info("msg", "mint greater than or equal to maxt. Migration is already complete.")
 		return nil, false, nil
 	} else if config.Mint >= config.Maxt && !found {
 		// Extra sanitary check, even though this will be caught by validateConf().
@@ -169,7 +169,6 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 	baseDescription := fmt.Sprintf("progress: %.3f%% | block-%d time-range: %d mins | mint: %d | maxt: %d", percent, id, timeRangeInMinutes, mint, maxt)
 	reference = &Block{
 		id:                    id,
-		percent:               percent,
 		pbarDescriptionPrefix: baseDescription,
 		pbar: progressbar.NewOptions(
 			6,
@@ -182,7 +181,7 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 		pbarMux: p.pbarMux,
 		plan:    p,
 	}
-	if p.Quite {
+	if p.Quiet {
 		reference.pbar = nil
 		reference.pbarDescriptionPrefix = ""
 	}
@@ -212,21 +211,21 @@ func determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) int64 {
 	case numBytes <= limit/2:
 		// deltaIncreaseRegion.
 		// We increase the time-range linearly for the next fetch if the current time-range fetch resulted in size that is
-		// less than half the aimed maximum size of the in-memory block. This continues till we reach the
-		// maximum time-range delta.
+		// less than half the max read size. This continues till we reach the maximum time-range delta.
 		return clampTimeDelta(prevTimeDelta + laIncrement)
 	case numBytes > limit:
-		// The priority of size is more than that of time. That means, even if both bytes and time are greater than
-		// the respective limits, then we down size the time so that bytes size can be controlled (preventing OOM).
+		// Down size the time exponentially so that bytes size can be controlled (preventing OOM).
 		log.Info("msg", fmt.Sprintf("decreasing time-range delta to %d minute(s) since size beyond permittable limits", prevTimeDelta/(2*minute)))
 		return prevTimeDelta / 2
 	}
-	// Here, the numBytes is between the deltaIncRegion and the limit (i.e., deltaIncRegion < numBytes <= limit).
-	// This region is an ideal case of balance between migration speed and memory utilization.
-	// Example: If the limit is 500MB, then the deltaIncRegion will be 250MB. This means that till the numBytes is below
-	// 250MB, the time-range for next fetch will by increased by 1 minute (on the previous fetch time-range). However,
-	// the moment any block comes between 250MB and 500MB, we stop to increment the time-range delta further. This keeps
-	// the migration tool in very safe memory limits.
+	// Here, the numBytes is between the max increment-time size limit (i.e., limit/2) and the max read limit
+	// (i.e., increment-time size limit < numBytes <= max read limit). This region is an ideal case of
+	// balance between migration speed and memory utilization.
+	//
+	// Example: If the limit is 500MB, then the max increment-time size limit will be 250MB. This means that till the numBytes is below
+	// 250MB, the time-range for next fetch will continue to increase by 1 minute (on the previous fetch time-range). However,
+	// the moment any block comes between 250MB and 500MB, we stop to increment the time-range delta further. This helps
+	// keeping the migration tool in safe memory limits.
 	return prevTimeDelta
 }
 

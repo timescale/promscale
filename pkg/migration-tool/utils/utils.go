@@ -59,7 +59,7 @@ func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Que
 	}
 	return &prompb.Query{
 		StartTimestampMs: mint,
-		EndTimestampMs:   maxt - 1,
+		EndTimestampMs:   maxt - 1, // maxt is exclusive while EndTimestampMs is inclusive.
 		Matchers:         ms,
 	}, nil
 }

@@ -53,7 +53,7 @@ func TestCreateBlock(t *testing.T) {
 			Maxt: maxt,
 		},
 		pbarMux: new(sync.Mutex),
-		Quite:   true,
+		Quiet:   true,
 	}
 
 	for _, c := range cases {
