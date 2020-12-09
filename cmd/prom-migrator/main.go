@@ -26,7 +26,9 @@ const (
 type config struct {
 	name               string
 	mint               int64
+	mintSec            int64
 	maxt               int64
+	maxtSec            int64
 	maxBlockSizeBytes  int64
 	maxBlockSize       string
 	readURL            string
@@ -119,8 +121,8 @@ loop:
 func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.name, "migration-name", migrationJobName, "Name for the current migration that is to be carried out. "+
 		"It corresponds to the value of the label 'job' set inside the progress-metric-name.")
-	flag.Int64Var(&conf.mint, "mint", 0, "Minimum timestamp (in seconds) for carrying out data migration. (inclusive)")
-	flag.Int64Var(&conf.maxt, "maxt", time.Now().Unix(), "Maximum timestamp (in seconds) for carrying out data migration (exclusive). "+
+	flag.Int64Var(&conf.mintSec, "mint", 0, "Minimum timestamp (in seconds) for carrying out data migration. (inclusive)")
+	flag.Int64Var(&conf.maxtSec, "maxt", time.Now().Unix(), "Maximum timestamp (in seconds) for carrying out data migration (exclusive). "+
 		"Setting this value less than zero will indicate all data from mint upto now. ")
 	flag.StringVar(&conf.maxBlockSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
 		"More the read size, faster will be the migration but higher will be the memory usage. Example: 250MB.")
@@ -144,13 +146,13 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Auth username for remote-write storage. "+
 		"This should be mutually exclusive with username and password.")
 	_ = flag.CommandLine.Parse(args)
-	optimizeConf(conf)
+	convertSecFlagToMs(conf)
 }
 
-func optimizeConf(conf *config) {
+func convertSecFlagToMs(conf *config) {
 	// remote-storages tend to respond to time in milliseconds. So, we convert the received values in seconds to milliseconds.
-	conf.mint *= 1000
-	conf.maxt *= 1000
+	conf.mint = conf.mintSec * 1000
+	conf.maxt = conf.maxtSec * 1000
 }
 
 func validateConf(conf *config) error {

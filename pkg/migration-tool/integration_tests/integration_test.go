@@ -58,7 +58,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	if !proceed {
 		t.Fatal("could not proceed")
 	}
-	planner.Quite = true
+	planner.Quiet = true
 
 	var (
 		readErrChan  = make(chan error)
@@ -154,7 +154,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	if !proceed {
 		t.Fatal("could not proceed")
 	}
-	planner.Quite = true
+	planner.Quiet = true
 
 	var (
 		readErrChan  = make(chan error)
@@ -188,7 +188,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	if !proceed {
 		t.Fatal("could not proceed")
 	}
-	planner.Quite = true
+	planner.Quiet = true
 
 	readErrChan = make(chan error)
 	writeErrChan = make(chan error)
@@ -290,7 +290,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	if !proceed {
 		t.Fatal("could not proceed")
 	}
-	planner.Quite = true
+	planner.Quiet = true
 
 	var (
 		readErrChan  = make(chan error)
@@ -324,7 +324,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	if !proceed {
 		t.Fatal("could not proceed")
 	}
-	planner.Quite = true
+	planner.Quiet = true
 
 	readErrChan = make(chan error)
 	writeErrChan = make(chan error)
