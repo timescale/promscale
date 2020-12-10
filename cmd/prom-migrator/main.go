@@ -134,16 +134,17 @@ func parseFlags(conf *config, args []string) {
 		"Note: This url is used to fetch the last pushed timestamp. If you want the migration to resume from where it left, in case of a crash, "+
 		"set this to the remote write storage that the migrator is writing along with the progress-enabled.")
 	flag.BoolVar(&conf.progressEnabled, "progress-enabled", true, "This flag tells the migrator, whether or not to use the progress mechanism. It is helpful if you want to "+
-		"carry out migration with the same time-range. If this is enabled, the migrator will resume the migration from the last time, where it was stopped/interrupted.")
+		"carry out migration with the same time-range. If this is enabled, the migrator will resume the migration from the last time, where it was stopped/interrupted. "+
+		"If you do not want any extra metric(s) while migration, you can set this to false. But, setting this to false will disble progress-metric and hence, the ability to resume migration.")
 	// Authentication.
 	// TODO: Auth/password via password_file and bearer_token via bearer_token_file.
 	flag.StringVar(&conf.readerAuth.Username, "read-auth-username", "", "Auth username for remote-read storage.")
 	flag.StringVar(&conf.readerAuth.Password, "read-auth-password", "", "Auth password for remote-read storage.")
-	flag.StringVar(&conf.readerAuth.BearerToken, "read-auth-bearer-token", "", "Auth username for remote-read storage. "+
+	flag.StringVar(&conf.readerAuth.BearerToken, "read-auth-bearer-token", "", "Bearer token for remote-read storage. "+
 		"This should be mutually exclusive with username and password.")
 	flag.StringVar(&conf.writerAuth.Username, "write-auth-username", "", "Auth username for remote-write storage.")
 	flag.StringVar(&conf.writerAuth.Password, "write-auth-password", "", "Auth password for remote-write storage.")
-	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Auth username for remote-write storage. "+
+	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Bearer token for remote-write storage. "+
 		"This should be mutually exclusive with username and password.")
 	_ = flag.CommandLine.Parse(args)
 	convertSecFlagToMs(conf)

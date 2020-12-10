@@ -34,6 +34,12 @@ If you have any questions, please join the #promscale channel on
 [Promscale Users Google Group](https://groups.google.com/forum/#!forum/promscale-users).
 
 
+This repository also contains the source code for **prom-migrator**. **Prom-migrator** is
+an **open-source**, **community-driven** and **free-to-use**, **universal prometheus
+data migration tool**, that migrates data from one storage system to another, leveraging Prometheus's
+remote storage endpoints. For more information about prom-migrator, visit
+[prom-migrator's README](https://github.com/timescale/promscale/tree/master/cmd/prom-migrator/blob/master/README.md).
+
 # Documentation
 
 * **[About TimescaleDB](#-about-timescaledb)**
