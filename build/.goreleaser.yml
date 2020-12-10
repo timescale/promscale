@@ -18,7 +18,12 @@ builds:
     # build el8 rpm
     # will be triggered multiple times but we need
     # {{ .Tag }} to ensure same version is used
-    post: bash ./build/rpm/build_rpm.sh {{ .Tag }}
+    #post: bash ./build/rpm/build_rpm.sh {{ .Tag }}
+- env:
+  - CGO_ENABLED=0
+  main: ./cmd/prom-migrator/
+  id: prom-migrator
+  binary: prom-migrator
 
 #don't publish scoop but overwrite the weird names
 scoop:
@@ -29,12 +34,25 @@ scoop:
 
 archives:
 - format: binary
+  builds:
+  - promscale
   replacements:
     darwin: Darwin
     linux: Linux
     windows: Windows
     386: i386
     amd64: x86_64
+- id: prom-migrator
+  format: binary
+  builds:
+  - prom-migrator
+  name_template: "{{ .Binary }}_0.0.1_beta_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+  replacements:
+    darwin: Darwin
+    linux: Linux
+    windows: Windows
+    386: i386
+    amd64: x86_6
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -62,7 +80,20 @@ dockers:
   - "timescale/promscale:{{ .Tag }}"
   - "timescale/promscale:{{ .Major }}.{{ .Minor }}"
   - "timescale/promscale:latest"
-
+-
+  binaries:
+  - prom-migrator
+  skip_push: false
+  dockerfile: ./build/prom-migrator/Dockerfile
+  extra_files:
+  - .git
+  - go.sum
+  - go.mod
+  - pkg
+  - cmd
+  image_templates:
+  - "timescale/prom-migrator:0.0.1-beta"
+  - "timescale/prom-migrator:latest"
 release:
   extra_files:
     - glob: ./dist/rpm/*
