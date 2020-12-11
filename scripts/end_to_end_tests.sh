@@ -63,12 +63,12 @@ wait_for() {
 echo "Waiting for database to be up..."
 wait_for "$DB_URL"
 
-TS_PROM_LOG_LEVEL=debug \
-TS_PROM_DB_CONNECT_RETRIES=10 \
-TS_PROM_DB_PASSWORD=postgres \
-TS_PROM_DB_NAME=postgres \
-TS_PROM_DB_SSL_MODE=disable \
-TS_PROM_WEB_TELEMETRY_PATH=/metrics \
+PROMSCALE_LOG_LEVEL=debug \
+PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_DB_PASSWORD=postgres \
+PROMSCALE_DB_NAME=postgres \
+PROMSCALE_DB_SSL_MODE=disable \
+PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
 ./promscale &
 
 CONN_PID=$!

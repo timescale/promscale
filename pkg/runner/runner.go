@@ -76,7 +76,12 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update TimescaleDB extension.")
 	flag.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
 	flag.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
+
+	// Deprecated: TS_PROM is the old prefix which is deprecated and in here
+	// for legacy compatibility. Will be removed in the future.
 	envy.Parse("TS_PROM")
+	envy.Parse("PROMSCALE")
+
 	// Ignore errors; CommandLine is set for ExitOnError.
 	_ = flag.CommandLine.Parse(args)
 
