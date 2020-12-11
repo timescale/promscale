@@ -38,20 +38,20 @@ spec:
             - containerPort: 9201
               name: connector-port
           env:
-            - name: TS_PROM_DB_PORT
+            - name: PROMSCALE_DB_PORT
               value: {{ .Values.connection.port | quote }}
-            - name: TS_PROM_DB_USER
+            - name: PROMSCALE_DB_USER
               value: {{ .Values.connection.user }}
-            - name: TS_PROM_DB_PASSWORD
+            - name: PROMSCALE_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ tpl .Values.connection.password.secretTemplate . }}
                   key: {{ .Values.connection.user }}
-            - name: TS_PROM_DB_HOST
+            - name: PROMSCALE_DB_HOST
               value: {{ tpl .Values.connection.host.nameTemplate . }}
-            - name: TS_PROM_DB_NAME
+            - name: PROMSCALE_DB_NAME
               value: {{ .Values.connection.dbName }}
-            - name: TS_PROM_DB_SSL_MODE
+            - name: PROMSCALE_DB_SSL_MODE
               value: {{ .Values.connection.sslMode }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

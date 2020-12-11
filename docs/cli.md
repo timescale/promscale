@@ -22,6 +22,18 @@ You can also find information on flags with `promscale_<version> -help`
 | web-enable-admin-api | boolean | false | Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series. |
 | web-listen-address | string | `:9201` | Address to listen on for web endpoints. |
 | web-telemetry-path | string | `/metrics` | Web endpoint for exposing Promscale's Prometheus metrics. |
+| tls-cert-file | string | "" (disabled) | TLS certificate file path for web server. To disable TLS, leave this field as blank. |
+| tls-key-file | string | "" (disabled) | TLS key file path for web server. To disable TLS, leave this field as blank. |
+
+## Auth flags
+
+| Flag | Type | Default | Description |
+|------|:-----:|:-------:|:-----------:|
+| auth-username | string | "" | Authentication username used for web endpoint authentication. Disabled by default. |
+| auth-password | string | "" | Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token methods. |
+| auth-password-file | string | "" | Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods. |
+| bearer-token | string | "" (disabled) | Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods. |
+| bearer-token-file | string | "" (disabled) | Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods. |
 
 ## Database flags
 

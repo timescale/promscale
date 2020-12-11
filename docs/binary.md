@@ -71,7 +71,7 @@ remote_read:
 
 The Promscale Connector binary is configured either through
 CLI flags or environment variables. All environment variables are
-prefixed with `TS_PROM`.
+prefixed with `PROMSCALE`.
 
 
 The list of available cli flags is available in [here](/docs/cli.md) in
