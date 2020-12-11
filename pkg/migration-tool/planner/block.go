@@ -30,23 +30,21 @@ type Block struct {
 // Fetch starts fetching the samples from remote read storage based on the matchers.
 func (b *Block) Fetch(context context.Context, client *utils.Client, mint, maxt int64, matchers []*labels.Matcher) (*prompb.QueryResult, error) {
 	timeRangeMinutesDelta := (maxt - mint) / time.Minute.Milliseconds()
-	b.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeMinutesDelta), 1)
 	readRequest, err := utils.CreatePrombQuery(mint, maxt, matchers)
 	if err != nil {
 		return nil, fmt.Errorf("create promb query: %w", err)
 	}
-	result, bytesCompressed, bytesUncompressed, err := client.Read(context, readRequest)
+	result, bytesCompressed, bytesUncompressed, err := client.Read(context, readRequest, fmt.Sprintf("%s | time-range: %d mins", b.pbarDescriptionPrefix, timeRangeMinutesDelta))
 	if err != nil {
 		return nil, fmt.Errorf("executing client-read: %w", err)
 	}
-	b.SetDescription(fmt.Sprintf("received %.2f MB with delta %d mins...", float64(bytesCompressed)/float64(utils.Megabyte), timeRangeMinutesDelta), 1)
 	b.timeseries = result.Timeseries
 	// We set compressed bytes in block since those are the bytes that will be pushed over the network to the write storage after snappy compression.
 	// The pushed bytes are not exactly the bytesCompressed since while pushing, we add the progress metric. But,
 	// the size of progress metric along with the sample is negligible. So, it is safe to consider bytesCompressed
 	// in such a scenario.
-	b.SetBytesCompressed(bytesCompressed)
-	b.SetBytesUncompressed(bytesUncompressed)
+	b.numBytesCompressed = bytesCompressed
+	b.numBytesUncompressed = bytesUncompressed
 	b.plan.update(bytesUncompressed)
 	return result, nil
 }
@@ -54,40 +52,20 @@ func (b *Block) Fetch(context context.Context, client *utils.Client, mint, maxt 
 // MergeProgressSeries returns the block's time-series after appending a sample to the progress-metric and merging
 // with the time-series of the block.
 func (b *Block) MergeProgressSeries(ts *prompb.TimeSeries) []*prompb.TimeSeries {
-	b.SetDescription(fmt.Sprintf("pushing %.2f...", float64(b.BytesCompressed())/float64(utils.Megabyte)), 1)
+	b.SetDescription(fmt.Sprintf("pushing %.2f...", float64(b.numBytesCompressed)/float64(utils.Megabyte)), 1)
 	ts.Samples = []prompb.Sample{{Timestamp: b.Maxt(), Value: 1}} // One sample per block.
 	b.timeseries = append(b.timeseries, ts)
 	return b.timeseries
 }
 
 func (b *Block) SetDescription(description string, proceed int) {
-	b.pbarMux.Lock()
-	defer b.pbarMux.Unlock()
 	if b.pbarDescriptionPrefix == "" {
 		return
 	}
+	b.pbarMux.Lock()
+	defer b.pbarMux.Unlock()
 	_ = b.pbar.Add(proceed)
 	b.pbar.Describe(fmt.Sprintf("%s | %s", b.pbarDescriptionPrefix, description))
-}
-
-// SetBytes sets the number of bytes of the a compressed block.
-func (b *Block) SetBytesCompressed(num int) {
-	b.numBytesCompressed = num
-}
-
-// SetBytesUncompressed sets the number of bytes of an uncompressed block.
-func (b *Block) SetBytesUncompressed(num int) {
-	b.numBytesUncompressed = num
-}
-
-// BytesCompressed returns the number of bytes of the compressed block.
-func (b *Block) BytesCompressed() int {
-	return b.numBytesCompressed
-}
-
-// BytesUncompressed returns the number of bytes of the compressed block.
-func (b *Block) BytesUncompressed() int {
-	return b.numBytesUncompressed
 }
 
 // Done updates the text and sets the spinner to done.

@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/schollz/progressbar/v3"
 )
 
 var userAgent = fmt.Sprintf("Prometheus/%s", version.Version)
@@ -81,7 +82,7 @@ func NewClient(remoteName, urlString string, clientType uint, timeout model.Dura
 }
 
 // Read reads from a remote endpoint. It returns the response size of compressed and uncompressed in bytes.
-func (c *Client) Read(ctx context.Context, query *prompb.Query) (result *prompb.QueryResult, numBytesCompressed int, numBytesUncompressed int, err error) {
+func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (result *prompb.QueryResult, numBytesCompressed int, numBytesUncompressed int, err error) {
 	req := &prompb.ReadRequest{
 		Queries: []*prompb.Query{
 			query,
@@ -117,7 +118,18 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query) (result *prompb.
 		_ = httpResp.Body.Close()
 	}()
 
-	compressed, err = ioutil.ReadAll(httpResp.Body)
+	var reader bytes.Buffer
+	if desc != "" {
+		bar := progressbar.DefaultBytes(
+			httpResp.ContentLength,
+			desc,
+		)
+		_, _ = io.Copy(io.MultiWriter(&reader, bar), httpResp.Body)
+	} else {
+		// This case belongs to when the client is used to fetch the progress metric from progress-metric url.
+		_, _ = io.Copy(&reader, httpResp.Body)
+	}
+	compressed, err = ioutil.ReadAll(bytes.NewReader(reader.Bytes()))
 	if err != nil {
 		return nil, -1, -1, errors.Wrap(err, fmt.Sprintf("error reading response. HTTP status code: %s", httpResp.Status))
 	}

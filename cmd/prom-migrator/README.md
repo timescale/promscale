@@ -61,7 +61,7 @@ as write endpoints are somewhat constrained.
 #### Example
 
 ```
-./prom-migrator -mint=1606408552 -maxt=1606415752 -read-url=<read_endpoint_url_for_remote_read_storage> -write-url=<write_endpoint_url_for_remote_write_storage> -writer-read-url=<read_endpoint_url_for_remote_write_storage>
+./prom-migrator -mint=1606408552 -maxt=1606415752 -read-url=<read_endpoint_url_for_remote_read_storage> -write-url=<write_endpoint_url_for_remote_write_storage> -progress-metric-url=<read_endpoint_url_for_remote_write_storage>
 ```
 
 ## CLI flags
