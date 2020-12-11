@@ -2,9 +2,12 @@ package api
 
 import (
 	"net/http"
+	"net/http/pprof"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -13,7 +16,11 @@ import (
 )
 
 func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) http.Handler {
-	router := route.New()
+	authWrapper := func(name string, h http.HandlerFunc) http.HandlerFunc {
+		return authHandler(apiConf, h)
+	}
+
+	router := route.New().WithInstrumentation(authWrapper)
 
 	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, elector, metrics))
 
@@ -56,7 +63,46 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	healthChecker := func() error { return client.HealthCheck() }
 	router.Get("/healthz", Health(healthChecker))
 
+	router.Get(apiConf.TelemetryPath, promhttp.Handler().ServeHTTP)
+	router.Get("/debug/pprof/", pprof.Index)
+	router.Get("/debug/pprof/cmdline", pprof.Cmdline)
+	router.Get("/debug/pprof/profile", pprof.Profile)
+	router.Get("/debug/pprof/symbol", pprof.Symbol)
+	router.Get("/debug/pprof/trace", pprof.Trace)
+
 	return router
+}
+
+func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
+	if cfg.Auth == nil {
+		return handler
+	}
+
+	if cfg.Auth.BasicAuthUsername != "" {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, pass, ok := r.BasicAuth()
+			if !ok || cfg.Auth.BasicAuthUsername != user || cfg.Auth.BasicAuthPassword != pass {
+				log.Error("msg", "Unauthorized access to endpoint, invalid username or password")
+				http.Error(w, "Unauthorized access to endpoint, invalid username or password.", http.StatusUnauthorized)
+				return
+			}
+			handler.ServeHTTP(w, r)
+		})
+	}
+
+	if cfg.Auth.BearerToken != "" {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
+			if cfg.Auth.BearerToken != splitToken[1] {
+				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token")
+				http.Error(w, "Unauthorized access to endpoint, invalid bearer token.", http.StatusUnauthorized)
+				return
+			}
+			handler.ServeHTTP(w, r)
+		})
+	}
+
+	return handler
 }
 
 func withWarnLog(msg string, handler http.Handler) http.HandlerFunc {

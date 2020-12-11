@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -104,5 +105,106 @@ func generateHandleTester(t *testing.T, handleFunc http.Handler) HandleTester {
 		w := httptest.NewRecorder()
 		handleFunc.ServeHTTP(w, req)
 		return w
+	}
+}
+
+func TestAuthHandler(t *testing.T) {
+	testCases := []struct {
+		name       string
+		cfg        *Config
+		headers    map[string]string
+		authorized bool
+	}{
+		{
+			name:       "no auth",
+			cfg:        &Config{},
+			authorized: true,
+		},
+		{
+			name: "no auth header",
+			cfg: &Config{
+				Auth: &Auth{
+					BasicAuthUsername: "foo",
+				},
+			},
+		},
+		{
+			name: "wrong auth header",
+			cfg: &Config{
+				Auth: &Auth{
+					BasicAuthUsername: "foo",
+					BasicAuthPassword: "bar",
+				},
+			},
+			headers: map[string]string{
+				"Authorization": "wrong",
+			},
+		},
+		{
+			name: "correct auth header",
+			cfg: &Config{
+				Auth: &Auth{
+					BasicAuthUsername: "foo",
+					BasicAuthPassword: "bar",
+				},
+			},
+			headers: map[string]string{
+				"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte("foo:bar")),
+			},
+			authorized: true,
+		},
+		{
+			name: "wrong bearer token",
+			cfg: &Config{
+				Auth: &Auth{
+					BearerToken: "foo",
+				},
+			},
+			headers: map[string]string{
+				"Authorization": "Bearer bar",
+			},
+		},
+		{
+			name: "correct bearer token",
+			cfg: &Config{
+				Auth: &Auth{
+					BearerToken: "foo",
+				},
+			},
+			headers: map[string]string{
+				"Authorization": "Bearer foo",
+			},
+			authorized: true,
+		},
+	}
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "", http.StatusOK)
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+
+			req, err := http.NewRequest("GET", "", nil)
+			if err != nil {
+				t.Errorf("%v", err)
+			}
+
+			for name, value := range c.headers {
+				req.Header.Set(name, value)
+			}
+
+			h := authHandler(c.cfg, handler)
+			h.ServeHTTP(w, req)
+
+			if c.authorized && w.Code != http.StatusOK {
+				t.Errorf("request should be authorized, was not: %d", w.Code)
+
+			}
+			if !c.authorized && w.Code == http.StatusOK {
+				t.Errorf("request should not be authorized")
+			}
+		})
 	}
 }

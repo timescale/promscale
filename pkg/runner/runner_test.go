@@ -75,7 +75,7 @@ func TestParseFlags(t *testing.T) {
 			name: "Read-only mode",
 			args: []string{"-read-only"},
 			result: func(c Config) Config {
-				c.ReadOnly = true
+				c.APICfg.ReadOnly = true
 				c.Migrate = false
 				c.StopAfterMigrate = false
 				c.UseVersionLease = false
