@@ -64,7 +64,11 @@ func main() {
 	planConfig := &plan.Config{
 		Mint:                conf.mint,
 		Maxt:                conf.maxt,
+		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
+		ProgressEnabled:     conf.progressEnabled,
+		ProgressMetricName:  conf.progressMetricName,
+		ProgressMetricURL:   conf.progressMetricURL,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	if err != nil {
