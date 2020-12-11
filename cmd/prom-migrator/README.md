@@ -14,11 +14,11 @@ remote storage endpoints.
 ## Overview
 
 This document contains:
-1. [**Working overview**](#-working-overview), that describes in brief, the working model of prom-migrator
-2. [**Storage systems**](#-storage-systems)
-3. [**CLI flags**](#-cli-flags)
-4. [**Contributing**](#-contributing)
-5. [**Help**](#-help)
+1. [**Working overview**](#working-overview), that describes in brief, the working model of prom-migrator
+2. [**Storage systems**](#storage-systems)
+3. [**CLI flags**](#cli-flags)
+4. [**Contributing**](#contributing)
+5. [**Help**](#help)
 
 ## Working overview
 
