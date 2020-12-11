@@ -86,9 +86,9 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 		if _, err := ingestor.Ingest(copyMetrics(ts), NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
+		pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
 		for _, m := range matchers {
 			var countBeforeDelete, countAfterDelete int
-			pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
@@ -242,18 +242,18 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 		},
 	}
 
-	for _, m := range matchers {
-		withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-			ts := generateRealTimeseries()
-			ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer ingestor.Close()
-			if _, err := ingestor.Ingest(copyMetrics(ts), NewWriteRequest()); err != nil {
-				t.Fatal(err)
-			}
-			pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ts := generateRealTimeseries()
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		if _, err := ingestor.Ingest(copyMetrics(ts), NewWriteRequest()); err != nil {
+			t.Fatal(err)
+		}
+		pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
@@ -268,8 +268,8 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 				require.Equal(t, 1025, len(deletedSeriesIDs), "delete all series does not match in", m.name)
 				require.Equal(t, 62, len(touchedMetrics), "delete all metrics does not match in", m.name)
 			}
-		})
-	}
+		}
+	})
 }
 
 func TestDeleteMixins(t *testing.T) {
@@ -366,18 +366,18 @@ func TestDeleteMixins(t *testing.T) {
 		},
 	}
 
-	for _, m := range matchers {
-		withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-			ts := generateRealTimeseries()
-			ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer ingestor.Close()
-			if _, err := ingestor.Ingest(copyMetrics(ts), NewWriteRequest()); err != nil {
-				t.Fatal(err)
-			}
-			pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ts := generateRealTimeseries()
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		if _, err := ingestor.Ingest(copyMetrics(ts), NewWriteRequest()); err != nil {
+			t.Fatal(err)
+		}
+		pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
 			parsedStartTime, err := parseTime(m.start, MinTimeProm)
@@ -388,8 +388,8 @@ func TestDeleteMixins(t *testing.T) {
 			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
 			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
-		})
-	}
+		}
+	})
 }
 
 var (
