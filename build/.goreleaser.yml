@@ -18,7 +18,7 @@ builds:
     # build el8 rpm
     # will be triggered multiple times but we need
     # {{ .Tag }} to ensure same version is used
-    #post: bash ./build/rpm/build_rpm.sh {{ .Tag }}
+    post: bash ./build/rpm/build_rpm.sh {{ .Tag }}
 - env:
   - CGO_ENABLED=0
   main: ./cmd/prom-migrator/
