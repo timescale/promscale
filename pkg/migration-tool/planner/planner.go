@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	second                 = time.Second.Milliseconds()
 	minute                 = time.Minute.Milliseconds()
 	laIncrement            = minute
 	maxTimeRangeDeltaLimit = minute * 120
@@ -62,7 +63,7 @@ func Init(config *Config) (*Plan, bool, error) {
 		if found && lastPushedMaxt > config.Mint && lastPushedMaxt <= config.Maxt {
 			config.Mint = lastPushedMaxt
 			log.Warn("msg", fmt.Sprintf("Resuming from where we left off. Last push was on %d. "+
-				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, config.Mint, config.Maxt, (config.Maxt-lastPushedMaxt+1)/time.Minute.Milliseconds()))
+				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, config.Mint, config.Maxt, (config.Maxt-lastPushedMaxt+1)/minute))
 		}
 	} else {
 		log.Info("msg", "Resuming from where we left off is turned off. Starting at the beginning of the provided time-range.")
@@ -98,7 +99,7 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	if err != nil {
 		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
 	}
-	result, _, _, err := readClient.Read(context.Background(), query)
+	result, _, _, err := readClient.Read(context.Background(), query, "")
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt query result: %w", err)
 	}
@@ -161,19 +162,19 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 		return nil, fmt.Errorf("create-block: %w", err)
 	}
 	id := p.blockCounts.Add(1)
-	timeRangeInMinutes := (maxt - mint) / time.Minute.Milliseconds()
+	timeRangeInMinutes := (maxt - mint) / minute
 	percent := float64(maxt-p.config.Mint) * 100 / float64(p.config.Maxt-p.config.Mint)
 	if percent > 100 {
 		percent = 100
 	}
-	baseDescription := fmt.Sprintf("progress: %.3f%% | block-%d time-range: %d mins | mint: %d | maxt: %d", percent, id, timeRangeInMinutes, mint, maxt)
+	baseDescription := fmt.Sprintf("progress: %.3f%% | block-%d time-range: %d mins | mint: %d | maxt: %d", percent, id, timeRangeInMinutes, mint/second, maxt/second)
 	reference = &Block{
 		id:                    id,
 		pbarDescriptionPrefix: baseDescription,
 		pbar: progressbar.NewOptions(
-			6,
+			4,
 			progressbar.OptionOnCompletion(func() {
-				_, _ = fmt.Fprint(os.Stderr, "\n")
+				_, _ = fmt.Fprint(os.Stdout, "\n")
 			}),
 		),
 		mint:    mint,
@@ -190,7 +191,6 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 		// state of the planner.
 		p.TestCheckFunc()
 	}
-	reference.SetDescription(fmt.Sprintf("fetching time-range: %d mins...", timeRangeInMinutes), 1)
 	return
 }
 

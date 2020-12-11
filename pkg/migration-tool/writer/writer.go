@@ -74,6 +74,7 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 				if !ok {
 					return
 				}
+				blockRef.SetDescription("preparing to push", 1)
 				ts = timeseriesRefToTimeseries(blockRef.MergeProgressSeries(rw.progressTimeSeries))
 				buf = []byte{}
 				if err = rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
