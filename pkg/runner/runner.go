@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	pprof "net/http/pprof"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -20,7 +19,6 @@ import (
 	pgx "github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jamiealquiza/envy"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -31,19 +29,18 @@ import (
 
 type Config struct {
 	ListenAddr         string
-	TelemetryPath      string
 	PgmodelCfg         pgclient.Config
 	LogCfg             log.Config
+	APICfg             api.Config
+	TLSCertFile        string
+	TLSKeyFile         string
 	HaGroupLockID      int64
 	PrometheusTimeout  time.Duration
 	ElectionInterval   time.Duration
 	Migrate            bool
 	StopAfterMigrate   bool
 	UseVersionLease    bool
-	CorsOrigin         *regexp.Regexp
 	InstallTimescaleDB bool
-	ReadOnly           bool
-	AdminAPIEnabled    bool
 }
 
 const (
@@ -61,9 +58,9 @@ var (
 func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	pgclient.ParseFlags(&cfg.PgmodelCfg)
 	log.ParseFlags(&cfg.LogCfg)
+	api.ParseFlags(&cfg.APICfg)
 
 	flag.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
-	flag.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
 	var corsOriginFlag string
 	var migrateOption string
@@ -74,8 +71,8 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only].")
 	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
 	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update TimescaleDB extension.")
-	flag.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
-	flag.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
+	flag.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
+	flag.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
 
 	// Deprecated: TS_PROM is the old prefix which is deprecated and in here
 	// for legacy compatibility. Will be removed in the future.
@@ -85,12 +82,21 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	// Ignore errors; CommandLine is set for ExitOnError.
 	_ = flag.CommandLine.Parse(args)
 
+	// Checking if TLS files are not both set or both empty.
+	if (cfg.TLSCertFile != "") != (cfg.TLSKeyFile != "") {
+		return nil, fmt.Errorf("both TLS Ceriticate File and TLS Key File need to be provided for a valid TLS configuration")
+	}
+
 	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
 	if err != nil {
 		err = fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
 		return nil, err
 	}
-	cfg.CorsOrigin = corsOriginRegex
+	cfg.APICfg.AllowedOrigin = corsOriginRegex
+
+	if err := api.Validate(&cfg.APICfg); err != nil {
+		return nil, fmt.Errorf("error validating API configuration: %w", err)
+	}
 
 	cfg.StopAfterMigrate = false
 	if strings.EqualFold(migrateOption, "true") {
@@ -104,7 +110,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		return nil, fmt.Errorf("Invalid option for migrate: %v. Valid options are [true, false, only]", migrateOption)
 	}
 
-	if cfg.ReadOnly {
+	if cfg.APICfg.ReadOnly {
 		flagset := make(map[string]bool)
 		flag.Visit(func(f *flag.Flag) { flagset[f.Name] = true })
 		if flagset["migrate"] || flagset["use-schema-version-lease"] {
@@ -130,7 +136,7 @@ func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
 
-	if cfg.ReadOnly {
+	if cfg.APICfg.ReadOnly {
 		log.Info("msg", "Migrations disabled for read-only mode")
 	}
 
@@ -148,25 +154,19 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
-	apiConf := &api.Config{
-		AllowedOrigin:   cfg.CorsOrigin,
-		ReadOnly:        cfg.ReadOnly,
-		AdminAPIEnabled: cfg.AdminAPIEnabled,
-	}
-	router := api.GenerateRouter(apiConf, promMetrics, client, elector)
+	router := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector)
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
-	mux.Handle(cfg.TelemetryPath, promhttp.Handler())
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	err = http.ListenAndServe(cfg.ListenAddr, mux)
+
+	if cfg.TLSCertFile != "" {
+		err = http.ListenAndServeTLS(cfg.ListenAddr, cfg.TLSCertFile, cfg.TLSKeyFile, mux)
+	} else {
+		err = http.ListenAndServe(cfg.ListenAddr, mux)
+	}
 
 	if err != nil {
 		log.Error("msg", "Listen failure", "err", err)
@@ -272,7 +272,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		return nil, fmt.Errorf("elector init error: %w", err)
 	}
 
-	if elector == nil && !cfg.ReadOnly {
+	if elector == nil && !cfg.APICfg.ReadOnly {
 		log.Warn(
 			"msg",
 			"No adapter leader election. Group lock id is not set. "+

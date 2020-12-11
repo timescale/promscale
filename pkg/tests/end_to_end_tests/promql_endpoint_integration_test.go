@@ -233,7 +233,15 @@ func dateHeadersMatch(expected, actual []string) bool {
 func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 	apiConfig := &api.Config{
 		AllowedOrigin: regexp.MustCompile(".*"),
+		TelemetryPath: "/metrics",
 	}
+
+	return buildRouterWithAPIConfig(pool, apiConfig)
+}
+
+// buildRouterWithAPIConfig builds a testing router from a connection pool and
+// an API config.
+func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler, *pgclient.Client, error) {
 	metrics := api.InitMetrics()
 	conf := &pgclient.Config{
 		AsyncAcks:               false,
@@ -250,5 +258,5 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")
 	}
 
-	return api.GenerateRouter(apiConfig, metrics, pgClient, nil), pgClient, nil
+	return api.GenerateRouter(cfg, metrics, pgClient, nil), pgClient, nil
 }
