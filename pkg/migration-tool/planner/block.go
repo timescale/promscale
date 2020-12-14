@@ -38,7 +38,8 @@ func (b *Block) Fetch(context context.Context, client *utils.Client, mint, maxt 
 	if err != nil {
 		return nil, fmt.Errorf("create promb query: %w", err)
 	}
-	result, bytesCompressed, bytesUncompressed, err := client.Read(context, readRequest, fmt.Sprintf("%s | time-range: %d mins", b.pbarDescriptionPrefix, timeRangeMinutesDelta))
+	description := fmt.Sprintf("%s | time-range: %d mins", b.pbarDescriptionPrefix, timeRangeMinutesDelta)
+	result, bytesCompressed, bytesUncompressed, err := client.Read(context, readRequest, description)
 	if err != nil {
 		return nil, fmt.Errorf("executing client-read: %w", err)
 	}
@@ -53,13 +54,29 @@ func (b *Block) Fetch(context context.Context, client *utils.Client, mint, maxt 
 	return result, nil
 }
 
-// MergeProgressSeries returns the block's time-series after appending a sample to the progress-metric and merging
-// with the time-series of the block.
-func (b *Block) MergeProgressSeries(ts *prompb.TimeSeries) []*prompb.TimeSeries {
-	b.SetDescription(fmt.Sprintf("pushing %.2f...", float64(b.numBytesCompressed)/float64(utils.Megabyte)), 1)
-	ts.Samples = []prompb.Sample{{Timestamp: b.Maxt(), Value: 1}} // One sample per block.
-	b.timeseries = append(b.timeseries, ts)
+// Series returns the time-series in the block.
+func (b *Block) Series() []*prompb.TimeSeries {
 	return b.timeseries
+}
+
+// GetProgressSeries returns a time-series after appending a sample to the progress-metric.
+func (b *Block) GetProgressSeries(ts *prompb.TimeSeries) *prompb.TimeSeries {
+	ts.Samples = []prompb.Sample{{Timestamp: b.Maxt(), Value: 1}} // One sample per block.
+	return ts
+}
+
+func (b *Block) UpdatePBarMax(steps int) {
+	if b.pbarDescriptionPrefix == "" {
+		return
+	}
+	b.pbar.ChangeMax(steps)
+}
+
+func (b *Block) PBarMax() int {
+	if b.pbarDescriptionPrefix == "" {
+		return -1
+	}
+	return b.pbar.GetMax()
 }
 
 func (b *Block) SetDescription(description string, proceed int) {

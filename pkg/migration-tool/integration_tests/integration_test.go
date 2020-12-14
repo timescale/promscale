@@ -27,6 +27,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		name               string
 		mint               int64
 		maxt               int64
+		numShards          int
 		readURL            string
 		writeURL           string
 		progressMetricURL  string
@@ -37,6 +38,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		name:               "ci-migration",
 		mint:               tsMint,
 		maxt:               tsMaxt,
+		numShards:          4,
 		readURL:            readURL,
 		writeURL:           writeURL,
 		progressMetricURL:  progressURL,
@@ -74,7 +76,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -109,7 +111,7 @@ loop:
 	}
 	// Verify the progress metric samples count.
 	if remoteWriteStorage.SamplesProgress() != int(write.Blocks()) {
-		t.Fatalf("progress-metric samples count do not match the number of blocks created")
+		t.Fatalf("progress-metric samples count do not match the number of blocks created: samples: %d and blocks created: %d", remoteWriteStorage.SamplesProgress(), write.Blocks())
 	}
 }
 
@@ -123,6 +125,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		name               string
 		mint               int64
 		maxt               int64
+		numShards          int
 		readURL            string
 		writeURL           string
 		progressMetricURL  string
@@ -133,6 +136,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		name:               "ci-migration",
 		mint:               tsMint,
 		maxt:               tsMaxt,
+		numShards:          4,
 		readURL:            readURL,
 		writeURL:           writeURL,
 		progressMetricURL:  progressURL,
@@ -171,7 +175,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
 	read.SigForceStop = make(chan struct{})
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -203,7 +207,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
+	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -253,6 +257,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		name               string
 		mint               int64
 		maxt               int64
+		numShards          int
 		readURL            string
 		writeURL           string
 		progressMetricURL  string
@@ -263,6 +268,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		name:               "ci-migration",
 		mint:               tsMint,
 		maxt:               tsMaxt,
+		numShards:          4,
 		readURL:            readURL,
 		writeURL:           writeURL,
 		progressMetricURL:  progressURL,
@@ -307,7 +313,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
 	read.SigForceStop = make(chan struct{})
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -339,7 +345,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
+	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}

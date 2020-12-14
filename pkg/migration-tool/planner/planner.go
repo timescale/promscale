@@ -19,6 +19,8 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
+const numStepsWriter = 4
+
 var (
 	second                 = time.Second.Milliseconds()
 	minute                 = time.Minute.Milliseconds()
@@ -67,8 +69,9 @@ func Init(config *Config) (*Plan, bool, error) {
 		}
 		if found && lastPushedMaxt > config.Mint && lastPushedMaxt <= config.Maxt {
 			config.Mint = lastPushedMaxt
+			timeRange := fmt.Sprintf("time-range: %d mins", (config.Maxt-lastPushedMaxt+1)/minute)
 			log.Warn("msg", fmt.Sprintf("Resuming from where we left off. Last push was on %d. "+
-				"Resuming from mint: %d to maxt: %d time-range: %d mins", lastPushedMaxt, config.Mint, config.Maxt, (config.Maxt-lastPushedMaxt+1)/minute))
+				"Resuming from mint: %d to maxt: %d %s", lastPushedMaxt, config.Mint, config.Maxt, timeRange))
 		}
 	} else {
 		log.Info("msg", "Resuming from where we left off is turned off. Starting at the beginning of the provided time-range.")
@@ -177,7 +180,7 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 		id:                    id,
 		pbarDescriptionPrefix: baseDescription,
 		pbar: progressbar.NewOptions(
-			4,
+			numStepsWriter,
 			progressbar.OptionOnCompletion(func() {
 				_, _ = fmt.Fprint(os.Stdout, "\n")
 			}),
