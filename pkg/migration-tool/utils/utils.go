@@ -8,19 +8,30 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/timescale/promscale/pkg/clockcache"
 )
 
 const (
-	LabelJob = "job"
-	Megabyte = 1024 * 1024
+	LabelJob           = "job"
+	Megabyte           = 1024 * 1024
+	maxLabelsCacheSize = 50 * 1000
 )
 
-// authStore is used while creating a client. This is done to avoid complexity in the writer and reader code, thereby
-// keeping them independent of the auth.
-var authStore sync.Map
+var (
+	// authStore is used while creating a client. This is done to avoid complexity in the writer and reader code, thereby
+	// keeping them independent of the auth.
+	authStore   sync.Map
+	labelsCache *clockcache.Cache
+	seps        = []byte{'\xff'}
+)
+
+func init() {
+	labelsCache = clockcache.WithMax(maxLabelsCacheSize)
+}
 
 // Auth defines the authentication for prom-migrator.
 type Auth struct {
@@ -66,6 +77,37 @@ func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Que
 		EndTimestampMs:   maxt - 1, // maxt is exclusive while EndTimestampMs is inclusive.
 		Matchers:         ms,
 	}, nil
+}
+
+// Hash returns the hash of the provided promb labels-set. It fetches the value of the hash from the labelsCache if
+// exists, else creates the hash and returns it after storing the new hash value.
+func Hash(lset prompb.Labels) uint64 {
+	if hash, found := labelsCache.Get(lset.String()); found {
+		return hash.(uint64)
+	}
+	b := make([]byte, 0, 1024)
+	for i, v := range lset.Labels {
+		if len(b)+len(v.Name)+len(v.Value)+2 >= cap(b) {
+			// If labels entry is 1KB+ do not allocate whole entry.
+			h := xxhash.New()
+			_, _ = h.Write(b)
+			for _, v := range lset.Labels[i:] {
+				_, _ = h.WriteString(v.Name)
+				_, _ = h.Write(seps)
+				_, _ = h.WriteString(v.Value)
+				_, _ = h.Write(seps)
+			}
+			return h.Sum64()
+		}
+
+		b = append(b, v.Name...)
+		b = append(b, seps[0])
+		b = append(b, v.Value...)
+		b = append(b, seps[0])
+	}
+	sum := xxhash.Sum64(b)
+	labelsCache.Insert(lset.String(), sum)
+	return sum
 }
 
 // LabelSet creates a new label_set for the provided metric name and job name.

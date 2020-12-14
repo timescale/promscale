@@ -34,6 +34,7 @@ type config struct {
 	maxt               int64
 	maxtSec            int64
 	maxBlockSizeBytes  int64
+	numShards          int
 	maxBlockSize       string
 	readURL            string
 	writeURL           string
@@ -94,7 +95,7 @@ func main() {
 		log.Error("msg", "could not create reader", "error", err)
 		os.Exit(2)
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create writer", "error", err)
 		os.Exit(2)
@@ -134,6 +135,8 @@ func parseFlags(conf *config, args []string) {
 		"Setting this value less than zero will indicate all data from mint upto now. ")
 	flag.StringVar(&conf.maxBlockSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
 		"More the read size, faster will be the migration but higher will be the memory usage. Example: 250MB.")
+	flag.IntVar(&conf.numShards, "num-shards", 4, "Number of shards to split a fetched block in. Each shard is written concurrently. "+
+		"Note: Larger shards count will lead to significant memory usage.")
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+

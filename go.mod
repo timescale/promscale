@@ -8,6 +8,7 @@ go 1.14
 require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/blang/semver/v4 v4.0.0
+	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/go-kit/kit v0.10.0
