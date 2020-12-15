@@ -1179,6 +1179,62 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 	})
 }
+func TestConfigMaintenanceJobs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("jobs meaningless without TimescaleDB")
+	}
+	if !*useTimescale2 {
+		t.Skip("test meaningless without Timescale 2")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		cnt := 0
+		err := db.QueryRow(context.Background(),
+			"SELECT count(*) FROM timescaledb_information.jobs WHERE proc_schema = '_prom_catalog' AND proc_name = 'execute_maintenance_job'").
+			Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cnt != 2 {
+			t.Fatal("Incorrect number of jobs at startup")
+		}
+
+		changeJobs := func(numJobs int, scheduleInterval time.Duration) {
+			_, err = db.Exec(context.Background(), "SELECT config_maintenance_jobs($1, $2)", numJobs, scheduleInterval)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = db.QueryRow(context.Background(),
+				"SELECT count(*) FROM timescaledb_information.jobs WHERE proc_schema = '_prom_catalog' AND proc_name = 'execute_maintenance_job' AND schedule_interval = $1", scheduleInterval).
+				Scan(&cnt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cnt != numJobs {
+				t.Fatalf("Unexpected number of jobs. Got %v, expected %v", cnt, numJobs)
+			}
+			err = db.QueryRow(context.Background(),
+				"SELECT count(*) FROM timescaledb_information.jobs WHERE proc_schema = '_prom_catalog' AND proc_name = 'execute_maintenance_job' AND schedule_interval != $1", scheduleInterval).
+				Scan(&cnt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cnt != 0 {
+				t.Fatalf("found %v jobs with wrong schedule interval", cnt)
+			}
+		}
+
+		changeJobs(4, time.Minute*30)
+		changeJobs(4, time.Minute*45)
+		changeJobs(5, time.Minute*45)
+		changeJobs(2, time.Minute*45)
+		changeJobs(1, time.Minute*30)
+		changeJobs(0, time.Minute*30)
+	})
+}
 
 // deep copy the metrics since we mutate them, and don't want to invalidate the tests
 func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
