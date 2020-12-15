@@ -1088,7 +1088,6 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_ta
 RETURNS void
 AS $func$
 DECLARE
-    compression_job INT;
 BEGIN
     IF compression_setting THEN
         EXECUTE format($$
@@ -1112,29 +1111,16 @@ BEGIN
         END IF;
 
         --chunks where the end time is before now()-1 hour will be compressed
-        IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-            PERFORM add_job(
-                'SCHEMA_CATALOG.compression_job'::regproc,
-                INTERVAL '1 hour',
-                config => jsonb_build_object('metric_table', metric_table_name)
-            );
-        ELSE
+        --per-ht compression policy only used for timescale 1.x
+        IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
             PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
         END IF;
     ELSE
-        IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-            SELECT job_id
-            FROM timescaledb_information.jobs
-            WHERE proc_schema='SCHEMA_CATALOG'
-                AND proc_name = 'compression_job'
-                AND config->>'metric_table' = metric_table_name
-            INTO compression_job;
-            PERFORM delete_job(compression_job);
-        ELSE
+        IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
             PERFORM remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
         END IF;
 
-        PERFORM decompress_chunk(i) from show_chunks(format('SCHEMA_DATA.%I', metric_table_name)) i;
+        CALL SCHEMA_CATALOG.decompress_chunks_after(metric_table_name::name, timestamptz '-Infinity', transactional=>true);
 
         EXECUTE format($$
             ALTER TABLE SCHEMA_DATA.%I SET (
@@ -1451,6 +1437,9 @@ CREATE OR REPLACE PROCEDURE SCHEMA_PROM.execute_maintenance()
 AS $$
 BEGIN
     CALL SCHEMA_CATALOG.execute_data_retention_policy();
+    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+        CALL SCHEMA_CATALOG.execute_compression_policy();
+    END IF;
 END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_PROM.execute_maintenance()
@@ -1769,18 +1758,11 @@ AS $$
 DECLARE
     bgw_job_id int;
 BEGIN
-    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-        SELECT job_id
-        INTO bgw_job_id
-        FROM timescaledb_information.jobs
-        WHERE proc_schema='SCHEMA_CATALOG'
-            AND proc_name = 'compression_job'
-            AND config->>'metric_table' = ht_table;
+    UPDATE SCHEMA_CATALOG.metric m
+    SET delay_compression_until = new_start
+    WHERE table_name = ht_table;
 
-        PERFORM pg_advisory_xact_lock(12377, bgw_job_id);
-
-        PERFORM alter_job(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.jobs WHERE job_id = bgw_job_id)));
-    ELSE
+    IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
         SELECT job_id INTO bgw_job_id
         FROM _timescaledb_config.bgw_policy_compress_chunks p
         INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = p.hypertable_id)
@@ -1798,7 +1780,8 @@ LANGUAGE PLPGSQL;
 CALL execute_everywhere($ee$
     --Decompression should take place in a procedure because we don't want locks held across
     --decompress_chunk calls since that function takes some heavier locks at the end.
-    CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.do_decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ)
+    --Thus, transactional parameter should usually be false
+    CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.do_decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ, transactional BOOLEAN = false)
     AS $$
     DECLARE
         chunk_row record;
@@ -1811,7 +1794,11 @@ CALL execute_everywhere($ee$
 
         SELECT d.* INTO STRICT dimension_row FROM _timescaledb_catalog.dimension d WHERE hypertable_id = hypertable_row.id ORDER BY id LIMIT 1;
 
-        SELECT _timescaledb_internal.time_to_internal(min_time) INTO STRICT min_time_internal;
+        IF min_time = timestamptz '-Infinity' THEN
+            min_time_internal := -9223372036854775808;
+        ELSE
+           SELECT _timescaledb_internal.time_to_internal(min_time) INTO STRICT min_time_internal;
+        END IF;
 
         FOR chunk_row IN
             SELECT c.*
@@ -1837,13 +1824,15 @@ CALL execute_everywhere($ee$
                 PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
             END IF;
 
-            COMMIT;
+            IF NOT transactional THEN
+              COMMIT;
+            END IF;
         END LOOP;
     END;
     $$ LANGUAGE PLPGSQL;
 $ee$);
 
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ)
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ, transactional BOOLEAN = false)
 AS $proc$
 BEGIN
     -- In early versions of timescale multinode the access node catalog does not
@@ -1854,11 +1843,11 @@ BEGIN
     IF SCHEMA_CATALOG.is_multinode() THEN
         CALL distributed_exec(
             format(
-                $dist$ CALL do_decompress_chunks_after(%L, %L) $dist$,
-                metric_table, min_time),
+                $dist$ CALL do_decompress_chunks_after(%L, %L, %L) $dist$,
+                metric_table, min_time, transactional),
             transactional => false);
     ELSE
-        CALL do_decompress_chunks_after(metric_table, min_time);
+        CALL do_decompress_chunks_after(metric_table, min_time, transactional);
     END IF;
 END
 $proc$ LANGUAGE PLPGSQL;
@@ -1889,18 +1878,82 @@ CALL execute_everywhere($ee$
     $$ LANGUAGE PLPGSQL;
 $ee$);
 
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compression_job(job_id int, config jsonb)
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_metric_chunks(metric_name TEXT)
 AS $$
+DECLARE
+  metric_table NAME;
 BEGIN
-    -- as of timescaledb-2.0-rc3 the is_compressed column of the chunks view is
+    SELECT table_name
+    INTO STRICT metric_table
+    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+
+    -- as of timescaledb-2.0-rc4 the is_compressed column of the chunks view is
     -- not updated on the access node, therefore we need to one the compressor
     -- on all the datanodes to search for uncompressed chunks
     IF SCHEMA_CATALOG.is_multinode() THEN
         CALL distributed_exec(format($dist$
             CALL SCHEMA_CATALOG.compress_old_chunks(%L, now() - INTERVAL '1 hour')
-        $dist$, config->>'metric_table'), transactional => false);
+        $dist$, metric_table), transactional => false);
     ELSE
-        CALL SCHEMA_CATALOG.compress_old_chunks(config->>'metric_table', now() - INTERVAL '1 hour');
+        CALL SCHEMA_CATALOG.compress_old_chunks(metric_table, now() - INTERVAL '1 hour');
     END IF;
 END
 $$ LANGUAGE PLPGSQL;
+
+--Order by random with stable marking gives us same order in a statement and different
+-- orderings in different statements
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression()
+RETURNS SETOF SCHEMA_CATALOG.metric
+AS $$
+DECLARE
+BEGIN
+        RETURN QUERY
+        SELECT m.*
+        FROM SCHEMA_CATALOG.metric m
+        WHERE
+          SCHEMA_CATALOG.get_metric_compression_setting(m.metric_name) AND
+          delay_compression_until IS NULL OR delay_compression_until < now()
+        ORDER BY random();
+END
+$$
+LANGUAGE PLPGSQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression() TO prom_reader;
+
+--only for timescaledb 2.0 in 1.x we use compression policies
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
+AS $$
+DECLARE
+    r RECORD;
+    remaining_metrics text[] DEFAULT '{}';
+BEGIN
+    --do one loop with skip locked and then one that blocks to prevent starvation
+    FOR r IN
+        SELECT *
+        FROM SCHEMA_CATALOG.get_metrics_that_need_compression()
+    LOOP
+        --lock prevents concurrent compression/drops/etc on same table
+        PERFORM m.*
+        FROM SCHEMA_CATALOG.metric m
+        WHERE m.id = r.id
+        FOR NO KEY UPDATE SKIP LOCKED;
+
+        IF NOT FOUND THEN
+            remaining_metrics := remaining_metrics || r.metric_name;
+            CONTINUE;
+        END IF;
+
+        CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
+        COMMIT;
+    END LOOP;
+
+    FOR r IN
+        SELECT
+        FROM unnest(remaining_metrics) as m(metric_name)
+    LOOP
+        CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
+        COMMIT;
+    END LOOP;
+END;
+$$ LANGUAGE PLPGSQL;
+COMMENT ON PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
+IS 'compress data according to the policy. This procedure should be run regularly in a cron job';
