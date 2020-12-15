@@ -661,11 +661,9 @@ func TestInsertCompressed(t *testing.T) {
 		var nextStartAfter time.Time
 		var statsQuery string
 		if *useTimescale2 {
-			statsQuery = "SELECT next_start FROM timescaledb_information.jobs " +
-				"WHERE proc_schema = '_prom_catalog' " +
-				"AND proc_name = 'compression_job' " +
-				"AND config->>'metric_table' = $1::text"
-			err = db.QueryRow(context.Background(), statsQuery, tableName).Scan(&nextStartAfter)
+			statsQuery = "SELECT delay_compression_until FROM _prom_catalog.metric " +
+				"WHERE metric_name = $1::text"
+			err = db.QueryRow(context.Background(), statsQuery, "Test").Scan(&nextStartAfter)
 		} else {
 			statsQuery = "SELECT next_start FROM timescaledb_information.policy_stats WHERE hypertable = $1::text::regclass"
 			err = db.QueryRow(context.Background(), statsQuery, pgx.Identifier{"prom_data", tableName}.Sanitize()).Scan(&nextStartAfter)
@@ -687,16 +685,20 @@ func TestCompressionSetting(t *testing.T) {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		getJobs := func() (jobs []string) {
+		checkJobs := func(t testing.TB, jobs_expected int) {
 			countQuery := ""
+			jobs := make([]string, 0)
 			if *useTimescale2 {
-				countQuery = "SELECT array_agg((s.*)::text) FROM timescaledb_information.jobs s"
-			} else {
-				countQuery = "SELECT array_agg((s.*)::text) FROM _timescaledb_config.bgw_job s"
+				//compression does not effect #jobs in timescaledb2
+				return
 			}
+			countQuery = "SELECT array_agg((s.*)::text) FROM _timescaledb_config.bgw_job s"
 			err := db.QueryRow(context.Background(), countQuery).Scan(&jobs)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if len(jobs) != jobs_expected {
+				t.Errorf("unexpected jobs, expected 1 got %v", jobs)
 			}
 			return
 		}
@@ -711,9 +713,7 @@ func TestCompressionSetting(t *testing.T) {
 			t.Error("compression should be enabled by default, was not")
 		}
 
-		if jobs := getJobs(); len(jobs) != 1 {
-			t.Errorf("unexpected jobs, expected 1 got %v", jobs)
-		}
+		checkJobs(t, 1)
 
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_compression_setting(false)")
 		if err != nil {
@@ -728,9 +728,7 @@ func TestCompressionSetting(t *testing.T) {
 
 		}
 
-		if jobs := getJobs(); len(jobs) != 1 {
-			t.Errorf("unexpected jobs, expected 0 got %v", jobs)
-		}
+		checkJobs(t, 1)
 
 		ts := []prompb.TimeSeries{
 			{
@@ -766,9 +764,7 @@ func TestCompressionSetting(t *testing.T) {
 			t.Error("metric compression should be disabled as per default, was not")
 		}
 
-		if jobs := getJobs(); len(jobs) != 1 {
-			t.Errorf("unexpected jobs, expected 0 got %v", jobs)
-		}
+		checkJobs(t, 1)
 
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_compression_setting('Test', true)")
 		if err != nil {
@@ -796,13 +792,10 @@ func TestCompressionSetting(t *testing.T) {
 		}
 
 		if !compressionEnabled {
-			time.Sleep(1 * time.Hour)
 			t.Fatal("metric compression should be enabled manually, was not")
 		}
 
-		if jobs := getJobs(); len(jobs) != 2 {
-			t.Errorf("unexpected jobs, expected 2 got %v", jobs)
-		}
+		checkJobs(t, 2)
 
 		if *useMultinode {
 			//TODO turning compression off in multinode is broken upstream.
@@ -822,10 +815,7 @@ func TestCompressionSetting(t *testing.T) {
 		if compressionEnabled {
 			t.Error("metric compression should be disabled as per default, was not")
 		}
-
-		if jobs := getJobs(); len(jobs) != 1 {
-			t.Errorf("unexpected jobs, expected 1 got %v", jobs)
-		}
+		checkJobs(t, 1)
 	})
 }
 
@@ -902,7 +892,8 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		runCompressionJob := func() {
-			_, err = db.Exec(context.Background(), fmt.Sprintf(`CALL _prom_catalog.compression_job(1, '{"metric_table":"%s"}')`, tableName))
+			//compress_metric_chunks and not execute_compression_policy since we don't want the decompression delay logic here.
+			_, err = db.Exec(context.Background(), `CALL _prom_catalog.compress_metric_chunks('Test1')`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -931,8 +922,7 @@ func TestCustomCompressionJob(t *testing.T) {
 
 		// first chunk should be compressed
 		if !chunkIsCompressed("1970-01-01 00:00:00.001+00") {
-			t.Error("first chunk not compressed")
-			time.Sleep(1 * time.Hour)
+			t.Fatal("first chunk not compressed")
 		}
 
 		// second chunk should not be
@@ -970,7 +960,7 @@ func TestCustomCompressionJob(t *testing.T) {
 
 		// first chunk should be compressed
 		if !chunkIsCompressed("1970-01-01 00:00:00.001+00") {
-			t.Error("first chunk not compressed")
+			t.Fatal("first chunk not compressed")
 		}
 
 		// in multinode the oldness check is per-datanode, so there should
@@ -1021,6 +1011,169 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		// third chunk should not be
+		if chunkIsCompressed("1970-03-01 00:00:00.001+00") {
+			t.Error("third chunk compressed too soon")
+		}
+	})
+}
+
+func TestExecuteMaintenanceCompressionJob(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("compression meaningless without TimescaleDB")
+	}
+	if !*useTimescale2 {
+		t.Skip("test meaningless without Timescale 2")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		// in early versions of Timescale multinode the compression catalog
+		// would not be updated for distributed hypertables so we detect
+		// compression using a probe INSERT
+		chunkIsCompressed := func(time string) bool {
+			insert := fmt.Sprintf("INSERT INTO prom_data.test VALUES ('%s', 0.1, 1);", time)
+			_, err := db.Exec(context.Background(), insert)
+			if err != nil {
+				pgErr, ok := err.(*pgconn.PgError)
+				if !ok {
+					t.Fatal(err)
+				}
+				if pgErr.SQLState() == "42710" ||
+					pgErr.SQLState() == "0A000" {
+					//already compressed
+					return true
+				} else if pgErr.SQLState() == "23505" {
+					// violates unique constraint
+					return false
+				}
+				t.Fatal(err)
+			}
+			return false
+		}
+
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if chunkIsCompressed("1970-01-01 00:00:00.001+00") {
+			t.Error("chunk compressed too soon")
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test', INTERVAL '100 years')")
+		if err != nil {
+			t.Error(err)
+		}
+
+		runMaintenanceJob := func() {
+			//execute_maintenance and not execute_compression_policy since we want to test end-to-end
+			_, err = db.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		runMaintenanceJob()
+
+		// should not be compressed, not enough chunks
+		if chunkIsCompressed("1970-01-01 00:00:00.001+00") {
+			t.Error("chunk compressed too soon")
+		}
+
+		// add another chunk to each data node
+		insert := "INSERT INTO prom_data.test VALUES ('1970-01-02 00:00:00.001+00', 0.1, 1);"
+		_, err = db.Exec(context.Background(), insert)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		insert = "INSERT INTO prom_data.test VALUES ('1970-01-03 00:00:00.001+00', 0.1, 1);"
+		_, err = db.Exec(context.Background(), insert)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		runMaintenanceJob()
+
+		// first chunk should be compressed
+		if !chunkIsCompressed("1970-01-01 00:00:00.001+00") {
+			t.Fatal("first chunk not compressed")
+		}
+
+		// second chunk should not be
+		if chunkIsCompressed("1970-02-01 00:00:00.001+00") {
+			t.Error("second chunk compressed too soon")
+		}
+
+		// third chunk should not be
+		if chunkIsCompressed("1970-03-01 00:00:00.001+00") {
+			t.Error("second chunk compressed too soon")
+		}
+
+		// decompress the first chunk
+		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// first chunk should not be compressed
+		if chunkIsCompressed("1970-01-01 00:00:00.001+00") {
+			t.Error("first chunk still compressed")
+		}
+
+		// second chunk should not be compressed either
+		if chunkIsCompressed("1970-02-01 00:00:00.001+00") {
+			t.Error("second chunk compressed too soon")
+		}
+
+		// nor third
+		if chunkIsCompressed("1970-03-01 00:00:00.001+00") {
+			t.Error("second chunk compressed too soon")
+		}
+
+		//this will have a delay on compression and so it will not recompress
+		runMaintenanceJob()
+
+		// first chunk should be compressed because of delay
+		if chunkIsCompressed("1970-01-01 00:00:00.001+00") {
+			t.Fatal("first chunk is compressed")
+		}
+
+		// in multinode the oldness check is per-datanode, so there should
+		// always one uncompressed chunk on each datanode
+		if *useMultinode {
+			// second chunk should not be
+			if chunkIsCompressed("1970-02-01 00:00:00.001+00") {
+				t.Error("second chunk compressed too soon")
+			}
+		} else {
+			if chunkIsCompressed("1970-02-01 00:00:00.001+00") {
+				t.Error("second chunk compressed")
+			}
+		}
+
+		// nor third
 		if chunkIsCompressed("1970-03-01 00:00:00.001+00") {
 			t.Error("third chunk compressed too soon")
 		}

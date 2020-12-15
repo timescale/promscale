@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/blang/semver/v4"
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/migrations"
@@ -288,6 +289,14 @@ func (t *Migrator) execMigrationFile(tx pgx.Tx, fileName string) error {
 	}
 	_, err = tx.Exec(context.Background(), string(contents))
 	if err != nil {
+		//special handling if we know the position of the error
+		pgErr, ok := err.(*pgconn.PgError)
+		if ok && pgErr.Position > 0 {
+			strC := string(contents)
+			code := strC[pgErr.Position-1:]
+			return fmt.Errorf("error executing migration script: name %s, err %w, code at error position:\n  %s", fileName, err, code)
+
+		}
 		return fmt.Errorf("error executing migration script: name %s, err %w", fileName, err)
 	}
 	return nil

@@ -82,6 +82,7 @@ CREATE TABLE SCHEMA_CATALOG.metric (
     default_chunk_interval BOOLEAN NOT NULL DEFAULT true,
     retention_period INTERVAL DEFAULT NULL, --NULL to use the default retention_period
     default_compression BOOLEAN NOT NULL DEFAULT true,
+    delay_compression_until TIMESTAMPTZ DEFAULT NULL,
     UNIQUE (metric_name) INCLUDE (table_name),
     UNIQUE(table_name)
 );
