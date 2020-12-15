@@ -68,6 +68,30 @@ AS $func$
 $func$
 LANGUAGE SQL VOLATILE;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id int, wait boolean = true)
+    RETURNS BOOLEAN
+AS $func$
+DECLARE
+BEGIN
+    IF NOT wait THEN
+        PERFORM m.*
+        FROM SCHEMA_CATALOG.metric m
+        WHERE m.id = metric_id
+        FOR NO KEY UPDATE SKIP LOCKED;
+
+        RETURN FOUND;
+    ELSE
+        PERFORM m.*
+        FROM SCHEMA_CATALOG.metric m
+        WHERE m.id = metric_id
+        FOR NO KEY UPDATE;
+
+        RETURN FOUND;
+    END IF;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(int, boolean) TO prom_writer;
 --Canonical lock ordering:
 --metrics
 --data table
@@ -1292,12 +1316,13 @@ CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(
     metric_name TEXT, older_than TIMESTAMPTZ, ran_at TIMESTAMPTZ DEFAULT now()
 ) AS $func$
 DECLARE
+    metric_id int;
     metric_table NAME;
     check_time TIMESTAMPTZ;
     time_dimension_id INT;
 BEGIN
-    SELECT table_name
-    INTO STRICT metric_table
+    SELECT id, table_name
+    INTO STRICT metric_id, metric_table
     FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
 
     SELECT older_than + INTERVAL '1 hour'
@@ -1328,6 +1353,7 @@ BEGIN
         END IF;
         -- end this txn so we're not holding any locks on the catalog
     COMMIT;
+    PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id);
 
     IF older_than IS NULL THEN
         -- even though there are no new Ids in need of deletion,
@@ -1339,6 +1365,7 @@ BEGIN
     -- transaction 2
         PERFORM SCHEMA_CATALOG.mark_unused_series(metric_table, older_than, check_time);
     COMMIT;
+    PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id);
 
     -- transaction 3
         IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
@@ -1359,6 +1386,7 @@ BEGIN
             EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
         END IF;
     COMMIT;
+    PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id);
 
     -- transaction 4
         PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at);
@@ -1401,18 +1429,12 @@ AS $$
 DECLARE
     r RECORD;
 BEGIN
-    --do one loop with skip locked and then one that blocks to prevent starvation
+    --do one loop with metric that could be locked without waiting and then one that blocks to prevent starvation
     FOR r IN
         SELECT *
         FROM SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
     LOOP
-        --lock prevents concurrent drop_chunks on same table
-        PERFORM m.*
-        FROM SCHEMA_CATALOG.metric m
-        WHERE m.id = r.id
-        FOR NO KEY UPDATE SKIP LOCKED;
-
-        CONTINUE WHEN NOT FOUND;
+        CONTINUE WHEN NOT SCHEMA_CATALOG.lock_metric_for_maintenance(r.id, wait=>false);
 
         CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
         COMMIT;
@@ -1422,6 +1444,7 @@ BEGIN
         SELECT *
         FROM SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
     LOOP
+        PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
         COMMIT;
     END LOOP;
@@ -1968,18 +1991,12 @@ DECLARE
     r RECORD;
     remaining_metrics text[] DEFAULT '{}';
 BEGIN
-    --do one loop with skip locked and then one that blocks to prevent starvation
+    --do one loop with metric that could be locked without waiting and then one that blocks to prevent starvation
     FOR r IN
         SELECT *
         FROM SCHEMA_CATALOG.get_metrics_that_need_compression()
     LOOP
-        --lock prevents concurrent compression/drops/etc on same table
-        PERFORM m.*
-        FROM SCHEMA_CATALOG.metric m
-        WHERE m.id = r.id
-        FOR NO KEY UPDATE SKIP LOCKED;
-
-        IF NOT FOUND THEN
+        IF NOT SCHEMA_CATALOG.lock_metric_for_maintenance(r.id, wait=>false) THEN
             remaining_metrics := remaining_metrics || r.metric_name;
             CONTINUE;
         END IF;
@@ -1992,6 +2009,7 @@ BEGIN
         SELECT
         FROM unnest(remaining_metrics) as m(metric_name)
     LOOP
+        PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
         COMMIT;
     END LOOP;
