@@ -1445,6 +1445,48 @@ $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_PROM.execute_maintenance()
 IS 'Execute maintenance tasks like dropping data according to retention policy. This procedure should be run regularly in a cron job';
 
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_maintenance_job(job_id int, config jsonb)
+AS $$
+BEGIN
+    CALL SCHEMA_PROM.execute_maintenance();
+END
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.config_maintenance_jobs(number_jobs int, new_schedule_interval interval)
+RETURNS BOOLEAN
+AS $func$
+DECLARE
+  cnt int;
+BEGIN
+    PERFORM delete_job(job_id)
+    FROM timescaledb_information.jobs
+    WHERE proc_schema = 'SCHEMA_CATALOG' AND proc_name = 'execute_maintenance_job' AND schedule_interval != new_schedule_interval;
+
+
+    SELECT count(*) INTO cnt
+    FROM timescaledb_information.jobs
+    WHERE proc_schema = 'SCHEMA_CATALOG' AND proc_name = 'execute_maintenance_job';
+
+    IF cnt < number_jobs THEN
+        PERFORM add_job('SCHEMA_CATALOG.execute_maintenance_job', new_schedule_interval)
+        FROM generate_series(1, number_jobs-cnt);
+    END IF;
+
+    IF cnt > number_jobs THEN
+        PERFORM delete_job(job_id)
+        FROM timescaledb_information.jobs
+        WHERE proc_schema = 'SCHEMA_CATALOG' AND proc_name = 'execute_maintenance_job'
+        LIMIT (cnt-number_jobs);
+    END IF;
+
+    RETURN TRUE;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.config_maintenance_jobs(int, interval)
+IS 'Configure the number of maintence jobs run by the job scheduler, as well as their scheduled interval';
+
+
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_stale_marker(value double precision)
 RETURNS BOOLEAN
 AS $func$
