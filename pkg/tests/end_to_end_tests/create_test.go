@@ -700,7 +700,6 @@ func TestCompressionSetting(t *testing.T) {
 			if len(jobs) != jobs_expected {
 				t.Errorf("unexpected jobs, expected 1 got %v", jobs)
 			}
-			return
 		}
 
 		var compressionEnabled bool

@@ -1429,7 +1429,11 @@ AS $$
 DECLARE
     r RECORD;
 BEGIN
-    --do one loop with metric that could be locked without waiting and then one that blocks to prevent starvation
+     --Do one loop with metric that could be locked without waiting.
+    --This allows you to do everything you can while avoiding lock contention.
+    --Then come back for the metrics that would have needed to wait on the lock.
+    --Hopefully, that lock is now freed. The secoond loop waits for the lock
+    --to prevent starvation.
     FOR r IN
         SELECT *
         FROM SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
@@ -1991,7 +1995,11 @@ DECLARE
     r RECORD;
     remaining_metrics text[] DEFAULT '{}';
 BEGIN
-    --do one loop with metric that could be locked without waiting and then one that blocks to prevent starvation
+    --Do one loop with metric that could be locked without waiting.
+    --This allows you to do everything you can while avoiding lock contention.
+    --Then come back for the metrics that would have needed to wait on the lock.
+    --Hopefully, that lock is now freed. The secoond loop waits for the lock
+    --to prevent starvation.
     FOR r IN
         SELECT *
         FROM SCHEMA_CATALOG.get_metrics_that_need_compression()
