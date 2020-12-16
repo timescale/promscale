@@ -25,7 +25,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "TEST"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -53,19 +53,19 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		verifyRetentionPeriod(t, db, "test", time.Duration(90*24*time.Hour))
+		verifyRetentionPeriod(t, db, "TEST", time.Duration(90*24*time.Hour))
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test2', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 
-		verifyRetentionPeriod(t, db, "test", time.Duration(90*24*time.Hour))
+		verifyRetentionPeriod(t, db, "TEST", time.Duration(90*24*time.Hour))
 		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_retention_period(INTERVAL '6 hours')")
 		if err != nil {
 			t.Error(err)
 		}
-		verifyRetentionPeriod(t, db, "test", time.Duration(6*time.Hour))
+		verifyRetentionPeriod(t, db, "TEST", time.Duration(6*time.Hour))
 		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
 		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('test2')")
 		if err != nil {
@@ -123,7 +123,7 @@ func TestSQLDropChunk(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "TEST"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -151,8 +151,14 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Error(err)
 		}
 
+		var tableName string
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('TEST')").Scan(&tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		cnt := 0
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom_data.test')").Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +170,7 @@ func TestSQLDropChunk(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom_data.test')").Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +207,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "TEST"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -229,8 +235,14 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 			t.Error(err)
 		}
 
+		var tableName string
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('TEST')").Scan(&tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		cnt := 0
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM prom_data.test").Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM prom_data."%s"`, tableName)).Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -242,7 +254,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM prom_data.test").Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM prom_data."%s"`, tableName)).Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}

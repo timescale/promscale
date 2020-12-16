@@ -138,7 +138,7 @@ func TestSQLChunkInterval(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -148,7 +148,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test2"},
+					{Name: MetricNameLabelName, Value: "Test2"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -166,23 +166,23 @@ func TestSQLChunkInterval(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		verifyChunkInterval(t, db, "test", time.Duration(8*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_chunk_interval('test2', INTERVAL '7 hours')")
+		verifyChunkInterval(t, db, "Test", time.Duration(8*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_chunk_interval('Test2', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
-		verifyChunkInterval(t, db, "test2", time.Duration(7*time.Hour))
+		verifyChunkInterval(t, db, "Test2", time.Duration(7*time.Hour))
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_chunk_interval(INTERVAL '6 hours')")
 		if err != nil {
 			t.Error(err)
 		}
-		verifyChunkInterval(t, db, "test", time.Duration(6*time.Hour))
-		verifyChunkInterval(t, db, "test2", time.Duration(7*time.Hour))
-		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_chunk_interval('test2')")
+		verifyChunkInterval(t, db, "Test", time.Duration(6*time.Hour))
+		verifyChunkInterval(t, db, "Test2", time.Duration(7*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_chunk_interval('Test2')")
 		if err != nil {
 			t.Error(err)
 		}
-		verifyChunkInterval(t, db, "test2", time.Duration(6*time.Hour))
+		verifyChunkInterval(t, db, "Test2", time.Duration(6*time.Hour))
 
 		//set on a metric that doesn't exist should create the metric and set the parameter
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_chunk_interval('test_new_metric1', INTERVAL '7 hours')")
@@ -243,7 +243,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -258,18 +258,34 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 				},
 			},
 		},
 		{
+			name: "One metric, metric name all capital letters",
+			metrics: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: MetricNameLabelName, Value: "TEST"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       1,
+			countSeries: 1,
+		},
+		{
 			name: "Two timeseries",
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -278,7 +294,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -294,7 +310,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -311,7 +327,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -328,7 +344,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -337,7 +353,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test"},
+						{Name: MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -353,7 +369,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test1"},
+						{Name: MetricNameLabelName, Value: "Test1"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "test"},
 						{Name: "key2", Value: "val1"},
@@ -364,7 +380,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "test2"},
+						{Name: MetricNameLabelName, Value: "Test2"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "val2"},
 						{Name: "key3", Value: "val3"},
@@ -420,18 +436,29 @@ func TestSQLIngest(t *testing.T) {
 					return
 				}
 
-				tables := make(map[string]bool)
+				metricNames := make(map[string]bool)
 				for _, ts := range tcase.metrics {
-					for _, l := range ts.Labels {
-						if len(ts.Samples) > 0 && l.Name == MetricNameLabelName {
-							tables[l.Value] = true
+					if len(ts.Samples) > 0 {
+						for _, l := range ts.Labels {
+							if l.Name == MetricNameLabelName {
+								metricNames[l.Value] = true
+							}
 						}
 					}
 				}
+
 				totalRows := 0
-				for table := range tables {
-					var rowsInTable int
-					err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM prom_data.%s", table)).Scan(&rowsInTable)
+				for metricName := range metricNames {
+					var (
+						tableName   string
+						rowsInTable int
+					)
+					err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('%s');", metricName)).Scan(&tableName)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM prom_data."%s"`, tableName)).Scan(&rowsInTable)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -587,7 +614,7 @@ func TestInsertCompressed(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				// Two samples that, by default, end up in different chunks.
@@ -612,7 +639,13 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.test') i;")
+		var tableName string
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('Test');").Scan(&tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
@@ -632,10 +665,10 @@ func TestInsertCompressed(t *testing.T) {
 				"WHERE proc_schema = '_prom_catalog' " +
 				"AND proc_name = 'compression_job' " +
 				"AND config->>'metric_table' = $1::text"
-			err = db.QueryRow(context.Background(), statsQuery, "test").Scan(&nextStartAfter)
+			err = db.QueryRow(context.Background(), statsQuery, tableName).Scan(&nextStartAfter)
 		} else {
 			statsQuery = "SELECT next_start FROM timescaledb_information.policy_stats WHERE hypertable = $1::text::regclass"
-			err = db.QueryRow(context.Background(), statsQuery, pgx.Identifier{"prom_data", "test"}.Sanitize()).Scan(&nextStartAfter)
+			err = db.QueryRow(context.Background(), statsQuery, pgx.Identifier{"prom_data", tableName}.Sanitize()).Scan(&nextStartAfter)
 		}
 		if err != nil {
 			t.Fatal(err)
@@ -702,7 +735,7 @@ func TestCompressionSetting(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -724,7 +757,7 @@ func TestCompressionSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('test')").Scan(&compressionEnabled)
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('Test')").Scan(&compressionEnabled)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -737,12 +770,18 @@ func TestCompressionSetting(t *testing.T) {
 			t.Errorf("unexpected jobs, expected 0 got %v", jobs)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_compression_setting('test', true)")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_compression_setting('Test', true)")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.test') i;")
+		var tableName string
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('Test');").Scan(&tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
@@ -751,7 +790,7 @@ func TestCompressionSetting(t *testing.T) {
 			}
 		}
 
-		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('test')").Scan(&compressionEnabled)
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('Test')").Scan(&compressionEnabled)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -770,12 +809,12 @@ func TestCompressionSetting(t *testing.T) {
 			return
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_compression_setting('test')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_compression_setting('Test')")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('test')").Scan(&compressionEnabled)
+		err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_metric_compression_setting('Test')").Scan(&compressionEnabled)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -801,34 +840,11 @@ func TestCustomCompressionJob(t *testing.T) {
 		t.Skip("test meaningless without Timescale 2")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		// in early versions of Timescale multinode the compression catalog
-		// would not be updated for distributed hypertables so we detect
-		// compression using a probe INSERT
-		chunkIsCompressed := func(time string) bool {
-			insert := fmt.Sprintf("INSERT INTO prom_data.test VALUES ('%s', 0.1, 1);", time)
-			_, err := db.Exec(context.Background(), insert)
-			if err != nil {
-				pgErr, ok := err.(*pgconn.PgError)
-				if !ok {
-					t.Fatal(err)
-				}
-				if pgErr.SQLState() == "42710" ||
-					pgErr.SQLState() == "0A000" {
-					//already compressed
-					return true
-				} else if pgErr.SQLState() == "23505" {
-					// violates unique constraint
-					return false
-				}
-				t.Fatal(err)
-			}
-			return false
-		}
 
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: MetricNameLabelName, Value: "Test1"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -851,12 +867,42 @@ func TestCustomCompressionJob(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		var tableName string
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('Test1');").Scan(&tableName)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// in early versions of Timescale multinode the compression catalog
+		// would not be updated for distributed hypertables so we detect
+		// compression using a probe INSERT
+		chunkIsCompressed := func(time string) bool {
+			insert := fmt.Sprintf(`INSERT INTO prom_data."%s" VALUES ('%s', 0.1, 1);`, tableName, time)
+			_, err := db.Exec(context.Background(), insert)
+			if err != nil {
+				pgErr, ok := err.(*pgconn.PgError)
+				if !ok {
+					t.Fatal(err)
+				}
+				if pgErr.SQLState() == "42710" ||
+					pgErr.SQLState() == "0A000" {
+					//already compressed
+					return true
+				} else if pgErr.SQLState() == "23505" {
+					// violates unique constraint
+					return false
+				}
+				t.Fatal(err)
+			}
+			return false
+		}
+
 		if chunkIsCompressed("1970-01-01 00:00:00.001+00") {
 			t.Error("chunk compressed too soon")
 		}
 
 		runCompressionJob := func() {
-			_, err = db.Exec(context.Background(), `CALL _prom_catalog.compression_job(1, '{"metric_table":"test"}')`)
+			_, err = db.Exec(context.Background(), fmt.Sprintf(`CALL _prom_catalog.compression_job(1, '{"metric_table":"%s"}')`, tableName))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -869,13 +915,13 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		// add another chunk to each data node
-		insert := "INSERT INTO prom_data.test VALUES ('1970-01-02 00:00:00.001+00', 0.1, 1);"
+		insert := fmt.Sprintf(`INSERT INTO prom_data."%s" VALUES ('1970-01-02 00:00:00.001+00', 0.1, 1);`, tableName)
 		_, err = db.Exec(context.Background(), insert)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		insert = "INSERT INTO prom_data.test VALUES ('1970-01-03 00:00:00.001+00', 0.1, 1);"
+		insert = fmt.Sprintf(`INSERT INTO prom_data."%s" VALUES ('1970-01-03 00:00:00.001+00', 0.1, 1);`, tableName)
 		_, err = db.Exec(context.Background(), insert)
 		if err != nil {
 			t.Fatal(err)
@@ -946,7 +992,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		// Add an earlier chunk
-		insert = "INSERT INTO prom_data.test VALUES ('1969-01-01 00:00:00.001+00', 0.1, 1);"
+		insert = fmt.Sprintf(`INSERT INTO prom_data."%s" VALUES ('1969-01-01 00:00:00.001+00', 0.1, 1);`, tableName)
 		_, err = db.Exec(context.Background(), insert)
 		if err != nil {
 			t.Fatal(err)

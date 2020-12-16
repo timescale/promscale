@@ -41,6 +41,14 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
+					{Name: MetricNameLabelName, Value: "CAPITAL"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 10, Value: 0.1},
+				},
+			},
+			{
+				Labels: []prompb.Label{
 					{Name: MetricNameLabelName, Value: "reserved tags"},
 					{Name: "foo", Value: "bar"},
 					{Name: "labels", Value: "val1"},

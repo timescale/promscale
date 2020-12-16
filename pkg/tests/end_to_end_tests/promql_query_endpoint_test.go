@@ -2211,6 +2211,10 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			query: "metric_1",
 		},
 		{
+			name:  "basic query, capital metric name",
+			query: "METRIC_4",
+		},
+		{
 			name:  "basic query, not regex match metric name",
 			query: `{__name__!~".*_1", instance="1"}`,
 		},
