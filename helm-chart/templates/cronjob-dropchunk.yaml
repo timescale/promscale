@@ -18,9 +18,13 @@ spec:
             image: postgres:12-alpine
             args:
             - psql
+            {{- if .Values.connection.dbURI.secretTemplate }}
+            - $(PROMSCALE_DB_URI)
+            {{- end }}
             - -c
             - CALL prom_api.execute_maintenance();
             env:
+              {{- if not .Values.connection.dbURI.secretTemplate }}
               - name: PGPORT
                 value: {{ .Values.connection.port | quote }}
               - name: PGUSER
@@ -34,4 +38,11 @@ spec:
                 value: {{ tpl .Values.connection.host.nameTemplate . }}
               - name:  PGDATABASE
                 value: {{ .Values.connection.dbName }}
+              {{- else }}
+              - name: PROMSCALE_DB_URI
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ tpl .Values.connection.dbURI.secretTemplate . }}
+                    key: {{ .Values.connection.dbURI.name }}
+              {{- end }}
           restartPolicy: OnFailure

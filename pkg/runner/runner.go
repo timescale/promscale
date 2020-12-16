@@ -196,8 +196,12 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// that upgrading TimescaleDB will not break existing connectors.
 	// (upgrading the DB will force-close all existing connections, so we may
 	// add a reconnect check that the DB has an appropriate version)
+	connStr, err := cfg.PgmodelCfg.GetConnectionStr()
+	if err != nil {
+		return nil, err
+	}
 	if cfg.InstallTimescaleDB {
-		err := pgmodel.MigrateTimescaleDBExtension(cfg.PgmodelCfg.GetConnectionStr())
+		err := pgmodel.MigrateTimescaleDBExtension(connStr)
 		if err != nil {
 			return nil, err
 		}
@@ -210,7 +214,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// lock on schemaLockId, and we attempt to grab an exclusive lock on it
 	// before running migrate. This implies that migration must be run when no
 	// other connector is running.
-	schemaVersionLease, err := util.NewPgAdvisoryLock(schemaLockId, cfg.PgmodelCfg.GetConnectionStr())
+	schemaVersionLease, err := util.NewPgAdvisoryLock(schemaLockId, connStr)
 	if err != nil {
 		log.Error("msg", "error creating schema version lease", "err", err)
 		return nil, startupError
@@ -315,7 +319,11 @@ func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
 		return nil, fmt.Errorf("Prometheus timeout configuration must be set when using PG advisory lock")
 	}
 
-	lock, err := util.NewPgLeaderLock(cfg.HaGroupLockID, cfg.PgmodelCfg.GetConnectionStr(), getSchemaLease)
+	connStr, err := cfg.PgmodelCfg.GetConnectionStr()
+	if err != nil {
+		return nil, err
+	}
+	lock, err := util.NewPgLeaderLock(cfg.HaGroupLockID, connStr, getSchemaLease)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.HaGroupLockID, err)
 	}

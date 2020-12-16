@@ -35,24 +35,13 @@ type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
-	connectionStr := cfg.GetConnectionStr()
-	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
+	pgConfig, numCopiers, err := getPgConfig(cfg)
 	if err != nil {
-		log.Error("msg", "configuring number of connections", "err", util.MaskPassword(err.Error()))
-		return nil, err
-	}
-
-	pgConfig, err := pgxpool.ParseConfig(connectionStr + fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
-	if err != nil {
-		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
 		return nil, err
 	}
 
 	pgConfig.AfterConnect = schemaLocker
 	connectionPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
-
-	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections)
-
 	if err != nil {
 		log.Error("msg", "err creating connection pool for new client", "err", util.MaskPassword(err.Error()))
 		return nil, err
@@ -65,6 +54,34 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 	}
 	client.closePool = true
 	return client, err
+}
+
+func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
+	connectionStr, err := cfg.GetConnectionStr()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
+	if err != nil {
+		log.Error("msg", "configuring number of connections", "err", util.MaskPassword(err.Error()))
+		return nil, numCopiers, err
+	}
+
+	var pgConfig *pgxpool.Config
+	if cfg.DbUri == DefaultDBUri {
+		pgConfig, err = pgxpool.ParseConfig(connectionStr + fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
+	} else {
+		pgConfig, err = pgxpool.ParseConfig(connectionStr + fmt.Sprintf("&pool_max_conns=%d&pool_min_conns=%d", maxConnections, minConnections))
+	}
+
+	if err != nil {
+		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
+		return nil, numCopiers, err
+	}
+
+	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections)
+	return pgConfig, numCopiers, nil
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.

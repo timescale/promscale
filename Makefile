@@ -1,3 +1,4 @@
+.PHONY: build
 build:
 	go build -o dist/promscale ./cmd/promscale
 
