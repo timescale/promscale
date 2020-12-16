@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -111,7 +114,7 @@ func TestSQLQuery(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_EQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "nonExistantMetric",
 					},
 				},
@@ -126,7 +129,7 @@ func TestSQLQuery(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_EQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "firstMetric",
 					},
 				},
@@ -136,7 +139,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -155,7 +158,7 @@ func TestSQLQuery(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_RE,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "first.*",
 					},
 				},
@@ -165,7 +168,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -184,7 +187,7 @@ func TestSQLQuery(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_NEQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "firstMetric",
 					},
 				},
@@ -194,7 +197,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -210,7 +213,7 @@ func TestSQLQuery(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_NRE,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "first.*",
 					},
 				},
@@ -220,7 +223,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -247,7 +250,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -259,7 +262,7 @@ func TestSQLQuery(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -281,7 +284,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Type:  prompb.LabelMatcher_RE,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: ".*Metric",
 					},
 				},
@@ -291,7 +294,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -303,7 +306,7 @@ func TestSQLQuery(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -330,7 +333,7 @@ func TestSQLQuery(t *testing.T) {
 					},
 					{
 						Type:  prompb.LabelMatcher_NRE,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "non-existent",
 					},
 				},
@@ -340,7 +343,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -352,7 +355,7 @@ func TestSQLQuery(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -384,7 +387,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -397,7 +400,7 @@ func TestSQLQuery(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -430,7 +433,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -443,7 +446,7 @@ func TestSQLQuery(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -479,7 +482,7 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "firstMetric"},
+						{Name: utils.MetricNameLabelName, Value: "firstMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "empty", Value: ""},
 						{Name: "foo", Value: "bar"},
@@ -494,7 +497,7 @@ func TestSQLQuery(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "secondMetric"},
+						{Name: utils.MetricNameLabelName, Value: "secondMetric"},
 						{Name: "common", Value: "tag"},
 						{Name: "foo", Value: "baz"},
 					},
@@ -523,10 +526,10 @@ func TestSQLQuery(t *testing.T) {
 			t.Fatalf("Cannot run test, not an instance of testing.T")
 		}
 
-		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := NewLabelsReader(dbConn, lCache)
+		labelsReader := utils.NewLabelsReader(dbConn, lCache)
 		r := NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
@@ -546,12 +549,12 @@ func TestSQLQuery(t *testing.T) {
 }
 
 func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.TimeSeries) {
-	ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+	ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	cnt, err := ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
+	cnt, err := ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
 
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)
@@ -589,7 +592,7 @@ func TestPromQL(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_EQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_1",
 					},
 				},
@@ -617,7 +620,7 @@ func TestPromQL(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_RE,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_.*",
 					},
 				},
@@ -631,7 +634,7 @@ func TestPromQL(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_RE,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_.*",
 					},
 					{
@@ -744,7 +747,7 @@ func TestPromQL(t *testing.T) {
 					},
 					{
 						Type:  prompb.LabelMatcher_NEQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_1",
 					},
 				},
@@ -763,7 +766,7 @@ func TestPromQL(t *testing.T) {
 					},
 					{
 						Type:  prompb.LabelMatcher_NEQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_1",
 					},
 				},
@@ -811,7 +814,7 @@ func TestPromQL(t *testing.T) {
 					},
 					{
 						Type:  prompb.LabelMatcher_NRE,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_3",
 					},
 				},
@@ -825,17 +828,17 @@ func TestPromQL(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_EQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_1",
 					},
 					{
 						Type:  prompb.LabelMatcher_EQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_2",
 					},
 					{
 						Type:  prompb.LabelMatcher_EQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "metric_3",
 					},
 				},
@@ -859,10 +862,10 @@ func TestPromQL(t *testing.T) {
 			return
 		}
 
-		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := NewLabelsReader(dbConn, lCache)
+		labelsReader := utils.NewLabelsReader(dbConn, lCache)
 		r := NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
@@ -1016,10 +1019,10 @@ func TestPushdown(t *testing.T) {
 			return
 		}
 
-		mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := NewLabelsReader(dbConn, lCache)
+		labelsReader := utils.NewLabelsReader(dbConn, lCache)
 		r := NewQuerier(dbConn, mCache, labelsReader)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)

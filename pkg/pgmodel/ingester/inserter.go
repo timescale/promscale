@@ -1,4 +1,4 @@
-package pgmodel
+package ingester
 
 import (
 	"context"
@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type pgxInserter struct {
 	conn                   pgxconn.PgxConn
-	metricTableNames       MetricCache
+	metricTableNames       cache.MetricCache
 	inserters              sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
@@ -21,7 +23,7 @@ type pgxInserter struct {
 	toCopiers              chan copyRequest
 }
 
-func newPgxInserter(conn pgxconn.PgxConn, cache MetricCache, cfg *Cfg) (*pgxInserter, error) {
+func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*pgxInserter, error) {
 	cmc := make(chan struct{}, 1)
 
 	numCopiers := cfg.NumCopiers
@@ -96,7 +98,7 @@ func (p *pgxInserter) Close() {
 	close(p.toCopiers)
 }
 
-func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertNewData(rows map[string][]utils.SamplesInfo) (uint64, error) {
 	return p.InsertData(rows)
 }
 
@@ -106,7 +108,7 @@ func (p *pgxInserter) InsertNewData(rows map[string][]samplesInfo) (uint64, erro
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertData(rows map[string][]utils.SamplesInfo) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
 	workFinished.Add(len(rows))
@@ -116,7 +118,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
 		for _, si := range data {
-			numRows += uint64(len(si.samples))
+			numRows += uint64(len(si.Samples))
 		}
 		// insertMetricData() is expected to be non-blocking,
 		// just a channel insert
@@ -150,7 +152,7 @@ func (p *pgxInserter) InsertData(rows map[string][]samplesInfo) (uint64, error) 
 	return numRows, err
 }
 
-func (p *pgxInserter) insertMetricData(metric string, data []samplesInfo, finished *sync.WaitGroup, errChan chan error) {
+func (p *pgxInserter) insertMetricData(metric string, data []utils.SamplesInfo, finished *sync.WaitGroup, errChan chan error) {
 	inserter := p.getMetricInserter(metric)
 	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
@@ -193,7 +195,7 @@ func (p *pgxInserter) createMetricTable(metric string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "", errMissingTableName
+		return "", utils.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName); err != nil {
@@ -214,7 +216,7 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 		return tableName, nil
 	}
 
-	if err != ErrEntryNotFound {
+	if err != cache.ErrEntryNotFound {
 		return "", err
 	}
 
@@ -231,7 +233,7 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 
 type insertDataRequest struct {
 	metric   string
-	data     []samplesInfo
+	data     []utils.SamplesInfo
 	finished *sync.WaitGroup
 	errChan  chan error
 }

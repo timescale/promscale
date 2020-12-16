@@ -1,4 +1,4 @@
-package pgmodel
+package ingester
 
 import (
 	"sync"

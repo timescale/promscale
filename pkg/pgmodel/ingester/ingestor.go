@@ -1,9 +1,11 @@
-package pgmodel
+package ingester
 
 import (
 	"fmt"
 
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -17,12 +19,12 @@ type Cfg struct {
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
-	db inserter
+	db utils.Inserter
 }
 
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestorWithMetricCache(conn pgxconn.PgxConn, cache MetricCache, cfg *Cfg) (*DBIngestor, error) {
+func NewPgxIngestorWithMetricCache(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*DBIngestor, error) {
 	pi, err := newPgxInserter(conn, cache, cfg)
 	if err != nil {
 		return nil, err
@@ -33,7 +35,7 @@ func NewPgxIngestorWithMetricCache(conn pgxconn.PgxConn, cache MetricCache, cfg 
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
 func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
-	cache := &MetricNameCache{clockcache.WithMax(DefaultMetricCacheSize)}
+	cache := &cache.MetricNameCache{clockcache.WithMax(cache.DefaultMetricCacheSize)}
 	return NewPgxIngestorWithMetricCache(conn, cache, &Cfg{})
 }
 
@@ -65,8 +67,8 @@ func (i *DBIngestor) CompleteMetricCreation() error {
 // returns: map[metric name][]SamplesInfo, total rows to insert
 // NOTE: req will be added to our WriteRequest pool in this function, it must
 //       not be used afterwards.
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]samplesInfo, int, error) {
-	dataSamples := make(map[string][]samplesInfo)
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]utils.SamplesInfo, int, error) {
+	dataSamples := make(map[string][]utils.SamplesInfo)
 	rows := 0
 
 	for i := range tts {
@@ -77,17 +79,17 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 
 		// Normalize and canonicalize t.Labels.
 		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := labelProtosToLabels(t.Labels)
+		seriesLabels, metricName, err := utils.LabelProtosToLabels(t.Labels)
 		if err != nil {
 			return nil, rows, err
 		}
 		if metricName == "" {
-			return nil, rows, ErrNoMetricName
+			return nil, rows, utils.ErrNoMetricName
 		}
-		sample := samplesInfo{
-			seriesLabels,
-			-1, // sentinel marking the seriesId as unset
-			t.Samples,
+		sample := utils.SamplesInfo{
+			Labels:   seriesLabels,
+			SeriesID: -1, // sentinel marking the seriesId as unset
+			Samples:  t.Samples,
 		}
 		rows += len(t.Samples)
 

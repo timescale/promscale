@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -10,13 +11,13 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewQueryable(q pgmodel.Querier, labelsReader pgmodel.LabelsReader) promql.Queryable {
+func NewQueryable(q pgmodel.Querier, labelsReader utils.LabelsReader) promql.Queryable {
 	return &queryable{querier: q, labelsReader: labelsReader}
 }
 
 type queryable struct {
 	querier      pgmodel.Querier
-	labelsReader pgmodel.LabelsReader
+	labelsReader utils.LabelsReader
 }
 
 func (q queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querier, error) {
@@ -31,7 +32,7 @@ type querier struct {
 	ctx           context.Context
 	mint, maxt    int64
 	metricsReader pgmodel.Querier
-	labelsReader  pgmodel.LabelsReader
+	labelsReader  utils.LabelsReader
 }
 
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {

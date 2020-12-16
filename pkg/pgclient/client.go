@@ -3,6 +3,9 @@ package pgclient
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -19,13 +22,13 @@ import (
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
 	Connection    pgxconn.PgxConn
-	ingestor      *pgmodel.DBIngestor
+	ingestor      *ingester.DBIngestor
 	querier       pgmodel.Querier
 	healthCheck   pgmodel.HealthCheckerFn
 	queryable     promql.Queryable
 	ConnectionStr string
-	metricCache   pgmodel.MetricCache
-	labelsCache   pgmodel.LabelsCache
+	metricCache   cache.MetricCache
+	labelsCache   cache.LabelsCache
 	closePool     bool
 }
 
@@ -86,20 +89,20 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
 func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
-	metricsCache := &pgmodel.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
+	metricsCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
 	labelsCache := clockcache.WithMax(cfg.LabelsCacheSize)
-	c := pgmodel.Cfg{
+	c := ingester.Cfg{
 		AsyncAcks:       cfg.AsyncAcks,
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
 	}
-	ingestor, err := pgmodel.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
+	ingestor, err := ingester.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
-	labelsReader := pgmodel.NewLabelsReader(dbConn, labelsCache)
+	labelsReader := utils.NewLabelsReader(dbConn, labelsCache)
 	querier := pgmodel.NewQuerier(dbConn, metricsCache, labelsReader)
 	queryable := query.NewQueryable(querier, labelsReader)
 

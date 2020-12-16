@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 )
 
 const (
@@ -151,7 +152,7 @@ func (p *pgxSeriesIterator) Seek(t int64) bool {
 
 // getTs returns a Unix timestamp in milliseconds.
 func (p *pgxSeriesIterator) getTs() int64 {
-	return timestamptzToMs(p.times.Elements[p.cur])
+	return utils.TimestamptzToMs(p.times.Elements[p.cur])
 }
 
 func (p *pgxSeriesIterator) getVal() float64 {

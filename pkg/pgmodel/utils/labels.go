@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package pgmodel
+package utils
 
 import (
 	"encoding/binary"
@@ -18,9 +18,9 @@ import (
 
 // Labels stores a labels.Labels in its canonical string representation
 type Labels struct {
-	names      []string
-	values     []string
-	metricName string
+	Names      []string
+	Values     []string
+	MetricName string
 	str        string
 }
 
@@ -56,7 +56,7 @@ func LabelsFromSlice(ls labels.Labels) (*Labels, error) {
 		ll[i].Name = ls[i].Name
 		ll[i].Value = ls[i].Value
 	}
-	l, _, err := labelProtosToLabels(ll)
+	l, _, err := LabelProtosToLabels(ll)
 	return l, err
 }
 
@@ -122,8 +122,8 @@ func getStr(labels []prompb.Label) (string, error) {
 	return builder.String(), nil
 }
 
-// labelProtosToLabels converts a prompb.Label to a canonical Labels object
-func labelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
+// LabelProtosToLabels converts a prompb.Label to a canonical Labels object
+func LabelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 	str, err := getStr(labelPairs)
 	if err != nil {
 		return nil, "", err
@@ -132,19 +132,19 @@ func labelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 	if labels == nil {
 		labels = new(Labels)
 		labels.str = str
-		labels.names = make([]string, len(labelPairs))
-		labels.values = make([]string, len(labelPairs))
+		labels.Names = make([]string, len(labelPairs))
+		labels.Values = make([]string, len(labelPairs))
 		for i, l := range labelPairs {
-			labels.names[i] = l.Name
-			labels.values[i] = l.Value
+			labels.Names[i] = l.Name
+			labels.Values[i] = l.Value
 			if l.Name == MetricNameLabelName {
-				labels.metricName = l.Value
+				labels.MetricName = l.Value
 			}
 		}
 		labels = SetLabels(str, labels)
 	}
 
-	return labels, labels.metricName, err
+	return labels, labels.MetricName, err
 }
 
 // Get a string representation for hashing and comparison
@@ -168,14 +168,14 @@ func (l *Labels) Equal(b *Labels) bool {
 var _ sort.Interface = (*Labels)(nil)
 
 func (l *Labels) Len() int {
-	return len(l.names)
+	return len(l.Names)
 }
 
 func (l *Labels) Less(i, j int) bool {
-	return l.names[i] < l.names[j]
+	return l.Names[i] < l.Names[j]
 }
 
 func (l *Labels) Swap(i, j int) {
-	l.names[j], l.names[i] = l.names[i], l.names[j]
-	l.values[j], l.values[i] = l.values[i], l.values[j]
+	l.Names[j], l.Names[i] = l.Names[i], l.Names[j]
+	l.Values[j], l.Values[i] = l.Values[i], l.Values[j]
 }

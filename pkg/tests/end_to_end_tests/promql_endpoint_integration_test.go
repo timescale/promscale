@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"errors"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -16,7 +17,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -258,7 +258,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		AsyncAcks:               false,
 		ReportInterval:          0,
 		LabelsCacheSize:         10000,
-		MetricsCacheSize:        pgmodel.DefaultMetricCacheSize,
+		MetricsCacheSize:        cache.DefaultMetricCacheSize,
 		WriteConnectionsPerProc: 4,
 		MaxConnections:          -1,
 	}

@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package pgmodel
+package utils
 
 import (
 	"fmt"
@@ -28,8 +28,8 @@ func (s SeriesID) String() string {
 }
 
 // inserter is responsible for inserting label, series and data into the storage.
-type inserter interface {
-	InsertNewData(rows map[string][]samplesInfo) (uint64, error)
+type Inserter interface {
+	InsertNewData(rows map[string][]SamplesInfo) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
 }
@@ -42,8 +42,8 @@ type SeriesCache interface {
 	Capacity() int
 }
 
-type samplesInfo struct {
-	labels   *Labels
-	seriesID SeriesID
-	samples  []prompb.Sample
+type SamplesInfo struct {
+	Labels   *Labels
+	SeriesID SeriesID
+	Samples  []prompb.Sample
 }

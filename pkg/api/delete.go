@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"net/http"
 
 	"github.com/NYTimes/gziphandler"
@@ -29,7 +30,7 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 		var (
 			totalRowsDeleted int
 			metricsTouched   []string
-			seriesDeleted    []pgmodel.SeriesID
+			seriesDeleted    []utils.SeriesID
 		)
 		if err := r.ParseForm(); err != nil {
 			respondError(w, http.StatusBadRequest, err, "bad_data")
@@ -100,7 +101,7 @@ func distinctValues(slice interface{}) []string {
 				temp[element] = struct{}{}
 			}
 		}
-	case []pgmodel.SeriesID:
+	case []utils.SeriesID:
 		for _, element := range elem {
 			str := element.String()
 			if _, ok := temp[str]; !ok {

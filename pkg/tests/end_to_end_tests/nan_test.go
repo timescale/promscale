@@ -3,6 +3,9 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"math"
 	"testing"
 	"time"
@@ -49,7 +52,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: metricName},
+					{Name: utils.MetricNameLabelName, Value: metricName},
 					{Name: "foo", Value: "bar"},
 					{Name: "common", Value: "tag"},
 					{Name: "empty", Value: ""},
@@ -63,12 +66,12 @@ func TestSQLStaleNaN(t *testing.T) {
 			},
 		}
 
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
 
 		if err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
@@ -77,7 +80,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		matchers := []*prompb.LabelMatcher{
 			{
 				Type:  prompb.LabelMatcher_EQ,
-				Name:  MetricNameLabelName,
+				Name:  utils.MetricNameLabelName,
 				Value: metricName,
 			},
 		}
@@ -113,10 +116,10 @@ func TestSQLStaleNaN(t *testing.T) {
 		}
 
 		for _, c := range query {
-			mCache := &MetricNameCache{Metrics: clockcache.WithMax(DefaultMetricCacheSize)}
+			mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 			lCache := clockcache.WithMax(100)
 			dbConn := pgxconn.NewPgxConn(db)
-			labelsReader := NewLabelsReader(dbConn, lCache)
+			labelsReader := utils.NewLabelsReader(dbConn, lCache)
 			r := NewQuerier(dbConn, mCache, labelsReader)
 			resp, err := r.Query(c.query)
 			startMs := c.query.StartTimestampMs

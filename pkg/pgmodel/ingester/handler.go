@@ -1,4 +1,4 @@
-package pgmodel
+package ingester
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -14,7 +15,7 @@ type insertHandler struct {
 	conn               pgxconn.PgxConn
 	input              chan insertDataRequest
 	pending            *pendingBuffer
-	seriesCache        map[string]SeriesID
+	seriesCache        map[string]utils.SeriesID
 	seriesCacheEpoch   Epoch
 	seriesCacheRefresh *time.Ticker
 	metricTableName    string
@@ -22,7 +23,7 @@ type insertHandler struct {
 }
 
 func (h *insertHandler) hasPendingReqs() bool {
-	return len(h.pending.batch.sampleInfos) > 0
+	return len(h.pending.batch.SampleInfos) > 0
 }
 
 func (h *insertHandler) blockingHandleReq() bool {
@@ -68,19 +69,19 @@ func (h *insertHandler) handleReq(req insertDataRequest) bool {
 // Fill in any SeriesIds we already have in cache.
 // This must be idempotent: if called a second time it should not affect any
 // sampleInfo whose series was already set.
-func (h *insertHandler) fillKnownSeriesIds(sampleInfos []samplesInfo) (numMissingSeries int, epoch Epoch) {
+func (h *insertHandler) fillKnownSeriesIds(sampleInfos []utils.SamplesInfo) (numMissingSeries int, epoch Epoch) {
 	epoch = h.seriesCacheEpoch
 	for i, series := range sampleInfos {
 		// When we first create the sampleInfos we should have set the seriesID
 		// to -1 for any series whose labels field is nil. Real seriesIds must
 		// always be greater than 0.
-		if series.seriesID > -1 {
+		if series.SeriesID > -1 {
 			continue
 		}
-		id, ok := h.seriesCache[series.labels.String()]
+		id, ok := h.seriesCache[series.Labels.String()]
 		if ok {
-			sampleInfos[i].seriesID = id
-			series.labels = nil
+			sampleInfos[i].SeriesID = id
+			series.Labels = nil
 		} else {
 			numMissingSeries++
 		}
@@ -97,7 +98,7 @@ func (h *insertHandler) flush() {
 
 // Set all unset SeriesIds and flush to the next layer
 func (h *insertHandler) flushPending() {
-	_, epoch, err := h.setSeriesIds(h.pending.batch.sampleInfos)
+	_, epoch, err := h.setSeriesIds(h.pending.batch.SampleInfos)
 	if err != nil {
 		h.pending.reportResults(err)
 		h.pending.release()
@@ -115,20 +116,20 @@ func (h *insertHandler) flushPending() {
 // and repopulating the cache accordingly.
 // returns: the tableName for the metric being inserted into
 // TODO move up to the rest of insertHandler
-func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, Epoch, error) {
+func (h *insertHandler) setSeriesIds(sampleInfos []utils.SamplesInfo) (string, Epoch, error) {
 	numMissingSeries, epoch := h.fillKnownSeriesIds(sampleInfos)
 
 	if numMissingSeries == 0 {
 		return "", epoch, nil
 	}
 
-	seriesToInsert := make([]*samplesInfo, 0, numMissingSeries)
+	seriesToInsert := make([]*utils.SamplesInfo, 0, numMissingSeries)
 	for i, series := range sampleInfos {
-		if series.seriesID < 0 {
+		if series.SeriesID < 0 {
 			seriesToInsert = append(seriesToInsert, &sampleInfos[i])
 		}
 	}
-	var lastSeenLabel *Labels
+	var lastSeenLabel *utils.Labels
 
 	batch := h.conn.NewBatch()
 
@@ -142,24 +143,24 @@ func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, Epoch, 
 	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
 	// in a different transaction, thus deadlocks are not an issue.
 	sort.Slice(seriesToInsert, func(i, j int) bool {
-		return seriesToInsert[i].labels.Compare(seriesToInsert[j].labels) < 0
+		return seriesToInsert[i].Labels.Compare(seriesToInsert[j].Labels) < 0
 	})
 
-	batchSeries := make([][]*samplesInfo, 0, len(seriesToInsert))
+	batchSeries := make([][]*utils.SamplesInfo, 0, len(seriesToInsert))
 	// group the seriesToInsert by labels, one slice array per unique labels
 	for _, curr := range seriesToInsert {
-		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.labels) {
+		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.Labels) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}
 
 		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.labels.metricName, curr.labels.names, curr.labels.values)
+		batch.Queue(getSeriesIDForLabelSQL, curr.Labels.MetricName, curr.Labels.Names, curr.Labels.Values)
 		batch.Queue("COMMIT;")
 		numSQLFunctionCalls++
-		batchSeries = append(batchSeries, []*samplesInfo{curr})
+		batchSeries = append(batchSeries, []*utils.SamplesInfo{curr})
 
-		lastSeenLabel = curr.labels
+		lastSeenLabel = curr.Labels
 	}
 
 	if numSQLFunctionCalls != len(batchSeries) {
@@ -205,16 +206,16 @@ func (h *insertHandler) setSeriesIds(sampleInfos []samplesInfo) (string, Epoch, 
 			return "", epoch, err
 		}
 
-		var id SeriesID
+		var id utils.SeriesID
 		row = br.QueryRow()
 		err = row.Scan(&tableName, &id)
 		if err != nil {
 			return "", epoch, err
 		}
-		seriesString := batchSeries[i][0].labels.String()
+		seriesString := batchSeries[i][0].Labels.String()
 		h.seriesCache[seriesString] = id
 		for _, lsi := range batchSeries[i] {
-			lsi.seriesID = id
+			lsi.SeriesID = id
 		}
 
 		// COMMIT;
@@ -236,13 +237,13 @@ func (h *insertHandler) refreshSeriesCache() {
 		msg := fmt.Sprintf("error refreshing the series cache for %s", h.metricTableName)
 		log.Error("msg", msg, "metric_table", h.metricTableName, "err", err)
 		// Trash the cache just in case an epoch change occurred, seems safer
-		h.seriesCache = map[string]SeriesID{}
+		h.seriesCache = map[string]utils.SeriesID{}
 		h.seriesCacheEpoch = -1
 		return
 	}
 
 	if newEpoch != h.seriesCacheEpoch {
-		h.seriesCache = map[string]SeriesID{}
+		h.seriesCache = map[string]utils.SeriesID{}
 		h.seriesCacheEpoch = newEpoch
 	}
 }

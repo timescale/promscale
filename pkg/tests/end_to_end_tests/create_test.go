@@ -6,6 +6,8 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"reflect"
 	"testing"
 	"time"
@@ -15,7 +17,6 @@ import (
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	. "github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -138,7 +139,7 @@ func TestSQLChunkInterval(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "Test"},
+					{Name: utils.MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -148,7 +149,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "Test2"},
+					{Name: utils.MetricNameLabelName, Value: "Test2"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -157,12 +158,12 @@ func TestSQLChunkInterval(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +244,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -258,7 +259,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -285,7 +286,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -294,7 +295,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -310,7 +311,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -327,7 +328,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -344,7 +345,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -353,7 +354,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test"},
+						{Name: utils.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -369,7 +370,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test1"},
+						{Name: utils.MetricNameLabelName, Value: "Test1"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "test"},
 						{Name: "key2", Value: "val1"},
@@ -380,7 +381,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: MetricNameLabelName, Value: "Test2"},
+						{Name: utils.MetricNameLabelName, Value: "Test2"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "val2"},
 						{Name: "key3", Value: "val3"},
@@ -404,7 +405,7 @@ func TestSQLIngest(t *testing.T) {
 			},
 			count:       0,
 			countSeries: 0,
-			expectErr:   ErrNoMetricName,
+			expectErr:   utils.ErrNoMetricName,
 		},
 	}
 	for tcIndex, c := range testCases {
@@ -413,13 +414,13 @@ func TestSQLIngest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
-				ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+				ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer ingestor.Close()
 
-				cnt, err := ingestor.Ingest(copyMetrics(tcase.metrics), NewWriteRequest())
+				cnt, err := ingestor.Ingest(copyMetrics(tcase.metrics), ingester.NewWriteRequest())
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
 				}
@@ -440,7 +441,7 @@ func TestSQLIngest(t *testing.T) {
 				for _, ts := range tcase.metrics {
 					if len(ts.Samples) > 0 {
 						for _, l := range ts.Labels {
-							if l.Name == MetricNameLabelName {
+							if l.Name == utils.MetricNameLabelName {
 								metricNames[l.Value] = true
 							}
 						}
@@ -498,7 +499,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tEsT"},
+					{Name: utils.MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -506,12 +507,12 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -533,7 +534,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tEsT"},
+					{Name: utils.MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -542,7 +543,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			},
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -564,7 +565,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tEsT"},
+					{Name: utils.MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -577,7 +578,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		}
 
 		//ingest duplicate after compression
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -614,7 +615,7 @@ func TestInsertCompressed(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "Test"},
+					{Name: utils.MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				// Two samples that, by default, end up in different chunks.
@@ -625,12 +626,12 @@ func TestInsertCompressed(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -654,7 +655,7 @@ func TestInsertCompressed(t *testing.T) {
 			}
 		}
 		//ingest after compression
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -732,7 +733,7 @@ func TestCompressionSetting(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "Test"},
+					{Name: utils.MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -740,12 +741,12 @@ func TestCompressionSetting(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -833,7 +834,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "Test1"},
+					{Name: utils.MetricNameLabelName, Value: "Test1"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -841,13 +842,13 @@ func TestCustomCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
 
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -935,7 +936,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		// decompress the first chunk
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}

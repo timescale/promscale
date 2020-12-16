@@ -1,7 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package pgmodel
+package cache
 
 import (
 	"math"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 )
 
 func TestBigLables(t *testing.T) {
@@ -28,7 +29,7 @@ func TestBigLables(t *testing.T) {
 		},
 	}
 
-	_, err := LabelsFromSlice(labels)
+	_, err := utils.LabelsFromSlice(labels)
 	if err == nil {
 		t.Errorf("expected error")
 	}
