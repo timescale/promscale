@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -106,7 +106,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelsReader := utils.NewLabelsReader(dbConn, lCache)
 		labelNames, err := labelsReader.LabelNames()
 		if err != nil {
 			t.Fatalf("could not get label names from querier")

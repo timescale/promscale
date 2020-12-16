@@ -1,7 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package pgmodel
+package utils
 
 import (
 	"context"
@@ -10,13 +10,14 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
-	getLabelNamesSQL  = "SELECT distinct key from " + catalogSchema + ".label"
-	getLabelValuesSQL = "SELECT value from " + catalogSchema + ".label WHERE key = $1"
+	getLabelNamesSQL  = "SELECT distinct key from " + CatalogSchema + ".label"
+	getLabelValuesSQL = "SELECT value from " + CatalogSchema + ".label WHERE key = $1"
 	getLabelsSQL      = "SELECT (labels_info($1::int[])).*"
 )
 
@@ -33,13 +34,13 @@ type LabelsReader interface {
 	LabelsForIds(ids []int64) (lls labels.Labels, err error)
 }
 
-func NewLabelsReader(conn pgxconn.PgxConn, labels LabelsCache) LabelsReader {
+func NewLabelsReader(conn pgxconn.PgxConn, labels cache.LabelsCache) LabelsReader {
 	return &labelsReader{conn: conn, labels: labels}
 }
 
 type labelsReader struct {
 	conn   pgxconn.PgxConn
-	labels LabelsCache
+	labels cache.LabelsCache
 }
 
 // LabelValues implements the LabelsReader interface. It returns all distinct values

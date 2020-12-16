@@ -1,4 +1,4 @@
-package pgmodel
+package ingester
 
 import (
 	"context"
@@ -12,6 +12,9 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -25,11 +28,11 @@ var getBatchMutex = &sync.Mutex{}
 // Create the metric table for the metric we handle, if it does not already
 // exist. This only does the most critical part of metric table creation, the
 // rest is handled by completeMetricTableCreation().
-func initializeInserterRoutine(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames MetricCache) (tableName string, err error) {
+func initializeInserterRoutine(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
 	tableName, err = metricTableNames.Get(metricName)
-	if err == ErrEntryNotFound {
+	if err == cache.ErrEntryNotFound {
 		var possiblyNew bool
-		tableName, possiblyNew, err = getMetricTableName(conn, metricName)
+		tableName, possiblyNew, err = utils.MetricTableName(conn, metricName)
 		if err != nil {
 			return "", err
 		}
@@ -50,7 +53,7 @@ func initializeInserterRoutine(conn pgxconn.PgxConn, metricName string, complete
 	return tableName, err
 }
 
-func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames MetricCache, toCopiers chan copyRequest) {
+func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache, toCopiers chan copyRequest) {
 	var tableName string
 	var firstReq insertDataRequest
 	firstReqSet := false
@@ -74,7 +77,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metr
 		conn:             conn,
 		input:            input,
 		pending:          pendingBuffers.Get().(*pendingBuffer),
-		seriesCache:      make(map[string]SeriesID),
+		seriesCache:      make(map[string]utils.SeriesID),
 		seriesCacheEpoch: -1,
 		// set to run at half our deletion interval
 		seriesCacheRefresh: time.NewTicker(30 * time.Minute),
@@ -103,7 +106,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metr
 
 	hotReceive:
 		for handler.nonblockingHandleReq() {
-			if len(handler.pending.batch.sampleInfos) >= flushSize {
+			if len(handler.pending.batch.SampleInfos) >= flushSize {
 				break hotReceive
 			}
 		}
@@ -259,7 +262,7 @@ func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest) error {
 // already been compressed, we decompress the chunk and try again. When we do
 // this we delay the recompression to give us time to insert additional data.
 func decompressChunks(conn pgxconn.PgxConn, pending *pendingBuffer, table string) error {
-	minTime := model.Time(pending.batch.minSeen).Time()
+	minTime := model.Time(pending.batch.MinSeen).Time()
 
 	//how much faster are we at ingestion than wall-clock time?
 	ingestSpeedup := 2
@@ -271,21 +274,21 @@ func decompressChunks(conn pgxconn.PgxConn, pending *pendingBuffer, table string
 	}
 	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table, "min-time", minTime, "age", time.Since(minTime), "delay-job-by", delayBy)
 
-	_, rescheduleErr := conn.Exec(context.Background(), "SELECT "+catalogSchema+".delay_compression_job($1, $2)",
+	_, rescheduleErr := conn.Exec(context.Background(), "SELECT "+utils.CatalogSchema+".delay_compression_job($1, $2)",
 		table, time.Now().Add(delayBy))
 	if rescheduleErr != nil {
 		log.Error("msg", rescheduleErr, "context", "Rescheduling compression")
 		return rescheduleErr
 	}
 
-	_, decompressErr := conn.Exec(context.Background(), "CALL "+catalogSchema+".decompress_chunks_after($1, $2);", table, minTime)
+	_, decompressErr := conn.Exec(context.Background(), "CALL "+utils.CatalogSchema+".decompress_chunks_after($1, $2);", table, minTime)
 	if decompressErr != nil {
 		log.Error("msg", decompressErr, "context", "Decompressing chunks")
 		return decompressErr
 	}
 
-	decompressCalls.Inc()
-	decompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
+	metrics.DecompressCalls.Inc()
+	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
 	return nil
 }
 
@@ -315,7 +318,7 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 	}
 
-	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", catalogSchema, catalogSchema)
+	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", utils.CatalogSchema, utils.CatalogSchema)
 	batch.Queue(epochCheck, lowestEpoch)
 
 	numRowsPerInsert := make([]int, 0, len(reqs))
@@ -323,8 +326,8 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	for r := range reqs {
 		req := &reqs[r]
 		numRows := 0
-		for i := range req.data.batch.sampleInfos {
-			numRows += len(req.data.batch.sampleInfos[i].samples)
+		for i := range req.data.batch.SampleInfos {
+			numRows += len(req.data.batch.SampleInfos[i].Samples)
 		}
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
@@ -352,12 +355,12 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 		numRowsTotal += numRows
 		numRowsPerInsert = append(numRowsPerInsert, numRows)
-		queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{dataSchema, req.table}.Sanitize())
+		queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{utils.DataSchema, req.table}.Sanitize())
 		batch.Queue(queryString, times, vals, series)
 	}
 
-	numRowsPerBatch.Observe(float64(numRowsTotal))
-	numInsertsPerBatch.Observe(float64(len(reqs)))
+	metrics.NumRowsPerBatch.Observe(float64(numRowsTotal))
+	metrics.NumInsertsPerBatch.Observe(float64(len(reqs)))
 	start := time.Now()
 	results, err := conn.SendBatch(context.Background(), batch)
 	if err != nil {
@@ -379,11 +382,11 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 		if int64(numRows) != ct.RowsAffected() {
 			log.Warn("msg", "duplicate data in sample", "table", reqs[i].table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
-			duplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
-			duplicateWrites.Inc()
+			metrics.DuplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
+			metrics.DuplicateWrites.Inc()
 		}
 	}
-	dbBatchInsertDuration.Observe(time.Since(start).Seconds())
+	metrics.DbBatchInsertDuration.Observe(time.Since(start).Seconds())
 
 	return nil
 }

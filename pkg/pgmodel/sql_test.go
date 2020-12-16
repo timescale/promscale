@@ -7,6 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"reflect"
 	"sync"
 	"testing"
@@ -281,9 +284,9 @@ func (m *mockRows) Scan(dest ...interface{}) error {
 				*d = s
 				continue
 			}
-			if d, ok := dest[i].(*[]SeriesID); ok {
+			if d, ok := dest[i].(*[]utils.SeriesID); ok {
 				for _, id := range s {
-					*d = append(*d, SeriesID(id))
+					*d = append(*d, utils.SeriesID(id))
 				}
 				continue
 			}
@@ -326,7 +329,7 @@ func (m *mockRows) Scan(dest ...interface{}) error {
 			dvp.SetUint(m.results[m.idx][i].(uint64))
 		case int64:
 			_, ok1 := dest[i].(*int64)
-			_, ok2 := dest[i].(*SeriesID)
+			_, ok2 := dest[i].(*utils.SeriesID)
 			if !ok1 && !ok2 {
 				return fmt.Errorf("wrong value type int64")
 			}
@@ -378,7 +381,7 @@ func (m *mockMetricCache) Get(metric string) (string, error) {
 
 	val, ok := m.metricCache[metric]
 	if !ok {
-		return "", ErrEntryNotFound
+		return "", cache.ErrEntryNotFound
 	}
 
 	return val, nil
@@ -581,19 +584,19 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			mock := newSqlRecorder(c.sqlQueries, t)
 
-			inserter := insertHandler{
+			inserter := ingester.insertHandler{
 				conn:             mock,
-				seriesCache:      make(map[string]SeriesID),
+				seriesCache:      make(map[string]utils.SeriesID),
 				seriesCacheEpoch: -1,
 			}
 
-			lsi := make([]samplesInfo, 0)
+			lsi := make([]utils.samplesInfo, 0)
 			for _, ser := range c.series {
-				ls, err := LabelsFromSlice(ser)
+				ls, err := utils.LabelsFromSlice(ser)
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
-				lsi = append(lsi, samplesInfo{labels: ls, seriesID: -1})
+				lsi = append(lsi, utils.samplesInfo{labels: ls, seriesID: -1})
 			}
 
 			_, _, err := inserter.setSeriesIds(lsi)
@@ -725,20 +728,20 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	mock := newSqlRecorder(sqlQueries, t)
 
-	inserter := insertHandler{
+	inserter := ingester.insertHandler{
 		conn:             mock,
-		seriesCache:      make(map[string]SeriesID),
+		seriesCache:      make(map[string]utils.SeriesID),
 		seriesCacheEpoch: -1,
 	}
 
-	makeSamples := func(series []labels.Labels) []samplesInfo {
-		lsi := make([]samplesInfo, 0)
+	makeSamples := func(series []labels.Labels) []utils.samplesInfo {
+		lsi := make([]utils.samplesInfo, 0)
 		for _, ser := range series {
-			ls, err := LabelsFromSlice(ser)
+			ls, err := utils.LabelsFromSlice(ser)
 			if err != nil {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
-			lsi = append(lsi, samplesInfo{labels: ls, seriesID: -1})
+			lsi = append(lsi, utils.samplesInfo{labels: ls, seriesID: -1})
 		}
 		return lsi
 	}
@@ -749,9 +752,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedIds := map[string]SeriesID{
-		"value_1": SeriesID(1),
-		"value_2": SeriesID(2),
+	expectedIds := map[string]utils.SeriesID{
+		"value_1": utils.SeriesID(1),
+		"value_2": utils.SeriesID(2),
 	}
 
 	for _, si := range samples {
@@ -789,9 +792,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedIds = map[string]SeriesID{
-		"value_1": SeriesID(3),
-		"value_2": SeriesID(4),
+	expectedIds = map[string]utils.SeriesID{
+		"value_1": utils.SeriesID(3),
+		"value_2": utils.SeriesID(4),
 	}
 
 	for _, si := range samples {
@@ -806,7 +809,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 func TestPGXInserterInsertData(t *testing.T) {
 	testCases := []struct {
 		name          string
-		rows          map[string][]samplesInfo
+		rows          map[string][]utils.samplesInfo
 		sqlQueries    []sqlQuery
 		metricsGetErr error
 	}{
@@ -818,7 +821,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "One data",
-			rows: map[string][]samplesInfo{
+			rows: map[string][]utils.samplesInfo{
 				"metric_0": {{samples: make([]prompb.Sample, 1)}},
 			},
 			sqlQueries: []sqlQuery{
@@ -849,7 +852,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Two data",
-			rows: map[string][]samplesInfo{
+			rows: map[string][]utils.samplesInfo{
 				"metric_0": {
 					{samples: make([]prompb.Sample, 1)},
 					{samples: make([]prompb.Sample, 1)},
@@ -883,7 +886,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Create table error",
-			rows: map[string][]samplesInfo{
+			rows: map[string][]utils.samplesInfo{
 				"metric_0": {
 					{samples: make([]prompb.Sample, 1)},
 					{samples: make([]prompb.Sample, 1)},
@@ -904,7 +907,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Epoch Error",
-			rows: map[string][]samplesInfo{
+			rows: map[string][]utils.samplesInfo{
 				"metric_0": {{samples: make([]prompb.Sample, 1)}},
 			},
 			sqlQueries: []sqlQuery{
@@ -953,7 +956,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Copy from error",
-			rows: map[string][]samplesInfo{
+			rows: map[string][]utils.samplesInfo{
 				"metric_0": {
 					{samples: make([]prompb.Sample, 1)},
 					{samples: make([]prompb.Sample, 1)},
@@ -1009,7 +1012,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Can't find/create table in DB",
-			rows: map[string][]samplesInfo{
+			rows: map[string][]utils.samplesInfo{
 				"metric_0": {
 					{samples: make([]prompb.Sample, 1)},
 					{samples: make([]prompb.Sample, 1)},
@@ -1031,7 +1034,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Metrics get error",
-			rows: map[string][]samplesInfo{
+			rows: map[string][]utils.samplesInfo{
 				"metric_0": {{samples: make([]prompb.Sample, 1)}},
 			},
 			metricsGetErr: fmt.Errorf("some metrics error"),
@@ -1051,7 +1054,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				metricCache:  metricCache,
 				getMetricErr: c.metricsGetErr,
 			}
-			inserter, err := newPgxInserter(mock, mockMetrics, &Cfg{})
+			inserter, err := ingester.newPgxInserter(mock, mockMetrics, &ingester.Cfg{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1065,7 +1068,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			case c.metricsGetErr != nil:
 				expErr = c.metricsGetErr
 			case c.name == "Can't find/create table in DB":
-				expErr = errMissingTableName
+				expErr = utils.errMissingTableName
 			default:
 				for _, q := range c.sqlQueries {
 					if q.err != nil {
@@ -1109,7 +1112,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: utils.MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []sqlQuery{
@@ -1134,7 +1137,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: utils.MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []sqlQuery{
@@ -1230,7 +1233,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: utils.MetricNameLabelName, Value: "bar"},
 				},
 			},
 			sqlQueries: []sqlQuery{
@@ -1284,7 +1287,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: utils.MetricNameLabelName, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{},
@@ -1303,12 +1306,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_NEQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_NEQ, Name: utils.MetricNameLabelName, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: utils.MetricNameLabelName, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -1358,12 +1361,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: utils.MetricNameLabelName, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: utils.MetricNameLabelName, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -1401,16 +1404,16 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_RE, Name: MetricNameLabelName, Value: ""},
+					{Type: prompb.LabelMatcher_RE, Name: utils.MetricNameLabelName, Value: ""},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: utils.MetricNameLabelName, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: utils.MetricNameLabelName, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -1485,17 +1488,17 @@ func TestPGXQuerierQuery(t *testing.T) {
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
 				Matchers: []*prompb.LabelMatcher{
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "foo"},
-					{Type: prompb.LabelMatcher_EQ, Name: MetricNameLabelName, Value: "bar"},
+					{Type: prompb.LabelMatcher_EQ, Name: utils.MetricNameLabelName, Value: "foo"},
+					{Type: prompb.LabelMatcher_EQ, Name: utils.MetricNameLabelName, Value: "bar"},
 				},
 			},
 			result: []*prompb.TimeSeries{
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "foo"}},
+					Labels:  []prompb.Label{{Name: utils.MetricNameLabelName, Value: "foo"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 				{
-					Labels:  []prompb.Label{{Name: MetricNameLabelName, Value: "bar"}},
+					Labels:  []prompb.Label{{Name: utils.MetricNameLabelName, Value: "bar"}},
 					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
 				},
 			},
@@ -1749,7 +1752,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			mockMetrics := &mockMetricCache{
 				metricCache: metricCache,
 			}
-			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics, labelsReader: NewLabelsReader(mock, clockcache.WithMax(0))}
+			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics, labelsReader: utils.NewLabelsReader(mock, clockcache.WithMax(0))}
 
 			result, err := querier.Query(c.query)
 

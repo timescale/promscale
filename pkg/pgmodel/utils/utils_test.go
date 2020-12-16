@@ -1,10 +1,12 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package pgmodel
+package utils
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/prompb"
@@ -25,7 +27,7 @@ func (m *mockCache) GetSeries(lset Labels) (SeriesID, error) {
 
 	val, ok := m.seriesCache[lset.String()]
 	if !ok {
-		return 0, ErrEntryNotFound
+		return 0, cache.ErrEntryNotFound
 	}
 
 	return val, nil
@@ -254,11 +256,11 @@ func TestDBIngestorIngest(t *testing.T) {
 				insertedSeries:  make(map[string]SeriesID),
 			}
 
-			i := DBIngestor{
+			i := ingester.DBIngestor{
 				db: &inserter,
 			}
 
-			count, err := i.Ingest(c.metrics, NewWriteRequest())
+			count, err := i.Ingest(c.metrics, ingester.NewWriteRequest())
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {

@@ -6,13 +6,14 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
-	. "github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -25,7 +26,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "TEST"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -35,7 +36,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test2"},
+					{Name: utils.MetricNameLabelName, Value: "test2"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -44,12 +45,12 @@ func TestSQLRetentionPeriod(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,7 +124,7 @@ func TestSQLDropChunk(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "TEST"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -133,7 +134,7 @@ func TestSQLDropChunk(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test2"},
+					{Name: utils.MetricNameLabelName, Value: "test2"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -141,12 +142,12 @@ func TestSQLDropChunk(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -207,7 +208,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "TEST"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -217,7 +218,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test2"},
+					{Name: utils.MetricNameLabelName, Value: "test2"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -225,12 +226,12 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -292,7 +293,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -302,7 +303,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value2"},
 				},
 				Samples: []prompb.Sample{
@@ -312,7 +313,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value3"},
 				},
 				Samples: []prompb.Sample{
@@ -334,12 +335,12 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -516,7 +517,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -525,19 +526,19 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(resurrected), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(resurrected), ingester.NewWriteRequest())
 		if err == nil {
 			t.Error("expected ingest to fail due to old epoch")
 		}
 
 		ingestor.Close()
-		ingestor2, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor2, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor2.Close()
 
-		_, err = ingestor2.Ingest(copyMetrics(resurrected), NewWriteRequest())
+		_, err = ingestor2.Ingest(copyMetrics(resurrected), ingester.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -559,7 +560,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -581,12 +582,12 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			}
 		}
 
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -641,7 +642,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: utils.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -654,13 +655,13 @@ func TestSQLDropAllMetricData(t *testing.T) {
 		//Restart ingestor to avoid stale cache issues.
 		//Other tests should check for that
 		ingestor.Close()
-		ingestor2, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor2, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		defer ingestor2.Close()
-		_, err = ingestor2.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor2.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -6,6 +6,8 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"strings"
 	"sync"
 	"testing"
@@ -13,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
-	. "github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -202,7 +203,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: metric},
+				{Name: utils.MetricNameLabelName, Value: metric},
 				{Name: "node", Value: "brain"},
 			},
 			Samples: []prompb.Sample{
@@ -211,7 +212,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: metric},
+				{Name: utils.MetricNameLabelName, Value: metric},
 				{Name: "node", Value: "pinky"},
 			},
 			Samples: []prompb.Sample{
@@ -220,12 +221,12 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		},
 	}
 
-	ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+	ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
+	_, err = ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +236,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: utils.MetricNameLabelName, Value: "cpu_usage_a"},
 				{Name: "namespace", Value: "production"},
 				{Name: "node", Value: "brain"},
 			},
@@ -246,7 +247,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: utils.MetricNameLabelName, Value: "cpu_usage_a"},
 				{Name: "namespace", Value: "dev"},
 				{Name: "node", Value: "pinky"},
 			},
@@ -257,7 +258,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: utils.MetricNameLabelName, Value: "cpu_total_a"},
 				{Name: "namespace", Value: "production"},
 				{Name: "node", Value: "brain"},
 			},
@@ -268,7 +269,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: utils.MetricNameLabelName, Value: "cpu_total_a"},
 				{Name: "namespace", Value: "dev"},
 				{Name: "node", Value: "pinky"},
 			},
@@ -279,13 +280,13 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 	}
 
-	ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+	ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
+	_, err = ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -16,12 +17,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func Write(writer pgmodel.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
+func Write(writer ingester.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// we treat invalid requests as the same as no request for
@@ -100,9 +100,9 @@ func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
 			return nil, err, msg
 		}
 
-		req = pgmodel.NewWriteRequest()
+		req = ingester.NewWriteRequest()
 		if err := proto.Unmarshal(reqBuf, req); err != nil {
-			pgmodel.FinishWriteRequest(req)
+			ingester.FinishWriteRequest(req)
 			return nil, err, "Protobuf unmarshal error"
 		}
 	case "application/json":
@@ -124,13 +124,13 @@ func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
 		}
 
 		dec := json.NewDecoder(body)
-		req = pgmodel.NewWriteRequest()
+		req = ingester.NewWriteRequest()
 
 		for {
 			if err := dec.Decode(&i); err == io.EOF {
 				break
 			} else if err != nil {
-				pgmodel.FinishWriteRequest(req)
+				ingester.FinishWriteRequest(req)
 				return nil, err, "JSON decode error"
 			}
 

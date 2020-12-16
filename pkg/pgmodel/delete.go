@@ -3,6 +3,7 @@ package pgmodel
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"math"
 	"time"
 
@@ -24,9 +25,9 @@ type PgDelete struct {
 }
 
 // DeleteSeries deletes the series that matches the provided label_matchers.
-func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) ([]string, []SeriesID, int, error) {
+func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) ([]string, []utils.SeriesID, int, error) {
 	var (
-		deletedSeriesIDs []SeriesID
+		deletedSeriesIDs []utils.SeriesID
 		totalRowsDeleted int
 		err              error
 		metricsTouched   = make(map[string]struct{})
@@ -57,7 +58,7 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 
 // getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
 // as a matrix.
-func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]SeriesID, error) {
+func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]utils.SeriesID, error) {
 	_, clauses, values, err := buildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("delete series from matchers: %w", err)
@@ -74,7 +75,7 @@ func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matc
 	return metricNames, correspondingSeriesIDs, nil
 }
 
-func convertSeriesIDsToInt64s(s []SeriesID) []int64 {
+func convertSeriesIDsToInt64s(s []utils.SeriesID) []int64 {
 	temp := make([]int64, len(s))
 	for i := range s {
 		temp[i] = int64(s[i])

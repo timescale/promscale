@@ -3,12 +3,13 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	. "github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -33,7 +34,7 @@ func TestSQLView(t *testing.T) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "no tags"},
+					{Name: utils.MetricNameLabelName, Value: "no tags"},
 				},
 				Samples: []prompb.Sample{
 					{Timestamp: 10, Value: 0.1},
@@ -41,7 +42,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "CAPITAL"},
+					{Name: utils.MetricNameLabelName, Value: "CAPITAL"},
 				},
 				Samples: []prompb.Sample{
 					{Timestamp: 10, Value: 0.1},
@@ -49,7 +50,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "reserved tags"},
+					{Name: utils.MetricNameLabelName, Value: "reserved tags"},
 					{Name: "foo", Value: "bar"},
 					{Name: "labels", Value: "val1"},
 					{Name: "series_id", Value: "vaL2"},
@@ -63,7 +64,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "long tags names"},
+					{Name: utils.MetricNameLabelName, Value: "long tags names"},
 					{Name: "foo", Value: "bar"},
 					{Name: strings.Repeat("long", 20) + "suffix1", Value: "val1"},
 					{Name: strings.Repeat("long", 20) + "suffix2", Value: "val2"},
@@ -75,7 +76,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "tag and tag id"},
+					{Name: utils.MetricNameLabelName, Value: "tag and tag id"},
 					{Name: "foo", Value: "bar"},
 					{Name: "foo_id", Value: "bar2"},
 				},
@@ -86,7 +87,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "add tag key"},
+					{Name: utils.MetricNameLabelName, Value: "add tag key"},
 					{Name: "foo", Value: "bar"},
 				},
 				Samples: []prompb.Sample{
@@ -96,7 +97,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "add tag key"},
+					{Name: utils.MetricNameLabelName, Value: "add tag key"},
 					{Name: "foo", Value: "bar"},
 					{Name: "baz", Value: "bar2"},
 				},
@@ -107,7 +108,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_usage"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -118,7 +119,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_usage"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},
@@ -129,7 +130,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_total"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -140,7 +141,7 @@ func TestSQLView(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_total"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},
@@ -151,13 +152,13 @@ func TestSQLView(t *testing.T) {
 			},
 		}
 
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)
@@ -166,7 +167,7 @@ func TestSQLView(t *testing.T) {
 		for _, ts := range metrics {
 			name := ""
 			for _, label := range ts.Labels {
-				if label.Name == MetricNameLabelName {
+				if label.Name == utils.MetricNameLabelName {
 					name = label.Value
 				}
 			}
@@ -174,7 +175,7 @@ func TestSQLView(t *testing.T) {
 			pointCount := 0
 			for _, ts2 := range metrics {
 				for _, label := range ts2.Labels {
-					if label.Name == MetricNameLabelName && label.Value == name {
+					if label.Name == utils.MetricNameLabelName && label.Value == name {
 						seriesCount++
 						pointCount += len(ts2.Samples)
 					}
@@ -195,7 +196,7 @@ func TestSQLViewSelectors(t *testing.T) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_usage"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -206,7 +207,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_usage"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},
@@ -217,7 +218,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_usage"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_usage"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "brain"},
 					{Name: "new_tag", Value: "value"},
@@ -228,7 +229,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_total"},
 					{Name: "namespace", Value: "production"},
 					{Name: "node", Value: "brain"},
 				},
@@ -239,7 +240,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "cpu_total"},
+					{Name: utils.MetricNameLabelName, Value: "cpu_total"},
 					{Name: "namespace", Value: "dev"},
 					{Name: "node", Value: "pinky"},
 				},
@@ -250,12 +251,12 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 		}
 
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)

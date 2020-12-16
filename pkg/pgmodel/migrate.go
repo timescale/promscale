@@ -21,7 +21,8 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/migrations"
+	"github.com/timescale/promscale/pkg/pgmodel/migrations"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -124,7 +125,7 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 	}
 
 	ExtensionIsInstalled = false
-	err = migrateExtension(db, "promscale", extSchema, version.ExtVersionRange, version.ExtVersionRangeString)
+	err = migrateExtension(db, "promscale", utils.ExtSchema, version.ExtVersionRange, version.ExtVersionRangeString)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}
@@ -399,14 +400,14 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 		return "", err
 	}
 	s := buf.String()
-	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", catalogSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_EXT", extSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_PROM", promSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_SERIES", seriesViewSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_METRIC", metricViewSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", dataSeriesSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_DATA", dataSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_INFO", infoSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", utils.CatalogSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_EXT", utils.ExtSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_PROM", utils.PromSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_SERIES", utils.SeriesViewSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_METRIC", utils.MetricViewSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", utils.DataSeriesSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_DATA", utils.DataSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_INFO", utils.InfoSchema)
 	return s, err
 }
 

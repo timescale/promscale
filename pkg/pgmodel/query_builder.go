@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -80,7 +81,7 @@ func buildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{
 
 		switch m.Type {
 		case labels.MatchEqual:
-			if m.Name == MetricNameLabelName {
+			if m.Name == utils.MetricNameLabelName {
 				metricMatcherCount++
 				metric = m.Value
 			}
@@ -172,7 +173,7 @@ func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
 }
 
-func buildTimeSeries(rows []timescaleRow, lr LabelsReader) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []timescaleRow, lr utils.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 
 	for _, row := range rows {
@@ -200,7 +201,7 @@ func buildTimeSeries(rows []timescaleRow, lr LabelsReader) ([]*prompb.TimeSeries
 
 		for i := range row.times.Elements {
 			result.Samples = append(result.Samples, prompb.Sample{
-				Timestamp: timestamptzToMs(row.times.Elements[i]),
+				Timestamp: utils.TimestamptzToMs(row.times.Elements[i]),
 				Value:     row.values.Elements[i].Float,
 			})
 		}
@@ -215,15 +216,15 @@ func buildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
 }
 
-func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []SeriesID) string {
+func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []utils.SeriesID) string {
 	s := make([]string, 0, len(series))
 	for _, sID := range series {
 		s = append(s, fmt.Sprintf("%d", sID))
 	}
 	return fmt.Sprintf(
 		timeseriesBySeriesIDsSQLFormat,
-		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
-		pgx.Identifier{dataSeriesSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{utils.DataSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{utils.DataSeriesSchema, filter.metric}.Sanitize(),
 		strings.Join(s, ","),
 		filter.startTime,
 		filter.endTime,
@@ -234,8 +235,8 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 	hints *storage.SelectHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
 	restOfQuery := fmt.Sprintf(
 		timeseriesByMetricSQLFormat,
-		pgx.Identifier{dataSchema, filter.metric}.Sanitize(),
-		pgx.Identifier{dataSeriesSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{utils.DataSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{utils.DataSeriesSchema, filter.metric}.Sanitize(),
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
@@ -324,9 +325,9 @@ func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage
 	return &qf, nil, nil
 }
 
-func getSeriesPerMetric(rows pgx.Rows) ([]string, [][]SeriesID, error) {
+func getSeriesPerMetric(rows pgx.Rows) ([]string, [][]utils.SeriesID, error) {
 	metrics := make([]string, 0)
-	series := make([][]SeriesID, 0)
+	series := make([][]utils.SeriesID, 0)
 
 	for rows.Next() {
 		var (
@@ -337,10 +338,10 @@ func getSeriesPerMetric(rows pgx.Rows) ([]string, [][]SeriesID, error) {
 			return nil, nil, err
 		}
 
-		sIDs := make([]SeriesID, 0, len(seriesIDs))
+		sIDs := make([]utils.SeriesID, 0, len(seriesIDs))
 
 		for _, v := range seriesIDs {
-			sIDs = append(sIDs, SeriesID(v))
+			sIDs = append(sIDs, utils.SeriesID(v))
 		}
 
 		metrics = append(metrics, metricName)
