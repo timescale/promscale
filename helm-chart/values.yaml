@@ -21,7 +21,15 @@ connection:
     # a Secret object containing the password to
     # connect to TimescaleDB. The password should
     # be indexed by the user name (connection.user)
-    secretTemplate: "{{ .Release.Name }}-timescaledb-passwords"
+    secretTemplate: "{{ .release.Name}}-timescaledb-passwords"
+  dbURI:
+    name: db-uri
+    # the template for generating the name of
+    # a Secret object containing the db-uri to
+    # connect to TimescaleDB. The db-uri should
+    # be indexed with the key (db-uri) or with the value
+    # used in the above name field.
+    secretTemplate:
   host:
     # the template for generating the database host
     # location

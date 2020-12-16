@@ -38,6 +38,7 @@ spec:
             - containerPort: 9201
               name: connector-port
           env:
+            {{- if not .Values.connection.dbURI.secretTemplate }}
             - name: PROMSCALE_DB_PORT
               value: {{ .Values.connection.port | quote }}
             - name: PROMSCALE_DB_USER
@@ -53,6 +54,13 @@ spec:
               value: {{ .Values.connection.dbName }}
             - name: PROMSCALE_DB_SSL_MODE
               value: {{ .Values.connection.sslMode }}
+            {{- else }}
+            - name: PROMSCALE_DB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ tpl .Values.connection.dbURI.secretTemplate . }}
+                  key: {{ .Values.connection.dbURI.name }}
+            {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
       {{ toYaml . | indent 2 }}

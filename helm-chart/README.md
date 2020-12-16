@@ -34,12 +34,34 @@ connection:
 ```
 
 The data in the Secret object should look like this:
+
 ```yaml
 data:
   username: base64encodedPassword
 ```
+
 where `username` is the user that the Connector will use to connect to the
 database. By default the *'postgres'* user is used, as set in `.Values.connection.user`.
+
+OR 
+
+You can use db uri to connect to TimescaleDB is stored in a
+Kubernetes Secret created before the chart is deployed.
+You can set the secret name by modifying the  `connection.dburi.secretTemplate` value.
+Templating is supported and you can use:
+```yaml
+connection:
+  dbURI:
+    secretTemplate: "{{ .Release.Name }}-timescaledb-uri"
+```
+
+
+
+The data in the Secret object should look like this:
+```yaml
+data:
+  db-uri: base64encodedDBURI
+```
 
 ## Installing
 
@@ -57,6 +79,13 @@ helm install --name my-release . \
       --set connection.host.nameTemplate="timescaledb.default.svc.cluster.local"
 ```
 
+You can also install by referencing the db uri secret created previously:
+
+```shell script
+helm install --name my-release . \
+      --set connection.dbURI.secretTemplate="timescale-secret"
+```
+ 
 Alternatively, a YAML file the specifies the values for the parameters can be provided
 while installing the chart. For example:
 ```shell script
@@ -71,6 +100,8 @@ helm install --name my-release -f myvalues.yaml .
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
 | `connection.password.secretTemplate`| The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
+| `connection.dbURI.name`| DB uri name is used as a key for secret which will hold the db URI value | `db-uri` |
+| `connection.dbURI.secretTemplate`| The template for generating the name of a secret object which will hold the db URI | `` |
 | `connection.host.nameTemplate`    | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
 | `connection.port`                 | Port the db listens to                      | `5432`                             |
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
