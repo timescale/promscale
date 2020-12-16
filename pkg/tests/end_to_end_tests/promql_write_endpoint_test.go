@@ -38,7 +38,7 @@ func (t *dataGenerator) generateTimeseries() []prompb.TimeSeries {
 	for metric := 0; metric < t.metricsPerGroup; metric++ {
 		for instance := 0; instance < t.labelSetsPerMetric; instance++ {
 			labelSet := []prompb.Label{
-				{Name: pgmodel.MetricNameLabelName, Value: fmt.Sprintf("metric_%d_%d", t.metricGroup, metric)},
+				{Name: pgmodel.MetricNameLabelName, Value: fmt.Sprintf("Metric_%d_%d", t.metricGroup, metric)},
 				{Name: "foo", Value: fmt.Sprintf("bar_%d", t.queueID)}, //queues have non-overlapping label sets
 				{Name: "instance", Value: fmt.Sprintf("%d", instance)},
 			}
@@ -148,7 +148,7 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 		}
 		for sampleIdx := range ts.Samples {
 			sample := ts.Samples[sampleIdx]
-			rows, err := db.Query(context.Background(), fmt.Sprintf("SELECT value FROM prom_data.%s WHERE time = $1 and series_id = (SELECT series_id FROM _prom_catalog.get_or_create_series_id_for_kv_array($2, $3, $4))",
+			rows, err := db.Query(context.Background(), fmt.Sprintf(`SELECT value FROM prom_data."%s" WHERE time = $1 and series_id = (SELECT series_id FROM _prom_catalog.get_or_create_series_id_for_kv_array($2, $3, $4))`,
 				name), model.Time(sample.Timestamp).Time(), name, names, values)
 			if err != nil {
 				t.Error(err)

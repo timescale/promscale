@@ -598,6 +598,20 @@ func TestPromQL(t *testing.T) {
 			},
 		},
 		{
+			name: "Simple metric name matcher, capital letter metric name",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  MetricNameLabelName,
+						Value: "METRIC_4",
+					},
+				},
+				StartTimestampMs: 30000,
+				EndTimestampMs:   31000,
+			},
+		},
+		{
 			name: "Regex metric name matcher",
 			query: &prompb.Query{
 				Matchers: []*prompb.LabelMatcher{

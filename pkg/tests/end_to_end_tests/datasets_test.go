@@ -114,6 +114,12 @@ func generateLargeTimeseries() []prompb.TimeSeries {
 				{Name: "instance", Value: "2"},
 			},
 		},
+		{
+			Labels: []prompb.Label{
+				{Name: pgmodel.MetricNameLabelName, Value: "METRIC_4"},
+				{Name: "foo", Value: "bar"},
+			},
+		},
 	}
 
 	for i := range metrics {
