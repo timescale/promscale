@@ -2,10 +2,36 @@ package utils
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
+
+	"github.com/prometheus/prometheus/pkg/labels"
 )
+
+func TestBigLables(t *testing.T) {
+	builder := strings.Builder{}
+	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
+
+	builder.WriteByte('a')
+	for len(builder.String()) < math.MaxUint16 {
+		builder.WriteString(builder.String())
+	}
+
+	labels := labels.Labels{
+		labels.Label{
+			Name:  builder.String(),
+			Value: "",
+		},
+	}
+
+	_, err := LabelsFromSlice(labels)
+	if err == nil {
+		t.Errorf("expected error")
+	}
+}
 
 func TestLabelsReaderLabelsNames(t *testing.T) {
 	testCases := []struct {
@@ -17,28 +43,28 @@ func TestLabelsReaderLabelsNames(t *testing.T) {
 			name: "Error on query",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT distinct key from _prom_catalog.label",
-					args:    []interface{}(nil),
-					results: RowResults{},
-					err:     fmt.Errorf("some error"),
+					Sql:     "SELECT distinct key from _prom_catalog.label",
+					Args:    []interface{}(nil),
+					Results: RowResults{},
+					Err:     fmt.Errorf("some error"),
 				},
 			},
 		}, {
 			name: "Error on scanning values",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT distinct key from _prom_catalog.label",
-					args:    []interface{}(nil),
-					results: RowResults{{1}},
+					Sql:     "SELECT distinct key from _prom_catalog.label",
+					Args:    []interface{}(nil),
+					Results: RowResults{{1}},
 				},
 			},
 		}, {
 			name: "Empty result, is ok",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT distinct key from _prom_catalog.label",
-					args:    []interface{}(nil),
-					results: RowResults{},
+					Sql:     "SELECT distinct key from _prom_catalog.label",
+					Args:    []interface{}(nil),
+					Results: RowResults{},
 				},
 			},
 			expectedRes: []string{},
@@ -46,9 +72,9 @@ func TestLabelsReaderLabelsNames(t *testing.T) {
 			name: "Result should be sorted",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT distinct key from _prom_catalog.label",
-					args:    []interface{}(nil),
-					results: RowResults{{"b"}, {"a"}},
+					Sql:     "SELECT distinct key from _prom_catalog.label",
+					Args:    []interface{}(nil),
+					Results: RowResults{{"b"}, {"a"}},
 				},
 			},
 			expectedRes: []string{"a", "b"},
@@ -63,7 +89,7 @@ func TestLabelsReaderLabelsNames(t *testing.T) {
 
 			var expectedErr error
 			for _, q := range tc.sqlQueries {
-				if q.err != nil {
+				if q.Err != nil {
 					expectedErr = err
 					break
 				}
@@ -104,28 +130,28 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 			name: "Error on query",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
-					args:    []interface{}{"m"},
-					results: RowResults{},
-					err:     fmt.Errorf("some error"),
+					Sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					Args:    []interface{}{"m"},
+					Results: RowResults{},
+					Err:     fmt.Errorf("some error"),
 				},
 			},
 		}, {
 			name: "Error on scanning values",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
-					args:    []interface{}{"m"},
-					results: RowResults{{1}},
+					Sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					Args:    []interface{}{"m"},
+					Results: RowResults{{1}},
 				},
 			},
 		}, {
 			name: "Empty result, is ok",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
-					args:    []interface{}{"m"},
-					results: RowResults{},
+					Sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					Args:    []interface{}{"m"},
+					Results: RowResults{},
 				},
 			},
 			expectedRes: []string{},
@@ -133,9 +159,9 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 			name: "Result should be sorted",
 			sqlQueries: []SqlQuery{
 				{
-					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
-					args:    []interface{}{"m"},
-					results: RowResults{{"b"}, {"a"}},
+					Sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					Args:    []interface{}{"m"},
+					Results: RowResults{{"b"}, {"a"}},
 				},
 			},
 			expectedRes: []string{"a", "b"},
@@ -150,7 +176,7 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 
 			var expectedErr error
 			for _, q := range tc.sqlQueries {
-				if q.err != nil {
+				if q.Err != nil {
 					expectedErr = err
 					break
 				}

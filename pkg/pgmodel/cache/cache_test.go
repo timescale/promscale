@@ -4,36 +4,10 @@
 package cache
 
 import (
-	"math"
-	"strings"
 	"testing"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 )
-
-func TestBigLables(t *testing.T) {
-	builder := strings.Builder{}
-	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
-
-	builder.WriteByte('a')
-	for len(builder.String()) < math.MaxUint16 {
-		builder.WriteString(builder.String())
-	}
-
-	labels := labels.Labels{
-		labels.Label{
-			Name:  builder.String(),
-			Value: "",
-		},
-	}
-
-	_, err := utils.LabelsFromSlice(labels)
-	if err == nil {
-		t.Errorf("expected error")
-	}
-}
 
 func TestMetricTableNameCache(t *testing.T) {
 	testCases := []struct {
