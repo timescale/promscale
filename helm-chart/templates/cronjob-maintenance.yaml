@@ -17,14 +17,10 @@ spec:
           - name: {{ .Chart.Name }}-maintenance
             image: postgres:12-alpine
             args:
-            - psql
-            {{- if .Values.connection.dbURI.secretTemplate }}
-            - $(PROMSCALE_DB_URI)
-            {{- end }}
-            - -c
-            - CALL prom_api.execute_maintenance();
+            - sh
+            - ./execute_maintenance.sh
             env:
-              {{- if not .Values.connection.dbURI.secretTemplate }}
+              {{- if not .Values.connection.uri.secretTemplate }}
               - name: PGPORT
                 value: {{ .Values.connection.port | quote }}
               - name: PGUSER
@@ -42,7 +38,15 @@ spec:
               - name: PROMSCALE_DB_URI
                 valueFrom:
                   secretKeyRef:
-                    name: {{ tpl .Values.connection.dbURI.secretTemplate . }}
-                    key: {{ .Values.connection.dbURI.name }}
+                    name: {{ tpl .Values.connection.uri.secretTemplate . }}
+                    key: {{ .Values.connection.uri.key }}
               {{- end }}
+            volumeMounts:
+              - name: script-volume
+                mountPath: /execute_maintenance.sh
+                subPath: execute_maintenance.sh
+          volumes:
+            - name: script-volume
+              configMap:
+                name: {{ include "connector.fullname" . | trunc 51 }}-maintenance
           restartPolicy: OnFailure
