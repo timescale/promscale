@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"reflect"
 	"sort"
 	"testing"
@@ -12,44 +11,44 @@ func TestLabelsReaderLabelsNames(t *testing.T) {
 	testCases := []struct {
 		name        string
 		expectedRes []string
-		sqlQueries  []pgmodel.sqlQuery
+		sqlQueries  []SqlQuery
 	}{
 		{
 			name: "Error on query",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT distinct key from _prom_catalog.label",
 					args:    []interface{}(nil),
-					results: pgmodel.rowResults{},
+					results: RowResults{},
 					err:     fmt.Errorf("some error"),
 				},
 			},
 		}, {
 			name: "Error on scanning values",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT distinct key from _prom_catalog.label",
 					args:    []interface{}(nil),
-					results: pgmodel.rowResults{{1}},
+					results: RowResults{{1}},
 				},
 			},
 		}, {
 			name: "Empty result, is ok",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT distinct key from _prom_catalog.label",
 					args:    []interface{}(nil),
-					results: pgmodel.rowResults{},
+					results: RowResults{},
 				},
 			},
 			expectedRes: []string{},
 		}, {
 			name: "Result should be sorted",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT distinct key from _prom_catalog.label",
 					args:    []interface{}(nil),
-					results: pgmodel.rowResults{{"b"}, {"a"}},
+					results: RowResults{{"b"}, {"a"}},
 				},
 			},
 			expectedRes: []string{"a", "b"},
@@ -58,7 +57,7 @@ func TestLabelsReaderLabelsNames(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := pgmodel.newSqlRecorder(tc.sqlQueries, t)
+			mock := NewSqlRecorder(tc.sqlQueries, t)
 			reader := labelsReader{conn: mock}
 			res, err := reader.LabelNames()
 
@@ -99,44 +98,44 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 	testCases := []struct {
 		name        string
 		expectedRes []string
-		sqlQueries  []pgmodel.sqlQuery
+		sqlQueries  []SqlQuery
 	}{
 		{
 			name: "Error on query",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
 					args:    []interface{}{"m"},
-					results: pgmodel.rowResults{},
+					results: RowResults{},
 					err:     fmt.Errorf("some error"),
 				},
 			},
 		}, {
 			name: "Error on scanning values",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
 					args:    []interface{}{"m"},
-					results: pgmodel.rowResults{{1}},
+					results: RowResults{{1}},
 				},
 			},
 		}, {
 			name: "Empty result, is ok",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
 					args:    []interface{}{"m"},
-					results: pgmodel.rowResults{},
+					results: RowResults{},
 				},
 			},
 			expectedRes: []string{},
 		}, {
 			name: "Result should be sorted",
-			sqlQueries: []pgmodel.sqlQuery{
+			sqlQueries: []SqlQuery{
 				{
 					sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
 					args:    []interface{}{"m"},
-					results: pgmodel.rowResults{{"b"}, {"a"}},
+					results: RowResults{{"b"}, {"a"}},
 				},
 			},
 			expectedRes: []string{"a", "b"},
@@ -145,7 +144,7 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := pgmodel.newSqlRecorder(tc.sqlQueries, t)
+			mock := NewSqlRecorder(tc.sqlQueries, t)
 			querier := labelsReader{conn: mock}
 			res, err := querier.LabelValues("m")
 
