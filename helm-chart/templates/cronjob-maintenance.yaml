@@ -9,6 +9,7 @@ metadata:
     heritage: {{ .Release.Service }}
 spec:
   schedule: {{ .Values.maintenance.schedule }}
+  startingDeadlineSeconds: {{ .Values.maintenance.startingDeadlineSeconds }}
   jobTemplate:
     spec:
       template:
