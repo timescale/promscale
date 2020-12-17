@@ -74,9 +74,9 @@ service:
       # service.beta.kubernetes.io/aws-load-balancer-type: nlb            # Use an NLB instead of ELB
       # service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0  # Internal Load Balancer
 
-# settings for the drop-chunk CronJob that deletes data outside of
+# settings for the maintenance CronJob that deletes data outside of
 # the retention period
-dropChunk:
+maintenance:
   schedule: "0,30 * * * *"
 
 # set your own limits

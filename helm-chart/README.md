@@ -26,7 +26,7 @@ The database **must be created before** starting the connector.
 The chart expects that the password used to connect to TimescaleDB is stored in a
 Kubernetes Secret created before the chart is deployed.
 You can set the secret name by modifying the  `connection.password.secretTemplate` value.
-Templating is supported and you can use:
+Templating is supported, and you can use:
 ```yaml
 connection:
   password:
@@ -109,7 +109,7 @@ helm install --name my-release -f myvalues.yaml .
 | `service.port`                    | Port the connector pods will accept connections on | `9201`                      |
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |
-| `dropChunk.schedule`              | The schedule with which the drop-chunk Job runs | `0,30 * * * *`                 |
+| `maintenance.schedule`            | The schedule with which the Job, that deletes data outside the retention period, runs | `0,30 * * * *` |
 | `resources`                       | Requests and limits for each of the pods    | `{}`                               |
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 
