@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package pgmodel
+package utils
 
 import (
 	"context"
@@ -20,12 +20,12 @@ var (
 	ExtensionIsInstalled = false
 )
 
-// checkVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
-func checkVersions(conn *pgx.Conn) error {
+// CheckVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
+func CheckVersions(conn *pgx.Conn) error {
 	if err := checkPgVersion(conn); err != nil {
 		return fmt.Errorf("Problem checking PostgreSQL version: %w", err)
 	}
-	if err := checkExtensionsVersion(conn); err != nil {
+	if err := CheckExtensionsVersion(conn); err != nil {
 		return fmt.Errorf("Problem checking Promescale extension version: %w", err)
 	}
 	return nil
@@ -55,9 +55,9 @@ func checkPgVersion(conn *pgx.Conn) error {
 	return nil
 }
 
-// checkExtensionsVersion checks for the correct version and enables the extension if
+// CheckExtensionsVersion checks for the correct version and enables the extension if
 // it is at the right version
-func checkExtensionsVersion(conn *pgx.Conn) error {
+func CheckExtensionsVersion(conn *pgx.Conn) error {
 	if err := checkTimescaleDBVersion(conn); err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func checkPromscaleExtensionVersion(conn *pgx.Conn) error {
 	return nil
 }
 
-func migrateExtension(conn *pgx.Conn, extName string, extSchemaName string, validRange semver.Range, rangeString string) error {
+func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, validRange semver.Range, rangeString string) error {
 	availableVersions, err := fetchAvailableExtensionVersions(conn, extName)
 	if err != nil {
 		return err

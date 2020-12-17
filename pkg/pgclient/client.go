@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	querier2 "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 
 	pgx "github.com/jackc/pgx/v4"
@@ -23,7 +24,7 @@ import (
 type Client struct {
 	Connection    pgxconn.PgxConn
 	ingestor      *ingestor.DBIngestor
-	querier       pgmodel.Querier
+	querier       querier2.Querier
 	healthCheck   pgmodel.HealthCheckerFn
 	queryable     promql.Queryable
 	ConnectionStr string
@@ -103,7 +104,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		return nil, err
 	}
 	labelsReader := utils.NewLabelsReader(dbConn, labelsCache)
-	querier := pgmodel.NewQuerier(dbConn, metricsCache, labelsReader)
+	querier := querier2.NewQuerier(dbConn, metricsCache, labelsReader)
 	queryable := query.NewQueryable(querier, labelsReader)
 
 	healthChecker := pgmodel.NewHealthChecker(dbConn)

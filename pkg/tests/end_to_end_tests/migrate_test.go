@@ -5,6 +5,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"reflect"
 	"strings"
 	"testing"
@@ -137,15 +138,15 @@ func TestMigrateTwice(t *testing.T) {
 	}
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
-		if *useExtension && !pgmodel.ExtensionIsInstalled {
+		if *useExtension && !utils.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 
 		//reset the flag to make sure it's set correctly again.
-		pgmodel.ExtensionIsInstalled = false
+		utils.ExtensionIsInstalled = false
 
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
-		if *useExtension && !pgmodel.ExtensionIsInstalled {
+		if *useExtension && !utils.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 

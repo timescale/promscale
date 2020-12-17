@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
@@ -47,7 +47,7 @@ type mockQuerier struct {
 	selectErr           error
 }
 
-var _ pgmodel.Querier = (*mockQuerier)(nil)
+var _ querier.Querier = (*mockQuerier)(nil)
 
 func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")

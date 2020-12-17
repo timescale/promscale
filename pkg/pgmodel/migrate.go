@@ -98,7 +98,7 @@ func MigrateTimescaleDBExtension(connstr string) error {
 	}
 	defer func() { _ = db.Close(context.Background()) }()
 
-	err = migrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString)
+	err = utils.MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString)
 	if err != nil {
 		return fmt.Errorf("could not install timescaledb: %w", err)
 	}
@@ -110,7 +110,7 @@ func MigrateTimescaleDBExtension(connstr string) error {
 func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
-	ExtensionIsInstalled = false
+	utils.ExtensionIsInstalled = false
 
 	appVersion, err := semver.Make(versionInfo.Version)
 	if err != nil {
@@ -124,18 +124,18 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	ExtensionIsInstalled = false
-	err = migrateExtension(db, "promscale", utils.ExtSchema, version.ExtVersionRange, version.ExtVersionRangeString)
+	utils.ExtensionIsInstalled = false
+	err = utils.MigrateExtension(db, "promscale", utils.ExtSchema, version.ExtVersionRange, version.ExtVersionRangeString)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}
 
-	if err = checkExtensionsVersion(db); err != nil {
+	if err = utils.CheckExtensionsVersion(db); err != nil {
 		return fmt.Errorf("Error encountered while migrating extension: %w", err)
 	}
 
-	metadataUpdate(db, ExtensionIsInstalled, "version", versionInfo.Version)
-	metadataUpdate(db, ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
+	metadataUpdate(db, utils.ExtensionIsInstalled, "version", versionInfo.Version)
+	metadataUpdate(db, utils.ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 	return nil
 }
 
@@ -147,7 +147,7 @@ func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return err
 	}
 
-	return checkVersions(db)
+	return utils.CheckVersions(db)
 }
 
 // CheckSchemaVersion checks the DB schema version without checking the extension

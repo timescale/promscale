@@ -5,13 +5,13 @@ package pgclient
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"reflect"
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -22,7 +22,7 @@ type mockQuerier struct {
 	labelNamesErr error
 }
 
-var _ pgmodel.Querier = (*mockQuerier)(nil)
+var _ querier.Querier = (*mockQuerier)(nil)
 
 func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	return nil, nil

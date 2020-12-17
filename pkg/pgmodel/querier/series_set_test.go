@@ -1,5 +1,5 @@
 //nolint:govet
-package pgmodel
+package querier
 
 import (
 	"encoding/binary"

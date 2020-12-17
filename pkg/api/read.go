@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -10,11 +11,10 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-func Read(reader pgmodel.Reader, metrics *Metrics) http.Handler {
+func Read(reader querier.Reader, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !validateReadHeaders(w, r) {
 			metrics.InvalidReadReqs.Inc()

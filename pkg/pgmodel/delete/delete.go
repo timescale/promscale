@@ -1,4 +1,4 @@
-package pgmodel
+package delete
 
 import (
 	"context"
@@ -60,16 +60,16 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 // getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
 // as a matrix.
 func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]utils.SeriesID, error) {
-	_, clauses, values, err := querier.buildSubQueries(matchers)
+	_, clauses, values, err := querier.BuildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("delete series from matchers: %w", err)
 	}
-	query := querier.buildMetricNameSeriesIDQuery(clauses)
+	query := querier.BuildMetricNameSeriesIDQuery(clauses)
 	rows, err := pgDel.Conn.Query(context.Background(), query, values...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build metric name series: %w", err)
 	}
-	metricNames, correspondingSeriesIDs, err := querier.getSeriesPerMetric(rows)
+	metricNames, correspondingSeriesIDs, err := querier.GetSeriesPerMetric(rows)
 	if err != nil {
 		return nil, nil, fmt.Errorf("series per metric: %w", err)
 	}
