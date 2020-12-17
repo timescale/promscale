@@ -82,6 +82,7 @@ service:
 # the retention period
 maintenance:
   schedule: "0,30 * * * *"
+  startingDeadlineSeconds: 200
 
 # set your own limits
 resources: {}
