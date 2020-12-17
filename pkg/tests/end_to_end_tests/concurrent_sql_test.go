@@ -6,8 +6,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -221,12 +221,12 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		},
 	}
 
-	ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+	ingr, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
+	defer ingr.Close()
+	_, err = ingr.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,13 +280,13 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 	}
 
-	ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+	ingr, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
+	defer ingr.Close()
+	_, err = ingr.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -35,8 +35,8 @@ func NewPgxIngestorWithMetricCache(conn pgxconn.PgxConn, cache cache.MetricCache
 
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
 func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
-	cache := &cache.MetricNameCache{clockcache.WithMax(cache.DefaultMetricCacheSize)}
-	return NewPgxIngestorWithMetricCache(conn, cache, &Cfg{})
+	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+	return NewPgxIngestorWithMetricCache(conn, c, &Cfg{})
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.

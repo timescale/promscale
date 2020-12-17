@@ -3,10 +3,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/querier"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"math"
 	"testing"
 	"time"
@@ -15,6 +11,10 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	igstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -66,12 +66,12 @@ func TestSQLStaleNaN(t *testing.T) {
 			},
 		}
 
-		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := igstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), igstr.NewWriteRequest())
 
 		if err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)

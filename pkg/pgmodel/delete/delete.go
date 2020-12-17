@@ -3,12 +3,12 @@ package delete
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/querier"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"math"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 

@@ -5,7 +5,6 @@ package end_to_end_tests
 
 import (
 	"context"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/tests/test_migrations"
 	"github.com/timescale/promscale/pkg/version"

@@ -3,8 +3,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	delete2 "github.com/timescale/promscale/pkg/pgmodel/delete"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"math"
 	"sort"
 	"strconv"
@@ -18,6 +16,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+	pgDel "github.com/timescale/promscale/pkg/pgmodel/delete"
+	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -79,22 +79,22 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
 
-		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
-		pgDelete := &delete2.PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 		for _, m := range matchers {
 			var countBeforeDelete, countAfterDelete int
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, delete2.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, delete2.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
 			require.NoError(t, err)
 			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.%s", m.name)).Scan(&countBeforeDelete)
 			require.NoError(t, err)
@@ -161,12 +161,12 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
-		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation()
@@ -185,12 +185,12 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			pgDelete := &delete2.PgDelete{Conn: pgxconn.NewPgxConn(db)}
+			pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, delete2.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, delete2.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
 			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
@@ -245,21 +245,21 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
-		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
-		pgDelete := &delete2.PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, delete2.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, delete2.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
 			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
@@ -369,21 +369,21 @@ func TestDeleteMixins(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
-		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
-		pgDelete := &delete2.PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, delete2.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, delete2.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
 			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)

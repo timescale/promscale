@@ -7,6 +7,7 @@ package querier
 import (
 	"context"
 	"errors"
+
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgtype"

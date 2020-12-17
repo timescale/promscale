@@ -3,7 +3,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
