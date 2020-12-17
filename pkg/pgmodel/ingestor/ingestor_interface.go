@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package ingester
+package ingestor
 
 import "github.com/timescale/promscale/pkg/prompb"
 

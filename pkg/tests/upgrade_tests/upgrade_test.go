@@ -8,7 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"io"
 	"io/ioutil"
@@ -118,7 +118,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool) (upgradedDbInfo dbInfo) {
 			defer db.Close()
 
 			if !noData {
-				ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+				ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatalf("error connecting to DB: %v", err)
 				}
@@ -140,7 +140,7 @@ func getPristineDbInfo(t *testing.T, noData bool) (pristineDbInfo dbInfo) {
 			if noData {
 				return
 			}
-			ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+			ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 			if err != nil {
 				t.Fatalf("error connecting to DB: %v", err)
 			}
@@ -151,7 +151,7 @@ func getPristineDbInfo(t *testing.T, noData bool) (pristineDbInfo dbInfo) {
 		/* postRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
 			if !noData {
-				ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+				ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatalf("error connecting to DB: %v", err)
 				}
@@ -453,7 +453,7 @@ func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.Tim
 	}
 }
 
-func doIngest(t *testing.T, ingestor *ingester.DBIngestor, data ...[]prompb.TimeSeries) {
+func doIngest(t *testing.T, ingestor *ingestor.DBIngestor, data ...[]prompb.TimeSeries) {
 	for _, data := range data {
 		_, err := ingestor.Ingest(copyMetrics(data), &prompb.WriteRequest{})
 		if err != nil {

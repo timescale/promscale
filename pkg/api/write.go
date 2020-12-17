@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -21,7 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func Write(writer ingester.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
+func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// we treat invalid requests as the same as no request for
@@ -100,9 +100,9 @@ func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
 			return nil, err, msg
 		}
 
-		req = ingester.NewWriteRequest()
+		req = ingestor.NewWriteRequest()
 		if err := proto.Unmarshal(reqBuf, req); err != nil {
-			ingester.FinishWriteRequest(req)
+			ingestor.FinishWriteRequest(req)
 			return nil, err, "Protobuf unmarshal error"
 		}
 	case "application/json":
@@ -124,13 +124,13 @@ func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
 		}
 
 		dec := json.NewDecoder(body)
-		req = ingester.NewWriteRequest()
+		req = ingestor.NewWriteRequest()
 
 		for {
 			if err := dec.Decode(&i); err == io.EOF {
 				break
 			} else if err != nil {
-				ingester.FinishWriteRequest(req)
+				ingestor.FinishWriteRequest(req)
 				return nil, err, "JSON decode error"
 			}
 

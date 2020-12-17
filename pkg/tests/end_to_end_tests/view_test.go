@@ -3,7 +3,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"strings"
 	"testing"
@@ -152,13 +152,13 @@ func TestSQLView(t *testing.T) {
 			},
 		}
 
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)
@@ -251,12 +251,12 @@ func TestSQLViewSelectors(t *testing.T) {
 			},
 		}
 
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)

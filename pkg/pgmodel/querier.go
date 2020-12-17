@@ -7,6 +7,7 @@ package pgmodel
 import (
 	"context"
 	"errors"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
@@ -95,7 +96,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	results, err := buildTimeSeries(rows, q.labelsReader)
+	results, err := querier.buildTimeSeries(rows, q.labelsReader)
 
 	return results, err
 }
@@ -137,15 +138,15 @@ type timescaleRow struct {
 // supplied query parameters.
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
 	// Build a subquery per metric matcher.
-	metric, cases, values, err := buildSubQueries(matchers)
+	metric, cases, values, err := querier.buildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	filter := metricTimeRangeFilter{
 		metric:    metric,
-		startTime: toRFC3339Nano(startTimestamp),
-		endTime:   toRFC3339Nano(endTimestamp),
+		startTime: querier.toRFC3339Nano(startTimestamp),
+		endTime:   querier.toRFC3339Nano(endTimestamp),
 	}
 
 	// If all metric matchers match on a single metric (common case),
@@ -172,7 +173,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	}
 	filter.metric = tableName
 
-	sqlQuery, values, topNode, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, path)
+	sqlQuery, values, topNode, err := querier.buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -197,14 +198,14 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 // using the supplied query parameters.
 func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []string, values []interface{}) ([]timescaleRow, parser.Node, error) {
 	// First fetch series IDs per metric.
-	sqlQuery := buildMetricNameSeriesIDQuery(cases)
+	sqlQuery := querier.buildMetricNameSeriesIDQuery(cases)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	metrics, series, err := getSeriesPerMetric(rows)
+	metrics, series, err := querier.getSeriesPerMetric(rows)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -227,7 +228,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 			return nil, nil, err
 		}
 		filter.metric = tableName
-		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
+		sqlQuery = querier.buildTimeseriesBySeriesIDQuery(filter, series[i])
 		batch.Queue(sqlQuery)
 		numQueries += 1
 	}

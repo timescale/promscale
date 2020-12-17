@@ -6,7 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"reflect"
 	"testing"
@@ -158,12 +158,12 @@ func TestSQLChunkInterval(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -414,13 +414,13 @@ func TestSQLIngest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
-				ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+				ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer ingestor.Close()
 
-				cnt, err := ingestor.Ingest(copyMetrics(tcase.metrics), ingester.NewWriteRequest())
+				cnt, err := ingestor.Ingest(copyMetrics(tcase.metrics), ingestor.NewWriteRequest())
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
 				}
@@ -507,12 +507,12 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -543,7 +543,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			},
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -578,7 +578,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		}
 
 		//ingest duplicate after compression
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -626,12 +626,12 @@ func TestInsertCompressed(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -655,7 +655,7 @@ func TestInsertCompressed(t *testing.T) {
 			}
 		}
 		//ingest after compression
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -741,12 +741,12 @@ func TestCompressionSetting(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -842,13 +842,13 @@ func TestCustomCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -936,7 +936,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		// decompress the first chunk
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
