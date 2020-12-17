@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"io/ioutil"
 	"math"
@@ -549,12 +549,12 @@ func TestSQLQuery(t *testing.T) {
 }
 
 func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.TimeSeries) {
-	ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+	ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	cnt, err := ingestor.Ingest(copyMetrics(metrics), ingester.NewWriteRequest())
+	cnt, err := ingestor.Ingest(copyMetrics(metrics), ingestor.NewWriteRequest())
 
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)

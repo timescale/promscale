@@ -6,7 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"testing"
 	"time"
@@ -45,12 +45,12 @@ func TestSQLRetentionPeriod(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,12 +142,12 @@ func TestSQLDropChunk(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -226,12 +226,12 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -335,12 +335,12 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -526,19 +526,19 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(resurrected), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(resurrected), ingestor.NewWriteRequest())
 		if err == nil {
 			t.Error("expected ingest to fail due to old epoch")
 		}
 
 		ingestor.Close()
-		ingestor2, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor2, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor2.Close()
 
-		_, err = ingestor2.Ingest(copyMetrics(resurrected), ingester.NewWriteRequest())
+		_, err = ingestor2.Ingest(copyMetrics(resurrected), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -582,12 +582,12 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			}
 		}
 
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Error(err)
 		}
@@ -655,13 +655,13 @@ func TestSQLDropAllMetricData(t *testing.T) {
 		//Restart ingestor to avoid stale cache issues.
 		//Other tests should check for that
 		ingestor.Close()
-		ingestor2, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor2, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		defer ingestor2.Close()
-		_, err = ingestor2.Ingest(copyMetrics(ts), ingester.NewWriteRequest())
+		_, err = ingestor2.Ingest(copyMetrics(ts), ingestor.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}

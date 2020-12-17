@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 
 	pgx "github.com/jackc/pgx/v4"
@@ -22,7 +22,7 @@ import (
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
 	Connection    pgxconn.PgxConn
-	ingestor      *ingester.DBIngestor
+	ingestor      *ingestor.DBIngestor
 	querier       pgmodel.Querier
 	healthCheck   pgmodel.HealthCheckerFn
 	queryable     promql.Queryable
@@ -91,13 +91,13 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
 	metricsCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
 	labelsCache := clockcache.WithMax(cfg.LabelsCacheSize)
-	c := ingester.Cfg{
+	c := ingestor.Cfg{
 		AsyncAcks:       cfg.AsyncAcks,
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
 	}
-	ingestor, err := ingester.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
+	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err

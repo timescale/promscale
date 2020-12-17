@@ -28,10 +28,10 @@ type SqlRecorder struct {
 }
 
 type SqlQuery struct {
-	sql     string
-	args    []interface{}
-	results RowResults
-	err     error
+	Sql     string
+	Args    []interface{}
+	Results RowResults
+	Err     error
 }
 
 // RowResults represents a collection of a multi-column row result
@@ -114,13 +114,13 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	}
 	row := r.queries[idx]
 	r.nextQuery += 1
-	if sql != row.sql {
-		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.sql)
+	if sql != row.Sql {
+		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.Sql)
 	}
-	if !reflect.DeepEqual(args, row.args) {
-		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%#v\nexpected:\n\t%#v", idx, sql, args, row.args)
+	if !reflect.DeepEqual(args, row.Args) {
+		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%#v\nexpected:\n\t%#v", idx, sql, args, row.Args)
 	}
-	return row.results, row.err
+	return row.Results, row.Err
 }
 
 type batchItem struct {
@@ -153,19 +153,19 @@ func (m *MockBatchResult) Exec() (pgconn.CommandTag, error) {
 
 	q := m.queries[m.idx]
 
-	if len(q.results) == 0 {
-		return nil, q.err
+	if len(q.Results) == 0 {
+		return nil, q.Err
 	}
-	if len(q.results) != 1 {
-		m.t.Errorf("mock exec: too many return rows %v\n in batch Exec\n %+v", q.results, q)
-		return nil, q.err
+	if len(q.Results) != 1 {
+		m.t.Errorf("mock exec: too many return rows %v\n in batch Exec\n %+v", q.Results, q)
+		return nil, q.Err
 	}
-	if len(q.results[0]) != 1 {
-		m.t.Errorf("mock exec: too many return values %v\n in batch Exec\n %+v", q.results, q)
-		return nil, q.err
+	if len(q.Results[0]) != 1 {
+		m.t.Errorf("mock exec: too many return values %v\n in batch Exec\n %+v", q.Results, q)
+		return nil, q.Err
 	}
 
-	return q.results[0][0].(pgconn.CommandTag), q.err
+	return q.Results[0][0].(pgconn.CommandTag), q.Err
 }
 
 // Query reads the results from the next query in the batch as if the query has been sent with Conn.Query.
@@ -173,7 +173,7 @@ func (m *MockBatchResult) Query() (pgx.Rows, error) {
 	defer func() { m.idx++ }()
 
 	q := m.queries[m.idx]
-	return &MockRows{results: q.results, noNext: false}, q.err
+	return &MockRows{results: q.Results, noNext: false}, q.Err
 }
 
 // Close closes the batch operation. This must be called before the underlying connection can be used again. Any error
@@ -187,7 +187,7 @@ func (m *MockBatchResult) Close() error {
 func (m *MockBatchResult) QueryRow() pgx.Row {
 	defer func() { m.idx++ }()
 	q := m.queries[m.idx]
-	return &MockRows{results: q.results, err: q.err, noNext: false}
+	return &MockRows{results: q.Results, err: q.Err, noNext: false}
 }
 
 type MockRows struct {
@@ -356,25 +356,25 @@ func (m *MockRows) RawValues() [][]byte {
 }
 
 type MockMetricCache struct {
-	metricCache  map[string]string
-	getMetricErr error
-	setMetricErr error
+	MetricCache  map[string]string
+	GetMetricErr error
+	SetMetricErr error
 }
 
 func (m *MockMetricCache) Len() int {
-	return len(m.metricCache)
+	return len(m.MetricCache)
 }
 
 func (m *MockMetricCache) Cap() int {
-	return len(m.metricCache)
+	return len(m.MetricCache)
 }
 
 func (m *MockMetricCache) Get(metric string) (string, error) {
-	if m.getMetricErr != nil {
-		return "", m.getMetricErr
+	if m.GetMetricErr != nil {
+		return "", m.GetMetricErr
 	}
 
-	val, ok := m.metricCache[metric]
+	val, ok := m.MetricCache[metric]
 	if !ok {
 		return "", ErrEntryNotFound
 	}
@@ -383,8 +383,8 @@ func (m *MockMetricCache) Get(metric string) (string, error) {
 }
 
 func (m *MockMetricCache) Set(metric string, tableName string) error {
-	m.metricCache[metric] = tableName
-	return m.setMetricErr
+	m.MetricCache[metric] = tableName
+	return m.SetMetricErr
 }
 
 type MockCache struct {

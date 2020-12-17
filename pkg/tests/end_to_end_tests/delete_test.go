@@ -3,7 +3,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingester"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"math"
 	"sort"
 	"strconv"
@@ -79,12 +79,12 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
 
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
@@ -161,12 +161,12 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation()
@@ -245,12 +245,12 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}
@@ -369,12 +369,12 @@ func TestDeleteMixins(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ts := generateRealTimeseries()
-		ingestor, err := ingester.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingester.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(copyMetrics(ts), ingestor.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		pgDelete := &PgDelete{Conn: pgxconn.NewPgxConn(db)}

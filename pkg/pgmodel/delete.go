@@ -3,6 +3,7 @@ package pgmodel
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"math"
 	"time"
@@ -59,16 +60,16 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 // getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
 // as a matrix.
 func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]utils.SeriesID, error) {
-	_, clauses, values, err := buildSubQueries(matchers)
+	_, clauses, values, err := querier.buildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("delete series from matchers: %w", err)
 	}
-	query := buildMetricNameSeriesIDQuery(clauses)
+	query := querier.buildMetricNameSeriesIDQuery(clauses)
 	rows, err := pgDel.Conn.Query(context.Background(), query, values...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build metric name series: %w", err)
 	}
-	metricNames, correspondingSeriesIDs, err := getSeriesPerMetric(rows)
+	metricNames, correspondingSeriesIDs, err := querier.getSeriesPerMetric(rows)
 	if err != nil {
 		return nil, nil, fmt.Errorf("series per metric: %w", err)
 	}
