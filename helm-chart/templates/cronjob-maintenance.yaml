@@ -1,20 +1,20 @@
 apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
-  name: {{ include "connector.fullname" . | trunc 41 }}-drop-chunk
+  name: {{ include "connector.fullname" . | trunc 51 }}-maintenance
   labels:
     app: {{ template "connector.fullname" . }}
     chart: {{ template "connector.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 spec:
-  schedule: {{ .Values.dropChunk.schedule }}
+  schedule: {{ .Values.maintenance.schedule }}
   jobTemplate:
     spec:
       template:
         spec:
           containers:
-          - name: {{ .Chart.Name }}-drop-chunk
+          - name: {{ .Chart.Name }}-maintenance
             image: postgres:12-alpine
             args:
             - psql
