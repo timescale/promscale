@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"math"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/timescale/promscale/pkg/clockcache"
-	. "github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -120,7 +120,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			lCache := clockcache.WithMax(100)
 			dbConn := pgxconn.NewPgxConn(db)
 			labelsReader := utils.NewLabelsReader(dbConn, lCache)
-			r := NewQuerier(dbConn, mCache, labelsReader)
+			r := querier.NewQuerier(dbConn, mCache, labelsReader)
 			resp, err := r.Query(c.query)
 			startMs := c.query.StartTimestampMs
 			endMs := c.query.EndTimestampMs

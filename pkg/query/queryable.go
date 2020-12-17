@@ -2,21 +2,21 @@ package query
 
 import (
 	"context"
+	querier2 "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewQueryable(q pgmodel.Querier, labelsReader utils.LabelsReader) promql.Queryable {
+func NewQueryable(q querier2.Querier, labelsReader utils.LabelsReader) promql.Queryable {
 	return &queryable{querier: q, labelsReader: labelsReader}
 }
 
 type queryable struct {
-	querier      pgmodel.Querier
+	querier      querier2.Querier
 	labelsReader utils.LabelsReader
 }
 
@@ -31,7 +31,7 @@ func (q queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querie
 type querier struct {
 	ctx           context.Context
 	mint, maxt    int64
-	metricsReader pgmodel.Querier
+	metricsReader querier2.Querier
 	labelsReader  utils.LabelsReader
 }
 

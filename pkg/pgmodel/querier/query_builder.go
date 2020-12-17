@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package pgmodel
+package querier
 
 import (
 	"fmt"
@@ -63,7 +63,7 @@ var (
 	maxTime = timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC())
 )
 
-func buildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{}, error) {
+func BuildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{}, error) {
 	var err error
 	metric := ""
 	metricMatcherCount := 0
@@ -212,7 +212,7 @@ func buildTimeSeries(rows []timescaleRow, lr utils.LabelsReader) ([]*prompb.Time
 	return results, nil
 }
 
-func buildMetricNameSeriesIDQuery(cases []string) string {
+func BuildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
 }
 
@@ -281,7 +281,7 @@ func (t *queryFinalizer) Finalize() (string, []interface{}, error) {
 
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
 func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage.SelectHints, path []parser.Node) (*queryFinalizer, parser.Node, error) {
-	if ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
+	if utils.ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
 		var topNode parser.Node
 
 		node := path[len(path)-2]
@@ -325,7 +325,7 @@ func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage
 	return &qf, nil, nil
 }
 
-func getSeriesPerMetric(rows pgx.Rows) ([]string, [][]utils.SeriesID, error) {
+func GetSeriesPerMetric(rows pgx.Rows) ([]string, [][]utils.SeriesID, error) {
 	metrics := make([]string, 0)
 	series := make([][]utils.SeriesID, 0)
 

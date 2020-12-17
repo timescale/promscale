@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	delete2 "github.com/timescale/promscale/pkg/pgmodel/delete"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"net/http"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
-	"github.com/timescale/promscale/pkg/pgmodel"
 )
 
 func Delete(conf *Config, client *pgclient.Client) http.Handler {
@@ -52,9 +52,9 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return
 		}
-		if start != pgmodel.MinTimeProm || end != pgmodel.MaxTimeProm {
+		if start != delete2.MinTimeProm || end != delete2.MaxTimeProm {
 			log.Warn("msg", "Time based series deletion is unsupported.")
-			respondError(w, http.StatusBadRequest, pgmodel.ErrTimeBasedDeletion, "bad_data")
+			respondError(w, http.StatusBadRequest, delete2.ErrTimeBasedDeletion, "bad_data")
 			return
 		}
 		for _, s := range r.Form["match[]"] {
@@ -66,7 +66,7 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 			if client == nil {
 				continue
 			}
-			pgDelete := pgmodel.PgDelete{Conn: client.Connection}
+			pgDelete := delete2.PgDelete{Conn: client.Connection}
 			touchedMetrics, deletedSeriesIDs, rowsDeleted, err := pgDelete.DeleteSeries(matchers, start, end)
 			if err != nil {
 				respondErrorWithMessage(w, http.StatusInternalServerError, err, "deleting_series",

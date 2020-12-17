@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"io/ioutil"
 	"math"
@@ -27,7 +28,6 @@ import (
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
-	. "github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
@@ -530,7 +530,7 @@ func TestSQLQuery(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := utils.NewLabelsReader(dbConn, lCache)
-		r := NewQuerier(dbConn, mCache, labelsReader)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Query(c.query)
@@ -866,7 +866,7 @@ func TestPromQL(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := utils.NewLabelsReader(dbConn, lCache)
-		r := NewQuerier(dbConn, mCache, labelsReader)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Query(c.query)
@@ -1023,7 +1023,7 @@ func TestPushdown(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := utils.NewLabelsReader(dbConn, lCache)
-		r := NewQuerier(dbConn, mCache, labelsReader)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
 

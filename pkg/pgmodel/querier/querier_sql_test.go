@@ -5,7 +5,6 @@ package querier
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"reflect"
 	"testing"
@@ -664,12 +663,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			mock := newSqlRecorder(c.sqlQueries, t)
+			mock := utils.NewSqlRecorder(c.sqlQueries, t)
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
-			mockMetrics := &mockMetricCache{
-				metricCache: metricCache,
+			mockMetrics := &utils.MockMetricCache{
+				MetricCache: metricCache,
 			}
-			querier := pgmodel.pgxQuerier{conn: mock, metricTableNames: mockMetrics, labelsReader: utils.NewLabelsReader(mock, clockcache.WithMax(0))}
+			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics, labelsReader: utils.NewLabelsReader(mock, clockcache.WithMax(0))}
 
 			result, err := querier.Query(c.query)
 
@@ -678,12 +677,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 				case c.err == nil:
 					found := false
 					for _, q := range c.sqlQueries {
-						if err == q.err {
+						if err == q.Err {
 							found = true
 							break
 						}
-						if q.err != nil {
-							t.Errorf("unexpected error:\ngot\n\t%v\nwanted\n\t%v", err, q.err)
+						if q.Err != nil {
+							t.Errorf("unexpected error:\ngot\n\t%v\nwanted\n\t%v", err, q.Err)
 						}
 					}
 					if !found {
