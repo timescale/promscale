@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package api
 
 import (
@@ -5,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"

@@ -1,18 +1,22 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package pgclient
 
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	querier2 "github.com/timescale/promscale/pkg/pgmodel/querier"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
@@ -24,7 +28,7 @@ import (
 type Client struct {
 	Connection    pgxconn.PgxConn
 	ingestor      *ingestor.DBIngestor
-	querier       querier2.Querier
+	querier       querier.Querier
 	healthCheck   pgmodel.HealthCheckerFn
 	queryable     promql.Queryable
 	ConnectionStr string
@@ -104,7 +108,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		return nil, err
 	}
 	labelsReader := utils.NewLabelsReader(dbConn, labelsCache)
-	querier := querier2.NewQuerier(dbConn, metricsCache, labelsReader)
+	querier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
 	queryable := query.NewQueryable(querier, labelsReader)
 
 	healthChecker := pgmodel.NewHealthChecker(dbConn)

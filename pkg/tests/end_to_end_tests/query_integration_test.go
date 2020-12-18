@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
@@ -25,7 +29,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	igstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -549,12 +553,12 @@ func TestSQLQuery(t *testing.T) {
 }
 
 func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.TimeSeries) {
-	ingestor, err := igstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+	ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	cnt, err := ingestor.Ingest(copyMetrics(metrics), igstr.NewWriteRequest())
+	cnt, err := ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
 
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)
@@ -606,7 +610,7 @@ func TestPromQL(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					{
 						Type:  prompb.LabelMatcher_EQ,
-						Name:  MetricNameLabelName,
+						Name:  utils.MetricNameLabelName,
 						Value: "METRIC_4",
 					},
 				},

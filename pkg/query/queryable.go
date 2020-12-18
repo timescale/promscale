@@ -1,8 +1,12 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package query
 
 import (
 	"context"
-	querier2 "github.com/timescale/promscale/pkg/pgmodel/querier"
+	pgQuerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -11,12 +15,12 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewQueryable(q querier2.Querier, labelsReader utils.LabelsReader) promql.Queryable {
+func NewQueryable(q pgQuerier.Querier, labelsReader utils.LabelsReader) promql.Queryable {
 	return &queryable{querier: q, labelsReader: labelsReader}
 }
 
 type queryable struct {
-	querier      querier2.Querier
+	querier      pgQuerier.Querier
 	labelsReader utils.LabelsReader
 }
 
@@ -31,7 +35,7 @@ func (q queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querie
 type querier struct {
 	ctx           context.Context
 	mint, maxt    int64
-	metricsReader querier2.Querier
+	metricsReader pgQuerier.Querier
 	labelsReader  utils.LabelsReader
 }
 
