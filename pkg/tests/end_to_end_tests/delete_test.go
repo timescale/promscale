@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	pgDel "github.com/timescale/promscale/pkg/pgmodel/delete"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -96,9 +97,9 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			var countBeforeDelete, countAfterDelete int
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, model.MinTime)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
 			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.%s", m.name)).Scan(&countBeforeDelete)
 			require.NoError(t, err)
@@ -192,9 +193,9 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, model.MinTime)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
@@ -261,9 +262,9 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, model.MinTime)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
@@ -385,9 +386,9 @@ func TestDeleteMixins(t *testing.T) {
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
-			parsedStartTime, err := parseTime(m.start, pgDel.MinTimeProm)
+			parsedStartTime, err := parseTime(m.start, model.MinTime)
 			require.NoError(t, err)
-			parsedEndTime, err := parseTime(m.end, pgDel.MaxTimeProm)
+			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)

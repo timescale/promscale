@@ -5,19 +5,14 @@
 package cache
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 )
 
 const (
 	DefaultMetricCacheSize = 10000
-)
-
-var (
-	// ErrEntryNotFound is returned when entry is not found.
-	ErrEntryNotFound = fmt.Errorf("entry not found")
 )
 
 // MetricCache provides a caching mechanism for metric table names.
@@ -58,7 +53,7 @@ type MetricNameCache struct {
 func (m *MetricNameCache) Get(metric string) (string, error) {
 	result, ok := m.Metrics.Get(metric)
 	if !ok {
-		return "", ErrEntryNotFound
+		return "", errors.ErrEntryNotFound
 	}
 	return result.(string), nil
 }

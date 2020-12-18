@@ -17,7 +17,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -81,7 +84,7 @@ func BuildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{
 
 		switch m.Type {
 		case labels.MatchEqual:
-			if m.Name == utils.MetricNameLabelName {
+			if m.Name == pgmodel.MetricNameLabelName {
 				metricMatcherCount++
 				metric = m.Value
 			}
@@ -126,7 +129,7 @@ func BuildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{
 	clauses, values := cb.build()
 
 	if len(clauses) == 0 {
-		err = fmt.Errorf("no clauses generated")
+		err = errors.ErrNoClausesGen
 	}
 
 	return metric, clauses, values, err
@@ -173,7 +176,7 @@ func (c *clauseBuilder) build() ([]string, []interface{}) {
 	return c.clauses, c.args
 }
 
-func buildTimeSeries(rows []timescaleRow, lr utils.LabelsReader) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []timescaleRow, lr pgmodel.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 
 	for _, row := range rows {
@@ -182,7 +185,7 @@ func buildTimeSeries(rows []timescaleRow, lr utils.LabelsReader) ([]*prompb.Time
 		}
 
 		if len(row.times.Elements) != len(row.values.Elements) {
-			return nil, fmt.Errorf("query returned a mismatch in timestamps and values")
+			return nil, errors.ErrQueryMismatchTimestampValue
 		}
 
 		promLabels, err := lr.PrompbLabelsForIds(row.labelIds)
@@ -201,7 +204,7 @@ func buildTimeSeries(rows []timescaleRow, lr utils.LabelsReader) ([]*prompb.Time
 
 		for i := range row.times.Elements {
 			result.Samples = append(result.Samples, prompb.Sample{
-				Timestamp: utils.TimestamptzToMs(row.times.Elements[i]),
+				Timestamp: pgmodel.TimestamptzToMs(row.times.Elements[i]),
 				Value:     row.values.Elements[i].Float,
 			})
 		}
@@ -216,15 +219,15 @@ func BuildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
 }
 
-func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []utils.SeriesID) string {
+func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmodel.SeriesID) string {
 	s := make([]string, 0, len(series))
 	for _, sID := range series {
 		s = append(s, fmt.Sprintf("%d", sID))
 	}
 	return fmt.Sprintf(
 		timeseriesBySeriesIDsSQLFormat,
-		pgx.Identifier{utils.DataSchema, filter.metric}.Sanitize(),
-		pgx.Identifier{utils.DataSeriesSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.Data, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
 		strings.Join(s, ","),
 		filter.startTime,
 		filter.endTime,
@@ -235,8 +238,8 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 	hints *storage.SelectHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
 	restOfQuery := fmt.Sprintf(
 		timeseriesByMetricSQLFormat,
-		pgx.Identifier{utils.DataSchema, filter.metric}.Sanitize(),
-		pgx.Identifier{utils.DataSeriesSchema, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.Data, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
@@ -281,7 +284,7 @@ func (t *queryFinalizer) Finalize() (string, []interface{}, error) {
 
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
 func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage.SelectHints, path []parser.Node) (*queryFinalizer, parser.Node, error) {
-	if utils.ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
+	if extension.ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
 		var topNode parser.Node
 
 		node := path[len(path)-2]
@@ -325,9 +328,9 @@ func getQueryFinalizer(otherClauses string, values []interface{}, hints *storage
 	return &qf, nil, nil
 }
 
-func GetSeriesPerMetric(rows pgx.Rows) ([]string, [][]utils.SeriesID, error) {
+func GetSeriesPerMetric(rows pgx.Rows) ([]string, [][]pgmodel.SeriesID, error) {
 	metrics := make([]string, 0)
-	series := make([][]utils.SeriesID, 0)
+	series := make([][]pgmodel.SeriesID, 0)
 
 	for rows.Next() {
 		var (
@@ -338,10 +341,10 @@ func GetSeriesPerMetric(rows pgx.Rows) ([]string, [][]utils.SeriesID, error) {
 			return nil, nil, err
 		}
 
-		sIDs := make([]utils.SeriesID, 0, len(seriesIDs))
+		sIDs := make([]pgmodel.SeriesID, 0, len(seriesIDs))
 
 		for _, v := range seriesIDs {
-			sIDs = append(sIDs, utils.SeriesID(v))
+			sIDs = append(sIDs, pgmodel.SeriesID(v))
 		}
 
 		metrics = append(metrics, metricName)

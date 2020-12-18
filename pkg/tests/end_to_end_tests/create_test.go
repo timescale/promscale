@@ -15,8 +15,9 @@ import (
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -139,7 +140,7 @@ func TestSQLChunkInterval(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "Test"},
+					{Name: model.MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -149,7 +150,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "Test2"},
+					{Name: model.MetricNameLabelName, Value: "Test2"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -244,7 +245,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -259,7 +260,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -270,7 +271,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "TEST"},
+						{Name: model.MetricNameLabelName, Value: "TEST"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -286,7 +287,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -295,7 +296,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -311,7 +312,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -328,7 +329,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -345,7 +346,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -354,7 +355,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test"},
+						{Name: model.MetricNameLabelName, Value: "Test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -370,7 +371,7 @@ func TestSQLIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test1"},
+						{Name: model.MetricNameLabelName, Value: "Test1"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "test"},
 						{Name: "key2", Value: "val1"},
@@ -381,7 +382,7 @@ func TestSQLIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "Test2"},
+						{Name: model.MetricNameLabelName, Value: "Test2"},
 						{Name: "commonkey", Value: "test"},
 						{Name: "key1", Value: "val2"},
 						{Name: "key3", Value: "val3"},
@@ -405,7 +406,7 @@ func TestSQLIngest(t *testing.T) {
 			},
 			count:       0,
 			countSeries: 0,
-			expectErr:   utils.ErrNoMetricName,
+			expectErr:   errors.ErrNoMetricName,
 		},
 	}
 	for tcIndex, c := range testCases {
@@ -441,7 +442,7 @@ func TestSQLIngest(t *testing.T) {
 				for _, ts := range tcase.metrics {
 					if len(ts.Samples) > 0 {
 						for _, l := range ts.Labels {
-							if l.Name == utils.MetricNameLabelName {
+							if l.Name == model.MetricNameLabelName {
 								metricNames[l.Value] = true
 							}
 						}
@@ -499,7 +500,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "tEsT"},
+					{Name: model.MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -534,7 +535,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "tEsT"},
+					{Name: model.MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -565,7 +566,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		ts = []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "tEsT"},
+					{Name: model.MetricNameLabelName, Value: "tEsT"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -615,7 +616,7 @@ func TestInsertCompressed(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "Test"},
+					{Name: model.MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				// Two samples that, by default, end up in different chunks.
@@ -733,7 +734,7 @@ func TestCompressionSetting(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "Test"},
+					{Name: model.MetricNameLabelName, Value: "Test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -834,7 +835,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "Test1"},
+					{Name: model.MetricNameLabelName, Value: "Test1"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -1055,7 +1056,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: MetricNameLabelName, Value: "test"},
+					{Name: model.MetricNameLabelName, Value: "test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -1063,13 +1064,13 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
 
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1132,7 +1133,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 
 		// decompress the first chunk
-		_, err = ingestor.Ingest(copyMetrics(ts), NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
 		if err != nil {
 			t.Fatal(err)
 		}

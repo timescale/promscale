@@ -14,7 +14,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -203,7 +203,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: metric},
+				{Name: pgmodel.MetricNameLabelName, Value: metric},
 				{Name: "node", Value: "brain"},
 			},
 			Samples: []prompb.Sample{
@@ -212,7 +212,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: metric},
+				{Name: pgmodel.MetricNameLabelName, Value: metric},
 				{Name: "node", Value: "pinky"},
 			},
 			Samples: []prompb.Sample{
@@ -236,7 +236,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 	metrics := []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: pgmodel.MetricNameLabelName, Value: "cpu_usage_a"},
 				{Name: "namespace", Value: "production"},
 				{Name: "node", Value: "brain"},
 			},
@@ -247,7 +247,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "cpu_usage_a"},
+				{Name: pgmodel.MetricNameLabelName, Value: "cpu_usage_a"},
 				{Name: "namespace", Value: "dev"},
 				{Name: "node", Value: "pinky"},
 			},
@@ -258,7 +258,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: pgmodel.MetricNameLabelName, Value: "cpu_total_a"},
 				{Name: "namespace", Value: "production"},
 				{Name: "node", Value: "brain"},
 			},
@@ -269,7 +269,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "cpu_total_a"},
+				{Name: pgmodel.MetricNameLabelName, Value: "cpu_total_a"},
 				{Name: "namespace", Value: "dev"},
 				{Name: "node", Value: "pinky"},
 			},

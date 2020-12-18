@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 )
 
 func TestMetricTableNameCache(t *testing.T) {
@@ -49,8 +50,8 @@ func TestMetricTableNameCache(t *testing.T) {
 				t.Fatal("found cache that should be missing, not stored yet")
 			}
 
-			if err != ErrEntryNotFound {
-				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\n%s\n", err, ErrEntryNotFound)
+			if err != errors.ErrEntryNotFound {
+				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\n%s\n", err, errors.ErrEntryNotFound)
 			}
 
 			err = cache.Set(c.metric, c.tableName)

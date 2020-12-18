@@ -12,11 +12,11 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
@@ -29,7 +29,7 @@ type Client struct {
 	Connection    pgxconn.PgxConn
 	ingestor      *ingestor.DBIngestor
 	querier       querier.Querier
-	healthCheck   pgmodel.HealthCheckerFn
+	healthCheck   health.HealthCheckerFn
 	queryable     promql.Queryable
 	ConnectionStr string
 	metricCache   cache.MetricCache
@@ -107,11 +107,11 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
-	labelsReader := utils.NewLabelsReader(dbConn, labelsCache)
+	labelsReader := model.NewLabelsReader(dbConn, labelsCache)
 	querier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
 	queryable := query.NewQueryable(querier, labelsReader)
 
-	healthChecker := pgmodel.NewHealthChecker(dbConn)
+	healthChecker := health.NewHealthChecker(dbConn)
 	client := &Client{
 		Connection:  dbConn,
 		ingestor:    ingestor,

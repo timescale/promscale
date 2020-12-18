@@ -13,7 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -26,7 +26,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -36,7 +36,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test2"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test2"},
 					{Name: "test", Value: "test"},
 				},
 				Samples: []prompb.Sample{
@@ -124,7 +124,7 @@ func TestSQLDropChunk(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -134,7 +134,7 @@ func TestSQLDropChunk(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test2"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test2"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -153,7 +153,7 @@ func TestSQLDropChunk(t *testing.T) {
 		}
 
 		var tableName string
-		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('TEST')").Scan(&tableName)
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('test')").Scan(&tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +208,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -218,7 +218,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test2"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test2"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -237,7 +237,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 		}
 
 		var tableName string
-		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('TEST')").Scan(&tableName)
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('test')").Scan(&tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -293,7 +293,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -303,7 +303,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value2"},
 				},
 				Samples: []prompb.Sample{
@@ -313,7 +313,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value3"},
 				},
 				Samples: []prompb.Sample{
@@ -517,7 +517,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -560,7 +560,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{
@@ -642,7 +642,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			{
 				//this series will be deleted along with it's label
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: "test"},
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
 					{Name: "name1", Value: "value1"},
 				},
 				Samples: []prompb.Sample{

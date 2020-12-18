@@ -2,26 +2,22 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package utils
+package model
 
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgproto3/v2"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
-)
 
-var (
-	// ErrEntryNotFound is returned when entry is not found.
-	ErrEntryNotFound = fmt.Errorf("entry not found")
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgproto3/v2"
+	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v4"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type SqlRecorder struct {
@@ -380,7 +376,7 @@ func (m *MockMetricCache) Get(metric string) (string, error) {
 
 	val, ok := m.MetricCache[metric]
 	if !ok {
-		return "", ErrEntryNotFound
+		return "", errors.ErrEntryNotFound
 	}
 
 	return val, nil
@@ -406,7 +402,7 @@ func (m *MockCache) GetSeries(lset Labels) (SeriesID, error) {
 
 	val, ok := m.seriesCache[lset.String()]
 	if !ok {
-		return 0, cache.ErrEntryNotFound
+		return 0, errors.ErrEntryNotFound
 	}
 
 	return val, nil

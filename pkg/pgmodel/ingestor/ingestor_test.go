@@ -6,9 +6,11 @@ package ingestor
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
-	"github.com/timescale/promscale/pkg/prompb"
 	"testing"
+
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func TestDBIngestorIngest(t *testing.T) {
@@ -31,7 +33,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: 1, Value: 0.1},
@@ -46,7 +48,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 				},
@@ -57,7 +59,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []prompb.Sample{
@@ -66,7 +68,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -82,7 +84,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -99,7 +101,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -108,7 +110,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				},
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -124,7 +126,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -141,7 +143,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			metrics: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
-						{Name: utils.MetricNameLabelName, Value: "test"},
+						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 					},
 					Samples: []prompb.Sample{
@@ -169,10 +171,10 @@ func TestDBIngestorIngest(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			inserter := utils.MockInserter{
+			inserter := model.MockInserter{
 				InsertSeriesErr: c.insertSeriesErr,
 				InsertDataErr:   c.insertDataErr,
-				InsertedSeries:  make(map[string]utils.SeriesID),
+				InsertedSeries:  make(map[string]model.SeriesID),
 			}
 
 			i := DBIngestor{
@@ -194,10 +196,10 @@ func TestDBIngestorIngest(t *testing.T) {
 				if c.setSeriesErr != nil && err != c.setSeriesErr {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.setSeriesErr)
 				}
-				if err == utils.ErrNoMetricName {
+				if err == errors.ErrNoMetricName {
 					for _, ts := range c.metrics {
 						for _, label := range ts.Labels {
-							if label.Name == utils.MetricNameLabelName {
+							if label.Name == model.MetricNameLabelName {
 								t.Errorf("returning missing metric name when one was found for metric name: %s\n", label.Name)
 							}
 						}

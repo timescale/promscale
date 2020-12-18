@@ -8,8 +8,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"io"
 	"io/ioutil"
 	"net"
@@ -31,6 +29,8 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/version"
@@ -170,7 +170,7 @@ var (
 	preUpgradeData1 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "test"},
+				{Name: model.MetricNameLabelName, Value: "test"},
 				{Name: "test", Value: "test"},
 			},
 			Samples: []prompb.Sample{
@@ -182,7 +182,7 @@ var (
 	preUpgradeData2 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "test2"},
+				{Name: model.MetricNameLabelName, Value: "test2"},
 				{Name: "foo", Value: "bar"},
 			},
 			Samples: []prompb.Sample{
@@ -194,7 +194,7 @@ var (
 	postUpgradeData1 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "test"},
+				{Name: model.MetricNameLabelName, Value: "test"},
 				{Name: "testB", Value: "testB"},
 			},
 			Samples: []prompb.Sample{
@@ -206,7 +206,7 @@ var (
 	postUpgradeData2 = []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "test3"},
+				{Name: model.MetricNameLabelName, Value: "test3"},
 				{Name: "baz", Value: "quf"},
 			},
 			Samples: []prompb.Sample{
