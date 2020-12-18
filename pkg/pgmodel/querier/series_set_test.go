@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 //nolint:govet
 package querier
 
@@ -14,6 +18,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/pkg/labels"
+	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 )
 
 //nolint
@@ -153,7 +158,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					[]pgtype.Float8{{Float: 1.0}}),
 			}},
 			rowCount: 1,
-			err:      errInvalidData,
+			err:      pgmodelErrs.ErrInvalidRowData,
 		},
 		{
 			name:     "happy path 1",
@@ -376,7 +381,7 @@ func (m mapQuerier) LabelsForIds(ids []int64) (labels.Labels, error) {
 	for i, id := range ids {
 		kv, ok := m.mapping[id]
 		if !ok {
-			return nil, errInvalidData
+			return nil, pgmodelErrs.ErrInvalidRowData
 		}
 		lls[i] = labels.Label{Name: kv.k, Value: kv.v}
 	}

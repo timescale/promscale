@@ -21,7 +21,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -42,7 +42,7 @@ func (t *dataGenerator) generateTimeseries() []prompb.TimeSeries {
 	for metric := 0; metric < t.metricsPerGroup; metric++ {
 		for instance := 0; instance < t.labelSetsPerMetric; instance++ {
 			labelSet := []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: fmt.Sprintf("Metric_%d_%d", t.metricGroup, metric)},
+				{Name: pgmodel.MetricNameLabelName, Value: fmt.Sprintf("Metric_%d_%d", t.metricGroup, metric)},
 				{Name: "foo", Value: fmt.Sprintf("bar_%d", t.queueID)}, //queues have non-overlapping label sets
 				{Name: "instance", Value: fmt.Sprintf("%d", instance)},
 			}
@@ -139,7 +139,7 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 		values := []string{}
 		for labelIdx := range ts.Labels {
 			label := ts.Labels[labelIdx]
-			if label.Name == utils.MetricNameLabelName {
+			if label.Name == pgmodel.MetricNameLabelName {
 				name = label.Value
 
 			}

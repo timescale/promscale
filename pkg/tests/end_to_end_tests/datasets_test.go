@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/golang/snappy"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -29,7 +29,7 @@ func generateSmallTimeseries() []prompb.TimeSeries {
 	return []prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "firstMetric"},
+				{Name: model.MetricNameLabelName, Value: "firstMetric"},
 				{Name: "foo", Value: "bar"},
 				{Name: "common", Value: "tag"},
 				{Name: "empty", Value: ""},
@@ -44,7 +44,7 @@ func generateSmallTimeseries() []prompb.TimeSeries {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "secondMetric"},
+				{Name: model.MetricNameLabelName, Value: "secondMetric"},
 				{Name: "foo", Value: "baz"},
 				{Name: "common", Value: "tag"},
 			},
@@ -66,61 +66,61 @@ func generateLargeTimeseries() []prompb.TimeSeries {
 		{
 			Labels: []prompb.Label{
 				{Name: "aaa", Value: "000"},
-				{Name: utils.MetricNameLabelName, Value: "metric_1"},
+				{Name: model.MetricNameLabelName, Value: "metric_1"},
 				{Name: "foo", Value: "bar"},
 				{Name: "instance", Value: "1"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "metric_1"},
+				{Name: model.MetricNameLabelName, Value: "metric_1"},
 				{Name: "foo", Value: "bar"},
 				{Name: "instance", Value: "2"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "metric_1"},
+				{Name: model.MetricNameLabelName, Value: "metric_1"},
 				{Name: "foo", Value: "bar"},
 				{Name: "instance", Value: "3"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "metric_2"},
+				{Name: model.MetricNameLabelName, Value: "metric_2"},
 				{Name: "foo", Value: "bat"},
 				{Name: "instance", Value: "1"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "metric_2"},
+				{Name: model.MetricNameLabelName, Value: "metric_2"},
 				{Name: "foo", Value: "bat"},
 				{Name: "instance", Value: "2"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "metric_2"},
+				{Name: model.MetricNameLabelName, Value: "metric_2"},
 				{Name: "foo", Value: "bat"},
 				{Name: "instance", Value: "3"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "metric_3"},
+				{Name: model.MetricNameLabelName, Value: "metric_3"},
 				{Name: "instance", Value: "1"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "metric_3"},
+				{Name: model.MetricNameLabelName, Value: "metric_3"},
 				{Name: "instance", Value: "2"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: utils.MetricNameLabelName, Value: "METRIC_4"},
+				{Name: model.MetricNameLabelName, Value: "METRIC_4"},
 				{Name: "foo", Value: "bar"},
 			},
 		},

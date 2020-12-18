@@ -17,8 +17,8 @@ import (
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -56,7 +56,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		metrics := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
-					{Name: utils.MetricNameLabelName, Value: metricName},
+					{Name: model.MetricNameLabelName, Value: metricName},
 					{Name: "foo", Value: "bar"},
 					{Name: "common", Value: "tag"},
 					{Name: "empty", Value: ""},
@@ -84,7 +84,7 @@ func TestSQLStaleNaN(t *testing.T) {
 		matchers := []*prompb.LabelMatcher{
 			{
 				Type:  prompb.LabelMatcher_EQ,
-				Name:  utils.MetricNameLabelName,
+				Name:  model.MetricNameLabelName,
 				Value: metricName,
 			},
 		}
@@ -123,7 +123,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 			lCache := clockcache.WithMax(100)
 			dbConn := pgxconn.NewPgxConn(db)
-			labelsReader := utils.NewLabelsReader(dbConn, lCache)
+			labelsReader := model.NewLabelsReader(dbConn, lCache)
 			r := querier.NewQuerier(dbConn, mCache, labelsReader)
 			resp, err := r.Query(c.query)
 			startMs := c.query.StartTimestampMs

@@ -13,7 +13,8 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -102,7 +103,7 @@ func (p *pgxInserter) Close() {
 	close(p.toCopiers)
 }
 
-func (p *pgxInserter) InsertNewData(rows map[string][]utils.SamplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertNewData(rows map[string][]model.SamplesInfo) (uint64, error) {
 	return p.InsertData(rows)
 }
 
@@ -112,7 +113,7 @@ func (p *pgxInserter) InsertNewData(rows map[string][]utils.SamplesInfo) (uint64
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxInserter) InsertData(rows map[string][]utils.SamplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertData(rows map[string][]model.SamplesInfo) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
 	workFinished.Add(len(rows))
@@ -134,6 +135,7 @@ func (p *pgxInserter) InsertData(rows map[string][]utils.SamplesInfo) (uint64, e
 		workFinished.Wait()
 		select {
 		case err = <-errChan:
+			fmt.Println("here", err)
 		default:
 		}
 		close(errChan)
@@ -156,7 +158,7 @@ func (p *pgxInserter) InsertData(rows map[string][]utils.SamplesInfo) (uint64, e
 	return numRows, err
 }
 
-func (p *pgxInserter) insertMetricData(metric string, data []utils.SamplesInfo, finished *sync.WaitGroup, errChan chan error) {
+func (p *pgxInserter) insertMetricData(metric string, data []model.SamplesInfo, finished *sync.WaitGroup, errChan chan error) {
 	inserter := p.getMetricInserter(metric)
 	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
@@ -199,7 +201,7 @@ func (p *pgxInserter) createMetricTable(metric string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "", utils.ErrMissingTableName
+		return "", errors.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName); err != nil {
@@ -220,7 +222,7 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 		return tableName, nil
 	}
 
-	if err != cache.ErrEntryNotFound {
+	if err != errors.ErrEntryNotFound {
 		return "", err
 	}
 
@@ -237,7 +239,7 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 
 type insertDataRequest struct {
 	metric   string
-	data     []utils.SamplesInfo
+	data     []model.SamplesInfo
 	finished *sync.WaitGroup
 	errChan  chan error
 }

@@ -2,35 +2,30 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package utils
+package model
 
 import (
-	"context"
-	"fmt"
 	"math"
+	"strconv"
 	"time"
 
-	"github.com/jackc/pgtype"
 	"github.com/prometheus/common/model"
-	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
-const (
-	PromSchema       = "prom_api"
-	SeriesViewSchema = "prom_series"
-	MetricViewSchema = "prom_metric"
-	DataSchema       = "prom_data"
-	DataSeriesSchema = "prom_data_series"
-	InfoSchema       = "prom_info"
-	CatalogSchema    = "_prom_catalog"
-	ExtSchema        = "_prom_ext"
+type SamplesInfo struct {
+	Labels   *Labels
+	SeriesID SeriesID
+	Samples  []prompb.Sample
+}
 
-	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + CatalogSchema + ".get_or_create_metric_table_name($1)"
-)
+// SeriesID represents a globally unique id for the series. This should be equivalent
+// to the PostgreSQL type in the series table (currently BIGINT).
+type SeriesID int64
 
-var (
-	ErrMissingTableName = fmt.Errorf("missing metric table name")
-)
+func (s SeriesID) String() string {
+	return strconv.FormatInt(int64(s), 10)
+}
 
 // SampleInfoIterator is an iterator over a collection of sampleInfos that returns
 // data in the format expected for the data table row.
@@ -86,40 +81,4 @@ func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID) {
 // this is not nil *Conn.CopyFrom will abort the copy.
 func (t *SampleInfoIterator) Err() error {
 	return nil
-}
-
-func MetricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
-	res, err := conn.Query(
-		context.Background(),
-		getCreateMetricsTableWithNewSQL,
-		metric,
-	)
-
-	if err != nil {
-		return "", true, err
-	}
-
-	var tableName string
-	var possiblyNew bool
-	defer res.Close()
-	if !res.Next() {
-		return "", true, ErrMissingTableName
-	}
-
-	if err := res.Scan(&tableName, &possiblyNew); err != nil {
-		return "", true, err
-	}
-
-	return tableName, possiblyNew, nil
-}
-
-func TimestamptzToMs(t pgtype.Timestamptz) int64 {
-	switch t.InfinityModifier {
-	case pgtype.NegativeInfinity:
-		return math.MinInt64
-	case pgtype.Infinity:
-		return math.MaxInt64
-	default:
-		return t.Time.UnixNano() / 1e6
-	}
 }

@@ -21,8 +21,10 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/migrations"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/migrations"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -98,7 +100,7 @@ func MigrateTimescaleDBExtension(connstr string) error {
 	}
 	defer func() { _ = db.Close(context.Background()) }()
 
-	err = utils.MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString)
+	err = extension.MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString)
 	if err != nil {
 		return fmt.Errorf("could not install timescaledb: %w", err)
 	}
@@ -110,11 +112,11 @@ func MigrateTimescaleDBExtension(connstr string) error {
 func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
-	utils.ExtensionIsInstalled = false
+	extension.ExtensionIsInstalled = false
 
 	appVersion, err := semver.Make(versionInfo.Version)
 	if err != nil {
-		return fmt.Errorf("app version is not semver format, aborting migration")
+		return errors.ErrInvalidSemverFormat
 	}
 
 	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContets)
@@ -124,18 +126,18 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	utils.ExtensionIsInstalled = false
-	err = utils.MigrateExtension(db, "promscale", utils.ExtSchema, version.ExtVersionRange, version.ExtVersionRangeString)
+	extension.ExtensionIsInstalled = false
+	err = extension.MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}
 
-	if err = utils.CheckExtensionsVersion(db); err != nil {
+	if err = extension.CheckExtensionsVersion(db); err != nil {
 		return fmt.Errorf("Error encountered while migrating extension: %w", err)
 	}
 
-	metadataUpdate(db, utils.ExtensionIsInstalled, "version", versionInfo.Version)
-	metadataUpdate(db, utils.ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
+	metadataUpdate(db, extension.ExtensionIsInstalled, "version", versionInfo.Version)
+	metadataUpdate(db, extension.ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 	return nil
 }
 
@@ -147,7 +149,7 @@ func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return err
 	}
 
-	return utils.CheckVersions(db)
+	return extension.CheckVersions(db)
 }
 
 // CheckSchemaVersion checks the DB schema version without checking the extension
@@ -400,14 +402,14 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 		return "", err
 	}
 	s := buf.String()
-	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", utils.CatalogSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_EXT", utils.ExtSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_PROM", utils.PromSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_SERIES", utils.SeriesViewSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_METRIC", utils.MetricViewSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", utils.DataSeriesSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_DATA", utils.DataSchema)
-	s = strings.ReplaceAll(s, "SCHEMA_INFO", utils.InfoSchema)
+	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", schema.Catalog)
+	s = strings.ReplaceAll(s, "SCHEMA_EXT", schema.Ext)
+	s = strings.ReplaceAll(s, "SCHEMA_PROM", schema.Prom)
+	s = strings.ReplaceAll(s, "SCHEMA_SERIES", schema.SeriesView)
+	s = strings.ReplaceAll(s, "SCHEMA_METRIC", schema.MetricView)
+	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", schema.DataSeries)
+	s = strings.ReplaceAll(s, "SCHEMA_DATA", schema.Data)
+	s = strings.ReplaceAll(s, "SCHEMA_INFO", schema.Info)
 	return s, err
 }
 

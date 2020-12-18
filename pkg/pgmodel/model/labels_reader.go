@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package utils
+package model
 
 import (
 	"context"
@@ -12,13 +12,14 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
-	getLabelNamesSQL  = "SELECT distinct key from " + CatalogSchema + ".label"
-	getLabelValuesSQL = "SELECT value from " + CatalogSchema + ".label WHERE key = $1"
+	getLabelNamesSQL  = "SELECT distinct key from " + schema.Catalog + ".label"
+	getLabelValuesSQL = "SELECT value from " + schema.Catalog + ".label WHERE key = $1"
 	getLabelsSQL      = "SELECT (labels_info($1::int[])).*"
 )
 

@@ -8,10 +8,10 @@ import (
 	"net/http"
 
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/health"
 )
 
-func Health(hc pgmodel.HealthCheckerFn) http.HandlerFunc {
+func Health(hc health.HealthCheckerFn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := hc()
 		if err != nil {

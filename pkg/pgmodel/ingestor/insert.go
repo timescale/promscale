@@ -17,8 +17,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -34,9 +36,9 @@ var getBatchMutex = &sync.Mutex{}
 // rest is handled by completeMetricTableCreation().
 func initializeInserterRoutine(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
 	tableName, err = metricTableNames.Get(metricName)
-	if err == cache.ErrEntryNotFound {
+	if err == errors.ErrEntryNotFound {
 		var possiblyNew bool
-		tableName, possiblyNew, err = utils.MetricTableName(conn, metricName)
+		tableName, possiblyNew, err = pgmodel.MetricTableName(conn, metricName)
 		if err != nil {
 			return "", err
 		}
@@ -81,7 +83,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metr
 		conn:             conn,
 		input:            input,
 		pending:          pendingBuffers.Get().(*pendingBuffer),
-		seriesCache:      make(map[string]utils.SeriesID),
+		seriesCache:      make(map[string]pgmodel.SeriesID),
 		seriesCacheEpoch: -1,
 		// set to run at half our deletion interval
 		seriesCacheRefresh: time.NewTicker(30 * time.Minute),
@@ -278,14 +280,14 @@ func decompressChunks(conn pgxconn.PgxConn, pending *pendingBuffer, table string
 	}
 	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table, "min-time", minTime, "age", time.Since(minTime), "delay-job-by", delayBy)
 
-	_, rescheduleErr := conn.Exec(context.Background(), "SELECT "+utils.CatalogSchema+".delay_compression_job($1, $2)",
+	_, rescheduleErr := conn.Exec(context.Background(), "SELECT "+schema.Catalog+".delay_compression_job($1, $2)",
 		table, time.Now().Add(delayBy))
 	if rescheduleErr != nil {
 		log.Error("msg", rescheduleErr, "context", "Rescheduling compression")
 		return rescheduleErr
 	}
 
-	_, decompressErr := conn.Exec(context.Background(), "CALL "+utils.CatalogSchema+".decompress_chunks_after($1, $2);", table, minTime)
+	_, decompressErr := conn.Exec(context.Background(), "CALL "+schema.Catalog+".decompress_chunks_after($1, $2);", table, minTime)
 	if decompressErr != nil {
 		log.Error("msg", decompressErr, "context", "Decompressing chunks")
 		return decompressErr
@@ -322,7 +324,7 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 	}
 
-	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", utils.CatalogSchema, utils.CatalogSchema)
+	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", schema.Catalog, schema.Catalog)
 	batch.Queue(epochCheck, lowestEpoch)
 
 	numRowsPerInsert := make([]int, 0, len(reqs))
@@ -359,7 +361,7 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 		numRowsTotal += numRows
 		numRowsPerInsert = append(numRowsPerInsert, numRows)
-		queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{utils.DataSchema, req.table}.Sanitize())
+		queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{schema.Data, req.table}.Sanitize())
 		batch.Queue(queryString, times, vals, series)
 	}
 

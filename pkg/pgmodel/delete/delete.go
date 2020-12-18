@@ -7,22 +7,15 @@ package delete
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const queryDeleteSeries = "SELECT _prom_catalog.delete_series_from_metric($1, $2)"
-
-var (
-	ErrTimeBasedDeletion = fmt.Errorf("time based series deletion is unsupported")
-	MinTimeProm          = time.Unix(math.MinInt64/1000+62135596801, 0).UTC()
-	MaxTimeProm          = time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()
-)
 
 // PgDelete deletes the series based on matchers.
 type PgDelete struct {
@@ -30,9 +23,9 @@ type PgDelete struct {
 }
 
 // DeleteSeries deletes the series that matches the provided label_matchers.
-func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) ([]string, []utils.SeriesID, int, error) {
+func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) ([]string, []model.SeriesID, int, error) {
 	var (
-		deletedSeriesIDs []utils.SeriesID
+		deletedSeriesIDs []model.SeriesID
 		totalRowsDeleted int
 		err              error
 		metricsTouched   = make(map[string]struct{})
@@ -63,7 +56,7 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 
 // getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
 // as a matrix.
-func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]utils.SeriesID, error) {
+func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]model.SeriesID, error) {
 	_, clauses, values, err := querier.BuildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("delete series from matchers: %w", err)
@@ -80,7 +73,7 @@ func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matc
 	return metricNames, correspondingSeriesIDs, nil
 }
 
-func convertSeriesIDsToInt64s(s []utils.SeriesID) []int64 {
+func convertSeriesIDsToInt64s(s []model.SeriesID) []int64 {
 	temp := make([]int64, len(s))
 	for i := range s {
 		temp[i] = int64(s[i])

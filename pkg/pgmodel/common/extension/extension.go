@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package utils
+package extension
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -118,7 +119,7 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 		return err
 	}
 	if len(availableVersions) == 0 {
-		return fmt.Errorf("the extension is not available")
+		return errors.ErrExtUnavailable
 	}
 
 	defaultVersion, err := fetchDefaultExtensionVersions(conn, extName)

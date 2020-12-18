@@ -12,8 +12,9 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	deletePkg "github.com/timescale/promscale/pkg/pgmodel/delete"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 func Delete(conf *Config, client *pgclient.Client) http.Handler {
@@ -34,7 +35,7 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 		var (
 			totalRowsDeleted int
 			metricsTouched   []string
-			seriesDeleted    []utils.SeriesID
+			seriesDeleted    []model.SeriesID
 		)
 		if err := r.ParseForm(); err != nil {
 			respondError(w, http.StatusBadRequest, err, "bad_data")
@@ -44,21 +45,21 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, fmt.Errorf("no match[] parameter provided"), "bad_data")
 			return
 		}
-		start, err := parseTimeParam(r, "start", minTime)
+		start, err := parseTimeParam(r, "start", model.MinTime)
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return
 		}
-		end, err := parseTimeParam(r, "end", maxTime)
+		end, err := parseTimeParam(r, "end", model.MaxTime)
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return
 		}
-		if start != deletePkg.MinTimeProm || end != deletePkg.MaxTimeProm {
+		if start != model.MinTime || end != model.MaxTime {
 			log.Warn("msg", "Time based series deletion is unsupported.")
-			respondError(w, http.StatusBadRequest, deletePkg.ErrTimeBasedDeletion, "bad_data")
+			respondError(w, http.StatusBadRequest, errors.ErrTimeBasedDeletion, "bad_data")
 			return
 		}
 		for _, s := range r.Form["match[]"] {
@@ -105,7 +106,7 @@ func distinctValues(slice interface{}) []string {
 				temp[element] = struct{}{}
 			}
 		}
-	case []utils.SeriesID:
+	case []model.SeriesID:
 		for _, element := range elem {
 			str := element.String()
 			if _, ok := temp[str]; !ok {

@@ -6,7 +6,7 @@ package querier
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
@@ -17,7 +17,9 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -37,12 +39,12 @@ type Querier interface {
 }
 
 const (
-	getMetricsTableSQL = "SELECT table_name FROM " + utils.CatalogSchema + ".get_metric_table_name_if_exists($1)"
+	getMetricsTableSQL = "SELECT table_name FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1)"
 )
 
 // NewQuerier returns a new pgxQuerier that reads from PostgreSQL using PGX
 // and caches metric table names and label sets using the supplied caches.
-func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader utils.LabelsReader) Querier {
+func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader model.LabelsReader) Querier {
 	return &pgxQuerier{
 		conn:             conn,
 		labelsReader:     labelsReader,
@@ -59,7 +61,7 @@ type metricTimeRangeFilter struct {
 type pgxQuerier struct {
 	conn             pgxconn.PgxConn
 	metricTableNames cache.MetricCache
-	labelsReader     utils.LabelsReader
+	labelsReader     model.LabelsReader
 }
 
 var _ Querier = (*pgxQuerier)(nil)
@@ -115,7 +117,7 @@ func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 		case prompb.LabelMatcher_NRE:
 			mtype = labels.MatchNotRegexp
 		default:
-			return nil, errors.New("invalid matcher type")
+			return nil, fmt.Errorf("invalid matcher type")
 		}
 		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
 		if err != nil {
@@ -164,7 +166,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	tableName, err := q.getMetricTableName(metric)
 	if err != nil {
 		// If the metric table is missing, there are no results for this query.
-		if err == utils.ErrMissingTableName {
+		if err == errors.ErrMissingTableName {
 			return nil, nil, nil
 		}
 
@@ -221,7 +223,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 		tableName, err := q.getMetricTableName(metric)
 		if err != nil {
 			// If the metric table is missing, there are no results for this query.
-			if err == utils.ErrMissingTableName {
+			if err == errors.ErrMissingTableName {
 				continue
 			}
 			return nil, nil, err
@@ -269,7 +271,7 @@ func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {
 		return tableName, nil
 	}
 
-	if err != cache.ErrEntryNotFound {
+	if err != errors.ErrEntryNotFound {
 		return "", err
 	}
 
@@ -298,7 +300,7 @@ func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
 	var tableName string
 	defer res.Close()
 	if !res.Next() {
-		return "", utils.ErrMissingTableName
+		return "", errors.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName); err != nil {

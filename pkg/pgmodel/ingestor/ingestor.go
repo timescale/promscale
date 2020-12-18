@@ -9,7 +9,8 @@ import (
 
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -23,7 +24,7 @@ type Cfg struct {
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
-	db utils.Inserter
+	db model.Inserter
 }
 
 // NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
@@ -71,8 +72,8 @@ func (i *DBIngestor) CompleteMetricCreation() error {
 // returns: map[metric name][]SamplesInfo, total rows to insert
 // NOTE: req will be added to our WriteRequest pool in this function, it must
 //       not be used afterwards.
-func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]utils.SamplesInfo, int, error) {
-	dataSamples := make(map[string][]utils.SamplesInfo)
+func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]model.SamplesInfo, int, error) {
+	dataSamples := make(map[string][]model.SamplesInfo)
 	rows := 0
 
 	for i := range tts {
@@ -83,14 +84,14 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 
 		// Normalize and canonicalize t.Labels.
 		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := utils.LabelProtosToLabels(t.Labels)
+		seriesLabels, metricName, err := model.LabelProtosToLabels(t.Labels)
 		if err != nil {
 			return nil, rows, err
 		}
 		if metricName == "" {
-			return nil, rows, utils.ErrNoMetricName
+			return nil, rows, errors.ErrNoMetricName
 		}
-		sample := utils.SamplesInfo{
+		sample := model.SamplesInfo{
 			Labels:   seriesLabels,
 			SeriesID: -1, // sentinel marking the seriesId as unset
 			Samples:  t.Samples,

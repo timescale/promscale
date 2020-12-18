@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -36,13 +37,13 @@ func series(queryable promql.Queryable) http.HandlerFunc {
 			return
 		}
 
-		start, err := parseTimeParam(r, "start", minTime)
+		start, err := parseTimeParam(r, "start", model.MinTime)
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return
 		}
-		end, err := parseTimeParam(r, "end", maxTime)
+		end, err := parseTimeParam(r, "end", model.MaxTime)
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")

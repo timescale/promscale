@@ -16,7 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/tests/test_migrations"
 	"github.com/timescale/promscale/pkg/version"
@@ -138,15 +138,15 @@ func TestMigrateTwice(t *testing.T) {
 	}
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
-		if *useExtension && !utils.ExtensionIsInstalled {
+		if *useExtension && !extension.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 
 		//reset the flag to make sure it's set correctly again.
-		utils.ExtensionIsInstalled = false
+		extension.ExtensionIsInstalled = false
 
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
-		if *useExtension && !utils.ExtensionIsInstalled {
+		if *useExtension && !extension.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 

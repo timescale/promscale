@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package querier
 
 import (
@@ -9,17 +13,14 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 const (
 	// Postgres time zero is Sat Jan 01 00:00:00 2000 UTC.
 	// This is the offset of the Unix epoch in milliseconds from the Postgres zero.
 	PostgresUnixEpoch = -946684800000
-)
-
-var (
-	errInvalidData = fmt.Errorf("invalid row data")
 )
 
 // pgxSeriesSet implements storage.SeriesSet.
@@ -68,7 +69,7 @@ func (p *pgxSeriesSet) At() storage.Series {
 		return nil
 	}
 	if len(row.times.Elements) != len(row.values.Elements) {
-		p.err = errInvalidData
+		p.err = errors.ErrInvalidRowData
 		return nil
 	}
 
@@ -152,7 +153,7 @@ func (p *pgxSeriesIterator) Seek(t int64) bool {
 
 // getTs returns a Unix timestamp in milliseconds.
 func (p *pgxSeriesIterator) getTs() int64 {
-	return utils.TimestamptzToMs(p.times.Elements[p.cur])
+	return model.TimestamptzToMs(p.times.Elements[p.cur])
 }
 
 func (p *pgxSeriesIterator) getVal() float64 {

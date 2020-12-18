@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package utils
+package model
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	promLabels "github.com/prometheus/prometheus/pkg/labels"
 )
 
 func TestBigLables(t *testing.T) {
@@ -24,14 +24,14 @@ func TestBigLables(t *testing.T) {
 		builder.WriteString(builder.String())
 	}
 
-	labels := labels.Labels{
-		labels.Label{
+	l := promLabels.Labels{
+		promLabels.Label{
 			Name:  builder.String(),
 			Value: "",
 		},
 	}
 
-	_, err := LabelsFromSlice(labels)
+	_, err := LabelsFromSlice(l)
 	if err == nil {
 		t.Errorf("expected error")
 	}

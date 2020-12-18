@@ -7,7 +7,8 @@ package ingestor
 import (
 	"sync"
 
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 const (
@@ -16,10 +17,10 @@ const (
 	// increases the number of lost writes if the connector dies. This number
 	// was chosen arbitrarily.
 	flushSize                = 2000
-	getCreateMetricsTableSQL = "SELECT table_name FROM " + utils.CatalogSchema + ".get_or_create_metric_table_name($1)"
-	finalizeMetricCreation   = "CALL " + utils.CatalogSchema + ".finalize_metric_creation()"
-	getSeriesIDForLabelSQL   = "SELECT * FROM " + utils.CatalogSchema + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
-	getEpochSQL              = "SELECT current_epoch FROM " + utils.CatalogSchema + ".ids_epoch LIMIT 1"
+	getCreateMetricsTableSQL = "SELECT table_name FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
+	finalizeMetricCreation   = "CALL " + schema.Catalog + ".finalize_metric_creation()"
+	getSeriesIDForLabelSQL   = "SELECT * FROM " + schema.Catalog + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
+	getEpochSQL              = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
 	maxCopyRequestsPerTxn    = 100
 )
 
@@ -28,7 +29,7 @@ type Epoch = int64
 
 type pendingBuffer struct {
 	needsResponse []insertDataTask
-	batch         utils.SampleInfoIterator
+	batch         model.SampleInfoIterator
 	epoch         Epoch
 }
 
@@ -36,7 +37,7 @@ var pendingBuffers = sync.Pool{
 	New: func() interface{} {
 		pb := new(pendingBuffer)
 		pb.needsResponse = make([]insertDataTask, 0)
-		pb.batch = utils.NewSampleInfoIterator()
+		pb.batch = model.NewSampleInfoIterator()
 		pb.epoch = -1
 		return pb
 	},
@@ -59,9 +60,9 @@ func (p *pendingBuffer) release() {
 
 	for i := 0; i < len(p.batch.SampleInfos); i++ {
 		// nil all pointers to prevent memory leaks
-		p.batch.SampleInfos[i] = utils.SamplesInfo{}
+		p.batch.SampleInfos[i] = model.SamplesInfo{}
 	}
-	p.batch = utils.SampleInfoIterator{SampleInfos: p.batch.SampleInfos[:0]}
+	p.batch = model.SampleInfoIterator{SampleInfos: p.batch.SampleInfos[:0]}
 	p.batch.ResetPosition()
 	p.epoch = -1
 	pendingBuffers.Put(p)

@@ -21,15 +21,13 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
 var (
-	minTime = time.Unix(math.MinInt64/1000+62135596801, 0).UTC()
-	maxTime = time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()
-
-	minTimeFormatted = minTime.Format(time.RFC3339Nano)
-	maxTimeFormatted = maxTime.Format(time.RFC3339Nano)
+	minTimeFormatted = pgmodel.MinTime.Format(time.RFC3339Nano)
+	maxTimeFormatted = pgmodel.MaxTime.Format(time.RFC3339Nano)
 
 	usernameAndTokenFlagsSetError = fmt.Errorf("at most one of basic-auth-username, bearer-token & bearer-token-file must be set")
 	noUsernameFlagSetError        = fmt.Errorf("invalid auth setup, cannot enable authorization with password only (username required)")
@@ -261,9 +259,9 @@ func parseTime(s string) (time.Time, error) {
 	// Upstream issue: https://github.com/golang/go/issues/20555
 	switch s {
 	case minTimeFormatted:
-		return minTime, nil
+		return pgmodel.MinTime, nil
 	case maxTimeFormatted:
-		return maxTime, nil
+		return pgmodel.MaxTime, nil
 	}
 	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
 }
