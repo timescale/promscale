@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
@@ -12,7 +16,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	igstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -66,12 +70,12 @@ func TestSQLStaleNaN(t *testing.T) {
 			},
 		}
 
-		ingestor, err := igstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), igstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
 
 		if err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)

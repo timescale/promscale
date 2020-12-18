@@ -1,15 +1,19 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package api
 
 import (
 	"fmt"
-	delete2 "github.com/timescale/promscale/pkg/pgmodel/delete"
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"net/http"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	deletePkg "github.com/timescale/promscale/pkg/pgmodel/delete"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 )
 
 func Delete(conf *Config, client *pgclient.Client) http.Handler {
@@ -52,9 +56,9 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return
 		}
-		if start != delete2.MinTimeProm || end != delete2.MaxTimeProm {
+		if start != deletePkg.MinTimeProm || end != deletePkg.MaxTimeProm {
 			log.Warn("msg", "Time based series deletion is unsupported.")
-			respondError(w, http.StatusBadRequest, delete2.ErrTimeBasedDeletion, "bad_data")
+			respondError(w, http.StatusBadRequest, deletePkg.ErrTimeBasedDeletion, "bad_data")
 			return
 		}
 		for _, s := range r.Form["match[]"] {
@@ -66,7 +70,7 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 			if client == nil {
 				continue
 			}
-			pgDelete := delete2.PgDelete{Conn: client.Connection}
+			pgDelete := deletePkg.PgDelete{Conn: client.Connection}
 			touchedMetrics, deletedSeriesIDs, rowsDeleted, err := pgDelete.DeleteSeries(matchers, start, end)
 			if err != nil {
 				respondErrorWithMessage(w, http.StatusInternalServerError, err, "deleting_series",

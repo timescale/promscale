@@ -1,11 +1,15 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
-	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"io/ioutil"
 	"os"
 
 	"github.com/golang/snappy"
+	"github.com/timescale/promscale/pkg/pgmodel/utils"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -116,7 +120,7 @@ func generateLargeTimeseries() []prompb.TimeSeries {
 		},
 		{
 			Labels: []prompb.Label{
-				{Name: pgmodel.MetricNameLabelName, Value: "METRIC_4"},
+				{Name: utils.MetricNameLabelName, Value: "METRIC_4"},
 				{Name: "foo", Value: "bar"},
 			},
 		},

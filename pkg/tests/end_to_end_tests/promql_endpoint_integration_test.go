@@ -1,9 +1,12 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
 	"encoding/json"
 	"errors"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -17,6 +20,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 

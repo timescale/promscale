@@ -1,8 +1,11 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package api
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -11,6 +14,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
