@@ -289,5 +289,8 @@ func getNewExtensionVersion(extName string,
 
 // trimLeadingZeros removes the leading zeros passed in the version number.
 func trimLeadingZeros(s string) string {
-	return strings.TrimLeft(s, "0")
+	if s = strings.TrimLeft(s, "0"); s == "" {
+		return "0"
+	}
+	return s
 }
