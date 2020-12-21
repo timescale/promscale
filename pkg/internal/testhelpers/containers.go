@@ -623,7 +623,12 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 
 var ConnectorPort = nat.Port("9201/tcp")
 
-func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, dbname string) (testcontainers.Container, error) {
+func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, cmds []string, dbname string) (testcontainers.Container, error) {
+	dbUser := promUser
+	if dbname == "postgres" {
+		dbUser = "postgres"
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image:        image,
 		ExposedPorts: []string{string(ConnectorPort)},
@@ -632,13 +637,15 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 		Cmd: []string{
 			"-db-host", "172.17.0.1", // IP refering to the docker's host network
 			"-db-port", pgPort.Port(),
-			"-db-user", promUser,
+			"-db-user", dbUser,
 			"-db-password", "password",
 			"-db-name", dbname,
 			"-db-ssl-mode", "prefer",
 			"-web-listen-address", "0.0.0.0:" + ConnectorPort.Port(),
 		},
 	}
+
+	req.Cmd = append(req.Cmd, cmds...)
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,

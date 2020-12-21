@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"reflect"
 	"regexp"
 	"testing"
@@ -306,7 +307,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		db.Close()
 
 		connectorImage := "timescale/promscale:" + prevVersion.String()
-		connector, err := testhelpers.StartConnectorWithImage(context.Background(), connectorImage, *printLogs, *testDatabase)
+		connector, err := testhelpers.StartConnectorWithImage(context.Background(), connectorImage, *printLogs, []string{}, *testDatabase)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -402,7 +403,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 }
 
 func migrateToVersion(t testing.TB, connectURL string, version string, commitHash string) {
-	err := pgmodel.MigrateTimescaleDBExtension(connectURL)
+	err := pgmodel.InstallUpgradeTimescaleDBExtensions(connectURL, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +413,7 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 		t.Fatal(err)
 	}
 	defer func() { _ = migratePool.Close(context.Background()) }()
-	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash})
+	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -634,4 +635,241 @@ func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
 		copy(out[i].Samples, metrics[i].Samples)
 	}
 	return out
+}
+
+func TestUpgradeExtensions(t *testing.T) {
+	buildPromscaleImageFromRepo(t)
+	testPrereleaseExtensionUpgrade(t)
+	testExtMigrationFailure(t)
+	os.Exit(0)
+}
+
+func testPrereleaseExtensionUpgrade(t *testing.T) {
+	var err error
+	var version string
+	ctx := context.Background()
+
+	db, dbContainer, closer := startDB(t, ctx)
+	defer closer.Close()
+
+	defer testhelpers.StopContainer(ctx, dbContainer, false)
+
+	// as the default installed version ext is rc4 in the test image downgrade it to rc2
+	// to test upgrade flow.
+	extVersion := "2.0.0-rc2"
+	dropAndCreateExt(t, ctx, extVersion)
+
+	db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if version != extVersion {
+		t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
+	}
+
+	// start promscale & test upgrade-prerelease-extensions as false
+	// Now the ext is rc2 it should be rc2 after promscale startup too
+	func() {
+		connectorImage := "timescale/promscale:latest"
+		databaseName := "postgres"
+		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, []string{}, databaseName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if version != extVersion {
+			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
+		}
+		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions false")
+	}()
+
+	db.Close(ctx)
+
+	// start a new connector and test --upgrade-prerelease-extensions as true
+	// the default installed ext version is rc2 now it should upgrade it to rc4
+	func() {
+		connectorImage := "timescale/promscale:latest"
+		databaseName := "postgres"
+		flags := []string{"-upgrade-prerelease-extensions", "true"}
+		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, flags, databaseName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+
+		var version string
+		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.Close(ctx)
+		if version != "2.0.0-rc4" {
+			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension true")
+		}
+		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions true")
+	}()
+}
+
+func testExtMigrationFailure(t *testing.T) {
+	var err error
+	var version string
+	ctx := context.Background()
+
+	db, dbContainer, closer := startDB(t, ctx)
+	defer testhelpers.StopContainer(ctx, dbContainer, false)
+
+	defer closer.Close()
+
+	// start promscale & test upgrade-extensions as false
+	func() {
+		connectorImage := "timescale/promscale:latest"
+		databaseName := "postgres"
+		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, []string{}, databaseName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		db.Close(ctx)
+		if version != "2.0.0-rc4" {
+			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
+		}
+		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions false.")
+	}()
+
+	// As the timescaleDB installed version is rc4, lets install the 1.7.3 ext version
+	extVersion := "1.7.3"
+	dropAndCreateExt(t, ctx, extVersion)
+
+	db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db.Close(ctx)
+	if version != extVersion {
+		t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
+	}
+
+	// start a new connector and test --upgrade-extensions as true which is by default set in flags
+	// the migration should fail (upgrade path in tsdb isn't available) but promscale should be running.
+	func() {
+		connectorImage := "timescale/promscale:latest"
+		databaseName := "postgres"
+		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, []string{}, databaseName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+
+		var version string
+		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.Close(ctx)
+
+		if version != "1.7.3" {
+			t.Fatal("failed to verify timescaleDB extension version")
+		}
+
+		// Now from the check we are know that migration failed from 1.7.3 to 1.7.4
+		// as the upgrade script doesn't exist within timescaleDB image.
+		// Now check promscale is still running on migration failure.
+		exitCode, err := connector.Exec(context.Background(), []string{"echo", "hello"})
+		if exitCode != 0 || err != nil {
+			t.Fatal("promscale failed to run extension migration failure", err)
+		}
+		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions true where migration fails and promscale keeps running.")
+	}()
+
+}
+
+func buildPromscaleImageFromRepo(t *testing.T) {
+	t.Logf("building promscle image from the codebase")
+	cmd := exec.Command("docker", "build", "-t", "timescale/promscale:latest", "./../../../", "--file", "./../../../build/Dockerfile")
+	err := cmd.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("successfully built promscale:latest image from codebase.")
+}
+
+func startDB(t *testing.T, ctx context.Context) (*pgx.Conn, testcontainers.Container, io.Closer) {
+	tmpDir, err := testhelpers.TempDir("update_test_out")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dataDir, err := testhelpers.TempDir("update_test_data")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, extensionState)
+	if err != nil {
+		t.Fatal("Error setting up container", err)
+	}
+
+	// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
+	db, err := pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return db, dbContainer, closer
+}
+
+func dropAndCreateExt(t *testing.T, ctx context.Context, extVersion string) {
+	// Drop existing installed extension & install a lower extension version to test upgrade
+	db, err := pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = db.Exec(ctx, `DROP EXTENSION timescaledb`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close(ctx)
+
+	db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = db.Exec(ctx, fmt.Sprintf(`CREATE EXTENSION timescaledb version '%s'`, extVersion))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close(ctx)
 }
