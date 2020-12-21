@@ -30,20 +30,22 @@ import (
 )
 
 type Config struct {
-	ListenAddr         string
-	PgmodelCfg         pgclient.Config
-	LogCfg             log.Config
-	APICfg             api.Config
-	ConfigFile         string
-	TLSCertFile        string
-	TLSKeyFile         string
-	HaGroupLockID      int64
-	PrometheusTimeout  time.Duration
-	ElectionInterval   time.Duration
-	Migrate            bool
-	StopAfterMigrate   bool
-	UseVersionLease    bool
-	InstallTimescaleDB bool
+	ListenAddr                  string
+	PgmodelCfg                  pgclient.Config
+	LogCfg                      log.Config
+	APICfg                      api.Config
+	ConfigFile                  string
+	TLSCertFile                 string
+	TLSKeyFile                  string
+	HaGroupLockID               int64
+	PrometheusTimeout           time.Duration
+	ElectionInterval            time.Duration
+	Migrate                     bool
+	StopAfterMigrate            bool
+	UseVersionLease             bool
+	InstallExtensions           bool
+	UpgradeExtensions           bool
+	UpgradePrereleaseExtensions bool
 }
 
 const (
@@ -77,7 +79,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.DurationVar(&cfg.ElectionInterval, "leader-election-scheduled-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
 	fs.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only].")
 	fs.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
-	fs.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update TimescaleDB extension.")
+	fs.BoolVar(&cfg.InstallExtensions, "install-extensions", true, "Install TimescaleDB, Promscale extension.")
+	fs.BoolVar(&cfg.UpgradeExtensions, "upgrade-extensions", true, "Upgrades TimescaleDB, Promscale extensions.")
+	fs.BoolVar(&cfg.UpgradePrereleaseExtensions, "upgrade-prerelease-extensions", false, "Upgrades to pre-release TimescaleDB, Promscale extensions.")
 	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
 	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
 
@@ -138,7 +142,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		cfg.Migrate = false
 		cfg.StopAfterMigrate = false
 		cfg.UseVersionLease = false
-		cfg.InstallTimescaleDB = false
+		cfg.InstallExtensions = false
 	}
 
 	cfg.PgmodelCfg.UsesHA = cfg.HaGroupLockID != 0
@@ -200,8 +204,9 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	if err != nil {
 		return nil, err
 	}
-	if cfg.InstallTimescaleDB {
-		err := pgmodel.MigrateTimescaleDBExtension(connStr)
+
+	if cfg.InstallExtensions {
+		err := pgmodel.InstallUpgradeTimescaleDBExtensions(connStr, cfg.UpgradeExtensions, cfg.UpgradePrereleaseExtensions)
 		if err != nil {
 			return nil, err
 		}
@@ -232,7 +237,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		if !cfg.UseVersionLease {
 			lease = nil
 		}
-		err = migrate(conn, appVersion, lease)
+		err = migrate(conn, appVersion, lease, cfg.UpgradeExtensions, cfg.UpgradePrereleaseExtensions)
 		migration_success = err != nil
 		if err != nil && err != migrationLockError {
 			return nil, fmt.Errorf("migration error: %w", err)
@@ -341,7 +346,7 @@ func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
 	return &scheduledElector.Elector, nil
 }
 
-func migrate(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock) error {
+func migrate(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock, upgradeExt, upgradePre bool) error {
 	// At startup migrators attempt to grab the schema-version lock. If this
 	// fails that means some other connector is running. All is not lost: some
 	// other connector may have migrated the DB to the correct version. We warn,
@@ -366,7 +371,7 @@ func migrate(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgA
 		log.Warn("msg", "skipping migration lock")
 	}
 
-	err := pgmodel.Migrate(conn, appVersion)
+	err := pgmodel.Migrate(conn, appVersion, upgradeExt, upgradePre)
 
 	if err != nil {
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)

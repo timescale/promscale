@@ -139,7 +139,7 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 			// Thus, you have to use the superuser to install TimescaleDB
 			migrateURL = superConnectURL
 		}
-		err := pgmodel.MigrateTimescaleDBExtension(migrateURL)
+		err := pgmodel.InstallUpgradeTimescaleDBExtensions(migrateURL, true, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -155,7 +155,7 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		t.Fatal(err)
 	}
 	defer conn.Release()
-	err = Migrate(conn.Conn(), pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"})
+	err = Migrate(conn.Conn(), pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"}, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

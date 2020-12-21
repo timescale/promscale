@@ -93,7 +93,7 @@ func TestParseFlags(t *testing.T) {
 				c.Migrate = false
 				c.StopAfterMigrate = false
 				c.UseVersionLease = false
-				c.InstallTimescaleDB = false
+				c.InstallExtensions = false
 				return c
 			},
 		},
