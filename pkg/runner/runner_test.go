@@ -3,6 +3,7 @@ package runner
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -26,7 +27,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestParseFlags(t *testing.T) {
-	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	defaultConfig, err := ParseFlags(&Config{}, []string{})
 
 	if err != nil {
@@ -43,6 +43,16 @@ func TestParseFlags(t *testing.T) {
 			name:   "Default config",
 			args:   []string{},
 			result: func(c Config) Config { return c },
+		},
+		{
+			name:        "Invalid flag error",
+			args:        []string{"-foo", "bar"},
+			shouldError: true,
+		},
+		{
+			name:        "Invalid config file",
+			args:        []string{"-config", "runner_test.go"},
+			shouldError: true,
 		},
 		{
 			name:        "CORS Origin regex error",
@@ -107,11 +117,31 @@ func TestParseFlags(t *testing.T) {
 			},
 			shouldError: true,
 		},
+		{
+			name: "invalid TLS setup, missing key file",
+			args: []string{
+				"-tls-cert-file", "foo",
+			},
+			shouldError: true,
+		},
+		{
+			name: "invalid TLS setup, missing cert file",
+			args: []string{
+				"-tls-key-file", "foo",
+			},
+			shouldError: true,
+		},
+		{
+			name: "invalid auth setup",
+			args: []string{
+				"-auth-username", "foo",
+			},
+			shouldError: true,
+		},
 	}
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 			config, err := ParseFlags(&Config{}, c.args)
 
 			if c.shouldError {
@@ -130,6 +160,142 @@ func TestParseFlags(t *testing.T) {
 		})
 	}
 
+}
+
+func TestParseFlagsConfigPrecedence(t *testing.T) {
+	defaultConfig, err := ParseFlags(&Config{}, []string{})
+
+	if err != nil {
+		t.Fatalf("error occured on default config with no arguments: %s", err)
+	}
+
+	testCases := []struct {
+		name               string
+		args               []string
+		env                map[string]string
+		configFileContents string
+		result             func(Config) Config
+	}{
+		{
+			name:   "Default config",
+			result: func(c Config) Config { return c },
+		},
+		{
+			name:               "Config file only",
+			configFileContents: "web-listen-address: localhost:9201",
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				return c
+			},
+		},
+		{
+			name: "Env variable only, TS_PROM prefix",
+			env: map[string]string{
+				"TS_PROM_WEB_LISTEN_ADDRESS": "localhost:9201",
+			},
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				return c
+			},
+		},
+		{
+			name: "Env variable only, PROMSCALE prefix",
+			env: map[string]string{
+				"PROMSCALE_WEB_LISTEN_ADDRESS": "localhost:9201",
+			},
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				return c
+			},
+		},
+		{
+			// In this case, we expect that PROMSCALE prefix gets precedence.
+			name: "Env variable only, both prefixes",
+			env: map[string]string{
+				"PROMSCALE_WEB_LISTEN_ADDRESS": "localhost:9201",
+				"TS_PROM_WEB_LISTEN_ADDRESS":   "127.0.0.1:9201",
+			},
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				return c
+			},
+		},
+		{
+			name: "Env variable takes precedence over config file setting",
+			env: map[string]string{
+				"PROMSCALE_WEB_LISTEN_ADDRESS": "localhost:9201",
+			},
+			configFileContents: "web-listen-address: 127.0.0.1:9201",
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				return c
+			},
+		},
+		{
+			name: "CLI arg takes precedence over env variable",
+			args: []string{
+				"-web-listen-address", "localhost:9201",
+			},
+			env: map[string]string{
+				"PROMSCALE_WEB_LISTEN_ADDRESS": "127.0.0.1:9201",
+			},
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				return c
+			},
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			// Clearing environment variables so they don't interfere with the test.
+			os.Clearenv()
+			for name, value := range c.env {
+				if err := os.Setenv(name, value); err != nil {
+					t.Fatalf("unexpected error when setting env variable: name %s, value %s, error %s", name, value, err)
+				}
+			}
+
+			var configFilePath string
+			if c.configFileContents != "" {
+				f, err := ioutil.TempFile("", "promscale.yml")
+				if err != nil {
+					t.Fatalf("unexpected error when creating config file: %s", err)
+				}
+
+				configFilePath = f.Name()
+
+				defer os.Remove(f.Name())
+
+				if _, err := f.Write([]byte(c.configFileContents)); err != nil {
+					t.Fatalf("unexpected error while writing configuration file: %s", err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatalf("unexpected error while closing configuration file: %s", err)
+				}
+
+				// Add config file path to args.
+				c.args = append(c.args, "-config="+f.Name())
+			}
+
+			config, err := ParseFlags(&Config{}, c.args)
+			if err != nil {
+				t.Fatalf("unexpected error, all test cases should pass without error: %s", err)
+			}
+
+			expected := c.result(*defaultConfig)
+
+			// Need to account for change in config file path, which
+			// would otherwise be set to default `config.yml`.
+			if configFilePath != "" {
+				expected.ConfigFile = configFilePath
+			}
+
+			if !reflect.DeepEqual(*config, expected) {
+				t.Fatalf("Unexpected config returned\nwanted:\n%+v\ngot:\n%+v\n", expected, *config)
+			}
+		})
+	}
 }
 
 func TestInitElector(t *testing.T) {

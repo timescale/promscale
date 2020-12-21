@@ -87,18 +87,18 @@ type Config struct {
 	Auth *Auth
 }
 
-func ParseFlags(cfg *Config) *Config {
+func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	cfg.Auth = &Auth{}
 
-	flag.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
-	flag.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
-	flag.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
+	fs.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
+	fs.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
+	fs.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
-	flag.StringVar(&cfg.Auth.BasicAuthUsername, "auth-username", "", "Authentication username used for web endpoint authentication. Disabled by default.")
-	flag.StringVar(&cfg.Auth.BasicAuthPassword, "auth-password", "", "Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token flags.")
-	flag.StringVar(&cfg.Auth.BasicAuthPasswordFile, "auth-password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
-	flag.StringVar(&cfg.Auth.BearerToken, "bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
-	flag.StringVar(&cfg.Auth.BearerTokenFile, "bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
+	fs.StringVar(&cfg.Auth.BasicAuthUsername, "auth-username", "", "Authentication username used for web endpoint authentication. Disabled by default.")
+	fs.StringVar(&cfg.Auth.BasicAuthPassword, "auth-password", "", "Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token flags.")
+	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "auth-password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
+	fs.StringVar(&cfg.Auth.BearerToken, "bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
+	fs.StringVar(&cfg.Auth.BearerTokenFile, "bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
 	return cfg
 }
 

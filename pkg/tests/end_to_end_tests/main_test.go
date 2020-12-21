@@ -37,6 +37,7 @@ var (
 
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
+	promContainer          testcontainers.Container
 )
 
 func TestMain(m *testing.M) {
@@ -92,7 +93,7 @@ func TestMain(m *testing.M) {
 				os.Exit(1)
 			}
 
-			promCont, err := testhelpers.StartPromContainer(storagePath, ctx)
+			promContainer, err = testhelpers.StartPromContainer(storagePath, ctx)
 			if err != nil {
 				fmt.Println("Error setting up container", err)
 				os.Exit(1)
@@ -105,7 +106,7 @@ func TestMain(m *testing.M) {
 				if closer != nil {
 					_ = closer.Close()
 				}
-				err = promCont.Terminate(ctx)
+				err = promContainer.Terminate(ctx)
 				if err != nil {
 					panic(err)
 				}

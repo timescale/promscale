@@ -29,11 +29,15 @@ remote_read:
 
 ## ⚙️ Configuration
 
-The docker image is configured either through CLI flags or environment variables.
-environment variables are prefixed with `PROMSCALE`.
+The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file. 
+Precedence goes like this: CLI flag value, if not set, environment variable value, if not set, configuration file value, if not set, default value.
+
+All environment variables are prefixed with `PROMSCALE`.
+
+Configuration file is a YAML file where the keys are CLI flag names and values are their respective flag values.
 
 The list of available cli flags is available in [here](/docs/cli.md) in
-our docs or by running with the `-h` flag (e.g. `docker run timescale/promscale -h`).
+our docs or by running with the `-h` flag (e.g. `promscale -h`)
 
 ## 🛠 Building from source
 

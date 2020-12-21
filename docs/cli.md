@@ -6,6 +6,7 @@ You can also find information on flags with `promscale_<version> -help`
 ## General flags
 | Flag | Type | Default | Description |
 |------|:-----:|:-------:|:-----------:|
+| config | string | config.yml | YAML configuration file path for Promscale. |
 | install-timescaledb | boolean | true | Install or update TimescaleDB extension. |
 | leader-election-pg-advisory-lock-id | integer | 0 (disabled) | Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election. |
 | leader-election-pg-advisory-lock-prometheus-timeout | slack/duration | -1 | Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not send any data within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips. |
@@ -18,12 +19,12 @@ You can also find information on flags with `promscale_<version> -help`
 | read-only | boolean | false | Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica. |
 | use-schema-version-lease | boolean | true | Use schema version lease to prevent race conditions during migration. |
 | tput-report | integer | 0 (disabled) | Interval in seconds at which throughput should be reported. |
+| tls-cert-file | string | "" (disabled) | TLS certificate file path for web server. To disable TLS, leave this field as blank. |
+| tls-key-file | string | "" (disabled) | TLS key file path for web server. To disable TLS, leave this field as blank. |
 | web-cors-origin | string | `.*` |  Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com' |
 | web-enable-admin-api | boolean | false | Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series. |
 | web-listen-address | string | `:9201` | Address to listen on for web endpoints. |
 | web-telemetry-path | string | `/metrics` | Web endpoint for exposing Promscale's Prometheus metrics. |
-| tls-cert-file | string | "" (disabled) | TLS certificate file path for web server. To disable TLS, leave this field as blank. |
-| tls-key-file | string | "" (disabled) | TLS key file path for web server. To disable TLS, leave this field as blank. |
 
 ## Auth flags
 
