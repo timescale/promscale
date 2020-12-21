@@ -10,6 +10,8 @@ metadata:
 spec:
   schedule: {{ .Values.maintenance.schedule }}
   startingDeadlineSeconds: {{ .Values.maintenance.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.maintenance.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.maintenance.failedJobsHistoryLimit }}
   jobTemplate:
     spec:
       template:

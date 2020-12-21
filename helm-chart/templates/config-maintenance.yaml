@@ -10,8 +10,7 @@ metadata:
 data:
   execute_maintenance.sh: |-
     #!/bin/sh
-    psql  \
-    {{ if .Values.connection.uri.secretTemplate -}} $PROMSCALE_DB_URI \{{- end }}
+    psql $PROMSCALE_DB_URI \
     -e -q -c "CALL prom_api.execute_maintenance();"
     if [ $? -eq 0 ]
     then
@@ -19,4 +18,5 @@ data:
       echo "Retention policies executed."
     else
       echo "Maintenance job failed!"
+      exit 1
     fi

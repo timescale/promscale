@@ -82,7 +82,17 @@ service:
 # the retention period
 maintenance:
   schedule: "0,30 * * * *"
+  # If startingDeadlineSeconds field is set (not null), the CronJob controller counts how
+  # many missed jobs occurred from the value of startingDeadlineSeconds until now.
+  # For example, if it is set to 200, it counts how many missed schedules occurred in the
+  # last 200 seconds. In that case, if there were more than 100 missed schedules in the
+  # last 200 seconds, the cron job is no longer scheduled.
+  # https://kubernetes.io/docs/tasks/job/automated-tasks-with-cron-jobs/#starting-deadline
   startingDeadlineSeconds: 200
+  # The number of successful maintenance pods to retain in-cluster
+  successfulJobsHistoryLimit: 3
+  # The number of failed maintenance pods to retain in-cluster
+  failedJobsHistoryLimit: 1
 
 # set your own limits
 resources: {}
