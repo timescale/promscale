@@ -5,7 +5,11 @@
 package util
 
 import (
+	"flag"
+	"fmt"
+	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -72,4 +76,44 @@ func (dt *ThroughputCalc) Start() {
 func MaskPassword(s string) string {
 	s = maskPasswordRegex1.ReplaceAllString(s, maskPasswordReplaceString1)
 	return maskPasswordRegex2.ReplaceAllString(s, maskPasswordReplaceString2)
+}
+
+// ParseEnv takes a prefix string p and *flag.FlagSet. Each flag
+// in the FlagSet is exposed as an upper case environment variable
+// prefixed with p. Any flag that was not explicitly set by a user
+// is updated to the environment variable, if set.
+//
+// Note: when run with multiple times with different prefixes on the
+// same FlagSet, precedence will get values set with prefix which is
+// parsed first.
+func ParseEnv(p string, fs *flag.FlagSet) {
+	// Build a map of explicitly set flags.
+	set := make(map[string]struct{})
+	fs.Visit(func(f *flag.Flag) {
+		set[f.Name] = struct{}{}
+	})
+
+	fs.VisitAll(func(f *flag.Flag) {
+		// Create an env var name
+		// based on the supplied prefix.
+		envVar := fmt.Sprintf("%s_%s", p, strings.ToUpper(f.Name))
+		envVar = strings.Replace(envVar, "-", "_", -1)
+
+		// Update the Flag.Value if the
+		// env var is non "".
+		if val := os.Getenv(envVar); val != "" {
+			// Update the value if it hasn't
+			// already been set.
+			if _, defined := set[f.Name]; !defined {
+				// Ignore error since only error that can occur is
+				// when using a non-set flag name which cannot happen
+				// in this situation.
+				_ = fs.Set(f.Name, val)
+			}
+		}
+
+		// Append the env var to the
+		// Flag.Usage field.
+		f.Usage = fmt.Sprintf("%s [%s]", f.Usage, envVar)
+	})
 }

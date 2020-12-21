@@ -33,9 +33,9 @@ type Config struct {
 }
 
 // ParseFlags parses the configuration flags for logging.
-func ParseFlags(cfg *Config) *Config {
-	flag.StringVar(&cfg.Level, "log-level", "debug", "Log level to use from [ 'error', 'warn', 'info', 'debug' ].")
-	flag.StringVar(&cfg.Format, "log-format", "logfmt", "The log format to use [ 'logfmt', 'json' ].")
+func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
+	fs.StringVar(&cfg.Level, "log-level", "debug", "Log level to use from [ 'error', 'warn', 'info', 'debug' ].")
+	fs.StringVar(&cfg.Format, "log-format", "logfmt", "The log format to use [ 'logfmt', 'json' ].")
 	return cfg
 }
 

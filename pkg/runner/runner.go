@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -18,7 +19,8 @@ import (
 
 	pgx "github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/jamiealquiza/envy"
+	"github.com/peterbourgon/ff/v3"
+	"github.com/peterbourgon/ff/v3/ffyaml"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -32,6 +34,7 @@ type Config struct {
 	PgmodelCfg         pgclient.Config
 	LogCfg             log.Config
 	APICfg             api.Config
+	ConfigFile         string
 	TLSCertFile        string
 	TLSKeyFile         string
 	HaGroupLockID      int64
@@ -56,31 +59,42 @@ var (
 )
 
 func ParseFlags(cfg *Config, args []string) (*Config, error) {
-	pgclient.ParseFlags(&cfg.PgmodelCfg)
-	log.ParseFlags(&cfg.LogCfg)
-	api.ParseFlags(&cfg.APICfg)
+	var (
+		fs             = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+		corsOriginFlag string
+		migrateOption  string
+	)
 
-	flag.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
+	pgclient.ParseFlags(fs, &cfg.PgmodelCfg)
+	log.ParseFlags(fs, &cfg.LogCfg)
+	api.ParseFlags(fs, &cfg.APICfg)
 
-	var corsOriginFlag string
-	var migrateOption string
-	flag.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	flag.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
-	flag.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not respond within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips.")
-	flag.DurationVar(&cfg.ElectionInterval, "leader-election-scheduled-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
-	flag.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only].")
-	flag.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
-	flag.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update TimescaleDB extension.")
-	flag.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
-	flag.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
+	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
+	fs.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
+	fs.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
+	fs.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
+	fs.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not respond within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips.")
+	fs.DurationVar(&cfg.ElectionInterval, "leader-election-scheduled-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
+	fs.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only].")
+	fs.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
+	fs.BoolVar(&cfg.InstallTimescaleDB, "install-timescaledb", true, "Install or update TimescaleDB extension.")
+	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
+	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
 
+	util.ParseEnv("PROMSCALE", fs)
 	// Deprecated: TS_PROM is the old prefix which is deprecated and in here
-	// for legacy compatibility. Will be removed in the future.
-	envy.Parse("TS_PROM")
-	envy.Parse("PROMSCALE")
+	// for legacy compatibility. Will be removed in the future. PROMSCALE prefix
+	// takes precedence and will be used if the same variable with both prefixes
+	// exist.
+	util.ParseEnv("TS_PROM", fs)
 
-	// Ignore errors; CommandLine is set for ExitOnError.
-	_ = flag.CommandLine.Parse(args)
+	if err := ff.Parse(fs, args,
+		ff.WithConfigFileFlag("config"),
+		ff.WithConfigFileParser(ffyaml.Parser),
+		ff.WithAllowMissingConfigFile(true),
+	); err != nil {
+		return nil, fmt.Errorf("configuration error: %w", err)
+	}
 
 	// Checking if TLS files are not both set or both empty.
 	if (cfg.TLSCertFile != "") != (cfg.TLSKeyFile != "") {
@@ -89,8 +103,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
 	if err != nil {
-		err = fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
-		return nil, err
+		return nil, fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
 	}
 	cfg.APICfg.AllowedOrigin = corsOriginRegex
 
@@ -112,7 +125,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	if cfg.APICfg.ReadOnly {
 		flagset := make(map[string]bool)
-		flag.Visit(func(f *flag.Flag) { flagset[f.Name] = true })
+		fs.Visit(func(f *flag.Flag) { flagset[f.Name] = true })
 		if flagset["migrate"] || flagset["use-schema-version-lease"] {
 			return nil, fmt.Errorf("Migration flags not supported in read-only mode")
 		}
