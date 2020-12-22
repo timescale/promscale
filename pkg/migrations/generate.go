@@ -13,7 +13,7 @@ import (
 	"net/http"
 
 	"github.com/shurcooL/vfsgen"
-	"github.com/timescale/promscale/pkg/pgmodel/migrations"
+	"github.com/timescale/promscale/pkg/migrations"
 )
 
 var Assets http.FileSystem = migrations.NewModTimeFs(http.Dir("sql"))
