@@ -21,7 +21,7 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/migrations"
+	"github.com/timescale/promscale/pkg/migrations"
 	"github.com/timescale/promscale/pkg/version"
 )
 
