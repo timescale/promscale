@@ -22,6 +22,14 @@ jobs:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
 
+    - name: Use Go module caching
+      uses: actions/cache@v2
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
     - name: Build extension image
       run: git clone https://github.com/timescale/promscale_extension && cd promscale_extension && make -f DockerMakefile docker-image
 
@@ -45,25 +53,87 @@ jobs:
     - name: Build
       run: go build -v ./...
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Use Go module caching
+      uses: actions/cache@v2
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+        if [ -f Gopkg.toml ]; then
+            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+            dep ensure
+        fi
+
     - name: Test
       run: go test -v -race ./...
 
-    - name: Test W/O Promscale Extension
-      run: go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false
-
-    - name: Test W/O TimescaleDB Extension
-      run: go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false -use-timescaledb=false
-
-    - name: Test on TimescaleDB 2.0
-      run: go test -v ./pkg/tests/end_to_end_tests/ -use-timescale2
-
-    - name: Test on TimescaleDB 2.0 W/O Promscale Extension
-      run: go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false -use-timescale2
-
-    - name: Test on TimescaleDB 2.0 multinode
-      run: go test -v ./pkg/tests/end_to_end_tests/ -use-multinode
 
     - name: Generated
       run: |
         go generate ./...
         git diff --exit-code
+
+  test-end-to-end:
+    name: Test end-to-end extension combinations
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-setups:
+        - {name: "W/O Promscale Extension", ext: false, tsdb: true,  tsdb2: false, multi: false}
+        - {name: "W/O TimescaleDB Extension", ext: false, tsdb: false, tsdb2: false, multi: false}
+        - {name: "on TimescaleDB 2.0", ext: true,  tsdb: true,  tsdb2: true,  multi: false}
+        - {name: "on TimescaleDB 2.0 W/O Promscale Extension", ext: false, tsdb: true,  tsdb2: true,  multi: false}
+        - {name: "on TimescaleDB 2.0 multinode", ext: true,  tsdb: true,  tsdb2: false, multi: true}
+    steps:
+
+    - name: Set up Go 1.14
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.14
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Use Go module caching
+      uses: actions/cache@v2
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+        if [ -f Gopkg.toml ]; then
+            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+            dep ensure
+        fi
+
+    - name: Test ${{ matrix.test-setups.name }}
+      env:
+        EXT: ${{ matrix.test-setups.ext }}
+        TSDB: ${{ matrix.test-setups.tsdb }}
+        TSDB2: ${{ matrix.test-setups.tsdb2 }}
+        MULTI: ${{ matrix.test-setups.multi }}
+      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI 
