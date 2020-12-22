@@ -5,7 +5,7 @@ set -euf -o pipefail
 PASSED=0
 FAILED=0
 
-TIMESCALE_IMAGE=${1:-"timescale/timescaledb:latest-pg12"}
+TIMESCALE_IMAGE=${1:-"timescale/timescaledb:1.7.4-pg12"}
 SCRIPT_DIR=$(cd $(dirname ${0}) && pwd)
 ROOT_DIR=$(dirname ${SCRIPT_DIR})
 DB_URL="localhost:5432"

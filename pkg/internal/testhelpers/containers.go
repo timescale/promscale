@@ -255,7 +255,7 @@ func StartPGContainer(
 	case Timescale1AndPromscale:
 		image = "timescaledev/promscale-extension:latest-pg12"
 	case Timescale1:
-		image = "timescale/timescaledb:latest-pg12"
+		image = "timescale/timescaledb:1.7.4-pg12"
 	case VanillaPostgres:
 		image = "postgres:12"
 	}
