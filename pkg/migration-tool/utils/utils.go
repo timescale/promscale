@@ -79,9 +79,9 @@ func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Que
 	}, nil
 }
 
-// Hash returns the hash of the provided promb labels-set. It fetches the value of the hash from the labelsCache if
+// HashLabels returns the hash of the provided promb labels-set. It fetches the value of the hash from the labelsCache if
 // exists, else creates the hash and returns it after storing the new hash value.
-func Hash(lset prompb.Labels) uint64 {
+func HashLabels(lset prompb.Labels) uint64 {
 	if hash, found := labelsCache.Get(lset.String()); found {
 		return hash.(uint64)
 	}

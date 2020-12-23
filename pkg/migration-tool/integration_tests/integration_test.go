@@ -76,7 +76,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -102,15 +102,15 @@ loop:
 
 	// Cross-verify the migration stats.
 	// Verify series count.
-	if remoteReadStorage.Series() != remoteWriteStorage.Series()-1 {
-		t.Fatalf("read-storage series and write-storage series do not match: read-storage series: %d and write-storage series: %d", remoteReadStorage.Series(), remoteWriteStorage.Series()-1)
+	if remoteReadStorage.Series() != remoteWriteStorage.Series() {
+		t.Fatalf("read-storage series and write-storage series do not match: read-storage series: %d and write-storage series: %d", remoteReadStorage.Series(), remoteWriteStorage.Series())
 	}
 	// Verify net samples count.
-	if remoteReadStorage.Samples() != remoteWriteStorage.Samples()-int(write.Blocks()) {
-		t.Fatalf("read-storage samples and write-storage samples do not match: read-storage series: %d and write-storage series: %d", remoteReadStorage.Samples(), remoteWriteStorage.Samples()-int(write.Blocks()))
+	if remoteReadStorage.Samples() != remoteWriteStorage.Samples() {
+		t.Fatalf("read-storage samples and write-storage samples do not match: read-storage series: %d and write-storage series: %d", remoteReadStorage.Samples(), remoteWriteStorage.Samples())
 	}
 	// Verify the progress metric samples count.
-	if remoteWriteStorage.SamplesProgress() != int(write.Blocks()) {
+	if remoteWriteStorage.SamplesProgress() != 0 {
 		t.Fatalf("progress-metric samples count do not match the number of blocks created: samples: %d and blocks created: %d", remoteWriteStorage.SamplesProgress(), write.Blocks())
 	}
 }
@@ -175,7 +175,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
 	read.SigForceStop = make(chan struct{})
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -207,7 +207,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
+	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -313,7 +313,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
 	read.SigForceStop = make(chan struct{})
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -345,7 +345,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
+	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}

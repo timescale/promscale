@@ -90,6 +90,9 @@ func (rr *RemoteRead) Run(errChan chan<- error) {
 				rr.plan.DecrementBlockCount()
 				continue
 			}
+			if len(result.Timeseries) == 0 {
+				fmt.Println("TS 0 still going ahead")
+			}
 			rr.sigBlockRead <- blockRef
 			blockRef = nil
 		}
