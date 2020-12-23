@@ -19,7 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-const numStepsWriter = 4
+const numStepsWriter = 5 // Number of progress steps for the progress-bar of the writer.
 
 var (
 	second                 = time.Second.Milliseconds()

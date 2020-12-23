@@ -21,7 +21,6 @@ type shardsSet struct {
 	set         []*shard
 	cancelFuncs []context.CancelFunc
 
-	done    chan struct{}
 	errChan chan error
 }
 
@@ -35,7 +34,6 @@ func newShardsSet(writerCtx context.Context, writeURL string, numShards int) (*s
 	)
 	ss := &shardsSet{
 		num:     numShards,
-		done:    make(chan struct{}, numShards),
 		errChan: make(chan error, numShards),
 	}
 	for i := 0; i < numShards; i++ {
@@ -64,18 +62,24 @@ func newShardsSet(writerCtx context.Context, writeURL string, numShards int) (*s
 
 // scheduleTS batches the time-series based on the available shards. These batches are then
 // fed to the shards in a single go which then consume and push to the respective clients.
-func (s *shardsSet) scheduleTS(ts []prompb.TimeSeries) {
+func (s *shardsSet) scheduleTS(ts []prompb.TimeSeries) (numSigExpected int) {
 	var batches = make([][]prompb.TimeSeries, s.num)
 	for _, series := range ts {
-		hash := utils.Hash(labelsSlicetoLabels(series.GetLabels()))
+		hash := utils.HashLabels(labelsSlicetoLabels(series.GetLabels()))
 		batchIndex := hash % uint64(s.num)
 		batches[batchIndex] = append(batches[batchIndex], series)
 	}
 	// Feed to the shards.
 	for shardIndex := 0; shardIndex < s.num; shardIndex++ {
 		batchIndex := shardIndex
+		if len(batches[batchIndex]) == 0 {
+			// We do not want "wait state" to happen on the shards.
+			continue
+		}
+		numSigExpected++
 		s.set[shardIndex].queue <- &batches[batchIndex]
 	}
+	return
 }
 
 // shard is an atomic unit of writing. Each shard accepts a sharded time-series set and
@@ -102,15 +106,19 @@ func (s *shard) run(shardIndex int) {
 			if !ok {
 				return
 			}
-			if len(*refTs) == 0 {
+			if len(*refTs) != 0 {
 				// We do not want to go into the backoff strategy with empty data.
-				continue
+				// Even though scheduleTS takes care of empty batches (or *refTs),
+				// still we check the length here in order to be extra careful.
+				if err := sendSamplesWithBackoff(s.ctx, s.client, refTs); err != nil {
+					s.copyShardSet.errChan <- err
+					return
+				}
+			} else {
+				// We want the error to not kill the shards else the system can go in a stall.
+				log.Error("msg", fmt.Sprintf("incorrect sharding logic error: empty time-series received in the shard %d! Please consider opening an issue at https://github.com/timescale/promscale/issues", shardIndex))
 			}
-			if err := sendSamplesWithBackoff(s.ctx, s.client, refTs); err != nil {
-				s.copyShardSet.errChan <- err
-				return
-			}
-			s.copyShardSet.done <- struct{}{}
+			s.copyShardSet.errChan <- nil
 		}
 	}
 }

@@ -95,7 +95,7 @@ func main() {
 		log.Error("msg", "could not create reader", "error", err)
 		os.Exit(2)
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create writer", "error", err)
 		os.Exit(2)

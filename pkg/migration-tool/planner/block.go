@@ -60,7 +60,7 @@ func (b *Block) Series() []*prompb.TimeSeries {
 }
 
 // GetProgressSeries returns a time-series after appending a sample to the progress-metric.
-func (b *Block) GetProgressSeries(ts *prompb.TimeSeries) *prompb.TimeSeries {
+func (b *Block) UpdateProgressSeries(ts *prompb.TimeSeries) *prompb.TimeSeries {
 	ts.Samples = []prompb.Sample{{Timestamp: b.Maxt(), Value: 1}} // One sample per block.
 	return ts
 }
