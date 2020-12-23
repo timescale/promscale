@@ -160,6 +160,17 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 					return
 				}
 
+				// If we get a 422 Unprocessable Entity HTTP status code from Prometheus,
+				// let's try one more time.
+				if promResp.StatusCode == http.StatusUnprocessableEntity {
+					promResp, promErr = client.Do(promReq)
+
+					if promErr != nil {
+						t.Errorf("unexpected error returned from Prometheus client when retrying:\n%s\n", promErr.Error())
+						return
+					}
+				}
+
 				compareHTTPHeaders(t, promResp.Header, tsResp.Header)
 
 				promContent, err := ioutil.ReadAll(promResp.Body)

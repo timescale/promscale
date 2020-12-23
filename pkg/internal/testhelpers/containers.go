@@ -588,6 +588,18 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 			storagePath:    "/prometheus",
 			promConfigFile: "/etc/prometheus/prometheus.yml",
 		},
+		Cmd: []string{
+			// Default configuration.
+			"--config.file=/etc/prometheus/prometheus.yml",
+			"--storage.tsdb.path=/prometheus",
+			"--web.console.libraries=/usr/share/prometheus/console_libraries",
+			"--web.console.templates=/usr/share/prometheus/consoles",
+
+			// This is to stop Prometheus from messing with the data.
+			"--storage.tsdb.retention.time=30y",
+			"--storage.tsdb.min-block-duration=30y",
+			"--storage.tsdb.max-block-duration=30y",
+		},
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
