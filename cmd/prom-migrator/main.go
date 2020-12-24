@@ -34,8 +34,9 @@ type config struct {
 	maxt               int64
 	maxtSec            int64
 	maxBlockSizeBytes  int64
-	numShards          int
 	maxBlockSize       string
+	concurrentPulls    int
+	concurrentPush     int
 	readURL            string
 	writeURL           string
 	progressMetricName string
@@ -71,6 +72,7 @@ func main() {
 		Maxt:                conf.maxt,
 		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
+		NumStores:           conf.concurrentPulls,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
 		ProgressMetricURL:   conf.progressMetricURL,
@@ -90,12 +92,12 @@ func main() {
 		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
+	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create reader", "error", err)
 		os.Exit(2)
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.concurrentPush, conf.progressEnabled, sigBlockRead)
 	if err != nil {
 		log.Error("msg", "could not create writer", "error", err)
 		os.Exit(2)
@@ -135,8 +137,12 @@ func parseFlags(conf *config, args []string) {
 		"Setting this value less than zero will indicate all data from mint upto now. ")
 	flag.StringVar(&conf.maxBlockSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
 		"More the read size, faster will be the migration but higher will be the memory usage. Example: 250MB.")
-	flag.IntVar(&conf.numShards, "num-shards", 4, "Number of shards to split a fetched block in. Each shard is written concurrently. "+
+	flag.IntVar(&conf.concurrentPush, "concurrent-push", 4, "Number of shards to split a fetched block in. Each shard is written concurrently. "+
 		"Note: Larger shards count will lead to significant memory usage.")
+	flag.IntVar(&conf.concurrentPulls, "concurrent-pulls", 1, "Concurrent pulls enables fetching of data concurrently. "+
+		"This may enable higher throughput by pulling data faster from remote-read stores. "+
+		"Note: Setting concurrent-pulls > 1 will show progress of concurrent fetching of data in the progress-bar and disable real-time transfer rate speed while fetching data. "+
+		"Moreover, setting this value too high may cause TLS handshake error on the read storage side or may lead to starvation of fetch requests, depending on the bandwidth.")
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+

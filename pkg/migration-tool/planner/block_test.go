@@ -5,10 +5,9 @@
 package planner
 
 import (
+	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateBlock(t *testing.T) {
@@ -53,8 +52,9 @@ func TestCreateBlock(t *testing.T) {
 	maxt := 110 * minute
 	plan := &Plan{
 		config: &Config{
-			Mint: mint,
-			Maxt: maxt,
+			Mint:      mint,
+			Maxt:      maxt,
+			NumStores: 1,
 		},
 		pbarMux: new(sync.Mutex),
 		Quiet:   true,
@@ -67,5 +67,82 @@ func TestCreateBlock(t *testing.T) {
 			continue
 		}
 		assert.NoError(t, err)
+	}
+}
+
+func TestStoreTimeRanges(t *testing.T) {
+	cases := []struct {
+		name      string
+		numStores int
+		mint      int64
+		maxt      int64
+	}{
+		{
+			name:      "test-1",
+			mint:      1 * minute,
+			maxt:      100 * minute,
+			numStores: 1,
+		},
+		{
+			name:      "test-2",
+			mint:      1 * minute,
+			maxt:      100 * minute,
+			numStores: 2,
+		},
+		{
+			name:      "test-3",
+			mint:      1 * minute,
+			maxt:      100 * minute,
+			numStores: 3,
+		},
+		{
+			name:      "test-4",
+			mint:      1 * minute,
+			maxt:      100 * minute,
+			numStores: 4,
+		},
+		{
+			name:      "test-5",
+			mint:      1 * minute,
+			maxt:      2 * minute,
+			numStores: 10,
+		},
+		{
+			name:      "verify-integral-division-1",
+			mint:      1 * minute,
+			maxt:      2 * minute,
+			numStores: 11,
+		},
+		{
+			name:      "verify-integral-division-2",
+			mint:      1 * minute,
+			maxt:      2 * minute,
+			numStores: 17,
+		},
+		{
+			name:      "verify-integral-division-2",
+			mint:      1 * minute,
+			maxt:      2 * minute,
+			numStores: 29,
+		},
+	}
+
+	for _, c := range cases {
+		config := &Config{
+			Mint:      c.mint,
+			Maxt:      c.maxt,
+			NumStores: c.numStores,
+		}
+		plan, _, err := Init(config)
+		assert.NoError(t, err)
+		blockRef, err := plan.createBlock(c.mint, c.maxt)
+		assert.NoError(t, err)
+		// Verify time-ranges.
+		var netTime int64
+		for i := range blockRef.stores {
+			r := blockRef.stores[i].maxt - blockRef.stores[i].mint
+			netTime += r
+		}
+		assert.Equal(t, c.maxt-c.mint, netTime, c.name)
 	}
 }

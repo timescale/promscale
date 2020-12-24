@@ -30,6 +30,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		numShards          int
 		readURL            string
 		writeURL           string
+		concurrentPulls    int
 		progressMetricURL  string
 		progressMetricName string
 		progressEnabled    bool
@@ -44,6 +45,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    false,
+		concurrentPulls:    2,
 		maxBlockSizeBytes:  500 * utils.Megabyte,
 	}
 
@@ -53,6 +55,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		Maxt:                conf.maxt,
 		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
+		NumStores:           conf.concurrentPulls,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
 		ProgressMetricURL:   conf.progressMetricURL,
@@ -72,7 +75,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
+	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -132,6 +135,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		progressMetricName string
 		progressEnabled    bool
 		maxBlockSizeBytes  int64
+		concurrentPulls    int
 	}{
 		name:               "ci-migration",
 		mint:               tsMint,
@@ -142,6 +146,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    true,
+		concurrentPulls:    2,
 		maxBlockSizeBytes:  500 * utils.Megabyte,
 	}
 
@@ -151,6 +156,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		Maxt:                conf.maxt,
 		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
+		NumStores:           conf.concurrentPulls,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
 		ProgressMetricURL:   conf.progressMetricURL,
@@ -170,7 +176,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
+	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -203,7 +209,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	sigBlockRead = make(chan *plan.Block)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
-	read, err = reader.New(cont, conf.readURL, planner, sigBlockRead)
+	read, err = reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -264,6 +270,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		progressMetricName string
 		progressEnabled    bool
 		maxBlockSizeBytes  int64
+		concurrentPulls    int
 	}{
 		name:               "ci-migration",
 		mint:               tsMint,
@@ -274,6 +281,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    true,
+		concurrentPulls:    1,
 		maxBlockSizeBytes:  50 * 1024,
 	}
 
@@ -284,6 +292,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		Maxt:                conf.maxt,
 		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
+		NumStores:           conf.concurrentPulls,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
 		ProgressMetricURL:   conf.progressMetricURL,
@@ -308,7 +317,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
+	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -341,7 +350,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	sigBlockRead = make(chan *plan.Block)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
-	read, err = reader.New(cont, conf.readURL, planner, sigBlockRead)
+	read, err = reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}

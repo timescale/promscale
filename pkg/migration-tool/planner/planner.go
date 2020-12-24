@@ -48,6 +48,7 @@ type Config struct {
 	Mint                int64
 	Maxt                int64
 	BlockSizeLimitBytes int64
+	NumStores           int
 	ProgressEnabled     bool
 	JobName             string
 	ProgressMetricURL   string
@@ -185,11 +186,14 @@ func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
 				_, _ = fmt.Fprint(os.Stdout, "\n")
 			}),
 		),
-		mint:    mint,
-		maxt:    maxt,
-		pbarMux: p.pbarMux,
-		plan:    p,
+		numStores: p.config.NumStores,
+		stores:    make([]store, p.config.NumStores),
+		mint:      mint,
+		maxt:      maxt,
+		pbarMux:   p.pbarMux,
+		plan:      p,
 	}
+	reference.initStores()
 	if p.Quiet {
 		reference.pbar = nil
 		reference.pbarDescriptionPrefix = ""
