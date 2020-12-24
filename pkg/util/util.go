@@ -43,6 +43,11 @@ func NewThroughputCalc(interval time.Duration) *ThroughputCalc {
 	return &ThroughputCalc{tickInterval: interval, current: make(chan float64, 1), Values: make(chan float64, 1)}
 }
 
+// GetTickInterval returns the tick interval of the throughput calculator.
+func (dt *ThroughputCalc) GetTickInterval() time.Duration {
+	return dt.tickInterval
+}
+
 // SetCurrent sets the value of the counter
 func (dt *ThroughputCalc) SetCurrent(value float64) {
 	select {

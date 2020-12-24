@@ -80,7 +80,7 @@ func TestMigrateLock(t *testing.T) {
 			},
 		}
 		conn.Release()
-		metrics := api.InitMetrics()
+		metrics := api.InitMetrics(0)
 		reader, err := runner.CreateClient(&cfg, metrics)
 		// reader on its own should start
 		if err != nil {

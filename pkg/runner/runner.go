@@ -153,7 +153,7 @@ func Run(cfg *Config) error {
 		log.Info("msg", "Migrations disabled for read-only mode")
 	}
 
-	promMetrics := api.InitMetrics()
+	promMetrics := api.InitMetrics(cfg.PgmodelCfg.ReportInterval)
 
 	client, err := CreateClient(cfg, promMetrics)
 	if err != nil {
