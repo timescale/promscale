@@ -7,7 +7,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-const tickInterval = time.Second
+const defaultTickInterval = time.Second
 
 var metrics *Metrics
 
@@ -29,11 +29,38 @@ type Metrics struct {
 	HTTPRequestDuration *prometheus.HistogramVec
 }
 
-func InitMetrics() *Metrics {
+// InitMetrics sets up and returns the Prometheus metrics which Promscale exposes.
+// It receives the number of seconds which is the tick interval for global
+// write throughput metric.
+func InitMetrics(writeMetricInterval int) *Metrics {
 	if metrics != nil {
 		return metrics
 	}
-	metrics = &Metrics{
+	metrics = createMetrics(writeMetricInterval)
+	prometheus.MustRegister(
+		metrics.LeaderGauge,
+		metrics.ReceivedSamples,
+		metrics.ReceivedQueries,
+		metrics.SentSamples,
+		metrics.FailedSamples,
+		metrics.FailedQueries,
+		metrics.InvalidReadReqs,
+		metrics.InvalidWriteReqs,
+		metrics.SentBatchDuration,
+		metrics.QueryBatchDuration,
+		metrics.HTTPRequestDuration,
+	)
+	metrics.WriteThroughput.Start()
+
+	return metrics
+}
+
+func createMetrics(writeMetricInterval int) *Metrics {
+	tickInterval := time.Duration(writeMetricInterval) * time.Second
+	if tickInterval < defaultTickInterval {
+		tickInterval = defaultTickInterval
+	}
+	return &Metrics{
 		LeaderGauge: prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
@@ -118,20 +145,4 @@ func InitMetrics() *Metrics {
 			[]string{"path"},
 		),
 	}
-	prometheus.MustRegister(
-		metrics.LeaderGauge,
-		metrics.ReceivedSamples,
-		metrics.ReceivedQueries,
-		metrics.SentSamples,
-		metrics.FailedSamples,
-		metrics.FailedQueries,
-		metrics.InvalidReadReqs,
-		metrics.InvalidWriteReqs,
-		metrics.SentBatchDuration,
-		metrics.QueryBatchDuration,
-		metrics.HTTPRequestDuration,
-	)
-	metrics.WriteThroughput.Start()
-
-	return metrics
 }

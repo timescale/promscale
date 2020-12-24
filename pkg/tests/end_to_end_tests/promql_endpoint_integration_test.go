@@ -253,7 +253,7 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 // buildRouterWithAPIConfig builds a testing router from a connection pool and
 // an API config.
 func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler, *pgclient.Client, error) {
-	metrics := api.InitMetrics()
+	metrics := api.InitMetrics(0)
 	conf := &pgclient.Config{
 		AsyncAcks:               false,
 		ReportInterval:          0,
