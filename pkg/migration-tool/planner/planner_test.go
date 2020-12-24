@@ -253,7 +253,7 @@ func TestNumBlockCreation(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		planConfig := &Config{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, BlockSizeLimitBytes: blockSizeLimit}
+		planConfig := &Config{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, BlockSizeLimitBytes: blockSizeLimit, NumStores: 2}
 		plan, _, err := Init(planConfig)
 		if c.fails {
 			assert.Error(t, err, c.name)

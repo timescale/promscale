@@ -72,12 +72,13 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 			close(errChan)
 		}()
 		log.Info("msg", "writer is up")
-		isErrSig := func(expectedSigs int) bool {
+		isErrSig := func(ref *planner.Block, expectedSigs int) bool {
 			for i := 0; i < expectedSigs; i++ {
 				if err := <-shards.errChan; err != nil {
 					errChan <- fmt.Errorf("remote-write run: %w", err)
 					return true
 				}
+				ref.SetDescription(fmt.Sprintf("pushing (%d/%d) ...", i+1, expectedSigs), 1)
 			}
 			return false
 		}
@@ -94,7 +95,7 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 				blockRef.SetDescription("preparing to push", 1)
 				numSigExpected := shards.scheduleTS(timeseriesRefToTimeseries(blockRef.Series()))
 				blockRef.SetDescription("pushing ...", 1)
-				if isErrSig(numSigExpected) {
+				if isErrSig(blockRef, numSigExpected) {
 					return
 				}
 				// Pushing progress-metric to remote-write storage.
@@ -103,7 +104,7 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 					// Pushing progress-metric to remote-write storage.
 					// This is done after making sure that all shards have successfully completed pushing of data.
 					numSigExpected := rw.pushProgressMetric(blockRef.UpdateProgressSeries(rw.progressTimeSeries))
-					if isErrSig(numSigExpected) {
+					if isErrSig(blockRef, numSigExpected) {
 						return
 					}
 				}

@@ -46,7 +46,13 @@ func createRemoteWriteServer(t *testing.T) (*remoteWriteServer, string, string) 
 func (rwss *remoteWriteServer) Series() int {
 	rwss.mux.RLock()
 	defer rwss.mux.RUnlock()
-	return len(rwss.writeStorageTimeSeries)
+	count := 0 // To prevent counting as series if no samples occur.
+	for _, s := range rwss.writeStorageTimeSeries {
+		if len(s.Samples) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 // Samples returns the number of samples in the remoteWriteServer.
