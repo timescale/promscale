@@ -161,4 +161,5 @@ func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model
 	}
 
 	return series, metricName, nil
+
 }
