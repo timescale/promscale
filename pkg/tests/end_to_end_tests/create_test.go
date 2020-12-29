@@ -6,6 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"reflect"
 	"testing"
 	"time"
@@ -165,7 +166,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -422,7 +423,7 @@ func TestSQLIngest(t *testing.T) {
 				}
 				defer ingestor.Close()
 
-				cnt, err := ingestor.Ingest(copyMetrics(tcase.metrics), ingstr.NewWriteRequest())
+				cnt, err := ingestor.Ingest(copyMetrics(tcase.metrics), ingstr.NewWriteRequest(), ha.NewHAState())
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
 				}
@@ -514,7 +515,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -545,7 +546,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			},
 		}
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -580,7 +581,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		}
 
 		//ingest duplicate after compression
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -633,7 +634,7 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -657,7 +658,7 @@ func TestInsertCompressed(t *testing.T) {
 			}
 		}
 		//ingest after compression
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -856,7 +857,7 @@ func TestCompressionSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -958,7 +959,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 		defer ingestor.Close()
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1046,7 +1047,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		// decompress the first chunk
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1179,7 +1180,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 		defer ingestor.Close()
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1242,7 +1243,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 
 		// decompress the first chunk
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest(), ha.NewHAState())
 		if err != nil {
 			t.Fatal(err)
 		}

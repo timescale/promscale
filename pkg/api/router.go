@@ -16,18 +16,19 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
+func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector, ha *ha.HA) (http.Handler, error) {
 	authWrapper := func(name string, h http.HandlerFunc) http.HandlerFunc {
 		return authHandler(apiConf, h)
 	}
 
 	router := route.New().WithInstrumentation(authWrapper)
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, elector, metrics))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, elector, metrics, ha))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {

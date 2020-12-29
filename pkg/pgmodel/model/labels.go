@@ -179,3 +179,21 @@ func (l *Labels) Swap(i, j int) {
 	l.Names[j], l.Names[i] = l.Names[i], l.Names[j]
 	l.Values[j], l.Values[i] = l.Values[i], l.Values[j]
 }
+
+func (l *Labels) GetReplicaName() string {
+	for index, key := range l.Names {
+		if key == "__replica__" {
+			return l.Values[index]
+		}
+	}
+	return ""
+}
+
+func (l *Labels) GetClusterName() string {
+	for index, key := range l.Names {
+		if key == "__cluster__" {
+			return l.Values[index]
+		}
+	}
+	return ""
+}
