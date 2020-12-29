@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
@@ -47,7 +46,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,20 +55,20 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		verifyRetentionPeriod(t, db, "TEST", time.Duration(90*24*time.Hour))
+		verifyRetentionPeriod(t, db, "TEST", 90*24*time.Hour)
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test2', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
 
-		verifyRetentionPeriod(t, db, "TEST", time.Duration(90*24*time.Hour))
-		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
+		verifyRetentionPeriod(t, db, "TEST", 90*24*time.Hour)
+		verifyRetentionPeriod(t, db, "test2", 7*time.Hour)
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_retention_period(INTERVAL '6 hours')")
 		if err != nil {
 			t.Error(err)
 		}
-		verifyRetentionPeriod(t, db, "TEST", time.Duration(6*time.Hour))
-		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
+		verifyRetentionPeriod(t, db, "TEST", 6*time.Hour)
+		verifyRetentionPeriod(t, db, "test2", 7*time.Hour)
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('TEST', INTERVAL '8 hours')")
 		if err != nil {
 			t.Error(err)
@@ -93,10 +92,10 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			t.Error(err)
 		}
 
-		verifyRetentionPeriod(t, db, "test_new_metric1", time.Duration(7*time.Hour))
+		verifyRetentionPeriod(t, db, "test_new_metric1", 7*time.Hour)
 
 		//get on non-existing metric returns default
-		verifyRetentionPeriod(t, db, "test_new_metric2", time.Duration(2*time.Hour))
+		verifyRetentionPeriod(t, db, "test_new_metric2", 2*time.Hour)
 	})
 }
 
@@ -149,7 +148,7 @@ func TestSQLDropChunk(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -233,7 +232,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -343,8 +342,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		ingestor, err := ingstr.NewPgxIngestorWithMetricCache(pgxconn.NewPgxConn(db), c, scache, &ingstr.Cfg{DisableEpochSync: true})
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -358,13 +356,13 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Error(err)
 		}
 
-		before_drop_correct := func(num_data_rows int, loc string) {
+		beforeDropCorrect := func(numDataRows int, loc string) {
 			count := 0
 			err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom_data.test`).Scan(&count)
 			if err != nil {
 				t.Error(loc, err)
 			}
-			if count != num_data_rows {
+			if count != numDataRows {
 				t.Errorf("unexpected row count: %v @ %v", count, loc)
 			}
 
@@ -399,14 +397,14 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			}
 		}
 
-		before_drop_correct(4, "before drop")
+		beforeDropCorrect(4, "before drop")
 
 		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		before_delete_correct := func(loc string) {
+		beforeDeleteCorrect := func(loc string) {
 			count := 0
 			err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom_data.test`).Scan(&count)
 			if err != nil {
@@ -447,14 +445,14 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			}
 		}
 
-		before_delete_correct("after first")
+		beforeDeleteCorrect("after first")
 
 		//rerun again -- nothing changes
 		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5))
 		if err != nil {
 			t.Fatal(err)
 		}
-		before_delete_correct("after first repeat")
+		beforeDeleteCorrect("after first repeat")
 
 		// reruns don't change anything until the dead series are actually dropped
 		for i := 0; i < 5; i++ {
@@ -464,12 +462,12 @@ func TestSQLDropMetricChunk(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			before_delete_correct(fmt.Sprintf("after loop %v", i))
+			beforeDeleteCorrect(fmt.Sprintf("after loop %v", i))
 		}
 
-		before_delete_correct("after all loops")
+		beforeDeleteCorrect("after all loops")
 
-		after_delete_correct := func(loc string) {
+		afterDeleteCorrect := func(loc string) {
 			count := 0
 			err = db.QueryRow(context.Background(), `SELECT count(*) FROM prom_data.test`).Scan(&count)
 			if err != nil {
@@ -517,10 +515,10 @@ func TestSQLDropMetricChunk(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			after_delete_correct(fmt.Sprintf("after loop %v", i))
+			afterDeleteCorrect(fmt.Sprintf("after loop %v", i))
 		}
 
-		after_delete_correct("after all loops")
+		afterDeleteCorrect("after all loops")
 
 		resurrected := []prompb.TimeSeries{
 			{
@@ -543,7 +541,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		scache.Reset()
 
 		ingestor.Close()
-		ingestor2, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor2, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -554,7 +552,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Error(err)
 		}
 
-		before_drop_correct(3, "after resurrection")
+		beforeDropCorrect(3, "after resurrection")
 	})
 }
 
@@ -593,7 +591,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			}
 		}
 
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -666,7 +664,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 		//Restart ingestor to avoid stale cache issues.
 		//Other tests should check for that
 		ingestor.Close()
-		ingestor2, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor2, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -6,10 +6,8 @@ package ingestor
 
 import (
 	"fmt"
-
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -27,24 +25,26 @@ type Cfg struct {
 type DBIngestor struct {
 	db     model.Inserter
 	scache cache.SeriesCache
+	parser Parser
 }
 
-// NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
+// NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestorWithMetricCache(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*DBIngestor, error) {
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, parser Parser, cfg *Cfg) (*DBIngestor, error) {
 	pi, err := newPgxInserter(conn, cache, scache, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DBIngestor{db: pi, scache: scache}, nil
+	return &DBIngestor{db: pi, scache: scache, parser: parser}, nil
 }
 
-// NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
-func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
+// NewPgxIngestorForTests returns a new Ingestor that write to PostgreSQL using PGX
+// with an empty config, a new default size metrics cache and a non-ha-aware data parser
+func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 	s := cache.NewSeriesCache(cache.DefaultSeriesCacheSize)
-	return NewPgxIngestorWithMetricCache(conn, c, s, &Cfg{})
+	return NewPgxIngestor(conn, c, s, &dataParser{scache: s}, &Cfg{})
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
@@ -52,10 +52,28 @@ func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
+// NOTE: req will be added to our WriteRequest pool in this function, it must
+//       not be used afterwards.
+// returns:
+//		uint64 number or rows inserted
+//		error if the ingest failed
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	data, totalRows, err := i.parseData(tts, req)
+	var data map[string][]model.Samples
+	var totalRows int
+	var err error
 
-	if err != nil {
+	data, totalRows, err = i.parser.ParseData(tts)
+	// WriteRequests can contain pointers into the original buffer we deserialized
+	// them out of, and can be quite large in and of themselves. In order to prevent
+	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest
+	// here, allowing it to be either garbage collected or reused for a new request.
+	// In order for this to work correctly, any data we wish to keep using (e.g.
+	// samples) must no longer be reachable from req.
+	FinishWriteRequest(req)
+
+	// Note data == nil case is to handle samples from non-leader
+	// prometheus instance or when len(tts) == 0
+	if err != nil || data == nil {
 		return 0, err
 	}
 
@@ -69,49 +87,6 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (
 // Parts of metric creation not needed to insert data
 func (i *DBIngestor) CompleteMetricCreation() error {
 	return i.db.CompleteMetricCreation()
-}
-
-// Parse data into a set of samplesInfo infos per-metric.
-// returns: map[metric name][]SamplesInfo, total rows to insert
-// NOTE: req will be added to our WriteRequest pool in this function, it must
-//       not be used afterwards.
-func (ingestor *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]model.Samples, int, error) {
-	dataSamples := make(map[string][]model.Samples)
-	rows := 0
-
-	for i := range tts {
-		t := &tts[i]
-		if len(t.Samples) == 0 {
-			continue
-		}
-
-		// Normalize and canonicalize t.Labels.
-		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := ingestor.scache.GetSeriesFromProtos(t.Labels)
-		if err != nil {
-			return nil, rows, err
-		}
-		if metricName == "" {
-			return nil, rows, errors.ErrNoMetricName
-		}
-		sample := model.NewPromSample(seriesLabels, t.Samples)
-		rows += len(t.Samples)
-
-		dataSamples[metricName] = append(dataSamples[metricName], sample)
-		// we're going to free req after this, but we still need the samples,
-		// so nil the field
-		t.Samples = nil
-	}
-
-	// WriteRequests can contain pointers into the original buffer we deserialized
-	// them out of, and can be quite large in and of themselves. In order to prevent
-	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest
-	// here, allowing it to be either garbage collected or reused for a new request.
-	// In order for this to work correctly, any data we wish to keep using (e.g.
-	// samples) must no longer be reachable from req.
-	FinishWriteRequest(req)
-
-	return dataSamples, rows, nil
 }
 
 // Close closes the ingestor
