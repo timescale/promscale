@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"io"
 	"io/ioutil"
 	"net"
@@ -455,7 +456,7 @@ func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.Tim
 
 func doIngest(t *testing.T, ingestor *ingestor.DBIngestor, data ...[]prompb.TimeSeries) {
 	for _, data := range data {
-		_, err := ingestor.Ingest(copyMetrics(data), &prompb.WriteRequest{})
+		_, err := ingestor.Ingest(copyMetrics(data), &prompb.WriteRequest{}, ha.NewHAState())
 		if err != nil {
 			t.Fatalf("ingest error: %v", err)
 		}

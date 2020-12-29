@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
@@ -181,7 +182,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				db: &inserter,
 			}
 
-			count, err := i.Ingest(c.metrics, NewWriteRequest())
+			count, err := i.Ingest(c.metrics, NewWriteRequest(), ha.NewHAState())
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {
