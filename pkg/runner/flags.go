@@ -37,6 +37,7 @@ type Config struct {
 	InstallExtensions           bool
 	UpgradeExtensions           bool
 	UpgradePrereleaseExtensions bool
+	HAEnabled                   bool
 }
 
 func ParseFlags(cfg *Config, args []string) (*Config, error) {
@@ -54,9 +55,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
 	fs.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	fs.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
-	fs.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not respond within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips.")
-	fs.DurationVar(&cfg.ElectionInterval, "leader-election-scheduled-interval", 5*time.Second, "Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
+	fs.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "(DEPRECATED) Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
+	fs.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "(DEPRECATED) Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not respond within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips.")
+	fs.DurationVar(&cfg.ElectionInterval, "leader-election-scheduled-interval", 5*time.Second, "(DEPRECATED) Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
 	fs.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only].")
 	fs.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
 	fs.BoolVar(&cfg.InstallExtensions, "install-extensions", true, "Install TimescaleDB, Promscale extension.")
@@ -136,6 +137,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		cfg.UpgradeExtensions = false
 	}
 
-	cfg.PgmodelCfg.UsesHA = cfg.HaGroupLockID != 0
+	if cfg.HaGroupLockID != 0 {
+		log.Warn("msg", "leader-election-pg-advisory-lock-id is set. Scheduled election is DEPRECATED!")
+		cfg.PgmodelCfg.UsesHA = true
+	}
 	return cfg, nil
 }

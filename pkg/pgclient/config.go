@@ -38,6 +38,7 @@ type Config struct {
 	UsesHA                  bool
 	DbUri                   string
 	EnableStatementsCache   bool
+	HAEnabled               bool
 }
 
 const (
@@ -76,6 +77,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle.")
 	fs.StringVar(&cfg.DbUri, "db-uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	fs.BoolVar(&cfg.EnableStatementsCache, "db-statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. Disable if using PgBouncer")
+	fs.BoolVar(&cfg.HAEnabled, "enable-ha", false, "Enable external_labels based HA.")
 	return cfg
 }
 
