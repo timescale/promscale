@@ -6,6 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"strings"
 	"sync"
 	"testing"
@@ -226,7 +227,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
+	_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest(), ha.NewHAState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +287,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 	}
 
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
+	_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest(), ha.NewHAState())
 	if err != nil {
 		t.Fatal(err)
 	}

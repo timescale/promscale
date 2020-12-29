@@ -13,6 +13,7 @@ import (
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -137,8 +138,8 @@ func (c *Client) Close() {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	return c.ingestor.Ingest(tts, req)
+func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest, ha *ha.HA) (uint64, error) {
+	return c.ingestor.Ingest(tts, req, ha)
 }
 
 // Read returns the promQL query results

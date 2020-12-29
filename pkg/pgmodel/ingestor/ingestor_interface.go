@@ -4,12 +4,15 @@
 
 package ingestor
 
-import "github.com/timescale/promscale/pkg/prompb"
+import (
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
+	"github.com/timescale/promscale/pkg/prompb"
+)
 
 // DBInserter is responsible for ingesting the TimeSeries protobuf structs and
 // storing them in the database.
 type DBInserter interface {
 	// Ingest takes an array of TimeSeries and attepts to store it into the database.
 	// Returns the number of metrics ingested and any error encountered before finishing.
-	Ingest([]prompb.TimeSeries, *prompb.WriteRequest) (uint64, error)
+	Ingest([]prompb.TimeSeries, *prompb.WriteRequest, *ha.HA) (uint64, error)
 }
