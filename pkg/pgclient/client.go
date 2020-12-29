@@ -10,6 +10,8 @@ import (
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/ha"
+	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
@@ -36,6 +38,7 @@ type Client struct {
 	seriesCache   cache.SeriesCache
 	closePool     bool
 	sigClose      chan struct{}
+	haService     *ha.Service
 }
 
 // Post connect validation function, useful for things such as acquiring locks
@@ -128,20 +131,29 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		ReportInterval: cfg.ReportInterval,
 		NumCopiers:     numCopiers,
 	}
-	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, seriesCache, &c)
+
+	var parser ingestor.Parser
+	if cfg.HAEnabled {
+		leaseClient := haClient.NewHaLeaseClient(dbConn)
+		parser = ha.NewHAParser(ha.NewHAService(leaseClient), seriesCache)
+	} else {
+		parser = ingestor.DefaultParser(seriesCache)
+	}
+	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, parser, &c)
+
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
-	querier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
-	queryable := query.NewQueryable(querier, labelsReader)
+	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
+	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)
 	client := &Client{
 		Connection:  dbConn,
-		ingestor:    ingestor,
-		querier:     querier,
+		ingestor:    dbIngestor,
+		querier:     dbQuerier,
 		healthCheck: healthChecker,
 		queryable:   queryable,
 		metricCache: metricsCache,
@@ -161,6 +173,9 @@ func (c *Client) Close() {
 	close(c.sigClose)
 	if c.closePool {
 		c.Connection.Close()
+	}
+	if c.haService != nil {
+		c.haService.Close()
 	}
 }
 

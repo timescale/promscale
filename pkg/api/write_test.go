@@ -421,7 +421,11 @@ func TestWrite(t *testing.T) {
 			responseCode: http.StatusInternalServerError,
 			inserterErr:  fmt.Errorf("some error"),
 			requestBody: writeRequestToString(
-				&prompb.WriteRequest{},
+				&prompb.WriteRequest{
+					Timeseries: []prompb.TimeSeries{
+						{},
+					},
+				},
 			),
 		},
 		{
