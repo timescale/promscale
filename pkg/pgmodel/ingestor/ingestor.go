@@ -6,10 +6,13 @@ package ingestor
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -49,10 +52,18 @@ func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	data, totalRows, err := i.parseData(tts, req)
+func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest, ha *ha.HA) (uint64, error) {
+	var data map[string][]model.SamplesInfo
+	var totalRows int
+	var err error
 
-	if err != nil {
+	if !ha.Enabled {
+		data, totalRows, err = i.parseData(tts, req)
+	} else {
+		data, totalRows, err = i.parseHAData(tts, req, ha)
+	}
+
+	if err != nil || data == nil {
 		return 0, err
 	}
 
@@ -111,6 +122,85 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 	// In order for this to work correctly, any data we wish to keep using (e.g.
 	// samples) must no longer be reachable from req.
 	FinishWriteRequest(req)
+
+	return dataSamples, rows, nil
+}
+
+// Parse data into a set of samplesInfo infos per-metric.
+// returns: map[metric name][]SamplesInfo, total rows to insert
+// NOTE: req will be added to our WriteRequest pool in this function, it must
+//       not be used afterwards.
+// When Prometheus & Promscale are running HA mode the below parseData is used
+// to validate leader replica samples & ha_locks in TimescaleDB.
+func (i *DBIngestor) parseHAData(tts []prompb.TimeSeries, req *prompb.WriteRequest, ha *ha.HA) (map[string][]model.SamplesInfo, int, error) {
+	dataSamples := make(map[string][]model.SamplesInfo)
+	rows := 0
+
+	var minT, maxT int64
+
+	s, _, err := model.LabelProtosToLabels(tts[0].Labels)
+	if err != nil {
+		return nil, rows, err
+	}
+
+	replicaName := s.GetReplicaName()
+	clusterName := s.GetClusterName()
+
+	if replicaName == "" && clusterName == "" {
+		err = fmt.Errorf("ha mode is enabled and __replica__ && __cluster__ are empty")
+		return nil, rows, err
+	}
+
+	for i := range tts {
+		t := &tts[i]
+		if len(t.Samples) == 0 {
+			continue
+		}
+
+		if t.Samples[0].Timestamp < minT || minT == 0 {
+			minT = t.Samples[0].Timestamp
+		}
+
+		if t.Samples[len(t.Samples)-1].Timestamp > maxT {
+			maxT = t.Samples[len(t.Samples)-1].Timestamp
+		}
+
+		// Normalize and canonicalize t.Labels.
+		// After this point t.Labels should never be used again.
+		seriesLabels, metricName, err := model.LabelProtosToLabels(t.Labels)
+		if err != nil {
+			return nil, rows, err
+		}
+		if metricName == "" {
+			return nil, rows, errors.ErrNoMetricName
+		}
+		sample := model.SamplesInfo{
+			Labels:   seriesLabels,
+			SeriesID: -1, // sentinel marking the seriesId as unset
+			Samples:  t.Samples,
+		}
+		rows += len(t.Samples)
+
+		dataSamples[metricName] = append(dataSamples[metricName], sample)
+		// we're going to free req after this, but we still need the samples,
+		// so nil the field
+		t.Samples = nil
+	}
+
+	// WriteRequests can contain pointers into the original buffer we deserialized
+	// them out of, and can be quite large in and of themselves. In order to prevent
+	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest
+	// here, allowing it to be either garbage collected or reused for a new request.
+	// In order for this to work correctly, any data we wish to keep using (e.g.
+	// samples) must no longer be reachable from req.
+	FinishWriteRequest(req)
+
+	minTUnix := time.Unix(minT, 0)
+	maxTUnix := time.Unix(maxT, 0)
+	if !ha.CheckInsert(minTUnix, maxTUnix, clusterName, replicaName) {
+		log.Warn("the samples aren't from the leader prom instance. skipping the insert")
+		return nil, rows, nil
+	}
 
 	return dataSamples, rows, nil
 }
