@@ -38,6 +38,7 @@ type Config struct {
 	MaxConnections          int
 	UsesHA                  bool
 	DbUri                   string
+	HAEnabled               bool
 }
 
 const (

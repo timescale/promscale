@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -648,7 +647,7 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.Tim
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	cnt, err := ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest(), ha.NewHAState())
+	cnt, err := ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
 
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)

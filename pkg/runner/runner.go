@@ -8,7 +8,6 @@ package runner
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"net/http"
 	"time"
 
@@ -51,7 +50,7 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
-	router, err := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector, &ha.HA{})
+	router, err := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)

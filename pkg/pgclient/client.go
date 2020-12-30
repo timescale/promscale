@@ -13,7 +13,6 @@ import (
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -102,6 +101,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
+		HA:              cfg.HAEnabled,
 	}
 	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
 	if err != nil {
@@ -138,8 +138,8 @@ func (c *Client) Close() {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest, ha *ha.HA) (uint64, error) {
-	return c.ingestor.Ingest(tts, req, ha)
+func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
+	return c.ingestor.Ingest(tts, req)
 }
 
 // Read returns the promQL query results

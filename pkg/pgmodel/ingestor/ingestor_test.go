@@ -6,11 +6,13 @@ package ingestor
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"testing"
+	"time"
 
+	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -24,6 +26,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		insertDataErr   error
 		getSeriesErr    error
 		setSeriesErr    error
+		ha              bool
 	}{
 		{
 			name:    "Zero metrics",
@@ -168,6 +171,62 @@ func TestDBIngestorIngest(t *testing.T) {
 			count:       0,
 			countSeries: 0,
 		},
+		{
+			name: "Insert data in HA for no leader prom",
+			metrics: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+						{Name: "__replica__", Value: "replica2"},
+						{Name: "__cluster__", Value: "leader1"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: time.Now().Unix(), Value: 0.1},
+					},
+				},
+			},
+			count:       0,
+			countSeries: 0,
+			ha:          true,
+		},
+		{
+			name: "Insert data in HA from leader prom",
+			metrics: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+						{Name: "__replica__", Value: "replica1"},
+						{Name: "__cluster__", Value: "leader1"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:       1,
+			countSeries: 1,
+			ha:          true,
+		},
+		{
+			name: "Insert data in HA enable mode but __replica__ & __leader__ labels are empty",
+			metrics: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			count:         0,
+			countSeries:   0,
+			insertDataErr: fmt.Errorf("ha mode is enabled and __replica__ or __cluster__ is empty"),
+			ha:            true,
+		},
 	}
 
 	for _, c := range testCases {
@@ -177,18 +236,23 @@ func TestDBIngestorIngest(t *testing.T) {
 				InsertDataErr:   c.insertDataErr,
 				InsertedSeries:  make(map[string]model.SeriesID),
 			}
-
 			i := DBIngestor{
-				db: &inserter,
+				db:     &inserter,
+				Parser: &DataParser{},
 			}
 
-			count, err := i.Ingest(c.metrics, NewWriteRequest(), ha.NewHAState())
+			if c.ha {
+				pgx := pgxconn.NewPgxConn(nil)
+				i.Parser = ha.NewMockHAState(&pgx)
+			}
+
+			count, err := i.Ingest(c.metrics, NewWriteRequest())
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.insertSeriesErr)
 				}
-				if c.insertDataErr != nil && err != c.insertDataErr {
+				if c.insertDataErr != nil && err.Error() != c.insertDataErr.Error() {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.insertDataErr)
 				}
 				if c.getSeriesErr != nil && err != c.getSeriesErr {

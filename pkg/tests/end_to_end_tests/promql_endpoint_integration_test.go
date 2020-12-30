@@ -23,7 +23,6 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -296,7 +295,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")
 	}
 
-	hander, err := api.GenerateRouter(cfg, metrics, pgClient, nil, ha.NewHAState())
+	hander, err := api.GenerateRouter(cfg, metrics, pgClient, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
