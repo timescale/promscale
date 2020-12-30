@@ -123,6 +123,26 @@ func (b *Block) Series() []*prompb.TimeSeries {
 	return b.timeseries
 }
 
+// Fill fills the block with samples. It is used in place of Fetch().
+func (b *Block) Fill(ts []*prompb.TimeSeries, bytesUncompressed int) {
+	b.timeseries = ts
+	// Update the bytes count as done in Fetch().
+	// We do not have any stats when the tsdb blocks are compressed.
+	// Hence, we set the compressed bytes same sa uncompressed ones.
+	b.numBytesCompressed = bytesUncompressed
+	b.numBytesUncompressed = bytesUncompressed
+	b.plan.update(bytesUncompressed)
+}
+
+// MergeProgressSeries returns the block's time-series after appending a sample to the progress-metric and merging
+// with the time-series of the block.
+func (b *Block) MergeProgressSeries(ts *prompb.TimeSeries) []*prompb.TimeSeries {
+	b.SetDescription(fmt.Sprintf("pushing %.2f...", float64(b.numBytesCompressed)/float64(utils.Megabyte)), 1)
+	ts.Samples = []prompb.Sample{{Timestamp: b.Maxt(), Value: 1}} // One sample per block.
+	b.timeseries = append(b.timeseries, ts)
+	return b.timeseries
+}
+
 // GetProgressSeries returns a time-series after appending a sample to the progress-metric.
 func (b *Block) UpdateProgressSeries(ts *prompb.TimeSeries) *prompb.TimeSeries {
 	ts.Samples = []prompb.Sample{{Timestamp: b.Maxt(), Value: 1}} // One sample per block.

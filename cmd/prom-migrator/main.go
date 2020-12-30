@@ -39,6 +39,7 @@ type config struct {
 	concurrentPush     int
 	readURL            string
 	writeURL           string
+	promTSDBPath       string
 	progressMetricName string
 	progressMetricURL  string
 	progressEnabled    bool
@@ -90,9 +91,14 @@ func main() {
 		readErrChan  = make(chan error)
 		writeErrChan = make(chan error)
 		sigBlockRead = make(chan *plan.Block)
+		read         *reader.RemoteRead
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
+	if conf.promTSDBPath != "" {
+		read, err = reader.New(cont, reader.PromTSDB, conf.promTSDBPath, planner, sigBlockRead)
+	} else {
+		read, err = reader.New(cont, reader.URL, conf.readURL, planner, sigBlockRead)
+	}
 	if err != nil {
 		log.Error("msg", "could not create reader", "error", err)
 		os.Exit(2)
@@ -147,6 +153,8 @@ func parseFlags(conf *config, args []string) {
 		"However, setting this value too high may cause TLS handshake error on the read storage side or may lead to starvation of fetch requests, depending on your internet bandwidth.")
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
+	flag.StringVar(&conf.promTSDBPath, "prom-tsdb-path", "", "Address for prometheus tsdb dir. This enables direct fetching of blocks "+
+		"and hence faster than migrating data from /api/v1/read endpoint of prometheus instance.")
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+
 		"This is used to resume the migration process after a failure.")
 	flag.StringVar(&conf.progressMetricURL, "progress-metric-url", "", "URL of the remote storage that contains the progress-metric. "+
@@ -185,16 +193,18 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("invalid maxt: %d", conf.maxt)
 	case conf.mint > conf.maxt:
 		return fmt.Errorf("invalid input: minimum timestamp value (mint) cannot be greater than the maximum timestamp value (maxt)")
+	case strings.TrimSpace(conf.readURL) != "" && strings.TrimSpace(conf.promTSDBPath) != "":
+		return fmt.Errorf("invalid input: either of -read-url or -prom-tsdb-path should be provided")
 	case conf.progressMetricName != progressMetricName:
 		if !regexp.MustCompile(validMetricNameRegex).MatchString(conf.progressMetricName) {
 			return fmt.Errorf("invalid metric-name regex match: prom metric must match %s: recieved: %s", validMetricNameRegex, conf.progressMetricName)
 		}
 	case strings.TrimSpace(conf.readURL) == "" && strings.TrimSpace(conf.writeURL) == "":
 		return fmt.Errorf("remote read storage url and remote write storage url must be specified. Without these, data migration cannot begin")
-	case strings.TrimSpace(conf.readURL) == "":
-		return fmt.Errorf("remote read storage url needs to be specified. Without read storage url, data migration cannot begin")
+	case strings.TrimSpace(conf.readURL) == "" && strings.TrimSpace(conf.promTSDBPath) == "":
+		return fmt.Errorf("either remote-read storage url or prom-tsdb-path must be specified. Without these, data migration cannot begin")
 	case strings.TrimSpace(conf.writeURL) == "":
-		return fmt.Errorf("remote write storage url needs to be specified. Without write storage url, data migration cannot begin")
+		return fmt.Errorf("remote-write storage url needs to be specified. Without write storage url, data migration cannot begin")
 	case conf.progressEnabled && strings.TrimSpace(conf.progressMetricURL) == "":
 		return fmt.Errorf("invalid input: read url for remote-write storage should be provided when progress metric is enabled. To disable progress metric, use -progress-enabled=false")
 	}

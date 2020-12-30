@@ -129,6 +129,16 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	return lastPushedMaxt, true, nil
 }
 
+// Mint returns the mint of the migration.
+func (p *Plan) Mint() int64 {
+	return p.config.Mint
+}
+
+// Maxt returns the maxt of the migration.
+func (p *Plan) Maxt() int64 {
+	return p.config.Maxt
+}
+
 func (p *Plan) DecrementBlockCount() {
 	p.blockCounts.Sub(1)
 }

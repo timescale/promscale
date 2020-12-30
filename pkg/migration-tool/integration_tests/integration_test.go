@@ -75,7 +75,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
+	read, err := reader.New(cont, reader.URL, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -176,7 +176,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
+	read, err := reader.New(cont, reader.URL, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -209,7 +209,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	sigBlockRead = make(chan *plan.Block)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
-	read, err = reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
+	read, err = reader.New(cont, reader.URL, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -317,7 +317,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		sigBlockRead = make(chan *plan.Block)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
+	read, err := reader.New(cont, reader.URL, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
@@ -350,7 +350,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	sigBlockRead = make(chan *plan.Block)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
-	read, err = reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigBlockRead)
+	read, err = reader.New(cont, reader.URL, conf.readURL, planner, sigBlockRead)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
