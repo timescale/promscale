@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	replicaName = "__replica__"
-	clusterName = "__cluster__"
+	ReplicaNameLabel = "__replica__"
+	ClusterNameLabel = "__cluster__"
 )
 
 // Labels stores a labels.Labels in its canonical string representation
@@ -187,7 +187,7 @@ func (l *Labels) Swap(i, j int) {
 
 func (l *Labels) GetReplicaName() string {
 	for index, key := range l.Names {
-		if key == replicaName {
+		if key == ReplicaNameLabel {
 			return l.Values[index]
 		}
 	}
@@ -196,7 +196,7 @@ func (l *Labels) GetReplicaName() string {
 
 func (l *Labels) GetClusterName() string {
 	for index, key := range l.Names {
-		if key == clusterName {
+		if key == ClusterNameLabel {
 			return l.Values[index]
 		}
 	}
