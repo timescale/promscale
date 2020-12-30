@@ -7,7 +7,6 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"errors"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -276,5 +275,5 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")
 	}
 
-	return api.GenerateRouter(cfg, metrics, pgClient, nil, ha.NewHAState()), pgClient, nil
+	return api.GenerateRouter(cfg, metrics, pgClient, nil), pgClient, nil
 }

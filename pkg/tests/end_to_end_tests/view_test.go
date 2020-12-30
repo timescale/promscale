@@ -7,7 +7,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"strings"
 	"testing"
 
@@ -163,7 +162,7 @@ func TestSQLView(t *testing.T) {
 		}
 
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest(), ha.NewHAState())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)
@@ -261,7 +260,7 @@ func TestSQLViewSelectors(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest(), ha.NewHAState())
+		_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
 
 		if err != nil {
 			t.Fatal(err)
