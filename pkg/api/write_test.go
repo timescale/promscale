@@ -6,7 +6,6 @@ package api
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -411,7 +410,7 @@ func TestWrite(t *testing.T) {
 				SentBatchDuration: sendBatchHistogram,
 				InvalidWriteReqs:  invalidWriteReqs,
 				WriteThroughput:   util.NewThroughputCalc(time.Second),
-			}, ha.NewHAState())
+			})
 
 			headers := protobufHeaders
 			if len(c.customHeaders) != 0 {
@@ -500,7 +499,7 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(series []prompb.TimeSeries, request *prompb.WriteRequest, ha *ha.HA) (uint64, error) {
+func (m *mockInserter) Ingest(series []prompb.TimeSeries, request *prompb.WriteRequest) (uint64, error) {
 	m.ts = series
 	return m.result, m.err
 }

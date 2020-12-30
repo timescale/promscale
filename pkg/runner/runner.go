@@ -25,7 +25,6 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"github.com/timescale/promscale/pkg/util"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -45,9 +44,6 @@ type Config struct {
 	StopAfterMigrate   bool
 	UseVersionLease    bool
 	InstallTimescaleDB bool
-	HALeaseTimeout     string
-	HALeaseRefresh     string
-	HAEnable           bool
 }
 
 const (
@@ -60,7 +56,6 @@ var (
 	appVersion         = pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash}
 	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
 	startupError       = fmt.Errorf("startup error")
-	HAState            = &ha.HA{}
 )
 
 func ParseFlags(cfg *Config, args []string) (*Config, error) {
@@ -86,9 +81,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
 	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
 
-	fs.StringVar(&cfg.HALeaseRefresh, "ha-lease-refresh", "10s", "ha lease refresh.")
-	fs.StringVar(&cfg.HALeaseTimeout, "lease-lease-timeout", "1m", "ha lease timeout.")
-	fs.BoolVar(&cfg.HAEnable, "ha-enable", false, "enable ha mode.")
 
 	util.ParseEnv("PROMSCALE", fs)
 	// Deprecated: TS_PROM is the old prefix which is deprecated and in here
@@ -176,14 +168,7 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
-	if cfg.HAEnable {
-		HAState.Enabled = cfg.HAEnable
-		HAState.LeaseRefresh = cfg.HALeaseRefresh
-		HAState.LeaseTimeout = cfg.HALeaseTimeout
-		HAState.DBClient = client.Connection
-	}
-
-	router := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector, HAState)
+	router := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector)
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)

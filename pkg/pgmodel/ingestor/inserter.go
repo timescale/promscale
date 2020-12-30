@@ -74,6 +74,7 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*p
 
 	go inserter.runCompleteMetricCreationWorker()
 
+
 	return inserter, nil
 }
 
