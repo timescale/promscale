@@ -16,6 +16,11 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+const (
+	replicaName = "__replica__"
+	clusterName = "__cluster__"
+)
+
 // Labels stores a labels.Labels in its canonical string representation
 type Labels struct {
 	Names      []string
@@ -182,7 +187,7 @@ func (l *Labels) Swap(i, j int) {
 
 func (l *Labels) GetReplicaName() string {
 	for index, key := range l.Names {
-		if key == "__replica__" {
+		if key == replicaName {
 			return l.Values[index]
 		}
 	}
@@ -191,7 +196,7 @@ func (l *Labels) GetReplicaName() string {
 
 func (l *Labels) GetClusterName() string {
 	for index, key := range l.Names {
-		if key == "__cluster__" {
+		if key == clusterName {
 			return l.Values[index]
 		}
 	}

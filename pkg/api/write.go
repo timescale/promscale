@@ -20,13 +20,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics, ha *ha.HA) http.Handler {
+func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// we treat invalid requests as the same as no request for
 		// leadership-timeout purposes
@@ -69,7 +68,7 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics, 
 		metrics.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		numSamples, err := writer.Ingest(req.GetTimeseries(), req, ha)
+		numSamples, err := writer.Ingest(req.GetTimeseries(), req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
