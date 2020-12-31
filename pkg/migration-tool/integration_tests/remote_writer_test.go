@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const matcherProgress = `[{__name__ progress_metric {} [] 0} {job ci-migration {} [] 0}]`
+const matcherProgress = `__name__=progress_metric,job=ci-migration`
 
 type remoteWriteServer struct {
 	mux                    sync.RWMutex
@@ -46,9 +46,9 @@ func createRemoteWriteServer(t *testing.T) (*remoteWriteServer, string, string) 
 func (rwss *remoteWriteServer) Series() int {
 	rwss.mux.RLock()
 	defer rwss.mux.RUnlock()
-	count := 0 // To prevent counting as series if no samples occur.
-	for _, s := range rwss.writeStorageTimeSeries {
-		if len(s.Samples) > 0 {
+	count := 0
+	for k := range rwss.writeStorageTimeSeries {
+		if len(k) > 0 {
 			count++
 		}
 	}
@@ -81,7 +81,6 @@ func (rwss *remoteWriteServer) Close() {
 
 func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		// we treat invalid requests as the same as no request for
 		// leadership-timeout purposes
 		if !validateWriteHeaders(t, r) {
@@ -100,13 +99,14 @@ func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
 		defer rws.mux.Unlock()
 		if len(req.Timeseries) > 0 {
 			for _, ts := range req.Timeseries {
-				m, ok := rws.writeStorageTimeSeries[fmt.Sprintf("%v", ts.Labels)]
+				h := strings.Join(labelsToLabelsString(ts.Labels), ",")
+				m, ok := rws.writeStorageTimeSeries[h]
 				if !ok {
-					rws.writeStorageTimeSeries[fmt.Sprintf("%v", ts.Labels)] = ts
+					rws.writeStorageTimeSeries[h] = ts
 					continue
 				}
 				m.Samples = append(m.Samples, ts.Samples...)
-				rws.writeStorageTimeSeries[fmt.Sprintf("%v", ts.Labels)] = m
+				rws.writeStorageTimeSeries[h] = m
 			}
 		}
 		FinishWriteRequest(req)
@@ -144,7 +144,7 @@ func getProgressHandler(t *testing.T, rws *remoteWriteServer, labels string) htt
 		startTs := req.Queries[0].StartTimestampMs
 		endTs := req.Queries[0].EndTimestampMs
 		ts := make([]*prompb.TimeSeries, 1) // Since the response is going to be the number of time-series.
-		ts[0] = new(prompb.TimeSeries)
+		ts[0] = &prompb.TimeSeries{Labels: []prompb.Label{}}
 		serie, ok := rws.writeStorageTimeSeries[labels]
 		if ok {
 			for _, s := range serie.Samples {
@@ -239,4 +239,12 @@ func validateWriteHeaders(t *testing.T, r *http.Request) bool {
 	}
 
 	return true
+}
+
+func labelsToLabelsString(lbs []prompb.Label) []string {
+	s := make([]string, len(lbs))
+	for i, l := range lbs {
+		s[i] = fmt.Sprintf("%s=%s", l.Name, l.Value)
+	}
+	return s
 }

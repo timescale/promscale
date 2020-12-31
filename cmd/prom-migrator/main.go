@@ -91,13 +91,13 @@ func main() {
 		readErrChan  = make(chan error)
 		writeErrChan = make(chan error)
 		sigBlockRead = make(chan *plan.Block)
-		read         *reader.RemoteRead
+		read         reader.Reader
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
 	if conf.promTSDBPath != "" {
-		read, err = reader.New(cont, reader.PromTSDB, conf.promTSDBPath, planner, sigBlockRead)
+		read, err = reader.NewPathRead(cont, conf.promTSDBPath, planner, sigBlockRead, false)
 	} else {
-		read, err = reader.New(cont, reader.URL, conf.readURL, planner, sigBlockRead)
+		read, err = reader.NewRemoteRead(cont, conf.readURL, planner, sigBlockRead, false)
 	}
 	if err != nil {
 		log.Error("msg", "could not create reader", "error", err)
@@ -154,7 +154,7 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.StringVar(&conf.promTSDBPath, "prom-tsdb-path", "", "Address for prometheus tsdb dir. This enables direct fetching of blocks "+
-		"and hence faster than migrating data from /api/v1/read endpoint of prometheus instance.")
+		"and hence faster than migrating data from /api/v1/read endpoint of prometheus instance. Note: 'prom-tsdb-path' will replace the 'read-url'.")
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+
 		"This is used to resume the migration process after a failure.")
 	flag.StringVar(&conf.progressMetricURL, "progress-metric-url", "", "URL of the remote storage that contains the progress-metric. "+

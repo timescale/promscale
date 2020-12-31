@@ -135,7 +135,6 @@ func (p *pgxInserter) InsertData(rows map[string][]model.SamplesInfo) (uint64, e
 		workFinished.Wait()
 		select {
 		case err = <-errChan:
-			fmt.Println("here", err)
 		default:
 		}
 		close(errChan)
