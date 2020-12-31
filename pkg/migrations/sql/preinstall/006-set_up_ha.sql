@@ -75,7 +75,7 @@ BEGIN
     IF NOT FOUND THEN
         -- no leader yet for cluster insert;
         INSERT INTO SCHEMA_CATALOG.ha_locks
-        VALUES (cluster, writer, '-Infinity', max_time + lease_timeout)
+        VALUES (cluster, writer, min_time, max_time + lease_timeout)
         ON CONFLICT DO NOTHING;
         -- needed due to on-conflict clause;
         SELECT h.leader, h.lease_start, h.lease_until
