@@ -75,6 +75,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "Maximum number of database connections for writing per go process.")
 	fs.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle.")
 	fs.StringVar(&cfg.DbUri, "db-uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
+	fs.BoolVar(&cfg.HAEnabled, "enable-ha", true, "Enable HA.")
 	return cfg
 }
 
