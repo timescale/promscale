@@ -16,9 +16,9 @@ import (
 const (
 	leaseRefreshKey      = "ha_lease_refresh"
 	leaseTimeoutKey      = "ha_lease_timeout"
-	checkInsertSql       = "SELECT " + schema.Catalog + ".check_insert($1, $2, $3, $4)"
-	tryChangeLeaderSql   = "SELECT " + schema.Catalog + ".try_change_leader($1, $2, $3)"
-	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + schema.Catalog + "ha_locks WHERE cluster_name = $1"
+	checkInsertSql       = "SELECT * FROM " + schema.Catalog + ".check_insert($1, $2, $3, $4)"
+	tryChangeLeaderSql   = "SELECT * FROM " + schema.Catalog + ".try_change_leader($1, $2, $3)"
+	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + schema.Catalog + ".ha_locks WHERE cluster_name = $1"
 	readLeaseSettingsSql = "SELECT key, value FROM " + schema.Catalog + ".default where key IN('" + leaseRefreshKey + "','" + leaseTimeoutKey + "')"
 
 	leaderHasChangedErrStr = "LEADER_HAS_CHANGED"
@@ -72,7 +72,7 @@ func newHaLockClient(dbConn pgxconn.PgxConn) haLockClient {
 func (h *haLockClientDB) checkInsert(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (*haLockState, error) {
 	dbLock := haLockState{}
 	row := h.dbConn.QueryRow(ctx, checkInsertSql, cluster, leader, minTime, maxTime)
-	if err := row.Scan(&dbLock.cluster, &dbLock.leader, &dbLock.leaseStart, &dbLock.leaseUntil); err != nil {
+	if err := row.Scan(&(dbLock.cluster), &(dbLock.leader), &(dbLock.leaseStart), &(dbLock.leaseUntil)); err != nil {
 		return nil, err
 	}
 	return &dbLock, nil
@@ -81,7 +81,7 @@ func (h *haLockClientDB) checkInsert(ctx context.Context, cluster, leader string
 func (h *haLockClientDB) tryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*haLockState, error) {
 	dbLock := haLockState{}
 	row := h.dbConn.QueryRow(ctx, tryChangeLeaderSql, cluster, newLeader, maxTime)
-	if err := row.Scan(&dbLock.cluster, &dbLock.leader, &dbLock.leaseStart, &dbLock.leaseUntil); err != nil {
+	if err := row.Scan(&(dbLock.cluster), &(dbLock.leader), &(dbLock.leaseStart), &(dbLock.leaseUntil)); err != nil {
 		return nil, err
 	}
 	return &dbLock, nil
@@ -105,7 +105,7 @@ func (h *haLockClientDB) readLeaseSettings(ctx context.Context) (timeout, refres
 	for rows.Next() {
 		var key, value string
 		var valueAsDuration time.Duration
-		if err := rows.Scan(&key, value); err != nil {
+		if err := rows.Scan(&key, &value); err != nil {
 			return -1, -1, err
 		}
 
