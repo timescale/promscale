@@ -21,7 +21,7 @@ const (
 	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + schema.Catalog + ".ha_locks WHERE cluster_name = $1"
 	readLeaseSettingsSql = "SELECT key, value FROM " + schema.Catalog + ".default where key IN('" + leaseRefreshKey + "','" + leaseTimeoutKey + "')"
 
-	leaderHasChangedErrStr = "LEADER_HAS_CHANGED"
+	leaderHasChangedErrStr = "ERROR: LEADER_HAS_CHANGED (SQLSTATE P0001)"
 )
 
 var leaderHasChanged = errors.New(leaderHasChangedErrStr)
