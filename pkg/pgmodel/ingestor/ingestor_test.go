@@ -12,7 +12,6 @@ import (
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -191,25 +190,6 @@ func TestDBIngestorIngest(t *testing.T) {
 			ha:          true,
 		},
 		{
-			name: "Insert data in HA from leader prom",
-			metrics: []prompb.TimeSeries{
-				{
-					Labels: []prompb.Label{
-						{Name: model.MetricNameLabelName, Value: "test"},
-						{Name: "test", Value: "test"},
-						{Name: "__replica__", Value: "replica1"},
-						{Name: "__cluster__", Value: "leader1"},
-					},
-					Samples: []prompb.Sample{
-						{Timestamp: 1, Value: 0.1},
-					},
-				},
-			},
-			count:       1,
-			countSeries: 1,
-			ha:          true,
-		},
-		{
 			name: "Insert data in HA enable mode but __replica__ & __leader__ labels are empty",
 			metrics: []prompb.TimeSeries{
 				{
@@ -224,7 +204,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			},
 			count:         0,
 			countSeries:   0,
-			insertDataErr: fmt.Errorf("ha mode is enabled and __replica__ or __cluster__ is empty"),
+			insertDataErr: fmt.Errorf("ha mode is enabled and one/both of the __cluster__, __replica__ labels is/are empty"),
 			ha:            true,
 		},
 	}
@@ -242,8 +222,8 @@ func TestDBIngestorIngest(t *testing.T) {
 			}
 
 			if c.ha {
-				pgx := pgxconn.NewPgxConn(nil)
-				i.Parser = ha.NewMockHAState(&pgx)
+				mock := ha.MockNewHAService(nil)
+				i.Parser = ha.NewHAParser(mock)
 			}
 
 			count, err := i.Ingest(c.metrics, NewWriteRequest())
