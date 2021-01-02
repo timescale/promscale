@@ -3,9 +3,10 @@ package ha
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sync/semaphore"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -34,6 +35,7 @@ func NewHAService(dbClient pgxconn.PgxConn) (*Service, error) {
 		lockClient:   lockClient,
 		leaseTimeout: timeout,
 		leaseRefresh: refresh,
+		_leaderChangeLock: semaphore.NewWeighted(1),
 	}, nil
 }
 
@@ -44,12 +46,12 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 	lockState, err := h.lockClient.checkInsert(context.Background(), clusterName, replicaName, minT, maxT)
 
 	// unknown error while checking lock state
-	if err != nil && err != leaderHasChanged {
+	if err != nil && err.Error() != leaderHasChanged.Error() {
 		return false, fmt.Errorf("could not check ha lock state: %#v", err)
 	}
 
 	// leader changed
-	if err == leaderHasChanged {
+	if err != nil && err.Error() == leaderHasChanged.Error() {
 		// read latest lock state
 		lockState, err = h.lockClient.readLockState(context.Background(), clusterName)
 		// couldn't get latest lock state
@@ -60,16 +62,15 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 		go h.state.update(lockState, replicaName, maxT)
 		go h.tryChangeLeader()
 
-		if lockState.leader == replicaName && !minT.Before(lockState.leaseStart) {
+		if lockState.leader == replicaName && minT.After(lockState.leaseStart) && maxT.Before(lockState.leaseUntil){
 			return true, nil
 		} else {
-
 			return false, nil
 		}
 	}
 
 	// requesting replica is leader, allow
-	if err == nil && replicaName == lockState.leader && !minT.Before(lockState.leaseStart) {
+	if err == nil && replicaName == lockState.leader && minT.After(lockState.leaseStart) && maxT.Before(lockState.leaseUntil){
 		go h.state.update(lockState, replicaName, maxT)
 		return true, nil
 	}
@@ -93,7 +94,7 @@ func (h *Service) tryChangeLeader() {
 			log.Error("msg", "Couldn't check lock state", "err", err)
 			return
 		}
-		if stateView.leader == lockState.leader || !lockState.leaseUntil.After(stateView.maxTimeSeen) {
+		if stateView.leader == lockState.leader && lockState.leaseUntil.Before(stateView.maxTimeSeen) {
 			// no need to change leader
 			return
 		}

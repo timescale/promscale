@@ -27,13 +27,16 @@ type StateView struct {
 func (h *State) update(latestState *haLockState, currentReplica string, currentMaxT time.Time) {
 	h._mu.Lock()
 	defer h._mu.Unlock()
+	h.cluster = latestState.cluster
 	h.leader = latestState.leader
 	h.leaseStart = latestState.leaseStart
 	h.leaseUntil = latestState.leaseUntil
-	if currentMaxT.After(h.maxTimeSeen) {
+	// if the leader has been changed and the maxTimeseen by new
+	// leader is bit behind old leader the below condition isn't updating few fields
+	//if currentMaxT.After(h.maxTimeSeen) {
 		h.maxTimeInstance = currentReplica
 		h.maxTimeSeen = currentMaxT
-	}
+	//}
 }
 
 func (h *State) clone() *StateView {
