@@ -27,12 +27,14 @@ import (
 
 func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		// we treat invalid requests as the same as no request for
 		// leadership-timeout purposes
 		if !validateWriteHeaders(w, r) {
 			metrics.InvalidWriteReqs.Inc()
 			return
 		}
+
 		// We need to record this time even if we're not the leader as it's
 		// used to determine if we're eligible to become the leader.
 		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
@@ -58,15 +60,20 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 			return
 		}
 
-		ts := req.GetTimeseries()
 		receivedBatchCount := 0
 
-		for _, t := range ts {
+		for _, t := range req.GetTimeseries() {
 			receivedBatchCount = receivedBatchCount + len(t.Samples)
 		}
 
 		metrics.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
+
+		// if samples in write request are empty the we do not need to
+		// proceed further
+		if len(req.GetTimeseries()) == 0 {
+			return
+		}
 
 		numSamples, err := writer.Ingest(req.GetTimeseries(), req)
 		if err != nil {

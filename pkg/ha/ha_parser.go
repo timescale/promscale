@@ -2,11 +2,12 @@ package ha
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
-	"time"
 )
 
 type haParser struct {
@@ -92,7 +93,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	}
 	if !ok {
 		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert")
-		return nil, rows, nil
+		return nil, 0, nil
 	}
 
 	return dataSamples, rows, nil

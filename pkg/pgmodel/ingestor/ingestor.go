@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"fmt"
+
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"

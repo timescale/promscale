@@ -26,7 +26,7 @@ type Labels struct {
 	Names      []string
 	Values     []string
 	MetricName string
-	str        string
+	Str        string
 }
 
 var LabelsInterner = sync.Map{}
@@ -136,7 +136,7 @@ func LabelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 	labels := GetLabels(str)
 	if labels == nil {
 		labels = new(Labels)
-		labels.str = str
+		labels.Str = str
 		labels.Names = make([]string, len(labelPairs))
 		labels.Values = make([]string, len(labelPairs))
 		for i, l := range labelPairs {
@@ -156,17 +156,17 @@ func LabelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 // This representation is guaranteed to uniquely represent the underlying label
 // set, though need not human-readable, or indeed, valid utf-8
 func (l *Labels) String() string {
-	return l.str
+	return l.Str
 }
 
 // Compare returns a comparison int between two Labels
 func (l *Labels) Compare(b *Labels) int {
-	return strings.Compare(l.str, b.str)
+	return strings.Compare(l.Str, b.Str)
 }
 
 // Equal returns true if two Labels are equal
 func (l *Labels) Equal(b *Labels) bool {
-	return l.str == b.str
+	return l.Str == b.Str
 }
 
 // Labels implements sort.Interface
