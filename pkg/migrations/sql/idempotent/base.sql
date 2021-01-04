@@ -993,7 +993,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name
 RETURNS BOOLEAN
 AS $func$
     UPDATE SCHEMA_CATALOG.metric SET retention_period = NULL
-    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name));
+    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(reset_metric_retention_period.metric_name));
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;

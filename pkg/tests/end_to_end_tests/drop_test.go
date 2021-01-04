@@ -68,11 +68,16 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		}
 		verifyRetentionPeriod(t, db, "TEST", time.Duration(6*time.Hour))
 		verifyRetentionPeriod(t, db, "test2", time.Duration(7*time.Hour))
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('TEST', INTERVAL '8 hours')")
+		if err != nil {
+			t.Error(err)
+		}
 		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('test2')")
 		if err != nil {
 			t.Error(err)
 		}
 		verifyRetentionPeriod(t, db, "test2", time.Duration(6*time.Hour))
+		verifyRetentionPeriod(t, db, "TEST", time.Duration(8*time.Hour))
 
 		//set on a metric that doesn't exist should create the metric and set the parameter
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test_new_metric1', INTERVAL '7 hours')")
