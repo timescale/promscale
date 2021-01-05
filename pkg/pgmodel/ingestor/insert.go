@@ -381,18 +381,18 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		return err
 	}
 
-	for i, numRows := range numRowsPerInsert {
+	var affectedMetrics uint64
+	for _, numRows := range numRowsPerInsert {
 		ct, err := results.Exec()
 		if err != nil {
 			return err
 		}
 		if int64(numRows) != ct.RowsAffected() {
-			log.Warn("msg", "duplicate data in sample", "table", reqs[i].table, "duplicate_count", int64(numRows)-ct.RowsAffected(), "row_count", numRows)
-			metrics.DuplicateSamples.Add(float64(int64(numRows) - ct.RowsAffected()))
-			metrics.DuplicateWrites.Inc()
+			affectedMetrics++
+			registerDuplicates(int64(numRows) - ct.RowsAffected())
 		}
 	}
+	reportDuplicates(affectedMetrics)
 	metrics.DbBatchInsertDuration.Observe(time.Since(start).Seconds())
-
 	return nil
 }

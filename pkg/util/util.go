@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	PromNamespace              = "ts_prom"
+	PromNamespace              = "promscale"
 	maskPasswordReplaceString1 = "password=$1'****'"
 	maskPasswordReplaceString2 = "password:$1****$3"
 	/* #nosec */
