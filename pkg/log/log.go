@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -24,6 +25,9 @@ var (
 		func() time.Time { return time.Now().UTC() },
 		"2006-01-02T15:04:05.000Z07:00",
 	)
+
+	logStoreMux sync.Mutex
+	logStore    = make(map[string][]interface{})
 )
 
 // Config represents a logger configuration used upon initialization.
@@ -107,4 +111,37 @@ func parseLogLevel(logLevel string) (level.Option, error) {
 	default:
 		return nil, fmt.Errorf("unrecognized log level %q", logLevel)
 	}
+}
+
+const logOnceTimedDuration = time.Minute
+
+// timedLogger logs from logStore every logOnceTimedDuration. It deletes the log entry from the store
+// after it has logged once.
+func timedLogger() {
+	time.Sleep(logOnceTimedDuration)
+	applyKind := func(logMsg []interface{}) (newLogMsg []interface{}) {
+		newLogMsg = append(newLogMsg, "kind", "rate-limited", "duration", logOnceTimedDuration.String())
+		newLogMsg = append(newLogMsg, logMsg...)
+		return
+	}
+	logStoreMux.Lock()
+	defer logStoreMux.Unlock()
+	for _, logMsg := range logStore {
+		Debug(applyKind(logMsg)...)
+	}
+	logStore = make(map[string][]interface{})
+}
+
+// DebugRateLimited logs Debug level logs once in every logOnceTimedDuration.
+func DebugRateLimited(keyvals ...interface{}) {
+	logStoreMux.Lock()
+	defer logStoreMux.Unlock()
+	val := fmt.Sprintf("%v", keyvals)
+	if len(logStore) == 0 {
+		go timedLogger()
+	}
+	if _, toBeLogged := logStore[val]; toBeLogged {
+		return
+	}
+	logStore[val] = keyvals
 }

@@ -47,7 +47,7 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 		}
 		if !shouldWrite {
 			metrics.LeaderGauge.Set(0)
-			log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
+			log.DebugRateLimited("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
 			return
 		}
 
