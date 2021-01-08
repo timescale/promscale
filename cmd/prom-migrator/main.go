@@ -137,12 +137,14 @@ func parseFlags(conf *config, args []string) {
 		"Setting this value less than zero will indicate all data from mint upto now. ")
 	flag.StringVar(&conf.maxBlockSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
 		"More the read size, faster will be the migration but higher will be the memory usage. Example: 250MB.")
-	flag.IntVar(&conf.concurrentPush, "concurrent-push", 4, "Number of shards to split a fetched block in. Each shard is written concurrently. "+
-		"Note: Larger shards count will lead to significant memory usage.")
+	flag.IntVar(&conf.concurrentPush, "concurrent-push", 4, "Concurrent push enables pushing of blocks concurrently. "+
+		"Each block is divided into 'concurrent-push' (value) parts and then pushed to the remote-write storage concurrently. This may lead to higher throughput on "+
+		"the remote-write storage provided it is capable of handling the load. Note: Larger shards count will lead to significant memory usage.")
 	flag.IntVar(&conf.concurrentPulls, "concurrent-pulls", 1, "Concurrent pulls enables fetching of data concurrently. "+
-		"This may enable higher throughput by pulling data faster from remote-read stores. "+
-		"Note: Setting concurrent-pulls > 1 will show progress of concurrent fetching of data in the progress-bar and disable real-time transfer rate speed while fetching data. "+
-		"Moreover, setting this value too high may cause TLS handshake error on the read storage side or may lead to starvation of fetch requests, depending on the bandwidth.")
+		"Each fetch query is divided into 'concurrent-pulls' (value) parts and then fetched concurrently. "+
+		"This may enable higher throughput by pulling data faster from remote-read storage. "+
+		"Note: Setting concurrent-pulls > 1 will show progress of concurrent fetching of data in the progress-bar and disable real-time transfer rate. "+
+		"However, setting this value too high may cause TLS handshake error on the read storage side or may lead to starvation of fetch requests, depending on your internet bandwidth.")
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+
