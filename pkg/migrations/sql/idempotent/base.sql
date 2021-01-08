@@ -613,6 +613,28 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_key_position(text, text) to prom_reader;
 
+-- delete_metric deletes a metric and related series hypertable from the database along with the related series, views and unreferenced labels.
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.delete_metric(metric_name_to_be_deleted text) RETURNS VOID
+AS
+$$
+    DECLARE
+        hypertable_name TEXT;
+        deletable_metric_id INTEGER;
+    BEGIN
+        SELECT table_name, id INTO hypertable_name, deletable_metric_id FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_to_be_deleted;
+        RAISE NOTICE 'deleting "%" metric with metric_id as "%" and table_name as "%"', metric_name_to_be_deleted, deletable_metric_id, hypertable_name;
+        EXECUTE FORMAT('DROP VIEW SCHEMA_SERIES.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP VIEW SCHEMA_METRIC.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP TABLE SCHEMA_DATA_SERIES.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP TABLE SCHEMA_DATA.%1$I;', hypertable_name);
+        DELETE FROM SCHEMA_CATALOG.series WHERE metric_id=deletable_metric_id;
+        DELETE FROM SCHEMA_CATALOG.metric WHERE id=deletable_metric_id;
+        -- clean up unreferenced labels.
+        DELETE FROM SCHEMA_CATALOG.label WHERE id NOT IN (SELECT DISTINCT UNNEST(labels) FROM SCHEMA_CATALOG.series);
+    END;
+$$
+LANGUAGE plpgsql;
+
 --Get the label_id for a key, value pair
 -- no need for a get function only as users will not be using ids directly
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_id(
