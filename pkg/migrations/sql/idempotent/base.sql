@@ -613,24 +613,28 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_key_position(text, text) to prom_reader;
 
--- delete_metric deletes a metric and related series hypertable from the database along with the related series, views and unreferenced labels.
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.delete_metric(metric_name_to_be_deleted text) RETURNS VOID
+-- drop_metric deletes a metric and related series hypertable from the database along with the related series, views and unreferenced labels.
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.drop_metric(metric_name_to_be_dropped text) RETURNS VOID
 AS
 $$
     DECLARE
         hypertable_name TEXT;
         deletable_metric_id INTEGER;
     BEGIN
-        SELECT table_name, id INTO hypertable_name, deletable_metric_id FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_to_be_deleted;
-        RAISE NOTICE 'deleting "%" metric with metric_id as "%" and table_name as "%"', metric_name_to_be_deleted, deletable_metric_id, hypertable_name;
+        IF (SELECT NOT pg_try_advisory_xact_lock(SCHEMA_LOCK_ID)) THEN
+            RAISE NOTICE 'drop_metric can run only when no Promscale connectors are running. Please shutdown the Promscale connectors';
+            PERFORM pg_advisory_xact_lock(SCHEMA_LOCK_ID);
+        END IF;
+        SELECT table_name, id INTO hypertable_name, deletable_metric_id FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_to_be_dropped;
+        RAISE NOTICE 'deleting "%" metric with metric_id as "%" and table_name as "%"', metric_name_to_be_dropped, deletable_metric_id, hypertable_name;
         EXECUTE FORMAT('DROP VIEW SCHEMA_SERIES.%1$I;', hypertable_name);
         EXECUTE FORMAT('DROP VIEW SCHEMA_METRIC.%1$I;', hypertable_name);
         EXECUTE FORMAT('DROP TABLE SCHEMA_DATA_SERIES.%1$I;', hypertable_name);
         EXECUTE FORMAT('DROP TABLE SCHEMA_DATA.%1$I;', hypertable_name);
-        DELETE FROM SCHEMA_CATALOG.series WHERE metric_id=deletable_metric_id;
         DELETE FROM SCHEMA_CATALOG.metric WHERE id=deletable_metric_id;
-        -- clean up unreferenced labels.
-        DELETE FROM SCHEMA_CATALOG.label WHERE id NOT IN (SELECT DISTINCT UNNEST(labels) FROM SCHEMA_CATALOG.series);
+        -- clean up unreferenced labels, label_keys and its position.
+        DELETE FROM SCHEMA_CATALOG.label_key_position WHERE metric_name=metric_name_to_be_dropped;
+        DELETE FROM SCHEMA_CATALOG.label_key WHERE key NOT IN (select key from SCHEMA_CATALOG.label_key_position);
     END;
 $$
 LANGUAGE plpgsql;

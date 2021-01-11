@@ -102,7 +102,7 @@ jobs:
         - {name: "W/O TimescaleDB Extension", ext: false, tsdb: false, tsdb2: false, multi: false}
         - {name: "on TimescaleDB 2.0", ext: true,  tsdb: true,  tsdb2: true,  multi: false}
         - {name: "on TimescaleDB 2.0 W/O Promscale Extension", ext: false, tsdb: true,  tsdb2: true,  multi: false}
-        - {name: "on TimescaleDB 2.0 multinode", ext: true,  tsdb: true,  tsdb2: false, multi: true}
+        - {name: "on TimescaleDB 2.0 multinode", ext: true,  tsdb: true,  tsdb2: true, multi: true}
     steps:
 
     - name: Set up Go 1.14

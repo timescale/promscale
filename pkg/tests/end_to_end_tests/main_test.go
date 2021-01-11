@@ -39,8 +39,31 @@ var (
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
 	promContainer          testcontainers.Container
-	extensionState         testhelpers.ExtensionState
+	// extensionState expects setExtensionState() to be called before using its value.
+	extensionState testhelpers.ExtensionState
 )
+
+// setExtensionState sets the value of extensionState based on the input flags.
+func setExtensionState() {
+	if *useExtension {
+		extensionState.UsePromscale()
+	}
+
+	if *useTimescaleDB {
+		extensionState.UseTimescaleDB()
+	}
+
+	if *useTimescale2 {
+		*useTimescaleDB = true
+		extensionState.UseTimescale2()
+	}
+
+	if *useMultinode {
+		extensionState.UseMultinode()
+		*useTimescaleDB = true
+		*useTimescale2 = true
+	}
+}
 
 func TestMain(m *testing.M) {
 	var code int
@@ -55,25 +78,7 @@ func TestMain(m *testing.M) {
 
 			var closer io.Closer
 			if *useDocker {
-				if *useExtension {
-					extensionState.UsePromscale()
-				}
-
-				if *useTimescaleDB {
-					extensionState.UseTimescaleDB()
-				}
-
-				if *useTimescale2 {
-					*useTimescaleDB = true
-					extensionState.UseTimescale2()
-				}
-
-				if *useMultinode {
-					extensionState.UseMultinode()
-					*useTimescaleDB = true
-					*useTimescale2 = true
-				}
-
+				setExtensionState()
 				pgContainerTestDataDir = generatePGTestDirFiles()
 
 				pgContainer, closer, err = testhelpers.StartPGContainer(
