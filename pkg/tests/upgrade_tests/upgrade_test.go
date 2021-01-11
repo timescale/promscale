@@ -637,18 +637,11 @@ func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
 	return out
 }
 
-func TestUpgradeExtensions(t *testing.T) {
-	buildPromscaleImageFromRepo(t)
-	testPrereleaseExtensionUpgrade(t)
-	testExtMigrationFailure(t)
-	os.Exit(0)
-}
-
-func testPrereleaseExtensionUpgrade(t *testing.T) {
+func TestExtensionUpgrade(t *testing.T) {
 	var err error
 	var version string
 	ctx := context.Background()
-
+	buildPromscaleImageFromRepo(t)
 	db, dbContainer, closer := startDB(t, ctx)
 	defer closer.Close()
 
@@ -717,7 +710,9 @@ func testPrereleaseExtensionUpgrade(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		db.Close(ctx)
+
 		if version != "2.0.0-rc4" {
 			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension true")
 		}
@@ -725,11 +720,11 @@ func testPrereleaseExtensionUpgrade(t *testing.T) {
 	}()
 }
 
-func testExtMigrationFailure(t *testing.T) {
+func TestMigrationFailure(t *testing.T) {
+	ctx := context.Background()
 	var err error
 	var version string
-	ctx := context.Background()
-
+	buildPromscaleImageFromRepo(t)
 	db, dbContainer, closer := startDB(t, ctx)
 	defer testhelpers.StopContainer(ctx, dbContainer, false)
 
@@ -811,7 +806,6 @@ func testExtMigrationFailure(t *testing.T) {
 		}
 		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions true where migration fails and promscale keeps running.")
 	}()
-
 }
 
 func buildPromscaleImageFromRepo(t *testing.T) {
