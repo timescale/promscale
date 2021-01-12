@@ -679,6 +679,114 @@ func TestInsertCompressed(t *testing.T) {
 	})
 }
 
+func verifyNumDataNodes(t testing.TB, db *pgxpool.Pool, tableName string, expectedNodes int) {
+	var numNodes int
+
+	err := db.QueryRow(context.Background(),
+		`SELECT array_length(data_nodes, 1)
+		FROM timescaledb_information.hypertables
+		WHERE hypertable_name = $1`,
+		tableName).Scan(&numNodes)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if expectedNodes != numNodes {
+		t.Errorf("Unexpected num nodes for table %v: got %v want %v", tableName, numNodes, expectedNodes)
+	}
+}
+
+func TestInsertMultinodeAddNodes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("compression meaningless without TimescaleDB")
+	}
+	if !*useMultinode {
+		t.Skip("Only applies for multinode")
+	}
+	insertMultinodeAddNodes(t, true)
+	insertMultinodeAddNodes(t, false)
+}
+func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
+
+	withDBAttachNode(t, *testDatabase, attachExisting, func(db *pgxpool.Pool, t testing.TB) {
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: model.MetricNameLabelName, Value: "created_before_add_node"},
+					{Name: "test", Value: "test"},
+				},
+				// Two samples that, by default, end up in different chunks.
+				// This is to check that decompression works on all necessary chunks.
+				Samples: []prompb.Sample{
+					{Timestamp: 100, Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyNumDataNodes(t, db, "created_before_add_node", 1)
+	},
+		func(db *pgxpool.Pool, t testing.TB) {
+			ts := []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "created_before_add_node"},
+						{Name: "test", Value: "test"},
+					},
+					// Two samples that, by default, end up in different chunks.
+					// This is to check that decompression works on all necessary chunks.
+					Samples: []prompb.Sample{
+						{Timestamp: 200, Value: 0.2},
+					},
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "created_after_add_node"},
+						{Name: "test", Value: "test"},
+					},
+					// Two samples that, by default, end up in different chunks.
+					// This is to check that decompression works on all necessary chunks.
+					Samples: []prompb.Sample{
+						{Timestamp: 200, Value: 0.3},
+					},
+				},
+			}
+			ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ingestor.Close()
+			_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = ingestor.CompleteMetricCreation()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if attachExisting {
+				verifyNumDataNodes(t, db, "created_before_add_node", 2)
+			} else {
+				verifyNumDataNodes(t, db, "created_before_add_node", 1)
+			}
+			verifyNumDataNodes(t, db, "created_after_add_node", 2)
+		})
+}
+
 func TestCompressionSetting(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

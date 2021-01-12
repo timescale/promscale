@@ -125,8 +125,8 @@ func PgConnectURL(dbName string, superuser SuperuserStatus) string {
 }
 
 // WithDB establishes a database for testing and calls the callback
-func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
-	db, err := DbSetup(DBName, superuser)
+func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Setup bool, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
+	db, err := DbSetup(DBName, superuser, deferNode2Setup)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -149,7 +149,7 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	return dbPool
 }
 
-func DbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
+func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool) (*pgxpool.Pool, error) {
 	defaultDb, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		return nil, err
@@ -195,7 +195,10 @@ func DbSetup(DBName string, superuser SuperuserStatus) (*pgxpool.Pool, error) {
 		// Multinode requires the administrator to set up data nodes, so in
 		// that case timescaledb should always be installed by the time the
 		// connector runs. We just set up the data nodes here.
-		err = attachDataNodes(ourDb, DBName)
+		err = AttachDataNode1(ourDb, DBName)
+		if err == nil && !deferNode2Setup {
+			err = AttachDataNode2(ourDb, DBName)
+		}
 		if err != nil {
 			_ = ourDb.Close(context.Background())
 			return nil, err
@@ -330,7 +333,10 @@ func StartDatabaseImage(ctx context.Context,
 			return nil, nil, err
 		}
 
-		err = attachDataNodes(db, defaultDB)
+		err = AttachDataNode1(db, defaultDB)
+		if err == nil {
+			err = AttachDataNode2(db, defaultDB)
+		}
 		if err != nil {
 			_ = c.Close()
 			return nil, nil, err
@@ -504,18 +510,21 @@ func startPGInstance(
 	return container, closer, nil
 }
 
-func attachDataNodes(db *pgx.Conn, database string) error {
-	_, err := db.Exec(context.Background(), "SELECT add_data_node('dn0', host => 'db5433', port => 5433);")
+func AttachDataNode1(db *pgx.Conn, database string) error {
+	return attachDataNode(db, database, "dn0", "5433")
+}
+
+func AttachDataNode2(db *pgx.Conn, database string) error {
+	return attachDataNode(db, database, "dn1", "5434")
+}
+
+func attachDataNode(db *pgx.Conn, database string, nodeName string, nodePort string) error {
+	_, err := db.Exec(context.Background(), "SELECT add_data_node('"+nodeName+"', host => 'db"+nodePort+"', port => "+nodePort+");")
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Exec(context.Background(), "SELECT add_data_node('dn1', host => 'db5434', port => 5434);")
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec(context.Background(), "GRANT USAGE ON FOREIGN SERVER dn0, dn1 TO "+promUser)
+	_, err = db.Exec(context.Background(), "GRANT USAGE ON FOREIGN SERVER "+nodeName+" TO "+promUser)
 	if err != nil {
 		return err
 	}

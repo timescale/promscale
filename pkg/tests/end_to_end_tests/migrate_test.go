@@ -136,7 +136,7 @@ func TestMigrateTwice(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
 		if *useExtension && !extension.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
@@ -192,7 +192,7 @@ func TestMigrationLib(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		testTOC := map[string][]string{
 			"idempotent": {
 				"2-toc-run_first.sql",

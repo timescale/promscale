@@ -25,7 +25,7 @@ var (
 )
 
 func TestPgLeaderLock(t *testing.T) {
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock, err := NewPgLeaderLock(1, connectURL, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -64,7 +64,7 @@ func TestPgLeaderLock(t *testing.T) {
 }
 
 func TestElector(t *testing.T) {
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgLeaderLock(2, connectURL, nil)
 		if err != nil {
 			t.Error(err)
@@ -99,7 +99,7 @@ func TestElector(t *testing.T) {
 }
 
 func TestPrometheusLivenessCheck(t *testing.T) {
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgLeaderLock(3, connectURL, nil)
 		if err != nil {
 			t.Error(err)

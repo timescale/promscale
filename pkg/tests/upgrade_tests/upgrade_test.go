@@ -299,7 +299,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 
 		defer func() { _ = closer.Close() }()
 
-		db, err := testhelpers.DbSetup(*testDatabase, testhelpers.NoSuperuser)
+		db, err := testhelpers.DbSetup(*testDatabase, testhelpers.NoSuperuser, false)
 		if err != nil {
 			t.Fatal(err)
 			return
@@ -374,7 +374,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 		}
 
 		defer func() { _ = closer.Close() }()
-		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
+		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, false, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 			migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
 
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
