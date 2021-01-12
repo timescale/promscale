@@ -186,6 +186,9 @@ BEGIN
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
         IF SCHEMA_CATALOG.is_multinode() THEN
+            --Note: we intentionally do not partition by series_id here. The assumption is
+            --that we'll have more "heavy metrics" than nodes and thus partitioning /individual/
+            --metrics won't gain us much for inserts and would be detrimental for many queries.
             PERFORM create_distributed_hypertable(
                 format('SCHEMA_DATA.%I', NEW.table_name),
                 'time',
@@ -1846,7 +1849,7 @@ END
 $$
 LANGUAGE PLPGSQL;
 
-CALL execute_everywhere($ee$
+CALL execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
     --Decompression should take place in a procedure because we don't want locks held across
     --decompress_chunk calls since that function takes some heavier locks at the end.
     --Thus, transactional parameter should usually be false
@@ -1921,7 +1924,7 @@ BEGIN
 END
 $proc$ LANGUAGE PLPGSQL;
 
-CALL execute_everywhere($ee$
+CALL execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
     CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
     AS $$
     DECLARE
@@ -2025,3 +2028,23 @@ END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
 IS 'compress data according to the policy. This procedure should be run regularly in a cron job';
+
+CREATE OR REPLACE PROCEDURE SCHEMA_PROM.add_prom_node(node_name TEXT, attach_to_existing_metrics BOOLEAN = true)
+AS $func$
+DECLARE
+    command_row record;
+BEGIN
+    FOR command_row IN
+        SELECT command, transactional
+        FROM SCHEMA_CATALOG.remote_commands
+        ORDER BY seq asc
+    LOOP
+        CALL distributed_exec(command_row.command,node_list=>array[node_name]);
+    END LOOP;
+
+    IF attach_to_existing_metrics THEN
+        PERFORM attach_data_node(node_name, hypertable => format('%I.%I', 'SCHEMA_DATA', table_name))
+        FROM SCHEMA_CATALOG.metric;
+    END IF;
+END
+$func$ LANGUAGE PLPGSQL;

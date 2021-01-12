@@ -1,6 +1,3 @@
- --perms for schema will be addressed later;
- CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG;
-
 --table to save commands so they can be run when adding new nodes
  CREATE TABLE SCHEMA_CATALOG.remote_commands(
     key TEXT PRIMARY KEY,
@@ -9,6 +6,7 @@
     command TEXT
 );
 
+DROP PROCEDURE execute_everywhere(text, BOOLEAN);
 
 CREATE OR REPLACE PROCEDURE execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$

@@ -46,7 +46,7 @@ func TestWithDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	WithDB(t, *testDatabase, Superuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	WithDB(t, *testDatabase, Superuser, false, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		var res int
 		err := db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
 		if err != nil {

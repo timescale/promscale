@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
@@ -117,17 +118,70 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func attachDataNode2(t testing.TB, DBName string, connectURL string) {
+	db, err := pgx.Connect(context.Background(), testhelpers.PgConnectURL(DBName, testhelpers.Superuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testhelpers.AttachDataNode2(db, DBName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func addPromNode(t testing.TB, pool *pgxpool.Pool, attachExisting bool) {
+	_, err := pool.Exec(context.Background(), "CALL add_prom_node('dn1', $1);", attachExisting)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB)) {
-	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
+	withDBAttachNode(t, DBName, true, nil, f)
+}
+
+/* When testing with multinode always add data node 2 after installing the extension, as that tests a strictly harder case */
+func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAddNode func(db *pgxpool.Pool, t testing.TB), afterAddNode func(db *pgxpool.Pool, t testing.TB)) {
+	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(DBName, testhelpers.Superuser))
 
+		if beforeAddNode != nil {
+			if !*useMultinode {
+				t.Fatal("Shouldn't be using beforeAddNode unless testing multinode")
+			}
+			func() {
+				pool, err := pgxpool.Connect(context.Background(), connectURL)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				defer pool.Close()
+				beforeAddNode(pool, t)
+			}()
+
+		}
+
+		if *useMultinode {
+			//add data 2 node /after/ install
+			attachDataNode2(t, DBName, connectURL)
+		}
+
 		// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
-		db, err := pgxpool.Connect(context.Background(), connectURL)
+		pool, err := pgxpool.Connect(context.Background(), connectURL)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer db.Close()
-		f(db, t)
+
+		if *useMultinode {
+			//add prom node using the prom user (not superuser)
+			addPromNode(t, pool, attachExisting)
+		}
+
+		defer pool.Close()
+		afterAddNode(pool, t)
 	})
 }
 
