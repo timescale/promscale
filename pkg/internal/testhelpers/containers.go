@@ -110,8 +110,6 @@ var (
 
 	pgHost          = "localhost"
 	pgPort nat.Port = "5432/tcp"
-
-	multinode = false
 )
 
 type SuperuserStatus = bool
@@ -125,8 +123,8 @@ func PgConnectURL(dbName string, superuser SuperuserStatus) string {
 }
 
 // WithDB establishes a database for testing and calls the callback
-func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Setup bool, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
-	db, err := DbSetup(DBName, superuser, deferNode2Setup)
+func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState ExtensionState, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
+	db, err := DbSetup(DBName, superuser, deferNode2Setup, extensionState)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -149,7 +147,7 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	return dbPool
 }
 
-func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool) (*pgxpool.Pool, error) {
+func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState ExtensionState) (*pgxpool.Pool, error) {
 	defaultDb, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		return nil, err
@@ -160,7 +158,7 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool) (*p
 			return err
 		}
 
-		if multinode {
+		if extensionState.usesMultinode() {
 			dropDistributed := "CALL distributed_exec($$ DROP DATABASE IF EXISTS %s $$, transactional => false)"
 			_, err = defaultDb.Exec(context.Background(), fmt.Sprintf(dropDistributed, DBName))
 			if err != nil {
@@ -191,13 +189,13 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool) (*p
 		return nil, err
 	}
 
-	if multinode {
+	if extensionState.usesMultinode() {
 		// Multinode requires the administrator to set up data nodes, so in
 		// that case timescaledb should always be installed by the time the
 		// connector runs. We just set up the data nodes here.
-		err = AttachDataNode1(ourDb, DBName)
+		err = AddDataNode1(ourDb, DBName)
 		if err == nil && !deferNode2Setup {
-			err = AttachDataNode2(ourDb, DBName)
+			err = AddDataNode2(ourDb, DBName)
 		}
 		if err != nil {
 			_ = ourDb.Close(context.Background())
@@ -273,12 +271,9 @@ func StartDatabaseImage(ctx context.Context,
 	printLogs bool,
 	extensionState ExtensionState,
 ) (testcontainers.Container, io.Closer, error) {
-
-	multinode = extensionState.usesMultinode()
-
 	c := CloseAll{}
 	var networks []string
-	if multinode {
+	if extensionState.usesMultinode() {
 		networkName, closer, err := createMultinodeNetwork()
 		if err != nil {
 			return nil, c, err
@@ -304,7 +299,7 @@ func StartDatabaseImage(ctx context.Context,
 		return container, err
 	}
 
-	if multinode {
+	if extensionState.usesMultinode() {
 		containerPort := nat.Port("5433/tcp")
 		_, err := startContainer(containerPort)
 		if err != nil {
@@ -326,16 +321,16 @@ func StartDatabaseImage(ctx context.Context,
 		return nil, nil, err
 	}
 
-	if multinode {
+	if extensionState.usesMultinode() {
 		db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 		if err != nil {
 			_ = c.Close()
 			return nil, nil, err
 		}
 
-		err = AttachDataNode1(db, defaultDB)
+		err = AddDataNode1(db, defaultDB)
 		if err == nil {
-			err = AttachDataNode2(db, defaultDB)
+			err = AddDataNode2(db, defaultDB)
 		}
 		if err != nil {
 			_ = c.Close()
@@ -510,15 +505,15 @@ func startPGInstance(
 	return container, closer, nil
 }
 
-func AttachDataNode1(db *pgx.Conn, database string) error {
-	return attachDataNode(db, database, "dn0", "5433")
+func AddDataNode1(db *pgx.Conn, database string) error {
+	return addDataNode(db, database, "dn0", "5433")
 }
 
-func AttachDataNode2(db *pgx.Conn, database string) error {
-	return attachDataNode(db, database, "dn1", "5434")
+func AddDataNode2(db *pgx.Conn, database string) error {
+	return addDataNode(db, database, "dn1", "5434")
 }
 
-func attachDataNode(db *pgx.Conn, database string, nodeName string, nodePort string) error {
+func addDataNode(db *pgx.Conn, database string, nodeName string, nodePort string) error {
 	_, err := db.Exec(context.Background(), "SELECT add_data_node('"+nodeName+"', host => 'db"+nodePort+"', port => "+nodePort+");")
 	if err != nil {
 		return err

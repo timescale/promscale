@@ -23,6 +23,8 @@ var (
 	testDatabase = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 )
 
+const extensionState = Timescale1AndPromscale
+
 func TestPGConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -46,7 +48,7 @@ func TestWithDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	WithDB(t, *testDatabase, Superuser, false, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	WithDB(t, *testDatabase, Superuser, false, extensionState, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		var res int
 		err := db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
 		if err != nil {
@@ -62,7 +64,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
-		_, closer, err := StartPGContainer(ctx, Timescale1AndPromscale, "", false)
+		_, closer, err := StartPGContainer(ctx, extensionState, "", false)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)

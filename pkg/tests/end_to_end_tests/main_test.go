@@ -39,6 +39,7 @@ var (
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
 	promContainer          testcontainers.Container
+	extensionState         testhelpers.ExtensionState
 )
 
 func TestMain(m *testing.M) {
@@ -54,7 +55,6 @@ func TestMain(m *testing.M) {
 
 			var closer io.Closer
 			if *useDocker {
-				var extensionState testhelpers.ExtensionState
 				if *useExtension {
 					extensionState.UsePromscale()
 				}
@@ -123,7 +123,7 @@ func attachDataNode2(t testing.TB, DBName string, connectURL string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = testhelpers.AttachDataNode2(db, DBName)
+	err = testhelpers.AddDataNode2(db, DBName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 
 /* When testing with multinode always add data node 2 after installing the extension, as that tests a strictly harder case */
 func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAddNode func(db *pgxpool.Pool, t testing.TB), afterAddNode func(db *pgxpool.Pool, t testing.TB)) {
-	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, extensionState, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(DBName, testhelpers.Superuser))
 
 		if beforeAddNode != nil {
