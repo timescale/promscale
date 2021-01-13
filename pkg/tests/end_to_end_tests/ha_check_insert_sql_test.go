@@ -43,6 +43,9 @@ func TestCheckInsert(t *testing.T) {
 		minT := time.Unix(1, 0)
 		maxT := time.Unix(3, 0)
 		lock, err := callCheckInsert(db, cluster, writer, minT, maxT)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		expectedLeaseUntil := time.Unix(3, 0).Add(leaseTime)
 		if lock == nil {
 			t.Fatal("error calling check_insert")
@@ -97,7 +100,6 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 	}
 
 	const leaseTime = time.Minute
-	const refreshTime = 10 * time.Second
 	withDB(t, "ha_check_insert_multicluster", func(db *pgxpool.Pool, t testing.TB) {
 		// first check
 		cluster1 := "c1"
