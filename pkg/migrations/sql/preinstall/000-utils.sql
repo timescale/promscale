@@ -15,10 +15,10 @@ AS $func$
 BEGIN
     EXECUTE command;
 
-    BEGIN
-        INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
-        ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
+    INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
+    ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
 
+    BEGIN
         CALL distributed_exec(command);
     EXCEPTION
         WHEN undefined_function THEN

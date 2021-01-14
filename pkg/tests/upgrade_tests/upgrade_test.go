@@ -38,27 +38,18 @@ import (
 )
 
 var (
-	testDatabase   = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
-	useExtension   = flag.Bool("use-extension", true, "use the promscale extension")
-	printLogs      = flag.Bool("print-logs", false, "print TimescaleDB logs")
-	extensionState testhelpers.ExtensionState
+	testDatabase       = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
+	useExtension       = flag.Bool("use-extension", true, "use the promscale extension")
+	printLogs          = flag.Bool("print-logs", false, "print TimescaleDB logs")
+	baseExtensionState testhelpers.ExtensionState
 )
-
-var cleanImage = "timescale/timescaledb:latest-pg12"
-var prevDBImage = "timescale/timescaledb:latest-pg12"
 
 func TestMain(m *testing.M) {
 	var code int
-	// TODO Timescale 2.0 and regular postgres
-	if *useExtension {
-		cleanImage = "timescaledev/promscale-extension:latest-pg12"
-		//TODO: note this uses the old timescale_prometheus_extra docker images
-		prevDBImage = "timescaledev/timescale_prometheus_extra:0.1.1-pg12"
-	}
 	flag.Parse()
-	extensionState.UseTimescaleDB()
+	baseExtensionState.UseTimescaleDB()
 	if *useExtension {
-		extensionState.UsePromscale()
+		baseExtensionState.UsePromscale()
 	}
 	_ = log.Init(log.Config{
 		Level: "debug",
@@ -67,9 +58,34 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+/* Prev image is the db image with the old promscale extension. We do NOT test timescaleDB extension upgrades here. */
+func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean string) {
+	switch extensionState {
+	case testhelpers.MultinodeAndPromscale:
+		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
+	case testhelpers.Timescale1AndPromscale:
+		return "timescaledev/promscale-extension:0.1.1-ts1-pg12", "timescaledev/promscale-extension:latest-ts1-pg12"
+	case testhelpers.Timescale1:
+		return "timescale/timescaledb:latest-pg12", "timescale/timescaledb:latest-pg12"
+	default:
+		panic("Unexpected extension state in upgradeTest")
+	}
+}
+
 func TestUpgradeFromPrev(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t, false)
-	pristineDbInfo := getPristineDbInfo(t, false)
+	upgradedDbInfo := getUpgradedDbInfo(t, false, baseExtensionState)
+	pristineDbInfo := getPristineDbInfo(t, false, baseExtensionState)
+
+	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
+		printDbInfoDifferences(t, pristineDbInfo, upgradedDbInfo)
+	}
+}
+
+func TestUpgradeFromPrevMultinode(t *testing.T) {
+	extState := baseExtensionState
+	extState.UseMultinode()
+	upgradedDbInfo := getUpgradedDbInfo(t, false, extState)
+	pristineDbInfo := getPristineDbInfo(t, false, extState)
 
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
 		printDbInfoDifferences(t, pristineDbInfo, upgradedDbInfo)
@@ -79,23 +95,25 @@ func TestUpgradeFromPrev(t *testing.T) {
 // TestUpgradeFromPrevNoData tests migrations with no ingested data.
 // See issue: https://github.com/timescale/promscale/issues/330
 func TestUpgradeFromPrevNoData(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t, true)
-	pristineDbInfo := getPristineDbInfo(t, true)
+	upgradedDbInfo := getUpgradedDbInfo(t, true, baseExtensionState)
+	pristineDbInfo := getPristineDbInfo(t, true, baseExtensionState)
 
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
 		printDbInfoDifferences(t, pristineDbInfo, upgradedDbInfo)
 	}
 }
 
-func getUpgradedDbInfo(t *testing.T, noData bool) (upgradedDbInfo dbInfo) {
+func getUpgradedDbInfo(t *testing.T, noData bool, extensionState testhelpers.ExtensionState) (upgradedDbInfo dbInfo) {
 	// we test that upgrading from the previous version gives the correct output
 	// by induction, this property should hold true for any chain of versions
 	prevVersion := semver.MustParse(version.EarliestUpgradeTestVersion)
-
+	if extensionState.UsesMultinode() {
+		prevVersion = semver.MustParse(version.EarliestUpgradeTestVersionMultinode)
+	}
 	// TODO we could probably improve performance of this test by 2x if we
 	//      gathered the db info in parallel. Unfortunately our db runner doesn't
 	//      support this yet
-	withDBStartingAtOldVersionAndUpgrading(t, *testDatabase, prevVersion,
+	withDBStartingAtOldVersionAndUpgrading(t, *testDatabase, prevVersion, extensionState,
 		/* preUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string, connectorHost string, connectorPort nat.Port) {
 			if noData {
@@ -134,8 +152,8 @@ func getUpgradedDbInfo(t *testing.T, noData bool) (upgradedDbInfo dbInfo) {
 	return
 }
 
-func getPristineDbInfo(t *testing.T, noData bool) (pristineDbInfo dbInfo) {
-	withNewDBAtCurrentVersion(t, *testDatabase,
+func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.ExtensionState) (pristineDbInfo dbInfo) {
+	withNewDBAtCurrentVersion(t, *testDatabase, extensionState,
 		/* preRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
 			if noData {
@@ -274,6 +292,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 	t testing.TB,
 	DBName string,
 	prevVersion semver.Version,
+	extensionState testhelpers.ExtensionState,
 	preUpgrade func(dbContainer testcontainers.Container, dbTmpDir string, connectorHost string, connectorPort nat.Port),
 	postUpgrade func(dbContainer testcontainers.Container, dbTmpDir string)) {
 	var err error
@@ -289,6 +308,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		log.Fatal(err)
 	}
 
+	prevDBImage, cleanImage := getDBImages(extensionState)
 	// Start a db with the prev extension and a prev connector as well
 	// Then run preUpgrade and shut everything down.
 	func() {
@@ -351,7 +371,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 // upgrade path to change the extension that is available. But, a restart causes
 // Sequences to skip values. So, in order to have equivalent data, we need to make
 // sure that both the upgrade and this pristine path both have restarts.
-func withNewDBAtCurrentVersion(t testing.TB, DBName string,
+func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testhelpers.ExtensionState,
 	preRestart func(container testcontainers.Container, connectURL string, db *pgxpool.Pool, tmpDir string),
 	postRestart func(container testcontainers.Container, connectURL string, db *pgxpool.Pool, tmpDir string)) {
 	var err error
@@ -365,6 +385,8 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string,
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	_, cleanImage := getDBImages(extensionState)
 
 	func() {
 		container, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
@@ -829,7 +851,7 @@ func startDB(t *testing.T, ctx context.Context) (*pgx.Conn, testcontainers.Conta
 		t.Fatal(err)
 	}
 
-	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, extensionState)
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, testhelpers.Timescale1AndPromscale)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}

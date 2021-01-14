@@ -80,7 +80,7 @@ func (e ExtensionState) usesTimescaleDB() bool {
 	}
 }
 
-func (e ExtensionState) usesMultinode() bool {
+func (e ExtensionState) UsesMultinode() bool {
 	switch e {
 	case Multinode:
 		return true
@@ -158,7 +158,7 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 			return err
 		}
 
-		if extensionState.usesMultinode() {
+		if extensionState.UsesMultinode() {
 			dropDistributed := "CALL distributed_exec($$ DROP DATABASE IF EXISTS %s $$, transactional => false)"
 			_, err = defaultDb.Exec(context.Background(), fmt.Sprintf(dropDistributed, DBName))
 			if err != nil {
@@ -189,7 +189,7 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 		return nil, err
 	}
 
-	if extensionState.usesMultinode() {
+	if extensionState.UsesMultinode() {
 		// Multinode requires the administrator to set up data nodes, so in
 		// that case timescaledb should always be installed by the time the
 		// connector runs. We just set up the data nodes here.
@@ -246,15 +246,15 @@ func StartPGContainer(
 	var image string
 	switch extensionState {
 	case MultinodeAndPromscale:
-		image = "timescaledev/promscale-extension:2.0.0-rc4-pg12"
+		image = "timescaledev/promscale-extension:latest-ts2-pg12"
 	case Multinode:
-		image = "timescale/timescaledb:2.0.0-rc4-pg12"
+		image = "timescale/timescaledb:2.0.0-pg12"
 	case Timescale2AndPromscale:
-		image = "timescaledev/promscale-extension:2.0.0-rc4-pg12"
+		image = "timescaledev/promscale-extension:latest-ts2-pg12"
 	case Timescale2:
-		image = "timescale/timescaledb:2.0.0-rc4-pg12"
+		image = "timescale/timescaledb:2.0.0-pg12"
 	case Timescale1AndPromscale:
-		image = "timescaledev/promscale-extension:latest-pg12"
+		image = "timescaledev/promscale-extension:latest-ts1-pg12"
 	case Timescale1:
 		image = "timescale/timescaledb:1.7.4-pg12"
 	case VanillaPostgres:
@@ -273,7 +273,7 @@ func StartDatabaseImage(ctx context.Context,
 ) (testcontainers.Container, io.Closer, error) {
 	c := CloseAll{}
 	var networks []string
-	if extensionState.usesMultinode() {
+	if extensionState.UsesMultinode() {
 		networkName, closer, err := createMultinodeNetwork()
 		if err != nil {
 			return nil, c, err
@@ -299,7 +299,7 @@ func StartDatabaseImage(ctx context.Context,
 		return container, err
 	}
 
-	if extensionState.usesMultinode() {
+	if extensionState.UsesMultinode() {
 		containerPort := nat.Port("5433/tcp")
 		_, err := startContainer(containerPort)
 		if err != nil {
@@ -320,8 +320,9 @@ func StartDatabaseImage(ctx context.Context,
 		_ = c.Close()
 		return nil, nil, err
 	}
-
-	if extensionState.usesMultinode() {
+	if extensionState.UsesMultinode() {
+		/* Setting up the cluster on the default db allows us to run distributed_exec commands on all nodes.
+		* Currently, it's used for dropping databases, although may be used for other things in future.  */
 		db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 		if err != nil {
 			_ = c.Close()
@@ -334,7 +335,7 @@ func StartDatabaseImage(ctx context.Context,
 		}
 		if err != nil {
 			_ = c.Close()
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("Error adding nodes: %w", err)
 		}
 
 		err = db.Close(context.Background())
@@ -378,7 +379,7 @@ func startPGInstance(
 	isDataNode := containerPort.Port() != "5432"
 	nodeType := "AN"
 	if isDataNode {
-		nodeType = "DN"
+		nodeType = "DN" + containerPort.Port()
 	}
 
 	req := testcontainers.ContainerRequest{
@@ -386,7 +387,7 @@ func startPGInstance(
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
 			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
-		}).Timeout(60 * time.Second),
+		}).Timeout(120 * time.Second),
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
 		},
@@ -422,7 +423,16 @@ func startPGInstance(
 		req.BindMounts[testDataDir] = "/testdata"
 	}
 	if dataDir != "" {
-		req.BindMounts[dataDir] = "/var/lib/postgresql/data"
+		var bindDir string
+		if isDataNode {
+			bindDir = dataDir + "/dn" + containerPort.Port()
+		} else {
+			bindDir = dataDir + "/an"
+		}
+		if err = os.Mkdir(bindDir, 0700); err != nil && !os.IsExist(err) {
+			return nil, nil, err
+		}
+		req.BindMounts[bindDir] = "/var/lib/postgresql/data"
 	}
 
 	container, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -514,7 +524,7 @@ func AddDataNode2(db *pgx.Conn, database string) error {
 }
 
 func addDataNode(db *pgx.Conn, database string, nodeName string, nodePort string) error {
-	_, err := db.Exec(context.Background(), "SELECT add_data_node('"+nodeName+"', host => 'db"+nodePort+"', port => "+nodePort+");")
+	_, err := db.Exec(context.Background(), "SELECT add_data_node('"+nodeName+"', host => 'db"+nodePort+"', port => "+nodePort+", if_not_exists=>true);")
 	if err != nil {
 		return err
 	}
