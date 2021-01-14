@@ -283,6 +283,33 @@ func printDbInfoDifferences(t *testing.T, pristineDbInfo dbInfo, upgradedDbInfo 
 	}
 }
 
+func addNode2(t testing.TB, DBName string) {
+	db, err := pgx.Connect(context.Background(), testhelpers.PgConnectURL(DBName, testhelpers.Superuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testhelpers.AddDataNode2(db, DBName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	//do this as prom user
+	dbProm, err := pgx.Connect(context.Background(), testhelpers.PgConnectURL(DBName, testhelpers.NoSuperuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = dbProm.Exec(context.Background(), "CALL add_prom_node('dn1');")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Start a db with the prev extra extension and a prev connector as well.
 // This ensures that we test upgrades of both the extension and the connector schema.
 // Then run preUpgrade and shut everything down.
@@ -319,7 +346,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 
 		defer func() { _ = closer.Close() }()
 
-		db, err := testhelpers.DbSetup(*testDatabase, testhelpers.NoSuperuser, false, extensionState)
+		db, err := testhelpers.DbSetup(*testDatabase, testhelpers.NoSuperuser, true, extensionState)
 		if err != nil {
 			t.Fatal(err)
 			return
@@ -361,6 +388,10 @@ func withDBStartingAtOldVersionAndUpgrading(
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 	migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
 
+	if extensionState.UsesMultinode() {
+		//add a node after upgrade; this tests strictly more functionality since we already have one node set up before
+		addNode2(t, *testDatabase)
+	}
 	t.Log("Running postUpgrade")
 	postUpgrade(dbContainer, tmpDir)
 
@@ -396,7 +427,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 		}
 
 		defer func() { _ = closer.Close() }()
-		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, false, extensionState, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
+		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, extensionState, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 			migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
 
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
@@ -414,6 +445,9 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 		os.Exit(1)
 	}
 
+	if extensionState.UsesMultinode() {
+		addNode2(t, *testDatabase)
+	}
 	defer func() { _ = closer.Close() }()
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 	db, err := pgxpool.Connect(context.Background(), connectURL)
