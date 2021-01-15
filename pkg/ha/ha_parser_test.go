@@ -65,6 +65,7 @@ func Test_haParser_ParseData(t *testing.T) {
 		want1   int
 		wantErr bool
 		error   error
+		cluster string
 	}{
 		{
 			name:   "Test: HA enabled but __replica__ && __cluster__ are empty.",
@@ -81,6 +82,7 @@ func Test_haParser_ParseData(t *testing.T) {
 			}},
 			wantErr: true,
 			error:   fmt.Errorf("ha mode is enabled and one/both of the __cluster__, __replica__ labels is/are empty"),
+			cluster: "",
 		},
 		{
 			name:   "Test: HA enabled but __replica__ is empty.",
@@ -98,6 +100,7 @@ func Test_haParser_ParseData(t *testing.T) {
 			}},
 			wantErr: true,
 			error:   fmt.Errorf("ha mode is enabled and one/both of the __cluster__, __replica__ labels is/are empty"),
+			cluster: "cluster1",
 		},
 		{
 			name:   "Test: HA enabled but __cluster__ is empty.",
@@ -151,7 +154,8 @@ func Test_haParser_ParseData(t *testing.T) {
 					},
 				},
 			},
-			want1: 1,
+			want1:   1,
+			cluster: "cluster1",
 		},
 		{
 			name:   "Test: HA enabled parse samples from standby prom instance.",
@@ -171,6 +175,7 @@ func Test_haParser_ParseData(t *testing.T) {
 			wantErr: false,
 			want:    nil,
 			want1:   0,
+			cluster: "cluster2",
 		},
 		{
 			name:   "Test: HA enabled parse samples from leader prom instance.",
@@ -207,7 +212,8 @@ func Test_haParser_ParseData(t *testing.T) {
 					},
 				},
 			},
-			want1: 1,
+			want1:   1,
+			cluster: "cluster3",
 		},
 		{
 			name:   "Test: HA enabled parse samples from leader prom instance & samples are out of lease interval 1.",
@@ -227,6 +233,7 @@ func Test_haParser_ParseData(t *testing.T) {
 			wantErr: false,
 			want:    nil,
 			want1:   0,
+			cluster: "cluster3",
 		},
 		{
 			name:   "Test: HA enabled parse samples from leader prom instance & samples are out of lease interval 2.",
@@ -246,6 +253,7 @@ func Test_haParser_ParseData(t *testing.T) {
 			wantErr: false,
 			want:    nil,
 			want1:   0,
+			cluster: "cluster3",
 		},
 		{
 			name:   "Test: HA enabled parse samples from standby prom instance. readLockState returns the updated leader as standby prom instance.",
@@ -283,6 +291,7 @@ func Test_haParser_ParseData(t *testing.T) {
 				},
 			},
 			want1: 1,
+			cluster: "cluster4",
 		},
 		{
 			name:   "Test: HA enabled parse samples from standby prom instance. readLockState returns the updated leader as standby prom instance but samples aren't part lease range.",
@@ -302,6 +311,7 @@ func Test_haParser_ParseData(t *testing.T) {
 			wantErr: false,
 			want:    nil,
 			want1:   0,
+			cluster: "cluster5",
 		},
 		// TODO: Add test cases.
 	}
@@ -331,7 +341,7 @@ func Test_haParser_ParseData(t *testing.T) {
 					if obj.Name == "__replica__" {
 						f := tt.want["test"]
 						if f != nil {
-							if obj.Value != h.service.state.leader || f[0].Samples[0].Timestamp != h.service.state.maxTimeSeen.Unix() || obj.Value != h.service.state.maxTimeInstance {
+							if obj.Value != h.service.state[tt.cluster].leader || f[0].Samples[0].Timestamp != h.service.state[tt.cluster].maxTimeSeen.Unix() {
 								t.Errorf("max time seen isn't updated to latest samples info")
 							}
 						}
