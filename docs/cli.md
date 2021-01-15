@@ -1,11 +1,11 @@
 # Promscale command line doc
 
-This document gives you information about the configuration flags supported by promscale.
+This document gives you information about the configuration flags supported by Promscale.
 You can also find information on flags with `promscale_<version> -help` 
 
 ## General flags
 | Flag | Type | Default | Description |
-|------|:-----:|:-------:|:-----------:|
+|------|:-----:|:-------:|:-----------|
 | config | string | config.yml | YAML configuration file path for Promscale. |
 | install-timescaledb | boolean | true | Install or update TimescaleDB extension. |
 | leader-election-pg-advisory-lock-id | integer | 0 (disabled) | Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election. |
@@ -29,7 +29,7 @@ You can also find information on flags with `promscale_<version> -help`
 ## Auth flags
 
 | Flag | Type | Default | Description |
-|------|:-----:|:-------:|:-----------:|
+|------|:-----:|:-------:|:-----------|
 | auth-username | string | "" | Authentication username used for web endpoint authentication. Disabled by default. |
 | auth-password | string | "" | Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token methods. |
 | auth-password-file | string | "" | Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods. |
@@ -39,7 +39,7 @@ You can also find information on flags with `promscale_<version> -help`
 ## Database flags
 
 | Flag | Type | Default | Description |
-|------|:-----:|:-------:|:-----------:|
+|------|:-----:|:-------:|:-----------|
 | db-host | string | localhost | Host for TimescaleDB/Vanilla Postgres. |
 | db-port | int | 5432 | TimescaleDB/Vanilla Postgres connection password. |
 | db-name | string | timescale | Database name. |
@@ -51,3 +51,10 @@ You can also find information on flags with `promscale_<version> -help`
 | db-writer-connection-concurrency | int | 4 | Maximum number of database connections for writing per go process. |
 | db-uri | string | | TimescaleDB/Vanilla PostgresSQL URI. Example:`postgres://postgres:password@localhost:5432/timescale?sslmode=require` |
 | async-acks | boolean | false | Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss. |
+
+## PromQL engine evaluation flags
+
+| Flag | Type | Default | Description |
+|------|:-----:|:-------:|:-----------|
+| promql-query-timeout | duration | 2 minutes | Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in '/api/v1/query.*' endpoints. |
+| promql-default-subquery-step-interval | duration | 1 minute | Default step interval to be used for PromQL subquery evaluation. This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option. |
