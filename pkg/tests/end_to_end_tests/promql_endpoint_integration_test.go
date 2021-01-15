@@ -247,8 +247,10 @@ func dateHeadersMatch(expected, actual []string) bool {
 // buildRouter builds a testing router from a connection pool.
 func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 	apiConfig := &api.Config{
-		AllowedOrigin: regexp.MustCompile(".*"),
-		TelemetryPath: "/metrics",
+		AllowedOrigin:        regexp.MustCompile(".*"),
+		TelemetryPath:        "/metrics",
+		MaxQueryTimeout:      time.Minute * 2,
+		SubQueryStepInterval: time.Minute,
 	}
 
 	return buildRouterWithAPIConfig(pool, apiConfig)
