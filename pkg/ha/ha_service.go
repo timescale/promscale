@@ -12,10 +12,13 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const backOffDurationOnLeaderChange = 10 * time.Second
+const (
+	backOffDurationOnLeaderChange = 10 * time.Second
+	haSyncerTimeInterval = 15 * time.Second
+)
 
 type Service struct {
-	state             *State
+	state             map[string]*State
 	lockClient        haLockClient
 	leaseTimeout      time.Duration
 	leaseRefresh      time.Duration
@@ -28,26 +31,67 @@ func NewHAService(dbClient pgxconn.PgxConn) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not create HA state: %#v", err)
 	}
-	return &Service{
-		state: &State{
-			_mu: sync.RWMutex{},
-		},
-		lockClient:   lockClient,
-		leaseTimeout: timeout,
-		leaseRefresh: refresh,
+
+	service := &Service{
+		state:             make(map[string]*State),
+		lockClient:        lockClient,
+		leaseTimeout:      timeout,
+		leaseRefresh:      refresh,
 		_leaderChangeLock: semaphore.NewWeighted(1),
-	}, nil
+	}
+	go service.haStateSyncer()
+	return service, nil
+}
+
+func (h *Service) haStateSyncer() {
+	for {
+		for clusterName, state := range h.state {
+			// To validate cluster state we use maxTimeInstance instead if state.leader
+			// because if prometheus leader crashes promscale needs to sync leader
+			// using maxTimeSeenInstance and validate if leaderHasChanged condition
+			err := h.validateClusterState(state.minTimeSeen, state.maxTimeSeen, clusterName, state.maxTimeInstance)
+			if err != nil {
+				log.Error("failed to validate cluster %s state %v", clusterName, err)
+			}
+		}
+		time.Sleep(haSyncerTimeInterval)
+	}
 }
 
 // checkInsert verifies the samples are from prom leader & in expected time range.
 // 	returns true if the insert is allowed
 func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, error) {
 	// TODO use proper context
-	lockState, err := h.lockClient.checkInsert(context.Background(), clusterName, replicaName, minT, maxT)
+	if h.state[clusterName] == nil {
+		h.state[clusterName] = &State{
+			_mu:             sync.RWMutex{},
+		}
+		err := h.validateClusterState(minT, maxT, clusterName, replicaName)
+		if err != nil {
+			return false, err
+		}
+	}
 
-	// unknown error while checking lock state
+	currentState := h.state[clusterName]
+	// requesting replica is leader, allow
+	if replicaName == currentState.leader && maxT.Before(currentState.leaseUntil) && minT.After(currentState.leaseStart) {
+		currentState.updateState(replicaName, maxT, minT)
+		return true, nil
+		// if master prometheus gets crashed for some reason we need to
+		// to update the existing state with other replicaName so haSyncer will
+		// try changing the leader on sync up
+	} else if maxT.After(currentState.leaseUntil) {
+		currentState.updateState(replicaName, maxT, minT)
+	}
+
+	// replica is not leader or timestamps out of lease range, ignore them
+	return false, nil
+}
+
+func (h *Service) validateClusterState(minT, maxT time.Time, clusterName, replicaName string) error {
+	lockState, err := h.lockClient.checkInsert(context.Background(), clusterName, replicaName, minT, maxT)
 	if err != nil && err.Error() != leaderHasChanged.Error() {
-		return false, fmt.Errorf("could not check ha lock state: %#v", err)
+		return fmt.Errorf("could not check ha lock state: %#v", err)
 	}
 
 	// leader changed
@@ -56,30 +100,19 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 		lockState, err = h.lockClient.readLockState(context.Background(), clusterName)
 		// couldn't get latest lock state
 		if err != nil {
-			return false, fmt.Errorf("could not check ha lock state: %#v", err)
+			log.Error("could not check ha lock state: %#v", err)
 		}
+
 		// update state asynchronously
-		go h.state.update(lockState, replicaName, maxT)
-		go h.tryChangeLeader()
-
-		if lockState.leader == replicaName && minT.After(lockState.leaseStart) && maxT.Before(lockState.leaseUntil){
-			return true, nil
-		} else {
-			return false, nil
-		}
+		h.state[clusterName].updateStateFromDB(lockState, maxT, replicaName)
+		go h.tryChangeLeader(clusterName)
+	} else {
+		h.state[clusterName].updateStateFromDB(lockState, maxT, replicaName)
 	}
-
-	// requesting replica is leader, allow
-	if err == nil && replicaName == lockState.leader && minT.After(lockState.leaseStart) && maxT.Before(lockState.leaseUntil){
-		go h.state.update(lockState, replicaName, maxT)
-		return true, nil
-	}
-
-	// replica is not leader or timestamps out of lease range, ignore them
-	return false, nil
+	return nil
 }
 
-func (h *Service) tryChangeLeader() {
+func (h *Service) tryChangeLeader(cluster string) {
 	ok := h._leaderChangeLock.TryAcquire(1)
 	if !ok {
 		// change leader already in progress
@@ -88,18 +121,14 @@ func (h *Service) tryChangeLeader() {
 	defer h._leaderChangeLock.Release(1)
 
 	for {
-		stateView := h.state.clone()
-		lockState, err := h.lockClient.readLockState(context.Background(), stateView.cluster)
-		if err != nil {
-			log.Error("msg", "Couldn't check lock state", "err", err)
+		stateView := h.state[cluster].clone()
+
+		if stateView.leaseUntil.After(stateView.maxTimeSeen) {
 			return
 		}
-		if stateView.leader == lockState.leader && lockState.leaseUntil.Before(stateView.maxTimeSeen) {
-			// no need to change leader
-			return
-		}
-		lockState, err = h.lockClient.tryChangeLeader(
-			context.Background(), stateView.cluster, stateView.maxTimeInstance, stateView.maxTimeSeen,
+
+		lockState, err := h.lockClient.tryChangeLeader(
+			context.Background(), cluster, stateView.maxTimeInstance, stateView.maxTimeSeen,
 		)
 		if err != nil {
 			log.Error("msg", "Couldn't change leader", "err", err)

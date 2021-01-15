@@ -2,8 +2,6 @@ package ha
 
 import (
 	"context"
-	"sync"
-
 	"golang.org/x/sync/semaphore"
 )
 
@@ -15,13 +13,13 @@ func MockNewHAService(clusterInfo []*haLockState) *Service {
 		lockClient.leadersPerCluster[c.cluster] = c
 	}
 
-	return &Service{
-		state: &State{
-			_mu: sync.RWMutex{},
-		},
-		lockClient:        lockClient,
-		leaseTimeout:      timeout,
-		leaseRefresh:      refresh,
+	service := &Service{
+		state:  make(map[string]*State),
+		lockClient:   lockClient,
+		leaseTimeout: timeout,
+		leaseRefresh: refresh,
 		_leaderChangeLock: semaphore.NewWeighted(1),
 	}
+	go service.haStateSyncer()
+	return service
 }
