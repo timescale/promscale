@@ -1,6 +1,6 @@
 CREATE TABLE SCHEMA_CATALOG.ha_locks
 (
-    cluster_name TEXT UNIQUE,
+    cluster_name TEXT PRIMARY KEY,
     leader       TEXT,
     lease_start  TIMESTAMPTZ,
     lease_until  TIMESTAMPTZ
@@ -116,7 +116,7 @@ END;
 $func$ LANGUAGE plpgsql VOLATILE ;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.try_change_leader(cluster TEXT, new_leader TEXT,
-                                                            max_time TIMESTAMPTZ) RETURNS SETOF ha_locks
+                                                            max_time TIMESTAMPTZ) RETURNS ha_locks
 AS
 $func$
 DECLARE

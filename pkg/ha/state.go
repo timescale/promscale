@@ -6,17 +6,16 @@ import (
 )
 
 type State struct {
-	cluster         string
 	leader          string
 	leaseStart      time.Time
 	leaseUntil      time.Time
+	minTimeSeen     time.Time
 	maxTimeSeen     time.Time // max data time seen by any instance
 	maxTimeInstance string    // the instance name that’s seen the maxtime
 	_mu             sync.RWMutex
 }
 
 type StateView struct {
-	cluster         string
 	leader          string
 	leaseStart      time.Time
 	leaseUntil      time.Time
@@ -24,26 +23,32 @@ type StateView struct {
 	maxTimeInstance string
 }
 
-func (h *State) update(latestState *haLockState, currentReplica string, currentMaxT time.Time) {
+func (h *State) updateStateFromDB(latestState *haLockState, maxT time.Time, replicaName string) {
 	h._mu.Lock()
 	defer h._mu.Unlock()
-	h.cluster = latestState.cluster
+	if h.maxTimeSeen.IsZero() {
+		h.maxTimeSeen = maxT
+		h.maxTimeInstance = replicaName
+	}
 	h.leader = latestState.leader
 	h.leaseStart = latestState.leaseStart
 	h.leaseUntil = latestState.leaseUntil
-	// if the leader has been changed and the maxTimeseen by new
-	// leader is bit behind old leader the below condition isn't updating few fields
-	//if currentMaxT.After(h.maxTimeSeen) {
+}
+
+func (h *State) updateState(currentReplica string, currentMaxT, currentMinT time.Time) {
+	h._mu.Lock()
+	defer h._mu.Unlock()
+	if currentMaxT.After(h.maxTimeSeen) && currentMinT.After(h.minTimeSeen) {
 		h.maxTimeInstance = currentReplica
 		h.maxTimeSeen = currentMaxT
-	//}
+		h.minTimeSeen = currentMinT
+	}
 }
 
 func (h *State) clone() *StateView {
 	h._mu.RLock()
 	defer h._mu.RUnlock()
 	return &StateView{
-		cluster:         h.cluster,
 		leader:          h.leader,
 		leaseStart:      h.leaseStart,
 		leaseUntil:      h.leaseUntil,
