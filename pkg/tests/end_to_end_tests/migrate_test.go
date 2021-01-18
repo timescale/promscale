@@ -43,12 +43,12 @@ func TestMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer conn.Release()
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version})
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version}, false)
 		if err != nil {
 			t.Error(err)
 		}
 
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"})
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"}, false)
 		if err == nil {
 			t.Errorf("Expected error in CheckDependencies")
 		}

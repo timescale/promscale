@@ -94,6 +94,7 @@ func TestParseFlags(t *testing.T) {
 				c.StopAfterMigrate = false
 				c.UseVersionLease = false
 				c.InstallExtensions = false
+				c.UpgradeExtensions = false
 				return c
 			},
 		},

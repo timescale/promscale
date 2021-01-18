@@ -116,7 +116,7 @@ func installUpgradePromscaleExtensions(db *pgx.Conn, upgradeExt, upgradePre bool
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}
 
-	if err = extension.CheckExtensionsVersion(db); err != nil {
+	if err = extension.CheckExtensionsVersion(db, false); err != nil {
 		return fmt.Errorf("error encountered while migrating extension: %w", err)
 	}
 
@@ -155,12 +155,12 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, upgradeExt, upgradePre bool)
 // CheckDependencies makes sure all project dependencies, including the DB schema
 // the extension, are set up correctly. This will set the ExtensionIsInstalled
 // flag and thus should only be called once, at initialization.
-func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo) (err error) {
+func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool) (err error) {
 	if err = CheckSchemaVersion(context.Background(), db, versionInfo); err != nil {
 		return err
 	}
 
-	return extension.CheckVersions(db)
+	return extension.CheckVersions(db, migrationFailedDueToLockError)
 }
 
 // CheckSchemaVersion checks the DB schema version without checking the extension
