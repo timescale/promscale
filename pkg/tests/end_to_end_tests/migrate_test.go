@@ -133,6 +133,74 @@ func TestMigrateLock(t *testing.T) {
 	})
 }
 
+func verifyExtensionExists(t *testing.T, db *pgxpool.Pool, name string, expectExists bool) {
+	var count int
+	err := db.QueryRow(context.Background(), `SELECT count(*) FROM pg_extension where extname=$1`, name).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actualExists := count > 0
+	if expectExists != actualExists {
+		t.Fatalf("extension %v is not in the right exists state. Expected %v got %v.", name, expectExists, actualExists)
+	}
+}
+
+func TestInstallFlagPromscaleExtension(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useExtension {
+		t.Skip(("need promscale extension for this test"))
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, _ testing.TB) {
+		conn, err := db.Acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		pgxcfg := conn.Conn().Config()
+		cfg := runner.Config{
+			Migrate:           true,
+			InstallExtensions: false,
+			StopAfterMigrate:  false,
+			UseVersionLease:   true,
+			PgmodelCfg: pgclient.Config{
+				Database:                *testDatabase,
+				Host:                    pgxcfg.Host,
+				Port:                    int(pgxcfg.Port),
+				User:                    pgxcfg.User,
+				Password:                pgxcfg.Password,
+				SslMode:                 "allow",
+				MaxConnections:          -1,
+				WriteConnectionsPerProc: 1,
+			},
+		}
+		conn.Release()
+		_, err = db.Exec(context.Background(), "DROP EXTENSION promscale")
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyExtensionExists(t, db, "promscale", false)
+
+		metrics := api.InitMetrics(0)
+		cfg.InstallExtensions = false
+		migrator, err := runner.CreateClient(&cfg, metrics)
+		if err != nil {
+			t.Fatal(err)
+		}
+		migrator.Close()
+
+		verifyExtensionExists(t, db, "promscale", false)
+
+		cfg.InstallExtensions = true
+		migrator, err = runner.CreateClient(&cfg, metrics)
+		if err != nil {
+			t.Fatal(err)
+		}
+		migrator.Close()
+		verifyExtensionExists(t, db, "promscale", true)
+	})
+}
+
 func TestMigrateTwice(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
