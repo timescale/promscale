@@ -28,6 +28,7 @@ func TestMigrate(t *testing.T) {
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		var dbVersion string
+		extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true}
 		err := db.QueryRow(context.Background(), "SELECT version FROM prom_schema_migrations").Scan(&dbVersion)
 		if err != nil {
 			t.Fatal(err)
@@ -43,12 +44,12 @@ func TestMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer conn.Release()
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version}, false)
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version}, false, extOptions)
 		if err != nil {
 			t.Error(err)
 		}
 
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"}, false)
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"}, false, extOptions)
 		if err == nil {
 			t.Errorf("Expected error in CheckDependencies")
 		}
