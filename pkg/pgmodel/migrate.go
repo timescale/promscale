@@ -93,14 +93,14 @@ func (p prefixedNames) getNames() []string {
 // Also this takes a connection string not a connection because for
 // updates the ALTER has to be the first command on the connection
 // thus we cannot reuse existing connections
-func InstallUpgradeTimescaleDBExtensions(connstr string, upgradeExt, upgradePre bool) error {
+func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions extension.ExtensionMigrateOptions) error {
 	db, err := pgx.Connect(context.Background(), connstr)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close(context.Background()) }()
 
-	err = extension.MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, upgradeExt, upgradePre)
+	err = extension.MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
 	if err != nil {
 		return fmt.Errorf("could not install timescaledb: %w", err)
 	}
@@ -109,14 +109,14 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, upgradeExt, upgradePre 
 
 }
 
-func installUpgradePromscaleExtensions(db *pgx.Conn, upgradeExt, upgradePre bool) error {
+func installUpgradePromscaleExtensions(db *pgx.Conn, extOptions extension.ExtensionMigrateOptions) error {
 	extension.ExtensionIsInstalled = false
-	err := extension.MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString, upgradeExt, upgradePre)
+	err := extension.MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}
 
-	if err = extension.CheckExtensionsVersion(db, false); err != nil {
+	if err = extension.CheckExtensionsVersion(db, false, extOptions); err != nil {
 		return fmt.Errorf("error encountered while migrating extension: %w", err)
 	}
 
@@ -125,7 +125,7 @@ func installUpgradePromscaleExtensions(db *pgx.Conn, upgradeExt, upgradePre bool
 }
 
 // Migrate performs a database migration to the latest version
-func Migrate(db *pgx.Conn, versionInfo VersionInfo, upgradeExt, upgradePre bool) (err error) {
+func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.ExtensionMigrateOptions) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
 	extension.ExtensionIsInstalled = false
@@ -142,7 +142,7 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, upgradeExt, upgradePre bool)
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	err = installUpgradePromscaleExtensions(db, upgradeExt, upgradePre)
+	err = installUpgradePromscaleExtensions(db, extOptions)
 	if err != nil {
 		return err
 	}
@@ -155,12 +155,12 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, upgradeExt, upgradePre bool)
 // CheckDependencies makes sure all project dependencies, including the DB schema
 // the extension, are set up correctly. This will set the ExtensionIsInstalled
 // flag and thus should only be called once, at initialization.
-func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool) (err error) {
+func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool, extOptions extension.ExtensionMigrateOptions) (err error) {
 	if err = CheckSchemaVersion(context.Background(), db, versionInfo); err != nil {
 		return err
 	}
 
-	return extension.CheckVersions(db, migrationFailedDueToLockError)
+	return extension.CheckVersions(db, migrationFailedDueToLockError, extOptions)
 }
 
 // CheckSchemaVersion checks the DB schema version without checking the extension
