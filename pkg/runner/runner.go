@@ -143,6 +143,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		cfg.StopAfterMigrate = false
 		cfg.UseVersionLease = false
 		cfg.InstallExtensions = false
+		cfg.UpgradeExtensions = false
 	}
 
 	cfg.PgmodelCfg.UsesHA = cfg.HaGroupLockID != 0
@@ -227,7 +228,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// after the client has started it's in charge of maintaining the leases
 	defer schemaVersionLease.Close()
 
-	migration_success := true
+	migrationFailedDueToLockError := true
 	if cfg.Migrate {
 		conn, err := schemaVersionLease.Conn()
 		if err != nil {
@@ -238,7 +239,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 			lease = nil
 		}
 		err = migrate(conn, appVersion, lease, cfg.UpgradeExtensions, cfg.UpgradePrereleaseExtensions)
-		migration_success = err != nil
+		migrationFailedDueToLockError = err == migrationLockError
 		if err != nil && err != migrationLockError {
 			return nil, fmt.Errorf("migration error: %w", err)
 		}
@@ -277,10 +278,10 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	if err != nil {
 		return nil, fmt.Errorf("Dependency checking error while trying to open DB connection: %w", err)
 	}
-	err = pgmodel.CheckDependencies(conn, appVersion)
+	err = pgmodel.CheckDependencies(conn, appVersion, migrationFailedDueToLockError)
 	if err != nil {
 		err = fmt.Errorf("dependency error: %w", err)
-		if !migration_success {
+		if migrationFailedDueToLockError {
 			log.Error("msg", "Unable to run migrations; failed to acquire the lock. If the database is on an incorrect version, ensure there are no other connectors running and try again.", "err", err)
 		}
 		return nil, err
