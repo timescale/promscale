@@ -159,6 +159,11 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 	}
 	isInstalled := currentVersion != nil
 
+	if !isInstalled && !extOptions.Install {
+		log.Info("msg", "skipping "+extName+" extension install as install extension is disabled.")
+		return nil
+	}
+
 	if isInstalled && !extOptions.Upgrade {
 		log.Info("msg", "skipping "+extName+" extension upgrade as upgrade extension is disabled. The current extension version is "+currentVersion.String())
 		if !validRange(*currentVersion) {
