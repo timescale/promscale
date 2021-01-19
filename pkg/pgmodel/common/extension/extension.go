@@ -68,10 +68,10 @@ func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrate
 // CheckVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
 func CheckVersions(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	if err := checkPgVersion(conn); err != nil {
-		return fmt.Errorf("Problem checking PostgreSQL version: %w", err)
+		return fmt.Errorf("problem checking PostgreSQL version: %w", err)
 	}
 	if err := CheckExtensionsVersion(conn, migrationFailedDueToLockError, extOptions); err != nil {
-		return fmt.Errorf("Problem checking Promescale extension version: %w", err)
+		return fmt.Errorf("problem checking extension version: %w", err)
 	}
 	return nil
 }
@@ -104,10 +104,10 @@ func checkPgVersion(conn *pgx.Conn) error {
 // it is at the right version
 func CheckExtensionsVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	if err := checkTimescaleDBVersion(conn); err != nil {
-		return err
+		return fmt.Errorf("problem checking timescaledb extension version: %w", err)
 	}
 	if err := checkPromscaleExtensionVersion(conn, migrationFailedDueToLockError, extOptions); err != nil {
-		return err
+		return fmt.Errorf("problem checking promscale extension version: %w", err)
 	}
 	return nil
 }
@@ -142,11 +142,16 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 
 func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	currentVersion, newVersion, err := extensionVersions(conn, "promscale", version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
-	if (currentVersion == nil || currentVersion.Compare(*newVersion) < 0) && migrationFailedDueToLockError {
-		log.Warn("msg", "Unable to install/update the Promscale extension; failed to acquire the lock. Ensure there are no other connectors running and try again.", "err", err)
-	}
 	if err != nil {
-		return fmt.Errorf("could not get the installed extension version: %w", err)
+		ExtensionIsInstalled = false
+		if err == errors.ErrExtUnavailable {
+			//the promscale extension is optional
+			return nil
+		}
+		return fmt.Errorf("could not get the extension versions: %w", err)
+	}
+	if (currentVersion == nil || currentVersion.Compare(*newVersion) < 0) && migrationFailedDueToLockError {
+		log.Warn("msg", "Unable to install/update the Promscale extension; failed to acquire the lock. Ensure there are no other connectors running and try again.")
 	}
 	if currentVersion == nil {
 		ExtensionIsInstalled = false
@@ -163,7 +168,7 @@ func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockErro
 func extensionVersions(conn *pgx.Conn, extName string, validRange semver.Range, rangeString string, extOptions ExtensionMigrateOptions) (currentVersion *semver.Version, newVersion *semver.Version, err error) {
 	availableVersions, err := fetchAvailableExtensionVersions(conn, extName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("problem fetching available version: %w", err)
 	}
 	if len(availableVersions) == 0 {
 		return nil, nil, errors.ErrExtUnavailable
@@ -171,12 +176,12 @@ func extensionVersions(conn *pgx.Conn, extName string, validRange semver.Range, 
 
 	defaultVersion, err := fetchDefaultExtensionVersions(conn, extName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("problem fetching default version: %w", err)
 	}
 
 	current, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("Could not get the installed extension version: %w", err)
+		return nil, nil, fmt.Errorf("problem getting the installed extension version: %w", err)
 	}
 
 	new, ok := getNewExtensionVersion(extName, availableVersions, defaultVersion, validRange, isInstalled, extOptions.UpgradePreRelease, current)
