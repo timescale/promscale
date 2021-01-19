@@ -25,16 +25,13 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/version"
 )
 
 const (
-	metadataUpdateWithExtension = "SELECT update_tsprom_metadata($1, $2, $3)"
-	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
-	createMigrationsTable       = "CREATE TABLE IF NOT EXISTS prom_schema_migrations (version text not null primary key)"
-	getVersion                  = "SELECT version FROM prom_schema_migrations LIMIT 1"
-	setVersion                  = "INSERT INTO prom_schema_migrations (version) VALUES ($1)"
-	truncateMigrationsTable     = "TRUNCATE prom_schema_migrations"
+	createMigrationsTable   = "CREATE TABLE IF NOT EXISTS prom_schema_migrations (version text not null primary key)"
+	getVersion              = "SELECT version FROM prom_schema_migrations LIMIT 1"
+	setVersion              = "INSERT INTO prom_schema_migrations (version) VALUES ($1)"
+	truncateMigrationsTable = "TRUNCATE prom_schema_migrations"
 
 	preinstallScripts = "preinstall"
 	versionScripts    = "versions/dev"
@@ -86,49 +83,10 @@ func (p prefixedNames) getNames() []string {
 	return names
 }
 
-// MigrateTimescaleDBExtension installs or updates TimescaleDB
-// Note that after this call any previous connections can break
-// so this has to be called ahead of opening connections.
-//
-// Also this takes a connection string not a connection because for
-// updates the ALTER has to be the first command on the connection
-// thus we cannot reuse existing connections
-func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions extension.ExtensionMigrateOptions) error {
-	db, err := pgx.Connect(context.Background(), connstr)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close(context.Background()) }()
-
-	err = extension.MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
-	if err != nil {
-		return fmt.Errorf("could not install timescaledb: %w", err)
-	}
-
-	return nil
-
-}
-
-func installUpgradePromscaleExtensions(db *pgx.Conn, extOptions extension.ExtensionMigrateOptions) error {
-	extension.ExtensionIsInstalled = false
-	err := extension.MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
-	if err != nil {
-		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
-	}
-
-	if err = extension.CheckExtensionsVersion(db, false, extOptions); err != nil {
-		return fmt.Errorf("error encountered while migrating extension: %w", err)
-	}
-
-	return nil
-
-}
-
 // Migrate performs a database migration to the latest version
 func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.ExtensionMigrateOptions) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
-	extension.ExtensionIsInstalled = false
 
 	appVersion, err := semver.Make(versionInfo.Version)
 	if err != nil {
@@ -142,13 +100,6 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.Extensi
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	err = installUpgradePromscaleExtensions(db, extOptions)
-	if err != nil {
-		return err
-	}
-
-	metadataUpdate(db, extension.ExtensionIsInstalled, "version", versionInfo.Version)
-	metadataUpdate(db, extension.ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 	return nil
 }
 
@@ -529,13 +480,4 @@ func setDBVersion(tx pgx.Tx, version *semver.Version) error {
 	}
 
 	return nil
-}
-
-func metadataUpdate(db *pgx.Conn, withExtension bool, key string, value string) {
-	/* Ignore error if it doesn't work */
-	if withExtension {
-		_, _ = db.Exec(context.Background(), metadataUpdateWithExtension, key, value, true)
-	} else {
-		_, _ = db.Exec(context.Background(), metadataUpdateNoExtension, key, value, true)
-	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -25,6 +26,43 @@ type ExtensionMigrateOptions struct {
 	Install           bool
 	Upgrade           bool
 	UpgradePreRelease bool
+}
+
+// MigrateTimescaleDBExtension installs or updates TimescaleDB
+// Note that after this call any previous connections can break
+// so this has to be called ahead of opening connections.
+//
+// Also this takes a connection string not a connection because for
+// updates the ALTER has to be the first command on the connection
+// thus we cannot reuse existing connections
+func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMigrateOptions) error {
+	db, err := pgx.Connect(context.Background(), connstr)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close(context.Background()) }()
+
+	err = MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
+	if err != nil {
+		return fmt.Errorf("could not install timescaledb: %w", err)
+	}
+
+	return nil
+
+}
+
+func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrateOptions) (bool, error) {
+	ExtensionIsInstalled = false
+	err := MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
+	if err != nil {
+		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
+	}
+
+	if err = CheckExtensionsVersion(db, false, extOptions); err != nil {
+		return false, fmt.Errorf("error encountered while migrating extension: %w", err)
+	}
+
+	return ExtensionIsInstalled, nil
 }
 
 // CheckVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
