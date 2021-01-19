@@ -19,11 +19,10 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
+	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/version"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
-
-	. "github.com/timescale/promscale/pkg/pgmodel"
 )
 
 var (
@@ -195,7 +194,7 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 			// Thus, you have to use the superuser to install TimescaleDB
 			migrateURL = superConnectURL
 		}
-		err := pgmodel.InstallUpgradeTimescaleDBExtensions(migrateURL, extOptions)
+		err := extension.InstallUpgradeTimescaleDBExtensions(migrateURL, extOptions)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -211,10 +210,11 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		t.Fatal(err)
 	}
 	defer conn.Release()
-	err = Migrate(conn.Conn(), pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"}, extOptions)
+	err = runner.SetupDBState(conn.Conn(), pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"}, nil, extOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 }
 
 func generatePGTestDirFiles() string {

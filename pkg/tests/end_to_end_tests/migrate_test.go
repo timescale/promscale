@@ -175,7 +175,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 			},
 		}
 		conn.Release()
-		_, err = db.Exec(context.Background(), "DROP EXTENSION promscale")
+		_, err = db.Exec(context.Background(), "DROP EXTENSION IF EXISTS promscale")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -29,11 +29,12 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
-	. "github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -459,7 +460,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 }
 
 func migrateToVersion(t testing.TB, connectURL string, version string, commitHash string) {
-	err := pgmodel.InstallUpgradeTimescaleDBExtensions(connectURL, true, false)
+	err := extension.InstallUpgradeTimescaleDBExtensions(connectURL, extension.ExtensionMigrateOptions{Install: true, Upgrade: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +470,7 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 		t.Fatal(err)
 	}
 	defer func() { _ = migratePool.Close(context.Background()) }()
-	err = Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, true, false)
+	err = runner.SetupDBState(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, nil, extension.ExtensionMigrateOptions{Install: true, Upgrade: true})
 	if err != nil {
 		t.Fatal(err)
 	}

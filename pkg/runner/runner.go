@@ -213,7 +213,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	}
 
 	if cfg.InstallExtensions {
-		err := pgmodel.InstallUpgradeTimescaleDBExtensions(connStr, extOptions)
+		err := extension.InstallUpgradeTimescaleDBExtensions(connStr, extOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -244,7 +244,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		if !cfg.UseVersionLease {
 			lease = nil
 		}
-		err = migrate(conn, appVersion, lease, extOptions)
+		err = SetupDBState(conn, appVersion, lease, extOptions)
 		migrationFailedDueToLockError = err == migrationLockError
 		if err != nil && err != migrationLockError {
 			return nil, fmt.Errorf("migration error: %w", err)
@@ -353,7 +353,7 @@ func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
 	return &scheduledElector.Elector, nil
 }
 
-func migrate(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock, extOptions extension.ExtensionMigrateOptions) error {
+func SetupDBState(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock, extOptions extension.ExtensionMigrateOptions) error {
 	// At startup migrators attempt to grab the schema-version lock. If this
 	// fails that means some other connector is running. All is not lost: some
 	// other connector may have migrated the DB to the correct version. We warn,
@@ -379,11 +379,16 @@ func migrate(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgA
 	}
 
 	err := pgmodel.Migrate(conn, appVersion, extOptions)
-
 	if err != nil {
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)
 	}
 
+	installedPromscaleExtension, err := extension.InstallUpgradePromscaleExtensions(conn, extOptions)
+	if err != nil {
+		return err
+	}
+
+	pgmodel.UpdateTelemetry(conn, appVersion, installedPromscaleExtension)
 	return nil
 }
 
