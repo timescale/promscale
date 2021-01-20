@@ -85,6 +85,7 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 }
 
 func (h *Service) validateClusterState(minT, maxT time.Time, clusterName, replicaName string) error {
+	fmt.Println("minT:", minT, "maxT", maxT)
 	lockState, err := h.lockClient.checkInsert(context.Background(), clusterName, replicaName, minT, maxT)
 	if err != nil && err.Error() != leaderHasChanged.Error() {
 		return fmt.Errorf("could not check ha lock state: %#v", err)
