@@ -16,9 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 )
 
-const (
-	waitForConnectionTimeout = time.Second
-)
+const defaultConnectionTimeout = time.Minute
 
 var (
 	SharedLeaseFailure = fmt.Errorf("failed to acquire shared lease")
@@ -202,12 +200,18 @@ func (l *PgAdvisoryLock) getConn(connStr string, cur, maxRetries int) (*pgx.Conn
 		return nil, fmt.Errorf("max attempts reached. giving up on getting a db connection")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), waitForConnectionTimeout)
-	defer cancel()
-
 	cfg, err := pgx.ParseConfig(connStr)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing config connection: %w", err)
+	}
+
+	ctx := context.Background()
+	if cfg.ConnectTimeout.Seconds() == 0 {
+		// Set the defaultConnectionTimeout if the connection string does not contain the
+		// the connection timeout information.
+		cctx, cancel := context.WithTimeout(context.Background(), defaultConnectionTimeout)
+		defer cancel()
+		ctx = cctx
 	}
 
 	lockConn, err := pgx.ConnectConfig(ctx, cfg)

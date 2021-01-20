@@ -46,6 +46,7 @@ You can also find information on flags with `promscale_<version> -help`
 | db-password | string | | Password for connecting to TimescaleDB/Vanilla Postgres. |
 | db-user | string | postgres | TimescaleDB/Vanilla Postgres user. |
 | db-connect-retries | integer | 0 | Number of retries Promscale should make for establishing connection with the database. |
+| db-connection-timeout | duration | 60 seconds | Timeout for establishing the connection between Promscale and TimescaleDB. |
 | db-connections-max | integer | 80% of possible connections db | Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle. |
 | db-ssl-mode | string | require | TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass `allow` as value. |
 | db-writer-connection-concurrency | int | 4 | Maximum number of database connections for writing per go process. |
