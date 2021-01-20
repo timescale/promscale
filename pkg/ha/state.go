@@ -9,7 +9,6 @@ type State struct {
 	leader          string
 	leaseStart      time.Time
 	leaseUntil      time.Time
-	minTimeSeen     time.Time
 	maxTimeSeen     time.Time // max data time seen by any instance
 	maxTimeInstance string    // the instance name that’s seen the maxtime
 	_mu             sync.RWMutex
@@ -35,13 +34,12 @@ func (h *State) updateStateFromDB(latestState *haLockState, maxT time.Time, repl
 	h.leaseUntil = latestState.leaseUntil
 }
 
-func (h *State) updateState(currentReplica string, currentMaxT, currentMinT time.Time) {
+func (h *State) updateMaxSeenTime(currentReplica string, currentMaxT time.Time) {
 	h._mu.Lock()
 	defer h._mu.Unlock()
-	if currentMaxT.After(h.maxTimeSeen) && currentMinT.After(h.minTimeSeen) {
+	if currentMaxT.After(h.maxTimeSeen) {
 		h.maxTimeInstance = currentReplica
 		h.maxTimeSeen = currentMaxT
-		h.minTimeSeen = currentMinT
 	}
 }
 
