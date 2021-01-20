@@ -179,7 +179,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
 DECLARE
   label_id INT;
 BEGIN
-   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL)',
+   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
                     NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
@@ -215,7 +215,7 @@ BEGIN
             CHECK(metric_id = %3$L),
             CONSTRAINT series_labels_id_%3$s UNIQUE(labels) INCLUDE (id),
             CONSTRAINT series_pkey_%3$s PRIMARY KEY(id)
-        )
+        ) WITH (autovacuum_vacuum_threshold = 100, autovacuum_analyze_threshold = 100)
     $$, NEW.table_name, label_id, NEW.id);
 
    RETURN NEW;
