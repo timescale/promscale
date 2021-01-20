@@ -22,7 +22,16 @@ func callCheckInsert(db *pgxpool.Pool, cluster, writer string, minT, maxT time.T
 	return &lock, nil
 }
 
-func checkLock(lock *lockState, wantedC, wantedL string, wantedLeaseStart, wantedLeaseUntil time.Time) bool {
+func checkLock(db *pgxpool.Pool, lock *lockState, wantedC, wantedL string, wantedLeaseStart, wantedLeaseUntil time.Time) bool {
+	row := db.QueryRow(context.Background(), "SELECT lease_start, lease_until FROM ha_locks WHERE cluster_name = $1", wantedC)
+	var start, stop time.Time
+	if err := row.Scan(&start, &stop); err != nil {
+		return false
+	}
+	if start != wantedLeaseStart || stop != wantedLeaseUntil {
+		return false
+	}
+
 	return lock.cluster == wantedC &&
 		lock.leader == wantedL &&
 		lock.leaseStart == wantedLeaseStart &&
@@ -46,15 +55,15 @@ func TestCheckInsert(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		expectedLeaseUntil := time.Unix(3, 0).Add(leaseTime)
+		expectedLeaseUntil := maxT.Add(leaseTime)
 		if lock == nil {
 			t.Fatal("error calling check_insert")
 		}
-		if !checkLock(lock, cluster, writer, minT, expectedLeaseUntil) {
+		if !checkLock(db, lock, cluster, writer, minT, expectedLeaseUntil) {
 			t.Fatal("first call to check insert didn't set lock properly")
 		}
 
-		// wrong leader ->
+		// wrong leader
 		writer = "w2"
 		lock, err = callCheckInsert(db, cluster, writer, minT, maxT)
 		leaderHasChanged := "ERROR: LEADER_HAS_CHANGED (SQLSTATE P0001)"
@@ -72,22 +81,23 @@ func TestCheckInsert(t *testing.T) {
 
 		// no update lease_until
 		minT = time.Unix(1, 0)
-		maxT = expectedLeaseUntil.Add(-refreshTime).Add(-time.Second)
+		maxT = maxTime.Add(refreshTime)
 		lock, err = callCheckInsert(db, cluster, writer, minT, maxT)
 		if lock == nil || err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !checkLock(lock, cluster, writer, minT, expectedLeaseUntil) {
+		if !checkLock(db, lock, cluster, writer, minT, expectedLeaseUntil) {
 			t.Fatal("expected lock details to not change")
 		}
 
 		// update lease_until
-		maxT = expectedLeaseUntil.Add(-refreshTime)
+		maxT = expectedLeaseUntil.Add(time.Second)
+		expectedLeaseUntil = maxT.Add(leaseTime)
 		lock, err = callCheckInsert(db, cluster, writer, minT, maxT)
 		if lock == nil || err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !checkLock(lock, cluster, writer, minT, maxT.Add(leaseTime)) {
+		if !checkLock(db, lock, cluster, writer, minT, expectedLeaseUntil) {
 			t.Fatal("expected lock details to change")
 		}
 	})
@@ -112,7 +122,7 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 		if lock == nil {
 			t.Fatalf("error calling check_insert for first cluster: %v", err)
 		}
-		if !checkLock(lock, cluster1, writer, minT, expectedLeaseUntil) {
+		if !checkLock(db, lock, cluster1, writer, minT, expectedLeaseUntil) {
 			t.Fatal("call to check insert didn't set lock properly")
 		}
 
@@ -122,7 +132,7 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 		if lock == nil {
 			t.Fatalf("error calling check_insert for second cluster: %v", err)
 		}
-		if !checkLock(lock, cluster2, writer, minT, expectedLeaseUntil) {
+		if !checkLock(db, lock, cluster2, writer, minT, expectedLeaseUntil) {
 			t.Fatal("call to check insert didn't set lock properly")
 		}
 	})
