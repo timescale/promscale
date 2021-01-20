@@ -1,6 +1,9 @@
 package pgclient
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestConfig_GetConnectionStr(t *testing.T) {
 	type fields struct {
@@ -11,6 +14,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 		Database                string
 		SslMode                 string
 		DbConnectRetries        int
+		DbConnectionTimeout     time.Duration
 		AsyncAcks               bool
 		ReportInterval          int
 		LabelsCacheSize         uint64
@@ -38,6 +42,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale1",
 				SslMode:                 "require",
 				DbConnectRetries:        0,
+				DbConnectionTimeout:     time.Minute * 2,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -48,7 +53,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "",
 			},
-			want:    "host=localhost port=5433 user=postgres dbname=timescale1 password='Timescale123' sslmode=require connect_timeout=10",
+			want:    "host=localhost port=5433 user=postgres dbname=timescale1 password='Timescale123' sslmode=require connect_timeout=120",
 			wantErr: false,
 			err:     nil,
 		},
@@ -110,6 +115,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale",
 				SslMode:                 "require",
 				DbConnectRetries:        0,
+				DbConnectionTimeout:     time.Hour,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -120,7 +126,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "",
 			},
-			want:    "host=localhost port=5432 user=postgres dbname=timescale password='' sslmode=require connect_timeout=10",
+			want:    "host=localhost port=5432 user=postgres dbname=timescale password='' sslmode=require connect_timeout=3600",
 			wantErr: false,
 			err:     nil,
 		},
@@ -134,6 +140,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale",
 				SslMode:                 "require",
 				DbConnectRetries:        0,
+				DbConnectionTimeout:     DefaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -144,7 +151,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "postgres://postgres:password@localhost:5432/postgres?sslmode=allow",
 			},
-			want:    "postgres://postgres:password@localhost:5432/postgres?sslmode=allow&connect_timeout=10",
+			want:    "postgres://postgres:password@localhost:5432/postgres?sslmode=allow",
 			wantErr: false,
 			err:     nil,
 		},
@@ -159,6 +166,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                tt.fields.Database,
 				SslMode:                 tt.fields.SslMode,
 				DbConnectRetries:        tt.fields.DbConnectRetries,
+				DbConnectionTimeout:     tt.fields.DbConnectionTimeout,
 				AsyncAcks:               tt.fields.AsyncAcks,
 				ReportInterval:          tt.fields.ReportInterval,
 				LabelsCacheSize:         tt.fields.LabelsCacheSize,

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
@@ -25,6 +26,7 @@ type Config struct {
 	Database                string
 	SslMode                 string
 	DbConnectRetries        int
+	DbConnectionTimeout     time.Duration
 	AsyncAcks               bool
 	ReportInterval          int
 	LabelsCacheSize         uint64
@@ -36,14 +38,15 @@ type Config struct {
 	DbUri                   string
 }
 
-var (
-	DefaultDBUri      = ""
-	DefaultDBHost     = "localhost"
-	DefaultDBPort     = 5432
-	DefaultDBUser     = "postgres"
-	DefaultDBName     = "timescale"
-	DefaultDBPassword = ""
-	DefaultSSLMode    = "require"
+const (
+	DefaultDBUri          = ""
+	DefaultDBHost         = "localhost"
+	DefaultDBPort         = 5432
+	DefaultDBUser         = "postgres"
+	DefaultDBName         = "timescale"
+	DefaultDBPassword     = ""
+	DefaultSSLMode        = "require"
+	DefaultConnectionTime = time.Minute
 )
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
@@ -55,6 +58,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.StringVar(&cfg.Database, "db-name", DefaultDBName, "Database name.")
 	fs.StringVar(&cfg.SslMode, "db-ssl-mode", DefaultSSLMode, "TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass 'allow' as value.")
 	fs.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "Number of retries Promscale should make for establishing connection with the database.")
+	fs.DurationVar(&cfg.DbConnectionTimeout, "db-connection-timeout", DefaultConnectionTime, "Timeout for establishing the connection between Promscale and TimescaleDB.")
 	fs.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
 	fs.IntVar(&cfg.ReportInterval, "tput-report", 0, "Interval in seconds at which throughput should be reported.")
 	fs.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "Maximum number of labels to cache.")
@@ -73,15 +77,14 @@ func (cfg *Config) GetConnectionStr() (string, error) {
 	// else as DBURI isn't default check if db flags are default if we notice DBURI + DB flags not default give an error
 	// Now as DBURI isn't default and DB flags are default build a connStr for DBURI.
 	if cfg.DbUri == DefaultDBUri {
-		return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=10",
-			cfg.Host, cfg.Port, cfg.User, cfg.Database, cfg.Password, cfg.SslMode), nil
+		return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=%d",
+			cfg.Host, cfg.Port, cfg.User, cfg.Database, cfg.Password, cfg.SslMode, int(cfg.DbConnectionTimeout.Seconds())), nil
 	} else if cfg.Database != DefaultDBName || cfg.Host != DefaultDBHost || cfg.Port != DefaultDBPort || cfg.User != DefaultDBUser ||
-		cfg.Password != DefaultDBPassword || cfg.SslMode != DefaultSSLMode {
+		cfg.Password != DefaultDBPassword || cfg.SslMode != DefaultSSLMode || cfg.DbConnectionTimeout != DefaultConnectionTime {
 		return "", excessDBFlagsError
 	}
 
-	uri := cfg.DbUri + "&connect_timeout=10"
-	return uri, nil
+	return cfg.DbUri, nil
 }
 
 func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err error) {
