@@ -1,6 +1,7 @@
 package ha
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -23,6 +24,7 @@ type StateView struct {
 }
 
 func (h *State) updateStateFromDB(latestState *haLockState, maxT time.Time, replicaName string) {
+	fmt.Println("latest state: ", latestState)
 	h._mu.Lock()
 	defer h._mu.Unlock()
 	if h.maxTimeSeen.IsZero() {
