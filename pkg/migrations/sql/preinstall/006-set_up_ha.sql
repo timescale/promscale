@@ -111,12 +111,14 @@ BEGIN
             END IF;
         END IF;
     END IF;
-    RETURN QUERY SELECT cluster, leader, lease_start, lease_until;
+    RETURN QUERY SELECT *
+                 FROM ha_locks
+                 WHERE cluster_name = cluster;
 END;
-$func$ LANGUAGE plpgsql VOLATILE ;
+$func$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.try_change_leader(cluster TEXT, new_leader TEXT,
-                                                            max_time TIMESTAMPTZ) RETURNS ha_locks
+                                                            max_time TIMESTAMPTZ) RETURNS SETOF ha_locks
 AS
 $func$
 DECLARE
