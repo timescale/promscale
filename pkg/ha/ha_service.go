@@ -14,7 +14,7 @@ import (
 
 const (
 	backOffDurationOnLeaderChange = 10 * time.Second
-	haSyncerTimeInterval = 15 * time.Second
+	haSyncerTimeInterval          = 15 * time.Second
 )
 
 type Service struct {
@@ -23,6 +23,7 @@ type Service struct {
 	leaseTimeout      time.Duration
 	leaseRefresh      time.Duration
 	_leaderChangeLock *semaphore.Weighted
+	_syncTicker       *time.Ticker
 }
 
 func NewHAService(dbClient pgxconn.PgxConn) (*Service, error) {
@@ -38,23 +39,23 @@ func NewHAService(dbClient pgxconn.PgxConn) (*Service, error) {
 		leaseTimeout:      timeout,
 		leaseRefresh:      refresh,
 		_leaderChangeLock: semaphore.NewWeighted(1),
+		_syncTicker:       time.NewTicker(haSyncerTimeInterval),
 	}
 	go service.haStateSyncer()
 	return service, nil
 }
 
 func (h *Service) haStateSyncer() {
-	for {
+	for range h._syncTicker.C {
 		for clusterName, state := range h.state {
 			// To validate cluster state we use maxTimeInstance instead if state.leader
 			// because if prometheus leader crashes promscale needs to sync leader
 			// using maxTimeSeenInstance and validate if leaderHasChanged condition
-			err := h.validateClusterState(state.minTimeSeen, state.maxTimeSeen, clusterName, state.maxTimeInstance)
+			err := h.validateClusterState(state.leaseStart, state.maxTimeSeen, clusterName, state.maxTimeInstance)
 			if err != nil {
 				log.Error("failed to validate cluster %s state %v", clusterName, err)
 			}
 		}
-		time.Sleep(haSyncerTimeInterval)
 	}
 }
 
@@ -64,7 +65,7 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 	// TODO use proper context
 	if h.state[clusterName] == nil {
 		h.state[clusterName] = &State{
-			_mu:             sync.RWMutex{},
+			_mu: sync.RWMutex{},
 		}
 		err := h.validateClusterState(minT, maxT, clusterName, replicaName)
 		if err != nil {
@@ -73,19 +74,14 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 	}
 
 	currentState := h.state[clusterName]
-	// requesting replica is leader, allow
+	allow := false
 	if replicaName == currentState.leader && maxT.Before(currentState.leaseUntil) && minT.After(currentState.leaseStart) {
-		currentState.updateState(replicaName, maxT, minT)
-		return true, nil
-		// if master prometheus gets crashed for some reason we need to
-		// to update the existing state with other replicaName so haSyncer will
-		// try changing the leader on sync up
-	} else if maxT.After(currentState.leaseUntil) {
-		currentState.updateState(replicaName, maxT, minT)
+		// requesting replica is leader, allow
+		allow = true
 	}
 
-	// replica is not leader or timestamps out of lease range, ignore them
-	return false, nil
+	currentState.updateMaxSeenTime(replicaName, maxT)
+	return allow, nil
 }
 
 func (h *Service) validateClusterState(minT, maxT time.Time, clusterName, replicaName string) error {
