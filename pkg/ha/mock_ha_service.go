@@ -2,6 +2,8 @@ package ha
 
 import (
 	"context"
+	"sync"
+
 	"golang.org/x/sync/semaphore"
 )
 
@@ -14,7 +16,7 @@ func MockNewHAService(clusterInfo []*haLockState) *Service {
 	}
 
 	service := &Service{
-		state:             make(map[string]*State),
+		state:             &sync.Map{},
 		lockClient:        lockClient,
 		leaseTimeout:      timeout,
 		leaseRefresh:      refresh,

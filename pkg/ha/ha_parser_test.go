@@ -251,8 +251,26 @@ func Test_haParser_ParseData(t *testing.T) {
 				},
 			}},
 			wantErr: false,
-			want:    nil,
-			want1:   0,
+			want:    map[string][]model.SamplesInfo{
+				"test": {
+					{
+						Labels: &model.Labels{
+							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName, model.ReplicaNameLabel},
+							Values:     []string{"cluster3", "test", "replica1"},
+							MetricName: "test",
+							Str:        "\v\u0000__cluster__\b\u0000cluster3\b\u0000__name__\u0004\u0000test\v\u0000__replica__\b\u0000replica1",
+						},
+						SeriesID: -1,
+						Samples: []prompb.Sample{
+							{
+								Value:     0.1,
+								Timestamp: aheadLeaseTimestamp,
+							},
+						},
+					},
+				},
+			},
+			want1:   1,
 			cluster: "cluster3",
 		},
 		{
@@ -341,7 +359,10 @@ func Test_haParser_ParseData(t *testing.T) {
 					if obj.Name == "__replica__" {
 						f := tt.want["test"]
 						if f != nil {
-							if obj.Value != h.service.state[tt.cluster].leader || f[0].Samples[0].Timestamp != h.service.state[tt.cluster].maxTimeSeen.Unix() {
+							s, _ := h.service.state.Load(tt.cluster)
+							state := s.(*State)
+							stateView := state.clone()
+							if obj.Value != stateView.leader || f[0].Samples[0].Timestamp != stateView.maxTimeSeen.Unix() {
 								t.Errorf("max time seen isn't updated to latest samples info")
 							}
 						}
