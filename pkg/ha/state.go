@@ -7,20 +7,22 @@ import (
 )
 
 type State struct {
-	leader          string
-	leaseStart      time.Time
-	leaseUntil      time.Time
-	maxTimeSeen     time.Time // max data time seen by any instance
-	maxTimeInstance string    // the instance name that’s seen the maxtime
-	_mu             sync.RWMutex
+	leader            string
+	leaseStart        time.Time
+	leaseUntil        time.Time
+	maxTimeSeen       time.Time // max data time seen by any instance
+	maxTimeInstance   string    // the instance name that’s seen the maxtime
+	maxTimeSeenLeader time.Time
+	_mu               sync.RWMutex
 }
 
 type StateView struct {
-	leader          string
-	leaseStart      time.Time
-	leaseUntil      time.Time
-	maxTimeSeen     time.Time
-	maxTimeInstance string
+	leader            string
+	leaseStart        time.Time
+	leaseUntil        time.Time
+	maxTimeSeen       time.Time
+	maxTimeInstance   string
+	maxTimeSeenLeader time.Time
 }
 
 func (h *State) updateStateFromDB(latestState *haLockState, maxT time.Time, replicaName string) {
@@ -42,6 +44,10 @@ func (h *State) updateMaxSeenTime(currentReplica string, currentMaxT time.Time) 
 	if currentMaxT.After(h.maxTimeSeen) {
 		h.maxTimeInstance = currentReplica
 		h.maxTimeSeen = currentMaxT
+	}
+
+	if currentMaxT.After(h.maxTimeSeenLeader) && currentReplica == h.leader {
+		h.maxTimeSeenLeader = currentMaxT
 	}
 }
 
