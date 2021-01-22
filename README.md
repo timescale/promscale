@@ -50,6 +50,7 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Binaries](docs/binary.md)
   * [Source](docs/binary.md#building-from-source)
   * [Helm](helm-chart/README.md)
+  * [Tutorial: Bare Metal Setup for a Monitoring Suite](docs/bare-metal-promscale-stack.md)
 * **[Analyzing Data Using SQL](docs/sql_schema.md)**
   * [Data Model](docs/sql_schema.md#data-model-schema)
   * [Filtering Series](docs/sql_schema.md#filtering-series)
