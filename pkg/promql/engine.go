@@ -24,7 +24,6 @@ import (
 	"sort"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -82,22 +81,6 @@ const (
 	// The smallest SampleValue that can be converted to an int64 without underflow.
 	minInt64 = -9223372036854775808
 )
-
-var (
-	// DefaultEvaluationInterval is the default evaluation interval of
-	// a subquery in milliseconds.
-	DefaultEvaluationInterval int64
-)
-
-// SetDefaultEvaluationInterval sets DefaultEvaluationInterval.
-func SetDefaultEvaluationInterval(ev time.Duration) {
-	atomic.StoreInt64(&DefaultEvaluationInterval, durationToInt64Millis(ev))
-}
-
-// GetDefaultEvaluationInterval returns the DefaultEvaluationInterval as time.Duration.
-func GetDefaultEvaluationInterval() int64 {
-	return atomic.LoadInt64(&DefaultEvaluationInterval)
-}
 
 type engineMetrics struct {
 	currentQueries       prometheus.Gauge
@@ -567,11 +550,7 @@ func durationMilliseconds(d time.Duration) int64 {
 // execEvalStmt evaluates the expression of an evaluation statement for the given time range.
 func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.EvalStmt) (parser.Value, storage.Warnings, error) {
 	prepareSpanTimer, ctxPrepare := query.stats.GetSpanTimer(ctx, stats.QueryPreparationTime, ng.metrics.queryPrepareTime)
-	mint, maxt, err := ng.findMinMaxTime(s)
-	if err != nil {
-		prepareSpanTimer.Finish()
-		return nil, nil, err
-	}
+	mint, maxt := ng.findMinMaxTime(s)
 	querier, err := query.queryable.Querier(ctxPrepare, mint, maxt)
 	if err != nil {
 		prepareSpanTimer.Finish()
@@ -595,7 +574,6 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			interval:                 1,
 			ctx:                      ctxInnerEval,
 			maxSamples:               ng.maxSamplesPerQuery,
-			defaultEvalInterval:      GetDefaultEvaluationInterval(),
 			logger:                   ng.logger,
 			lookbackDelta:            ng.lookbackDelta,
 			topNode:                  topNode,
@@ -647,7 +625,6 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		interval:                 durationMilliseconds(s.Interval),
 		ctx:                      ctxInnerEval,
 		maxSamples:               ng.maxSamplesPerQuery,
-		defaultEvalInterval:      GetDefaultEvaluationInterval(),
 		logger:                   ng.logger,
 		lookbackDelta:            ng.lookbackDelta,
 		noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
@@ -707,24 +684,13 @@ func subqueryTimes(path []parser.Node) (time.Duration, time.Duration, *int64) {
 	return subqOffset, subqRange, tsp
 }
 
-type inspector func(parser.Node, []parser.Node) (bool, error)
-
-func (f inspector) Visit(node parser.Node, path []parser.Node) (parser.Visitor, error) {
-	if v, err := f(node, path); !v || err != nil {
-		return nil, err
-	}
-
-	return f, nil
-}
-
-// This is modified from upstream to avoid descending into a MatrixSelector's VectorSelector
-func (ng *Engine) findMinMaxTime(s *parser.EvalStmt) (int64, int64, error) {
+func (ng *Engine) findMinMaxTime(s *parser.EvalStmt) (int64, int64) {
 	var minTimestamp, maxTimestamp int64 = math.MaxInt64, math.MinInt64
 	// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 	// The evaluation of the VectorSelector inside then evaluates the given range and unsets
 	// the variable.
 	var evalRange time.Duration
-	err := parser.Walk(inspector(func(node parser.Node, path []parser.Node) (bool, error) {
+	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
 		case *parser.VectorSelector:
 			start, end := ng.getTimeRangesForSelector(s, n, path, evalRange)
@@ -738,12 +704,9 @@ func (ng *Engine) findMinMaxTime(s *parser.EvalStmt) (int64, int64, error) {
 
 		case *parser.MatrixSelector:
 			evalRange = n.Range
-			//do not process the child VectorSelector since we don't want to add the LookbackDelta etc for the underlying
-			//VectorSelector.
-			return false, nil
 		}
-		return true, nil
-	}), s.Expr, nil)
+		return nil
+	})
 
 	if maxTimestamp == math.MinInt64 {
 		// This happens when there was no selector. Hence no time range to select.
@@ -751,7 +714,7 @@ func (ng *Engine) findMinMaxTime(s *parser.EvalStmt) (int64, int64, error) {
 		maxTimestamp = 0
 	}
 
-	return minTimestamp, maxTimestamp, err
+	return minTimestamp, maxTimestamp
 }
 
 func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorSelector, path []parser.Node, evalRange time.Duration) (int64, int64) {
@@ -906,7 +869,6 @@ type evaluator struct {
 	maxSamples               int
 	currentSamples           int
 	logger                   log.Logger
-	defaultEvalInterval      int64
 	lookbackDelta            time.Duration
 	topNode                  parser.Node
 	noStepSubqueryIntervalFn func(rangeMillis int64) int64
@@ -1227,7 +1189,6 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		}
 		return mat, warnings
 	}
-	fmt.Println("not into topnode")
 
 	switch e := expr.(type) {
 	case *parser.AggregateExpr:
@@ -1548,8 +1509,6 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 			currentSamples:           ev.currentSamples,
 			maxSamples:               ev.maxSamples,
 			logger:                   ev.logger,
-			interval:                 ev.defaultEvalInterval,
-			defaultEvalInterval:      ev.defaultEvalInterval,
 			lookbackDelta:            ev.lookbackDelta,
 			noStepSubqueryIntervalFn: ev.noStepSubqueryIntervalFn,
 		}
@@ -1720,16 +1679,13 @@ func (ev *evaluator) matrixSelector(node *parser.MatrixSelector) (Matrix, storag
 
 		it = storage.NewBuffer(durationMilliseconds(node.Range))
 	)
-	fmt.Println("node range", node.Range)
 	ws, err := checkAndExpandSeriesSet(ev.ctx, node)
 	if err != nil {
 		ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 	}
 
 	series := vs.Series
-	fmt.Println("jsut before series loop", series)
 	for i, s := range series {
-		fmt.Println("into series")
 		if err := contextDone(ev.ctx, "expression evaluation"); err != nil {
 			ev.error(err)
 		}
@@ -1746,7 +1702,6 @@ func (ev *evaluator) matrixSelector(node *parser.MatrixSelector) (Matrix, storag
 			putPointSlice(ss.Points)
 		}
 	}
-	fmt.Println("returning", matrix)
 	return matrix, ws
 }
 
