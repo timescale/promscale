@@ -16,7 +16,6 @@ package promql
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -226,7 +225,6 @@ func TestQueryError(t *testing.T) {
 
 	res := vectorQuery.Exec(ctx)
 	require.Error(t, res.Err, "expected error on failed select but got none")
-	fmt.Println(res.Err, "<=====>", errStorage)
 	require.True(t, errors.Is(res.Err, errStorage), "expected error doesn't match")
 
 	matrixQuery, err := engine.NewInstantQuery(queryable, "foo[1m]", time.Unix(1, 0))
@@ -252,7 +250,6 @@ type hintRecordingQuerier struct {
 }
 
 func (h *hintRecordingQuerier) Select(sortSeries bool, hints *storage.SelectHints, p []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	fmt.Println("select called", *hints)
 	h.h.hints = append(h.h.hints, hints)
 	return h.Querier.Select(sortSeries, hints, nil, matchers...)
 }
@@ -566,8 +563,6 @@ func TestSelectHintsSetCorrectly(t *testing.T) {
 			res := query.Exec(context.Background())
 			require.NoError(t, res.Err)
 
-			fmt.Println("expected", tc.expected, "received", res.Value)
-			fmt.Println("hintsRecorder", *hintsRecorder.hints[0])
 			require.Equal(t, tc.expected, hintsRecorder.hints)
 		})
 
@@ -1336,7 +1331,6 @@ func TestSubquerySelector(t *testing.T) {
 		},
 	}
 
-	SetDefaultEvaluationInterval(1 * time.Minute)
 	for _, tst := range tests {
 		test, err := NewTest(t, tst.loadString)
 		require.NoError(t, err)

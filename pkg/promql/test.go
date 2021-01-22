@@ -94,9 +94,7 @@ type QuerierWrapper struct {
 }
 
 func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	fmt.Println("hints sent", *sh)
 	ss := t.Querier.Select(b, sh, m...)
-	fmt.Println("ss", ss.Next())
 	return ss, nil
 }
 
