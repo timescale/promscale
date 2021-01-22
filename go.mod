@@ -20,7 +20,6 @@ require (
 	github.com/jackc/pgproto3/v2 v2.0.2
 	github.com/jackc/pgtype v1.4.2
 	github.com/jackc/pgx/v4 v4.8.0
-	github.com/moby/sys/mount v0.2.0 // indirect
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/peterbourgon/ff/v3 v3.0.0
@@ -37,3 +36,5 @@ require (
 	go.uber.org/goleak v1.1.10
 	golang.org/x/sys v0.0.0-20210122093101-04d7465088b8 // indirect
 )
+
+replace github.com/docker/docker => github.com/docker/engine v0.0.0-20190717161051-705d9623b7c1
