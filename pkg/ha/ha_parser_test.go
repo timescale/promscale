@@ -142,10 +142,10 @@ func Test_haParser_ParseData(t *testing.T) {
 				"test": {
 					{
 						Labels: &model.Labels{
-							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName, model.ReplicaNameLabel},
-							Values:     []string{"cluster1", "test", "replica1"},
+							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName},
+							Values:     []string{"cluster1", "test"},
 							MetricName: "test",
-							Str:        "\v\u0000__cluster__\b\u0000cluster1\b\u0000__name__\u0004\u0000test\v\u0000__replica__\b\u0000replica1",
+							Str:        "\v\u0000__cluster__\b\u0000cluster1\b\u0000__name__\u0004\u0000test",
 						},
 						SeriesID: -1,
 						Samples: []prompb.Sample{
@@ -200,10 +200,10 @@ func Test_haParser_ParseData(t *testing.T) {
 				"test": {
 					{
 						Labels: &model.Labels{
-							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName, model.ReplicaNameLabel},
-							Values:     []string{"cluster3", "test", "replica1"},
+							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName},
+							Values:     []string{"cluster3", "test"},
 							MetricName: "test",
-							Str:        "\v\u0000__cluster__\b\u0000cluster3\b\u0000__name__\u0004\u0000test\v\u0000__replica__\b\u0000replica1",
+							Str:        "\v\u0000__cluster__\b\u0000cluster3\b\u0000__name__\u0004\u0000test",
 						},
 						SeriesID: -1,
 						Samples: []prompb.Sample{
@@ -258,10 +258,10 @@ func Test_haParser_ParseData(t *testing.T) {
 				"test": {
 					{
 						Labels: &model.Labels{
-							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName, model.ReplicaNameLabel},
-							Values:     []string{"cluster3", "test", "replica1"},
+							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName},
+							Values:     []string{"cluster3", "test"},
 							MetricName: "test",
-							Str:        "\v\u0000__cluster__\b\u0000cluster3\b\u0000__name__\u0004\u0000test\v\u0000__replica__\b\u0000replica1",
+							Str:        "\v\u0000__cluster__\b\u0000cluster3\b\u0000__name__\u0004\u0000test",
 						},
 						SeriesID: -1,
 						Samples: []prompb.Sample{
@@ -296,10 +296,10 @@ func Test_haParser_ParseData(t *testing.T) {
 				"test": {
 					{
 						Labels: &model.Labels{
-							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName, model.ReplicaNameLabel},
-							Values:     []string{"cluster4", "test", "replica2"},
+							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName},
+							Values:     []string{"cluster4", "test"},
 							MetricName: "test",
-							Str:        "\v\u0000__cluster__\b\u0000cluster4\b\u0000__name__\u0004\u0000test\v\u0000__replica__\b\u0000replica2",
+							Str:        "\v\u0000__cluster__\b\u0000cluster4\b\u0000__name__\u0004\u0000test",
 						},
 						SeriesID: -1,
 						Samples: []prompb.Sample{
