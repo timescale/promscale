@@ -85,8 +85,13 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		t.Samples = nil
 	}
 
-	minTUnix := time.Unix(minT, 0)
-	maxTUnix := time.Unix(maxT, 0)
+	// as prometheus remote-write sends timestamps in
+	// milliseconds converting them into time.Time
+	// Note: time package doesn't offer any milli-sec utilities
+	// so manually performing conversion to time.Time.
+	minTUnix := time.Unix(0, minT * int64(1000000))
+	maxTUnix := time.Unix(0, maxT * int64(1000000))
+
 	ok, err := h.service.checkInsert(minTUnix, maxTUnix, clusterName, replicaName)
 	if err != nil {
 		return nil, rows, fmt.Errorf("could not check ha lock: %#v", err)
