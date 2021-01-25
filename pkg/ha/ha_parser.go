@@ -2,12 +2,11 @@ package ha
 
 import (
 	"fmt"
-	"time"
-
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
+	"time"
 )
 
 type haParser struct {
@@ -28,8 +27,6 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	dataSamples := make(map[string][]model.SamplesInfo)
 	rows := 0
 
-	var minT, maxT int64
-
 	var replicaName, clusterName string
 	if len(tts) > 0 {
 		s, _, err := model.LabelProtosToLabels(tts[0].Labels)
@@ -49,18 +46,44 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		return nil, rows, err
 	}
 
+	// find samples time range
+	var minTUnix, maxTUnix int64
 	for i := range tts {
 		t := &tts[i]
 		if len(t.Samples) == 0 {
 			continue
 		}
 
-		if t.Samples[0].Timestamp < minT || minT == 0 {
-			minT = t.Samples[0].Timestamp
+		if t.Samples[0].Timestamp < minTUnix || minTUnix == 0 {
+			minTUnix = t.Samples[0].Timestamp
 		}
 
-		if t.Samples[len(t.Samples)-1].Timestamp > maxT {
-			maxT = t.Samples[len(t.Samples)-1].Timestamp
+		if t.Samples[len(t.Samples)-1].Timestamp > maxTUnix {
+			maxTUnix = t.Samples[len(t.Samples)-1].Timestamp
+		}
+	}
+	// as prometheus remote-write sends timestamps in
+	// milliseconds converting them into time.Time
+	// Note: time package doesn't offer any milli-sec utilities
+	// so manually performing conversion to time.Time.
+	minT := time.Unix(0, minTUnix*int64(1000000))
+	maxT := time.Unix(0, maxTUnix*int64(1000000))
+	allowInsert, acceptedMinT, err := h.service.checkInsert(minT, maxT, clusterName, replicaName)
+	if err != nil {
+		return nil, rows, fmt.Errorf("could not check ha lock: %#v", err)
+	}
+	if !allowInsert {
+		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert")
+		return nil, 0, nil
+	}
+
+	// insert allowed -> parse samples
+	acceptedMinTUnix := acceptedMinT.UnixNano() / 1000000
+	for i := range tts {
+		t := &tts[i]
+
+		if t.Samples[0].Timestamp < acceptedMinTUnix {
+			continue
 		}
 
 		// Normalize and canonicalize t.Labels.
@@ -83,22 +106,6 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		// we're going to free req after this, but we still need the samples,
 		// so nil the field
 		t.Samples = nil
-	}
-
-	// as prometheus remote-write sends timestamps in
-	// milliseconds converting them into time.Time
-	// Note: time package doesn't offer any milli-sec utilities
-	// so manually performing conversion to time.Time.
-	minTUnix := time.Unix(0, minT * int64(1000000))
-	maxTUnix := time.Unix(0, maxT * int64(1000000))
-
-	ok, err := h.service.checkInsert(minTUnix, maxTUnix, clusterName, replicaName)
-	if err != nil {
-		return nil, rows, fmt.Errorf("could not check ha lock: %#v", err)
-	}
-	if !ok {
-		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert")
-		return nil, 0, nil
 	}
 
 	return dataSamples, rows, nil

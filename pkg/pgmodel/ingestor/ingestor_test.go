@@ -16,6 +16,10 @@ import (
 )
 
 func TestDBIngestorIngest(t *testing.T) {
+	type leaderInfo struct {
+		cluster, leader string
+		minT, maxT      time.Time
+	}
 	testCases := []struct {
 		name            string
 		metrics         []prompb.TimeSeries
@@ -26,6 +30,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		getSeriesErr    error
 		setSeriesErr    error
 		ha              bool
+		haSetLeader     *leaderInfo
 	}{
 		{
 			name:    "Zero metrics",
@@ -178,16 +183,22 @@ func TestDBIngestorIngest(t *testing.T) {
 						{Name: model.MetricNameLabelName, Value: "test"},
 						{Name: "test", Value: "test"},
 						{Name: "__replica__", Value: "replica2"},
-						{Name: "__cluster__", Value: "leader1"},
+						{Name: "__cluster__", Value: "cluster1"},
 					},
 					Samples: []prompb.Sample{
-						{Timestamp: time.Now().Unix(), Value: 0.1},
+						{Timestamp: 1, Value: 0.1},
 					},
 				},
 			},
 			count:       0,
 			countSeries: 0,
 			ha:          true,
+			haSetLeader: &leaderInfo{
+				cluster: "cluster1",
+				leader:  "replica1",
+				minT:    time.Unix(2, 0),
+				maxT:    time.Unix(0, 0),
+			},
 		},
 		{
 			name: "Insert data in HA enable mode but __replica__ & __leader__ labels are empty",
@@ -223,6 +234,10 @@ func TestDBIngestorIngest(t *testing.T) {
 
 			if c.ha {
 				mock := ha.MockNewHAService(nil)
+				if c.haSetLeader != nil {
+					info := c.haSetLeader
+					ha.SetLeaderInMockService(mock, info.cluster, info.cluster, info.minT, info.maxT)
+				}
 				i.Parser = ha.NewHAParser(mock)
 			}
 
