@@ -53,9 +53,11 @@ func Test_haParser_ParseData(t *testing.T) {
 
 	mockService := MockNewHAService(clusterInfo)
 
-	sampleTimestamp := time.Now().Unix()
-	behindLeaseTimestamp := time.Now().Add(-10 * time.Minute).Unix()
-	aheadLeaseTimestamp := time.Now().Add(5 * time.Minute).Unix()
+	// As Prometheus remote write sends sample timestamps
+	// in milli-seconds converting the test samples to milliseconds
+	sampleTimestamp := time.Now().UnixNano() / 1000000
+	behindLeaseTimestamp := time.Now().Add(-10 * time.Minute).UnixNano() / 1000000
+	aheadLeaseTimestamp := time.Now().Add(5 * time.Minute).UnixNano() / 1000000
 
 	tests := []struct {
 		name    string
@@ -274,44 +276,6 @@ func Test_haParser_ParseData(t *testing.T) {
 			cluster: "cluster3",
 		},
 		{
-			name:   "Test: HA enabled parse samples from standby prom instance. readLockState returns the updated leader as standby prom instance.",
-			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
-				{
-					Labels: []prompb.Label{
-						{Name: model.MetricNameLabelName, Value: "test"},
-						{Name: model.ReplicaNameLabel, Value: "replica2"},
-						{Name: model.ClusterNameLabel, Value: "cluster4"},
-					},
-					Samples: []prompb.Sample{
-						{Timestamp: sampleTimestamp, Value: 0.1},
-					},
-				},
-			}},
-			wantErr: false,
-			want: map[string][]model.SamplesInfo{
-				"test": {
-					{
-						Labels: &model.Labels{
-							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName, model.ReplicaNameLabel},
-							Values:     []string{"cluster4", "test", "replica2"},
-							MetricName: "test",
-							Str:        "\v\u0000__cluster__\b\u0000cluster4\b\u0000__name__\u0004\u0000test\v\u0000__replica__\b\u0000replica2",
-						},
-						SeriesID: -1,
-						Samples: []prompb.Sample{
-							{
-								Value:     0.1,
-								Timestamp: sampleTimestamp,
-							},
-						},
-					},
-				},
-			},
-			want1: 1,
-			cluster: "cluster4",
-		},
-		{
 			name:   "Test: HA enabled parse samples from standby prom instance. readLockState returns the updated leader as standby prom instance but samples aren't part lease range.",
 			fields: fields{service: mockService},
 			args: args{tts: []prompb.TimeSeries{
@@ -362,7 +326,7 @@ func Test_haParser_ParseData(t *testing.T) {
 							s, _ := h.service.state.Load(tt.cluster)
 							state := s.(*State)
 							stateView := state.clone()
-							if obj.Value != stateView.leader || f[0].Samples[0].Timestamp != stateView.maxTimeSeen.Unix() {
+							if obj.Value != stateView.leader || f[0].Samples[0].Timestamp != stateView.maxTimeSeen.UnixNano() / 1000000 {
 								t.Errorf("max time seen isn't updated to latest samples info")
 							}
 						}
