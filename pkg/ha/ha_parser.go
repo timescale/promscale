@@ -86,6 +86,14 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 			continue
 		}
 
+		// Drop __replica__ labelSet from samples
+		for ind, value := range t.Labels {
+			if value.Name == model.ReplicaNameLabel {
+				t.Labels = append(t.Labels[:ind], t.Labels[ind+1:]...)
+				break
+			}
+		}
+
 		// Normalize and canonicalize t.Labels.
 		// After this point t.Labels should never be used again.
 		seriesLabels, metricName, err := model.LabelProtosToLabels(t.Labels)
@@ -95,6 +103,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		if metricName == "" {
 			return nil, rows, errors.ErrNoMetricName
 		}
+
 		sample := model.SamplesInfo{
 			Labels:   seriesLabels,
 			SeriesID: -1, // sentinel marking the seriesId as unset
