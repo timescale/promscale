@@ -63,42 +63,48 @@ func (h *Service) haStateSyncer() {
 	}
 }
 
-// checkInsert verifies the samples are from prom leader & in expected time range.
-// 	returns true if the insert is allowed
-func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, error) {
-	// TODO use proper context
+// checkInsert verifies the samples are from prom leader & in an expected time range.
+// 	returns an boolean signifying whether to allow (true),
+//		or deny (false). The second returned argument is the
+//      minimum timestamp of the accepted samples.
+//		An error is returned if the lock state could not be
+//		checked against the db
+func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
 	s, ok := h.state.Load(clusterName)
 	if !ok {
-		s, _ = h.state.LoadOrStore(clusterName, &State{
-			_mu: sync.RWMutex{},
-		})
+		s, _ = h.state.LoadOrStore(clusterName, &State{})
 		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
 		if err != nil {
-			return false, err
+			return false, time.Time{}, err
 		}
 	}
 
 	state := castToState(s)
 	stateView := state.clone()
 
-	allow := false
-	if replicaName == stateView.leader && maxT.Before(stateView.leaseUntil) && minT.After(stateView.leaseStart) {
-		// requesting replica is leader, allow
-		allow = true
-	} else if replicaName == stateView.leader && !maxT.Before(stateView.leaseUntil) && minT.After(stateView.leaseStart) {
-		// if maxT beyond leaseUntil update leaseUntil synchronously
-		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
-		if err != nil {
-			return false, err
-		}
-		allow = true
+	defer state.updateMaxSeenTime(replicaName, maxT)
+	if replicaName != stateView.leader {
+		return false, time.Time{}, nil
 	}
 
-	state.updateMaxSeenTime(replicaName, maxT)
-	return allow, nil
+	acceptedMinT := minT
+	if minT.Before(stateView.leaseStart) {
+		acceptedMinT = stateView.leaseStart
+	}
+
+	if maxT.After(stateView.leaseUntil) {
+		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
+		if err != nil {
+			return false, time.Time{}, err
+		}
+	}
+
+	// requesting replica is leader, allow
+	return true, acceptedMinT, nil
 }
 
 func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replicaName string) error {
+	// TODO use proper context
 	lockState, err := h.lockClient.checkInsert(context.Background(), clusterName, replicaName, minT, maxT)
 	if err != nil && err.Error() != leaderHasChanged.Error() {
 		return fmt.Errorf("could not check ha lock state: %#v", err)
