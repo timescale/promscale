@@ -53,6 +53,7 @@ func (m *mockLockClient) readLeaseSettings(ctx context.Context) (timeout, refres
 }
 
 var count int
+
 func (m *mockLockClient) readLockState(ctx context.Context, cluster string) (*haLockState, error) {
 	count++
 
@@ -64,7 +65,7 @@ func (m *mockLockClient) readLockState(ctx context.Context, cluster string) (*ha
 
 	if cluster == "cluster5" && count == 1 {
 		m.leadersPerCluster[cluster].leader = "replica2"
-		m.leadersPerCluster[cluster].leaseUntil = time.Now().Add(-10*time.Minute)
+		m.leadersPerCluster[cluster].leaseUntil = time.Now().Add(-10 * time.Minute)
 	}
 
 	return m.leadersPerCluster[cluster], nil
