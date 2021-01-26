@@ -3,7 +3,6 @@ package reader
 import (
 	"context"
 	"fmt"
-
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/tsdb"
@@ -17,12 +16,12 @@ type PathRead struct {
 	c            context.Context
 	path         string
 	plan         *plan.Plan
-	sigBlockRead chan *plan.Block // To the writer.
+	sigBlockRead chan *plan.WriterInput // To the writer.
 	sigForceStop chan struct{}
 }
 
 // NewPathRead creates a reader that reads from local Prometheus blocks.
-func NewPathRead(c context.Context, path string, p *plan.Plan, sigRead chan *plan.Block, needsStopChan bool) (Reader, error) {
+func NewPathRead(c context.Context, path string, p *plan.Plan, sigRead chan *plan.WriterInput, needsStopChan bool) (Reader, error) {
 	reader := &PathRead{
 		c:            c,
 		path:         path,
@@ -43,17 +42,20 @@ func (rr *PathRead) SigStop() {
 }
 
 // Run runs the remote read and starts fetching the samples from the read storage.
-func (rr *PathRead) Run(errChan chan<- error) {
-	var err error
+func (rr *PathRead) Run() <-chan error {
+	var (
+		err     error
+		errChan = make(chan error)
+	)
 	db, err := tsdb.OpenDBReadOnly(rr.path, nil)
 	if err != nil {
 		errChan <- fmt.Errorf("path-read run: opening prom tsdb: %w", err)
-		return
+		return errChan
 	}
 	querier, err := db.Querier(rr.c, rr.plan.Mint(), rr.plan.Maxt())
 	if err != nil {
 		errChan <- fmt.Errorf("path-read run: prom tsdb querier: %w", err)
-		return
+		return errChan
 	}
 	ss := querier.Select(false, nil, labels.MustNewMatcher(labels.MatchRegexp, "", ".*"))
 	var iteratorStore = make(map[string]labelIterator)
@@ -93,15 +95,20 @@ func (rr *PathRead) Run(errChan chan<- error) {
 			var timeseries []*prompb.TimeSeries
 			for _, iterator := range iteratorStore {
 				iterator.setTimeRange(mint, maxt)
-				if ts, containsTs := iterator.populateTimeseries(); containsTs {
+				if ts := iterator.populateTimeseries(); len(ts.Samples) > 0 {
 					timeseries = append(timeseries, ts)
 				}
 			}
-			blockRef.Fill(timeseries, 0)
-			rr.sigBlockRead <- blockRef
+			err = blockRef.Fill(timeseries)
+			if err != nil {
+				errChan <- fmt.Errorf("path-read run: %w", err)
+				return
+			}
+			rr.sigBlockRead <- blockRef.WriterConsumable()
 			blockRef = nil
 		}
 	}()
+	return errChan
 }
 
 type labelIterator struct {
@@ -115,7 +122,7 @@ func (li *labelIterator) setTimeRange(mint, maxt int64) {
 	li.maxt = maxt
 }
 
-func (li *labelIterator) populateTimeseries() (ts *prompb.TimeSeries, containsTs bool) {
+func (li *labelIterator) populateTimeseries() (ts *prompb.TimeSeries) {
 	// Populate the timeseries map with the iterators for the current time-range delta.
 	// We maintain a local store of series iterators in iteratorStore. This keeps the last progress in the memory
 	// (at a negligible cost since iterator), leading to faster access of samples for subsequent time-ranges.
@@ -143,11 +150,10 @@ func (li *labelIterator) populateTimeseries() (ts *prompb.TimeSeries, containsTs
 		}
 	}
 	if len(samples) > 0 {
-		containsTs = true
 		ts.Labels = labelsToPrombLabels(li.labels)
 		ts.Samples = samples
 	}
-	return ts, containsTs
+	return ts
 }
 
 func labelsToPrombLabels(lb labels.Labels) []prompb.Label {

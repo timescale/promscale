@@ -20,13 +20,13 @@ type RemoteRead struct {
 	url          string
 	client       *utils.Client
 	plan         *plan.Plan
-	sigBlockRead chan *plan.Block // To the writer.
+	sigBlockRead chan *plan.WriterInput // To the writer.
 	sigForceStop chan struct{}
 }
 
 // NewRemoteRead creates a remote-reader. It creates a ReadClient that is imported from Prometheus remote storage.
 // RemoteRead takes help of plan to understand how to create fetchers.
-func NewRemoteRead(c context.Context, url string, p *plan.Plan, sigRead chan *plan.Block, needsStopChan bool) (Reader, error) {
+func NewRemoteRead(c context.Context, url string, p *plan.Plan, sigRead chan *plan.WriterInput, needsStopChan bool) (Reader, error) {
 	var reader *RemoteRead
 	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), url, utils.Read, model.Duration(defaultReadTimeout))
 	if err != nil {
@@ -53,9 +53,10 @@ func (rr *RemoteRead) SigStop() {
 }
 
 // Run runs the remote read and starts fetching the samples from the read storage.
-func (rr *RemoteRead) Run(errChan chan<- error) {
+func (rr *RemoteRead) Run() <-chan error {
 	var (
 		err      error
+		errChan  = make(chan error)
 		blockRef *plan.Block
 	)
 	go func() {
@@ -93,8 +94,9 @@ func (rr *RemoteRead) Run(errChan chan<- error) {
 				rr.plan.DecrementBlockCount()
 				continue
 			}
-			rr.sigBlockRead <- blockRef
+			rr.sigBlockRead <- blockRef.WriterConsumable()
 			blockRef = nil
 		}
 	}()
+	return errChan
 }

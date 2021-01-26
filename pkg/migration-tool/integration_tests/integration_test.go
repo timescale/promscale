@@ -56,6 +56,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
 		NumStores:           conf.concurrentPulls,
+		NumShards:           conf.numShards,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
 		ProgressMetricURL:   conf.progressMetricURL,
@@ -69,11 +70,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	}
 	planner.Quiet = true
 
-	var (
-		readErrChan  = make(chan error)
-		writeErrChan = make(chan error)
-		sigBlockRead = make(chan *plan.Block)
-	)
+	sigBlockRead := make(chan *plan.WriterInput)
 	cont, cancelFunc := context.WithCancel(context.Background())
 	read, err := reader.NewRemoteRead(cont, conf.readURL, planner, sigBlockRead, false)
 	if err != nil {
@@ -84,8 +81,8 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	readErrChan := read.Run()
+	writeErrChan := write.Run()
 loop:
 	for {
 		select {
@@ -157,6 +154,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
 		NumStores:           conf.concurrentPulls,
+		NumShards:           conf.numShards,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
 		ProgressMetricURL:   conf.progressMetricURL,
@@ -170,11 +168,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	}
 	planner.Quiet = true
 
-	var (
-		readErrChan  = make(chan error)
-		writeErrChan = make(chan error)
-		sigBlockRead = make(chan *plan.Block)
-	)
+	sigBlockRead := make(chan *plan.WriterInput)
 	cont, cancelFunc := context.WithCancel(context.Background())
 	read, err := reader.NewRemoteRead(cont, conf.readURL, planner, sigBlockRead, true)
 	if err != nil {
@@ -185,8 +179,8 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	read.Run()
+	write.Run()
 
 	time.Sleep(time.Millisecond * 100)
 	read.SigStop()
@@ -203,9 +197,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	}
 	planner.Quiet = true
 
-	readErrChan = make(chan error)
-	writeErrChan = make(chan error)
-	sigBlockRead = make(chan *plan.Block)
+	sigBlockRead = make(chan *plan.WriterInput)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
 	read, err = reader.NewRemoteRead(cont, conf.readURL, planner, sigBlockRead, false)
@@ -217,8 +209,8 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	readErrChan := read.Run()
+	writeErrChan := write.Run()
 loop:
 	for {
 		select {
@@ -291,6 +283,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		JobName:             conf.name,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
 		NumStores:           conf.concurrentPulls,
+		NumShards:           conf.numShards,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
 		ProgressMetricURL:   conf.progressMetricURL,
@@ -309,11 +302,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	}
 	planner.Quiet = true
 
-	var (
-		readErrChan  = make(chan error)
-		writeErrChan = make(chan error)
-		sigBlockRead = make(chan *plan.Block)
-	)
+	sigBlockRead := make(chan *plan.WriterInput)
 	cont, cancelFunc := context.WithCancel(context.Background())
 	read, err := reader.NewRemoteRead(cont, conf.readURL, planner, sigBlockRead, true)
 	if err != nil {
@@ -324,8 +313,8 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	read.Run()
+	write.Run()
 
 	time.Sleep(time.Millisecond * 100)
 	read.SigStop()
@@ -342,9 +331,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 	}
 	planner.Quiet = true
 
-	readErrChan = make(chan error)
-	writeErrChan = make(chan error)
-	sigBlockRead = make(chan *plan.Block)
+	sigBlockRead = make(chan *plan.WriterInput)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
 	read, err = reader.NewRemoteRead(cont, conf.readURL, planner, sigBlockRead, false)
@@ -356,8 +343,8 @@ func TestReaderWriterPlannerIntegrationWithHaltWithBlockSizeOverflow(t *testing.
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	readErrChan := read.Run()
+	writeErrChan := write.Run()
 loop:
 	for {
 		select {

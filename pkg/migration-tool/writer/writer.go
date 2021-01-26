@@ -23,7 +23,7 @@ const (
 
 type RemoteWrite struct {
 	c                  context.Context
-	sigBlockRead       chan *planner.Block
+	sigBlockRead       chan *planner.WriterInput
 	url                string
 	shardsSet          *shardsSet
 	blocksPushed       atomic.Int64
@@ -33,7 +33,7 @@ type RemoteWrite struct {
 }
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
-func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, numShards int, progressEnabled bool, sigRead chan *planner.Block) (*RemoteWrite, error) {
+func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, numShards int, progressEnabled bool, sigRead chan *planner.WriterInput) (*RemoteWrite, error) {
 	ss, err := newShardsSet(c, remoteWriteUrl, numShards)
 	if err != nil {
 		return nil, fmt.Errorf("creating shards: %w", err)
@@ -58,10 +58,11 @@ func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName
 // Run runs the remote-writer. It waits for the remote-reader to give access to the in-memory
 // data-block that is written after the most recent fetch. After reading the block and storing
 // the data locally, it gives back the writing access to the remote-reader for further fetches.
-func (rw *RemoteWrite) Run(errChan chan<- error) {
+func (rw *RemoteWrite) Run() <-chan error {
 	var (
-		err    error
-		shards = rw.shardsSet
+		err     error
+		errChan = make(chan error)
+		shards  = rw.shardsSet
 	)
 	go func() {
 		defer func() {
@@ -86,16 +87,22 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 			select {
 			case <-rw.c.Done():
 				return
-			case blockRef, ok := <-rw.sigBlockRead:
+			case consumed, ok := <-rw.sigBlockRead:
 				if !ok {
 					return
 				}
+				var (
+					blockRef    = consumed.BlockRef
+					shardsInput = consumed.ShardsConsumable
+				)
 				blockRef.UpdatePBarMax(blockRef.PBarMax() + rw.shardsSet.num + 1)
 				// Pushing data to remote-write storage.
 				blockRef.SetDescription("preparing to push", 1)
-				numSigExpected := shards.scheduleTS(timeseriesRefToTimeseries(blockRef.Series()))
+				numSigExpected := shards.scheduleTS(shardsInput)
 				blockRef.SetDescription("pushing ...", 1)
 				if isErrSig(blockRef, numSigExpected) {
+					// We return here and exit the goroutine since the error is already propagated
+					// to the calling function.
 					return
 				}
 				// Pushing progress-metric to remote-write storage.
@@ -103,8 +110,14 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 					// Execute the block only if progress-metric is enabled.
 					// Pushing progress-metric to remote-write storage.
 					// This is done after making sure that all shards have successfully completed pushing of data.
-					numSigExpected := rw.pushProgressMetric(blockRef.UpdateProgressSeries(rw.progressTimeSeries))
+					numSigExpected, err := rw.pushProgressMetric(blockRef.UpdateProgressSeries(rw.progressTimeSeries))
+					if err != nil {
+						errChan <- fmt.Errorf("remote-write run: %w", err)
+						return
+					}
 					if isErrSig(blockRef, numSigExpected) {
+						// We return here and exit the goroutine since the error is already propagated
+						// to the calling function.
 						return
 					}
 				}
@@ -116,6 +129,7 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 			}
 		}
 	}()
+	return errChan
 }
 
 // Blocks returns the total number of blocks pushed to the remote-write storage.
@@ -124,7 +138,12 @@ func (rw *RemoteWrite) Blocks() int64 {
 }
 
 // pushProgressMetric pushes the progress-metric to the remote storage system.
-func (rw *RemoteWrite) pushProgressMetric(series *prompb.TimeSeries) int {
-	var shards = rw.shardsSet
-	return shards.scheduleTS([]prompb.TimeSeries{*series})
+func (rw *RemoteWrite) pushProgressMetric(series *prompb.TimeSeries) (int, error) {
+	shards := rw.shardsSet
+	buf := &[]byte{}
+	req, _, _, err := utils.BuildWriteRequest([]prompb.TimeSeries{*series}, *buf)
+	if err != nil {
+		return -1, fmt.Errorf("push progress-metric: %w", err)
+	}
+	return shards.scheduleTS([]*[]byte{&req}), nil
 }

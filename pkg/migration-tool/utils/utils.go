@@ -8,7 +8,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cespare/xxhash/v2"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -79,66 +80,24 @@ func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Que
 	}, nil
 }
 
-// HashLabels returns the hash of the provided promb labels-set. It fetches the value of the hash from the labelsCache if
-// exists, else creates the hash and returns it after storing the new hash value.
-func HashLabels(lset prompb.Labels) uint64 {
-	if hash, found := labelsCache.Get(lset.String()); found {
-		return hash.(uint64)
+// BuildWriteRequest builds the write request by converting the promb.timeseries into byte slice
+// which can be fed to the shards.
+func BuildWriteRequest(timeseries []prompb.TimeSeries, buf []byte) (compressed []byte, numBytesCompressed, numBytesUncompressedBytes int, err error) {
+	req := &prompb.WriteRequest{
+		Timeseries: timeseries,
 	}
-	b := make([]byte, 0, 1024)
-	for i, v := range lset.Labels {
-		if len(b)+len(v.Name)+len(v.Value)+2 >= cap(b) {
-			// If labels entry is 1KB+ do not allocate whole entry.
-			h := xxhash.New()
-			_, _ = h.Write(b)
-			for _, v := range lset.Labels[i:] {
-				_, _ = h.WriteString(v.Name)
-				_, _ = h.Write(seps)
-				_, _ = h.WriteString(v.Value)
-				_, _ = h.Write(seps)
-			}
-			return h.Sum64()
-		}
+	data, err := proto.Marshal(req)
+	if err != nil {
+		return nil, -1, -1, err
+	}
+	numBytesUncompressedBytes = len(data)
 
-		b = append(b, v.Name...)
-		b = append(b, seps[0])
-		b = append(b, v.Value...)
-		b = append(b, seps[0])
+	// snappy uses len() to see if it needs to allocate a new slice. Make the
+	// buffer as long as possible.
+	if buf != nil {
+		buf = buf[0:cap(buf)]
 	}
-	sum := xxhash.Sum64(b)
-	labelsCache.Insert(lset.String(), sum)
-	return sum
-}
-
-// LabelSet creates a new label_set for the provided metric name and job name.
-func LabelSet(metricName, migrationJobName string) []prompb.Label {
-	return []prompb.Label{
-		{Name: labels.MetricName, Value: metricName},
-		{Name: LabelJob, Value: migrationJobName},
-	}
-}
-
-func toLabelMatchers(matchers []*labels.Matcher) ([]*prompb.LabelMatcher, error) {
-	pbMatchers := make([]*prompb.LabelMatcher, 0, len(matchers))
-	for _, m := range matchers {
-		var mType prompb.LabelMatcher_Type
-		switch m.Type {
-		case labels.MatchEqual:
-			mType = prompb.LabelMatcher_EQ
-		case labels.MatchNotEqual:
-			mType = prompb.LabelMatcher_NEQ
-		case labels.MatchRegexp:
-			mType = prompb.LabelMatcher_RE
-		case labels.MatchNotRegexp:
-			mType = prompb.LabelMatcher_NRE
-		default:
-			return nil, fmt.Errorf("invalid matcher type")
-		}
-		pbMatchers = append(pbMatchers, &prompb.LabelMatcher{
-			Type:  mType,
-			Name:  m.Name,
-			Value: m.Value,
-		})
-	}
-	return pbMatchers, nil
+	compressed = snappy.Encode(buf, data)
+	numBytesCompressed = len(compressed)
+	return
 }

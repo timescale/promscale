@@ -55,6 +55,7 @@ func TestReaderWriterWithPromTSDBBlocksWithoutHaltAndProgressDisabled(t *testing
 		Maxt:                conf.maxt,
 		JobName:             conf.name,
 		NumStores:           conf.numStores,
+		NumShards:           conf.numShards,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
@@ -69,11 +70,7 @@ func TestReaderWriterWithPromTSDBBlocksWithoutHaltAndProgressDisabled(t *testing
 	}
 	planner.Quiet = true
 
-	var (
-		readErrChan  = make(chan error)
-		writeErrChan = make(chan error)
-		sigBlockRead = make(chan *plan.Block)
-	)
+	sigBlockRead := make(chan *plan.WriterInput)
 	cont, cancelFunc := context.WithCancel(context.Background())
 	read, err := reader.NewPathRead(cont, conf.promTSDBpath, planner, sigBlockRead, false)
 	if err != nil {
@@ -84,8 +81,8 @@ func TestReaderWriterWithPromTSDBBlocksWithoutHaltAndProgressDisabled(t *testing
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	readErrChan := read.Run()
+	writeErrChan := write.Run()
 loop:
 	for {
 		select {
@@ -155,6 +152,7 @@ func TestReaderWriterWithPromTSDBBlocksWithHalt(t *testing.T) {
 		Maxt:                conf.maxt,
 		JobName:             conf.name,
 		NumStores:           conf.numStores,
+		NumShards:           conf.numShards,
 		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
 		ProgressEnabled:     conf.progressEnabled,
 		ProgressMetricName:  conf.progressMetricName,
@@ -169,11 +167,7 @@ func TestReaderWriterWithPromTSDBBlocksWithHalt(t *testing.T) {
 	}
 	planner.Quiet = true
 
-	var (
-		readErrChan  = make(chan error)
-		writeErrChan = make(chan error)
-		sigBlockRead = make(chan *plan.Block)
-	)
+	sigBlockRead := make(chan *plan.WriterInput)
 	cont, cancelFunc := context.WithCancel(context.Background())
 	read, err := reader.NewPathRead(cont, conf.promTSDBpath, planner, sigBlockRead, true)
 	if err != nil {
@@ -184,8 +178,8 @@ func TestReaderWriterWithPromTSDBBlocksWithHalt(t *testing.T) {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	read.Run()
+	write.Run()
 
 	time.Sleep(time.Millisecond * 10)
 	read.SigStop()
@@ -202,9 +196,7 @@ func TestReaderWriterWithPromTSDBBlocksWithHalt(t *testing.T) {
 	}
 	planner.Quiet = true
 
-	readErrChan = make(chan error)
-	writeErrChan = make(chan error)
-	sigBlockRead = make(chan *plan.Block)
+	sigBlockRead = make(chan *plan.WriterInput)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
 	read, err = reader.NewPathRead(cont, conf.promTSDBpath, planner, sigBlockRead, false)
@@ -216,8 +208,8 @@ func TestReaderWriterWithPromTSDBBlocksWithHalt(t *testing.T) {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
 
-	read.Run(readErrChan)
-	write.Run(writeErrChan)
+	readErrChan := read.Run()
+	writeErrChan := write.Run()
 loop:
 	for {
 		select {

@@ -24,6 +24,7 @@ type Block struct {
 	done                  bool
 	pbarDescriptionPrefix string
 	pbar                  *progressbar.ProgressBar
+	shardsInput           []*[]byte
 	timeseries            []*prompb.TimeSeries
 	stores                []store
 	numStores             int
@@ -61,6 +62,7 @@ func (b *Block) initStores() {
 }
 
 // Fetch starts fetching the samples from remote read storage based on the matchers. It takes care of concurrent pulls as well.
+// Fetch shards the resultant time-series so that it can be consumed by the shards.
 func (b *Block) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64, matchers []*labels.Matcher) (err error) {
 	var (
 		totalRequests         = b.numStores
@@ -108,30 +110,77 @@ func (b *Block) Fetch(ctx context.Context, client *utils.Client, mint, maxt int6
 		}
 	}
 	close(responseChan)
+	return b.shardTS(b.plan.config.NumShards)
+}
+
+// Fill fills the block with samples. It is used in place of Fetch(). Fill shards the time-series
+// so that it can be consumed by the writer.
+func (b *Block) Fill(ts []*prompb.TimeSeries) (err error) {
+	b.timeseries = ts
+	return b.shardTS(b.plan.config.NumShards)
+}
+
+// shardTS shards the time-series so that the block data can be fed to the shards.
+func (b *Block) shardTS(numShards int) (err error) {
+	batches := make([][]prompb.TimeSeries, numShards)
+	for _, series := range b.timeseries {
+		hash := utils.HashLabels(utils.LabelsSlicetoLabels(series.GetLabels()))
+		batchIndex := hash % uint64(numShards)
+		batches[batchIndex] = append(batches[batchIndex], *series)
+	}
+	// Convert batches into consumable byte slice for the shards.
+	var (
+		totalCompressedBytes   int
+		totalUncompressedBytes int
+		consumableShardsInput  = make([]*[]byte, numShards)
+	)
+	for batchIndex := range batches {
+		var (
+			data []byte
+			buf  = &[]byte{}
+		)
+		if len(batches[batchIndex]) == 0 {
+			consumableShardsInput[batchIndex] = &data
+			continue
+		}
+		data, numBytesCompressed, numBytesUncompressed, err := utils.BuildWriteRequest(batches[batchIndex], *buf)
+		if err != nil {
+			return fmt.Errorf("ShardTS: build write request: %w", err)
+		}
+		totalCompressedBytes += numBytesCompressed
+		totalUncompressedBytes += numBytesUncompressed
+		consumableShardsInput[batchIndex] = &data
+
+	}
+	b.applyStats(totalCompressedBytes, totalUncompressedBytes)
+	b.shardsInput = consumableShardsInput
+	return nil
+}
+
+// applyStats assigns the compressed and uncompressed size of the block. This is used in
+// the adaptation method in order to control the memory usage.
+func (b *Block) applyStats(compressedBytes, uncompressedBytes int) {
 	// We set compressed bytes in block since those are the bytes that will be pushed over the network to the write storage after snappy compression.
 	// The pushed bytes are not exactly the bytesCompressed since while pushing, we add the progress metric. But,
 	// the size of progress metric along with the sample is negligible. So, it is safe to consider bytesCompressed
 	// in such a scenario.
-	b.numBytesCompressed = bytesCompressed
-	b.numBytesUncompressed = bytesUncompressed
-	b.plan.update(bytesUncompressed)
-	return nil
+	b.numBytesCompressed = compressedBytes
+	b.numBytesUncompressed = uncompressedBytes
+	b.plan.update(uncompressedBytes)
 }
 
-// Series returns the time-series in the block.
-func (b *Block) Series() []*prompb.TimeSeries {
-	return b.timeseries
+// WriterInput is an acceptable type by the writer.
+type WriterInput struct {
+	BlockRef         *Block
+	ShardsConsumable []*[]byte
 }
 
-// Fill fills the block with samples. It is used in place of Fetch().
-func (b *Block) Fill(ts []*prompb.TimeSeries, bytesUncompressed int) {
-	b.timeseries = ts
-	// Update the bytes count as done in Fetch().
-	// We do not have any stats when the tsdb blocks are compressed.
-	// Hence, we set the compressed bytes same sa uncompressed ones.
-	b.numBytesCompressed = bytesUncompressed
-	b.numBytesUncompressed = bytesUncompressed
-	b.plan.update(bytesUncompressed)
+// WriterConsumable returns the value that can be consumed by the writer and in turn be consumed by shards.
+func (b *Block) WriterConsumable() *WriterInput {
+	return &WriterInput{
+		BlockRef:         b,
+		ShardsConsumable: b.shardsInput,
+	}
 }
 
 // MergeProgressSeries returns the block's time-series after appending a sample to the progress-metric and merging
@@ -187,6 +236,11 @@ func (b *Block) Done() error {
 		return fmt.Errorf("finish block-lifecycle: %w", err)
 	}
 	return nil
+}
+
+// Series returns the time-series in the block.
+func (b *Block) Series() []*prompb.TimeSeries {
+	return b.timeseries
 }
 
 // IsEmpty returns true if the block does not contain any time-series.

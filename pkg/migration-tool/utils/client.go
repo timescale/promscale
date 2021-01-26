@@ -19,7 +19,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/config"
 	configutil "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -85,7 +84,7 @@ func NewClient(remoteName, urlString string, clientType uint, timeout model.Dura
 	}, nil
 }
 
-func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (result *prompb.QueryResult, numBytesCompressed int, numBytesUncompressed int, err error) {
+func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (result *prompb.QueryResult, err error) {
 	req := &prompb.ReadRequest{
 		Queries: []*prompb.Query{
 			query,
@@ -93,13 +92,13 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 	}
 	data, err := proto.Marshal(req)
 	if err != nil {
-		return nil, -1, -1, errors.Wrapf(err, "unable to marshal read request")
+		return nil, fmt.Errorf("unable to marshal read request: %w", err)
 	}
 
 	compressed := snappy.Encode(nil, data)
 	httpReq, err := http.NewRequest("POST", c.url.String(), bytes.NewReader(compressed))
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, "unable to create request")
+		return nil, fmt.Errorf("unable to create request: %w", err)
 	}
 	httpReq.Header.Add("Content-Encoding", "snappy")
 	httpReq.Header.Add("Accept-Encoding", "snappy")
@@ -114,7 +113,7 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 
 	httpResp, err := c.Client.Do(httpReq)
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, "error sending request")
+		return nil, fmt.Errorf("error sending request: %w", err)
 	}
 	defer func() {
 		_, _ = io.Copy(ioutil.Discard, httpResp.Body)
@@ -134,29 +133,29 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 	}
 	compressed, err = ioutil.ReadAll(bytes.NewReader(reader.Bytes()))
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, fmt.Sprintf("error reading response. HTTP status code: %s", httpResp.Status))
+		return nil, fmt.Errorf("error reading response. HTTP status code: %s: %w", httpResp.Status, err)
 	}
 
 	if httpResp.StatusCode/100 != 2 {
-		return nil, -1, -1, errors.Errorf("remote server %s returned HTTP status %s: %s", c.url.String(), httpResp.Status, strings.TrimSpace(string(compressed)))
+		return nil, fmt.Errorf("remote server %s returned HTTP status %s: %s", c.url.String(), httpResp.Status, strings.TrimSpace(string(compressed)))
 	}
 
 	uncompressed, err := snappy.Decode(nil, compressed)
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, "error reading response")
+		return nil, fmt.Errorf("error reading response: %w", err)
 	}
 
 	var resp prompb.ReadResponse
 	err = proto.Unmarshal(uncompressed, &resp)
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, "unable to unmarshal response body")
+		return nil, fmt.Errorf("unable to unmarshal response body: %w", err)
 	}
 
 	if len(resp.Results) != len(req.Queries) {
-		return nil, -1, -1, errors.Errorf("responses: want %d, got %d", len(req.Queries), len(resp.Results))
+		return nil, fmt.Errorf("responses: want %d, got %d", len(req.Queries), len(resp.Results))
 	}
 
-	return resp.Results[0], len(compressed), len(uncompressed), nil
+	return resp.Results[0], nil
 }
 
 // PrompbResponse is a type that contains promb-result and information pertaining to it.
@@ -169,16 +168,14 @@ type PrompbResponse struct {
 
 // ReadChannels calls the Read and responds on the channels.
 func (c *Client) ReadChannels(ctx context.Context, query *prompb.Query, shardID int, desc string, responseChan chan<- interface{}) {
-	result, numBytesCompressed, numBytesUncompressed, err := c.Read(ctx, query, desc)
+	result, err := c.Read(ctx, query, desc)
 	if err != nil {
 		responseChan <- fmt.Errorf("read-channels: %w", err)
 		return
 	}
 	responseChan <- &PrompbResponse{
-		ID:                   shardID,
-		Result:               result,
-		NumBytesCompressed:   numBytesCompressed,
-		NumBytesUncompressed: numBytesUncompressed,
+		ID:     shardID,
+		Result: result,
 	}
 }
 
@@ -189,8 +186,8 @@ type RecoverableError struct {
 
 // Store sends a batch of samples to the HTTP endpoint, the request is the proto marshalled
 // and encoded bytes from codec.go.
-func (c *Client) Store(ctx context.Context, req []byte) error {
-	httpReq, err := http.NewRequest("POST", c.url.String(), bytes.NewReader(req))
+func (c *Client) Store(ctx context.Context, req *[]byte) error {
+	httpReq, err := http.NewRequest("POST", c.url.String(), bytes.NewReader(*req))
 	if err != nil {
 		// Errors from NewRequest are from unparsable URLs, so are not
 		// recoverable.
@@ -222,7 +219,7 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 		if scanner.Scan() {
 			line = scanner.Text()
 		}
-		err = errors.Errorf("server returned HTTP status %s: %s", httpResp.Status, line)
+		err = fmt.Errorf("server returned HTTP status %s: %s: %w", httpResp.Status, line, err)
 	}
 	if httpResp.StatusCode/100 == 5 {
 		return RecoverableError{err}

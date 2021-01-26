@@ -49,6 +49,7 @@ type Config struct {
 	Maxt                int64
 	BlockSizeLimitBytes int64
 	NumStores           int
+	NumShards           int
 	ProgressEnabled     bool
 	JobName             string
 	ProgressMetricURL   string
@@ -108,7 +109,7 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	if err != nil {
 		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
 	}
-	result, _, _, err := readClient.Read(context.Background(), query, "")
+	result, err := readClient.Read(context.Background(), query, "")
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt query result: %w", err)
 	}

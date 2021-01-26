@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
@@ -45,7 +42,7 @@ func newShardsSet(writerCtx context.Context, writeURL string, numShards int) (*s
 		shard := &shard{
 			ctx:          ctx,
 			client:       client,
-			queue:        make(chan *[]prompb.TimeSeries),
+			queue:        make(chan *[]byte),
 			copyShardSet: ss,
 		}
 		cancelFuncs[i] = cancelFunc
@@ -62,22 +59,15 @@ func newShardsSet(writerCtx context.Context, writeURL string, numShards int) (*s
 
 // scheduleTS batches the time-series based on the available shards. These batches are then
 // fed to the shards in a single go which then consume and push to the respective clients.
-func (s *shardsSet) scheduleTS(ts []prompb.TimeSeries) (numSigExpected int) {
-	var batches = make([][]prompb.TimeSeries, s.num)
-	for _, series := range ts {
-		hash := utils.HashLabels(labelsSlicetoLabels(series.GetLabels()))
-		batchIndex := hash % uint64(s.num)
-		batches[batchIndex] = append(batches[batchIndex], series)
-	}
+func (s *shardsSet) scheduleTS(shardsConsumable []*[]byte) (numSigExpected int) {
 	// Feed to the shards.
-	for shardIndex := 0; shardIndex < s.num; shardIndex++ {
-		batchIndex := shardIndex
-		if len(batches[batchIndex]) == 0 {
+	for shardIndex := 0; shardIndex < len(shardsConsumable); shardIndex++ {
+		if len(*shardsConsumable[shardIndex]) == 0 {
 			// We do not want "wait state" to happen on the shards.
 			continue
 		}
 		numSigExpected++
-		s.set[shardIndex].queue <- &batches[batchIndex]
+		s.set[shardIndex].queue <- shardsConsumable[shardIndex]
 	}
 	return
 }
@@ -88,7 +78,7 @@ func (s *shardsSet) scheduleTS(ts []prompb.TimeSeries) (numSigExpected int) {
 type shard struct {
 	ctx          context.Context
 	client       *utils.Client
-	queue        chan *[]prompb.TimeSeries
+	queue        chan *[]byte
 	copyShardSet *shardsSet
 }
 
@@ -116,7 +106,7 @@ func (s *shard) run(shardIndex int) {
 				}
 			} else {
 				// We want the error to not kill the shards else the system can go in a stall.
-				log.Error("msg", fmt.Sprintf("incorrect sharding logic error: empty time-series received in the shard %d! Please consider opening an issue at https://github.com/timescale/promscale/issues", shardIndex))
+				log.Error("msg", fmt.Sprintf("incorrect sharding logic error: empty byte slice received in the shard %d! Please consider opening an issue at https://github.com/timescale/promscale/issues", shardIndex))
 			}
 			s.copyShardSet.errChan <- nil
 		}
@@ -124,25 +114,15 @@ func (s *shard) run(shardIndex int) {
 }
 
 // sendSamples to the remote storage with backoff for recoverable errors.
-func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *[]prompb.TimeSeries) error {
-	buf := &[]byte{}
-	req, err := buildWriteRequest(*samples, *buf)
-	if err != nil {
-		// Failing to build the write request is non-recoverable, since it will
-		// only error if marshaling the proto to bytes fails.
-		return err
-	}
-
+func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, data *[]byte) error {
 	backoff := backOffRetryDuration
-	*buf = req
-
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-		if err := client.Store(ctx, *buf); err != nil {
+		if err := client.Store(ctx, data); err != nil {
 			// If the error is unrecoverable, we should not retry.
 			if _, ok := err.(remote.RecoverableError); !ok {
 				return err
@@ -154,36 +134,4 @@ func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *
 		}
 		return nil
 	}
-}
-
-func buildWriteRequest(samples []prompb.TimeSeries, buf []byte) ([]byte, error) {
-	req := &prompb.WriteRequest{
-		Timeseries: samples,
-	}
-	data, err := proto.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	// snappy uses len() to see if it needs to allocate a new slice. Make the
-	// buffer as long as possible.
-	if buf != nil {
-		buf = buf[0:cap(buf)]
-	}
-	compressed := snappy.Encode(buf, data)
-	return compressed, nil
-}
-
-func timeseriesRefToTimeseries(tsr []*prompb.TimeSeries) (ts []prompb.TimeSeries) {
-	ts = make([]prompb.TimeSeries, len(tsr))
-	for i := range tsr {
-		ts[i] = *tsr[i]
-	}
-	return
-}
-
-func labelsSlicetoLabels(ls []prompb.Label) prompb.Labels {
-	var labels prompb.Labels
-	labels.Labels = ls
-	return labels
 }
