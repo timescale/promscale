@@ -5,6 +5,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) http.Handler {
+func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
 	authWrapper := func(name string, h http.HandlerFunc) http.HandlerFunc {
 		return authHandler(apiConf, h)
 	}
@@ -44,7 +45,11 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Post("/delete_series", deleteHandler)
 
 	queryable := client.Queryable()
-	queryEngine := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.SubQueryStepInterval)
+	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.SubQueryStepInterval, apiConf.EnabledFeaturesList)
+	if err != nil {
+		return nil, fmt.Errorf("creating query-engine: %w", err)
+	}
+
 	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable))
 	router.Get("/api/v1/query", queryHandler)
 	router.Post("/api/v1/query", queryHandler)
@@ -74,7 +79,7 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Get("/debug/pprof/symbol", pprof.Symbol)
 	router.Get("/debug/pprof/trace", pprof.Trace)
 
-	return router
+	return router, nil
 }
 
 func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
