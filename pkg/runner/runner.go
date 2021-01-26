@@ -106,6 +106,10 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		return nil, fmt.Errorf("both TLS Ceriticate File and TLS Key File need to be provided for a valid TLS configuration")
 	}
 
+	if cfg.APICfg.EnabledFeatures != "" {
+		cfg.APICfg.EnabledFeaturesList = strings.Split(cfg.APICfg.EnabledFeatures, ",")
+	}
+
 	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
 	if err != nil {
 		return nil, fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
@@ -173,7 +177,11 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
-	router := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector)
+	router, err := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector)
+	if err != nil {
+		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
+		return fmt.Errorf("generate router: %w", err)
+	}
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
