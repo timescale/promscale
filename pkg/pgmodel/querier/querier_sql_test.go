@@ -294,14 +294,22 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql: "SELECT s.labels, array_agg(m.time ORDER BY time) as time_array, array_agg(m.value ORDER BY time)\n\t" +
-						"FROM \"prom_data\".\"bar\" m\n\t" +
-						"INNER JOIN \"prom_data_series\".\"bar\" s\n\t" +
-						"ON m.series_id = s.id\n\t" +
-						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"AND time >= '1970-01-01T00:00:01Z'\n\t" +
-						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
-						"GROUP BY s.id",
+					Sql: `SELECT series.labels,  result.time_array, result.value_array
+					FROM "prom_data_series"."bar" series
+					INNER JOIN LATERAL (
+							SELECT array_agg(time) as time_array, array_agg(value) as value_array
+							FROM
+							(
+									SELECT time, value
+									FROM "prom_data"."bar" metric
+									WHERE metric.series_id = series.id
+									AND time >= '1970-01-01T00:00:01Z'
+									AND time <= '1970-01-01T00:00:02Z'
+									ORDER BY time
+							) as time_ordered_rows
+					) as result ON (result.time_array is not null)
+					WHERE
+						 labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)`,
 					Args:    []interface{}{"__name__", "bar"},
 					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
