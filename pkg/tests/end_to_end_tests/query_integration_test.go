@@ -1040,7 +1040,10 @@ func TestPushdown(t *testing.T) {
 		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		queryable := query.NewQueryable(r, labelsReader)
-		queryEngine := query.NewEngine(log.GetLogger(), time.Minute, time.Minute)
+		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute, []string{})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		for _, c := range testCases {
 			tc := c
