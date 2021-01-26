@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -114,6 +115,11 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	}
 	row := r.queries[idx]
 	r.nextQuery += 1
+
+	space := regexp.MustCompile(`\s+`)
+	sql = space.ReplaceAllString(sql, " ")
+	row.Sql = space.ReplaceAllString(row.Sql, " ")
+
 	if sql != row.Sql {
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.Sql)
 	}

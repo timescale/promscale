@@ -540,6 +540,9 @@ func TestSQLQuery(t *testing.T) {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Query(c.query)
 
+				if err != nil && c.expectErr == nil {
+					t.Fatalf("did not expect an error:\ngot\n%s", err)
+				}
 				if err != nil && err.Error() != c.expectErr.Error() {
 					t.Fatalf("unexpected error returned:\ngot\n%s\nwanted\n%s", err, c.expectErr)
 				}
