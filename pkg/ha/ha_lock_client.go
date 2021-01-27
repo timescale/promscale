@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/timescale/promscale/pkg/ha/state"
+
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -24,19 +26,9 @@ const (
 	checkInsertSql       = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
 	tryChangeLeaderSql   = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
 	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
-	readLeaseSettingsSql = "SELECT key, value FROM " + defaultTable + " WHERE key IN('" + leaseRefreshKey + "','" + leaseTimeoutKey + "')"
 )
 
 var leaderHasChanged = errors.New("ERROR: LEADER_HAS_CHANGED (SQLSTATE PS010)")
-
-// haLockState represents the current lock holder
-// as reported from the db
-type haLockState struct {
-	cluster    string
-	leader     string
-	leaseStart time.Time
-	leaseUntil time.Time
-}
 
 // haLockClient defines an interface for checking and changing leader status
 type haLockClient interface {
@@ -48,18 +40,18 @@ type haLockClient interface {
 	//		the check couldn't be performed
 	//		or a leaderHasChanged error signifying the leader has changed and HAState
 	//		needs to be updated
-	checkInsert(ctx context.Context, cluster, replica string, minTime, maxTime time.Time) (*haLockState, error)
+	updateLease(ctx context.Context, cluster, replica string, minTime, maxTime time.Time) (*state.HALockState, error)
 	// tryChangeLeader tries to set a new leader for a cluster
 	// returns:
 	// *haLockState current state of the lock (if try was successful state.leader == newLeader)
 	// error signifying the call couldn't be made
-	tryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*haLockState, error)
+	tryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*state.HALockState, error)
 	// readLockState retrieves the latest state of the lock. To be called only
 	// when checkInsert returns a leaderHasChanged error
 	// returns:
 	// 		*haLockState latest state of the lock
 	//		* error if the check couldn't be performed
-	readLockState(ctx context.Context, cluster string) (*haLockState, error)
+	readLockState(ctx context.Context, cluster string) (*state.HALockState, error)
 	// readLeaseSettings gets the lease timeout and lease refresh parameters
 	readLeaseSettings(ctx context.Context) (timeout, refresh time.Duration, err error)
 }
@@ -72,58 +64,69 @@ func newHaLockClient(dbConn pgxconn.PgxConn) haLockClient {
 	return &haLockClientDB{dbConn: dbConn}
 }
 
-func (h *haLockClientDB) checkInsert(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (*haLockState, error) {
-	dbLock := haLockState{}
+func (h *haLockClientDB) updateLease(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (*state.HALockState, error) {
+	dbLock := state.HALockState{}
 	row := h.dbConn.QueryRow(ctx, checkInsertSql, cluster, leader, minTime, maxTime)
-	if err := row.Scan(&(dbLock.cluster), &(dbLock.leader), &(dbLock.leaseStart), &(dbLock.leaseUntil)); err != nil {
+	if err := row.Scan(&(dbLock.Cluster), &(dbLock.Leader), &(dbLock.LeaseStart), &(dbLock.LeaseUntil)); err != nil {
 		return nil, err
 	}
 	return &dbLock, nil
 }
 
-func (h *haLockClientDB) tryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*haLockState, error) {
-	dbLock := haLockState{}
+func (h *haLockClientDB) tryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*state.HALockState, error) {
+	dbLock := state.HALockState{}
 	row := h.dbConn.QueryRow(ctx, tryChangeLeaderSql, cluster, newLeader, maxTime)
-	if err := row.Scan(&(dbLock.cluster), &(dbLock.leader), &(dbLock.leaseStart), &(dbLock.leaseUntil)); err != nil {
+	if err := row.Scan(&(dbLock.Cluster), &(dbLock.Leader), &(dbLock.LeaseStart), &(dbLock.LeaseUntil)); err != nil {
 		return nil, err
 	}
 	return &dbLock, nil
 }
 
-func (h *haLockClientDB) readLockState(ctx context.Context, cluster string) (*haLockState, error) {
-	dbLock := haLockState{cluster: cluster}
+func (h *haLockClientDB) readLockState(ctx context.Context, cluster string) (*state.HALockState, error) {
+	dbLock := state.HALockState{Cluster: cluster}
 	row := h.dbConn.QueryRow(ctx, latestLockStateSql, cluster)
-	if err := row.Scan(&dbLock.leader, &dbLock.leaseStart, &dbLock.leaseUntil); err != nil {
+	if err := row.Scan(&dbLock.Leader, &dbLock.LeaseStart, &dbLock.LeaseUntil); err != nil {
 		return nil, err
 	}
 	return &dbLock, nil
 }
 
 func (h *haLockClientDB) readLeaseSettings(ctx context.Context) (timeout, refresh time.Duration, err error) {
-	rows, err := h.dbConn.Query(ctx, readLeaseSettingsSql)
+	var value string
+	// get leaseTimeOut
+	row := h.dbConn.QueryRow(ctx,
+		"SELECT value FROM "+schema.Catalog+".default where key IN('"+leaseTimeoutKey+"')")
 	if err != nil {
 		return -1, -1, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var key, value string
-		var valueAsDuration time.Duration
-		if err := rows.Scan(&key, &value); err != nil {
-			return -1, -1, err
-		}
-
-		if valueAsDuration, err = time.ParseDuration(value); err != nil {
-			return -1, -1, err
-		}
-
-		if key == leaseTimeoutKey {
-			timeout = valueAsDuration
-		} else if key == leaseRefreshKey {
-			refresh = valueAsDuration
-		} else {
-			// should be unreachable
-			return -1, -1, fmt.Errorf("lease settings query is not good")
-		}
+	if err := row.Scan(&value); err != nil {
+		return -1, -1, err
 	}
+	if timeout, err = parseTimestampToDuration(value); err != nil {
+		return -1, -1, err
+	}
+
+	// get leaseRefresh
+	row = h.dbConn.QueryRow(ctx,
+		"SELECT value FROM "+schema.Catalog+".default where key IN('"+leaseRefreshKey+"')")
+	if err != nil {
+		return -1, -1, err
+	}
+	if err := row.Scan(&value); err != nil {
+		return -1, -1, err
+	}
+
+	if refresh, err = parseTimestampToDuration(value); err != nil {
+		return -1, -1, err
+	}
+
 	return timeout, refresh, nil
+}
+
+func parseTimestampToDuration(value string) (time.Duration, error) {
+	valueAsDuration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse timestamp to time.Duration while reading HA lease settings %v", err)
+	}
+	return valueAsDuration, nil
 }

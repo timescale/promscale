@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timescale/promscale/pkg/ha/state"
+
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -25,36 +27,36 @@ func Test_haParser_ParseData(t *testing.T) {
 	inLeaseTimestamp := leaseStart.Add(time.Second).UnixNano() / 1000000
 	behindLeaseTimestamp := leaseStart.Add(-time.Second).UnixNano() / 1000000
 	aheadLeaseTimestamp := leaseUntil.Add(time.Second).UnixNano() / 1000000
-	clusterInfo := []*haLockState{
+	clusterInfo := []*state.HALockState{
 		{
-			cluster:    "cluster1",
-			leader:     "replica1",
-			leaseStart: leaseStart,
-			leaseUntil: leaseUntil,
+			Cluster:    "cluster1",
+			Leader:     "replica1",
+			LeaseStart: leaseStart,
+			LeaseUntil: leaseUntil,
 		},
 		{
-			cluster:    "cluster2",
-			leader:     "replica1",
-			leaseStart: leaseStart,
-			leaseUntil: leaseUntil,
+			Cluster:    "cluster2",
+			Leader:     "replica1",
+			LeaseStart: leaseStart,
+			LeaseUntil: leaseUntil,
 		},
 		{
-			cluster:    "cluster3",
-			leader:     "replica1",
-			leaseStart: leaseStart,
-			leaseUntil: leaseUntil,
+			Cluster:    "cluster3",
+			Leader:     "replica1",
+			LeaseStart: leaseStart,
+			LeaseUntil: leaseUntil,
 		},
 		{
-			cluster:    "cluster4",
-			leader:     "replica2",
-			leaseStart: leaseStart,
-			leaseUntil: leaseUntil,
+			Cluster:    "cluster4",
+			Leader:     "replica2",
+			LeaseStart: leaseStart,
+			LeaseUntil: leaseUntil,
 		},
 		{
-			cluster:    "cluster5",
-			leader:     "replica2",
-			leaseStart: leaseStart,
-			leaseUntil: leaseUntil,
+			Cluster:    "cluster5",
+			Leader:     "replica2",
+			LeaseStart: leaseStart,
+			LeaseUntil: leaseUntil,
 		},
 	}
 
@@ -362,9 +364,9 @@ func Test_haParser_ParseData(t *testing.T) {
 						f := tt.wantSamples["test"]
 						if f != nil {
 							s, _ := h.service.state.Load(tt.cluster)
-							state := s.(*State)
-							stateView := state.clone()
-							if obj.Value != stateView.leader || f[0].Samples[0].Timestamp != stateView.maxTimeSeen.UnixNano()/1000000 {
+							state := s.(*state.State)
+							stateView := state.Clone()
+							if obj.Value != stateView.Leader || f[0].Samples[0].Timestamp != stateView.MaxTimeSeen.UnixNano()/1000000 {
 								t.Errorf("max time seen isn't updated to latest samples info")
 							}
 						}
