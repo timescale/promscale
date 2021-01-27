@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgconn"
+	"github.com/timescale/promscale/pkg/ha/state"
+
 	"golang.org/x/sync/semaphore"
 
 	"github.com/timescale/promscale/pkg/log"
@@ -50,13 +53,13 @@ func (h *Service) haStateSyncer() {
 		h.state.Range(func(c, s interface{}) bool {
 			cluster := fmt.Sprint(c)
 			state := castToState(s)
-			stateView := state.clone()
-			err := h.syncLockStateFromDB(stateView.leaseStart, stateView.maxTimeSeenLeader, cluster, stateView.leader)
+			stateView := state.Clone()
+			err := h.syncLockStateFromDB(stateView.LeaseStart, stateView.MaxTimeSeenLeader, cluster, stateView.Leader)
 			if err != nil {
 				log.Error("failed to validate cluster %s state %v", cluster, err)
 			}
-			if stateView.maxTimeSeen.After(stateView.leaseUntil) {
-				go h.tryChangeLeader(cluster)
+			if stateView.MaxTimeSeen.After(stateView.LeaseUntil) {
+				go h.tryChangeLeader(cluster, stateView.Leader)
 			}
 			return true
 		})
@@ -69,10 +72,10 @@ func (h *Service) haStateSyncer() {
 //      minimum timestamp of the accepted samples.
 //		An error is returned if the lock state could not be
 //		checked against the db
-func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
+func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
 	s, ok := h.state.Load(clusterName)
 	if !ok {
-		s, _ = h.state.LoadOrStore(clusterName, &State{})
+		s, _ = h.state.LoadOrStore(clusterName, &state.State{})
 		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
 		if err != nil {
 			return false, time.Time{}, err
@@ -80,19 +83,19 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 	}
 
 	state := castToState(s)
-	stateView := state.clone()
+	stateView := state.Clone()
 
-	defer state.updateMaxSeenTime(replicaName, maxT)
-	if replicaName != stateView.leader {
+	defer state.UpdateMaxSeenTime(replicaName, maxT)
+	if replicaName != stateView.Leader {
 		return false, time.Time{}, nil
 	}
 
 	acceptedMinT := minT
-	if minT.Before(stateView.leaseStart) {
-		acceptedMinT = stateView.leaseStart
+	if minT.Before(stateView.LeaseStart) {
+		acceptedMinT = stateView.LeaseStart
 	}
 
-	if maxT.After(stateView.leaseUntil) {
+	if maxT.After(stateView.LeaseUntil) {
 		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
 		if err != nil {
 			return false, time.Time{}, err
@@ -105,29 +108,36 @@ func (h *Service) checkInsert(minT, maxT time.Time, clusterName, replicaName str
 
 func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replicaName string) error {
 	// TODO use proper context
-	lockState, err := h.lockClient.checkInsert(context.Background(), clusterName, replicaName, minT, maxT)
-	if err != nil && err.Error() != leaderHasChanged.Error() {
-		return fmt.Errorf("could not check ha lock state: %#v", err)
+	stateFromDB, err := h.lockClient.updateLease(context.Background(), clusterName, replicaName, minT, maxT)
+	leaderHasChanged := false
+	if err != nil {
+		if e, ok := err.(*pgconn.PgError); ok && e.Code == "PS010" {
+			leaderHasChanged = true
+		} else {
+			return fmt.Errorf("could not check ha lock state: %w", err)
+		}
+	}
+
+	// leader changed
+	if err != nil && leaderHasChanged {
+		// read latest lock state
+		stateFromDB, err = h.lockClient.readLockState(context.Background(), clusterName)
+		// couldn't get latest lock state
+		if err != nil {
+			log.Error("could not check ha lock state: %#v", err)
+		}
 	}
 
 	state, err := h.loadState(clusterName)
 	if err != nil {
 		return err
 	}
-	// leader changed
-	if err != nil && err.Error() == leaderHasChanged.Error() {
-		// read latest lock state
-		lockState, err = h.lockClient.readLockState(context.Background(), clusterName)
-		// couldn't get latest lock state
-		if err != nil {
-			log.Error("could not check ha lock state: %#v", err)
-		}
-	}
-	state.updateStateFromDB(lockState, maxT, replicaName)
+
+	state.UpdateStateFromDB(stateFromDB, maxT, replicaName)
 	return nil
 }
 
-func (h *Service) tryChangeLeader(cluster string) {
+func (h *Service) tryChangeLeader(cluster, currentLeader string) {
 	ok := h._leaderChangeLock.TryAcquire(1)
 	if !ok {
 		// change leader already in progress
@@ -141,20 +151,22 @@ func (h *Service) tryChangeLeader(cluster string) {
 			log.Error("error", err)
 			return
 		}
-		stateView := state.clone()
+		stateView := state.Clone()
 
-		if stateView.leaseUntil.After(stateView.maxTimeSeen) {
+		if stateView.LeaseUntil.After(stateView.MaxTimeSeen) {
 			return
 		}
 
 		lockState, err := h.lockClient.tryChangeLeader(
-			context.Background(), cluster, stateView.maxTimeInstance, stateView.maxTimeSeen,
+			context.Background(), cluster, stateView.MaxTimeInstance, stateView.MaxTimeSeen,
 		)
 		if err != nil {
 			log.Error("msg", "Couldn't change leader", "err", err)
 			return
 		}
-		if lockState.leader == stateView.maxTimeInstance {
+
+		state.UpdateStateFromDB(lockState, stateView.MaxTimeSeen, stateView.MaxTimeInstance)
+		if lockState.Leader != currentLeader {
 			// leader changed
 			return
 		}
@@ -164,7 +176,7 @@ func (h *Service) tryChangeLeader(cluster string) {
 	}
 }
 
-func (h *Service) loadState(cluster string) (*State, error) {
+func (h *Service) loadState(cluster string) (*state.State, error) {
 	s, ok := h.state.Load(cluster)
 	if !ok {
 		return nil, fmt.Errorf("couldn't load %s cluster state from ha service", cluster)
@@ -173,7 +185,7 @@ func (h *Service) loadState(cluster string) (*State, error) {
 	return state, nil
 }
 
-func castToState(s interface{}) *State {
-	state := s.(*State)
+func castToState(s interface{}) *state.State {
+	state := s.(*state.State)
 	return state
 }

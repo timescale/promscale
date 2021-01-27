@@ -2,17 +2,19 @@ package ha
 
 import (
 	"context"
-	"golang.org/x/sync/semaphore"
 	"sync"
 	"time"
+
+	"github.com/timescale/promscale/pkg/ha/state"
+	"golang.org/x/sync/semaphore"
 )
 
-func MockNewHAService(clusterInfo []*haLockState) *Service {
+func MockNewHAService(clusterInfo []*state.HALockState) *Service {
 	lockClient := newMockLockClient()
 	timeout, refresh, _ := lockClient.readLeaseSettings(context.Background())
 
 	for _, c := range clusterInfo {
-		lockClient.leadersPerCluster[c.cluster] = c
+		lockClient.leadersPerCluster[c.Cluster] = c
 	}
 
 	service := &Service{
@@ -26,10 +28,10 @@ func MockNewHAService(clusterInfo []*haLockState) *Service {
 }
 
 func SetLeaderInMockService(service *Service, cluster, leader string, minT, maxT time.Time) {
-	service.lockClient.(*mockLockClient).leadersPerCluster[cluster] = &haLockState{
-		cluster:    cluster,
-		leader:     leader,
-		leaseStart: minT,
-		leaseUntil: maxT,
+	service.lockClient.(*mockLockClient).leadersPerCluster[cluster] = &state.HALockState{
+		Cluster:    cluster,
+		Leader:     leader,
+		LeaseStart: minT,
+		LeaseUntil: maxT,
 	}
 }

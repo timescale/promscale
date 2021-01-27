@@ -2,11 +2,12 @@ package ha
 
 import (
 	"fmt"
+
+	promModel "github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
-	"time"
 )
 
 type haParser struct {
@@ -39,9 +40,11 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 
 	if replicaName == "" || clusterName == "" {
 		err := fmt.Errorf(
-			"ha mode is enabled and one/both of the %s, %s labels is/are empty",
+			"ha mode is enabled and one/both of the %s:%s, %s:%s labels is/are empty",
 			model.ClusterNameLabel,
 			model.ReplicaNameLabel,
+			clusterName,
+			replicaName,
 		)
 		return nil, rows, err
 	}
@@ -62,13 +65,10 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 			maxTUnix = t.Samples[len(t.Samples)-1].Timestamp
 		}
 	}
-	// as prometheus remote-write sends timestamps in
-	// milliseconds converting them into time.Time
-	// Note: time package doesn't offer any milli-sec utilities
-	// so manually performing conversion to time.Time.
-	minT := time.Unix(0, minTUnix*int64(1000000))
-	maxT := time.Unix(0, maxTUnix*int64(1000000))
-	allowInsert, acceptedMinT, err := h.service.checkInsert(minT, maxT, clusterName, replicaName)
+
+	minT := promModel.Time(minTUnix).Time()
+	maxT := promModel.Time(maxTUnix).Time()
+	allowInsert, acceptedMinT, err := h.service.CheckInsert(minT, maxT, clusterName, replicaName)
 	if err != nil {
 		return nil, rows, fmt.Errorf("could not check ha lock: %#v", err)
 	}
@@ -78,7 +78,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	}
 
 	// insert allowed -> parse samples
-	acceptedMinTUnix := acceptedMinT.UnixNano() / 1000000
+	acceptedMinTUnix := int64(promModel.TimeFromUnixNano(acceptedMinT.UnixNano()))
 	for i := range tts {
 		t := &tts[i]
 
