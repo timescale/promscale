@@ -6,7 +6,6 @@ package ha
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -22,13 +21,10 @@ const (
 	leasesTable          = schema.Catalog + ".ha_leases"
 	updateLeaseFn        = schema.Catalog + ".update_lease"
 	tryChangeLeaderFn    = schema.Catalog + "try_change_leader"
-	defaultTable         = schema.Catalog + "default"
 	checkInsertSql       = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
 	tryChangeLeaderSql   = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
 	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
 )
-
-var leaderHasChanged = errors.New("ERROR: LEADER_HAS_CHANGED (SQLSTATE PS010)")
 
 // haLockClient defines an interface for checking and changing leader status
 type haLockClient interface {
