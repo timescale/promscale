@@ -57,9 +57,13 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 // getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
 // as a matrix.
 func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]model.SeriesID, error) {
-	_, clauses, values, err := querier.BuildSubQueries(matchers)
+	cb, err := querier.BuildSubQueries(matchers)
 	if err != nil {
-		return nil, nil, fmt.Errorf("delete series from matchers: %w", err)
+		return nil, nil, fmt.Errorf("delete series build subqueries: %w", err)
+	}
+	clauses, values, err := cb.Build(true)
+	if err != nil {
+		return nil, nil, fmt.Errorf("delete series build clauses: %w", err)
 	}
 	query := querier.BuildMetricNameSeriesIDQuery(clauses)
 	rows, err := pgDel.Conn.Query(context.Background(), query, values...)
