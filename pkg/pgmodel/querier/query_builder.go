@@ -115,15 +115,9 @@ var (
 	maxTime = timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC())
 )
 
-func BuildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{}, error) {
+func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 	var err error
-	metric := ""
-	metricMatcherCount := 0
-	cb := clauseBuilder{}
-
-	if err != nil {
-		return "", nil, nil, err
-	}
+	cb := &clauseBuilder{}
 
 	for _, m := range matchers {
 		// From the PromQL docs: "Label matchers that match
@@ -134,8 +128,8 @@ func BuildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{
 		switch m.Type {
 		case labels.MatchEqual:
 			if m.Name == pgmodel.MetricNameLabelName {
-				metricMatcherCount++
-				metric = m.Value
+				cb.SetMetricName(m.Value)
+				continue
 			}
 			sq := subQueryEQ
 			if matchesEmpty {
@@ -163,25 +157,11 @@ func BuildSubQueries(matchers []*labels.Matcher) (string, []string, []interface{
 		}
 
 		if err != nil {
-			return "", nil, nil, err
+			return nil, err
 		}
-
-		// Empty value (default case) is ignored.
 	}
 
-	// We can be certain that we want a single metric only if we find a single metric name matcher.
-	// Note: possible future optimization for this case, since multiple metric names would exclude
-	// each other and give empty result.
-	if metricMatcherCount > 1 {
-		metric = ""
-	}
-	clauses, values := cb.build()
-
-	if len(clauses) == 0 {
-		err = errors.ErrNoClausesGen
-	}
-
-	return metric, clauses, values, err
+	return cb, err
 }
 
 /* Given a clause with %d placeholder for parameter numbers, and the existing and new parameters, return a clause with the parameters set to the appropriate $index and the full set of parameter values */
@@ -207,8 +187,26 @@ func setParameterNumbers(clause string, existingArgs []interface{}, newArgs ...i
 }
 
 type clauseBuilder struct {
-	clauses []string
-	args    []interface{}
+	metricName    string
+	contradiction bool
+	clauses       []string
+	args          []interface{}
+}
+
+func (c *clauseBuilder) SetMetricName(name string) {
+	if c.metricName == "" {
+		c.metricName = name
+		return
+	}
+
+	/* Impossible to have 2 different metric names at same time */
+	if c.metricName != name {
+		c.contradiction = true
+	}
+}
+
+func (c *clauseBuilder) GetMetricName() string {
+	return c.metricName
 }
 
 func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
@@ -222,8 +220,28 @@ func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
 	return nil
 }
 
-func (c *clauseBuilder) build() ([]string, []interface{}) {
-	return c.clauses, c.args
+func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, error) {
+	if c.contradiction {
+		return []string{"FALSE"}, nil, nil
+	}
+
+	/* no support for queries across all data */
+	if len(c.clauses) == 0 && c.metricName == "" {
+		return nil, nil, errors.ErrNoClausesGen
+	}
+
+	if includeMetricName && c.metricName != "" {
+		nameClause, newArgs, err := setParameterNumbers(subQueryEQ, c.args, pgmodel.MetricNameLabelName, c.metricName)
+		if err != nil {
+			return nil, nil, err
+		}
+		return append(c.clauses, nameClause), newArgs, err
+	}
+
+	if len(c.clauses) == 0 {
+		return []string{"TRUE"}, nil, nil
+	}
+	return c.clauses, c.args, nil
 }
 
 func buildTimeSeries(rows []timescaleRow, lr pgmodel.LabelsReader) ([]*prompb.TimeSeries, error) {

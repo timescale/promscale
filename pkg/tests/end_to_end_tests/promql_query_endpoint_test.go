@@ -2409,6 +2409,14 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			name:  "query with @ modifier",
 			query: fmt.Sprintf("sum(metric_1[5m] @ %d)", startTime+30000/1000),
 		},
+		{
+			name:  "double name",
+			query: `{__name__="metric_1", __name__="metric_1"}`,
+		},
+		{
+			name:  "contradictory name",
+			query: `{__name__="metric_1", __name__="metric_2"}`,
+		},
 	}
 	start := time.Unix(startTime/1000, 0)
 	end := time.Unix(endTime/1000, 0)

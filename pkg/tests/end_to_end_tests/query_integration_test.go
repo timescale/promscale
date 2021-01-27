@@ -158,6 +158,60 @@ func TestSQLQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "two matcher, duplicate name",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
+			},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: pgmodel.MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
+					},
+				},
+			},
+		},
+		{
+			name: "two matcher, contradictory name",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "secondMetric",
+					},
+				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
+			},
+			expectResponse: []*prompb.TimeSeries{},
+		},
+		{
 			name: "one matcher, regex metric",
 			query: &prompb.Query{
 				Matchers: []*prompb.LabelMatcher{

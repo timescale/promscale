@@ -126,13 +126,14 @@ func TestSQLStaleNaN(t *testing.T) {
 			labelsReader := model.NewLabelsReader(dbConn, lCache)
 			r := querier.NewQuerier(dbConn, mCache, labelsReader)
 			resp, err := r.Query(c.query)
+			if err != nil {
+				t.Fatalf("unexpected error while ingesting test dataset: %s", err)
+			}
+
 			startMs := c.query.StartTimestampMs
 			endMs := c.query.EndTimestampMs
 			timeClause := "time >= 'epoch'::timestamptz + $1 AND time <= 'epoch'::timestamptz + $2"
 
-			if err != nil {
-				t.Fatalf("unexpected error while ingesting test dataset: %s", err)
-			}
 			answer := getSingleSampleValue(t, resp)
 			isStaleNaN := getBooleanSQLResult(t, db,
 				fmt.Sprintf(
