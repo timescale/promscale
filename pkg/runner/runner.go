@@ -410,5 +410,5 @@ func getSchemaLease(ctx context.Context, conn *pgx.Conn) error {
 	if err != nil {
 		return err
 	}
-	return pgmodel.CheckSchemaVersion(ctx, conn, appVersion)
+	return pgmodel.CheckSchemaVersion(ctx, conn, appVersion, false)
 }

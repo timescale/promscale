@@ -18,14 +18,12 @@ import (
 
 const defaultConnectionTimeout = time.Minute
 
-var (
-	SharedLeaseFailure = fmt.Errorf("failed to acquire shared lease")
-)
+var SharedLeaseFailure = fmt.Errorf("failed to acquire shared lease")
 
 func GetSharedLease(ctx context.Context, conn *pgx.Conn, id int64) error {
 	gotten, err := runLockFunction(ctx, conn, "SELECT pg_try_advisory_lock_shared($1)", id)
 	if err != nil {
-		return err
+		return fmt.Errorf("Unable to get shared schema lock. Please make sure that no operations requiring exclusive locking are running: %w", err)
 	}
 	if !gotten {
 		return SharedLeaseFailure
