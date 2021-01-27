@@ -3,13 +3,14 @@ package end_to_end_tests
 import (
 	"context"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"sync"
 	"testing"
 	"time"
 )
 
 func callTryChangeLeader(db *pgxpool.Pool, cluster, writer string, maxT time.Time) (*lockState, error) {
-	row := db.QueryRow(context.Background(), "SELECT * FROM try_change_leader($1,$2,$3)", cluster, writer, maxT)
+	row := db.QueryRow(context.Background(), "SELECT * FROM "+schema.Catalog+".try_change_leader($1,$2,$3)", cluster, writer, maxT)
 	lock := lockState{}
 	if err := row.Scan(&lock.cluster, &lock.leader, &lock.leaseStart, &lock.leaseUntil); err != nil {
 		return nil, err
@@ -28,10 +29,10 @@ func TestTryChangeLeader(t *testing.T) {
 		minT := time.Unix(1, 0)
 		maxT := time.Unix(3, 0)
 
-		// try change when no leader exists -> nothing returned
+		// try change when no leader exists -> null values returned
 		_, err := callTryChangeLeader(db, cluster, originalWriter, maxT)
-		if err == nil || err.Error() != "no rows in result set" {
-			t.Fatalf("expected 'no rows' error, got: %v", err)
+		if err == nil {
+			t.Fatal("unexpected lack of error")
 			return
 		}
 

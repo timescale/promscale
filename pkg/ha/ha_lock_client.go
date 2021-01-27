@@ -17,15 +17,17 @@ import (
 const (
 	leaseRefreshKey      = "ha_lease_refresh"
 	leaseTimeoutKey      = "ha_lease_timeout"
-	checkInsertSql       = "SELECT * FROM " + schema.Catalog + ".check_insert($1, $2, $3, $4)"
-	tryChangeLeaderSql   = "SELECT * FROM " + schema.Catalog + ".try_change_leader($1, $2, $3)"
-	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + schema.Catalog + ".ha_locks WHERE cluster_name = $1"
-	readLeaseSettingsSql = "SELECT key, value FROM " + schema.Catalog + ".default where key IN('" + leaseRefreshKey + "','" + leaseTimeoutKey + "')"
-
-	leaderHasChangedErrStr = "ERROR: LEADER_HAS_CHANGED (SQLSTATE P0001)"
+	leasesTable          = schema.Catalog + ".ha_leases"
+	updateLeaseFn        = schema.Catalog + ".update_lease"
+	tryChangeLeaderFn    = schema.Catalog + "try_change_leader"
+	defaultTable         = schema.Catalog + "default"
+	checkInsertSql       = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
+	tryChangeLeaderSql   = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
+	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
+	readLeaseSettingsSql = "SELECT key, value FROM " + defaultTable + " WHERE key IN('" + leaseRefreshKey + "','" + leaseTimeoutKey + "')"
 )
 
-var leaderHasChanged = errors.New(leaderHasChangedErrStr)
+var leaderHasChanged = errors.New("ERROR: LEADER_HAS_CHANGED (SQLSTATE PS010)")
 
 // haLockState represents the current lock holder
 // as reported from the db
