@@ -28,8 +28,10 @@ type Metrics struct {
 	ReceivedQueries     prometheus.Counter
 	FailedQueries       prometheus.Counter
 	QueryBatchDuration  prometheus.Histogram
+	QueryDuration       prometheus.Histogram
 	InvalidReadReqs     prometheus.Counter
 	InvalidWriteReqs    prometheus.Counter
+	InvalidQueryReqs    prometheus.Counter
 	HTTPRequestDuration *prometheus.HistogramVec
 }
 
@@ -52,6 +54,7 @@ func InitMetrics(writeMetricInterval int) *Metrics {
 		metrics.InvalidWriteReqs,
 		metrics.SentBatchDuration,
 		metrics.QueryBatchDuration,
+		metrics.QueryDuration,
 		metrics.HTTPRequestDuration,
 	)
 	metrics.WriteThroughput.Start()
@@ -111,6 +114,14 @@ func createMetrics(writeMetricInterval int) *Metrics {
 				Buckets:   prometheus.DefBuckets,
 			},
 		),
+		QueryDuration: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Namespace: util.PromNamespace,
+				Name:      "query_duration_seconds",
+				Help:      "Duration of query batch read calls to the PromQL engine.",
+				Buckets:   prometheus.DefBuckets,
+			},
+		),
 		FailedQueries: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
@@ -130,6 +141,13 @@ func createMetrics(writeMetricInterval int) *Metrics {
 				Namespace: util.PromNamespace,
 				Name:      "invalid_write_requests",
 				Help:      "Total number of remote write requests with invalid metadata.",
+			},
+		),
+		InvalidQueryReqs: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "invalid_query_requests",
+				Help:      "Total number of invalid query requests with invalid metadata.",
 			},
 		),
 		ReceivedQueries: prometheus.NewCounter(

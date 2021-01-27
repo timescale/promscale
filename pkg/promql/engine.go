@@ -41,6 +41,8 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
+
+	"github.com/timescale/promscale/pkg/util"
 )
 
 // A Queryable handles queries against a storage.
@@ -69,7 +71,7 @@ type Querier interface {
 }
 
 const (
-	namespace            = "prometheus"
+	namespace            = util.PromNamespace
 	subsystem            = "engine"
 	queryTag             = "query"
 	env                  = "query execution"
