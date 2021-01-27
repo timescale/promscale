@@ -106,7 +106,7 @@ Click the video below for an overview of Promscale:
   high-availability deployments of [TimescaleDB itself](https://blog.timescale.com/blog/high-availability-timescaledb-postgresql-patroni-a4572264a831/).
 * **Simple architecture**. Unlike some other long-term stores, our architecture consists of only three components: Prometheus, Promscale, and TimescaleDB.
 * **ACID compliance** to ensure consistency of your data.
-* **Horizontal scalability** using [multiinode support](https://blog.timescale.com/blog/timescaledb-2-0-a-multi-node-petabyte-scale-completely-free-relational-database-for-time-series/) with TimescaleDB version 2.0.
+* **Horizontal scalability** using [multinode support](https://blog.timescale.com/blog/timescaledb-2-0-a-multi-node-petabyte-scale-completely-free-relational-database-for-time-series/) with TimescaleDB version 2.0.
 
 ## 🔧 Choose your own (installation) adventure
 
