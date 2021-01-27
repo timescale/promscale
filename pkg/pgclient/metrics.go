@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	cachedMetricNames   prometheus.CounterFunc
-	cachedLabels        prometheus.CounterFunc
+	cachedMetricNames   prometheus.GaugeFunc
+	cachedLabels        prometheus.GaugeFunc
 	metricNamesCacheCap prometheus.GaugeFunc
 	labelsCacheCap      prometheus.GaugeFunc
 )
@@ -22,7 +22,7 @@ func InitClientMetrics(client *Client) {
 		return
 	}
 
-	cachedMetricNames = prometheus.NewCounterFunc(prometheus.CounterOpts{
+	cachedMetricNames = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: util.PromNamespace,
 		Name:      "metric_name_cache_elements_stored",
 		Help:      "Total number of metric names in the metric name cache.",
@@ -38,7 +38,7 @@ func InitClientMetrics(client *Client) {
 		return float64(client.MetricNamesCacheCapacity())
 	})
 
-	cachedLabels = prometheus.NewCounterFunc(prometheus.CounterOpts{
+	cachedLabels = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: util.PromNamespace,
 		Name:      "label_cache_elements_stored",
 		Help:      "Total number of label-id to label mappings cache.",
