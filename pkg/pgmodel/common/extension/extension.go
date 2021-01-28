@@ -275,11 +275,15 @@ func fetchAvailableExtensionVersions(conn *pgx.Conn, extName string) (semver.Ver
 
 	for i := range versionStrings {
 		vString := correctVersionString(versionStrings[i], extName)
-		v, err := semver.Parse(vString)
-		if err != nil {
-			return versions, fmt.Errorf("Could not parse available extension version %v: %w", vString, err)
+		// ignore mock ext versions
+		ok := strings.HasPrefix(vString, "mock")
+		if !ok {
+			v, err := semver.Parse(vString)
+			if err != nil {
+				return versions, fmt.Errorf("Could not parse available extension version %v: %w", vString, err)
+			}
+			versions = append(versions, v)
 		}
-		versions = append(versions, v)
 	}
 
 	return versions, nil
