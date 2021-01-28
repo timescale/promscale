@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"runtime"
 	"testing"
@@ -911,16 +912,19 @@ func generatePrometheusWALFile() (string, error) {
 		// so switch to cross-user tmp dir
 		tmpDir = "/tmp"
 	}
-	path, err := ioutil.TempDir(tmpDir, "prom_test_storage")
+	dbPath, err := ioutil.TempDir(tmpDir, "prom_dbtest_storage")
+	if err != nil {
+		return "", err
+	}
+	snapPath, err := ioutil.TempDir(tmpDir, "prom_snaptest_storage")
 	if err != nil {
 		return "", err
 	}
 
-	st, err := tsdb.Open(path, nil, nil, &tsdb.Options{
+	st, err := tsdb.Open(dbPath, nil, nil, &tsdb.Options{
 		RetentionDuration: 15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
 		NoLockfile:        true,
 	})
-
 	if err != nil {
 		return "", err
 	}
@@ -944,7 +948,7 @@ func generatePrometheusWALFile() (string, error) {
 		labels := builder.Labels()
 
 		for _, s := range ts.Samples {
-			if ref == nil {
+			if ref == nil || *ref == 0 {
 				tempRef, err := app.Add(labels, s.Timestamp, s.Value)
 				if err != nil {
 					return "", err
@@ -964,10 +968,17 @@ func generatePrometheusWALFile() (string, error) {
 	if err := app.Commit(); err != nil {
 		return "", err
 	}
+	if err := st.Snapshot(snapPath, true); err != nil {
+		return "", err
+	}
+	if err := os.Mkdir(snapPath+"/wal", 0700); err != nil {
+		return "", err
+	}
+	if err := st.Close(); err != nil {
+		return "", err
+	}
 
-	st.Close()
-
-	return path, nil
+	return snapPath, nil
 }
 
 func TestPushdown(t *testing.T) {

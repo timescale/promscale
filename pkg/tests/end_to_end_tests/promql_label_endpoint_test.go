@@ -105,7 +105,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 			t.Fatalf("unable to create Prometheus PromQL label names request: %v", err)
 		}
 
-		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator)
+		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator, "label endpoint")
 		tester.Run("get label names", testMethod)
 
 		lCache := clockcache.WithMax(100)
@@ -133,7 +133,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 	})
 }
 
-func labelsResultComparator(promContent []byte, tsContent []byte) error {
+func labelsResultComparator(promContent []byte, tsContent []byte, log string) error {
 	var got, wanted labelsResponse
 
 	err := json.Unmarshal(tsContent, &got)
