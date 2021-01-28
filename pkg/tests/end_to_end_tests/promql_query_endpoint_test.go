@@ -25,9 +25,12 @@ const (
 )
 
 type queryResponse struct {
-	Status   string    `json:"status"`
-	Data     queryData `json:"data,omitempty"`
-	Warnings []string  `json:"warnings,omitempty"`
+	Status    string    `json:"status"`
+	Data      queryData `json:"data,omitempty"`
+	Warnings  []string  `json:"warnings,omitempty"`
+	ErrorType string    `json:"errorType,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	Message   string    `json:"message,omitempty"`
 }
 
 func (q queryResponse) Equal(other queryResponse) bool {

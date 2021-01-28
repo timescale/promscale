@@ -1167,23 +1167,28 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		var (
 			mat      Matrix
 			warnings storage.Warnings
+			err      error
 		)
 		parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
 			switch n := node.(type) {
 			/* Note that a MatrixSelector cascades down to it's VectorSelector in Inspect */
 			case *parser.VectorSelector:
-				warns, err := checkAndExpandSeriesSet(ev.ctx, n)
+				warnings, err = checkAndExpandSeriesSet(ev.ctx, n)
 				if err != nil {
-					return fmt.Errorf("topNode eval vector-selector: %w", err)
+					err = fmt.Errorf("topNode eval vector-selector: %w", err)
+					return err
 				}
-				warnings = warns
 				if mat != nil {
-					return fmt.Errorf("Matrix is already filled in")
+					err = fmt.Errorf("Matrix is already filled in")
+					return err
 				}
 				mat = ev.getPushdownResult(n, numSteps)
 			}
 			return nil
 		})
+		if err != nil {
+			ev.error(err)
+		}
 		if mat == nil {
 			ev.error(fmt.Errorf("Matrix not filled in"))
 		}
