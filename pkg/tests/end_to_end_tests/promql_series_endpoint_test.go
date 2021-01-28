@@ -164,7 +164,7 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 	})
 }
 
-func seriesResultComparator(promContent []byte, tsContent []byte) error {
+func seriesResultComparator(promContent []byte, tsContent []byte, log string) error {
 	var got, wanted seriesResponse
 
 	err := json.Unmarshal(tsContent, &got)

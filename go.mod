@@ -31,6 +31,7 @@ require (
 	github.com/prometheus/common v0.15.0
 	github.com/prometheus/prometheus v1.8.2-0.20201112142552-bef9d4e18226
 	github.com/schollz/progressbar/v3 v3.7.2
+	github.com/sergi/go-diff v1.0.0
 	github.com/stretchr/testify v1.6.1
 	github.com/testcontainers/testcontainers-go v0.5.1
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
