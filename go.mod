@@ -36,6 +36,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	go.uber.org/goleak v1.1.10
 	golang.org/x/sys v0.0.0-20210122093101-04d7465088b8 // indirect
+	github.com/containerd/containerd v1.4.1 //indirect
 )
 
 replace github.com/docker/docker => github.com/docker/engine v0.0.0-20190717161051-705d9623b7c1
