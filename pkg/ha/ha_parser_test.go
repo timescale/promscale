@@ -232,12 +232,31 @@ func Test_haParser_ParseData(t *testing.T) {
 					},
 					Samples: []prompb.Sample{
 						{Timestamp: behindLeaseTimestamp, Value: 0.1},
+						{Timestamp: inLeaseTimestamp, Value: 0.2},
 					},
 				},
 			}},
-			wantErr:     false,
-			wantSamples: map[string][]model.SamplesInfo{},
-			wantNumRows: 0,
+			wantErr: false,
+			wantSamples: map[string][]model.SamplesInfo{
+				"test": {
+					{
+						Labels: &model.Labels{
+							Names:      []string{model.ClusterNameLabel, model.MetricNameLabelName},
+							Values:     []string{"cluster3", "test"},
+							MetricName: "test",
+							Str:        "\v\u0000__cluster__\b\u0000cluster3\b\u0000__name__\u0004\u0000test",
+						},
+						SeriesID: -1,
+						Samples: []prompb.Sample{
+							{
+								Value:     0.2,
+								Timestamp: inLeaseTimestamp,
+							},
+						},
+					},
+				},
+			},
+			wantNumRows: 1,
 			cluster:     "cluster3",
 		},
 		{
@@ -375,4 +394,37 @@ func Test_haParser_ParseData(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFilterSamples(t *testing.T) {
+	testCases := []struct {
+		samples      []prompb.Sample
+		acceptedMinT int64
+		expected     []prompb.Sample
+	}{
+		{samples: []prompb.Sample{}, acceptedMinT: 1, expected: []prompb.Sample{}},
+		{
+			samples:      []prompb.Sample{{Timestamp: 0}, {Timestamp: 1}, {Timestamp: 2}},
+			acceptedMinT: 1,
+			expected:     []prompb.Sample{{Timestamp: 1}, {Timestamp: 2}},
+		},
+		{
+			samples:      []prompb.Sample{{Timestamp: 2}, {Timestamp: 0}, {Timestamp: 1}},
+			acceptedMinT: 1,
+			expected:     []prompb.Sample{{Timestamp: 2}, {Timestamp: 1}},
+		},
+	}
+
+	for _, tc := range testCases {
+		out := filterSamples(tc.samples, tc.acceptedMinT)
+		pointerOut, _ := fmt.Printf("%p", out)
+		pointerSamples, _ := fmt.Printf("%p", tc.samples)
+		if pointerOut != pointerSamples {
+			t.Fatal("function returned new slice instead of modifying existing")
+		}
+		if !reflect.DeepEqual(tc.expected, out) {
+			t.Fatalf("unexpected output.\nexpected: %v\n got: %v", tc.expected, out)
+		}
+	}
+
 }

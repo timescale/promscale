@@ -57,12 +57,14 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 			continue
 		}
 
-		if t.Samples[0].Timestamp < minTUnix || minTUnix == 0 {
-			minTUnix = t.Samples[0].Timestamp
-		}
+		for _, sample := range t.Samples {
+			if sample.Timestamp < minTUnix || minTUnix == 0 {
+				minTUnix = sample.Timestamp
+			}
 
-		if t.Samples[len(t.Samples)-1].Timestamp > maxTUnix {
-			maxTUnix = t.Samples[len(t.Samples)-1].Timestamp
+			if sample.Timestamp > maxTUnix {
+				maxTUnix = sample.Timestamp
+			}
 		}
 	}
 
@@ -82,7 +84,8 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	for i := range tts {
 		t := &tts[i]
 
-		if t.Samples[0].Timestamp < acceptedMinTUnix {
+		t.Samples = filterSamples(t.Samples, acceptedMinTUnix)
+		if len(t.Samples) == 0 {
 			continue
 		}
 
@@ -118,4 +121,16 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	}
 
 	return dataSamples, rows, nil
+}
+
+func filterSamples(samples []prompb.Sample, acceptedMinTUnix int64) []prompb.Sample {
+	numAccepted := 0
+	for _, sample := range samples {
+		if sample.Timestamp < acceptedMinTUnix {
+			continue
+		}
+		samples[numAccepted] = sample
+		numAccepted++
+	}
+	return samples[:numAccepted]
 }
