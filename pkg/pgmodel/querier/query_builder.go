@@ -56,41 +56,48 @@ const (
 
 	/* SINGLE METRIC PATH (common, performance critical case) */
 	/* The simpler query (which isn't used):
-			       SELECT s.labels, array_agg(m.time ORDER BY time) as time_array, array_agg(m.value ORDER BY time)
-		           FROM "prom_data"."demo_api_request_duration_seconds_bucket" m
-		           INNER JOIN "prom_data_series"."demo_api_request_duration_seconds_bucket" s ON m.series_id = s.id
-		           WHERE
-		                labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = '__name__' and l.value = 'demo_api_request_duration_seconds_bucket')
-		           AND  labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo')
-		           AND time >= '2020-08-10 10:34:56.828+00'
-		           AND time <= '2020-08-10 11:39:11.828+00'
-				   GROUP BY s.id;
+			SELECT s.labels, array_agg(m.time ORDER BY time) as time_array, array_agg(m.value ORDER BY time)
+			FROM
+				"prom_data"."demo_api_request_duration_seconds_bucket" m
+			INNER JOIN
+				"prom_data_series"."demo_api_request_duration_seconds_bucket" s ON m.series_id = s.id
+			WHERE
+				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = '__name__' and l.value = 'demo_api_request_duration_seconds_bucket')
+				AND  labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo')
+				AND time >= '2020-08-10 10:34:56.828+00'
+				AND time <= '2020-08-10 11:39:11.828+00'
+			GROUP BY s.id;
 
-				   Is not used because it has performance issues:
-					 1) If the series are scanned using the gin index, then the nested loop is not ordered by s.id. That means
-						the scan coming out of the metric table needs to be sorted by s.id with a sort node.
-					 2) In any case, the array_agg have to sort things explicitly by time, wasting the series_id, time column index on the metric table
-						and incurring sort overhead.
+			Is not used because it has performance issues:
+			1) If the series are scanned using the gin index, then the nested loop is not ordered by s.id. That means
+				the scan coming out of the metric table needs to be sorted by s.id with a sort node.
+			2) In any case, the array_agg have to sort things explicitly by time, wasting the series_id, time column index on the metric table
+				and incurring sort overhead.
 
-		Instead we use the following query, which avoids both the sorts above:
-				SELECT s.labels, result.time_array, result.value_array
-				FROM "prom_data_series"."demo_api_request_duration_seconds_bucket" s
-				INNER JOIN LATERAL (
-	  	      		SELECT array_agg(time) as time_array, array_agg(value) as value_array
-	       		 	FROM
-	        		(
-	                	SELECT time, value
-	                	FROM "prom_data"."demo_api_request_duration_seconds_bucket" m
-	                	WHERE m.series_id = s.id
-	                	AND time >= '2020-08-10 10:34:56.828+00'
-	                	AND time <= '2020-08-10 11:39:11.828+00'
-	                	ORDER BY time
-	        		) as rows
-	  			) as result  ON (result.time_array is not null)
-				WHERE
-					labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
-		Future optimizations:
-		  - different query if scanning entire metric (not labels matchers besides __name__)
+	Instead we use the following query, which avoids both the sorts above:
+			SELECT
+				s.labels, result.time_array, result.value_array
+			FROM
+				"prom_data_series"."demo_api_request_duration_seconds_bucket" s
+			INNER JOIN LATERAL
+			(
+				SELECT array_agg(time) as time_array, array_agg(value) as value_array
+				FROM
+				(
+					SELECT time, value
+					FROM
+						"prom_data"."demo_api_request_duration_seconds_bucket" m
+					WHERE
+						m.series_id = s.id
+						AND time >= '2020-08-10 10:34:56.828+00'
+						AND time <= '2020-08-10 11:39:11.828+00'
+					ORDER BY time
+				) as rows
+			) as result  ON (result.time_array is not null)
+			WHERE
+				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
+	Future optimizations:
+	  - different query if scanning entire metric (not labels matchers besides __name__)
 	*/
 	timeseriesByMetricSQLFormat = `SELECT series.labels,  result.time_array, result.value_array
 	FROM %[2]s series
