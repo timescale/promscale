@@ -91,7 +91,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 
 		// Drop __replica__ labelSet from samples
 		for ind, value := range t.Labels {
-			if value.Name == model.ReplicaNameLabel {
+			if value.Name == model.ReplicaNameLabel && value.Value == replicaName {
 				t.Labels = append(t.Labels[:ind], t.Labels[ind+1:]...)
 				break
 			}

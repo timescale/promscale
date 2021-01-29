@@ -41,10 +41,9 @@ func (h *State) UpdateStateFromDB(latestState *HALockState, maxT time.Time, repl
 	h.leader = latestState.Leader
 	h.leaseStart = latestState.LeaseStart
 	h.leaseUntil = latestState.LeaseUntil
-	h.updateMaxTimeOnZero(maxT, replicaName)
 }
 
-func (h *State) updateMaxTimeOnZero(maxT time.Time, replicaName string) {
+func (h *State) UpdateMaxTimeOnZero(maxT time.Time, replicaName string) {
 	if h.maxTimeSeen.IsZero() {
 		h.maxTimeSeen = maxT
 		h.maxTimeInstance = replicaName

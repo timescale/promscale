@@ -33,6 +33,7 @@ BEGIN
         SET lease_until = OLD.lease_until
         WHERE cluster_name = OLD.cluster_name
           AND leader_name = OLD.leader_name
+          AND lease_start = OLD.lease_start
           AND lease_until IS NULL;
     END IF;
 
@@ -112,7 +113,7 @@ BEGIN
             END IF;
         END IF;
     END IF;
-    SELECT * INTO lease_state FROM ha_leases WHERE cluster_name = cluster;
+    SELECT * INTO STRICT lease_state FROM ha_leases WHERE cluster_name = cluster;
     RETURN lease_state;
 END;
 $func$ LANGUAGE plpgsql VOLATILE;
@@ -134,7 +135,7 @@ BEGIN
 
 
     SELECT *
-    INTO lease_state
+    INTO STRICT lease_state
     FROM ha_leases
     WHERE cluster_name = cluster;
     RETURN lease_state;
