@@ -2420,6 +2420,10 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			name:  "contradictory name",
 			query: `{__name__="metric_1", __name__="metric_2"}`,
 		},
+		{
+			name:  "non-contradictory name",
+			query: `{__name__="metric_1", __name__!="metric_2"}`,
+		},
 	}
 	start := time.Unix(startTime/1000, 0)
 	end := time.Unix(endTime/1000, 0)

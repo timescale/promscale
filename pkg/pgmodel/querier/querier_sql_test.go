@@ -307,7 +307,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 									AND time <= '1970-01-01T00:00:02Z'
 									ORDER BY time
 							) as time_ordered_rows
-					) as result ON (result.time_array is not null)
+					) as result ON (result.value_array is not null)
 					WHERE TRUE`,
 					Args:    nil,
 					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
@@ -426,7 +426,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql: `SELECT series.labels, result.time_array, result.value_array FROM "prom_data_series"."foo" series
 					INNER JOIN LATERAL
-					( SELECT array_agg(time) as time_array, array_agg(value) as value_array FROM ( SELECT time, value FROM "prom_data"."foo" metric WHERE metric.series_id = series.id AND time >= '1970-01-01T00:00:01Z' AND time <= '1970-01-01T00:00:02Z' ORDER BY time ) as time_ordered_rows ) as result ON (result.time_array is not null)
+					( SELECT array_agg(time) as time_array, array_agg(value) as value_array FROM ( SELECT time, value FROM "prom_data"."foo" metric WHERE metric.series_id = series.id AND time >= '1970-01-01T00:00:01Z' AND time <= '1970-01-01T00:00:02Z' ORDER BY time ) as time_ordered_rows ) as result ON (result.value_array is not null)
 					WHERE FALSE`,
 					Args:    []interface{}(nil),
 					Results: model.RowResults{},

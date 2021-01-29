@@ -212,6 +212,40 @@ func TestSQLQuery(t *testing.T) {
 			expectResponse: []*prompb.TimeSeries{},
 		},
 		{
+			name: "two matcher, non-contradictory name",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+					{
+						Type:  prompb.LabelMatcher_NEQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "secondMetric",
+					},
+				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
+			},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: pgmodel.MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
+					},
+				},
+			},
+		},
+		{
 			name: "one matcher, regex metric",
 			query: &prompb.Query{
 				Matchers: []*prompb.LabelMatcher{
@@ -594,10 +628,7 @@ func TestSQLQuery(t *testing.T) {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Query(c.query)
 
-				if err != nil && c.expectErr == nil {
-					t.Fatalf("did not expect an error:\ngot\n%s", err)
-				}
-				if err != nil && err.Error() != c.expectErr.Error() {
+				if err != nil && (c.expectErr == nil || err.Error() != c.expectErr.Error()) {
 					t.Fatalf("unexpected error returned:\ngot\n%s\nwanted\n%s", err, c.expectErr)
 				}
 
