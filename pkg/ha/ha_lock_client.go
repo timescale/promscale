@@ -24,6 +24,7 @@ const (
 	checkInsertSql       = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
 	tryChangeLeaderSql   = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
 	latestLockStateSql   = "SELECT leader, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
+	readLeaseSettings    = "SELECT value FROM "+schema.Catalog+".default where key IN($1)"
 )
 
 // haLockClient defines an interface for checking and changing leader status
@@ -90,8 +91,7 @@ func (h *haLockClientDB) readLockState(ctx context.Context, cluster string) (*st
 func (h *haLockClientDB) readLeaseSettings(ctx context.Context) (timeout, refresh time.Duration, err error) {
 	var value string
 	// get leaseTimeOut
-	row := h.dbConn.QueryRow(ctx,
-		"SELECT value FROM "+schema.Catalog+".default where key IN('"+leaseTimeoutKey+"')")
+	row := h.dbConn.QueryRow(ctx, readLeaseSettings, leaseTimeoutKey)
 	if err != nil {
 		return -1, -1, err
 	}
@@ -103,8 +103,7 @@ func (h *haLockClientDB) readLeaseSettings(ctx context.Context) (timeout, refres
 	}
 
 	// get leaseRefresh
-	row = h.dbConn.QueryRow(ctx,
-		"SELECT value FROM "+schema.Catalog+".default where key IN('"+leaseRefreshKey+"')")
+	row = h.dbConn.QueryRow(ctx, readLeaseSettings, leaseRefreshKey)
 	if err != nil {
 		return -1, -1, err
 	}

@@ -75,7 +75,9 @@ func (h *Service) haStateSyncer() {
 func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
 	s, ok := h.state.Load(clusterName)
 	if !ok {
-		s, _ = h.state.LoadOrStore(clusterName, &state.State{})
+		state := &state.State{}
+		state.UpdateMaxTimeOnZero(maxT, replicaName)
+		s, _ = h.state.LoadOrStore(clusterName, state)
 		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
 		if err != nil {
 			return false, time.Time{}, err
@@ -100,11 +102,22 @@ func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName str
 		if err != nil {
 			return false, time.Time{}, err
 		}
+		state, err := h.loadState(clusterName)
+		if err != nil {
+			return false, time.Time{}, err
+		}
+		// on sync-up if notice leader has changed skip
+		// ingestion replica prom instance
+		if s := state.Clone(); s.Leader != replicaName {
+			return false, time.Time{}, nil
+		}
+
 	}
 
 	// requesting replica is leader, allow
 	return true, acceptedMinT, nil
 }
+
 
 func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replicaName string) error {
 	// TODO use proper context
@@ -119,7 +132,7 @@ func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replica
 	}
 
 	// leader changed
-	if err != nil && leaderHasChanged {
+	if leaderHasChanged {
 		// read latest lock state
 		stateFromDB, err = h.lockClient.readLockState(context.Background(), clusterName)
 		// couldn't get latest lock state
