@@ -270,6 +270,7 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 		TelemetryPath:        "/metrics",
 		MaxQueryTimeout:      time.Minute * 2,
 		SubQueryStepInterval: time.Minute,
+		EnabledFeaturesList:  []string{"promql-at-modifier"},
 	}
 
 	return buildRouterWithAPIConfig(pool, apiConfig)

@@ -87,7 +87,7 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 	}
 
 	if cfg.Auth.BasicAuthUsername != "" {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
 			user, pass, ok := r.BasicAuth()
 			if !ok || cfg.Auth.BasicAuthUsername != user || cfg.Auth.BasicAuthPassword != pass {
 				log.Error("msg", "Unauthorized access to endpoint, invalid username or password")
@@ -95,11 +95,11 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			handler.ServeHTTP(w, r)
-		})
+		}
 	}
 
 	if cfg.Auth.BearerToken != "" {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
 			splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
 			if cfg.Auth.BearerToken != splitToken[1] {
 				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token")
@@ -107,7 +107,7 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			handler.ServeHTTP(w, r)
-		})
+		}
 	}
 
 	return handler

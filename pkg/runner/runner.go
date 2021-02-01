@@ -106,10 +106,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		return nil, fmt.Errorf("both TLS Ceriticate File and TLS Key File need to be provided for a valid TLS configuration")
 	}
 
-	if cfg.APICfg.EnabledFeatures != "" {
-		cfg.APICfg.EnabledFeaturesList = strings.Split(cfg.APICfg.EnabledFeatures, ",")
-	}
-
 	corsOriginRegex, err := compileAnchoredRegexString(corsOriginFlag)
 	if err != nil {
 		return nil, fmt.Errorf("could not compile CORS regex string %v: %w", corsOriginFlag, err)
