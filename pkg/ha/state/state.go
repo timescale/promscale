@@ -1,28 +1,29 @@
 package state
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
 
 type State struct {
-	leader            string
-	leaseStart        time.Time
-	leaseUntil        time.Time
-	maxTimeSeen       time.Time // max data time seen by any instance
-	maxTimeInstance   string    // the instance name that’s seen the maxtime
-	maxTimeSeenLeader time.Time
-	_mu               sync.RWMutex
+	leader                string
+	leaseStart            time.Time
+	leaseUntil            time.Time
+	maxTimeSeen           time.Time // max data time seen by any instance
+	maxTimeInstance       string    // the instance name that’s seen the maxtime
+	maxTimeSeenLeader     time.Time
+	_mu                   sync.RWMutex
+	recentLeaderWriteTime time.Time
 }
 
 type StateView struct {
-	Leader            string
-	LeaseStart        time.Time
-	LeaseUntil        time.Time
-	MaxTimeSeen       time.Time
-	MaxTimeInstance   string
-	MaxTimeSeenLeader time.Time
+	Leader                string
+	LeaseStart            time.Time
+	LeaseUntil            time.Time
+	MaxTimeSeen           time.Time
+	MaxTimeInstance       string
+	MaxTimeSeenLeader     time.Time
+	RecentLeaderWriteTime time.Time
 }
 
 // haLockState represents the current lock holder
@@ -34,8 +35,7 @@ type HALockState struct {
 	LeaseUntil time.Time
 }
 
-func (h *State) UpdateStateFromDB(latestState *HALockState, maxT time.Time, replicaName string) {
-	fmt.Println("latest state: ", latestState)
+func (h *State) UpdateStateFromDB(latestState *HALockState) {
 	h._mu.Lock()
 	defer h._mu.Unlock()
 	h.leader = latestState.Leader
@@ -61,6 +61,12 @@ func (h *State) UpdateMaxSeenTime(currentReplica string, currentMaxT time.Time) 
 	if currentMaxT.After(h.maxTimeSeenLeader) && currentReplica == h.leader {
 		h.maxTimeSeenLeader = currentMaxT
 	}
+}
+
+func (h *State) UpdateLastLeaderWriteTime() {
+	h._mu.Lock()
+	defer h._mu.Unlock()
+	h.recentLeaderWriteTime = time.Now()
 }
 
 func (h *State) Clone() *StateView {
