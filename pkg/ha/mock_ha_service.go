@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/timescale/promscale/pkg/ha/state"
-	"golang.org/x/sync/semaphore"
 )
 
 func MockNewHAService(clusterInfo []*state.HALockState) *Service {
@@ -18,11 +17,11 @@ func MockNewHAService(clusterInfo []*state.HALockState) *Service {
 	}
 
 	service := &Service{
-		state:             &sync.Map{},
-		lockClient:        lockClient,
-		leaseTimeout:      timeout,
-		leaseRefresh:      refresh,
-		_leaderChangeLock: semaphore.NewWeighted(1),
+		state:              &sync.Map{},
+		lockClient:         lockClient,
+		leaseTimeout:       timeout,
+		leaseRefresh:       refresh,
+		_leaderChangeLocks: &sync.Map{},
 	}
 	return service
 }

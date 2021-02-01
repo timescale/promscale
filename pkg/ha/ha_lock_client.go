@@ -20,7 +20,7 @@ const (
 	leaseTimeoutKey    = "ha_lease_timeout"
 	leasesTable        = schema.Catalog + ".ha_leases"
 	updateLeaseFn      = schema.Catalog + ".update_lease"
-	tryChangeLeaderFn  = schema.Catalog + "try_change_leader"
+	tryChangeLeaderFn  = schema.Catalog + ".try_change_leader"
 	checkInsertSql     = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
 	tryChangeLeaderSql = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
 	latestLockStateSql = "SELECT leader, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
