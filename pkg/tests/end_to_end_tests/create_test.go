@@ -15,6 +15,7 @@ import (
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -1288,6 +1289,136 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 	})
 }
+
+func TestExecuteCompressionMetricsLocked(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("compression meaningless without TimescaleDB")
+	}
+	if !*useTimescale2 {
+		t.Skip("test meaningless without Timescale 2")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		// in early versions of Timescale multinode the compression catalog
+		// would not be updated for distributed hypertables so we detect
+		// compression using a probe INSERT
+		isChunkCompressed := func(time string) bool {
+			insert := fmt.Sprintf("INSERT INTO prom_data.test VALUES ('%s', 0.1, 1);", time)
+			_, err := db.Exec(context.Background(), insert)
+			if err != nil {
+				pgErr, ok := err.(*pgconn.PgError)
+				if !ok {
+					t.Fatal(err)
+				}
+				if pgErr.SQLState() == "42710" ||
+					pgErr.SQLState() == "0A000" {
+					//already compressed
+					return true
+				} else if pgErr.SQLState() == "23505" {
+					// violates unique constraint
+					return false
+				}
+				t.Fatal(err)
+			}
+			return false
+		}
+
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: model.MetricNameLabelName, Value: "test"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if isChunkCompressed("1970-01-01 00:00:00.001+00") {
+			t.Error("chunk compressed too soon")
+		}
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test', INTERVAL '100 years')")
+		if err != nil {
+			t.Error(err)
+		}
+
+		runMaintenanceJob := func() {
+			//execute_maintenance and not execute_compression_policy since we want to test end-to-end
+			_, err = db.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		runMaintenanceJob()
+
+		// should not be compressed, not enough chunks
+		if isChunkCompressed("1970-01-01 00:00:00.001+00") {
+			t.Error("chunk compressed too soon")
+		}
+
+		// add another chunk to each data node
+		insert := "INSERT INTO prom_data.test VALUES ('1970-01-02 00:00:00.001+00', 0.1, 1);"
+		_, err = db.Exec(context.Background(), insert)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		insert = "INSERT INTO prom_data.test VALUES ('1970-01-03 00:00:00.001+00', 0.1, 1);"
+		_, err = db.Exec(context.Background(), insert)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		/* lock metrics */
+		tx, err := db.Begin(context.Background())
+		require.NoError(t, err)
+		_, err = tx.Exec(context.Background(), "SELECT m.* FROM _prom_catalog.metric m FOR NO KEY UPDATE;")
+		require.NoError(t, err)
+
+		go func() {
+			time.Sleep(time.Second)
+			err := tx.Commit(context.Background())
+			require.NoError(t, err)
+		}()
+
+		runMaintenanceJob()
+
+		// first chunk should be compressed
+		if !isChunkCompressed("1970-01-01 00:00:00.001+00") {
+			t.Fatal("first chunk not compressed")
+		}
+
+		// second chunk should not be
+		if isChunkCompressed("1970-02-01 00:00:00.001+00") {
+			t.Error("second chunk compressed too soon")
+		}
+
+		// third chunk should not be
+		if isChunkCompressed("1970-03-01 00:00:00.001+00") {
+			t.Error("second chunk compressed too soon")
+		}
+
+	})
+}
+
 func TestConfigMaintenanceJobs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
