@@ -73,9 +73,14 @@ func TestMaskPassword(t *testing.T) {
 		"pass='foobar' host='localhost'":                                     "pass='foobar' host='localhost'",
 		"host='localhost' password='foobar'":                                 "host='localhost' password='****'",
 		"password:foobar  host: localhost":                                   "password:****  host: localhost",
-		"password:foo bar  host: localhost":                                  "password:**** bar  host: localhost",
+		"password:foo bar  host: localhost":                                  "password:****  host: localhost",
 		"password: foobar  host: localhost":                                  "password: ****  host: localhost",
 		"password:  foobar  host: localhost":                                 "password:  ****  host: localhost",
+		"password:  foobar with spaces host: localhost":                      "password:  **** host: localhost",
+		"password: foobar with spaces host: localhost":                       "password: **** host: localhost",
+		"password:foobar with spaces host: localhost":                        "password:**** host: localhost",
+		"password:\"foo bar\" host: localhost":                               "password:**** host: localhost",
+		"Password: \"foo bar\" host: localhost":                              "password: **** host: localhost",
 		"pass:foobar host: localhost":                                        "pass:foobar host: localhost",
 		"host: localhost password: foobar":                                   "host: localhost password: ****",
 		"host: localhost Password: foobar":                                   "host: localhost password: ****",
@@ -86,7 +91,7 @@ func TestMaskPassword(t *testing.T) {
 
 	for input, expected := range testData {
 		if output := MaskPassword(input); expected != output {
-			t.Errorf("Unexpected function output:\ngot %s\nwanted %s\n", output, expected)
+			t.Errorf("Unexpected masking output:\ngot %s\nwanted %s\n", output, expected)
 		}
 	}
 }

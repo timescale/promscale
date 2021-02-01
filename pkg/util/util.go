@@ -24,7 +24,7 @@ const (
 
 var (
 	maskPasswordRegex1 = regexp.MustCompile(`[p|P]assword=(\s*?)'([^']+?)'`)
-	maskPasswordRegex2 = regexp.MustCompile(`[p|P]assword:(\s*?)([^\s]+?)( |$)`)
+	maskPasswordRegex2 = regexp.MustCompile(`[p|P]assword:(\s*)(.*?)(\s*\w+:|$)`)
 	maskPasswordRegex3 = regexp.MustCompile(`postgres:(([^:]*\:){1})([^@]*)`)
 )
 
