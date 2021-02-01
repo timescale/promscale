@@ -131,14 +131,14 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	if cfg.APICfg.ReadOnly {
 		flagset := make(map[string]bool)
 		fs.Visit(func(f *flag.Flag) { flagset[f.Name] = true })
-		if flagset["migrate"] || flagset["use-schema-version-lease"] {
+		if (flagset["migrate"] && cfg.Migrate) || (flagset["use-schema-version-lease"] && cfg.UseVersionLease) {
 			return nil, fmt.Errorf("Migration flags not supported in read-only mode")
 		}
-		if flagset["install-timescaledb"] {
-			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
-		}
-		if flagset["leader-election-pg-advisory-lock-id"] {
+		if flagset["leader-election-pg-advisory-lock-id"] && cfg.HaGroupLockID != 0 {
 			return nil, fmt.Errorf("Invalid option for HA group lock ID, cannot enable HA mode and read-only mode")
+		}
+		if flagset["install-extensions"] && cfg.InstallExtensions {
+			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
 		}
 		cfg.Migrate = false
 		cfg.StopAfterMigrate = false
