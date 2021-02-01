@@ -1995,8 +1995,8 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression() TO 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
 AS $$
 DECLARE
-    r RECORD;
-    remaining_metrics text[] DEFAULT '{}';
+    r SCHEMA_CATALOG.metric;
+    remaining_metrics SCHEMA_CATALOG.metric[] DEFAULT '{}';
 BEGIN
     --Do one loop with metric that could be locked without waiting.
     --This allows you to do everything you can while avoiding lock contention.
@@ -2008,7 +2008,7 @@ BEGIN
         FROM SCHEMA_CATALOG.get_metrics_that_need_compression()
     LOOP
         IF NOT SCHEMA_CATALOG.lock_metric_for_maintenance(r.id, wait=>false) THEN
-            remaining_metrics := remaining_metrics || r.metric_name;
+            remaining_metrics := remaining_metrics || r;
             CONTINUE;
         END IF;
 
@@ -2017,8 +2017,8 @@ BEGIN
     END LOOP;
 
     FOR r IN
-        SELECT
-        FROM unnest(remaining_metrics) as m(metric_name)
+        SELECT *
+        FROM unnest(remaining_metrics)
     LOOP
         PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
