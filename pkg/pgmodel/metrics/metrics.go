@@ -61,6 +61,20 @@ var (
 			Buckets:   prometheus.DefBuckets,
 		},
 	)
+	HAClusterLeaderDetails = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "ha_cluster_leader_info",
+			Help:      "Info on HA clusters and respective leaders.",
+		},
+		[]string{"cluster", "replica"})
+	NumOfHAClusterLeaderChanges = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Name:      "ha_cluster_leader_changes_total",
+			Help:      "Total number of times leader changed per cluster.",
+		},
+		[]string{"cluster"})
 )
 
 func init() {
@@ -72,5 +86,7 @@ func init() {
 		NumInsertsPerBatch,
 		NumRowsPerBatch,
 		DbBatchInsertDuration,
+		HAClusterLeaderDetails,
+		NumOfHAClusterLeaderChanges,
 	)
 }
