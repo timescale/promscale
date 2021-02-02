@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -123,6 +124,16 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		return nil, err
 	}
 
+	if cfg.InstallExtensions {
+		// Only check for background workers if TimessaleDB is installed.
+		if notOk, err := isBGWLessThanDBs(conn); err != nil {
+			return nil, fmt.Errorf("Error checking the number of background workers: %w", err)
+		} else if notOk {
+			log.Warn("msg", "Maximum background worker setting is too low for the number of databases in your system. "+
+				"Please increase your timescaledb.max_background_workers setting. See https://docs.timescale.com/latest/getting-started/configuring#workers for more information.")
+		}
+	}
+
 	// Election must be done after migration and version-checking: if we're on
 	// the wrong version we should not participate in leader-election.
 	elector, err = initElector(cfg, promMetrics)
@@ -151,6 +162,31 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	}
 
 	return client, nil
+}
+
+// isBGWLessThanDBs checks if the background workers count is less than the database count. It should be
+// called only if TimescaleDB is installed.
+func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
+	var (
+		dbs       int
+		maxBGWStr string
+	)
+	err := conn.QueryRow(context.Background(), "SHOW timescaledb.max_background_workers").Scan(&maxBGWStr)
+	if err != nil {
+		return false, fmt.Errorf("Unable to fetch timescaledb.max_background_workers: %w", err)
+	}
+	maxBGWs, err := strconv.Atoi(maxBGWStr)
+	if err != nil {
+		return false, fmt.Errorf("maxBGw string conversion: %w", err)
+	}
+	err = conn.QueryRow(context.Background(), "SELECT count(*) from pg_catalog.pg_database").Scan(&dbs)
+	if err != nil {
+		return false, fmt.Errorf("Unable to fetch count of all databases: %w", err)
+	}
+	if maxBGWs < dbs+2 {
+		return true, nil
+	}
+	return false, nil
 }
 
 func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
