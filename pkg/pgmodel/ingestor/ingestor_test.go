@@ -215,7 +215,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			},
 			count:         0,
 			countSeries:   0,
-			insertDataErr: fmt.Errorf("ha mode is enabled and one/both of the __cluster__, __replica__ labels is/are empty"),
+			insertDataErr: fmt.Errorf("HA enabled, but both __cluster__ and __replica__ labels are empty"),
 			ha:            true,
 		},
 	}

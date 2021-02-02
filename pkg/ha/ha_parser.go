@@ -38,14 +38,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		clusterName = s.GetClusterName()
 	}
 
-	if replicaName == "" || clusterName == "" {
-		err := fmt.Errorf(
-			"ha mode is enabled and one/both of the %s:%s, %s:%s labels is/are empty",
-			model.ClusterNameLabel,
-			model.ReplicaNameLabel,
-			clusterName,
-			replicaName,
-		)
+	if err := checkClusterAndReplicaLabelAreSet(clusterName, replicaName); err != nil {
 		return nil, rows, err
 	}
 
@@ -133,4 +126,26 @@ func filterSamples(samples []prompb.Sample, acceptedMinTUnix int64) []prompb.Sam
 		numAccepted++
 	}
 	return samples[:numAccepted]
+}
+
+func checkClusterAndReplicaLabelAreSet(cluster, replica string) error {
+	if cluster == "" && replica == "" {
+		return fmt.Errorf("HA enabled, but both %s and %s labels are empty",
+			model.ClusterNameLabel,
+			model.ReplicaNameLabel,
+		)
+	} else if cluster == "" {
+		return fmt.Errorf("HA enabled, but %s label is empty; %s set to: %s",
+			model.ClusterNameLabel,
+			model.ReplicaNameLabel,
+			replica,
+		)
+	} else if replica == "" {
+		return fmt.Errorf("HA enabled, but %s label is empty; %s set to: %s",
+			model.ReplicaNameLabel,
+			model.ClusterNameLabel,
+			cluster,
+		)
+	}
+	return nil
 }
