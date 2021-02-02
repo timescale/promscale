@@ -1,7 +1,13 @@
 # Promscale command line doc
 
-This document gives you information about the configuration flags supported by Promscale.
-You can also find information on flags with `promscale_<version> -help` 
+This document gives you information about the configuration flags and arguments supported by Promscale.
+You can also find information on flags with `promscale_<version> -help`.
+
+## Arguments
+| Argument | Description |
+|------|:-----|
+| version | Prints the version information of Promscale. |
+| help | Prints the information related to flags supported by Promscale.
 
 ## General flags
 | Flag | Type | Default | Description |
