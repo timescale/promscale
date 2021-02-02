@@ -77,7 +77,7 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 	}
 
 	var pgConfig *pgxpool.Config
-	if cfg.DbUri == DefaultDBUri {
+	if cfg.DbUri == defaultDBUri {
 		pgConfig, err = pgxpool.ParseConfig(connectionStr + fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
 	} else {
 		pgConfig, err = pgxpool.ParseConfig(connectionStr + fmt.Sprintf("&pool_max_conns=%d&pool_min_conns=%d", maxConnections, minConnections))
