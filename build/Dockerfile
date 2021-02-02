@@ -1,15 +1,17 @@
 # Build stage
-FROM golang:1.15.4-alpine AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:1.15.4-alpine AS builder
 COPY ./.git promscale/.git
 COPY ./pkg promscale/pkg
 COPY ./cmd promscale/cmd
 COPY ./go.mod promscale/go.mod
 COPY ./go.sum promscale/go.sum
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 RUN apk update && apk add --no-cache git \
     && cd promscale \
     && go mod download \
     && GIT_COMMIT=$(git rev-list -1 HEAD) \
-    && CGO_ENABLED=0 go build -a \
+    && GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 go build -a \
     --ldflags '-w' --ldflags "-X version.CommitHash=$GIT_COMMIT" \
     -o /go/promscale ./cmd/promscale
 

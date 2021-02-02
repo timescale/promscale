@@ -14,6 +14,7 @@ builds:
 - env:
   - CGO_ENABLED=0
   main: ./cmd/promscale/
+  id: promscale
   hooks:
     # build el8 rpm
     # will be triggered multiple times but we need
@@ -66,23 +67,39 @@ changelog:
 
 dockers:
 -
-  binaries:
-  - promscale
+  ids: []
   skip_push: false
   dockerfile: ./build/Dockerfile
-  extra_files:
-  - .git
-  - go.sum
-  - go.mod
-  - pkg
-  - cmd
+  use_buildx: true
+  build_flag_templates:
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.name={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+  - "--label=org.opencontainers.image.source={{.GitURL}}"
+  - "--platform=linux/amd64"
+  extra_files: [.git, go.sum, go.mod, pkg, cmd]
   image_templates:
-  - "timescale/promscale:{{ .Tag }}"
-  - "timescale/promscale:{{ .Major }}.{{ .Minor }}"
-  - "timescale/promscale:latest"
+  - "timescale/promscale:{{ .Tag }}-amd64"
 -
-  binaries:
-  - prom-migrator
+  ids: []
+  skip_push: false
+  dockerfile: ./build/Dockerfile
+  use_buildx: true
+  build_flag_templates:
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.name={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+  - "--label=org.opencontainers.image.source={{.GitURL}}"
+  - "--platform=linux/arm64"
+  extra_files: [.git, go.sum, go.mod, pkg, cmd]
+  image_templates:
+  - "timescale/promscale:{{ .Tag }}-arm64"
+-
+  ids: []
   skip_push: false
   dockerfile: ./build/prom-migrator/Dockerfile
   extra_files:
@@ -94,6 +111,21 @@ dockers:
   image_templates:
   - "timescale/prom-migrator:0.0.1-beta"
   - "timescale/prom-migrator:latest"
+
+docker_manifests:
+- name_template: 'timescale/promscale:{{ .Tag }}'
+  image_templates:
+  - 'timescale/promscale:{{ .Tag }}-amd64'
+  - 'timescale/promscale:{{ .Tag }}-arm64'
+- name_template: 'timescale/promscale:{{ .Major }}.{{ .Minor }}'
+  image_templates:
+  - 'timescale/promscale:{{ .Tag }}-amd64'
+  - 'timescale/promscale:{{ .Tag }}-arm64'
+- name_template: 'timescale/promscale:latest'
+  image_templates:
+  - 'timescale/promscale:{{ .Tag }}-amd64'
+  - 'timescale/promscale:{{ .Tag }}-arm64'
+
 release:
   extra_files:
     - glob: ./dist/rpm/*
