@@ -151,6 +151,21 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	return cfg, nil
 }
 
+// ParseArgs parses the provided args and prints accordingly. This function should be called before ParseFlags in order
+// to process the non-input flags like "-version".
+func ParseArgs(args []string) (shouldProceed bool) {
+	shouldProceed = true
+	for _, flag := range args {
+		flag = flag[1:]
+		switch flag {
+		case "version":
+			shouldProceed = false
+			fmt.Println("Version: ", version.Version, "; Commit Hash: ", version.CommitHash)
+		}
+	}
+	return
+}
+
 func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
