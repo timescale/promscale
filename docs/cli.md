@@ -48,6 +48,7 @@ You can also find information on flags with `promscale_<version> -help`.
 
 | Flag | Type | Default | Description |
 |------|:-----:|:-------:|:-----------|
+| app | string | promscale@{version} | 'app' sets application_name in database connection string. This is helpful during debugging when looking at pg_stat_activity. |
 | db-host | string | localhost | Host for TimescaleDB/Vanilla Postgres. |
 | db-port | int | 5432 | TimescaleDB/Vanilla Postgres connection password. |
 | db-name | string | timescale | Database name. |
