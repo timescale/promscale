@@ -16,7 +16,7 @@ services:
       - ${PWD}/prometheus.yml:/etc/prometheus/prometheus.yml
 
   promscale:
-    image: timescale/promscale:0.1.4
+    image: timescale/promscale:latest
     ports:
       - 9201:9201/tcp
     build:
