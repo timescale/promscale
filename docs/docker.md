@@ -73,6 +73,8 @@ remote_read:
 
 **Note:** Setting `read_recent` to `true` will make Prometheus query data from Promscale for all PromQL queries. This is highly recommended.
 
+You can configure Prometheus remote-write with our recommended configurations from [here](/docs/configuring_prometheus.md). 
+
 ## ⚙️ Configuration
 
 The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file. 
