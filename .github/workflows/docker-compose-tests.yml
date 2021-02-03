@@ -22,6 +22,10 @@ jobs:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
 
+    - name: Test docker-compose setup referenced in docs
+      run: ./docker-compose/test.sh
+      shell: bash
+
     - name: Test high-availability docker-compose setup
       run: ./docker-compose/high-availability/test.sh
       shell: bash
