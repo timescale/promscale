@@ -60,12 +60,17 @@ Install the cron job:
 
 You must tell prometheus to use this remote storage connector by adding
 the following lines to `prometheus.yml`:
-```
+```yaml
 remote_write:
   - url: "http://<connector-address>:9201/write"
 remote_read:
   - url: "http://<connector-address>:9201/read"
+    read_recent: true
 ```
+
+**Note:** Setting `read_recent` to `true` will make Prometheus query data from Promscale for all PromQL queries. This is highly recommended.
+
+You can configure Prometheus remote-write with our recommended configurations from [here](/docs/configuring_prometheus.md).
 
 ## ⚙️ Configuration
 

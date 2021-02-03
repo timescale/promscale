@@ -111,7 +111,6 @@ remote_write:
 remote_read:
  - url: "http://<promscale-host>:9201/read"
    read_recent: true
-  
 ```
 
 Run Prometheus using the following command: 
