@@ -71,6 +71,7 @@ func TestMigrateLock(t *testing.T) {
 			StopAfterMigrate: false,
 			UseVersionLease:  true,
 			PgmodelCfg: pgclient.Config{
+				AppName:                 pgclient.DefaultApp,
 				Database:                *testDatabase,
 				Host:                    pgxcfg.Host,
 				Port:                    int(pgxcfg.Port),
@@ -164,6 +165,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 			StopAfterMigrate:  false,
 			UseVersionLease:   true,
 			PgmodelCfg: pgclient.Config{
+				AppName:                 pgclient.DefaultApp,
 				Database:                *testDatabase,
 				Host:                    pgxcfg.Host,
 				Port:                    int(pgxcfg.Port),

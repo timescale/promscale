@@ -7,6 +7,7 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -269,6 +270,7 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 		TelemetryPath:        "/metrics",
 		MaxQueryTimeout:      time.Minute * 2,
 		SubQueryStepInterval: time.Minute,
+		EnabledFeaturesList:  []string{"promql-at-modifier"},
 	}
 
 	return buildRouterWithAPIConfig(pool, apiConfig)
@@ -293,5 +295,9 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")
 	}
 
-	return api.GenerateRouter(cfg, metrics, pgClient, nil), pgClient, nil
+	hander, err := api.GenerateRouter(cfg, metrics, pgClient, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate router: %w", err)
+	}
+	return hander, pgClient, nil
 }

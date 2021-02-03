@@ -2197,6 +2197,10 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 			name:  "real query 523",
 			query: `avg_over_time(rate(demo_cpu_usage_seconds_total[1m])[2m:10s])`,
 		},
+		{
+			name:  "real query 524",
+			query: fmt.Sprintf("sum(demo_cpu_usage_seconds_total[5m] @ %d)", samplesStartTime+30000/1000),
+		},
 	}
 	start := time.Unix(samplesStartTime/1000, 0)
 	end := time.Unix(samplesEndTime/1000, 0)
@@ -2207,8 +2211,6 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	start := time.Unix(startTime/1000, 0)
-	end := time.Unix(endTime/1000, 0)
 
 	testCases := []testCase{
 		{
@@ -2403,8 +2405,13 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			name:  "complex query 3",
 			query: `holt_winters(metric_1[10m], 0.1, 0.5)`,
 		},
+		{
+			name:  "query with @ modifier",
+			query: fmt.Sprintf("sum(metric_1[5m] @ %d)", startTime+30000/1000),
+		},
 	}
-
+	start := time.Unix(startTime/1000, 0)
+	end := time.Unix(endTime/1000, 0)
 	runPromQLQueryTests(t, testCases, start, end)
 }
 

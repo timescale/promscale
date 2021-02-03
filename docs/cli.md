@@ -1,13 +1,21 @@
 # Promscale command line doc
 
-This document gives you information about the configuration flags supported by Promscale.
-You can also find information on flags with `promscale_<version> -help` 
+This document gives you information about the configuration flags and arguments supported by Promscale.
+You can also find information on flags with `promscale_<version> -help`.
+
+## Arguments
+| Argument | Description |
+|------|:-----|
+| version | Prints the version information of Promscale. |
+| help | Prints the information related to flags supported by Promscale.
 
 ## General flags
 | Flag | Type | Default | Description |
 |------|:-----:|:-------:|:-----------|
 | config | string | config.yml | YAML configuration file path for Promscale. |
-| install-timescaledb | boolean | true | Install or update TimescaleDB extension. |
+| install-extensions | boolean | true | Install TimescaleDB & Promscale extensions. |
+| upgrade-extensions | boolean | true | Upgrades TimescaleDB & Promscale extensions. |
+| upgrade-prerelease-extensions | boolean | false | Upgrades to pre-release TimescaleDB, Promscale extensions. |
 | leader-election-pg-advisory-lock-id | integer | 0 (disabled) | Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election. |
 | leader-election-pg-advisory-lock-prometheus-timeout | slack/duration | -1 | Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not send any data within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips. |
 | leader-election-scheduled-interval | duration | 5 seconds | Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock. |
@@ -40,6 +48,7 @@ You can also find information on flags with `promscale_<version> -help`
 
 | Flag | Type | Default | Description |
 |------|:-----:|:-------:|:-----------|
+| app | string | promscale@{version} | 'app' sets application_name in database connection string. This is helpful during debugging when looking at pg_stat_activity. |
 | db-host | string | localhost | Host for TimescaleDB/Vanilla Postgres. |
 | db-port | int | 5432 | TimescaleDB/Vanilla Postgres connection password. |
 | db-name | string | timescale | Database name. |
@@ -57,5 +66,6 @@ You can also find information on flags with `promscale_<version> -help`
 
 | Flag | Type | Default | Description |
 |------|:-----:|:-------:|:-----------|
+| promql-enable-feature | string | "" | [EXPERIMENTAL] Enable optional PromQL features, separated by commas. These are disabled by default in Promscale's PromQL engine. Currently, this includes 'promql-at-modifier' only. For more information, see https://github.com/prometheus/prometheus/blob/master/docs/disabled_features.md |
 | promql-query-timeout | duration | 2 minutes | Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in '/api/v1/query.*' endpoints. |
 | promql-default-subquery-step-interval | duration | 1 minute | Default step interval to be used for PromQL subquery evaluation. This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option. |
