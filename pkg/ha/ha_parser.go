@@ -28,15 +28,16 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	dataSamples := make(map[string][]model.SamplesInfo)
 	rows := 0
 
-	var replicaName, clusterName string
-	if len(tts) > 0 {
-		s, _, err := model.LabelProtosToLabels(tts[0].Labels)
-		if err != nil {
-			return nil, rows, err
-		}
-		replicaName = s.GetReplicaName()
-		clusterName = s.GetClusterName()
+	if len(tts) == 0 {
+		return dataSamples, rows, nil
 	}
+
+	s, _, err := model.LabelProtosToLabels(tts[0].Labels)
+	if err != nil {
+		return nil, rows, err
+	}
+	replicaName := s.GetReplicaName()
+	clusterName := s.GetClusterName()
 
 	if err := checkClusterAndReplicaLabelAreSet(clusterName, replicaName); err != nil {
 		return nil, rows, err
@@ -44,6 +45,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 
 	// find samples time range
 	var minTUnix, maxTUnix int64
+	minTWasSet := false
 	for i := range tts {
 		t := &tts[i]
 		if len(t.Samples) == 0 {
@@ -51,8 +53,9 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		}
 
 		for _, sample := range t.Samples {
-			if sample.Timestamp < minTUnix || minTUnix == 0 {
+			if sample.Timestamp < minTUnix || !minTWasSet {
 				minTUnix = sample.Timestamp
+				minTWasSet = true
 			}
 
 			if sample.Timestamp > maxTUnix {

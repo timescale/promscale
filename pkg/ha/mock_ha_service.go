@@ -17,11 +17,11 @@ func MockNewHAService(clusterInfo []*state.HALockState) *Service {
 	}
 
 	service := &Service{
-		state:              &sync.Map{},
-		lockClient:         lockClient,
-		leaseTimeout:       timeout,
-		leaseRefresh:       refresh,
-		_leaderChangeLocks: &sync.Map{},
+		state:             &sync.Map{},
+		lockClient:        lockClient,
+		leaseTimeout:      timeout,
+		leaseRefresh:      refresh,
+		leaderChangeLocks: &sync.Map{},
 	}
 	return service
 }

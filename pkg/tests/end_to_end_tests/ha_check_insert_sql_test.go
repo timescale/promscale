@@ -2,6 +2,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"fmt"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"reflect"
@@ -10,21 +11,28 @@ import (
 	"time"
 )
 
-type lockState struct {
+type leaseState struct {
 	cluster, leader        string
 	leaseStart, leaseUntil time.Time
 }
 
-func callCheckInsert(db *pgxpool.Pool, cluster, writer string, minT, maxT time.Time) (*lockState, error) {
+func (l leaseState) String() string {
+	return fmt.Sprintf(
+		"c: %s, l: %s; start: %s; until: %s",
+		l.cluster, l.leader, l.leaseStart, l.leaseUntil,
+	)
+}
+
+func callCheckInsert(db *pgxpool.Pool, cluster, writer string, minT, maxT time.Time) (*leaseState, error) {
 	row := db.QueryRow(context.Background(), "SELECT * FROM "+schema.Catalog+".update_lease($1,$2,$3,$4)", cluster, writer, minT, maxT)
-	lock := lockState{}
+	lock := leaseState{}
 	if err := row.Scan(&lock.cluster, &lock.leader, &lock.leaseStart, &lock.leaseUntil); err != nil {
 		return nil, err
 	}
 	return &lock, nil
 }
 
-func checkLock(db *pgxpool.Pool, lock *lockState, wantedLockState *lockState) bool {
+func checkLease(db *pgxpool.Pool, lock *leaseState, wantedLockState *leaseState) bool {
 	row := db.QueryRow(
 		context.Background(),
 		"SELECT lease_start, lease_until FROM "+schema.Catalog+".ha_leases WHERE cluster_name = $1",
@@ -62,7 +70,7 @@ func TestCheckInsert(t *testing.T) {
 		if lock == nil {
 			t.Fatal("error calling check_insert")
 		}
-		if !checkLock(db, lock, &lockState{cluster, writer, minT, expectedLeaseUntil}) {
+		if !checkLease(db, lock, &leaseState{cluster, writer, minT, expectedLeaseUntil}) {
 			t.Fatal("first call to check insert didn't set lock properly")
 		}
 
@@ -82,7 +90,7 @@ func TestCheckInsert(t *testing.T) {
 		if lock == nil || err != nil {
 			t.Fatalf("expected err: %v", err)
 		}
-		if !checkLock(db, lock, &lockState{cluster, writer, originalMinT, expectedLeaseUntil}) {
+		if !checkLease(db, lock, &leaseState{cluster, writer, originalMinT, expectedLeaseUntil}) {
 			t.Fatalf("expected lock details not to change")
 		}
 
@@ -93,7 +101,7 @@ func TestCheckInsert(t *testing.T) {
 		if lock == nil || err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !checkLock(db, lock, &lockState{cluster, writer, minT, expectedLeaseUntil}) {
+		if !checkLease(db, lock, &leaseState{cluster, writer, minT, expectedLeaseUntil}) {
 			t.Fatal("expected lock details to not change")
 		}
 
@@ -104,7 +112,7 @@ func TestCheckInsert(t *testing.T) {
 		if lock == nil || err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !checkLock(db, lock, &lockState{cluster, writer, minT, expectedLeaseUntil}) {
+		if !checkLease(db, lock, &leaseState{cluster, writer, minT, expectedLeaseUntil}) {
 			t.Fatal("expected lock details to change")
 		}
 	})
@@ -129,17 +137,17 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 		if lock == nil {
 			t.Fatalf("error calling check_insert for first cluster: %v", err)
 		}
-		if !checkLock(db, lock, &lockState{cluster1, writer, minT, expectedLeaseUntil}) {
+		if !checkLease(db, lock, &leaseState{cluster1, writer, minT, expectedLeaseUntil}) {
 			t.Fatal("call to check insert didn't set lock properly")
 		}
 
-		// same writer instance different cluster
+		// same writer replica different cluster
 		writer = "w2"
 		lock, err = callCheckInsert(db, cluster2, writer, minT, maxT)
 		if lock == nil {
 			t.Fatalf("error calling check_insert for second cluster: %v", err)
 		}
-		if !checkLock(db, lock, &lockState{cluster2, writer, minT, expectedLeaseUntil}) {
+		if !checkLease(db, lock, &leaseState{cluster2, writer, minT, expectedLeaseUntil}) {
 			t.Fatal("call to check insert didn't set lock properly")
 		}
 	})

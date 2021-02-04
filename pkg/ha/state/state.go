@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -24,6 +25,11 @@ type StateView struct {
 	MaxTimeInstance       string
 	MaxTimeSeenLeader     time.Time
 	RecentLeaderWriteTime time.Time
+}
+
+func (s StateView) String() string {
+	return fmt.Sprintf("{\n\tLead:%s;\n\tUntil:%s;\n\tMaxSeen:%s;\n\tMaxInst:%s;\n\tMaxSeenLeader:%s\n}",
+		s.Leader, s.LeaseUntil, s.MaxTimeSeen, s.MaxTimeInstance, s.MaxTimeSeenLeader)
 }
 
 // haLockState represents the current lock holder
@@ -73,10 +79,12 @@ func (h *State) Clone() *StateView {
 	h._mu.RLock()
 	defer h._mu.RUnlock()
 	return &StateView{
-		Leader:          h.leader,
-		LeaseStart:      h.leaseStart,
-		LeaseUntil:      h.leaseUntil,
-		MaxTimeSeen:     h.maxTimeSeen,
-		MaxTimeInstance: h.maxTimeInstance,
+		Leader:                h.leader,
+		LeaseStart:            h.leaseStart,
+		LeaseUntil:            h.leaseUntil,
+		MaxTimeSeen:           h.maxTimeSeen,
+		MaxTimeInstance:       h.maxTimeInstance,
+		MaxTimeSeenLeader:     h.maxTimeSeenLeader,
+		RecentLeaderWriteTime: h.recentLeaderWriteTime,
 	}
 }

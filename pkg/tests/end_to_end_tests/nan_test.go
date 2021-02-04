@@ -70,7 +70,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			},
 		}
 
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}

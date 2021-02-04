@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-func callTryChangeLeader(db *pgxpool.Pool, cluster, writer string, maxT time.Time) (*lockState, error) {
+func callTryChangeLeader(db *pgxpool.Pool, cluster, writer string, maxT time.Time) (*leaseState, error) {
 	row := db.QueryRow(context.Background(), "SELECT * FROM "+schema.Catalog+".try_change_leader($1,$2,$3)", cluster, writer, maxT)
-	lock := lockState{}
+	lock := leaseState{}
 	if err := row.Scan(&lock.cluster, &lock.leader, &lock.leaseStart, &lock.leaseUntil); err != nil {
 		return nil, err
 	}

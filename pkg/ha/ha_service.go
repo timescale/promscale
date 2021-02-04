@@ -11,6 +11,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/util"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -21,15 +22,20 @@ const (
 )
 
 type Service struct {
-	state              *sync.Map
-	lockClient         haLockClient
-	leaseTimeout       time.Duration
-	leaseRefresh       time.Duration
-	_leaderChangeLocks *sync.Map
-	_syncTicker        *time.Ticker
+	state               *sync.Map
+	lockClient          haLockClient
+	leaseTimeout        time.Duration
+	leaseRefresh        time.Duration
+	leaderChangeLocks   *sync.Map
+	syncTicker          util.Ticker
+	currentTimeProvider func() time.Time
 }
 
 func NewHAService(dbClient pgxconn.PgxConn) (*Service, error) {
+	return NewHAServiceWith(dbClient, util.NewTicker(haSyncerTimeInterval), time.Now)
+}
+
+func NewHAServiceWith(dbClient pgxconn.PgxConn, ticker util.Ticker, currentTimeFn func() time.Time) (*Service, error) {
 	lockClient := newHaLockClient(dbClient)
 	timeout, refresh, err := lockClient.readLeaseSettings(context.Background())
 	if err != nil {
@@ -37,30 +43,34 @@ func NewHAService(dbClient pgxconn.PgxConn) (*Service, error) {
 	}
 
 	service := &Service{
-		state:              &sync.Map{},
-		lockClient:         lockClient,
-		leaseTimeout:       timeout,
-		leaseRefresh:       refresh,
-		_leaderChangeLocks: &sync.Map{},
-		_syncTicker:        time.NewTicker(haSyncerTimeInterval),
+		state:               &sync.Map{},
+		lockClient:          lockClient,
+		leaseTimeout:        timeout,
+		leaseRefresh:        refresh,
+		leaderChangeLocks:   &sync.Map{},
+		syncTicker:          ticker,
+		currentTimeProvider: currentTimeFn,
 	}
 	go service.haStateSyncer()
 	return service, nil
 }
 
 func (h *Service) haStateSyncer() {
-	for range h._syncTicker.C {
+	for {
+		h.syncTicker.Wait()
 		h.state.Range(func(c, s interface{}) bool {
 			cluster := fmt.Sprint(c)
 			ss := castToState(s)
 			stateView := ss.Clone()
-			err := h.syncLockStateFromDB(stateView.LeaseStart, stateView.MaxTimeSeenLeader, cluster, stateView.Leader)
+			latestState, err := h.syncLockStateFromDB(stateView.LeaseStart, stateView.MaxTimeSeenLeader, cluster, stateView.Leader)
 			if err != nil {
-				log.Error("failed to validate cluster %s state %v", cluster, err)
+				errMsg := fmt.Sprintf("failed to validate cluster %s state", cluster)
+				log.Error("msg", errMsg, "err", err)
+				return true
 			}
 
-			go exposeClusterState(cluster, stateView.Leader, 1)
-			if ok := checkLeaseUntilAndLastWrite(stateView); !ok {
+			go exposeHAStateToMetrics(cluster, stateView.Leader, latestState.Leader)
+			if ok := h.checkLeaseUntilAndLastWrite(stateView); !ok {
 				go h.tryChangeLeader(cluster, stateView.Leader)
 			}
 			return true
@@ -75,22 +85,26 @@ func (h *Service) haStateSyncer() {
 //		An error is returned if the lock state could not be
 //		checked against the db
 func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
+	var stateRef *state.State
+	var stateView *state.StateView
+	var err error
+
 	s, ok := h.state.Load(clusterName)
 	if !ok {
-		ss := &state.State{}
-		ss.UpdateMaxTimeOnZero(maxT, replicaName)
-		s, _ = h.state.LoadOrStore(clusterName, ss)
-		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
+		stateRef = &state.State{}
+		stateRef.UpdateMaxTimeOnZero(maxT, replicaName)
+		h.state.LoadOrStore(clusterName, stateRef)
+		stateView, err = h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
 		if err != nil {
 			return false, time.Time{}, err
 		}
-		go metrics.NumOfHAClusterLeaderChanges.GetMetricWithLabelValues(clusterName)
+		go exposeHAStateToMetrics(clusterName, "", stateView.Leader)
+	} else {
+		stateRef = castToState(s)
+		stateView = stateRef.Clone()
 	}
 
-	ss := castToState(s)
-	stateView := ss.Clone()
-
-	defer ss.UpdateMaxSeenTime(replicaName, maxT)
+	defer stateRef.UpdateMaxSeenTime(replicaName, maxT)
 	if replicaName != stateView.Leader {
 		return false, time.Time{}, nil
 	}
@@ -101,28 +115,24 @@ func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName str
 	}
 
 	if maxT.After(stateView.LeaseUntil) {
-		err := h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
+		stateView, err = h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
 		if err != nil {
 			return false, time.Time{}, err
-		}
-		ss, err := h.loadState(clusterName)
-		if err != nil {
-			return false, time.Time{}, err
-		}
-		// on sync-up if notice leader has changed skip
-		// ingestion replica prom instance
-		if s := ss.Clone(); s.Leader != replicaName {
-			return false, time.Time{}, nil
 		}
 
+		// on sync-up if notice leader has changed skip
+		// ingestion replica prom instance
+		if stateView.Leader != replicaName {
+			return false, time.Time{}, nil
+		}
 	}
 
 	// requesting replica is leader, allow
-	ss.UpdateLastLeaderWriteTime()
+	stateRef.UpdateLastLeaderWriteTime()
 	return true, acceptedMinT, nil
 }
 
-func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replicaName string) error {
+func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replicaName string) (*state.StateView, error) {
 	// TODO use proper context
 	stateFromDB, err := h.lockClient.updateLease(context.Background(), clusterName, replicaName, minT, maxT)
 	leaderHasChanged := false
@@ -130,7 +140,7 @@ func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replica
 		if e, ok := err.(*pgconn.PgError); ok && e.Code == "PS010" {
 			leaderHasChanged = true
 		} else {
-			return fmt.Errorf("could not check ha lock state: %w", err)
+			return nil, fmt.Errorf("could not check ha lock state: %w", err)
 		}
 	}
 
@@ -140,21 +150,20 @@ func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replica
 		stateFromDB, err = h.lockClient.readLockState(context.Background(), clusterName)
 		// couldn't get latest lock state
 		if err != nil {
-			return fmt.Errorf("could not check ha lock state: %#v", err)
+			return nil, fmt.Errorf("could not check ha lock state: %#v", err)
 		}
 	}
 
 	ss, err := h.loadState(clusterName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ss.UpdateStateFromDB(stateFromDB)
-	return nil
+	return ss.Clone(), nil
 }
 
 func (h *Service) tryChangeLeader(cluster, currentLeader string) {
-
 	clusterLock := h.getLeaderChangeLock(cluster)
 	ok := clusterLock.TryAcquire(1)
 	if !ok {
@@ -170,11 +179,9 @@ func (h *Service) tryChangeLeader(cluster, currentLeader string) {
 			return
 		}
 		stateView := ss.Clone()
-
-		if ok := checkLeaseUntilAndLastWrite(stateView); ok {
+		if ok := h.checkLeaseUntilAndLastWrite(stateView); ok {
 			return
 		}
-
 		lockState, err := h.lockClient.tryChangeLeader(
 			context.Background(), cluster, stateView.MaxTimeInstance, stateView.MaxTimeSeen,
 		)
@@ -186,14 +193,11 @@ func (h *Service) tryChangeLeader(cluster, currentLeader string) {
 		ss.UpdateStateFromDB(lockState)
 		if lockState.Leader != currentLeader {
 			// leader changed
-			go exposeClusterState(cluster, currentLeader, 0)
-			metrics.NumOfHAClusterLeaderChanges.WithLabelValues(cluster).Inc()
-			go exposeClusterState(cluster, stateView.MaxTimeInstance, 1)
+			exposeHAStateToMetrics(cluster, currentLeader, stateView.MaxTimeInstance)
 			return
 		}
 		// leader didn't change, wait a bit and try again
 		time.Sleep(backOffDurationOnLeaderChange)
-		// QUESTION: Do we need to do a h.state.update(lockState, stateView.maxTimeInstance, stateView.maxTimeSeen)
 	}
 }
 
@@ -207,7 +211,7 @@ func (h *Service) loadState(cluster string) (*state.State, error) {
 }
 
 func (h *Service) getLeaderChangeLock(cluster string) *semaphore.Weighted {
-	lock, _ := h._leaderChangeLocks.LoadOrStore(cluster, semaphore.NewWeighted(1))
+	lock, _ := h.leaderChangeLocks.LoadOrStore(cluster, semaphore.NewWeighted(1))
 	return lock.(*semaphore.Weighted)
 }
 
@@ -216,18 +220,24 @@ func castToState(s interface{}) *state.State {
 	return ss
 }
 
-func checkLeaseUntilAndLastWrite(state *state.StateView) bool {
-	diff := time.Now().Second() - state.RecentLeaderWriteTime.Second()
+func (h *Service) checkLeaseUntilAndLastWrite(state *state.StateView) bool {
+	diff := h.currentTimeProvider().Sub(state.RecentLeaderWriteTime)
 	// check leaseUntil is after maxT received from samples or
 	// recent leader write is not more than 30 secs older.
-	if state.LeaseUntil.After(state.MaxTimeSeen) && diff <= haLastWriteIntervalInSecs {
+	if state.LeaseUntil.After(state.MaxTimeSeen) || diff <= haLastWriteIntervalInSecs {
 		return true
 	}
 	return false
 }
 
-func exposeClusterState(cluster, leader string, value float64) {
-	if leader != "" {
-		metrics.HAClusterLeaderDetails.WithLabelValues(cluster, leader).Set(value)
+func exposeHAStateToMetrics(cluster, oldLeader, newLeader string) {
+	if oldLeader != "" {
+		metrics.HAClusterLeaderDetails.WithLabelValues(cluster, oldLeader).Set(0)
 	}
+	metrics.HAClusterLeaderDetails.WithLabelValues(cluster, newLeader).Set(1)
+	counter, err := metrics.NumOfHAClusterLeaderChanges.GetMetricWithLabelValues(cluster)
+	if err != nil {
+		return
+	}
+	counter.Inc()
 }

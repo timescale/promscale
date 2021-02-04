@@ -138,14 +138,14 @@ func getUpgradedDbInfo(t *testing.T, noData bool, extensionState testhelpers.Ext
 			defer db.Close()
 
 			if !noData {
-				ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+				ing, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatalf("error connecting to DB: %v", err)
 				}
 
-				doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
+				doIngest(t, ing, postUpgradeData1, postUpgradeData2)
 
-				ingestor.Close()
+				ing.Close()
 
 			}
 			upgradedDbInfo = getDbInfo(t, dbContainer, dbTmpDir, db)
@@ -160,24 +160,24 @@ func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.Ext
 			if noData {
 				return
 			}
-			ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+			ing, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 			if err != nil {
 				t.Fatalf("error connecting to DB: %v", err)
 			}
-			defer ingestor.Close()
+			defer ing.Close()
 
-			doIngest(t, ingestor, preUpgradeData1, preUpgradeData2)
+			doIngest(t, ing, preUpgradeData1, preUpgradeData2)
 		},
 		/* postRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
 			if !noData {
-				ingestor, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db))
+				ing, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatalf("error connecting to DB: %v", err)
 				}
-				defer ingestor.Close()
+				defer ing.Close()
 
-				doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
+				doIngest(t, ing, postUpgradeData1, postUpgradeData2)
 			}
 			pristineDbInfo = getDbInfo(t, container, tmpDir, db)
 		})
