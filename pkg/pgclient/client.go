@@ -7,6 +7,7 @@ package pgclient
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/ha"
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -101,22 +102,31 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
-		HA:              cfg.HAEnabled,
 	}
-	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
+	var parser ingestor.Parser
+	if cfg.HAEnabled {
+		haService, err := ha.NewHAService(dbConn)
+		if err != nil {
+			return nil, err
+		}
+		parser = ha.NewHAParser(haService)
+	} else {
+		parser = &ingestor.DataParser{}
+	}
+	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, parser, &c)
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
 	labelsReader := model.NewLabelsReader(dbConn, labelsCache)
-	querier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
-	queryable := query.NewQueryable(querier, labelsReader)
+	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
+	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)
 	client := &Client{
 		Connection:  dbConn,
-		ingestor:    ingestor,
-		querier:     querier,
+		ingestor:    dbIngestor,
+		querier:     dbQuerier,
 		healthCheck: healthChecker,
 		queryable:   queryable,
 		metricCache: metricsCache,

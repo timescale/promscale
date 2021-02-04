@@ -159,7 +159,7 @@ func TestSQLChunkInterval(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -415,7 +415,7 @@ func TestSQLIngest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
-				ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+				ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -508,7 +508,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -627,7 +627,7 @@ func TestInsertCompressed(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -725,7 +725,7 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -765,7 +765,7 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 					},
 				},
 			}
-			ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+			ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -850,7 +850,7 @@ func TestCompressionSetting(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -951,7 +951,7 @@ func TestCustomCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1172,7 +1172,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
 		}

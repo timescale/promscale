@@ -68,54 +68,54 @@ func generateLargeTimeseries() []prompb.TimeSeries {
 				{Name: "aaa", Value: "000"},
 				{Name: model.MetricNameLabelName, Value: "metric_1"},
 				{Name: "foo", Value: "bar"},
-				{Name: "instance", Value: "1"},
+				{Name: "replica", Value: "1"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric_1"},
 				{Name: "foo", Value: "bar"},
-				{Name: "instance", Value: "2"},
+				{Name: "replica", Value: "2"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric_1"},
 				{Name: "foo", Value: "bar"},
-				{Name: "instance", Value: "3"},
+				{Name: "replica", Value: "3"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric_2"},
 				{Name: "foo", Value: "bat"},
-				{Name: "instance", Value: "1"},
+				{Name: "replica", Value: "1"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric_2"},
 				{Name: "foo", Value: "bat"},
-				{Name: "instance", Value: "2"},
+				{Name: "replica", Value: "2"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric_2"},
 				{Name: "foo", Value: "bat"},
-				{Name: "instance", Value: "3"},
+				{Name: "replica", Value: "3"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric_3"},
-				{Name: "instance", Value: "1"},
+				{Name: "replica", Value: "1"},
 			},
 		},
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric_3"},
-				{Name: "instance", Value: "2"},
+				{Name: "replica", Value: "2"},
 			},
 		},
 		{

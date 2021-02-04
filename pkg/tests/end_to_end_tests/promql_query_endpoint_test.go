@@ -155,23 +155,23 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 13",
-			query: `demo_cpu_usage_seconds_total{instance=~"demo.promlabs.com:.*"}`,
+			query: `demo_cpu_usage_seconds_total{replica=~"demo.promlabs.com:.*"}`,
 		},
 		{
 			name:  "real query 14",
-			query: `demo_cpu_usage_seconds_total{instance=~"host"}`,
+			query: `demo_cpu_usage_seconds_total{replica=~"host"}`,
 		},
 		{
 			name:  "real query 15",
-			query: `demo_cpu_usage_seconds_total{instance!~".*:10000"}`,
+			query: `demo_cpu_usage_seconds_total{replica!~".*:10000"}`,
 		},
 		{
 			name:  "real query 16",
-			query: `demo_cpu_usage_seconds_total{mode="idle", instance!="demo.promlabs.com:10000"}`,
+			query: `demo_cpu_usage_seconds_total{mode="idle", replica!="demo.promlabs.com:10000"}`,
 		},
 		{
 			name:  "real query 17",
-			query: `{mode="idle", instance!="demo.promlabs.com:10000"}`,
+			query: `{mode="idle", replica!="demo.promlabs.com:10000"}`,
 		},
 		{
 			name:  "real query 18",
@@ -291,59 +291,59 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 47",
-			query: `sum by(instance) (demo_cpu_usage_seconds_total)`,
+			query: `sum by(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 48",
-			query: `avg by(instance) (demo_cpu_usage_seconds_total)`,
+			query: `avg by(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 49",
-			query: `max by(instance) (demo_cpu_usage_seconds_total)`,
+			query: `max by(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 50",
-			query: `min by(instance) (demo_cpu_usage_seconds_total)`,
+			query: `min by(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 51",
-			query: `count by(instance) (demo_cpu_usage_seconds_total)`,
+			query: `count by(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 52",
-			query: `stddev by(instance) (demo_cpu_usage_seconds_total)`,
+			query: `stddev by(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 53",
-			query: `stdvar by(instance) (demo_cpu_usage_seconds_total)`,
+			query: `stdvar by(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 54",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 55",
-			query: `avg by(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `avg by(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 56",
-			query: `max by(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `max by(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 57",
-			query: `min by(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `min by(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 58",
-			query: `count by(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `count by(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 59",
-			query: `stddev by(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `stddev by(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 60",
-			query: `stdvar by(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `stdvar by(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 61",
@@ -403,59 +403,59 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 75",
-			query: `sum without(instance) (demo_cpu_usage_seconds_total)`,
+			query: `sum without(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 76",
-			query: `avg without(instance) (demo_cpu_usage_seconds_total)`,
+			query: `avg without(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 77",
-			query: `max without(instance) (demo_cpu_usage_seconds_total)`,
+			query: `max without(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 78",
-			query: `min without(instance) (demo_cpu_usage_seconds_total)`,
+			query: `min without(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 79",
-			query: `count without(instance) (demo_cpu_usage_seconds_total)`,
+			query: `count without(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 80",
-			query: `stddev without(instance) (demo_cpu_usage_seconds_total)`,
+			query: `stddev without(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 81",
-			query: `stdvar without(instance) (demo_cpu_usage_seconds_total)`,
+			query: `stdvar without(replica) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 82",
-			query: `sum without(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `sum without(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 83",
-			query: `avg without(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `avg without(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 84",
-			query: `max without(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `max without(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 85",
-			query: `min without(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `min without(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 86",
-			query: `count without(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `count without(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 87",
-			query: `stddev without(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `stddev without(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 88",
-			query: `stdvar without(instance, mode) (demo_cpu_usage_seconds_total)`,
+			query: `stdvar without(replica, mode) (demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 89",
@@ -495,11 +495,11 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 98",
-			query: `topk by(instance) (2, demo_cpu_usage_seconds_total)`,
+			query: `topk by(replica) (2, demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 99",
-			query: `bottomk by(instance) (2, demo_cpu_usage_seconds_total)`,
+			query: `bottomk by(replica) (2, demo_cpu_usage_seconds_total)`,
 		},
 		{
 			name:  "real query 100",
@@ -819,147 +819,147 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 179",
-			query: `demo_cpu_usage_seconds_total + on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total + on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 180",
-			query: `demo_cpu_usage_seconds_total - on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total - on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 181",
-			query: `demo_cpu_usage_seconds_total * on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total * on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 182",
-			query: `demo_cpu_usage_seconds_total / on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total / on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 183",
-			query: `demo_cpu_usage_seconds_total % on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total % on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 184",
-			query: `demo_cpu_usage_seconds_total ^ on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total ^ on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 185",
-			query: `demo_cpu_usage_seconds_total == on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total == on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 186",
-			query: `demo_cpu_usage_seconds_total != on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total != on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 187",
-			query: `demo_cpu_usage_seconds_total < on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total < on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 188",
-			query: `demo_cpu_usage_seconds_total > on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total > on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 189",
-			query: `demo_cpu_usage_seconds_total <= on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total <= on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 190",
-			query: `demo_cpu_usage_seconds_total >= on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total >= on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 191",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) + on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) + on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 192",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) - on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) - on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 193",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) * on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) * on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 194",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) / on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) / on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 195",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) % on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) % on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 196",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) ^ on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) ^ on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 197",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) == on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) == on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 198",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) != on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) != on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 199",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) < on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) < on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 200",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) > on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) > on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 201",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) <= on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) <= on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 202",
-			query: `sum by(instance, mode) (demo_cpu_usage_seconds_total) >= on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum by(replica, mode) (demo_cpu_usage_seconds_total) >= on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 203",
-			query: `demo_cpu_usage_seconds_total == bool on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total == bool on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 204",
-			query: `demo_cpu_usage_seconds_total != bool on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total != bool on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 205",
-			query: `demo_cpu_usage_seconds_total < bool on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total < bool on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 206",
-			query: `demo_cpu_usage_seconds_total > bool on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total > bool on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 207",
-			query: `demo_cpu_usage_seconds_total <= bool on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total <= bool on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 208",
-			query: `demo_cpu_usage_seconds_total >= bool on(instance, job, mode) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total >= bool on(replica, job, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 209",
-			query: `demo_cpu_usage_seconds_total / on(instance, job, mode, __name__) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total / on(replica, job, mode, __name__) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 210",
-			query: `sum without(job) (demo_cpu_usage_seconds_total) / on(instance, mode) demo_cpu_usage_seconds_total`,
+			query: `sum without(job) (demo_cpu_usage_seconds_total) / on(replica, mode) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 211",
-			query: `sum without(job) (demo_cpu_usage_seconds_total) / on(instance, mode) group_left demo_cpu_usage_seconds_total`,
+			query: `sum without(job) (demo_cpu_usage_seconds_total) / on(replica, mode) group_left demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 212",
-			query: `sum without(job) (demo_cpu_usage_seconds_total) / on(instance, mode) group_left(job) demo_cpu_usage_seconds_total`,
+			query: `sum without(job) (demo_cpu_usage_seconds_total) / on(replica, mode) group_left(job) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 213",
-			query: `demo_cpu_usage_seconds_total / on(instance, job) group_left demo_num_cpus`,
+			query: `demo_cpu_usage_seconds_total / on(replica, job) group_left demo_num_cpus`,
 		},
 		{
 			name:  "real query 214",
-			query: `demo_cpu_usage_seconds_total / on(instance, mode, job, non_existent) demo_cpu_usage_seconds_total`,
+			query: `demo_cpu_usage_seconds_total / on(replica, mode, job, non_existent) demo_cpu_usage_seconds_total`,
 		},
 		{
 			name:  "real query 215",
@@ -1827,15 +1827,15 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 431",
-			query: `label_replace(demo_num_cpus, "job", "destination-value-$1", "instance", "demo.promlabs.com:(.*)")`,
+			query: `label_replace(demo_num_cpus, "job", "destination-value-$1", "replica", "demo.promlabs.com:(.*)")`,
 		},
 		{
 			name:  "real query 432",
-			query: `label_replace(demo_num_cpus, "job", "destination-value-$1", "instance", "host:(.*)")`,
+			query: `label_replace(demo_num_cpus, "job", "destination-value-$1", "replica", "host:(.*)")`,
 		},
 		{
 			name:  "real query 433",
-			query: `label_replace(demo_num_cpus, "job", "$1-$2", "instance", "local(.*):(.*)")`,
+			query: `label_replace(demo_num_cpus, "job", "$1-$2", "replica", "local(.*):(.*)")`,
 		},
 		{
 			name:  "real query 434",
@@ -1847,7 +1847,7 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 436",
-			query: `label_replace(demo_num_cpus, "job", "value-$1", "instance", "non-matching-regex")`,
+			query: `label_replace(demo_num_cpus, "job", "value-$1", "replica", "non-matching-regex")`,
 		},
 		{
 			name:  "real query 437",
@@ -1863,23 +1863,23 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 440",
-			query: `label_replace(demo_num_cpus, "instance", "", "", "")`,
+			query: `label_replace(demo_num_cpus, "replica", "", "", "")`,
 		},
 		{
 			name:  "real query 441",
-			query: `label_join(demo_num_cpus, "new_label", "-", "instance", "job")`,
+			query: `label_join(demo_num_cpus, "new_label", "-", "replica", "job")`,
 		},
 		{
 			name:  "real query 442",
-			query: `label_join(demo_num_cpus, "job", "-", "instance", "job")`,
+			query: `label_join(demo_num_cpus, "job", "-", "replica", "job")`,
 		},
 		{
 			name:  "real query 443",
-			query: `label_join(demo_num_cpus, "job", "-", "instance")`,
+			query: `label_join(demo_num_cpus, "job", "-", "replica")`,
 		},
 		{
 			name:  "real query 444",
-			query: `label_join(demo_num_cpus, "~invalid", "-", "instance")`,
+			query: `label_join(demo_num_cpus, "~invalid", "-", "replica")`,
 		},
 		{
 			name:  "real query 445",
@@ -2223,7 +2223,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		},
 		{
 			name:  "basic query, not regex match metric name",
-			query: `{__name__!~".*_1", instance="1"}`,
+			query: `{__name__!~".*_1", replica="1"}`,
 		},
 		{
 			name:  "basic query, regex match metric name",
@@ -2235,11 +2235,11 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		},
 		{
 			name:  "basic query, no metric name matchers",
-			query: `{instance="1", foo=""}`,
+			query: `{replica="1", foo=""}`,
 		},
 		{
 			name:  "basic query, multiple matchers",
-			query: `{__name__!="metric_1", instance="1"}`,
+			query: `{__name__!="metric_1", replica="1"}`,
 		},
 		{
 			name:  "basic query, non-existant metric",
@@ -2258,12 +2258,12 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			query: `avg by() (metric_2)`,
 		},
 		{
-			name:  "aggregator by instance",
-			query: `max by(instance) (metric_1)`,
+			name:  "aggregator by replica",
+			query: `max by(replica) (metric_1)`,
 		},
 		{
-			name:  "aggregator by instance and foo",
-			query: `min by(instance, foo) (metric_3)`,
+			name:  "aggregator by replica and foo",
+			query: `min by(replica, foo) (metric_3)`,
 		},
 		{
 			name:  "aggregator by non-existant",
@@ -2274,12 +2274,12 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			query: `avg without() (metric_2)`,
 		},
 		{
-			name:  "aggregator without instance",
-			query: `max without(instance) (metric_1)`,
+			name:  "aggregator without replica",
+			query: `max without(replica) (metric_1)`,
 		},
 		{
-			name:  "aggregator without instance and foo",
-			query: `min without(instance, foo) (metric_3)`,
+			name:  "aggregator without replica and foo",
+			query: `min without(replica, foo) (metric_3)`,
 		},
 		{
 			name:  "aggregator without non-existant",
@@ -2294,8 +2294,8 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			query: `bottomk (3, metric_1)`,
 		},
 		{
-			name:  "topk by instance",
-			query: `topk by(instance) (2, metric_3)`,
+			name:  "topk by replica",
+			query: `topk by(replica) (2, metric_3)`,
 		},
 		{
 			name:  "quantile 0.5",
@@ -2395,7 +2395,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		},
 		{
 			name:  "complex query 1",
-			query: `sum by(instance) (metric_1) + on(instance) group_left(foo) metric_2`,
+			query: `sum by(replica) (metric_1) + on(replica) group_left(foo) metric_2`,
 		},
 		{
 			name:  "complex query 2",

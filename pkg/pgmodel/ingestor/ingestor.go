@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/timescale/promscale/pkg/clockcache"
-	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -29,32 +28,22 @@ type DBIngestor struct {
 	Parser
 }
 
-// NewPgxIngestorWithMetricCache returns a new Ingestor that uses connection pool and a metrics cache
+// NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestorWithMetricCache(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*DBIngestor, error) {
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, parser Parser, cfg *Cfg) (*DBIngestor, error) {
 	pi, err := newPgxInserter(conn, cache, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	var parser Parser
-	if cfg.HA {
-		haService, err := ha.NewHAService(conn)
-		if err != nil {
-			return nil, err
-		}
-		parser = ha.NewHAParser(haService)
-	} else {
-		parser = &DataParser{}
-	}
-
 	return &DBIngestor{db: pi, Parser: parser}, nil
 }
 
-// NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
-func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
+// NewPgxIngestorForTests returns a new Ingestor that write to PostgreSQL using PGX
+// with an empty config, a new default size metrics cache and a non-ha-aware data parser
+func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-	return NewPgxIngestorWithMetricCache(conn, c, &Cfg{})
+	return NewPgxIngestor(conn, c, &DataParser{}, &Cfg{})
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
@@ -64,6 +53,9 @@ func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
 //         pool when it is no longer needed.
 // NOTE: req will be added to our WriteRequest pool in this function, it must
 //       not be used afterwards.
+// returns:
+//		uint64 number or rows inserted
+//		error if the ingest failed
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
 	var data map[string][]model.SamplesInfo
 	var totalRows int
