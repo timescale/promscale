@@ -7,7 +7,7 @@ information about alerts, targets and the complete configuration of the promethe
 We implemented the endpoints for executing PromQL and labels metadata to allow the Promscale connector to be
 used as a Prometheus compatible data-source in applications like Grafana.
 
-<img src="./promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
+<img src="assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
 
 When requesting a query to run on data that is in the long-term storage through Prometheus, the query goes through the

@@ -14,7 +14,7 @@ Promscale is built on top of [TimescaleDB](https://www.timescale.com/), the
 leading relational database for time-series.
 
 
-<img src="./docs/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
+<img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
 By allowing a user to use SQL, in addition to
 PromQL, this platform empowers the user to ask complex analytical
