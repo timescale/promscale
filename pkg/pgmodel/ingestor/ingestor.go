@@ -71,7 +71,7 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (
 	FinishWriteRequest(req)
 
 	// Note data == nil case is to handle samples from non-leader
-	// prometheus instance
+	// prometheus instance or when len(tts) == 0
 	if err != nil || data == nil {
 		return 0, err
 	}
