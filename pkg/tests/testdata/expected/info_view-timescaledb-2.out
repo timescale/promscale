@@ -14,26 +14,47 @@ SELECT _prom_catalog.get_or_create_metric_table_name('cpu_total');
 CALL _prom_catalog.finalize_metric_creation();
 CALL
 INSERT INTO prom_data.cpu_usage
-  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"}')
-  FROM generate_series(1,10) g;
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"}')
+FROM generate_series(1,10) g;
 INSERT 0 10
 INSERT INTO prom_data.cpu_usage
-  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"production", "node": "pinky", "new_tag":"foo"}')
-  FROM generate_series(1,10) g;
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"production", "node": "pinky", "new_tag":"foo"}')
+FROM generate_series(1,10) g;
 INSERT 0 10
 INSERT INTO prom_data.cpu_total
-  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"dev", "node": "brain"}')
-  FROM generate_series(1,10) g;
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"dev", "node": "brain"}')
+FROM generate_series(1,10) g;
 INSERT 0 10
 INSERT INTO prom_data.cpu_total
-  SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"production", "node": "pinky", "new_tag_2":"bar"}')
-  FROM generate_series(1,10) g;
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"production", "node": "pinky", "new_tag_2":"bar"}')
+FROM generate_series(1,10) g;
 INSERT 0 10
-SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', label_keys, size , compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
- id | metric_name | table_name | retention_period | ?column? |             label_keys              | size  | compression_ratio | total_chunks | compressed_chunks 
-----+-------------+------------+------------------+----------+-------------------------------------+-------+-------------------+--------------+-------------------
-  1 | cpu_usage   | cpu_usage  | 90 days          | t        | {__name__,namespace,new_tag,node}   | 24 kB |                   |            1 |                 0
-  2 | cpu_total   | cpu_total  | 90 days          | t        | {__name__,namespace,new_tag_2,node} | 24 kB |                   |            1 |                 0
+SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', compressed_interval > interval '7 hour', before_compression_bytes, after_compression_bytes, label_keys, total_size, total_size_bytes, compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
+ id | metric_name | table_name | retention_period | ?column? | ?column? | before_compression_bytes | after_compression_bytes |             label_keys              | total_size | total_size_bytes | compression_ratio | total_chunks | compressed_chunks 
+----+-------------+------------+------------------+----------+----------+--------------------------+-------------------------+-------------------------------------+------------+------------------+-------------------+--------------+-------------------
+  1 | cpu_usage   | cpu_usage  | 90 days          | t        | f        |                          |                         | {__name__,namespace,new_tag,node}   | 24 kB      |            24576 |                   |            1 |                 0
+  2 | cpu_total   | cpu_total  | 90 days          | t        | f        |                          |                         | {__name__,namespace,new_tag_2,node} | 24 kB      |            24576 |                   |            1 |                 0
+(2 rows)
+
+-- compress chunks
+SELECT compress_chunk(show_chunks('prom_data.cpu_usage'));
+             compress_chunk             
+----------------------------------------
+ _timescaledb_internal._hyper_1_1_chunk
+(1 row)
+
+SELECT compress_chunk(show_chunks('prom_data.cpu_total'));
+             compress_chunk             
+----------------------------------------
+ _timescaledb_internal._hyper_2_2_chunk
+(1 row)
+
+-- fetch stats with compressed chunks
+SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', compressed_interval > interval '7 hour', before_compression_bytes, after_compression_bytes, label_keys, total_size, total_size_bytes, compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
+ id | metric_name | table_name | retention_period | ?column? | ?column? | before_compression_bytes | after_compression_bytes |             label_keys              | total_size | total_size_bytes |  compression_ratio   | total_chunks | compressed_chunks 
+----+-------------+------------+------------------+----------+----------+--------------------------+-------------------------+-------------------------------------+------------+------------------+----------------------+--------------+-------------------
+  1 | cpu_usage   | cpu_usage  | 90 days          | t        | t        |                    24576 |                   32768 | {__name__,namespace,new_tag,node}   | 40 kB      |            40960 | -33.3333333333333300 |            1 |                 1
+  2 | cpu_total   | cpu_total  | 90 days          | t        | t        |                    24576 |                   32768 | {__name__,namespace,new_tag_2,node} | 40 kB      |            40960 | -33.3333333333333300 |            1 |                 1
 (2 rows)
 
 SELECT * FROM prom_info.label ORDER BY key;
@@ -49,8 +70,8 @@ SELECT * FROM prom_info.label ORDER BY key;
 SELECT * FROM prom_info.metric_stats ORDER BY num_series_approx;
  metric_name | num_series_approx | num_samples_approx 
 -------------+-------------------+--------------------
- cpu_total   |                 0 |                  0
- cpu_usage   |                 0 |                  0
+ cpu_total   |                 0 |                 20
+ cpu_usage   |                 0 |                 20
 (2 rows)
 
 SELECT * FROM prom_info.system_stats;
