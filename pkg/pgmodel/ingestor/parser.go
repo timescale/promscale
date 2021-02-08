@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package ingestor
 
 import (
@@ -15,6 +19,10 @@ type DataParser struct{}
 // Parse data into a set of samplesInfo infos per-metric.
 // returns: map[metric name][]SamplesInfo, total rows to insert
 func (i *DataParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.SamplesInfo, int, error) {
+	if len(tts) == 0 {
+		return nil, 0, nil
+	}
+
 	dataSamples := make(map[string][]model.SamplesInfo)
 	rows := 0
 

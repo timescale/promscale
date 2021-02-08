@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package ha
 
 import (
@@ -25,12 +29,12 @@ func NewHAParser(service *Service) *haParser {
 // When Prometheus & Promscale are running HA mode the below parseData is used
 // to validate leader replica samples & ha_locks in TimescaleDB.
 func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.SamplesInfo, int, error) {
+	if len(tts) == 0 {
+		return nil, 0, nil
+	}
+
 	dataSamples := make(map[string][]model.SamplesInfo)
 	rows := 0
-
-	if len(tts) == 0 {
-		return dataSamples, rows, nil
-	}
 
 	s, _, err := model.LabelProtosToLabels(tts[0].Labels)
 	if err != nil {
@@ -45,8 +49,8 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 
 	// find samples time range
 	var (
-	    minTUnix, maxTUnix int64
-	    minTWasSet = false
+		minTUnix, maxTUnix int64
+		minTWasSet         = false
 	)
 	for i := range tts {
 		t := &tts[i]

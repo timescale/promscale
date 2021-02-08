@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package ha
 
 import (
@@ -86,10 +90,10 @@ func (h *Service) haStateSyncer() {
 //		checked against the db
 func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
 	var (
-	  stateRef *state.State
-	  stateView *state.StateView
-          err error
-        )
+		stateRef  *state.State
+		stateView *state.StateView
+		err       error
+	)
 
 	s, ok := h.state.Load(clusterName)
 	if !ok {
