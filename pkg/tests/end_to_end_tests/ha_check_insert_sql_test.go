@@ -141,7 +141,7 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 			t.Fatal("call to check insert didn't set lock properly")
 		}
 
-		// same writer replica different cluster
+		// same writer instance different cluster
 		writer = "w2"
 		lock, err = callCheckInsert(db, cluster2, writer, minT, maxT)
 		if lock == nil {
