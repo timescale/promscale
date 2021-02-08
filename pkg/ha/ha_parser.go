@@ -44,8 +44,10 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	}
 
 	// find samples time range
-	var minTUnix, maxTUnix int64
-	minTWasSet := false
+	var (
+	    minTUnix, maxTUnix int64
+	    minTWasSet = false
+	)
 	for i := range tts {
 		t := &tts[i]
 		if len(t.Samples) == 0 {
