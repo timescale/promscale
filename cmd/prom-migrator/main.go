@@ -137,7 +137,7 @@ func parseFlags(conf *config, args []string) {
 		"Setting this value less than zero will indicate all data from mint upto now. ")
 	flag.StringVar(&conf.maxBlockSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
 		"More the read size, faster will be the migration but higher will be the memory usage. Example: 250MB.")
-	flag.IntVar(&conf.concurrentPush, "concurrent-push", 4, "Concurrent push enables pushing of blocks concurrently. "+
+	flag.IntVar(&conf.concurrentPush, "concurrent-push", 1, "Concurrent push enables pushing of blocks concurrently. "+
 		"Each block is divided into 'concurrent-push' (value) parts and then pushed to the remote-write storage concurrently. This may lead to higher throughput on "+
 		"the remote-write storage provided it is capable of handling the load. Note: Larger shards count will lead to significant memory usage.")
 	flag.IntVar(&conf.concurrentPulls, "concurrent-pulls", 1, "Concurrent pulls enables fetching of data concurrently. "+
