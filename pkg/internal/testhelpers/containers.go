@@ -248,11 +248,11 @@ func StartPGContainer(
 	case MultinodeAndPromscale:
 		image = "timescaledev/promscale-extension:latest-ts2-pg12"
 	case Multinode:
-		image = "timescale/timescaledb:2.0.0-pg12"
+		image = "timescale/timescaledb:2.0.1-pg12"
 	case Timescale2AndPromscale:
 		image = "timescaledev/promscale-extension:latest-ts2-pg12"
 	case Timescale2:
-		image = "timescale/timescaledb:2.0.0-pg12"
+		image = "timescale/timescaledb:2.0.1-pg12"
 	case Timescale1AndPromscale:
 		image = "timescaledev/promscale-extension:latest-ts1-pg12"
 	case Timescale1:
