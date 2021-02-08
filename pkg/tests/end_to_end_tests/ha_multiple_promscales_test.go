@@ -2,9 +2,15 @@ package end_to_end_tests
 
 import (
 	"context"
-	"github.com/jackc/pgx/v4/pgxpool"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v4/pgxpool"
+)
+
+const (
+	setLeaseExplicitlySQL = `UPDATE ha_leases SET leader_name=$1, lease_start=$2, lease_until=$3
+			WHERE cluster_name=$4`
 )
 
 // setLeaseExplicitly tries to set the ha lease to
@@ -16,9 +22,7 @@ func setLeaseExplicitly(db *pgxpool.Pool, state *leaseState) error {
 	if state == nil {
 		return nil
 	}
-	sql := `UPDATE ha_leases SET leader_name=$1, lease_start=$2, lease_until=$3
-			WHERE cluster_name=$4`
-	_, err := db.Exec(context.Background(), sql, state.leader, state.leaseStart, state.leaseUntil, state.cluster)
+	_, err := db.Exec(context.Background(), setLeaseExplicitlySQL, state.leader, state.leaseStart, state.leaseUntil, state.cluster)
 	return err
 }
 
