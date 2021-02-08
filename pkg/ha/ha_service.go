@@ -85,9 +85,11 @@ func (h *Service) haStateSyncer() {
 //		An error is returned if the lock state could not be
 //		checked against the db
 func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
-	var stateRef *state.State
-	var stateView *state.StateView
-	var err error
+	var (
+	  stateRef *state.State
+	  stateView *state.StateView
+          err error
+        )
 
 	s, ok := h.state.Load(clusterName)
 	if !ok {
