@@ -2,7 +2,14 @@
 
 Prom-migrator is an **open-source**, **community-driven** and **free-to-use**, **universal prometheus
 data migration tool**, that migrates data from one storage system to another, leveraging Prometheus's
-remote storage endpoints.
+remote storage endpoints. You can read more about Prom-migrator in our [blog post](https://blog.timescale.com/blog/introducing-prom-migrator-a-universal-open-source-prometheus-data-migration-tool/).
+
+
+Click the video below for an overview of Prom-migrator:
+
+<p align="center">
+<a href="https://www.youtube.com/watch?v=8h6tSDKdlbA"> <img src="https://media.giphy.com/media/wbt3Cnw5jOtUZjxZqI/giphy.gif"> </a>
+</p>
 
 ### Unique features
 
