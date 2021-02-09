@@ -41,7 +41,7 @@ func (m *mockLockClient) updateLease(_ context.Context, cluster, leader string, 
 func (m *mockLockClient) tryChangeLeader(_ context.Context, cluster, newLeader string, maxTime time.Time) (*state.HALockState, error) {
 	lock, exists := m.leadersPerCluster[cluster]
 	if !exists {
-		return nil, fmt.Errorf("no leader for %s, checkInsert never called before tryChange leader", cluster)
+		return nil, fmt.Errorf("no leader for %s, updateLease never called before tryChangeLeader", cluster)
 	}
 	lock = &state.HALockState{
 		Cluster:    cluster,

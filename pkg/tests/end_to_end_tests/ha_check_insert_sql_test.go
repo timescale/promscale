@@ -27,7 +27,7 @@ func (l leaseState) String() string {
 	)
 }
 
-func callCheckInsert(db *pgxpool.Pool, cluster, writer string, minT, maxT time.Time) (*leaseState, error) {
+func callUpdateLease(db *pgxpool.Pool, cluster, writer string, minT, maxT time.Time) (*leaseState, error) {
 	row := db.QueryRow(context.Background(), "SELECT * FROM "+schema.Catalog+".update_lease($1,$2,$3,$4)", cluster, writer, minT, maxT)
 	lock := leaseState{}
 	if err := row.Scan(&lock.cluster, &lock.leader, &lock.leaseStart, &lock.leaseUntil); err != nil {
@@ -53,7 +53,7 @@ func checkLease(db *pgxpool.Pool, lock *leaseState, wantedLockState *leaseState)
 	return reflect.DeepEqual(lock, wantedLockState)
 }
 
-func TestCheckInsert(t *testing.T) {
+func TestUpdateLease(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -66,7 +66,7 @@ func TestCheckInsert(t *testing.T) {
 		writer := "w1"
 		minT := time.Unix(1, 0)
 		maxT := time.Unix(3, 0)
-		lock, err := callCheckInsert(db, cluster, writer, minT, maxT)
+		lock, err := callUpdateLease(db, cluster, writer, minT, maxT)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -80,7 +80,7 @@ func TestCheckInsert(t *testing.T) {
 
 		// wrong leader
 		writer = "w2"
-		lock, err = callCheckInsert(db, cluster, writer, minT, maxT)
+		lock, err = callUpdateLease(db, cluster, writer, minT, maxT)
 		leaderHasChanged := "ERROR: LEADER_HAS_CHANGED (SQLSTATE PS010)"
 		if lock != nil || err.Error() != leaderHasChanged {
 			t.Fatalf("expected leader changed error, got: %v", err)
@@ -90,7 +90,7 @@ func TestCheckInsert(t *testing.T) {
 		writer = "w1"
 		originalMinT := minT
 		minT = time.Unix(0, 0)
-		lock, err = callCheckInsert(db, cluster, writer, minT, maxT)
+		lock, err = callUpdateLease(db, cluster, writer, minT, maxT)
 		if lock == nil || err != nil {
 			t.Fatalf("expected err: %v", err)
 		}
@@ -101,7 +101,7 @@ func TestCheckInsert(t *testing.T) {
 		// no update lease_until
 		minT = time.Unix(1, 0)
 		maxT = maxTime.Add(refreshTime)
-		lock, err = callCheckInsert(db, cluster, writer, minT, maxT)
+		lock, err = callUpdateLease(db, cluster, writer, minT, maxT)
 		if lock == nil || err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -112,7 +112,7 @@ func TestCheckInsert(t *testing.T) {
 		// update lease_until
 		maxT = expectedLeaseUntil.Add(time.Second)
 		expectedLeaseUntil = maxT.Add(leaseTime)
-		lock, err = callCheckInsert(db, cluster, writer, minT, maxT)
+		lock, err = callUpdateLease(db, cluster, writer, minT, maxT)
 		if lock == nil || err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -123,7 +123,7 @@ func TestCheckInsert(t *testing.T) {
 
 }
 
-func TestCheckInsertMultiCluster(t *testing.T) {
+func TestCheckLeaseMultiCluster(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -136,7 +136,7 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 		writer := "w1"
 		minT := time.Unix(1, 0)
 		maxT := time.Unix(3, 0)
-		lock, err := callCheckInsert(db, cluster1, writer, minT, maxT)
+		lock, err := callUpdateLease(db, cluster1, writer, minT, maxT)
 		expectedLeaseUntil := time.Unix(3, 0).Add(leaseTime)
 		if lock == nil {
 			t.Fatalf("error calling check_insert for first cluster: %v", err)
@@ -147,7 +147,7 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 
 		// same writer instance different cluster
 		writer = "w2"
-		lock, err = callCheckInsert(db, cluster2, writer, minT, maxT)
+		lock, err = callUpdateLease(db, cluster2, writer, minT, maxT)
 		if lock == nil {
 			t.Fatalf("error calling check_insert for second cluster: %v", err)
 		}
@@ -156,7 +156,7 @@ func TestCheckInsertMultiCluster(t *testing.T) {
 		}
 	})
 }
-func TestConcurrentCheckInsert(t *testing.T) {
+func TestConcurrentCheckLease(t *testing.T) {
 	// 3 clusters with 3 writer instances
 	// each writer calls check_insert from a separate routine
 	// per cluster 1 routine will become leader, the others will
@@ -177,12 +177,12 @@ func TestConcurrentCheckInsert(t *testing.T) {
 				go func() {
 					minT := time.Unix(0, 0)
 					maxT := time.Unix(2, 0)
-					firstLockRes, firstErr := callCheckInsert(db, cluster, writer, minT, maxT)
+					firstLockRes, firstErr := callUpdateLease(db, cluster, writer, minT, maxT)
 					for i := 0; i < numCallsToCheck; i++ {
 						time.Sleep(timeBetweenCheck)
 						minT = minT.Add(time.Second)
 						maxT = maxT.Add(time.Second)
-						lockRes, err := callCheckInsert(db, cluster, writer, minT, maxT)
+						lockRes, err := callUpdateLease(db, cluster, writer, minT, maxT)
 						// this routine got an error on first try -> other routine is leader
 						if firstErr != nil && err == nil {
 							wg.Done()

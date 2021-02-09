@@ -82,13 +82,13 @@ func (h *Service) haStateSyncer() {
 	}
 }
 
-// checkInsert verifies the samples are from prom leader & in an expected time range.
+// CheckLease verifies the samples are from prom leader & in an expected time range.
 // 	returns an boolean signifying whether to allow (true),
 //		or deny (false). The second returned argument is the
 //      minimum timestamp of the accepted samples.
 //		An error is returned if the lock state could not be
 //		checked against the db
-func (h *Service) CheckInsert(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
+func (h *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
 	var (
 		stateRef  *state.State
 		stateView *state.StateView

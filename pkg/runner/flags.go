@@ -62,7 +62,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.BoolVar(&cfg.UpgradePrereleaseExtensions, "upgrade-prerelease-extensions", false, "Upgrades to pre-release TimescaleDB, Promscale extensions.")
 	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
 	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
-	fs.BoolVar(&cfg.HAEnabled, "enable-ha", false, "Enable external_labels based HA.")
 	util.ParseEnv("PROMSCALE", fs)
 	// Deprecated: TS_PROM is the old prefix which is deprecated and in here
 	// for legacy compatibility. Will be removed in the future. PROMSCALE prefix

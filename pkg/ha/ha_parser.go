@@ -72,7 +72,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 
 	minT := promModel.Time(minTUnix).Time()
 	maxT := promModel.Time(maxTUnix).Time()
-	allowInsert, acceptedMinT, err := h.service.CheckInsert(minT, maxT, clusterName, replicaName)
+	allowInsert, acceptedMinT, err := h.service.CheckLease(minT, maxT, clusterName, replicaName)
 	if err != nil {
 		return nil, rows, fmt.Errorf("could not check ha lock: %#v", err)
 	}

@@ -41,7 +41,7 @@ func TestTryChangeLeader(t *testing.T) {
 		}
 
 		// set leader to w1
-		lock, err := callCheckInsert(db, cluster, originalWriter, minT, maxT)
+		lock, err := callUpdateLease(db, cluster, originalWriter, minT, maxT)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -91,7 +91,7 @@ func TestConcurrentTryChangeLeader(t *testing.T) {
 		wg.Add(len(writers))
 		minT := time.Unix(0, 0)
 		maxT := time.Unix(2, 0)
-		firstLockRes, _ := callCheckInsert(db, "c", writers[0], minT, maxT)
+		firstLockRes, _ := callUpdateLease(db, "c", writers[0], minT, maxT)
 		for _, w := range writers {
 			writer := w
 			go func() {
