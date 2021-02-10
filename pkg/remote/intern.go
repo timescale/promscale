@@ -48,7 +48,7 @@ func newEntry(s string) *entry {
 	return &entry{s: s}
 }
 
-func newPool() *pool {
+func NewPool() *pool {
 	return &pool{
 		pool: map[string]*entry{},
 	}

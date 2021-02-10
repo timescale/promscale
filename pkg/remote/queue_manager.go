@@ -60,7 +60,7 @@ type queueManagerMetrics struct {
 	droppedSamplesTotal  prometheus.Counter
 	enqueueRetriesTotal  prometheus.Counter
 	sentBatchDuration    prometheus.Histogram
-	highestSentTimestamp *maxTimestamp
+	highestSentTimestamp *MaxTimestamp
 	pendingSamples       prometheus.Gauge
 	shardCapacity        prometheus.Gauge
 	numShards            prometheus.Gauge
@@ -72,7 +72,7 @@ type queueManagerMetrics struct {
 	maxSamplesPerSend    prometheus.Gauge
 }
 
-func newQueueManagerMetrics(r prometheus.Registerer, rn, e string) *queueManagerMetrics {
+func NewQueueManagerMetrics(r prometheus.Registerer, rn, e string) *queueManagerMetrics {
 	m := &queueManagerMetrics{
 		reg: r,
 	}
@@ -145,7 +145,7 @@ func newQueueManagerMetrics(r prometheus.Registerer, rn, e string) *queueManager
 		Buckets:     append(prometheus.DefBuckets, 25, 60, 120, 300),
 		ConstLabels: constLabels,
 	})
-	m.highestSentTimestamp = &maxTimestamp{
+	m.highestSentTimestamp = &MaxTimestamp{
 		Gauge: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace:   namespace,
 			Subsystem:   subsystem,
@@ -311,11 +311,11 @@ type QueueManager struct {
 	quit        chan struct{}
 	wg          sync.WaitGroup
 
-	samplesIn, samplesDropped, samplesOut, samplesOutDuration *ewmaRate
+	samplesIn, samplesDropped, samplesOut, samplesOutDuration *EwmaRate
 
 	metrics              *queueManagerMetrics
 	interner             *pool
-	highestRecvTimestamp *maxTimestamp
+	highestRecvTimestamp *MaxTimestamp
 }
 
 // NewQueueManager builds a new QueueManager.
@@ -325,7 +325,7 @@ func NewQueueManager(
 	readerMetrics *wal.LiveReaderMetrics,
 	logger log.Logger,
 	walDir string,
-	samplesIn *ewmaRate,
+	samplesIn *EwmaRate,
 	cfg config.QueueConfig,
 	mCfg config.MetadataConfig,
 	externalLabels labels.Labels,
@@ -333,7 +333,7 @@ func NewQueueManager(
 	client WriteClient,
 	flushDeadline time.Duration,
 	interner *pool,
-	highestRecvTimestamp *maxTimestamp,
+	highestRecvTimestamp *MaxTimestamp,
 	sm ReadyScrapeManager,
 ) *QueueManager {
 	if logger == nil {
@@ -359,9 +359,9 @@ func NewQueueManager(
 		quit:        make(chan struct{}),
 
 		samplesIn:          samplesIn,
-		samplesDropped:     newEWMARate(ewmaWeight, shardUpdateDuration),
-		samplesOut:         newEWMARate(ewmaWeight, shardUpdateDuration),
-		samplesOutDuration: newEWMARate(ewmaWeight, shardUpdateDuration),
+		samplesDropped:     NewEwmaRate(ewmaWeight, shardUpdateDuration),
+		samplesOut:         NewEwmaRate(ewmaWeight, shardUpdateDuration),
+		samplesOutDuration: NewEwmaRate(ewmaWeight, shardUpdateDuration),
 
 		metrics:              metrics,
 		interner:             interner,
@@ -449,7 +449,7 @@ outer:
 		lbls, ok := t.seriesLabels[s.Ref]
 		if !ok {
 			t.metrics.droppedSamplesTotal.Inc()
-			t.samplesDropped.incr(1)
+			t.samplesDropped.Incr(1)
 			if _, ok := t.droppedSeries[s.Ref]; !ok {
 				level.Info(t.logger).Log("msg", "Dropped sample for series that was not explicitly dropped via relabelling", "ref", s.Ref)
 			}
@@ -686,19 +686,19 @@ func (t *QueueManager) shouldReshard(desiredShards int) bool {
 // outlined in this functions implementation. It is up to the caller to reshard, or not,
 // based on the return value.
 func (t *QueueManager) calculateDesiredShards() int {
-	t.samplesOut.tick()
-	t.samplesDropped.tick()
-	t.samplesOutDuration.tick()
+	t.samplesOut.Tick()
+	t.samplesDropped.Tick()
+	t.samplesOutDuration.Tick()
 
 	// We use the number of incoming samples as a prediction of how much work we
 	// will need to do next iteration.  We add to this any pending samples
 	// (received - send) so we can catch up with any backlog. We use the average
 	// outgoing batch latency to work out how many shards we need.
 	var (
-		samplesInRate      = t.samplesIn.rate()
-		samplesOutRate     = t.samplesOut.rate()
-		samplesKeptRatio   = samplesOutRate / (t.samplesDropped.rate() + samplesOutRate)
-		samplesOutDuration = t.samplesOutDuration.rate() / float64(time.Second)
+		samplesInRate      = t.samplesIn.Rate()
+		samplesOutRate     = t.samplesOut.Rate()
+		samplesKeptRatio   = samplesOutRate / (t.samplesDropped.Rate() + samplesOutRate)
+		samplesOutDuration = t.samplesOutDuration.Rate() / float64(time.Second)
 		samplesPendingRate = samplesInRate*samplesKeptRatio - samplesOutRate
 		highestSent        = t.metrics.highestSentTimestamp.Get()
 		highestRecv        = t.highestRecvTimestamp.Get()
@@ -951,6 +951,7 @@ func (s *shards) runShard(ctx context.Context, shardID int, queue chan sample) {
 			nPending++
 
 			if nPending >= max {
+				level.Debug(s.qm.logger).Log("msg", "Send samples to remote storage...", "count", nPending, "shard_id", shardID)
 				s.sendSamples(ctx, pendingSamples, &buf)
 				nPending = 0
 				s.qm.metrics.pendingSamples.Sub(float64(max))
@@ -981,8 +982,8 @@ func (s *shards) sendSamples(ctx context.Context, samples []prompb.TimeSeries, b
 
 	// These counters are used to calculate the dynamic sharding, and as such
 	// should be maintained irrespective of success or failure.
-	s.qm.samplesOut.incr(int64(len(samples)))
-	s.qm.samplesOutDuration.incr(int64(time.Since(begin)))
+	s.qm.samplesOut.Incr(int64(len(samples)))
+	s.qm.samplesOutDuration.Incr(int64(time.Since(begin)))
 	s.qm.lastSendTimestamp.Store(time.Now().Unix())
 }
 
