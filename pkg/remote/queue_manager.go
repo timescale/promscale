@@ -368,7 +368,9 @@ func NewQueueManager(
 		highestRecvTimestamp: highestRecvTimestamp,
 	}
 
-	t.watcher = wal.NewWatcher(watcherMetrics, readerMetrics, logger, client.Name(), t, walDir)
+	if walDir != "" {
+		t.watcher = wal.NewWatcher(watcherMetrics, readerMetrics, logger, client.Name(), t, walDir)
+	}
 	if t.mcfg.Send {
 		t.metadataWatcher = NewMetadataWatcher(logger, sm, client.Name(), t, t.mcfg.SendInterval, flushDeadline)
 	}
@@ -497,7 +499,9 @@ func (t *QueueManager) Start() {
 	t.metrics.maxSamplesPerSend.Set(float64(t.cfg.MaxSamplesPerSend))
 
 	t.shards.start(t.numShards)
-	t.watcher.Start()
+	if t.watcher != nil {
+		t.watcher.Start()
+	}
 	if t.mcfg.Send {
 		t.metadataWatcher.Start()
 	}
@@ -519,7 +523,9 @@ func (t *QueueManager) Stop() {
 	// is to ensure we don't end up executing a reshard and shards.stop() at the same time, which
 	// causes a closed channel panic.
 	t.shards.stop()
-	t.watcher.Stop()
+	if t.watcher != nil {
+		t.watcher.Stop()
+	}
 	if t.mcfg.Send {
 		t.metadataWatcher.Stop()
 	}
