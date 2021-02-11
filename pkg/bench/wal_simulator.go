@@ -30,6 +30,7 @@ func (ws *walSimulator) run(qmi *qmInfo) {
 		if ok := qmi.qm.Append(samples); !ok {
 			fmt.Println("qm append returned false")
 		}
+		qmi.samplesWal.Incr(int64(len(samples)))
 	}
 }
 

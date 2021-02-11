@@ -111,6 +111,7 @@ func Run(conf *BenchConfig) (err error) {
 	if err != nil {
 		return err
 	}
+	qmi.markStoppedSend()
 
 	ewmaRateSent := qmi.samplesIn.Rate()
 

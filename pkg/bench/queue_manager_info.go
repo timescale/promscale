@@ -3,6 +3,8 @@ package bench
 import (
 	"fmt"
 	"net/url"
+	"os"
+	"text/tabwriter"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,18 +15,29 @@ import (
 )
 
 type qmInfo struct {
-	qm        *remote.QueueManager
-	samplesIn *remote.EwmaRate
-	highestTs *remote.MaxTimestamp
+	qm         *remote.QueueManager
+	samplesIn  *remote.EwmaRate
+	samplesWal *remote.EwmaRate
+	highestTs  *remote.MaxTimestamp
+	ticker     *time.Ticker
 }
 
 func (qmi *qmInfo) run() {
-	ticker := time.NewTicker(shardUpdateDuration)
-	defer ticker.Stop()
-	for range ticker.C {
+	qmi.ticker = time.NewTicker(shardUpdateDuration)
+	w := new(tabwriter.Writer)
+	w.Init(os.Stdout, 8, 8, 1, '\t', tabwriter.AlignRight)
+	for range qmi.ticker.C {
 		qmi.samplesIn.Tick()
-		fmt.Println("Samples in rate", qmi.samplesIn.Rate(), "Samples out rate", qmi.qm.SamplesOut.Rate())
+		qmi.samplesWal.Tick()
+		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\t\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate())
+		w.Flush()
 	}
+}
+
+func (qmi *qmInfo) markStoppedSend() {
+	//Stop the ticker to prevent in rate from going down after exhaustion.
+	//this simulates a continued insert rate at the last rate from the point of view of dynamic shard logic
+	qmi.ticker.Stop()
 }
 
 func getQM(conf *BenchConfig) (*qmInfo, error) {
@@ -50,7 +63,8 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 	}
 
 	qmi := &qmInfo{
-		samplesIn: remote.NewEwmaRate(ewmaWeight, shardUpdateDuration),
+		samplesIn:  remote.NewEwmaRate(ewmaWeight, shardUpdateDuration),
+		samplesWal: remote.NewEwmaRate(ewmaWeight, shardUpdateDuration),
 		highestTs: remote.NewMaxTimestamp(
 			prometheus.NewGauge(prometheus.GaugeOpts{
 				Namespace: "ns",
