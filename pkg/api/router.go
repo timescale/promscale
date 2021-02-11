@@ -77,6 +77,11 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Get("/debug/pprof/profile", pprof.Profile)
 	router.Get("/debug/pprof/symbol", pprof.Symbol)
 	router.Get("/debug/pprof/trace", pprof.Trace)
+	router.Get("/debug/pprof/heap", pprof.Handler("heap").ServeHTTP)
+	router.Get("/debug/pprof/goroutine", pprof.Handler("goroutine").ServeHTTP)
+	router.Get("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
+	router.Get("/debug/pprof/block", pprof.Handler("block").ServeHTTP)
+	router.Get("/debug/pprof/allocs", pprof.Handler("allocs").ServeHTTP)
 
 	return router, nil
 }
