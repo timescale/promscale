@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"fmt"
 	"net/url"
 	"time"
 
@@ -22,6 +23,7 @@ func (qmi *qmInfo) run() {
 	defer ticker.Stop()
 	for range ticker.C {
 		qmi.samplesIn.Tick()
+		fmt.Println("Samples in rate", qmi.samplesIn.Rate(), "Samples out rate", qmi.qm.SamplesOut.Rate())
 	}
 }
 
@@ -57,11 +59,18 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 				Help:      "Highest timestamp that has come into the remote storage via the Appender interface, in seconds since epoch.",
 			})),
 	}
+
+	logLevel := &promlog.AllowedLevel{}
+	err = logLevel.Set("info")
+	if err != nil {
+		return nil, err
+	}
+
 	qmi.qm = remote.NewQueueManager(
 		remote.NewQueueManagerMetrics(nil, "", ""),
 		nil,
 		nil,
-		promlog.New(&promlog.Config{}),
+		promlog.New(&promlog.Config{Level: logLevel}),
 		"",
 		qmi.samplesIn,
 		rwConf.QueueConfig,
