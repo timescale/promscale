@@ -311,7 +311,7 @@ type QueueManager struct {
 	quit        chan struct{}
 	wg          sync.WaitGroup
 
-	samplesIn, samplesDropped, samplesOut, samplesOutDuration *EwmaRate
+	SamplesIn, SamplesDropped, SamplesOut, SamplesOutDuration *EwmaRate
 
 	metrics              *queueManagerMetrics
 	interner             *pool
@@ -358,10 +358,10 @@ func NewQueueManager(
 		reshardChan: make(chan int),
 		quit:        make(chan struct{}),
 
-		samplesIn:          samplesIn,
-		samplesDropped:     NewEwmaRate(ewmaWeight, shardUpdateDuration),
-		samplesOut:         NewEwmaRate(ewmaWeight, shardUpdateDuration),
-		samplesOutDuration: NewEwmaRate(ewmaWeight, shardUpdateDuration),
+		SamplesIn:          samplesIn,
+		SamplesDropped:     NewEwmaRate(ewmaWeight, shardUpdateDuration),
+		SamplesOut:         NewEwmaRate(ewmaWeight, shardUpdateDuration),
+		SamplesOutDuration: NewEwmaRate(ewmaWeight, shardUpdateDuration),
 
 		metrics:              metrics,
 		interner:             interner,
@@ -451,7 +451,7 @@ outer:
 		lbls, ok := t.seriesLabels[s.Ref]
 		if !ok {
 			t.metrics.droppedSamplesTotal.Inc()
-			t.samplesDropped.Incr(1)
+			t.SamplesDropped.Incr(1)
 			if _, ok := t.droppedSeries[s.Ref]; !ok {
 				level.Info(t.logger).Log("msg", "Dropped sample for series that was not explicitly dropped via relabelling", "ref", s.Ref)
 			}
@@ -692,19 +692,19 @@ func (t *QueueManager) shouldReshard(desiredShards int) bool {
 // outlined in this functions implementation. It is up to the caller to reshard, or not,
 // based on the return value.
 func (t *QueueManager) calculateDesiredShards() int {
-	t.samplesOut.Tick()
-	t.samplesDropped.Tick()
-	t.samplesOutDuration.Tick()
+	t.SamplesOut.Tick()
+	t.SamplesDropped.Tick()
+	t.SamplesOutDuration.Tick()
 
 	// We use the number of incoming samples as a prediction of how much work we
 	// will need to do next iteration.  We add to this any pending samples
 	// (received - send) so we can catch up with any backlog. We use the average
 	// outgoing batch latency to work out how many shards we need.
 	var (
-		samplesInRate      = t.samplesIn.Rate()
-		samplesOutRate     = t.samplesOut.Rate()
-		samplesKeptRatio   = samplesOutRate / (t.samplesDropped.Rate() + samplesOutRate)
-		samplesOutDuration = t.samplesOutDuration.Rate() / float64(time.Second)
+		samplesInRate      = t.SamplesIn.Rate()
+		samplesOutRate     = t.SamplesOut.Rate()
+		samplesKeptRatio   = samplesOutRate / (t.SamplesDropped.Rate() + samplesOutRate)
+		samplesOutDuration = t.SamplesOutDuration.Rate() / float64(time.Second)
 		samplesPendingRate = samplesInRate*samplesKeptRatio - samplesOutRate
 		highestSent        = t.metrics.highestSentTimestamp.Get()
 		highestRecv        = t.highestRecvTimestamp.Get()
@@ -988,8 +988,8 @@ func (s *shards) sendSamples(ctx context.Context, samples []prompb.TimeSeries, b
 
 	// These counters are used to calculate the dynamic sharding, and as such
 	// should be maintained irrespective of success or failure.
-	s.qm.samplesOut.Incr(int64(len(samples)))
-	s.qm.samplesOutDuration.Incr(int64(time.Since(begin)))
+	s.qm.SamplesOut.Incr(int64(len(samples)))
+	s.qm.SamplesOutDuration.Incr(int64(time.Since(begin)))
 	s.qm.lastSendTimestamp.Store(time.Now().Unix())
 }
 
