@@ -3,14 +3,18 @@ package bench
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/prometheus/prometheus/tsdb/record"
 )
 
 type walSimulator struct {
-	ch chan []record.RefSample
-	wg sync.WaitGroup
+	ch         chan []record.RefSample
+	wg         sync.WaitGroup
+	lastReport time.Time
 }
+
+const reportEvery = time.Second * 10
 
 func NewWalSimulator(qmi *qmInfo) *walSimulator {
 	sim := &walSimulator{
@@ -43,6 +47,10 @@ func (ws *walSimulator) Append(samples []record.RefSample) {
 	select {
 	case ws.ch <- samples:
 	default:
-		fmt.Println("WARNING: WAL channel is full, which violates the simulation")
+		if time.Since(ws.lastReport) > reportEvery {
+			fmt.Println("WARNING: WAL channel is full, which violates the simulation")
+			ws.lastReport = time.Now()
+		}
+		ws.ch <- samples
 	}
 }
