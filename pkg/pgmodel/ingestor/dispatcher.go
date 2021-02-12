@@ -36,7 +36,7 @@ type pgxDispatcher struct {
 	insertedDatapoints     *int64
 	toCopiers              chan copyRequest
 	seriesEpochRefresh     *time.Ticker
-	doneChannel            chan bool
+	doneChannel            chan struct{}
 	doneWG                 sync.WaitGroup
 	labelArrayOID          uint32
 }
@@ -76,8 +76,9 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
-		doneChannel:        make(chan bool),
+		doneChannel:        make(chan struct{}),
 	}
+	runThroughputWatcher(inserter.doneChannel)
 	if cfg.AsyncAcks && cfg.ReportInterval > 0 {
 		inserter.insertedDatapoints = new(int64)
 		reportInterval := int64(cfg.ReportInterval)
@@ -194,7 +195,8 @@ func (p *pgxDispatcher) Close() {
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxDispatcher) InsertData(rows map[string][]model.Samples) (uint64, error) {
+func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
+	rows := dataTS.Rows
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
 	workFinished.Add(len(rows))
@@ -213,6 +215,8 @@ func (p *pgxDispatcher) InsertData(rows map[string][]model.Samples) (uint64, err
 	var err error
 	if !p.asyncAcks {
 		workFinished.Wait()
+		decBatch(numRows)
+		registerIngestionDuration(dataTS.InTime)
 		select {
 		case err = <-errChan:
 		default:
@@ -221,6 +225,8 @@ func (p *pgxDispatcher) InsertData(rows map[string][]model.Samples) (uint64, err
 	} else {
 		go func() {
 			workFinished.Wait()
+			decBatch(numRows)
+			registerIngestionDuration(dataTS.InTime)
 			select {
 			case err = <-errChan:
 			default:

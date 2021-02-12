@@ -452,15 +452,16 @@ func (m *MockInserter) Close() {
 
 }
 
-func (m *MockInserter) InsertNewData(rows map[string][]Samples) (uint64, error) {
-	return m.InsertData(rows)
+func (m *MockInserter) InsertNewData(data Data) (uint64, error) {
+	return m.InsertData(data)
 }
 
 func (m *MockInserter) CompleteMetricCreation() error {
 	return nil
 }
 
-func (m *MockInserter) InsertData(rows map[string][]Samples) (uint64, error) {
+func (m *MockInserter) InsertData(data Data) (uint64, error) {
+	rows := data.Rows
 	for _, v := range rows {
 		for i, si := range v {
 			seriesStr := si.GetSeries().String()
