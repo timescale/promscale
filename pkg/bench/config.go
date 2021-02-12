@@ -1,11 +1,16 @@
 package bench
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/prometheus/prometheus/config"
+)
 
 type BenchConfig struct {
 	TSDBPath                string
 	Mint                    int64
 	Maxt                    int64
+	QueueConfig             config.QueueConfig
 	WriteEndpoint           string
 	UseWallClockForDataTime bool
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/prometheus/prometheus/config"
 	"github.com/timescale/promscale/pkg/bench"
 )
 
@@ -17,6 +18,7 @@ func main() {
 		RateControl:             true,
 		RateMultiplier:          10000.0,
 		SeriesMultiplier:        1,
+		QueueConfig:             config.DefaultQueueConfig,
 	}
 	if err := config.Validate(); err != nil {
 		fmt.Println(err)

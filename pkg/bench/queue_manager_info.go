@@ -47,6 +47,7 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 	}
 
 	rwConf := config.DefaultRemoteWriteConfig
+	rwConf.QueueConfig = conf.QueueConfig
 
 	rwConf.URL = &common_config.URL{
 		URL: url,
