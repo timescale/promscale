@@ -28,7 +28,11 @@ require (
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.15.0
-	github.com/prometheus/prometheus v1.8.2-0.20210121114440-a7e446cf2d2a
+	//Note: Prometheus is not actually on 1.8.2, rather Prometheus does not
+	//follow the v2 go mod conventions with the /v2 path, so go mod assumes
+	//it's on 1.x but the commit is from the v2 branch
+	//to update: go get -u github.com/prometheus/prometheus@<commit hash>
+	github.com/prometheus/prometheus v1.8.2-0.20210119214810-e4487274853c
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
 	github.com/stretchr/testify v1.6.1
