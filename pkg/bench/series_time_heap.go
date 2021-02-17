@@ -21,7 +21,7 @@ type SeriesItem struct {
 
 type SeriesTimeHeap []*SeriesItem
 
-func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo) (SeriesTimeHeap, error) {
+func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, addSeriesToQmi bool) (SeriesTimeHeap, error) {
 	sth := make(SeriesTimeHeap, 0, 100)
 	refSeries := make([]record.RefSeries, 10000)
 	for ss.Next() {
@@ -31,25 +31,30 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo) (Se
 		ts, val := it.At()
 		si := &SeriesItem{ts, val, series, uint64(len(sth)), it, len(sth)}
 		sth = append(sth, si)
-		if conf.SeriesMultiplier == 1 {
-			rs := record.RefSeries{
-				Ref:    getSeriesID(conf, si.series_id, 0),
-				Labels: si.series.Labels(),
-			}
-			refSeries = append(refSeries, rs)
-		} else {
-			build := labels.NewBuilder(si.series.Labels())
-			for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
-				build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
+
+		if addSeriesToQmi {
+			if conf.SeriesMultiplier == 1 {
 				rs := record.RefSeries{
-					Ref:    getSeriesID(conf, si.series_id, seriesMultiplierIndex),
-					Labels: build.Labels(),
+					Ref:    getSeriesID(conf, si.series_id, 0),
+					Labels: si.series.Labels(),
 				}
 				refSeries = append(refSeries, rs)
+			} else {
+				build := labels.NewBuilder(si.series.Labels())
+				for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
+					build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
+					rs := record.RefSeries{
+						Ref:    getSeriesID(conf, si.series_id, seriesMultiplierIndex),
+						Labels: build.Labels(),
+					}
+					refSeries = append(refSeries, rs)
+				}
 			}
 		}
 	}
-	qmi.qm.StoreSeries(refSeries, 0)
+	if addSeriesToQmi {
+		qmi.qm.StoreSeries(refSeries, 0)
+	}
 
 	if err := checkSeriesSet(ss); err != nil {
 		return nil, err

@@ -39,36 +39,13 @@ func getSeriesID(conf *BenchConfig, rawSeriesID uint64, seriesMultipliedIndex in
 	return (rawSeriesID * uint64(conf.SeriesMultiplier)) + uint64(seriesMultipliedIndex)
 }
 
-func Run(conf *BenchConfig) (err error) {
-	db, err := tsdb.OpenDBReadOnly(conf.TSDBPath, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err2 := db.Close()
-		if err == nil {
-			err = err2
-		}
-	}()
-	q, err := db.Querier(context.TODO(), conf.Mint, conf.Maxt)
-	if err != nil {
-		return err
-	}
-	defer q.Close()
-
+func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *walSimulator, runNumber int) (time.Time, int, error) {
 	ss := q.Select(false, nil, labels.MustNewMatcher(labels.MatchRegexp, "", ".*"))
 
-	qmi, err := getQM(conf)
+	sth, err := NewSeriesTimeHeap(conf, ss, qmi, runNumber == 0)
 	if err != nil {
-		return err
+		return time.Time{}, 0, err
 	}
-
-	sth, err := NewSeriesTimeHeap(conf, ss, qmi)
-	if err != nil {
-		return err
-	}
-
-	qmi.qm.Start()
 
 	start := time.Now()
 	startTs := int64(model.TimeFromUnixNano(start.UnixNano()))
@@ -78,7 +55,6 @@ func Run(conf *BenchConfig) (err error) {
 		dataTimeStartTs = startTs
 	}
 
-	ws := NewWalSimulator(qmi)
 	count := 0
 	err = sth.Visit(func(rawTs int64, val float64, seriesID uint64) error {
 		timestampDelta := int64(float64(rawTs-firstTs) / conf.RateMultiplier)
@@ -108,17 +84,56 @@ func Run(conf *BenchConfig) (err error) {
 		qmi.samplesIn.Incr(int64(samplesSent))
 		return nil
 	})
+	if err == nil {
+		err = checkSeriesSet(ss)
+	}
+	return start, count, err
+}
+
+func Run(conf *BenchConfig) (err error) {
+	db, err := tsdb.OpenDBReadOnly(conf.TSDBPath, nil)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err2 := db.Close()
+		if err == nil {
+			err = err2
+		}
+	}()
+
+	qmi, err := getQM(conf)
+	if err != nil {
+		return err
+	}
+	qmi.qm.Start()
+
+	q, err := db.Querier(context.TODO(), conf.Mint, conf.Maxt)
+	if err != nil {
+		return err
+	}
+	defer q.Close()
+
+	ws := NewWalSimulator(qmi)
+	count := 0
+	start := time.Time{}
+	for i := 0; i < conf.RepeatedRuns; i++ {
+		runStart, runCount, err := RunFullSimulation(conf, qmi, q, ws, i)
+		if err != nil {
+			return err
+		}
+		if start.IsZero() {
+			start = runStart
+		}
+		count += runCount
+		ewmaRateSent := qmi.samplesIn.Rate()
+		took := time.Since(runStart)
+		fmt.Println("single run took", took, "count", runCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(runCount)/took.Seconds())
+	}
+
 	qmi.markStoppedSend()
 
 	ewmaRateSent := qmi.samplesIn.Rate()
-
-	if err := checkSeriesSet(ss); err != nil {
-		return err
-	}
-
 	ws.Stop()
 	qmi.qm.Stop()
 	took := time.Since(start)
