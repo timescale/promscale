@@ -100,11 +100,7 @@ func prepareIngestorWithHa(db *pgxpool.Pool, t testing.TB) (*manualTicker, *inge
 	// depends only on the max time seen by an instance
 	// and try_change_leader is called when we want
 	tooFarInTheFutureNowFn := func() time.Time { return time.Now().Add(time.Hour) }
-	haService, err := ha.NewHAServiceWith(pgxconn.NewPgxConn(db), ticker, tooFarInTheFutureNowFn)
-	if err != nil {
-		t.Fatalf("could not set up test: %v", err)
-		return nil, nil, err
-	}
+	haService := ha.NewHAServiceWith(pgxconn.NewPgxConn(db), ticker, tooFarInTheFutureNowFn)
 	haParser := ha.NewHAParser(haService)
 	cach := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), cach, haParser, &ingestor.Cfg{})

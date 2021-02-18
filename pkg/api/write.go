@@ -55,27 +55,28 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 
 		req, err, logMsg := loadWriteRequest(r)
 		if err != nil {
+			metrics.InvalidWriteReqs.Inc()
 			log.Error("msg", logMsg, "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		receivedBatchCount := 0
+		// if samples in write request are empty the we do not need to
+		// proceed further
+		timeseries := req.GetTimeseries()
+		if len(timeseries) == 0 {
+			return
+		}
 
-		for _, t := range req.GetTimeseries() {
+		receivedBatchCount := 0
+		for _, t := range timeseries {
 			receivedBatchCount = receivedBatchCount + len(t.Samples)
 		}
 
 		metrics.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		// if samples in write request are empty the we do not need to
-		// proceed further
-		if len(req.GetTimeseries()) == 0 {
-			return
-		}
-
-		numSamples, err := writer.Ingest(req.GetTimeseries(), req)
+		numSamples, err := writer.Ingest(timeseries, req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)

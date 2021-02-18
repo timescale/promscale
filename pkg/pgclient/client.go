@@ -105,10 +105,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 	}
 	var parser ingestor.Parser
 	if cfg.HAEnabled {
-		haService, err := ha.NewHAService(dbConn)
-		if err != nil {
-			return nil, err
-		}
+		haService := ha.NewHAService(dbConn)
 		parser = ha.NewHAParser(haService)
 	} else {
 		parser = &ingestor.DataParser{}

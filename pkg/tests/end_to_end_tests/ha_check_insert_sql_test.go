@@ -66,6 +66,7 @@ func TestUpdateLease(t *testing.T) {
 		writer := "w1"
 		minT := time.Unix(1, 0)
 		maxT := time.Unix(3, 0)
+		// w1 becomes leader
 		lock, err := callUpdateLease(db, cluster, writer, minT, maxT)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

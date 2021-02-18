@@ -26,7 +26,7 @@ type Labels struct {
 	Names      []string
 	Values     []string
 	MetricName string
-	Str        string
+	str        string
 }
 
 var LabelsInterner = sync.Map{}
@@ -133,40 +133,40 @@ func LabelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	labels := GetLabels(str)
-	if labels == nil {
-		labels = new(Labels)
-		labels.Str = str
-		labels.Names = make([]string, len(labelPairs))
-		labels.Values = make([]string, len(labelPairs))
+	cachedLabels := GetLabels(str)
+	if cachedLabels == nil {
+		cachedLabels = new(Labels)
+		cachedLabels.str = str
+		cachedLabels.Names = make([]string, len(labelPairs))
+		cachedLabels.Values = make([]string, len(labelPairs))
 		for i, l := range labelPairs {
-			labels.Names[i] = l.Name
-			labels.Values[i] = l.Value
+			cachedLabels.Names[i] = l.Name
+			cachedLabels.Values[i] = l.Value
 			if l.Name == MetricNameLabelName {
-				labels.MetricName = l.Value
+				cachedLabels.MetricName = l.Value
 			}
 		}
-		labels = SetLabels(str, labels)
+		cachedLabels = SetLabels(str, cachedLabels)
 	}
 
-	return labels, labels.MetricName, err
+	return cachedLabels, cachedLabels.MetricName, err
 }
 
 // Get a string representation for hashing and comparison
 // This representation is guaranteed to uniquely represent the underlying label
 // set, though need not human-readable, or indeed, valid utf-8
 func (l *Labels) String() string {
-	return l.Str
+	return l.str
 }
 
 // Compare returns a comparison int between two Labels
 func (l *Labels) Compare(b *Labels) int {
-	return strings.Compare(l.Str, b.Str)
+	return strings.Compare(l.str, b.str)
 }
 
 // Equal returns true if two Labels are equal
 func (l *Labels) Equal(b *Labels) bool {
-	return l.Str == b.Str
+	return l.str == b.str
 }
 
 // Labels implements sort.Interface
@@ -201,4 +201,8 @@ func (l *Labels) GetClusterName() string {
 		}
 	}
 	return ""
+}
+
+func (l *Labels) StrHash() string {
+	return l.str
 }

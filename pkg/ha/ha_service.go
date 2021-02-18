@@ -7,10 +7,10 @@ package ha
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/ha/client"
 	"sync"
 	"time"
 
-	"github.com/jackc/pgconn"
 	"github.com/timescale/promscale/pkg/ha/state"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
@@ -25,57 +25,66 @@ const (
 	haLastWriteIntervalInSecs     = 30
 )
 
+// Service contains the lease state for all prometheus clusters
+// and logic for determining if a specific sample should
+// be allowed to be inserted. Also it keeps the lease state
+// up to date by periodically refreshing it from the database.
 type Service struct {
 	state               *sync.Map
-	lockClient          haLockClient
-	leaseTimeout        time.Duration
-	leaseRefresh        time.Duration
+	leaseClient         client.LeaseClient
 	leaderChangeLocks   *sync.Map
 	syncTicker          util.Ticker
 	currentTimeProvider func() time.Time
 }
 
-func NewHAService(dbClient pgxconn.PgxConn) (*Service, error) {
+// NewHaService constructs a new HA service with the supplied
+// database connection and the default sync interval.
+// The sync interval determines how often the leases for
+// all clusters are refreshed from the database.
+func NewHAService(dbClient pgxconn.PgxConn) *Service {
 	return NewHAServiceWith(dbClient, util.NewTicker(haSyncerTimeInterval), time.Now)
 }
 
-func NewHAServiceWith(dbClient pgxconn.PgxConn, ticker util.Ticker, currentTimeFn func() time.Time) (*Service, error) {
-	lockClient := newHaLockClient(dbClient)
-	timeout, refresh, err := lockClient.readLeaseSettings(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("could not create HA state: %#v", err)
-	}
+// NewHaServiceWith constructs a new HA service with the supplied
+// database connection, ticker and a current time provide function.
+// The ticker determines when the lease states for all clusters
+// are refreshed from the database, the currentTimeFn determines the
+// current time, used for deterministic tests.
+func NewHAServiceWith(dbClient pgxconn.PgxConn, ticker util.Ticker, currentTimeFn func() time.Time) *Service {
+	lockClient := client.NewHaLockClient(dbClient)
 
 	service := &Service{
 		state:               &sync.Map{},
-		lockClient:          lockClient,
-		leaseTimeout:        timeout,
-		leaseRefresh:        refresh,
+		leaseClient:         lockClient,
 		leaderChangeLocks:   &sync.Map{},
 		syncTicker:          ticker,
 		currentTimeProvider: currentTimeFn,
 	}
 	go service.haStateSyncer()
-	return service, nil
+	return service
 }
 
-func (h *Service) haStateSyncer() {
+// haStateSyncer periodically synchronizes the in-memory
+// lease states with latest values from the database and initiates
+// a leader change if the conditions are met.
+func (s *Service) haStateSyncer() {
 	for {
-		h.syncTicker.Wait()
-		h.state.Range(func(c, s interface{}) bool {
+		s.syncTicker.Wait()
+		s.state.Range(func(c, l interface{}) bool {
 			cluster := fmt.Sprint(c)
-			ss := castToState(s)
-			stateView := ss.Clone()
-			latestState, err := h.syncLockStateFromDB(stateView.LeaseStart, stateView.MaxTimeSeenLeader, cluster, stateView.Leader)
+			lease := l.(*state.Lease)
+			stateBeforeUpdate := lease.Clone()
+			err := lease.UpdateFromDB(s.leaseClient, stateBeforeUpdate.Leader, stateBeforeUpdate.LeaseStart, stateBeforeUpdate.MaxTimeSeenLeader)
 			if err != nil {
 				errMsg := fmt.Sprintf("failed to validate cluster %s state", cluster)
 				log.Error("msg", errMsg, "err", err)
 				return true
 			}
 
-			go exposeHAStateToMetrics(cluster, stateView.Leader, latestState.Leader)
-			if ok := h.checkLeaseUntilAndLastWrite(stateView); !ok {
-				go h.tryChangeLeader(cluster, stateView.Leader)
+			stateAfterUpdate := lease.Clone()
+			go exposeHAStateToMetrics(cluster, stateBeforeUpdate.Leader, stateAfterUpdate.Leader)
+			if ok := s.shouldTryToChangeLeader(stateAfterUpdate); !ok {
+				go s.tryChangeLeader(cluster, lease)
 			}
 			return true
 		})
@@ -83,94 +92,64 @@ func (h *Service) haStateSyncer() {
 }
 
 // CheckLease verifies the samples are from prom leader & in an expected time range.
-// 	returns an boolean signifying whether to allow (true),
-//		or deny (false). The second returned argument is the
-//      minimum timestamp of the accepted samples.
-//		An error is returned if the lock state could not be
-//		checked against the db
-func (h *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName string) (bool, time.Time, error) {
-	var (
-		stateRef  *state.State
-		stateView *state.StateView
-		err       error
-	)
-
-	s, ok := h.state.Load(clusterName)
-	if !ok {
-		stateRef = &state.State{}
-		stateRef.UpdateMaxTimeOnZero(maxT, replicaName)
-		h.state.LoadOrStore(clusterName, stateRef)
-		stateView, err = h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
-		if err != nil {
-			return false, time.Time{}, err
-		}
-		go exposeHAStateToMetrics(clusterName, "", stateView.Leader)
-	} else {
-		stateRef = castToState(s)
-		stateView = stateRef.Clone()
+//	An instance is selected a leader for a specific time range, which is expanded as
+//	newer samples come in from that leader, but samples before the granted lease
+//	are supposed to be dropped.
+func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName string) (
+	allowInsert bool, acceptedMinT time.Time, err error,
+) {
+	lease, err := s.getLocalClusterLease(clusterName, replicaName, minT, maxT)
+	if err != nil {
+		return false, time.Time{}, err
 	}
-
-	defer stateRef.UpdateMaxSeenTime(replicaName, maxT)
-	if replicaName != stateView.Leader {
+	leaseView := lease.Clone()
+	if replicaName != leaseView.Leader {
 		return false, time.Time{}, nil
 	}
 
-	acceptedMinT := minT
-	if minT.Before(stateView.LeaseStart) {
-		acceptedMinT = stateView.LeaseStart
+	acceptedMinT = minT
+	if minT.Before(leaseView.LeaseStart) {
+		acceptedMinT = leaseView.LeaseStart
 	}
 
-	if maxT.After(stateView.LeaseUntil) {
-		stateView, err = h.syncLockStateFromDB(minT, maxT, clusterName, replicaName)
+	if !maxT.Before(leaseView.LeaseUntil) {
+		err = lease.UpdateFromDB(s.leaseClient, replicaName, minT, maxT)
 		if err != nil {
 			return false, time.Time{}, err
 		}
 
 		// on sync-up if notice leader has changed skip
 		// ingestion replica prom instance
-		if stateView.Leader != replicaName {
+		if lease.SafeGetLeader() != replicaName {
 			return false, time.Time{}, nil
 		}
 	}
 
 	// requesting replica is leader, allow
-	stateRef.UpdateLastLeaderWriteTime()
 	return true, acceptedMinT, nil
 }
 
-func (h *Service) syncLockStateFromDB(minT, maxT time.Time, clusterName, replicaName string) (*state.StateView, error) {
-	// TODO use proper context
-	stateFromDB, err := h.lockClient.updateLease(context.Background(), clusterName, replicaName, minT, maxT)
-	leaderHasChanged := false
-	if err != nil {
-		if e, ok := err.(*pgconn.PgError); ok && e.Code == "PS010" {
-			leaderHasChanged = true
-		} else {
-			return nil, fmt.Errorf("could not check ha lock state: %w", err)
-		}
+func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, maxT time.Time) (*state.Lease, error) {
+	currentTime := s.currentTimeProvider()
+	l, ok := s.state.Load(clusterName)
+	if ok {
+		lease := l.(*state.Lease)
+		lease.UpdateMaxSeenTime(replicaName, maxT, currentTime)
+		return lease, nil
 	}
-
-	// leader changed
-	if leaderHasChanged {
-		// read latest lock state
-		stateFromDB, err = h.lockClient.readLockState(context.Background(), clusterName)
-		// couldn't get latest lock state
-		if err != nil {
-			return nil, fmt.Errorf("could not check ha lock state: %#v", err)
-		}
-	}
-
-	ss, err := h.loadState(clusterName)
+	newLease, err := state.NewLease(s.leaseClient, clusterName, replicaName, minT, maxT, currentTime)
 	if err != nil {
 		return nil, err
 	}
+	l, _ = s.state.LoadOrStore(clusterName, newLease)
+	newLease = l.(*state.Lease)
+	go exposeHAStateToMetrics(clusterName, "", newLease.SafeGetLeader())
+	return newLease, nil
 
-	ss.UpdateStateFromDB(stateFromDB)
-	return ss.Clone(), nil
 }
 
-func (h *Service) tryChangeLeader(cluster, currentLeader string) {
-	clusterLock := h.getLeaderChangeLock(cluster)
+func (s *Service) tryChangeLeader(cluster string, currentLease *state.Lease) {
+	clusterLock := s.getLeaderChangeLock(cluster)
 	ok := clusterLock.TryAcquire(1)
 	if !ok {
 		// change leader already in progress
@@ -179,16 +158,11 @@ func (h *Service) tryChangeLeader(cluster, currentLeader string) {
 	defer clusterLock.Release(1)
 
 	for {
-		ss, err := h.loadState(cluster)
-		if err != nil {
-			log.Error("error", err)
+		stateView := currentLease.Clone()
+		if ok := s.shouldTryToChangeLeader(stateView); ok {
 			return
 		}
-		stateView := ss.Clone()
-		if ok := h.checkLeaseUntilAndLastWrite(stateView); ok {
-			return
-		}
-		lockState, err := h.lockClient.tryChangeLeader(
+		leaseState, err := s.leaseClient.TryChangeLeader(
 			context.Background(), cluster, stateView.MaxTimeInstance, stateView.MaxTimeSeen,
 		)
 		if err != nil {
@@ -196,10 +170,14 @@ func (h *Service) tryChangeLeader(cluster, currentLeader string) {
 			return
 		}
 
-		ss.UpdateStateFromDB(lockState)
-		if lockState.Leader != currentLeader {
+		err = currentLease.SetUpdateFromDB(leaseState)
+		if err != nil {
+			log.Error("msg", "Couldn't set update from db to lease", "err", err)
+			return
+		}
+		if leaseState.Leader != stateView.Leader {
 			// leader changed
-			exposeHAStateToMetrics(cluster, currentLeader, stateView.MaxTimeInstance)
+			exposeHAStateToMetrics(cluster, stateView.Leader, leaseState.Leader)
 			return
 		}
 		// leader didn't change, wait a bit and try again
@@ -207,27 +185,22 @@ func (h *Service) tryChangeLeader(cluster, currentLeader string) {
 	}
 }
 
-func (h *Service) loadState(cluster string) (*state.State, error) {
-	s, ok := h.state.Load(cluster)
+func (s *Service) loadState(cluster string) (*state.Lease, error) {
+	l, ok := s.state.Load(cluster)
 	if !ok {
 		return nil, fmt.Errorf("couldn't load %s cluster state from ha service", cluster)
 	}
-	ss := castToState(s)
+	ss := l.(*state.Lease)
 	return ss, nil
 }
 
-func (h *Service) getLeaderChangeLock(cluster string) *semaphore.Weighted {
-	lock, _ := h.leaderChangeLocks.LoadOrStore(cluster, semaphore.NewWeighted(1))
+func (s *Service) getLeaderChangeLock(cluster string) *semaphore.Weighted {
+	lock, _ := s.leaderChangeLocks.LoadOrStore(cluster, semaphore.NewWeighted(1))
 	return lock.(*semaphore.Weighted)
 }
 
-func castToState(s interface{}) *state.State {
-	ss := s.(*state.State)
-	return ss
-}
-
-func (h *Service) checkLeaseUntilAndLastWrite(state *state.StateView) bool {
-	diff := h.currentTimeProvider().Sub(state.RecentLeaderWriteTime)
+func (s *Service) shouldTryToChangeLeader(state *state.LeaseView) bool {
+	diff := s.currentTimeProvider().Sub(state.RecentLeaderWriteTime)
 	// check leaseUntil is after maxT received from samples or
 	// recent leader write is not more than 30 secs older.
 	if state.LeaseUntil.After(state.MaxTimeSeen) || diff <= haLastWriteIntervalInSecs {

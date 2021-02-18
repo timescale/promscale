@@ -200,12 +200,12 @@ func TestHALeaderChangedFromOutsideCacheNotAwareAtFirst(t *testing.T) {
 				desc: "2 sends data again, is leader now; state in db not updated synchronously, lease doesn't change",
 				input: haTestInput{
 					replica: "2",
-					minT:    time.Unix(120, 0),
-					maxT:    time.Unix(120, 0),
+					minT:    time.Unix(119, 0),
+					maxT:    time.Unix(119, 0),
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 2,
-					expectedMaxTimeInDb: time.Unix(120, 0),
+					expectedMaxTimeInDb: time.Unix(119, 0),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "2",
@@ -218,17 +218,17 @@ func TestHALeaderChangedFromOutsideCacheNotAwareAtFirst(t *testing.T) {
 				desc: "2 sends data again, after known lease; update state in db synchronously",
 				input: haTestInput{
 					replica: "2",
-					minT:    time.Unix(121, 0),
-					maxT:    time.Unix(121, 0),
+					minT:    time.Unix(120, 0),
+					maxT:    time.Unix(120, 0),
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 3,
-					expectedMaxTimeInDb: time.Unix(121, 0),
+					expectedMaxTimeInDb: time.Unix(120, 0),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "2",
 						leaseStart: time.Unix(60, 0),
-						leaseUntil: time.Unix(181, 0),
+						leaseUntil: time.Unix(180, 0),
 					},
 				},
 				tickSyncRoutine: false,

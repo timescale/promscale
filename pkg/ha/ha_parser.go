@@ -33,24 +33,21 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		return nil, 0, nil
 	}
 
-	dataSamples := make(map[string][]model.SamplesInfo)
-	rows := 0
-
 	s, _, err := model.LabelProtosToLabels(tts[0].Labels)
 	if err != nil {
-		return nil, rows, err
+		return nil, 0, err
 	}
 	replicaName := s.GetReplicaName()
 	clusterName := s.GetClusterName()
 
-	if err := checkClusterAndReplicaLabelAreSet(clusterName, replicaName); err != nil {
-		return nil, rows, err
+	if err := validateClusterLabels(clusterName, replicaName); err != nil {
+		return nil, 0, err
 	}
 
 	// find samples time range
 	var (
 		minTUnix, maxTUnix int64
-		minTWasSet         = false
+		timesWereSet       = false
 	)
 	for i := range tts {
 		t := &tts[i]
@@ -59,9 +56,14 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		}
 
 		for _, sample := range t.Samples {
-			if sample.Timestamp < minTUnix || !minTWasSet {
+			if !timesWereSet {
+				timesWereSet = true
 				minTUnix = sample.Timestamp
-				minTWasSet = true
+				maxTUnix = sample.Timestamp
+				continue
+			}
+			if sample.Timestamp < minTUnix {
+				minTUnix = sample.Timestamp
 			}
 
 			if sample.Timestamp > maxTUnix {
@@ -74,7 +76,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	maxT := promModel.Time(maxTUnix).Time()
 	allowInsert, acceptedMinT, err := h.service.CheckLease(minT, maxT, clusterName, replicaName)
 	if err != nil {
-		return nil, rows, fmt.Errorf("could not check ha lock: %#v", err)
+		return nil, 0, fmt.Errorf("could not check ha lease: %#v", err)
 	}
 	if !allowInsert {
 		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert")
@@ -83,15 +85,21 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 
 	// insert allowed -> parse samples
 	acceptedMinTUnix := int64(promModel.TimeFromUnixNano(acceptedMinT.UnixNano()))
+	dataSamples := make(map[string][]model.SamplesInfo)
+	rows := 0
 	for i := range tts {
 		t := &tts[i]
 
-		t.Samples = filterSamples(t.Samples, acceptedMinTUnix)
+		if minTUnix < acceptedMinTUnix {
+			t.Samples = filterSamples(t.Samples, acceptedMinTUnix)
+		}
 		if len(t.Samples) == 0 {
 			continue
 		}
 
-		// Drop __replica__ labelSet from samples
+		// Drop __replica__ labelSet from samples,
+		// we don't want samples from the same Prometheus
+		// HA set to become different series.
 		for ind, value := range t.Labels {
 			if value.Name == model.ReplicaNameLabel && value.Value == replicaName {
 				t.Labels = append(t.Labels[:ind], t.Labels[ind+1:]...)
@@ -103,10 +111,10 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 		// After this point t.Labels should never be used again.
 		seriesLabels, metricName, err := model.LabelProtosToLabels(t.Labels)
 		if err != nil {
-			return nil, rows, err
+			return nil, 0, err
 		}
 		if metricName == "" {
-			return nil, rows, errors.ErrNoMetricName
+			return nil, 0, errors.ErrNoMetricName
 		}
 
 		sample := model.SamplesInfo{
@@ -137,7 +145,7 @@ func filterSamples(samples []prompb.Sample, acceptedMinTUnix int64) []prompb.Sam
 	return samples[:numAccepted]
 }
 
-func checkClusterAndReplicaLabelAreSet(cluster, replica string) error {
+func validateClusterLabels(cluster, replica string) error {
 	if cluster == "" && replica == "" {
 		return fmt.Errorf("HA enabled, but both %s and %s labels are empty",
 			model.ClusterNameLabel,

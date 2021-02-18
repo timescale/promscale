@@ -10,8 +10,8 @@ CREATE TABLE SCHEMA_CATALOG.ha_leases_logs
 (
     cluster_name TEXT        NOT NULL,
     leader_name  TEXT        NOT NULL,
-    lease_start  TIMESTAMPTZ NOT NULL,
-    lease_until  TIMESTAMPTZ,
+    lease_start  TIMESTAMPTZ NOT NULL, -- inclusive
+    lease_until  TIMESTAMPTZ,          -- exclusive
     PRIMARY KEY (cluster_name, leader_name, lease_start)
 );
 
