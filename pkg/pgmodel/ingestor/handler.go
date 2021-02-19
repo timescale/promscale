@@ -83,7 +83,7 @@ func (h *insertHandler) flushPending() {
 func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 	seriesToInsert := make([]*model.SamplesInfo, 0, len(sampleInfos))
 	for i, series := range sampleInfos {
-		if !series.Labels.IsSeriesIDSet() {
+		if !series.Series.IsSeriesIDSet() {
 			seriesToInsert = append(seriesToInsert, &sampleInfos[i])
 		}
 	}
@@ -104,24 +104,24 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
 	// in a different transaction, thus deadlocks are not an issue.
 	sort.Slice(seriesToInsert, func(i, j int) bool {
-		return seriesToInsert[i].Labels.Compare(seriesToInsert[j].Labels) < 0
+		return seriesToInsert[i].Series.Compare(seriesToInsert[j].Series) < 0
 	})
 
 	batchSeries := make([][]*model.SamplesInfo, 0, len(seriesToInsert))
 	// group the seriesToInsert by labels, one slice array per unique labels
 	for _, curr := range seriesToInsert {
-		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.Labels) {
+		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.Series) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}
 
 		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.Labels.MetricName(), curr.Labels.Names(), curr.Labels.Values())
+		batch.Queue(getSeriesIDForLabelSQL, curr.Series.MetricName(), curr.Series.Names(), curr.Series.Values())
 		batch.Queue("COMMIT;")
 		numSQLFunctionCalls++
 		batchSeries = append(batchSeries, []*model.SamplesInfo{curr})
 
-		lastSeenLabel = curr.Labels
+		lastSeenLabel = curr.Series
 	}
 
 	if numSQLFunctionCalls != len(batchSeries) {
@@ -169,7 +169,7 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 		}
 
 		for _, si := range batchSeries[i] {
-			si.Labels.SetSeriesID(id, dbEpoch)
+			si.Series.SetSeriesID(id, dbEpoch)
 		}
 
 		// COMMIT;

@@ -219,7 +219,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
-				lsi = append(lsi, model.SamplesInfo{Labels: ls})
+				lsi = append(lsi, model.SamplesInfo{Series: ls})
 			}
 
 			err := inserter.setSeriesIds(lsi)
@@ -240,7 +240,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if err == nil {
 				for _, si := range lsi {
-					si, se, err := si.Labels.GetSeriesID()
+					si, se, err := si.Series.GetSeriesID()
 					require.NoError(t, err)
 					require.True(t, si > 0, "series id not set")
 					require.True(t, se > 0, "epoch not set")
@@ -367,7 +367,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			if err != nil {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
-			lsi = append(lsi, model.SamplesInfo{Labels: ls})
+			lsi = append(lsi, model.SamplesInfo{Series: ls})
 		}
 		return lsi
 	}
@@ -384,9 +384,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for _, si := range samples {
-		value := si.Labels.Values()[1]
+		value := si.Series.Values()[1]
 		expectedId := expectedIds[value]
-		gotId, _, err := si.Labels.GetSeriesID()
+		gotId, _, err := si.Series.GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -403,9 +403,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for _, si := range samples {
-		value := si.Labels.Values()[1]
+		value := si.Series.Values()[1]
 		expectedId := expectedIds[value]
-		gotId, _, err := si.Labels.GetSeriesID()
+		gotId, _, err := si.Series.GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -428,9 +428,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for _, si := range samples {
-		value := si.Labels.Values()[1]
+		value := si.Series.Values()[1]
 		expectedId := expectedIds[value]
-		gotId, _, err := si.Labels.GetSeriesID()
+		gotId, _, err := si.Series.GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -460,7 +460,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "One data",
 			rows: map[string][]model.SamplesInfo{
-				"metric_0": {{Samples: make([]prompb.Sample, 1), Labels: makeLabel()}},
+				"metric_0": {{Samples: make([]prompb.Sample, 1), Series: makeLabel()}},
 			},
 			sqlQueries: []model.SqlQuery{
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -492,8 +492,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Two data",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -527,11 +527,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Create table error",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -547,7 +547,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "Epoch Error",
 			rows: map[string][]model.SamplesInfo{
-				"metric_0": {{Samples: make([]prompb.Sample, 1), Labels: makeLabel()}},
+				"metric_0": {{Samples: make([]prompb.Sample, 1), Series: makeLabel()}},
 			},
 			sqlQueries: []model.SqlQuery{
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -599,11 +599,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Copy from error",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
 				},
 			},
 
@@ -657,11 +657,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Can't find/create table in DB",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
-					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Series: makeLabel()},
 				},
 			},
 			sqlQueries: []model.SqlQuery{

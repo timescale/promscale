@@ -95,7 +95,7 @@ func (ingestor *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.Write
 			return nil, rows, errors.ErrNoMetricName
 		}
 		sample := model.SamplesInfo{
-			Labels:  seriesLabels,
+			Series:  seriesLabels,
 			Samples: t.Samples,
 		}
 		rows += len(t.Samples)
