@@ -6,36 +6,10 @@ package model
 
 import (
 	"fmt"
-	"math"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
-
-	promLabels "github.com/prometheus/prometheus/pkg/labels"
 )
-
-func TestBigLables(t *testing.T) {
-	builder := strings.Builder{}
-	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
-
-	builder.WriteByte('a')
-	for len(builder.String()) < math.MaxUint16 {
-		builder.WriteString(builder.String())
-	}
-
-	l := promLabels.Labels{
-		promLabels.Label{
-			Name:  builder.String(),
-			Value: "",
-		},
-	}
-
-	_, err := LabelsFromSlice(l)
-	if err == nil {
-		t.Errorf("expected error")
-	}
-}
 
 func TestLabelsReaderLabelsNames(t *testing.T) {
 	testCases := []struct {

@@ -15,6 +15,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/scache"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -107,11 +108,11 @@ func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) model.
 		// and continue execution
 		log.Error("msg", "error refreshing the series cache", "err", err)
 		// Trash the cache just in case an epoch change occurred, seems safer
-		model.ResetStoredLabels()
+		scache.ResetStoredLabels()
 		return model.UnsetSeriesEpoch
 	}
 	if existingEpoch == model.UnsetSeriesEpoch || dbEpoch != existingEpoch {
-		model.ResetStoredLabels()
+		scache.ResetStoredLabels()
 	}
 	return dbEpoch
 }

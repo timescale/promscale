@@ -34,8 +34,8 @@ type Inserter interface {
 
 // SeriesCache provides a caching mechanism for labels and series.
 type SeriesCache interface {
-	GetSeries(lset Labels) (SeriesID, error)
-	SetSeries(lset Labels, id SeriesID) error
+	GetSeries(lset Series) (SeriesID, error)
+	SetSeries(lset Series, id SeriesID) error
 	NumElements() int
 	Capacity() int
 }

@@ -13,7 +13,7 @@ import (
 )
 
 type SamplesInfo struct {
-	Labels  *Labels
+	Labels  *Series
 	Samples []prompb.Sample
 }
 
