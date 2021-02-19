@@ -32,14 +32,6 @@ type Inserter interface {
 	Close()
 }
 
-// SeriesCache provides a caching mechanism for labels and series.
-type SeriesCache interface {
-	GetSeries(lset Series) (SeriesID, error)
-	SetSeries(lset Series, id SeriesID) error
-	NumElements() int
-	Capacity() int
-}
-
 func MetricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
 	res, err := conn.Query(
 		context.Background(),

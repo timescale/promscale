@@ -394,40 +394,6 @@ func (m *MockMetricCache) Set(metric string, tableName string) error {
 	return m.SetMetricErr
 }
 
-type MockCache struct {
-	seriesCache  map[string]SeriesID
-	getSeriesErr error
-	setSeriesErr error
-}
-
-var _ SeriesCache = (*MockCache)(nil)
-
-func (m *MockCache) GetSeries(lset Series) (SeriesID, error) {
-	if m.getSeriesErr != nil {
-		return 0, m.getSeriesErr
-	}
-
-	val, ok := m.seriesCache[lset.String()]
-	if !ok {
-		return 0, errors.ErrEntryNotFound
-	}
-
-	return val, nil
-}
-
-func (m *MockCache) SetSeries(lset Series, id SeriesID) error {
-	m.seriesCache[lset.String()] = id
-	return m.setSeriesErr
-}
-
-func (m *MockCache) NumElements() int {
-	return len(m.seriesCache)
-}
-
-func (m *MockCache) Capacity() int {
-	return len(m.seriesCache)
-}
-
 type MockInserter struct {
 	InsertedSeries  map[string]SeriesID
 	InsertedData    []map[string][]SamplesInfo
