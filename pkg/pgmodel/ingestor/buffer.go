@@ -24,13 +24,9 @@ const (
 	maxCopyRequestsPerTxn    = 100
 )
 
-// epoch for the ID caches, -1 means that the epoch was not set
-type Epoch = int64
-
 type pendingBuffer struct {
 	needsResponse []insertDataTask
 	batch         model.SampleInfoIterator
-	epoch         Epoch
 }
 
 var pendingBuffers = sync.Pool{
@@ -38,7 +34,6 @@ var pendingBuffers = sync.Pool{
 		pb := new(pendingBuffer)
 		pb.needsResponse = make([]insertDataTask, 0)
 		pb.batch = model.NewSampleInfoIterator()
-		pb.epoch = -1
 		return pb
 	},
 }
@@ -64,25 +59,16 @@ func (p *pendingBuffer) release() {
 	}
 	p.batch = model.SampleInfoIterator{SampleInfos: p.batch.SampleInfos[:0]}
 	p.batch.ResetPosition()
-	p.epoch = -1
 	pendingBuffers.Put(p)
 }
 
-func (p *pendingBuffer) addReq(req insertDataRequest, epoch Epoch) bool {
-	p.addEpoch(epoch)
+func (p *pendingBuffer) addReq(req insertDataRequest) bool {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.SampleInfos = append(p.batch.SampleInfos, req.data...)
 	return len(p.batch.SampleInfos) > flushSize
 }
 
-func (p *pendingBuffer) addEpoch(epoch Epoch) {
-	if p.epoch == -1 || epoch < p.epoch {
-		p.epoch = epoch
-	}
-}
-
 func (p *pendingBuffer) absorb(other *pendingBuffer) {
-	p.addEpoch(other.epoch)
 	p.needsResponse = append(p.needsResponse, other.needsResponse...)
 	p.batch.SampleInfos = append(p.batch.SampleInfos, other.batch.SampleInfos...)
 }
