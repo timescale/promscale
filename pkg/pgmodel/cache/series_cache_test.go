@@ -1,4 +1,4 @@
-package scache
+package cache
 
 import (
 	"math"
@@ -9,6 +9,7 @@ import (
 )
 
 func TestBigLables(t *testing.T) {
+	cache := NewSeriesCache(100)
 	builder := strings.Builder{}
 	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
 
@@ -24,7 +25,7 @@ func TestBigLables(t *testing.T) {
 		},
 	}
 
-	_, err := GetSeriesFromLabels(l)
+	_, err := cache.GetSeriesFromLabels(l)
 	if err == nil {
 		t.Errorf("expected error")
 	}

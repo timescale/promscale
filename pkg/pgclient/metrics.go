@@ -14,6 +14,8 @@ var (
 	cachedLabels        prometheus.GaugeFunc
 	metricNamesCacheCap prometheus.GaugeFunc
 	labelsCacheCap      prometheus.GaugeFunc
+	seriesCacheCap      prometheus.GaugeFunc
+	seriesCacheLen      prometheus.GaugeFunc
 )
 
 func InitClientMetrics(client *Client) {
@@ -54,10 +56,28 @@ func InitClientMetrics(client *Client) {
 		return float64(client.LabelsCacheCapacity())
 	})
 
+	seriesCacheLen = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: util.PromNamespace,
+		Name:      "series_cache_elements_stored",
+		Help:      "Total number of series stored in cache",
+	}, func() float64 {
+		return float64(client.seriesCache.Len())
+	})
+
+	seriesCacheCap = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: util.PromNamespace,
+		Name:      "series_cache_capacity",
+		Help:      "Total size of series cache.",
+	}, func() float64 {
+		return float64(client.seriesCache.Cap())
+	})
+
 	prometheus.MustRegister(
 		cachedMetricNames,
 		metricNamesCacheCap,
 		cachedLabels,
 		labelsCacheCap,
+		seriesCacheLen,
+		seriesCacheCap,
 	)
 }

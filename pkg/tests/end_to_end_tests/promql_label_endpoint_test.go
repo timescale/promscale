@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -110,7 +110,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := model.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		labelNames, err := labelsReader.LabelNames()
 		if err != nil {
 			t.Fatalf("could not get label names from querier")

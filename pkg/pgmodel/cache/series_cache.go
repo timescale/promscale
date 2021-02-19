@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package scache
+package cache
 
 import (
 	"encoding/binary"
@@ -10,43 +10,64 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-var LabelsInterner = sync.Map{}
+const DefaultSeriesCacheSize = 100000
 
-//ResetStoredLabels should be concurrency-safe
-func ResetStoredLabels() {
-	//TODO change this when switching to proper cache
-	LabelsInterner.Range(func(key interface{}, value interface{}) bool {
-		LabelsInterner.Delete(key)
-		return true
-	})
+type SeriesCache interface {
+	Reset()
+	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
+	Len() int
+	Cap() int
 }
 
-// Get the canonical version of a Labels if one exists.
-// input: the string representation of a Labels as defined by getStr()
+type SeriesCacheImpl struct {
+	cache *clockcache.Cache
+}
+
+func NewSeriesCache(max uint64) *SeriesCacheImpl {
+	return &SeriesCacheImpl{
+		clockcache.WithMax(max),
+	}
+}
+
+func (t *SeriesCacheImpl) Len() int {
+	return t.cache.Len()
+}
+
+func (t *SeriesCacheImpl) Cap() int {
+	return t.cache.Cap()
+}
+
+//ResetStoredLabels should be concurrency-safe
+func (t *SeriesCacheImpl) Reset() {
+	t.cache.Reset()
+}
+
+// Get the canonical version of a series if one exists.
+// input: the string representation of a Labels as defined by generateKey()
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
-func loadSeries(str string) (l *model.Series) {
-	val, ok := LabelsInterner.Load(str)
+func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
+	val, ok := t.cache.Get(str)
 	if !ok {
 		return nil
 	}
 	return val.(*model.Series)
 }
 
-// Try to set a Labels as the canonical Labels for a given string
+// Try to set a series as the canonical Series for a given string
 // representation, returning the canonical version (which can be different in
 // the even of multiple goroutines setting labels concurrently).
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
-func setSeries(str string, lset *model.Series) *model.Series {
-	val, _ := LabelsInterner.LoadOrStore(str, lset)
+func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
+	val, _ := t.cache.Insert(str, lset)
 	return val.(*model.Series)
 }
 
@@ -116,26 +137,26 @@ func generateKey(labels []prompb.Label) (key string, metricName string, error er
 }
 
 // GetSeriesFromLabels converts a labels.Labels to a canonical Labels object
-func GetSeriesFromLabels(ls labels.Labels) (*model.Series, error) {
+func (t *SeriesCacheImpl) GetSeriesFromLabels(ls labels.Labels) (*model.Series, error) {
 	ll := make([]prompb.Label, len(ls))
 	for i := range ls {
 		ll[i].Name = ls[i].Name
 		ll[i].Value = ls[i].Value
 	}
-	l, _, err := GetSeriesFromProtos(ll)
+	l, _, err := t.GetSeriesFromProtos(ll)
 	return l, err
 }
 
 // GetSeriesFromProtos converts a prompb.Label to a canonical Labels object
-func GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, string, error) {
+func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, string, error) {
 	key, metricName, err := generateKey(labelPairs)
 	if err != nil {
 		return nil, "", err
 	}
-	series := loadSeries(key)
+	series := t.loadSeries(key)
 	if series == nil {
 		series = model.NewSeries(key, labelPairs)
-		series = setSeries(key, series)
+		series = t.setSeries(key, series)
 	}
 
 	return series, metricName, nil

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -619,7 +620,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			mockMetrics := &model.MockMetricCache{
 				MetricCache: metricCache,
 			}
-			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics, labelsReader: model.NewLabelsReader(mock, clockcache.WithMax(0))}
+			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0))}
 
 			result, err := querier.Query(c.query)
 

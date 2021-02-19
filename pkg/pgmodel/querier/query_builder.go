@@ -20,6 +20,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -251,7 +252,7 @@ func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, 
 	return c.clauses, c.args, nil
 }
 
-func buildTimeSeries(rows []timescaleRow, lr pgmodel.LabelsReader) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 
 	for _, row := range rows {
