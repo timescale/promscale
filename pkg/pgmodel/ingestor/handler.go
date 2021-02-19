@@ -91,7 +91,7 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 		return nil
 	}
 
-	var lastSeenLabel *model.Labels
+	var lastSeenLabel *model.Series
 	batch := h.conn.NewBatch()
 
 	// The epoch will never decrease, so we can check it once at the beginning,

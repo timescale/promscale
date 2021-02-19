@@ -2,45 +2,20 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package model
+package scache
 
 import (
 	"encoding/binary"
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
-
-// SeriesID represents a globally unique id for the series. This should be equivalent
-// to the PostgreSQL type in the series table (currently BIGINT).
-type SeriesID int64
-
-const unsetSeriesID = -1
-
-func (s SeriesID) String() string {
-	return strconv.FormatInt(int64(s), 10)
-}
-
-//Epoch represents the series epoch
-type SeriesEpoch int64
-
-const UnsetSeriesEpoch = -1
-
-// Labels stores a labels.Labels in its canonical string representation
-type Labels struct {
-	Names      []string
-	Values     []string
-	MetricName string
-	str        string
-	seriesID   SeriesID
-	epoch      SeriesEpoch
-}
 
 var LabelsInterner = sync.Map{}
 
@@ -57,13 +32,12 @@ func ResetStoredLabels() {
 // input: the string representation of a Labels as defined by getStr()
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
-func GetLabels(str string) (l *Labels) {
+func loadSeries(str string) (l *model.Series) {
 	val, ok := LabelsInterner.Load(str)
 	if !ok {
-		return
+		return nil
 	}
-	l = val.(*Labels)
-	return
+	return val.(*model.Series)
 }
 
 // Try to set a Labels as the canonical Labels for a given string
@@ -71,28 +45,17 @@ func GetLabels(str string) (l *Labels) {
 // the even of multiple goroutines setting labels concurrently).
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
-func SetLabels(str string, lset *Labels) *Labels {
+func setSeries(str string, lset *model.Series) *model.Series {
 	val, _ := LabelsInterner.LoadOrStore(str, lset)
-	return val.(*Labels)
-}
-
-// LabelsFromSlice converts a labels.Labels to a canonical Labels object
-func LabelsFromSlice(ls labels.Labels) (*Labels, error) {
-	ll := make([]prompb.Label, len(ls))
-	for i := range ls {
-		ll[i].Name = ls[i].Name
-		ll[i].Value = ls[i].Value
-	}
-	l, _, err := LabelProtosToLabels(ll)
-	return l, err
+	return val.(*model.Series)
 }
 
 // Get a string representation for hashing and comparison
 // This representation is guaranteed to uniquely represent the underlying label
 // set, though need not human-readable, or indeed, valid utf-8
-func getStr(labels []prompb.Label) (string, error) {
+func generateKey(labels []prompb.Label) (key string, metricName string, error error) {
 	if len(labels) == 0 {
-		return "", nil
+		return "", "", nil
 	}
 
 	comparator := func(i, j int) bool {
@@ -114,7 +77,7 @@ func getStr(labels []prompb.Label) (string, error) {
 	// total length anyway, we only use 16bits to store the legth of each substring
 	// in our string encoding
 	if expectedStrLen > math.MaxUint16 {
-		return "", fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
+		return "", metricName, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
 	}
 
 	// the string representation is
@@ -129,6 +92,9 @@ func getStr(labels []prompb.Label) (string, error) {
 		l := labels[i]
 		key := l.Name
 
+		if l.Name == model.MetricNameLabelName {
+			metricName = l.Value
+		}
 		// this cast is safe since we check that the combined length of all the
 		// strings fit within a uint16, each string's length must also fit
 		binary.LittleEndian.PutUint16(lengthBuf, uint16(len(key)))
@@ -146,72 +112,31 @@ func getStr(labels []prompb.Label) (string, error) {
 		builder.WriteString(val)
 	}
 
-	return builder.String(), nil
+	return builder.String(), metricName, nil
 }
 
-// LabelProtosToLabels converts a prompb.Label to a canonical Labels object
-func LabelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
-	str, err := getStr(labelPairs)
+// GetSeriesFromLabels converts a labels.Labels to a canonical Labels object
+func GetSeriesFromLabels(ls labels.Labels) (*model.Series, error) {
+	ll := make([]prompb.Label, len(ls))
+	for i := range ls {
+		ll[i].Name = ls[i].Name
+		ll[i].Value = ls[i].Value
+	}
+	l, _, err := GetSeriesFromProtos(ll)
+	return l, err
+}
+
+// GetSeriesFromProtos converts a prompb.Label to a canonical Labels object
+func GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, string, error) {
+	key, metricName, err := generateKey(labelPairs)
 	if err != nil {
 		return nil, "", err
 	}
-	labels := GetLabels(str)
-	if labels == nil {
-		labels = &Labels{
-			Names:    make([]string, len(labelPairs)),
-			Values:   make([]string, len(labelPairs)),
-			str:      str,
-			seriesID: unsetSeriesID,
-			epoch:    UnsetSeriesEpoch,
-		}
-		for i, l := range labelPairs {
-			labels.Names[i] = l.Name
-			labels.Values[i] = l.Value
-			if l.Name == MetricNameLabelName {
-				labels.MetricName = l.Value
-			}
-		}
-		labels = SetLabels(str, labels)
+	series := loadSeries(key)
+	if series == nil {
+		series = model.NewSeries(key, labelPairs)
+		series = setSeries(key, series)
 	}
 
-	return labels, labels.MetricName, err
-}
-
-// Get a string representation for hashing and comparison
-// This representation is guaranteed to uniquely represent the underlying label
-// set, though need not human-readable, or indeed, valid utf-8
-func (l *Labels) String() string {
-	return l.str
-}
-
-// Compare returns a comparison int between two Labels
-func (l *Labels) Compare(b *Labels) int {
-	return strings.Compare(l.str, b.str)
-}
-
-// Equal returns true if two Labels are equal
-func (l *Labels) Equal(b *Labels) bool {
-	return l.str == b.str
-}
-
-func (l *Labels) IsSeriesIDSet() bool {
-	return l.seriesID != unsetSeriesID
-}
-
-func (l *Labels) GetSeriesID() (SeriesID, SeriesEpoch, error) {
-	switch l.seriesID {
-	case unsetSeriesID:
-		return 0, 0, fmt.Errorf("Series id not set")
-	case 0:
-		return 0, 0, fmt.Errorf("Series id invalid")
-	default:
-		return l.seriesID, l.epoch, nil
-	}
-}
-
-//note this has to be idempotent
-func (l *Labels) SetSeriesID(sid SeriesID, eid SeriesEpoch) {
-	//TODO: Unset l.Names and l.Values, no longer used
-	l.seriesID = sid
-	l.epoch = eid
+	return series, metricName, nil
 }

@@ -402,7 +402,7 @@ type MockCache struct {
 
 var _ SeriesCache = (*MockCache)(nil)
 
-func (m *MockCache) GetSeries(lset Labels) (SeriesID, error) {
+func (m *MockCache) GetSeries(lset Series) (SeriesID, error) {
 	if m.getSeriesErr != nil {
 		return 0, m.getSeriesErr
 	}
@@ -415,7 +415,7 @@ func (m *MockCache) GetSeries(lset Labels) (SeriesID, error) {
 	return val, nil
 }
 
-func (m *MockCache) SetSeries(lset Labels, id SeriesID) error {
+func (m *MockCache) SetSeries(lset Series, id SeriesID) error {
 	m.seriesCache[lset.String()] = id
 	return m.setSeriesErr
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/scache"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -205,7 +206,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
-			model.ResetStoredLabels()
+			scache.ResetStoredLabels()
 
 			inserter := insertHandler{
 				conn: mock,
@@ -213,7 +214,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			lsi := make([]model.SamplesInfo, 0)
 			for _, ser := range c.series {
-				ls, err := model.LabelsFromSlice(ser)
+				ls, err := scache.GetSeriesFromLabels(ser)
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
@@ -360,7 +361,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	makeSamples := func(series []labels.Labels) []model.SamplesInfo {
 		lsi := make([]model.SamplesInfo, 0)
 		for _, ser := range series {
-			ls, err := model.LabelsFromSlice(ser)
+			ls, err := scache.GetSeriesFromLabels(ser)
 			if err != nil {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
@@ -436,8 +437,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 }
 
 func TestPGXInserterInsertData(t *testing.T) {
-	makeLabel := func() *model.Labels {
-		l := &model.Labels{}
+	makeLabel := func() *model.Series {
+		l := &model.Series{}
 		l.SetSeriesID(1, 1)
 		return l
 	}
