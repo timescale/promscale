@@ -331,8 +331,9 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 		case int64:
 			_, ok1 := dest[i].(*int64)
 			_, ok2 := dest[i].(*SeriesID)
-			if !ok1 && !ok2 {
-				return fmt.Errorf("wrong value type int64")
+			_, ok3 := dest[i].(*SeriesEpoch)
+			if !ok1 && !ok2 && !ok3 {
+				return fmt.Errorf("wrong value type int64 for scan of %T", dest[i])
 			}
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
@@ -454,7 +455,7 @@ func (m *MockInserter) InsertData(rows map[string][]SamplesInfo) (uint64, error)
 				id = SeriesID(len(m.InsertedSeries))
 				m.InsertedSeries[si.Labels.String()] = id
 			}
-			v[i].SeriesID = id
+			v[i].Labels.seriesID = id
 		}
 	}
 	if m.InsertSeriesErr != nil {

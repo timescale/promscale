@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -204,11 +205,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
+			model.ResetStoredLabels()
 
 			inserter := insertHandler{
-				conn:             mock,
-				seriesCache:      make(map[string]model.SeriesID),
-				seriesCacheEpoch: -1,
+				conn: mock,
 			}
 
 			lsi := make([]model.SamplesInfo, 0)
@@ -217,10 +217,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
-				lsi = append(lsi, model.SamplesInfo{Labels: ls, SeriesID: -1})
+				lsi = append(lsi, model.SamplesInfo{Labels: ls})
 			}
 
-			_, _, err := inserter.setSeriesIds(lsi)
+			err := inserter.setSeriesIds(lsi)
 			if err != nil {
 				foundErr := false
 				for _, q := range c.sqlQueries {
@@ -238,9 +238,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if err == nil {
 				for _, si := range lsi {
-					if si.SeriesID <= 0 {
-						t.Error("Series not set", lsi)
-					}
+					si, se, err := si.Labels.GetSeriesID()
+					require.NoError(t, err)
+					require.True(t, si > 0, "series id not set")
+					require.True(t, se > 0, "epoch not set")
 				}
 			}
 		})
@@ -349,10 +350,11 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	mock := model.NewSqlRecorder(sqlQueries, t)
 
-	inserter := insertHandler{
-		conn:             mock,
-		seriesCache:      make(map[string]model.SeriesID),
-		seriesCacheEpoch: -1,
+	handler := insertHandler{
+		conn: mock,
+	}
+	inserter := pgxInserter{
+		conn: mock,
 	}
 
 	makeSamples := func(series []labels.Labels) []model.SamplesInfo {
@@ -362,13 +364,13 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			if err != nil {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
-			lsi = append(lsi, model.SamplesInfo{Labels: ls, SeriesID: -1})
+			lsi = append(lsi, model.SamplesInfo{Labels: ls})
 		}
 		return lsi
 	}
 
 	samples := makeSamples(series)
-	_, _, err := inserter.setSeriesIds(samples)
+	err := handler.setSeriesIds(samples)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,16 +383,18 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	for _, si := range samples {
 		value := si.Labels.Values[1]
 		expectedId := expectedIds[value]
-		if si.SeriesID != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.SeriesID, expectedId)
+		gotId, _, err := si.Labels.GetSeriesID()
+		require.NoError(t, err)
+		if gotId != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
 		}
 	}
 
 	// refreshing during the same epoch givesthe same IDs without checking the DB
-	inserter.refreshSeriesCache()
+	inserter.refreshSeriesEpoch(1)
 
 	samples = makeSamples(series)
-	_, _, err = inserter.setSeriesIds(samples)
+	err = handler.setSeriesIds(samples)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,17 +402,19 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	for _, si := range samples {
 		value := si.Labels.Values[1]
 		expectedId := expectedIds[value]
-		if si.SeriesID != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.SeriesID, expectedId)
+		gotId, _, err := si.Labels.GetSeriesID()
+		require.NoError(t, err)
+		if gotId != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
 		}
 	}
 
 	// trash the cache
-	inserter.refreshSeriesCache()
+	inserter.refreshSeriesEpoch(1)
 
 	// retrying rechecks the DB and uses the new IDs
 	samples = makeSamples(series)
-	_, _, err = inserter.setSeriesIds(samples)
+	err = handler.setSeriesIds(samples)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,13 +427,21 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	for _, si := range samples {
 		value := si.Labels.Values[1]
 		expectedId := expectedIds[value]
-		if si.SeriesID != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.SeriesID, expectedId)
+		gotId, _, err := si.Labels.GetSeriesID()
+		require.NoError(t, err)
+		if gotId != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
 		}
 	}
 }
 
 func TestPGXInserterInsertData(t *testing.T) {
+	makeLabel := func() *model.Labels {
+		l := &model.Labels{}
+		l.SetSeriesID(1, 1)
+		return l
+	}
+
 	testCases := []struct {
 		name          string
 		rows          map[string][]model.SamplesInfo
@@ -443,7 +457,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "One data",
 			rows: map[string][]model.SamplesInfo{
-				"metric_0": {{Samples: make([]prompb.Sample, 1)}},
+				"metric_0": {{Samples: make([]prompb.Sample, 1), Labels: makeLabel()}},
 			},
 			sqlQueries: []model.SqlQuery{
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -454,19 +468,19 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     error(nil),
-				},
-				{
 					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0)},
 						[]float64{0},
-						[]int64{0},
+						[]int64{1},
 					},
 					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
 			},
@@ -475,8 +489,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Two data",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -487,20 +501,21 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
-				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     error(nil),
-				},
+
 				{
 					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0)},
 						[]float64{0, 0},
-						[]int64{0, 0},
+						[]int64{1, 1},
 					},
 					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
 			},
@@ -509,11 +524,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Create table error",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -529,7 +544,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "Epoch Error",
 			rows: map[string][]model.SamplesInfo{
-				"metric_0": {{Samples: make([]prompb.Sample, 1)}},
+				"metric_0": {{Samples: make([]prompb.Sample, 1), Labels: makeLabel()}},
 			},
 			sqlQueries: []model.SqlQuery{
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -539,19 +554,31 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
-				{
-					//this is the attempt on the full batch
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     fmt.Errorf("epoch error"),
-				},
+
 				{
 					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0)},
 						[]float64{0},
-						[]int64{0},
+						[]int64{1},
+					},
+					Results: model.RowResults{},
+					Err:     error(nil),
+				},
+				{
+					//this is the attempt on the full batch
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
+					Err:     fmt.Errorf("epoch error"),
+				},
+
+				{
+					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Args: []interface{}{
+						[]time.Time{time.Unix(0, 0)},
+						[]float64{0},
+						[]int64{1},
 					},
 					Results: model.RowResults{},
 					Err:     error(nil),
@@ -559,19 +586,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					//this is the attempt on the individual copyRequests
 					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
+					Args:    []interface{}{int64(1)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     fmt.Errorf("epoch error"),
-				},
-				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
-					Args: []interface{}{
-						[]time.Time{time.Unix(0, 0)},
-						[]float64{0},
-						[]int64{0},
-					},
-					Results: model.RowResults{},
-					Err:     error(nil),
 				},
 			},
 		},
@@ -579,11 +596,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Copy from error",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
 				},
 			},
 
@@ -595,19 +612,31 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
-				{
-					// this is the entire batch insert
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     error(nil),
-				},
+
 				{
 					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
 						make([]float64, 5),
-						make([]int64, 5),
+						[]int64{1, 1, 1, 1, 1},
+					},
+					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Err:     fmt.Errorf("some INSERT error"),
+				},
+				{
+					// this is the entire batch insert
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
+					Err:     error(nil),
+				},
+
+				{
+					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Args: []interface{}{
+						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
+						make([]float64, 5),
+						[]int64{1, 1, 1, 1, 1},
 					},
 					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
 					Err:     fmt.Errorf("some INSERT error"),
@@ -615,19 +644,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					// this is the retry on individual copy requests
 					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
+					Args:    []interface{}{int64(1)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
-				},
-				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
-					Args: []interface{}{
-						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
-						make([]float64, 5),
-						make([]int64, 5),
-					},
-					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
-					Err:     fmt.Errorf("some INSERT error"),
 				},
 			},
 		},
@@ -635,11 +654,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Can't find/create table in DB",
 			rows: map[string][]model.SamplesInfo{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
+					{Samples: make([]prompb.Sample, 1), Labels: makeLabel()},
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -675,7 +694,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				MetricCache:  metricCache,
 				GetMetricErr: c.metricsGetErr,
 			}
-			inserter, err := newPgxInserter(mock, mockMetrics, &Cfg{})
+			inserter, err := newPgxInserter(mock, mockMetrics, &Cfg{DisableEpochSync: true})
 			if err != nil {
 				t.Fatal(err)
 			}

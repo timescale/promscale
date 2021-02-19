@@ -26,6 +26,7 @@ type pgxInserter struct {
 	asyncAcks              bool
 	insertedDatapoints     *int64
 	toCopiers              chan copyRequest
+	seriesEpochRefresh     *time.Ticker
 }
 
 func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*pgxInserter, error) {
@@ -52,6 +53,8 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*p
 		completeMetricCreation: cmc,
 		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
+		// set to run at half our deletion interval
+		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
 	}
 	if cfg.AsyncAcks && cfg.ReportInterval > 0 {
 		inserter.insertedDatapoints = new(int64)
@@ -74,6 +77,9 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*p
 
 	go inserter.runCompleteMetricCreationWorker()
 
+	if !cfg.DisableEpochSync {
+		go inserter.runSeriesEpochSync()
+	}
 	return inserter, nil
 }
 
@@ -84,6 +90,41 @@ func (p *pgxInserter) runCompleteMetricCreationWorker() {
 			log.Warn("msg", "Got an error finalizing metric", "err", err)
 		}
 	}
+}
+
+func (p *pgxInserter) runSeriesEpochSync() {
+	epoch := p.refreshSeriesEpoch(model.UnsetSeriesEpoch)
+	for range p.seriesEpochRefresh.C {
+		epoch = p.refreshSeriesEpoch(epoch)
+	}
+}
+
+func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) model.SeriesEpoch {
+	dbEpoch, err := p.getServerEpoch()
+	if err != nil {
+		// we don't have any great place to report this error, and if the
+		// connection recovers we can still make progress, so we'll just log it
+		// and continue execution
+		log.Error("msg", "error refreshing the series cache", "err", err)
+		// Trash the cache just in case an epoch change occurred, seems safer
+		model.ResetStoredLabels()
+		return model.UnsetSeriesEpoch
+	}
+	if existingEpoch == model.UnsetSeriesEpoch || dbEpoch != existingEpoch {
+		model.ResetStoredLabels()
+	}
+	return dbEpoch
+}
+
+func (p *pgxInserter) getServerEpoch() (model.SeriesEpoch, error) {
+	var newEpoch int64
+	row := p.conn.QueryRow(context.Background(), getEpochSQL)
+	err := row.Scan(&newEpoch)
+	if err != nil {
+		return -1, err
+	}
+
+	return model.SeriesEpoch(newEpoch), nil
 }
 
 func (p *pgxInserter) CompleteMetricCreation() error {
@@ -125,9 +166,8 @@ func (p *pgxInserter) InsertData(rows map[string][]model.SamplesInfo) (uint64, e
 		for _, si := range data {
 			numRows += uint64(len(si.Samples))
 		}
-		// insertMetricData() is expected to be non-blocking,
-		// just a channel insert
-		p.insertMetricData(metricName, data, workFinished, errChan)
+		// the following is usually non-blocking, just a channel insert
+		p.getMetricInserter(metricName) <- insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
 
 	var err error
@@ -156,11 +196,6 @@ func (p *pgxInserter) InsertData(rows map[string][]model.SamplesInfo) (uint64, e
 	}
 
 	return numRows, err
-}
-
-func (p *pgxInserter) insertMetricData(metric string, data []model.SamplesInfo, finished *sync.WaitGroup, errChan chan error) {
-	inserter := p.getMetricInserter(metric)
-	inserter <- insertDataRequest{metric: metric, data: data, finished: finished, errChan: errChan}
 }
 
 // Get the handler for a given metric name, creating a new one if none exists

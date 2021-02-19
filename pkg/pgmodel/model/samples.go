@@ -6,7 +6,6 @@ package model
 
 import (
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -14,17 +13,8 @@ import (
 )
 
 type SamplesInfo struct {
-	Labels   *Labels
-	SeriesID SeriesID
-	Samples  []prompb.Sample
-}
-
-// SeriesID represents a globally unique id for the series. This should be equivalent
-// to the PostgreSQL type in the series table (currently BIGINT).
-type SeriesID int64
-
-func (s SeriesID) String() string {
-	return strconv.FormatInt(int64(s), 10)
+	Labels  *Labels
+	Samples []prompb.Sample
 }
 
 // SampleInfoIterator is an iterator over a collection of sampleInfos that returns
@@ -34,6 +24,7 @@ type SampleInfoIterator struct {
 	SampleInfoIndex int
 	SampleIndex     int
 	MinSeen         int64
+	err             error
 }
 
 // NewSampleInfoIterator is the constructor
@@ -68,17 +59,21 @@ func (t *SampleInfoIterator) Next() bool {
 }
 
 // Values returns the values for the current row
-func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID) {
+func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID, SeriesEpoch) {
 	info := t.SampleInfos[t.SampleInfoIndex]
 	sample := info.Samples[t.SampleIndex]
 	if t.MinSeen > sample.Timestamp {
 		t.MinSeen = sample.Timestamp
 	}
-	return model.Time(sample.Timestamp).Time(), sample.Value, info.SeriesID
+	sid, eid, err := info.Labels.GetSeriesID()
+	if t.err == nil {
+		t.err = err
+	}
+	return model.Time(sample.Timestamp).Time(), sample.Value, sid, eid
 }
 
 // Err returns any error that has been encountered by the CopyFromSource. If
 // this is not nil *Conn.CopyFrom will abort the copy.
 func (t *SampleInfoIterator) Err() error {
-	return nil
+	return t.err
 }

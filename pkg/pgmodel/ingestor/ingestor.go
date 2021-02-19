@@ -16,10 +16,11 @@ import (
 )
 
 type Cfg struct {
-	AsyncAcks       bool
-	ReportInterval  int
-	SeriesCacheSize uint64
-	NumCopiers      int
+	AsyncAcks        bool
+	ReportInterval   int
+	SeriesCacheSize  uint64
+	NumCopiers       int
+	DisableEpochSync bool
 }
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
@@ -92,9 +93,8 @@ func (i *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest
 			return nil, rows, errors.ErrNoMetricName
 		}
 		sample := model.SamplesInfo{
-			Labels:   seriesLabels,
-			SeriesID: -1, // sentinel marking the seriesId as unset
-			Samples:  t.Samples,
+			Labels:  seriesLabels,
+			Samples: t.Samples,
 		}
 		rows += len(t.Samples)
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -16,15 +17,41 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+// SeriesID represents a globally unique id for the series. This should be equivalent
+// to the PostgreSQL type in the series table (currently BIGINT).
+type SeriesID int64
+
+const unsetSeriesID = -1
+
+func (s SeriesID) String() string {
+	return strconv.FormatInt(int64(s), 10)
+}
+
+//Epoch represents the series epoch
+type SeriesEpoch int64
+
+const UnsetSeriesEpoch = -1
+
 // Labels stores a labels.Labels in its canonical string representation
 type Labels struct {
 	Names      []string
 	Values     []string
 	MetricName string
 	str        string
+	seriesID   SeriesID
+	epoch      SeriesEpoch
 }
 
 var LabelsInterner = sync.Map{}
+
+//ResetStoredLabels should be concurrency-safe
+func ResetStoredLabels() {
+	//TODO change this when switching to proper cache
+	LabelsInterner.Range(func(key interface{}, value interface{}) bool {
+		LabelsInterner.Delete(key)
+		return true
+	})
+}
 
 // Get the canonical version of a Labels if one exists.
 // input: the string representation of a Labels as defined by getStr()
@@ -130,10 +157,13 @@ func LabelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
 	}
 	labels := GetLabels(str)
 	if labels == nil {
-		labels = new(Labels)
-		labels.str = str
-		labels.Names = make([]string, len(labelPairs))
-		labels.Values = make([]string, len(labelPairs))
+		labels = &Labels{
+			Names:    make([]string, len(labelPairs)),
+			Values:   make([]string, len(labelPairs)),
+			str:      str,
+			seriesID: unsetSeriesID,
+			epoch:    UnsetSeriesEpoch,
+		}
 		for i, l := range labelPairs {
 			labels.Names[i] = l.Name
 			labels.Values[i] = l.Value
@@ -164,18 +194,24 @@ func (l *Labels) Equal(b *Labels) bool {
 	return l.str == b.str
 }
 
-// Labels implements sort.Interface
-var _ sort.Interface = (*Labels)(nil)
-
-func (l *Labels) Len() int {
-	return len(l.Names)
+func (l *Labels) IsSeriesIDSet() bool {
+	return l.seriesID != unsetSeriesID
 }
 
-func (l *Labels) Less(i, j int) bool {
-	return l.Names[i] < l.Names[j]
+func (l *Labels) GetSeriesID() (SeriesID, SeriesEpoch, error) {
+	switch l.seriesID {
+	case unsetSeriesID:
+		return 0, 0, fmt.Errorf("Series id not set")
+	case 0:
+		return 0, 0, fmt.Errorf("Series id invalid")
+	default:
+		return l.seriesID, l.epoch, nil
+	}
 }
 
-func (l *Labels) Swap(i, j int) {
-	l.Names[j], l.Names[i] = l.Names[i], l.Names[j]
-	l.Values[j], l.Values[i] = l.Values[i], l.Values[j]
+//note this has to be idempotent
+func (l *Labels) SetSeriesID(sid SeriesID, eid SeriesEpoch) {
+	//TODO: Unset l.Names and l.Values, no longer used
+	l.seriesID = sid
+	l.epoch = eid
 }

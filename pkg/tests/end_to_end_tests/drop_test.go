@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -340,7 +342,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+		ingestor, err := ingstr.NewPgxIngestorWithMetricCache(pgxconn.NewPgxConn(db), c, &ingstr.Cfg{DisableEpochSync: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -535,6 +538,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		if err == nil {
 			t.Error("expected ingest to fail due to old epoch")
 		}
+
+		pgmodel.ResetStoredLabels()
 
 		ingestor.Close()
 		ingestor2, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
