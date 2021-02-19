@@ -13,9 +13,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgmodel/scache"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -206,7 +206,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
-			scache.ResetStoredLabels()
+			scache := cache.NewSeriesCache(100)
+			scache.Reset()
 
 			inserter := insertHandler{
 				conn: mock,
@@ -250,7 +251,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 }
 
 func TestPGXInserterCacheReset(t *testing.T) {
-
 	series := []labels.Labels{
 		{
 			{Name: "__name__", Value: "metric_1"},
@@ -350,12 +350,14 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	mock := model.NewSqlRecorder(sqlQueries, t)
+	scache := cache.NewSeriesCache(100)
 
 	handler := insertHandler{
 		conn: mock,
 	}
 	inserter := pgxInserter{
-		conn: mock,
+		conn:   mock,
+		scache: scache,
 	}
 
 	makeSamples := func(series []labels.Labels) []model.SamplesInfo {
@@ -689,13 +691,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 		c := co
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
+			scache := cache.NewSeriesCache(100)
 
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &model.MockMetricCache{
 				MetricCache:  metricCache,
 				GetMetricErr: c.metricsGetErr,
 			}
-			inserter, err := newPgxInserter(mock, mockMetrics, &Cfg{DisableEpochSync: true})
+			inserter, err := newPgxInserter(mock, mockMetrics, scache, &Cfg{DisableEpochSync: true})
 			if err != nil {
 				t.Fatal(err)
 			}

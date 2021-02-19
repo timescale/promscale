@@ -293,6 +293,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		t.Skip("This test only runs on installs with TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		scache := cache.NewSeriesCache(100)
 		//this is the range_end of a chunk boundary (exclusive)
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 
@@ -343,7 +344,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		ingestor, err := ingstr.NewPgxIngestorWithMetricCache(pgxconn.NewPgxConn(db), c, &ingstr.Cfg{DisableEpochSync: true})
+		ingestor, err := ingstr.NewPgxIngestorWithMetricCache(pgxconn.NewPgxConn(db), c, scache, &ingstr.Cfg{DisableEpochSync: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -539,7 +540,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Error("expected ingest to fail due to old epoch")
 		}
 
-		pgmodel.ResetStoredLabels()
+		scache.Reset()
 
 		ingestor.Close()
 		ingestor2, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))

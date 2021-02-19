@@ -17,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -123,7 +124,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 			lCache := clockcache.WithMax(100)
 			dbConn := pgxconn.NewPgxConn(db)
-			labelsReader := model.NewLabelsReader(dbConn, lCache)
+			labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 			r := querier.NewQuerier(dbConn, mCache, labelsReader)
 			resp, err := r.Query(c.query)
 			if err != nil {

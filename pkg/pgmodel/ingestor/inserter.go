@@ -15,13 +15,13 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgmodel/scache"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type pgxInserter struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
+	scache                 cache.SeriesCache
 	inserters              sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
@@ -30,7 +30,7 @@ type pgxInserter struct {
 	seriesEpochRefresh     *time.Ticker
 }
 
-func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*pgxInserter, error) {
+func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxInserter, error) {
 	cmc := make(chan struct{}, 1)
 
 	numCopiers := cfg.NumCopiers
@@ -51,6 +51,7 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, cfg *Cfg) (*p
 	inserter := &pgxInserter{
 		conn:                   conn,
 		metricTableNames:       cache,
+		scache:                 scache,
 		completeMetricCreation: cmc,
 		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
@@ -108,11 +109,11 @@ func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) model.
 		// and continue execution
 		log.Error("msg", "error refreshing the series cache", "err", err)
 		// Trash the cache just in case an epoch change occurred, seems safer
-		scache.ResetStoredLabels()
+		p.scache.Reset()
 		return model.UnsetSeriesEpoch
 	}
 	if existingEpoch == model.UnsetSeriesEpoch || dbEpoch != existingEpoch {
-		scache.ResetStoredLabels()
+		p.scache.Reset()
 	}
 	return dbEpoch
 }

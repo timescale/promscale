@@ -31,6 +31,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -622,7 +623,7 @@ func TestSQLQuery(t *testing.T) {
 		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
@@ -958,7 +959,7 @@ func TestPromQL(t *testing.T) {
 		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
@@ -1129,7 +1130,7 @@ func TestPushdown(t *testing.T) {
 		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute, []string{})
