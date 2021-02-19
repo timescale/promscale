@@ -95,7 +95,7 @@ func (p *pgxInserter) runCompleteMetricCreationWorker() {
 }
 
 func (p *pgxInserter) runSeriesEpochSync() {
-	epoch := p.refreshSeriesEpoch(model.UnsetSeriesEpoch)
+	epoch := p.refreshSeriesEpoch(model.InvalidSeriesEpoch)
 	for range p.seriesEpochRefresh.C {
 		epoch = p.refreshSeriesEpoch(epoch)
 	}
@@ -110,9 +110,9 @@ func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) model.
 		log.Error("msg", "error refreshing the series cache", "err", err)
 		// Trash the cache just in case an epoch change occurred, seems safer
 		p.scache.Reset()
-		return model.UnsetSeriesEpoch
+		return model.InvalidSeriesEpoch
 	}
-	if existingEpoch == model.UnsetSeriesEpoch || dbEpoch != existingEpoch {
+	if existingEpoch == model.InvalidSeriesEpoch || dbEpoch != existingEpoch {
 		p.scache.Reset()
 	}
 	return dbEpoch

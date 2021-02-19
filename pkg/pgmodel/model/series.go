@@ -17,7 +17,7 @@ import (
 // to the PostgreSQL type in the series table (currently BIGINT).
 type SeriesID int64
 
-const unsetSeriesID = -1
+const invalidSeriesID = -1
 
 func (s SeriesID) String() string {
 	return strconv.FormatInt(int64(s), 10)
@@ -26,7 +26,7 @@ func (s SeriesID) String() string {
 //Epoch represents the series epoch
 type SeriesEpoch int64
 
-const UnsetSeriesEpoch = -1
+const InvalidSeriesEpoch = -1
 
 // Series stores a labels.Series in its canonical string representation
 type Series struct {
@@ -46,8 +46,8 @@ func NewSeries(key string, labelPairs []prompb.Label) *Series {
 		names:    make([]string, len(labelPairs)),
 		values:   make([]string, len(labelPairs)),
 		str:      key,
-		seriesID: unsetSeriesID,
-		epoch:    UnsetSeriesEpoch,
+		seriesID: invalidSeriesID,
+		epoch:    InvalidSeriesEpoch,
 	}
 	for i, l := range labelPairs {
 		series.names[i] = l.Name
@@ -96,7 +96,7 @@ func (l *Series) IsSeriesIDSet() bool {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
-	return l.seriesID != unsetSeriesID
+	return l.seriesID != invalidSeriesID
 }
 
 func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
@@ -104,7 +104,7 @@ func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
 	defer l.lock.RUnlock()
 
 	switch l.seriesID {
-	case unsetSeriesID:
+	case invalidSeriesID:
 		return 0, 0, fmt.Errorf("Series id not set")
 	case 0:
 		return 0, 0, fmt.Errorf("Series id invalid")
