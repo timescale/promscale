@@ -384,7 +384,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for _, si := range samples {
-		value := si.Labels.Values[1]
+		value := si.Labels.Values()[1]
 		expectedId := expectedIds[value]
 		gotId, _, err := si.Labels.GetSeriesID()
 		require.NoError(t, err)
@@ -403,7 +403,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for _, si := range samples {
-		value := si.Labels.Values[1]
+		value := si.Labels.Values()[1]
 		expectedId := expectedIds[value]
 		gotId, _, err := si.Labels.GetSeriesID()
 		require.NoError(t, err)
@@ -428,7 +428,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for _, si := range samples {
-		value := si.Labels.Values[1]
+		value := si.Labels.Values()[1]
 		expectedId := expectedIds[value]
 		gotId, _, err := si.Labels.GetSeriesID()
 		require.NoError(t, err)

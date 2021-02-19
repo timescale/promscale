@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -29,9 +30,12 @@ const UnsetSeriesEpoch = -1
 
 // Series stores a labels.Series in its canonical string representation
 type Series struct {
-	Names      []string
-	Values     []string
-	MetricName string
+	//protects names, values, seriesID, epoch
+	//str and metricName are immutable and doesn't need a lock
+	lock       sync.RWMutex
+	names      []string
+	values     []string
+	metricName string
 	str        string
 	seriesID   SeriesID
 	epoch      SeriesEpoch
@@ -39,20 +43,36 @@ type Series struct {
 
 func NewSeries(key string, labelPairs []prompb.Label) *Series {
 	series := &Series{
-		Names:    make([]string, len(labelPairs)),
-		Values:   make([]string, len(labelPairs)),
+		names:    make([]string, len(labelPairs)),
+		values:   make([]string, len(labelPairs)),
 		str:      key,
 		seriesID: unsetSeriesID,
 		epoch:    UnsetSeriesEpoch,
 	}
 	for i, l := range labelPairs {
-		series.Names[i] = l.Name
-		series.Values[i] = l.Value
+		series.names[i] = l.Name
+		series.values[i] = l.Value
 		if l.Name == MetricNameLabelName {
-			series.MetricName = l.Value
+			series.metricName = l.Value
 		}
 	}
 	return series
+}
+
+func (l *Series) Names() []string {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+	return l.names
+}
+
+func (l *Series) Values() []string {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+	return l.values
+}
+
+func (l *Series) MetricName() string {
+	return l.metricName
 }
 
 // Get a string representation for hashing and comparison
@@ -73,10 +93,16 @@ func (l *Series) Equal(b *Series) bool {
 }
 
 func (l *Series) IsSeriesIDSet() bool {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+
 	return l.seriesID != unsetSeriesID
 }
 
 func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+
 	switch l.seriesID {
 	case unsetSeriesID:
 		return 0, 0, fmt.Errorf("Series id not set")
@@ -89,6 +115,8 @@ func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
 
 //note this has to be idempotent
 func (l *Series) SetSeriesID(sid SeriesID, eid SeriesEpoch) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	//TODO: Unset l.Names and l.Values, no longer used
 	l.seriesID = sid
 	l.epoch = eid
