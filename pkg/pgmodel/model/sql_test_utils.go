@@ -450,12 +450,12 @@ func (m *MockInserter) CompleteMetricCreation() error {
 func (m *MockInserter) InsertData(rows map[string][]SamplesInfo) (uint64, error) {
 	for _, v := range rows {
 		for i, si := range v {
-			id, ok := m.InsertedSeries[si.Labels.String()]
+			id, ok := m.InsertedSeries[si.Series.String()]
 			if !ok {
 				id = SeriesID(len(m.InsertedSeries))
-				m.InsertedSeries[si.Labels.String()] = id
+				m.InsertedSeries[si.Series.String()] = id
 			}
-			v[i].Labels.seriesID = id
+			v[i].Series.seriesID = id
 		}
 	}
 	if m.InsertSeriesErr != nil {

@@ -13,7 +13,7 @@ import (
 )
 
 type SamplesInfo struct {
-	Labels  *Series
+	Series  *Series
 	Samples []prompb.Sample
 }
 
@@ -65,7 +65,7 @@ func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID, SeriesEpoch
 	if t.MinSeen > sample.Timestamp {
 		t.MinSeen = sample.Timestamp
 	}
-	sid, eid, err := info.Labels.GetSeriesID()
+	sid, eid, err := info.Series.GetSeriesID()
 	if t.err == nil {
 		t.err = err
 	}
