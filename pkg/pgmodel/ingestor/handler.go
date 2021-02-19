@@ -116,7 +116,7 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 		}
 
 		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.Labels.MetricName, curr.Labels.Names, curr.Labels.Values)
+		batch.Queue(getSeriesIDForLabelSQL, curr.Labels.MetricName(), curr.Labels.Names(), curr.Labels.Values())
 		batch.Queue("COMMIT;")
 		numSQLFunctionCalls++
 		batchSeries = append(batchSeries, []*model.SamplesInfo{curr})
