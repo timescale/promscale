@@ -378,14 +378,15 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedIds := map[string]model.SeriesID{
-		"value_1": model.SeriesID(1),
-		"value_2": model.SeriesID(2),
+	expectedIds := []model.SeriesID{
+		model.SeriesID(1),
+		model.SeriesID(2),
 	}
 
-	for _, si := range samples {
-		value := si.Series.Values()[1]
-		expectedId := expectedIds[value]
+	for index, si := range samples {
+		_, _, ok := si.Series.NameValues()
+		require.False(t, ok)
+		expectedId := expectedIds[index]
 		gotId, _, err := si.Series.GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
@@ -402,9 +403,10 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, si := range samples {
-		value := si.Series.Values()[1]
-		expectedId := expectedIds[value]
+	for index, si := range samples {
+		_, _, ok := si.Series.NameValues()
+		require.False(t, ok)
+		expectedId := expectedIds[index]
 		gotId, _, err := si.Series.GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
@@ -422,14 +424,15 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedIds = map[string]model.SeriesID{
-		"value_1": model.SeriesID(3),
-		"value_2": model.SeriesID(4),
+	expectedIds = []model.SeriesID{
+		model.SeriesID(3),
+		model.SeriesID(4),
 	}
 
-	for _, si := range samples {
-		value := si.Series.Values()[1]
-		expectedId := expectedIds[value]
+	for index, si := range samples {
+		_, _, ok := si.Series.NameValues()
+		require.False(t, ok)
+		expectedId := expectedIds[index]
 		gotId, _, err := si.Series.GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
