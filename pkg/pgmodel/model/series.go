@@ -59,16 +59,9 @@ func NewSeries(key string, labelPairs []prompb.Label) *Series {
 	return series
 }
 
-func (l *Series) Names() []string {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
-	return l.names
-}
-
-func (l *Series) Values() []string {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
-	return l.values
+//NameValues returns the names and values, only valid if the seriesIDIsNotSet
+func (l *Series) NameValues() (names []string, values []string, ok bool) {
+	return l.names, l.values, !l.isSeriesIDSetNoLock()
 }
 
 func (l *Series) MetricName() string {
@@ -92,11 +85,15 @@ func (l *Series) Equal(b *Series) bool {
 	return l.str == b.str
 }
 
+func (l *Series) isSeriesIDSetNoLock() bool {
+	return l.seriesID != invalidSeriesID
+}
+
 func (l *Series) IsSeriesIDSet() bool {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
-	return l.seriesID != invalidSeriesID
+	return l.isSeriesIDSetNoLock()
 }
 
 func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
@@ -120,4 +117,6 @@ func (l *Series) SetSeriesID(sid SeriesID, eid SeriesEpoch) {
 	//TODO: Unset l.Names and l.Values, no longer used
 	l.seriesID = sid
 	l.epoch = eid
+	l.names = nil
+	l.values = nil
 }

@@ -110,13 +110,18 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 	batchSeries := make([][]*model.SamplesInfo, 0, len(seriesToInsert))
 	// group the seriesToInsert by labels, one slice array per unique labels
 	for _, curr := range seriesToInsert {
+		names, values, ok := curr.Series.NameValues()
+		if !ok {
+			//was already set
+			continue
+		}
 		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.Series) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}
 
 		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.Series.MetricName(), curr.Series.Names(), curr.Series.Values())
+		batch.Queue(getSeriesIDForLabelSQL, curr.Series.MetricName(), names, values)
 		batch.Queue("COMMIT;")
 		numSQLFunctionCalls++
 		batchSeries = append(batchSeries, []*model.SamplesInfo{curr})
