@@ -80,11 +80,11 @@ func (h *insertHandler) flushPending() {
 // and repopulating the cache accordingly.
 // returns: the tableName for the metric being inserted into
 // TODO move up to the rest of insertHandler
-func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
-	seriesToInsert := make([]*model.SamplesInfo, 0, len(sampleInfos))
+func (h *insertHandler) setSeriesIds(sampleInfos []model.Samples) error {
+	seriesToInsert := make([]model.Samples, 0, len(sampleInfos))
 	for i, series := range sampleInfos {
-		if !series.Series.IsSeriesIDSet() {
-			seriesToInsert = append(seriesToInsert, &sampleInfos[i])
+		if !series.GetSeries().IsSeriesIDSet() {
+			seriesToInsert = append(seriesToInsert, sampleInfos[i])
 		}
 	}
 	if len(seriesToInsert) == 0 {
@@ -104,29 +104,29 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
 	// in a different transaction, thus deadlocks are not an issue.
 	sort.Slice(seriesToInsert, func(i, j int) bool {
-		return seriesToInsert[i].Series.Compare(seriesToInsert[j].Series) < 0
+		return seriesToInsert[i].GetSeries().Compare(seriesToInsert[j].GetSeries()) < 0
 	})
 
-	batchSeries := make([][]*model.SamplesInfo, 0, len(seriesToInsert))
+	batchSeries := make([][]model.Samples, 0, len(seriesToInsert))
 	// group the seriesToInsert by labels, one slice array per unique labels
 	for _, curr := range seriesToInsert {
-		names, values, ok := curr.Series.NameValues()
+		names, values, ok := curr.GetSeries().NameValues()
 		if !ok {
 			//was already set
 			continue
 		}
-		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.Series) {
+		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.GetSeries()) {
 			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
 			continue
 		}
 
 		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.Series.MetricName(), names, values)
+		batch.Queue(getSeriesIDForLabelSQL, curr.GetSeries().MetricName(), names, values)
 		batch.Queue("COMMIT;")
 		numSQLFunctionCalls++
-		batchSeries = append(batchSeries, []*model.SamplesInfo{curr})
+		batchSeries = append(batchSeries, []model.Samples{curr})
 
-		lastSeenLabel = curr.Series
+		lastSeenLabel = curr.GetSeries()
 	}
 
 	if numSQLFunctionCalls != len(batchSeries) {
@@ -174,7 +174,7 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 		}
 
 		for _, si := range batchSeries[i] {
-			si.Series.SetSeriesID(id, dbEpoch)
+			si.GetSeries().SetSeriesID(id, dbEpoch)
 		}
 
 		// COMMIT;

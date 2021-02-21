@@ -27,7 +27,7 @@ var (
 
 // inserter is responsible for inserting label, series and data into the storage.
 type Inserter interface {
-	InsertNewData(rows map[string][]SamplesInfo) (uint64, error)
+	InsertNewData(rows map[string][]Samples) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
 }

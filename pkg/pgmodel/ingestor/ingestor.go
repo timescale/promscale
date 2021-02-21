@@ -75,8 +75,8 @@ func (i *DBIngestor) CompleteMetricCreation() error {
 // returns: map[metric name][]SamplesInfo, total rows to insert
 // NOTE: req will be added to our WriteRequest pool in this function, it must
 //       not be used afterwards.
-func (ingestor *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]model.SamplesInfo, int, error) {
-	dataSamples := make(map[string][]model.SamplesInfo)
+func (ingestor *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]model.Samples, int, error) {
+	dataSamples := make(map[string][]model.Samples)
 	rows := 0
 
 	for i := range tts {
@@ -94,10 +94,7 @@ func (ingestor *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.Write
 		if metricName == "" {
 			return nil, rows, errors.ErrNoMetricName
 		}
-		sample := model.SamplesInfo{
-			Series:  seriesLabels,
-			Samples: t.Samples,
-		}
+		sample := model.NewPromSample(seriesLabels, t.Samples)
 		rows += len(t.Samples)
 
 		dataSamples[metricName] = append(dataSamples[metricName], sample)

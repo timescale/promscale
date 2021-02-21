@@ -55,7 +55,7 @@ func (p *pendingBuffer) release() {
 
 	for i := 0; i < len(p.batch.SampleInfos); i++ {
 		// nil all pointers to prevent memory leaks
-		p.batch.SampleInfos[i] = model.SamplesInfo{}
+		p.batch.SampleInfos[i] = nil
 	}
 	p.batch = model.SampleInfoIterator{SampleInfos: p.batch.SampleInfos[:0]}
 	p.batch.ResetPosition()
