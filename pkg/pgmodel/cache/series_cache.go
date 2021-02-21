@@ -17,7 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-const DefaultSeriesCacheSize = 100000
+const DefaultSeriesCacheSize = 500000
 
 type SeriesCache interface {
 	Reset()
