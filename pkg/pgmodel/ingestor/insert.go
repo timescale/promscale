@@ -322,7 +322,7 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		req := &reqs[r]
 		numRows := 0
 		for i := range req.data.batch.SampleInfos {
-			numRows += len(req.data.batch.SampleInfos[i].Samples)
+			numRows += req.data.batch.SampleInfos[i].CountSamples()
 		}
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:

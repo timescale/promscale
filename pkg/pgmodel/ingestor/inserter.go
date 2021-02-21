@@ -161,7 +161,7 @@ func (p *pgxInserter) Close() {
 	p.doneWG.Wait()
 }
 
-func (p *pgxInserter) InsertNewData(rows map[string][]model.SamplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertNewData(rows map[string][]model.Samples) (uint64, error) {
 	return p.InsertData(rows)
 }
 
@@ -171,7 +171,7 @@ func (p *pgxInserter) InsertNewData(rows map[string][]model.SamplesInfo) (uint64
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxInserter) InsertData(rows map[string][]model.SamplesInfo) (uint64, error) {
+func (p *pgxInserter) InsertData(rows map[string][]model.Samples) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
 	workFinished.Add(len(rows))
@@ -181,7 +181,7 @@ func (p *pgxInserter) InsertData(rows map[string][]model.SamplesInfo) (uint64, e
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
 		for _, si := range data {
-			numRows += uint64(len(si.Samples))
+			numRows += uint64(si.CountSamples())
 		}
 		// the following is usually non-blocking, just a channel insert
 		p.getMetricInserter(metricName) <- insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
@@ -192,7 +192,6 @@ func (p *pgxInserter) InsertData(rows map[string][]model.SamplesInfo) (uint64, e
 		workFinished.Wait()
 		select {
 		case err = <-errChan:
-			fmt.Println("here", err)
 		default:
 		}
 		close(errChan)
@@ -291,7 +290,7 @@ func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
 
 type insertDataRequest struct {
 	metric   string
-	data     []model.SamplesInfo
+	data     []model.Samples
 	finished *sync.WaitGroup
 	errChan  chan error
 }
