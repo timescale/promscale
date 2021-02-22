@@ -62,7 +62,7 @@ func (p *pendingBuffer) release() {
 	pendingBuffers.Put(p)
 }
 
-func (p *pendingBuffer) addReq(req insertDataRequest) bool {
+func (p *pendingBuffer) addReq(req *insertDataRequest) bool {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.SampleInfos = append(p.batch.SampleInfos, req.data...)
 	return len(p.batch.SampleInfos) > flushSize

@@ -153,7 +153,7 @@ func (p *pgxInserter) CompleteMetricCreation() error {
 func (p *pgxInserter) Close() {
 	close(p.completeMetricCreation)
 	p.inserters.Range(func(key, value interface{}) bool {
-		close(value.(chan insertDataRequest))
+		close(value.(chan *insertDataRequest))
 		return true
 	})
 	close(p.toCopiers)
@@ -184,7 +184,7 @@ func (p *pgxInserter) InsertData(rows map[string][]model.Samples) (uint64, error
 			numRows += uint64(si.CountSamples())
 		}
 		// the following is usually non-blocking, just a channel insert
-		p.getMetricInserter(metricName) <- insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.getMetricInserter(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
 
 	var err error
@@ -215,7 +215,7 @@ func (p *pgxInserter) InsertData(rows map[string][]model.Samples) (uint64, error
 }
 
 // Get the handler for a given metric name, creating a new one if none exists
-func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
+func (p *pgxInserter) getMetricInserter(metric string) chan *insertDataRequest {
 	inserter, ok := p.inserters.Load(metric)
 	if !ok {
 		// The ordering is important here: we need to ensure that every call
@@ -223,14 +223,14 @@ func (p *pgxInserter) getMetricInserter(metric string) chan insertDataRequest {
 		// only start up the inserter routine if we know that we won the race
 		// to create the inserter, anything else will leave a zombie inserter
 		// lying around.
-		c := make(chan insertDataRequest, 1000)
+		c := make(chan *insertDataRequest, 1000)
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
 			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers)
 		}
 	}
-	return inserter.(chan insertDataRequest)
+	return inserter.(chan *insertDataRequest)
 }
 
 //nolint
