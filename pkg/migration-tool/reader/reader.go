@@ -24,13 +24,13 @@ type RemoteRead struct {
 	client          *utils.Client
 	plan            *plan.Plan
 	concurrentPulls int
-	sigBlockRead    chan *plan.Block // To the writer.
-	SigForceStop    chan struct{}
+	sigSlabRead     chan *plan.Slab // To the writer.
+	SigSlabStop     chan struct{}
 }
 
 // New creates a new RemoteRead. It creates a ReadClient that is imported from Prometheus remote storage.
 // RemoteRead takes help of plan to understand how to create fetchers.
-func New(c context.Context, readStorageUrl string, p *plan.Plan, numConcurrentPulls int, sigRead chan *plan.Block) (*RemoteRead, error) {
+func New(c context.Context, readStorageUrl string, p *plan.Plan, numConcurrentPulls int, sigRead chan *plan.Slab) (*RemoteRead, error) {
 	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), readStorageUrl, utils.Read, model.Duration(defaultReadTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
@@ -41,7 +41,7 @@ func New(c context.Context, readStorageUrl string, p *plan.Plan, numConcurrentPu
 		plan:            p,
 		client:          rc,
 		concurrentPulls: numConcurrentPulls,
-		sigBlockRead:    sigRead,
+		sigSlabRead:     sigRead,
 	}
 	return read, nil
 }
@@ -49,12 +49,12 @@ func New(c context.Context, readStorageUrl string, p *plan.Plan, numConcurrentPu
 // Run runs the remote read and starts fetching the samples from the read storage.
 func (rr *RemoteRead) Run(errChan chan<- error) {
 	var (
-		err      error
-		blockRef *plan.Block
+		err     error
+		slabRef *plan.Slab
 	)
 	go func() {
 		defer func() {
-			close(rr.sigBlockRead)
+			close(rr.sigSlabRead)
 			log.Info("msg", "reader is down")
 			close(errChan)
 		}()
@@ -68,27 +68,27 @@ func (rr *RemoteRead) Run(errChan chan<- error) {
 			select {
 			case <-rr.c.Done():
 				return
-			case <-rr.SigForceStop:
+			case <-rr.SigSlabStop:
 				return
 			default:
 			}
-			blockRef, err = rr.plan.NextBlock()
+			slabRef, err = rr.plan.NextSlab()
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
 			ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")}
-			err = blockRef.Fetch(rr.c, rr.client, blockRef.Mint(), blockRef.Maxt(), ms)
+			err = slabRef.Fetch(rr.c, rr.client, slabRef.Mint(), slabRef.Maxt(), ms)
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
-			if blockRef.IsEmpty() {
-				rr.plan.DecrementBlockCount()
+			if slabRef.IsEmpty() {
+				rr.plan.DecrementSlabCount()
 				continue
 			}
-			rr.sigBlockRead <- blockRef
-			blockRef = nil
+			rr.sigSlabRead <- slabRef
+			slabRef = nil
 		}
 	}()
 }
