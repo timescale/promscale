@@ -1033,11 +1033,15 @@ func generatePrometheusWALFile() (string, error) {
 			builder.Set(l.Name, l.Value)
 		}
 
-		labels := builder.Labels()
+		var (
+			labels  = builder.Labels()
+			tempRef uint64
+			err     error
+		)
 
 		for _, s := range ts.Samples {
 			if ref == nil || *ref == 0 {
-				tempRef, err := app.Add(labels, s.Timestamp, s.Value)
+				tempRef, err = app.Append(tempRef, labels, s.Timestamp, s.Value)
 				if err != nil {
 					return "", err
 				}
@@ -1045,7 +1049,7 @@ func generatePrometheusWALFile() (string, error) {
 				continue
 			}
 
-			err = app.AddFast(*ref, s.Timestamp, s.Value)
+			_, err = app.Append(*ref, labels, s.Timestamp, s.Value)
 
 			if err != nil {
 				return "", err

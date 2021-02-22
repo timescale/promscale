@@ -98,6 +98,10 @@ func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ []parser.Node
 	return ss, nil
 }
 
+func (t *QuerierWrapper) LabelValues(n string) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+
 // Test is a sequence of read and write commands that are run
 // against a test storage.
 type Test struct {
@@ -356,7 +360,7 @@ func (cmd *loadCmd) append(a storage.Appender) error {
 		m := cmd.metrics[h]
 
 		for _, s := range smpls {
-			if _, err := a.Add(m, s.T, s.V); err != nil {
+			if _, err := a.Append(0, m, s.T, s.V); err != nil {
 				return err
 			}
 		}
@@ -781,7 +785,7 @@ func (ll *LazyLoader) appendTill(ts int64) error {
 				ll.loadCmd.defs[h] = smpls[i:]
 				break
 			}
-			if _, err := app.Add(m, s.T, s.V); err != nil {
+			if _, err := app.Append(0, m, s.T, s.V); err != nil {
 				return err
 			}
 			if i == len(smpls)-1 {
@@ -827,10 +831,4 @@ func (ll *LazyLoader) Close() {
 	if err := ll.storage.Close(); err != nil {
 		ll.T.Fatalf("closing test storage: %s", err)
 	}
-}
-
-func makeInt64Pointer(val int64) *int64 {
-	valp := new(int64)
-	*valp = val
-	return valp
 }
