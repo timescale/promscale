@@ -15,7 +15,7 @@ import (
 
 type insertHandler struct {
 	conn            pgxconn.PgxConn
-	input           chan insertDataRequest
+	input           chan *insertDataRequest
 	pending         *pendingBuffer
 	metricTableName string
 	toCopiers       chan copyRequest
@@ -46,7 +46,7 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 	}
 }
 
-func (h *insertHandler) handleReq(req insertDataRequest) bool {
+func (h *insertHandler) handleReq(req *insertDataRequest) bool {
 	needsFlush := h.pending.addReq(req)
 	if needsFlush {
 		h.flushPending()
