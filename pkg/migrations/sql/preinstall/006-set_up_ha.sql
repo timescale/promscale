@@ -60,8 +60,7 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 -- ha api functions
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.update_lease(cluster TEXT, writer TEXT, min_time TIMESTAMPTZ,
-                                                       max_time TIMESTAMPTZ, lease_timeout INTERVAL DEFAULT '1m',
-                                                       lease_refresh INTERVAL DEFAULT '10s') RETURNS ha_leases
+                                                       max_time TIMESTAMPTZ) RETURNS ha_leases
 AS
 $func$
 DECLARE
@@ -70,7 +69,15 @@ DECLARE
     lease_until       TIMESTAMPTZ;
     new_lease_timeout TIMESTAMPTZ;
     lease_state       ha_leases%ROWTYPE;
+    lease_timeout INTERVAL;
+    lease_refresh INTERVAL;
 BEGIN
+
+    -- find lease_timeout setting;
+    SELECT value::INTERVAL
+    INTO lease_timeout
+    FROM SCHEMA_CATALOG.default
+    WHERE key = 'ha_lease_timeout';
 
     -- find latest leader and their lease time range;
     SELECT h.leader_name, h.lease_start, h.lease_until
@@ -94,6 +101,12 @@ BEGIN
     IF leader <> writer THEN
         RAISE EXCEPTION 'LEADER_HAS_CHANGED' USING ERRCODE = 'PS010';
     END IF;
+
+    -- find lease_refresh setting;
+    SELECT value::INTERVAL
+    INTO lease_refresh
+    FROM SCHEMA_CATALOG.default
+    WHERE key = 'ha_lease_refresh';
 
     new_lease_timeout = max_time + lease_timeout;
     IF new_lease_timeout > lease_until + lease_refresh THEN
@@ -119,20 +132,25 @@ END;
 $func$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.try_change_leader(cluster TEXT, new_leader TEXT,
-                                                            max_time TIMESTAMPTZ,
-                                                            lease_timeout INTERVAL DEFAULT '1m') RETURNS ha_leases
+                                                            max_time TIMESTAMPTZ) RETURNS ha_leases
 AS
 $func$
 DECLARE
+    lease_timeout INTERVAL;
     lease_state ha_leases%ROWTYPE;
 BEGIN
+    -- find lease_timeout setting;
+    SELECT value::INTERVAL
+    INTO lease_timeout
+    FROM SCHEMA_CATALOG.default
+    WHERE key = 'ha_lease_timeout';
+
     UPDATE SCHEMA_CATALOG.ha_leases
     SET leader_name = new_leader,
         lease_start = lease_until,
         lease_until = max_time + lease_timeout
     WHERE cluster_name = cluster
       AND lease_until < max_time;
-
 
     SELECT *
     INTO STRICT lease_state

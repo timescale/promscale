@@ -11,6 +11,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -157,7 +158,7 @@ func TestCheckLeaseMultiCluster(t *testing.T) {
 		}
 	})
 }
-func TestConcurrentCheckLease(t *testing.T) {
+func TestConcurrentUpdateLease(t *testing.T) {
 	// 3 clusters with 3 writer instances
 	// each writer calls check_insert from a separate routine
 	// per cluster 1 routine will become leader, the others will
@@ -171,7 +172,11 @@ func TestConcurrentCheckLease(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 		wg.Add(len(clusters) * len(writers))
-		for _, c := range clusters {
+		firstLockCounters := make(map[string]*int32)
+		firstLockCountersArr := make([]int32, len(clusters))
+		for i, c := range clusters {
+			firstLockCountersArr[i] = 0
+			firstLockCounters[c] = &(firstLockCountersArr[i])
 			for _, w := range writers {
 				writer := w
 				cluster := c
@@ -179,6 +184,10 @@ func TestConcurrentCheckLease(t *testing.T) {
 					minT := time.Unix(0, 0)
 					maxT := time.Unix(2, 0)
 					firstLockRes, firstErr := callUpdateLease(db, cluster, writer, minT, maxT)
+					if firstLockRes != nil {
+						counterForCluster := firstLockCounters[cluster]
+						atomic.AddInt32(counterForCluster, 1)
+					}
 					for i := 0; i < numCallsToCheck; i++ {
 						time.Sleep(timeBetweenCheck)
 						minT = minT.Add(time.Second)
@@ -200,6 +209,15 @@ func TestConcurrentCheckLease(t *testing.T) {
 			}
 		}
 		wg.Wait()
+		for cluster, numTimesFirstLockWasNotNil := range firstLockCounters {
+			if *numTimesFirstLockWasNotNil != 1 {
+				t.Fatalf(
+					"Expected first lease to be set only once per cluster. It was set [%d] times for cluster [%s]",
+					*numTimesFirstLockWasNotNil,
+					cluster,
+				)
+			}
+		}
 	})
 
 }
