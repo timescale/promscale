@@ -7,8 +7,9 @@ package ha
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/ha/client"
 	"time"
+
+	"github.com/timescale/promscale/pkg/ha/client"
 )
 
 type mockLockClient struct {
@@ -47,8 +48,4 @@ func (m *mockLockClient) TryChangeLeader(_ context.Context, cluster, newLeader s
 
 func newMockLockClient() *mockLockClient {
 	return &mockLockClient{leadersPerCluster: make(map[string]*client.LeaseDBState)}
-}
-
-func (m *mockLockClient) ReadLeaseSettings(_ context.Context) (timeout, refresh time.Duration, err error) {
-	return time.Minute * 1, time.Second * 10, nil
 }

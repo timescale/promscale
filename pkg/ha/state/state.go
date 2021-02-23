@@ -3,10 +3,11 @@ package state
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/ha/client"
-	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"sync"
 	"time"
+
+	"github.com/timescale/promscale/pkg/ha/client"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 )
 
 // Lease represents the state of a lease for a cluster
@@ -139,7 +140,7 @@ func (h *Lease) UpdateMaxSeenTime(currentReplica string, currentMaxT, currentTim
 // SafeGetLeader returns the current leader. To be used
 // when only the current leader is required, so we can avoid
 // a complete state copy with Clone().
-func (h *Lease) SafeGetLeader() string {
+func (h *Lease) GetLeader() string {
 	h._mu.RLock()
 	defer h._mu.RUnlock()
 	return h.leader

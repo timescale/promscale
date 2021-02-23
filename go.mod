@@ -6,7 +6,6 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/blang/semver/v4 v4.0.0
 	github.com/cespare/xxhash/v2 v2.1.1
-	github.com/containerd/containerd v1.4.1 //indirect
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/go-kit/kit v0.10.0
@@ -35,8 +34,7 @@ require (
 	go.uber.org/goleak v1.1.10
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	golang.org/x/sys v0.0.0-20210122093101-04d7465088b8 // indirect
-	google.golang.org/grpc v1.33.2
-	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
+	github.com/containerd/containerd v1.4.1 //indirect
 )
 
 replace github.com/docker/docker => github.com/docker/engine v0.0.0-20190717161051-705d9623b7c1

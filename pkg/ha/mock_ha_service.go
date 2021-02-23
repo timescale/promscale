@@ -5,9 +5,10 @@
 package ha
 
 import (
-	"github.com/timescale/promscale/pkg/ha/client"
 	"sync"
 	"time"
+
+	"github.com/timescale/promscale/pkg/ha/client"
 )
 
 func MockNewHAService(clusterInfo []*client.LeaseDBState) *Service {

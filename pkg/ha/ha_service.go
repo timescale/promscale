@@ -7,10 +7,10 @@ package ha
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/ha/client"
 	"sync"
 	"time"
 
+	"github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/ha/state"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -154,12 +154,12 @@ func (s *Service) tryChangeLeader(cluster string, currentLease *state.Lease) {
 	defer clusterLock.Release(1)
 
 	for {
-		stateView := currentLease.Clone()
-		if ok := s.shouldTryToChangeLeader(stateView); ok {
+		leaseView := currentLease.Clone()
+		if ok := s.shouldTryToChangeLeader(leaseView); ok {
 			return
 		}
 		leaseState, err := s.leaseClient.TryChangeLeader(
-			context.Background(), cluster, stateView.MaxTimeInstance, stateView.MaxTimeSeen,
+			context.Background(), cluster, leaseView.MaxTimeInstance, leaseView.MaxTimeSeen,
 		)
 		if err != nil {
 			log.Error("msg", "Couldn't change leader", "err", err)
@@ -171,22 +171,13 @@ func (s *Service) tryChangeLeader(cluster string, currentLease *state.Lease) {
 			log.Error("msg", "Couldn't set update from db to lease", "err", err)
 			return
 		}
-		if leaseState.Leader != stateView.Leader {
+		if leaseState.Leader != leaseView.Leader {
 			// leader changed
 			return
 		}
 		// leader didn't change, wait a bit and try again
 		time.Sleep(backOffDurationOnLeaderChange)
 	}
-}
-
-func (s *Service) loadState(cluster string) (*state.Lease, error) {
-	l, ok := s.state.Load(cluster)
-	if !ok {
-		return nil, fmt.Errorf("couldn't load %s cluster state from ha service", cluster)
-	}
-	ss := l.(*state.Lease)
-	return ss, nil
 }
 
 func (s *Service) getLeaderChangeLock(cluster string) *semaphore.Weighted {

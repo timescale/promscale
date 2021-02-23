@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package client
 
 import (
@@ -10,17 +14,13 @@ import (
 )
 
 const (
-	leaseRefreshKey      = "ha_lease_refresh"
-	leaseTimeoutKey      = "ha_lease_timeout"
 	leasesTable          = schema.Catalog + ".ha_leases"
 	updateLeaseFn        = schema.Catalog + ".update_lease"
 	tryChangeLeaderFn    = schema.Catalog + ".try_change_leader"
 	updateLeaseSql       = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
 	tryChangeLeaderSql   = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
-	latestLockStateSql   = "SELECT leader_name, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
-	readLeaseSettings    = "SELECT value FROM " + schema.Catalog + ".default where key IN($1)"
+	latestLeaseStateSql  = "SELECT leader_name, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
 	leaderChangedErrCode = "PS010"
-	unsetIntervalValue   = -time.Second
 )
 
 // LeaseDBState represents the current lock holder
@@ -48,18 +48,14 @@ type LeaseClient interface {
 	// *haLockState current state of the lock (if try was successful state.leader == newLeader)
 	// error signifying the call couldn't be made
 	TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*LeaseDBState, error)
-	// readLeaseSettings gets the lease timeout and lease refresh parameters
-	ReadLeaseSettings(ctx context.Context) (timeout, refresh time.Duration, err error)
 }
 
 type haLockClientDB struct {
-	dbConn               pgxconn.PgxConn
-	leaseRefreshInterval time.Duration
-	leaseTimeoutInterval time.Duration
+	dbConn pgxconn.PgxConn
 }
 
 func NewHaLockClient(dbConn pgxconn.PgxConn) LeaseClient {
-	return &haLockClientDB{dbConn: dbConn, leaseRefreshInterval: unsetIntervalValue, leaseTimeoutInterval: unsetIntervalValue}
+	return &haLockClientDB{dbConn: dbConn}
 }
 
 func (h *haLockClientDB) UpdateLease(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (
@@ -99,45 +95,9 @@ func (h *haLockClientDB) TryChangeLeader(ctx context.Context, cluster, newLeader
 
 func (h *haLockClientDB) readLeaseState(ctx context.Context, cluster string) (*LeaseDBState, error) {
 	dbLock := LeaseDBState{Cluster: cluster}
-	row := h.dbConn.QueryRow(ctx, latestLockStateSql, cluster)
+	row := h.dbConn.QueryRow(ctx, latestLeaseStateSql, cluster)
 	if err := row.Scan(&dbLock.Leader, &dbLock.LeaseStart, &dbLock.LeaseUntil); err != nil {
 		return nil, err
 	}
 	return &dbLock, nil
-}
-
-func (h *haLockClientDB) ReadLeaseSettings(ctx context.Context) (timeout, refresh time.Duration, err error) {
-	if h.leaseTimeoutInterval != unsetIntervalValue && h.leaseRefreshInterval != unsetIntervalValue {
-		return h.leaseTimeoutInterval, h.leaseRefreshInterval, nil
-	}
-
-	var value string
-	// get leaseTimeOut
-	row := h.dbConn.QueryRow(ctx, readLeaseSettings, leaseTimeoutKey)
-	if err = row.Scan(&value); err != nil {
-		return -1, -1, err
-	}
-	if timeout, err = parseTimestampToDuration(value); err != nil {
-		return -1, -1, err
-	}
-
-	// get leaseRefresh
-	row = h.dbConn.QueryRow(ctx, readLeaseSettings, leaseRefreshKey)
-	if err = row.Scan(&value); err != nil {
-		return -1, -1, err
-	}
-
-	if refresh, err = parseTimestampToDuration(value); err != nil {
-		return -1, -1, err
-	}
-
-	return timeout, refresh, nil
-}
-
-func parseTimestampToDuration(value string) (time.Duration, error) {
-	valueAsDuration, err := time.ParseDuration(value)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse timestamp to time.Duration while reading HA lease settings %v", err)
-	}
-	return valueAsDuration, nil
 }

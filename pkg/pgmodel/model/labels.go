@@ -202,7 +202,3 @@ func (l *Labels) GetClusterName() string {
 	}
 	return ""
 }
-
-func (l *Labels) StrHash() string {
-	return l.str
-}
