@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/timescale/promscale/pkg/ha/client"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"sync"
 	"time"
 )
@@ -79,6 +80,7 @@ func NewLease(c client.LeaseClient, cluster, potentialLeader string, minT, maxT,
 func (h *Lease) UpdateFromDB(c client.LeaseClient, potentialLeader string, minT, maxT time.Time) error {
 	h._mu.RLock()
 	cluster := h.cluster
+	oldLeader := h.leader
 	h._mu.RUnlock()
 	stateFromDB, err := c.UpdateLease(context.Background(), cluster, potentialLeader, minT, maxT)
 	if err != nil {
@@ -89,6 +91,7 @@ func (h *Lease) UpdateFromDB(c client.LeaseClient, potentialLeader string, minT,
 	h.leader = stateFromDB.Leader
 	h.leaseStart = stateFromDB.LeaseStart
 	h.leaseUntil = stateFromDB.LeaseUntil
+	go exposeHAStateToMetrics(cluster, oldLeader, stateFromDB.Leader)
 	return nil
 }
 
@@ -101,12 +104,14 @@ func (h *Lease) SetUpdateFromDB(stateFromDB *client.LeaseDBState) error {
 Lease belongs to cluster [%s], attempted to update with lease for cluster [%s]`
 		return fmt.Errorf(errMsg, h.cluster, stateFromDB.Cluster)
 	}
+	oldLeader := h.leader
 	h._mu.RUnlock()
 	h._mu.Lock()
 	defer h._mu.Unlock()
 	h.leader = stateFromDB.Leader
 	h.leaseStart = stateFromDB.LeaseStart
 	h.leaseUntil = stateFromDB.LeaseUntil
+	go exposeHAStateToMetrics(stateFromDB.Cluster, oldLeader, stateFromDB.Leader)
 	return nil
 }
 
@@ -157,4 +162,19 @@ func (h *Lease) Clone() *LeaseView {
 		MaxTimeSeenLeader:     h.maxTimeSeenLeader,
 		RecentLeaderWriteTime: h.recentLeaderWriteTime,
 	}
+}
+
+func exposeHAStateToMetrics(cluster, oldLeader, newLeader string) {
+	if oldLeader != "" {
+		metrics.HAClusterLeaderDetails.WithLabelValues(cluster, oldLeader).Set(0)
+	}
+	metrics.HAClusterLeaderDetails.WithLabelValues(cluster, newLeader).Set(1)
+	if oldLeader == newLeader {
+		return
+	}
+	counter, err := metrics.NumOfHAClusterLeaderChanges.GetMetricWithLabelValues(cluster)
+	if err != nil {
+		return
+	}
+	counter.Inc()
 }

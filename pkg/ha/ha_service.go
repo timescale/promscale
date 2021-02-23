@@ -13,7 +13,6 @@ import (
 
 	"github.com/timescale/promscale/pkg/ha/state"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/util"
 	"golang.org/x/sync/semaphore"
@@ -82,7 +81,6 @@ func (s *Service) haStateSyncer() {
 			}
 
 			stateAfterUpdate := lease.Clone()
-			go exposeHAStateToMetrics(cluster, stateBeforeUpdate.Leader, stateAfterUpdate.Leader)
 			if ok := s.shouldTryToChangeLeader(stateAfterUpdate); !ok {
 				go s.tryChangeLeader(cluster, lease)
 			}
@@ -143,9 +141,7 @@ func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, ma
 	}
 	l, _ = s.state.LoadOrStore(clusterName, newLease)
 	newLease = l.(*state.Lease)
-	go exposeHAStateToMetrics(clusterName, "", newLease.SafeGetLeader())
 	return newLease, nil
-
 }
 
 func (s *Service) tryChangeLeader(cluster string, currentLease *state.Lease) {
@@ -177,7 +173,6 @@ func (s *Service) tryChangeLeader(cluster string, currentLease *state.Lease) {
 		}
 		if leaseState.Leader != stateView.Leader {
 			// leader changed
-			exposeHAStateToMetrics(cluster, stateView.Leader, leaseState.Leader)
 			return
 		}
 		// leader didn't change, wait a bit and try again
@@ -207,16 +202,4 @@ func (s *Service) shouldTryToChangeLeader(state *state.LeaseView) bool {
 		return true
 	}
 	return false
-}
-
-func exposeHAStateToMetrics(cluster, oldLeader, newLeader string) {
-	if oldLeader != "" {
-		metrics.HAClusterLeaderDetails.WithLabelValues(cluster, oldLeader).Set(0)
-	}
-	metrics.HAClusterLeaderDetails.WithLabelValues(cluster, newLeader).Set(1)
-	counter, err := metrics.NumOfHAClusterLeaderChanges.GetMetricWithLabelValues(cluster)
-	if err != nil {
-		return
-	}
-	counter.Inc()
 }
