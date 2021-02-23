@@ -61,6 +61,8 @@ func NewSeries(key string, labelPairs []prompb.Label) *Series {
 
 //NameValues returns the names and values, only valid if the seriesIDIsNotSet
 func (l *Series) NameValues() (names []string, values []string, ok bool) {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
 	return l.names, l.values, !l.isSeriesIDSetNoLock()
 }
 

@@ -95,27 +95,28 @@ func (p *pgxInserter) runCompleteMetricCreationWorker() {
 }
 
 func (p *pgxInserter) runSeriesEpochSync() {
-	epoch := p.refreshSeriesEpoch(model.InvalidSeriesEpoch)
+	epoch, err := p.refreshSeriesEpoch(model.InvalidSeriesEpoch)
+	// we don't have any great place to report errors, and if the
+	// connection recovers we can still make progress, so we'll just log it
+	// and continue execution
+	log.Error("msg", "error refreshing the series cache", "err", err)
 	for range p.seriesEpochRefresh.C {
-		epoch = p.refreshSeriesEpoch(epoch)
+		epoch, err = p.refreshSeriesEpoch(epoch)
+		log.Error("msg", "error refreshing the series cache", "err", err)
 	}
 }
 
-func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) model.SeriesEpoch {
+func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model.SeriesEpoch, error) {
 	dbEpoch, err := p.getServerEpoch()
 	if err != nil {
-		// we don't have any great place to report this error, and if the
-		// connection recovers we can still make progress, so we'll just log it
-		// and continue execution
-		log.Error("msg", "error refreshing the series cache", "err", err)
 		// Trash the cache just in case an epoch change occurred, seems safer
 		p.scache.Reset()
-		return model.InvalidSeriesEpoch
+		return model.InvalidSeriesEpoch, err
 	}
 	if existingEpoch == model.InvalidSeriesEpoch || dbEpoch != existingEpoch {
 		p.scache.Reset()
 	}
-	return dbEpoch
+	return dbEpoch, nil
 }
 
 func (p *pgxInserter) getServerEpoch() (model.SeriesEpoch, error) {
