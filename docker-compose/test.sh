@@ -39,7 +39,7 @@ done
 
 ## As prometheus scrape interval is 10s
 ## sleep for 30s so we can find ingestion logs in promscale
-sleep 30
+sleep 120
 
 writeLog=$(docker logs test_docker-compose_promscale_1  2>&1| grep samples/sec | tail -n 1 || true)
    if [ -n "$writeLog" ]; then
