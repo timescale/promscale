@@ -83,7 +83,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan *insertDataRequest, met
 	handler := insertHandler{
 		conn:            conn,
 		input:           input,
-		pending:         pendingBuffers.Get().(*pendingBuffer),
+		pending:         NewPendingBuffer(),
 		metricTableName: tableName,
 		toCopiers:       toCopiers,
 	}
@@ -99,7 +99,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan *insertDataRequest, met
 	// writes to a given metric can be relatively rare, so if we don't have
 	// additional requests immediately we're likely not going to for a while.
 	for {
-		if !handler.hasPendingReqs() {
+		if handler.pending.IsEmpty() {
 			stillAlive := handler.blockingHandleReq()
 			if !stillAlive {
 				return
@@ -109,7 +109,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan *insertDataRequest, met
 
 	hotReceive:
 		for handler.nonblockingHandleReq() {
-			if len(handler.pending.batch.SampleInfos) >= flushSize {
+			if handler.pending.IsFull() {
 				break hotReceive
 			}
 		}
@@ -320,10 +320,8 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	for r := range reqs {
 		req := &reqs[r]
-		numRows := 0
-		for i := range req.data.batch.SampleInfos {
-			numRows += req.data.batch.SampleInfos[i].CountSamples()
-		}
+		numRows := req.data.batch.CountSamples()
+
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
 		//   1. The round trip time.
