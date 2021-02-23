@@ -7,6 +7,7 @@ package api
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -81,7 +82,7 @@ func TestImportSampleUnmarshalJSON(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			i := &importSample{}
+			i := &jsonSample{}
 
 			err := i.UnmarshalJSON([]byte(c.input))
 
@@ -109,10 +110,140 @@ func TestImportSampleUnmarshalJSON(t *testing.T) {
 	}
 }
 
-func TestAppendImportPayload(t *testing.T) {
+func TestMultipleJSONPayloads(t *testing.T) {
+	testCases := []struct {
+		name           string
+		jsonStringData string
+		result         *prompb.WriteRequest
+	}{
+		{
+			name:           "single payload",
+			jsonStringData: `{"labels":{"__name__":"foo"},"samples":[[1577836800000, 100]]}`,
+			result: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{
+								Name:  "__name__",
+								Value: "foo",
+							},
+						},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1577836800000,
+								Value:     100,
+							},
+						},
+					},
+				},
+			},
+		}, {
+			name:           "two payloads",
+			jsonStringData: `{"labels":{"__name__":"foo"},"samples":[[1577836800000, 100]]}{"labels":{"__name__":"bar"},"samples":[[1577836800000, 1]]}`,
+			result: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{
+								Name:  "__name__",
+								Value: "foo",
+							},
+						},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1577836800000,
+								Value:     100,
+							},
+						},
+					}, {
+						Labels: []prompb.Label{
+							{
+								Name:  "__name__",
+								Value: "bar",
+							},
+						},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1577836800000,
+								Value:     1,
+							},
+						},
+					},
+				},
+			},
+		}, {
+			name:           "three payloads",
+			jsonStringData: `{"labels":{"__name__":"foo"},"samples":[[1577836800000, 100]]}{"labels":{"__name__":"bar"},"samples":[[1577836800000, 1]]}{"labels":{"__name__":"third"},"samples":[[1599836800000, 100.04], [1599936800000, 100.05]]}`,
+			result: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{
+								Name:  "__name__",
+								Value: "foo",
+							},
+						},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1577836800000,
+								Value:     100,
+							},
+						},
+					}, {
+						Labels: []prompb.Label{
+							{
+								Name:  "__name__",
+								Value: "bar",
+							},
+						},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1577836800000,
+								Value:     1,
+							},
+						},
+					}, {
+						Labels: []prompb.Label{
+							{
+								Name:  "__name__",
+								Value: "third",
+							},
+						},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1599836800000,
+								Value:     100.04,
+							},
+							{
+								Timestamp: 1599936800000,
+								Value:     100.05,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, c := range testCases {
+		req := &http.Request{
+			Header: map[string][]string{
+				"Content-Type": {"application/json"},
+			},
+			Body: ioutil.NopCloser(strings.NewReader(c.jsonStringData)),
+		}
+		resp, err, _ := loadWriteRequest(req)
+		require.NoError(t, err)
+		if !reflect.DeepEqual(resp, c.result) {
+			t.Fatalf("write request is not as expected: received %v, expected %v", resp, c.result)
+		}
+	}
+}
+
+func TestAppendJSONPayload(t *testing.T) {
 	testCases := []struct {
 		name   string
-		input  importPayload
+		input  jsonPayload
 		result prompb.WriteRequest
 	}{
 		{
@@ -121,7 +252,7 @@ func TestAppendImportPayload(t *testing.T) {
 		},
 		{
 			name: "empty samples",
-			input: importPayload{
+			input: jsonPayload{
 				Labels: map[string]string{
 					"labelName": "labelValue",
 				},
@@ -130,8 +261,8 @@ func TestAppendImportPayload(t *testing.T) {
 		},
 		{
 			name: "empty labels",
-			input: importPayload{
-				Samples: []importSample{
+			input: jsonPayload{
+				Samples: []jsonSample{
 					{
 						Timestamp: 1,
 						Value:     2,
@@ -141,12 +272,12 @@ func TestAppendImportPayload(t *testing.T) {
 			result: prompb.WriteRequest{},
 		},
 		{
-			name: "happy path",
-			input: importPayload{
+			name: "ensure backward compatibility",
+			input: jsonPayload{
 				Labels: map[string]string{
 					"labelName": "labelValue",
 				},
-				Samples: []importSample{
+				Samples: []jsonSample{
 					{
 						Timestamp: 1,
 						Value:     2.3,
@@ -155,15 +286,15 @@ func TestAppendImportPayload(t *testing.T) {
 			},
 			result: prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
-					prompb.TimeSeries{
+					{
 						Labels: []prompb.Label{
-							prompb.Label{
+							{
 								Name:  "labelName",
 								Value: "labelValue",
 							},
 						},
 						Samples: []prompb.Sample{
-							prompb.Sample{
+							{
 								Timestamp: 1,
 								Value:     2.3,
 							},
@@ -177,7 +308,7 @@ func TestAppendImportPayload(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			wr := &prompb.WriteRequest{}
-			got := appendImportPayload(c.input, wr)
+			got := appendJSONPayload(wr, c.input)
 
 			if !reflect.DeepEqual(c.result, *got) {
 				t.Errorf("unexpected result\ngot:\n%v\nwanted:\n%v\n", *got, c.result)
