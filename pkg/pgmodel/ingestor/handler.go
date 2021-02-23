@@ -21,10 +21,6 @@ type insertHandler struct {
 	toCopiers       chan copyRequest
 }
 
-func (h *insertHandler) hasPendingReqs() bool {
-	return len(h.pending.batch.SampleInfos) > 0
-}
-
 func (h *insertHandler) blockingHandleReq() bool {
 	req, ok := <-h.input
 	if !ok {
@@ -47,8 +43,8 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 }
 
 func (h *insertHandler) handleReq(req *insertDataRequest) bool {
-	needsFlush := h.pending.addReq(req)
-	if needsFlush {
+	h.pending.addReq(req)
+	if h.pending.IsFull() {
 		h.flushPending()
 		return true
 	}
@@ -56,7 +52,7 @@ func (h *insertHandler) handleReq(req *insertDataRequest) bool {
 }
 
 func (h *insertHandler) flush() {
-	if !h.hasPendingReqs() {
+	if h.pending.IsEmpty() {
 		return
 	}
 	h.flushPending()
@@ -64,27 +60,27 @@ func (h *insertHandler) flush() {
 
 // Set all unset SeriesIds and flush to the next layer
 func (h *insertHandler) flushPending() {
-	err := h.setSeriesIds(h.pending.batch.SampleInfos)
+	err := h.setSeriesIds(h.pending.batch.GetSeriesSamples())
 	if err != nil {
 		h.pending.reportResults(err)
 		h.pending.release()
-		h.pending = pendingBuffers.Get().(*pendingBuffer)
+		h.pending = NewPendingBuffer()
 		return
 	}
 
 	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
-	h.pending = pendingBuffers.Get().(*pendingBuffer)
+	h.pending = NewPendingBuffer()
 }
 
 // Set all seriesIds for a samplesInfo, fetching any missing ones from the DB,
 // and repopulating the cache accordingly.
 // returns: the tableName for the metric being inserted into
 // TODO move up to the rest of insertHandler
-func (h *insertHandler) setSeriesIds(sampleInfos []model.Samples) error {
-	seriesToInsert := make([]model.Samples, 0, len(sampleInfos))
-	for i, series := range sampleInfos {
+func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
+	seriesToInsert := make([]model.Samples, 0, len(seriesSamples))
+	for i, series := range seriesSamples {
 		if !series.GetSeries().IsSeriesIDSet() {
-			seriesToInsert = append(seriesToInsert, sampleInfos[i])
+			seriesToInsert = append(seriesToInsert, seriesSamples[i])
 		}
 	}
 	if len(seriesToInsert) == 0 {

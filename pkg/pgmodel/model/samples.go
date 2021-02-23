@@ -39,51 +39,80 @@ func (t *promSample) getSample(index int) *prompb.Sample {
 	return &t.samples[index]
 }
 
-// SampleInfoIterator is an iterator over a collection of sampleInfos that returns
+// SamplesBatch is an iterator over a collection of sampleInfos that returns
 // data in the format expected for the data table row.
-type SampleInfoIterator struct {
-	SampleInfos     []Samples
-	SampleInfoIndex int
-	SampleIndex     int
-	MinSeen         int64
-	err             error
+type SamplesBatch struct {
+	seriesSamples []Samples
+	seriesIndex   int
+	sampleIndex   int
+	MinSeen       int64
+	err           error
 }
 
-// NewSampleInfoIterator is the constructor
-func NewSampleInfoIterator() SampleInfoIterator {
-	si := SampleInfoIterator{SampleInfos: make([]Samples, 0)}
+// NewSamplesBatch is the constructor
+func NewSamplesBatch() SamplesBatch {
+	si := SamplesBatch{seriesSamples: make([]Samples, 0)}
 	si.ResetPosition()
 	return si
 }
 
+func (t *SamplesBatch) Reset() {
+	for i := 0; i < len(t.seriesSamples); i++ {
+		// nil all pointers to prevent memory leaks
+		t.seriesSamples[i] = nil
+	}
+	*t = SamplesBatch{seriesSamples: t.seriesSamples[:0]}
+	t.ResetPosition()
+}
+
+func (t *SamplesBatch) CountSeries() int {
+	return len(t.seriesSamples)
+}
+
+func (t *SamplesBatch) GetSeriesSamples() []Samples {
+	return t.seriesSamples
+}
+
+func (t *SamplesBatch) CountSamples() int {
+	c := 0
+	for i := range t.seriesSamples {
+		c += t.seriesSamples[i].CountSamples()
+	}
+	return c
+}
+
 //Append adds a sample info to the back of the iterator
-func (t *SampleInfoIterator) Append(s Samples) {
-	t.SampleInfos = append(t.SampleInfos, s)
+func (t *SamplesBatch) Append(s Samples) {
+	t.seriesSamples = append(t.seriesSamples, s)
+}
+
+func (t *SamplesBatch) AppendSlice(s []Samples) {
+	t.seriesSamples = append(t.seriesSamples, s...)
 }
 
 //ResetPosition resets the iteration position to the beginning
-func (t *SampleInfoIterator) ResetPosition() {
-	t.SampleIndex = -1
-	t.SampleInfoIndex = 0
+func (t *SamplesBatch) ResetPosition() {
+	t.sampleIndex = -1
+	t.seriesIndex = 0
 	t.MinSeen = math.MaxInt64
 }
 
 // Next returns true if there is another row and makes the next row data
 // available to Values(). When there are no more rows available or an error
 // has occurred it returns false.
-func (t *SampleInfoIterator) Next() bool {
-	t.SampleIndex++
-	if t.SampleInfoIndex < len(t.SampleInfos) && t.SampleIndex >= t.SampleInfos[t.SampleInfoIndex].CountSamples() {
-		t.SampleInfoIndex++
-		t.SampleIndex = 0
+func (t *SamplesBatch) Next() bool {
+	t.sampleIndex++
+	if t.seriesIndex < len(t.seriesSamples) && t.sampleIndex >= t.seriesSamples[t.seriesIndex].CountSamples() {
+		t.seriesIndex++
+		t.sampleIndex = 0
 	}
-	return t.SampleInfoIndex < len(t.SampleInfos)
+	return t.seriesIndex < len(t.seriesSamples)
 }
 
 // Values returns the values for the current row
-func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID, SeriesEpoch) {
-	info := t.SampleInfos[t.SampleInfoIndex]
-	sample := info.getSample(t.SampleIndex)
+func (t *SamplesBatch) Values() (time.Time, float64, SeriesID, SeriesEpoch) {
+	info := t.seriesSamples[t.seriesIndex]
+	sample := info.getSample(t.sampleIndex)
 	if t.MinSeen > sample.Timestamp {
 		t.MinSeen = sample.Timestamp
 	}
@@ -94,8 +123,12 @@ func (t *SampleInfoIterator) Values() (time.Time, float64, SeriesID, SeriesEpoch
 	return model.Time(sample.Timestamp).Time(), sample.Value, sid, eid
 }
 
+func (t *SamplesBatch) Absorb(other SamplesBatch) {
+	t.AppendSlice(other.seriesSamples)
+}
+
 // Err returns any error that has been encountered by the CopyFromSource. If
 // this is not nil *Conn.CopyFrom will abort the copy.
-func (t *SampleInfoIterator) Err() error {
+func (t *SamplesBatch) Err() error {
 	return t.err
 }
