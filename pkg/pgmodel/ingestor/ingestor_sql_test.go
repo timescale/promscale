@@ -228,7 +228,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				for _, q := range c.sqlQueries {
 					if q.Err != nil {
 						foundErr = true
-						if err != q.Err {
+						if !errors.Is(err, q.Err) {
 							t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, q.Err)
 						}
 					}
@@ -395,7 +395,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	// refreshing during the same epoch givesthe same IDs without checking the DB
-	inserter.refreshSeriesEpoch(1)
+	_, err = inserter.refreshSeriesEpoch(1)
+	require.NoError(t, err)
 
 	samples = makeSamples(series)
 	err = handler.setSeriesIds(samples)
@@ -415,7 +416,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	// trash the cache
-	inserter.refreshSeriesEpoch(1)
+	_, err = inserter.refreshSeriesEpoch(1)
+	require.NoError(t, err)
 
 	// retrying rechecks the DB and uses the new IDs
 	samples = makeSamples(series)

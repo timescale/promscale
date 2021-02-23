@@ -130,32 +130,32 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 	}
 
 	if numSQLFunctionCalls != len(batchSeries) {
-		return fmt.Errorf("unexpected difference in numQueries and batchSeries")
+		return fmt.Errorf("Error setting series ids: Unexpected difference in numQueries and batchSeries")
 	}
 
 	br, err := h.conn.SendBatch(context.Background(), batch)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error setting series ids: %w", err)
 	}
 	defer br.Close()
 
 	// BEGIN;
 	_, err = br.Exec()
 	if err != nil {
-		return err
+		return fmt.Errorf("Error setting series ids: %w", err)
 	}
 
 	var dbEpoch model.SeriesEpoch
 	row := br.QueryRow()
 	err = row.Scan(&dbEpoch)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error setting series ids: %w", err)
 	}
 
 	// COMMIT;
 	_, err = br.Exec()
 	if err != nil {
-		return err
+		return fmt.Errorf("Error setting series ids: %w", err)
 	}
 
 	var tableName string
@@ -163,14 +163,14 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 		// BEGIN;
 		_, err = br.Exec()
 		if err != nil {
-			return err
+			return fmt.Errorf("Error setting series ids: %w", err)
 		}
 
 		var id model.SeriesID
 		row = br.QueryRow()
 		err = row.Scan(&tableName, &id)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error setting series ids: %w", err)
 		}
 
 		for _, si := range batchSeries[i] {
@@ -180,7 +180,7 @@ func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) error {
 		// COMMIT;
 		_, err = br.Exec()
 		if err != nil {
-			return err
+			return fmt.Errorf("Error setting series ids: %w", err)
 		}
 	}
 

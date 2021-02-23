@@ -17,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+//this seems like a good upper bound on default /active/ series. Takes about 64MB
 const DefaultSeriesCacheSize = 500000
 
 type SeriesCache interface {
