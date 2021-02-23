@@ -48,7 +48,7 @@ var (
 	TimescaleVersionRangeString = struct {
 		Safe, Warn string
 	}{
-		Safe: ">=1.7.3 <2.1.0",
+		Safe: ">=1.7.3 <2.99.0",
 		Warn: ">=1.7.0 <1.7.3",
 	}
 	timescaleVersionSafeRange = semver.MustParseRange(TimescaleVersionRangeString.Safe)
