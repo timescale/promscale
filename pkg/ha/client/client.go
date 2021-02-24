@@ -74,9 +74,9 @@ func (h *haLockClientDB) UpdateLease(ctx context.Context, cluster, leader string
 
 	// leader changed
 	if leaderHasChanged {
-		// read latest lock state
+		// read latest lease state
 		dbState, err = h.readLeaseState(context.Background(), cluster)
-		// couldn't get latest lock state
+		// couldn't get latest lease state
 		if err != nil {
 			return nil, fmt.Errorf("could not update lease: %#v", err)
 		}

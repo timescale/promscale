@@ -5,7 +5,6 @@
 package ha
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -19,9 +18,8 @@ import (
 )
 
 const (
-	backOffDurationOnLeaderChange = 10 * time.Second
-	haSyncerTimeInterval          = 15 * time.Second
-	haLastWriteIntervalInSecs     = 30
+	haSyncerTimeInterval      = 15 * time.Second
+	haLastWriteIntervalInSecs = 30
 )
 
 // Service contains the lease state for all prometheus clusters
@@ -73,7 +71,7 @@ func (s *Service) haStateSyncer() {
 			cluster := fmt.Sprint(c)
 			lease := l.(*state.Lease)
 			stateBeforeUpdate := lease.Clone()
-			err := lease.UpdateFromDB(s.leaseClient, stateBeforeUpdate.Leader, stateBeforeUpdate.LeaseStart, stateBeforeUpdate.MaxTimeSeenLeader)
+			err := lease.UpdateLease(s.leaseClient, stateBeforeUpdate.Leader, stateBeforeUpdate.LeaseStart, stateBeforeUpdate.MaxTimeSeenLeader)
 			if err != nil {
 				errMsg := fmt.Sprintf("failed to validate cluster %s state", cluster)
 				log.Error("msg", errMsg, "err", err)
@@ -81,7 +79,7 @@ func (s *Service) haStateSyncer() {
 			}
 
 			stateAfterUpdate := lease.Clone()
-			if ok := s.shouldTryToChangeLeader(stateAfterUpdate); !ok {
+			if s.shouldTryToChangeLeader(stateAfterUpdate) {
 				go s.tryChangeLeader(cluster, lease)
 			}
 			return true
@@ -111,14 +109,14 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 	}
 
 	if !maxT.Before(leaseView.LeaseUntil) {
-		err = lease.UpdateFromDB(s.leaseClient, replicaName, minT, maxT)
+		err = lease.UpdateLease(s.leaseClient, replicaName, minT, maxT)
 		if err != nil {
 			return false, time.Time{}, err
 		}
 
 		// on sync-up if notice leader has changed skip
 		// ingestion replica prom instance
-		if lease.SafeGetLeader() != replicaName {
+		if lease.GetLeader() != replicaName {
 			return false, time.Time{}, nil
 		}
 	}
@@ -153,44 +151,24 @@ func (s *Service) tryChangeLeader(cluster string, currentLease *state.Lease) {
 	}
 	defer clusterLock.Release(1)
 
-	for {
-		leaseView := currentLease.Clone()
-		if ok := s.shouldTryToChangeLeader(leaseView); ok {
-			return
-		}
-		leaseState, err := s.leaseClient.TryChangeLeader(
-			context.Background(), cluster, leaseView.MaxTimeInstance, leaseView.MaxTimeSeen,
-		)
-		if err != nil {
-			log.Error("msg", "Couldn't change leader", "err", err)
-			return
-		}
-
-		err = currentLease.SetUpdateFromDB(leaseState)
-		if err != nil {
-			log.Error("msg", "Couldn't set update from db to lease", "err", err)
-			return
-		}
-		if leaseState.Leader != leaseView.Leader {
-			// leader changed
-			return
-		}
-		// leader didn't change, wait a bit and try again
-		time.Sleep(backOffDurationOnLeaderChange)
+	if err := currentLease.TryChangeLeader(s.leaseClient); err != nil {
+		log.Error("msg", "Couldn't set update from db to lease", "err", err)
+		return
 	}
 }
 
 func (s *Service) getLeaderChangeLock(cluster string) *semaphore.Weighted {
+	// use a semaphore since we want a tryAcquire()
 	lock, _ := s.leaderChangeLocks.LoadOrStore(cluster, semaphore.NewWeighted(1))
 	return lock.(*semaphore.Weighted)
 }
 
-func (s *Service) shouldTryToChangeLeader(state *state.LeaseView) bool {
-	diff := s.currentTimeProvider().Sub(state.RecentLeaderWriteTime)
+func (s *Service) shouldTryToChangeLeader(lease *state.LeaseView) bool {
+	diff := s.currentTimeProvider().Sub(lease.RecentLeaderWriteTime)
 	// check leaseUntil is after maxT received from samples or
 	// recent leader write is not more than 30 secs older.
-	if state.LeaseUntil.After(state.MaxTimeSeen) || diff <= haLastWriteIntervalInSecs {
-		return true
+	if diff <= haLastWriteIntervalInSecs || lease.LeaseUntil.After(lease.MaxTimeSeen) {
+		return false
 	}
-	return false
+	return true
 }
