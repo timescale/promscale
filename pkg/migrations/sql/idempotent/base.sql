@@ -909,6 +909,47 @@ END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
+
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(metric_name TEXT, larray SCHEMA_PROM.label_array, OUT table_name NAME, OUT series_id BIGINT)
+AS $func$
+DECLARE
+  metric_id int;
+BEGIN
+   --need to make sure the series partition exists
+   SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
+   INTO metric_id, table_name;
+
+   -- the data table could be locked during label key creation
+   -- and must be locked before the series parent according to lock ordering
+   EXECUTE format($query$
+        LOCK TABLE ONLY SCHEMA_DATA.%1$I IN ACCESS SHARE MODE
+    $query$, table_name);
+
+   EXECUTE format($query$
+    WITH existing AS (
+        SELECT id, delete_epoch
+        FROM SCHEMA_DATA_SERIES.%1$I as series
+        WHERE labels = $1
+    ), updates AS (
+        UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = NULL
+        WHERE id IN (SELECT id FROM existing WHERE delete_epoch IS NOT NULL)
+    )
+    SELECT id FROM existing
+    UNION ALL
+    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, $1)
+    LIMIT 1
+   $query$, table_name, metric_id)
+   USING larray
+   INTO series_id;
+
+   RETURN;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
+
 --
 -- Parameter manipulation functions
 --

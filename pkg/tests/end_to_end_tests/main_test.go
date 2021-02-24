@@ -35,6 +35,7 @@ var (
 	useMultinode      = flag.Bool("use-multinode", false, "use TimescaleDB 2.0 Multinode")
 	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	extendedTest      = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
+	logLevel          = flag.String("log-level", "debug", "Logging level")
 
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
@@ -70,27 +71,46 @@ func TestMain(m *testing.M) {
 	func() {
 		flag.Parse()
 		ctx := context.Background()
-		_ = log.Init(log.Config{
-			Level: "debug",
+		err := log.Init(log.Config{
+			Level: *logLevel,
 		})
-		if !testing.Short() {
+		if err != nil {
+			panic(err)
+		}
+		if !testing.Short() && *useDocker {
 			var err error
 
 			var closer io.Closer
-			if *useDocker {
-				setExtensionState()
-				pgContainerTestDataDir = generatePGTestDirFiles()
+			if *useExtension {
+				extensionState.UsePromscale()
+			}
 
-				pgContainer, closer, err = testhelpers.StartPGContainer(
-					ctx,
-					extensionState,
-					pgContainerTestDataDir,
-					*printLogs,
-				)
-				if err != nil {
-					fmt.Println("Error setting up container", err)
-					os.Exit(1)
-				}
+			if *useTimescaleDB {
+				extensionState.UseTimescaleDB()
+			}
+
+			if *useTimescale2 {
+				*useTimescaleDB = true
+				extensionState.UseTimescale2()
+			}
+
+			if *useMultinode {
+				extensionState.UseMultinode()
+				*useTimescaleDB = true
+				*useTimescale2 = true
+			}
+
+			pgContainerTestDataDir = generatePGTestDirFiles()
+
+			pgContainer, closer, err = testhelpers.StartPGContainer(
+				ctx,
+				extensionState,
+				pgContainerTestDataDir,
+				*printLogs,
+			)
+			if err != nil {
+				fmt.Println("Error setting up container", err)
+				os.Exit(1)
 			}
 
 			storagePath, err := generatePrometheusWALFile()
