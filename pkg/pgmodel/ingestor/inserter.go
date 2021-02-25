@@ -28,6 +28,8 @@ type pgxInserter struct {
 	insertedDatapoints     *int64
 	toCopiers              chan copyRequest
 	seriesEpochRefresh     *time.Ticker
+	doneChannel            chan bool
+	doneWG                 sync.WaitGroup
 }
 
 func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxInserter, error) {
@@ -57,6 +59,7 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
+		doneChannel:        make(chan bool),
 	}
 	if cfg.AsyncAcks && cfg.ReportInterval > 0 {
 		inserter.insertedDatapoints = new(int64)
@@ -80,7 +83,11 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 	go inserter.runCompleteMetricCreationWorker()
 
 	if !cfg.DisableEpochSync {
-		go inserter.runSeriesEpochSync()
+		inserter.doneWG.Add(1)
+		go func() {
+			defer inserter.doneWG.Done()
+			inserter.runSeriesEpochSync()
+		}()
 	}
 	return inserter, nil
 }
@@ -100,9 +107,14 @@ func (p *pgxInserter) runSeriesEpochSync() {
 	// connection recovers we can still make progress, so we'll just log it
 	// and continue execution
 	log.Error("msg", "error refreshing the series cache", "err", err)
-	for range p.seriesEpochRefresh.C {
-		epoch, err = p.refreshSeriesEpoch(epoch)
-		log.Error("msg", "error refreshing the series cache", "err", err)
+	for {
+		select {
+		case <-p.seriesEpochRefresh.C:
+			epoch, err = p.refreshSeriesEpoch(epoch)
+			log.Error("msg", "error refreshing the series cache", "err", err)
+		case <-p.doneChannel:
+			return
+		}
 	}
 }
 
@@ -145,6 +157,8 @@ func (p *pgxInserter) Close() {
 		return true
 	})
 	close(p.toCopiers)
+	close(p.doneChannel)
+	p.doneWG.Wait()
 }
 
 func (p *pgxInserter) InsertNewData(rows map[string][]model.SamplesInfo) (uint64, error) {
