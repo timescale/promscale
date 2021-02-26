@@ -19,6 +19,10 @@ spec:
           containers:
           - name: {{ .Chart.Name }}-maintenance
             image: postgres:12-alpine
+            {{ if .Values.maintenance.resources }}
+            resources:
+              {{ toYaml .Values.maintenance.resources | nindent 14 }}
+            {{ end }}
             args:
             - sh
             - ./execute_maintenance.sh
