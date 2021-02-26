@@ -98,5 +98,9 @@ maintenance:
 
 # set your own limits
 resources: {}
+
 # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
 nodeSelector: {}
+
+# https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+tolerations: []

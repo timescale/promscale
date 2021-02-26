@@ -116,5 +116,6 @@ helm install --name my-release -f myvalues.yaml .
 | `maintenance.resources` | Requests and limits for maintenance cronjob | `{}`              |
 | `resources`                       | Requests and limits for each of the pods    | `{}`                               |
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
+| `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
 
 [docker-image]: https://hub.docker.com/timescale/promscale
