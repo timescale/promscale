@@ -93,6 +93,8 @@ maintenance:
   successfulJobsHistoryLimit: 3
   # The number of failed maintenance pods to retain in-cluster
   failedJobsHistoryLimit: 1
+  # configure cpu, memory requests and limits for maintenance cronjob if needed
+  resources: {}
 
 # set your own limits
 resources: {}

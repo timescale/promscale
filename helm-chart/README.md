@@ -113,6 +113,7 @@ helm install --name my-release -f myvalues.yaml .
 | `maintenance.startingDeadlineSeconds` | If set, CronJob controller counts how many missed jobs occurred from the set value until now | `200` |
 | `maintenance.successfulJobsHistoryLimit` | The number of successful maintenance pods to retain in-cluster | `3`      |
 | `maintenance.failedJobsHistoryLimit` | The number of failed maintenance pods to retain in-cluster | `1`              |
+| `maintenance.resources` | Requests and limits for maintenance cronjob | `{}`              |
 | `resources`                       | Requests and limits for each of the pods    | `{}`                               |
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 
