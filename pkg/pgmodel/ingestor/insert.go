@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -59,9 +60,9 @@ func initializeInserterRoutine(conn pgxconn.PgxConn, metricName string, complete
 	return tableName, err
 }
 
-func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache, toCopiers chan copyRequest) {
+func runInserterRoutine(conn pgxconn.PgxConn, input chan *insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache, toCopiers chan copyRequest) {
 	var tableName string
-	var firstReq insertDataRequest
+	var firstReq *insertDataRequest
 	firstReqSet := false
 	for firstReq = range input {
 		var err error
@@ -80,15 +81,11 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metr
 	}
 
 	handler := insertHandler{
-		conn:             conn,
-		input:            input,
-		pending:          pendingBuffers.Get().(*pendingBuffer),
-		seriesCache:      make(map[string]pgmodel.SeriesID),
-		seriesCacheEpoch: -1,
-		// set to run at half our deletion interval
-		seriesCacheRefresh: time.NewTicker(30 * time.Minute),
-		metricTableName:    tableName,
-		toCopiers:          toCopiers,
+		conn:            conn,
+		input:           input,
+		pending:         NewPendingBuffer(),
+		metricTableName: tableName,
+		toCopiers:       toCopiers,
 	}
 
 	handler.handleReq(firstReq)
@@ -102,7 +99,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metr
 	// writes to a given metric can be relatively rare, so if we don't have
 	// additional requests immediately we're likely not going to for a while.
 	for {
-		if !handler.hasPendingReqs() {
+		if handler.pending.IsEmpty() {
 			stillAlive := handler.blockingHandleReq()
 			if !stillAlive {
 				return
@@ -112,7 +109,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan insertDataRequest, metr
 
 	hotReceive:
 		for handler.nonblockingHandleReq() {
-			if len(handler.pending.batch.SampleInfos) >= flushSize {
+			if handler.pending.IsFull() {
 				break hotReceive
 			}
 		}
@@ -317,24 +314,14 @@ func debugInsert() {
 // Perform the actual insertion into the DB.
 func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	batch := conn.NewBatch()
-	lowestEpoch := reqs[0].data.epoch
-	for _, req := range reqs {
-		if req.data.epoch < lowestEpoch {
-			lowestEpoch = req.data.epoch
-		}
-	}
-
-	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", schema.Catalog, schema.Catalog)
-	batch.Queue(epochCheck, lowestEpoch)
 
 	numRowsPerInsert := make([]int, 0, len(reqs))
 	numRowsTotal := 0
+	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	for r := range reqs {
 		req := &reqs[r]
-		numRows := 0
-		for i := range req.data.batch.SampleInfos {
-			numRows += len(req.data.batch.SampleInfos[i].Samples)
-		}
+		numRows := req.data.batch.CountSamples()
+
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
 		//   1. The round trip time.
@@ -351,10 +338,16 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		vals := make([]float64, 0, numRows)
 		series := make([]int64, 0, numRows)
 		for req.data.batch.Next() {
-			timestamp, val, seriesID := req.data.batch.Values()
+			timestamp, val, seriesID, seriesEpoch := req.data.batch.Values()
+			if seriesEpoch < lowestEpoch {
+				lowestEpoch = seriesEpoch
+			}
 			times = append(times, timestamp)
 			vals = append(vals, val)
 			series = append(series, int64(seriesID))
+		}
+		if err = req.data.batch.Err(); err != nil {
+			return err
 		}
 		if len(times) != numRows {
 			panic("invalid insert request")
@@ -365,6 +358,13 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		batch.Queue(queryString, times, vals, series)
 	}
 
+	//note the epoch increment takes an access exclusive on the table before incrementing.
+	//thus we don't need row locking here. Note by doing this check at the end we can
+	//have some wasted work for the inserts before this fails but this is rare.
+	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
+	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", schema.Catalog, schema.Catalog)
+	batch.Queue(epochCheck, int64(lowestEpoch))
+
 	metrics.NumRowsPerBatch.Observe(float64(numRowsTotal))
 	metrics.NumInsertsPerBatch.Observe(float64(len(reqs)))
 	start := time.Now()
@@ -373,13 +373,6 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		return err
 	}
 	defer results.Close()
-
-	var val []byte
-	row := results.QueryRow()
-	err = row.Scan(&val)
-	if err != nil {
-		return err
-	}
 
 	var affectedMetrics uint64
 	for _, numRows := range numRowsPerInsert {
@@ -391,6 +384,13 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 			affectedMetrics++
 			registerDuplicates(int64(numRows) - ct.RowsAffected())
 		}
+	}
+
+	var val []byte
+	row := results.QueryRow()
+	err = row.Scan(&val)
+	if err != nil {
+		return err
 	}
 	reportDuplicates(affectedMetrics)
 	metrics.DbBatchInsertDuration.Observe(time.Since(start).Seconds())

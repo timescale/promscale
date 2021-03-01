@@ -31,8 +31,8 @@ var (
 // Plan represents the plannings done by the planner.
 type Plan struct {
 	config *Config
-	// Block configs.
-	blockCounts        atomic.Int64 // Used in maintaining the ID of the in-memory blocks.
+	// Slab configs.
+	slabCounts         atomic.Int64 // Used in maintaining the ID of the in-memory slabs.
 	pbarMux            *sync.Mutex
 	nextMint           int64
 	lastNumBytes       atomic.Int64
@@ -40,19 +40,19 @@ type Plan struct {
 	deltaIncRegion     int64 // Time region for which the time-range delta can continue to increase by laIncrement.
 	// Test configs.
 	Quiet         bool   // Avoid progress-bars during logs.
-	TestCheckFunc func() // Helps peek into planner during testing. It is called at createBlock() to check the stats of the last block.
+	TestCheckFunc func() // Helps peek into planner during testing. It is called at createSlab() to check the stats of the last slab.
 }
 
 // Config represents configuration for the planner.
 type Config struct {
-	Mint                int64
-	Maxt                int64
-	BlockSizeLimitBytes int64
-	NumStores           int
-	ProgressEnabled     bool
-	JobName             string
-	ProgressMetricURL   string
-	ProgressMetricName  string // Name for progress metric.
+	Mint               int64
+	Maxt               int64
+	SlabSizeLimitBytes int64
+	NumStores          int
+	ProgressEnabled    bool
+	JobName            string
+	ProgressMetricURL  string
+	ProgressMetricName string // Name for progress metric.
 }
 
 // InitPlan creates an in-memory planner and initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
@@ -88,13 +88,13 @@ func Init(config *Config) (*Plan, bool, error) {
 		config:         config,
 		pbarMux:        new(sync.Mutex),
 		nextMint:       config.Mint,
-		deltaIncRegion: config.BlockSizeLimitBytes / 2, // 50% of the total block size limit.
+		deltaIncRegion: config.SlabSizeLimitBytes / 2, // 50% of the total slab size limit.
 	}
-	plan.blockCounts.Store(0)
+	plan.slabCounts.Store(0)
 	return plan, true, nil
 }
 
-// fetchLastPushedMaxt fetches the maxt of the last block pushed to remote-write storage. At present, this is developed
+// fetchLastPushedMaxt fetches the maxt of the last slab pushed to remote-write storage. At present, this is developed
 // for a single migration job (i.e., not supporting multiple migration metrics and successive migrations).
 func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err error) {
 	query, err := utils.CreatePrombQuery(c.Mint, c.Maxt, []*labels.Matcher{
@@ -129,8 +129,8 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	return lastPushedMaxt, true, nil
 }
 
-func (p *Plan) DecrementBlockCount() {
-	p.blockCounts.Sub(1)
+func (p *Plan) DecrementSlabCount() {
+	p.slabCounts.Sub(1)
 }
 
 // ShouldProceed reports whether the fetching process should proceeds further. If any time-range is left to be
@@ -148,9 +148,9 @@ func (p *Plan) LastMemoryFootprint() int64 {
 	return p.lastNumBytes.Load()
 }
 
-// NewBlock returns a new block after allocating the time-range for fetch.
-func (p *Plan) NextBlock() (reference *Block, err error) {
-	timeDelta := determineTimeDelta(p.lastNumBytes.Load(), p.config.BlockSizeLimitBytes, p.lastTimeRangeDelta)
+// NewSlab returns a new slab after allocating the time-range for fetch.
+func (p *Plan) NextSlab() (reference *Slab, err error) {
+	timeDelta := determineTimeDelta(p.lastNumBytes.Load(), p.config.SlabSizeLimitBytes, p.lastTimeRangeDelta)
 	mint := p.nextMint
 	maxt := mint + timeDelta
 	if maxt > p.config.Maxt {
@@ -158,26 +158,26 @@ func (p *Plan) NextBlock() (reference *Block, err error) {
 	}
 	p.nextMint = maxt
 	p.lastTimeRangeDelta = timeDelta
-	bRef, err := p.createBlock(mint, maxt)
+	bRef, err := p.createSlab(mint, maxt)
 	if err != nil {
-		return nil, fmt.Errorf("next-block: %w", err)
+		return nil, fmt.Errorf("next-slab: %w", err)
 	}
 	return bRef, nil
 }
 
-// createBlock creates a new block and returns reference to the block for faster write and read operations.
-func (p *Plan) createBlock(mint, maxt int64) (reference *Block, err error) {
+// createSlab creates a new slab and returns reference to the slab for faster write and read operations.
+func (p *Plan) createSlab(mint, maxt int64) (reference *Slab, err error) {
 	if err = p.validateT(mint, maxt); err != nil {
-		return nil, fmt.Errorf("create-block: %w", err)
+		return nil, fmt.Errorf("create-slab: %w", err)
 	}
-	id := p.blockCounts.Add(1)
+	id := p.slabCounts.Add(1)
 	timeRangeInMinutes := (maxt - mint) / minute
 	percent := float64(maxt-p.config.Mint) * 100 / float64(p.config.Maxt-p.config.Mint)
 	if percent > 100 {
 		percent = 100
 	}
-	baseDescription := fmt.Sprintf("progress: %.3f%% | block-%d time-range: %d mins | mint: %d | maxt: %d", percent, id, timeRangeInMinutes, mint/second, maxt/second)
-	reference = &Block{
+	baseDescription := fmt.Sprintf("progress: %.3f%% | slab-%d time-range: %d mins | mint: %d | maxt: %d", percent, id, timeRangeInMinutes, mint/second, maxt/second)
+	reference = &Slab{
 		id:                    id,
 		pbarDescriptionPrefix: baseDescription,
 		pbar: progressbar.NewOptions(
@@ -236,7 +236,7 @@ func determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) int64 {
 	//
 	// Example: If the limit is 500MB, then the max increment-time size limit will be 250MB. This means that till the numBytes is below
 	// 250MB, the time-range for next fetch will continue to increase by 1 minute (on the previous fetch time-range). However,
-	// the moment any block comes between 250MB and 500MB, we stop to increment the time-range delta further. This helps
+	// the moment any slab comes between 250MB and 500MB, we stop to increment the time-range delta further. This helps
 	// keeping the migration tool in safe memory limits.
 	return prevTimeDelta
 }

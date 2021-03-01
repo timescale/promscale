@@ -267,6 +267,21 @@ func (self *Cache) ExpandTo(newMax int) {
 	self.storage = newStorage
 }
 
+func (self *Cache) Reset() {
+	self.insertLock.Lock()
+	defer self.insertLock.Unlock()
+	oldSize := cap(self.storage)
+
+	newElements := make(map[interface{}]*element, oldSize)
+	newStorage := make([]element, 0, oldSize)
+
+	self.elementsLock.Lock()
+	defer self.elementsLock.Unlock()
+	self.elements = newElements
+	self.storage = newStorage
+	self.next = 0
+}
+
 func (self *Cache) Len() int {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()

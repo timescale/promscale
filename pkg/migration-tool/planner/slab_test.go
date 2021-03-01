@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCreateBlock(t *testing.T) {
+func TestCreateSlab(t *testing.T) {
 	cases := []struct {
 		name       string
 		mint       int64
@@ -62,7 +62,7 @@ func TestCreateBlock(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		_, err := plan.createBlock(c.mint, c.maxt)
+		_, err := plan.createSlab(c.mint, c.maxt)
 		if c.fails {
 			assert.Error(t, err)
 			continue
@@ -136,7 +136,7 @@ func TestStoreTimeRanges(t *testing.T) {
 		}
 		plan, _, err := Init(config)
 		assert.NoError(t, err)
-		blockRef, err := plan.createBlock(c.mint, c.maxt)
+		blockRef, err := plan.createSlab(c.mint, c.maxt)
 		assert.NoError(t, err)
 		// Verify time-ranges.
 		var netTime int64

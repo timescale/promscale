@@ -11,6 +11,8 @@ const (
 	Ext     = "_prom_ext"
 	Catalog = "_prom_catalog"
 
+	LockID = 0x4D829C732AAFCEDE // Chosen randomly.
+
 	SeriesView = "prom_series"
 	MetricView = "prom_metric"
 	DataSeries = "prom_data_series"

@@ -15,7 +15,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -34,6 +34,7 @@ type Client struct {
 	ConnectionStr string
 	metricCache   cache.MetricCache
 	labelsCache   cache.LabelsCache
+	seriesCache   cache.SeriesCache
 	closePool     bool
 }
 
@@ -96,18 +97,19 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
 	metricsCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
 	labelsCache := clockcache.WithMax(cfg.LabelsCacheSize)
+	seriesCache := cache.NewSeriesCache(cfg.SeriesCacheSize)
 	c := ingestor.Cfg{
 		AsyncAcks:       cfg.AsyncAcks,
 		ReportInterval:  cfg.ReportInterval,
 		SeriesCacheSize: cfg.SeriesCacheSize,
 		NumCopiers:      numCopiers,
 	}
-	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, &c)
+	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, seriesCache, &c)
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
-	labelsReader := model.NewLabelsReader(dbConn, labelsCache)
+	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
 	querier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
 	queryable := query.NewQueryable(querier, labelsReader)
 
@@ -120,6 +122,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		queryable:   queryable,
 		metricCache: metricsCache,
 		labelsCache: labelsCache,
+		seriesCache: seriesCache,
 	}
 
 	InitClientMetrics(client)

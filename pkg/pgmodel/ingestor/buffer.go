@@ -24,23 +24,30 @@ const (
 	maxCopyRequestsPerTxn    = 100
 )
 
-// epoch for the ID caches, -1 means that the epoch was not set
-type Epoch = int64
-
 type pendingBuffer struct {
 	needsResponse []insertDataTask
-	batch         model.SampleInfoIterator
-	epoch         Epoch
+	batch         model.SamplesBatch
 }
 
 var pendingBuffers = sync.Pool{
 	New: func() interface{} {
 		pb := new(pendingBuffer)
 		pb.needsResponse = make([]insertDataTask, 0)
-		pb.batch = model.NewSampleInfoIterator()
-		pb.epoch = -1
+		pb.batch = model.NewSamplesBatch()
 		return pb
 	},
+}
+
+func NewPendingBuffer() *pendingBuffer {
+	return pendingBuffers.Get().(*pendingBuffer)
+}
+
+func (p *pendingBuffer) IsFull() bool {
+	return p.batch.CountSeries() > flushSize
+}
+
+func (p *pendingBuffer) IsEmpty() bool {
+	return p.batch.CountSeries() == 0
 }
 
 // Report completion of an insert batch to all goroutines that may be waiting
@@ -57,32 +64,16 @@ func (p *pendingBuffer) release() {
 		p.needsResponse[i] = insertDataTask{}
 	}
 	p.needsResponse = p.needsResponse[:0]
-
-	for i := 0; i < len(p.batch.SampleInfos); i++ {
-		// nil all pointers to prevent memory leaks
-		p.batch.SampleInfos[i] = model.SamplesInfo{}
-	}
-	p.batch = model.SampleInfoIterator{SampleInfos: p.batch.SampleInfos[:0]}
-	p.batch.ResetPosition()
-	p.epoch = -1
+	p.batch.Reset()
 	pendingBuffers.Put(p)
 }
 
-func (p *pendingBuffer) addReq(req insertDataRequest, epoch Epoch) bool {
-	p.addEpoch(epoch)
+func (p *pendingBuffer) addReq(req *insertDataRequest) {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
-	p.batch.SampleInfos = append(p.batch.SampleInfos, req.data...)
-	return len(p.batch.SampleInfos) > flushSize
-}
-
-func (p *pendingBuffer) addEpoch(epoch Epoch) {
-	if p.epoch == -1 || epoch < p.epoch {
-		p.epoch = epoch
-	}
+	p.batch.AppendSlice(req.data)
 }
 
 func (p *pendingBuffer) absorb(other *pendingBuffer) {
-	p.addEpoch(other.epoch)
 	p.needsResponse = append(p.needsResponse, other.needsResponse...)
-	p.batch.SampleInfos = append(p.batch.SampleInfos, other.batch.SampleInfos...)
+	p.batch.Absorb(other.batch)
 }

@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package model
+package cache
 
 import (
 	"encoding/binary"
@@ -10,62 +10,74 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-// Labels stores a labels.Labels in its canonical string representation
-type Labels struct {
-	Names      []string
-	Values     []string
-	MetricName string
-	str        string
+//this seems like a good upper bound on default /active/ series. Takes about 64MB
+const DefaultSeriesCacheSize = 500000
+
+type SeriesCache interface {
+	Reset()
+	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
+	Len() int
+	Cap() int
 }
 
-var LabelsInterner = sync.Map{}
+type SeriesCacheImpl struct {
+	cache *clockcache.Cache
+}
 
-// Get the canonical version of a Labels if one exists.
-// input: the string representation of a Labels as defined by getStr()
+func NewSeriesCache(max uint64) *SeriesCacheImpl {
+	return &SeriesCacheImpl{
+		clockcache.WithMax(max),
+	}
+}
+
+func (t *SeriesCacheImpl) Len() int {
+	return t.cache.Len()
+}
+
+func (t *SeriesCacheImpl) Cap() int {
+	return t.cache.Cap()
+}
+
+//ResetStoredLabels should be concurrency-safe
+func (t *SeriesCacheImpl) Reset() {
+	t.cache.Reset()
+}
+
+// Get the canonical version of a series if one exists.
+// input: the string representation of a Labels as defined by generateKey()
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
-func GetLabels(str string) (l *Labels) {
-	val, ok := LabelsInterner.Load(str)
+func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
+	val, ok := t.cache.Get(str)
 	if !ok {
-		return
+		return nil
 	}
-	l = val.(*Labels)
-	return
+	return val.(*model.Series)
 }
 
-// Try to set a Labels as the canonical Labels for a given string
+// Try to set a series as the canonical Series for a given string
 // representation, returning the canonical version (which can be different in
 // the even of multiple goroutines setting labels concurrently).
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
-func SetLabels(str string, lset *Labels) *Labels {
-	val, _ := LabelsInterner.LoadOrStore(str, lset)
-	return val.(*Labels)
-}
-
-// LabelsFromSlice converts a labels.Labels to a canonical Labels object
-func LabelsFromSlice(ls labels.Labels) (*Labels, error) {
-	ll := make([]prompb.Label, len(ls))
-	for i := range ls {
-		ll[i].Name = ls[i].Name
-		ll[i].Value = ls[i].Value
-	}
-	l, _, err := LabelProtosToLabels(ll)
-	return l, err
+func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
+	val, _ := t.cache.Insert(str, lset)
+	return val.(*model.Series)
 }
 
 // Get a string representation for hashing and comparison
 // This representation is guaranteed to uniquely represent the underlying label
 // set, though need not human-readable, or indeed, valid utf-8
-func getStr(labels []prompb.Label) (string, error) {
+func generateKey(labels []prompb.Label) (key string, metricName string, error error) {
 	if len(labels) == 0 {
-		return "", nil
+		return "", "", nil
 	}
 
 	comparator := func(i, j int) bool {
@@ -87,7 +99,7 @@ func getStr(labels []prompb.Label) (string, error) {
 	// total length anyway, we only use 16bits to store the legth of each substring
 	// in our string encoding
 	if expectedStrLen > math.MaxUint16 {
-		return "", fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
+		return "", metricName, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
 	}
 
 	// the string representation is
@@ -102,6 +114,9 @@ func getStr(labels []prompb.Label) (string, error) {
 		l := labels[i]
 		key := l.Name
 
+		if l.Name == model.MetricNameLabelName {
+			metricName = l.Value
+		}
 		// this cast is safe since we check that the combined length of all the
 		// strings fit within a uint16, each string's length must also fit
 		binary.LittleEndian.PutUint16(lengthBuf, uint16(len(key)))
@@ -119,63 +134,31 @@ func getStr(labels []prompb.Label) (string, error) {
 		builder.WriteString(val)
 	}
 
-	return builder.String(), nil
+	return builder.String(), metricName, nil
 }
 
-// LabelProtosToLabels converts a prompb.Label to a canonical Labels object
-func LabelProtosToLabels(labelPairs []prompb.Label) (*Labels, string, error) {
-	str, err := getStr(labelPairs)
+// GetSeriesFromLabels converts a labels.Labels to a canonical Labels object
+func (t *SeriesCacheImpl) GetSeriesFromLabels(ls labels.Labels) (*model.Series, error) {
+	ll := make([]prompb.Label, len(ls))
+	for i := range ls {
+		ll[i].Name = ls[i].Name
+		ll[i].Value = ls[i].Value
+	}
+	l, _, err := t.GetSeriesFromProtos(ll)
+	return l, err
+}
+
+// GetSeriesFromProtos converts a prompb.Label to a canonical Labels object
+func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, string, error) {
+	key, metricName, err := generateKey(labelPairs)
 	if err != nil {
 		return nil, "", err
 	}
-	labels := GetLabels(str)
-	if labels == nil {
-		labels = new(Labels)
-		labels.str = str
-		labels.Names = make([]string, len(labelPairs))
-		labels.Values = make([]string, len(labelPairs))
-		for i, l := range labelPairs {
-			labels.Names[i] = l.Name
-			labels.Values[i] = l.Value
-			if l.Name == MetricNameLabelName {
-				labels.MetricName = l.Value
-			}
-		}
-		labels = SetLabels(str, labels)
+	series := t.loadSeries(key)
+	if series == nil {
+		series = model.NewSeries(key, labelPairs)
+		series = t.setSeries(key, series)
 	}
 
-	return labels, labels.MetricName, err
-}
-
-// Get a string representation for hashing and comparison
-// This representation is guaranteed to uniquely represent the underlying label
-// set, though need not human-readable, or indeed, valid utf-8
-func (l *Labels) String() string {
-	return l.str
-}
-
-// Compare returns a comparison int between two Labels
-func (l *Labels) Compare(b *Labels) int {
-	return strings.Compare(l.str, b.str)
-}
-
-// Equal returns true if two Labels are equal
-func (l *Labels) Equal(b *Labels) bool {
-	return l.str == b.str
-}
-
-// Labels implements sort.Interface
-var _ sort.Interface = (*Labels)(nil)
-
-func (l *Labels) Len() int {
-	return len(l.Names)
-}
-
-func (l *Labels) Less(i, j int) bool {
-	return l.Names[i] < l.Names[j]
-}
-
-func (l *Labels) Swap(i, j int) {
-	l.Names[j], l.Names[i] = l.Names[i], l.Names[j]
-	l.Values[j], l.Values[i] = l.Values[i], l.Values[j]
+	return series, metricName, nil
 }

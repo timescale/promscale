@@ -23,17 +23,17 @@ const (
 
 type RemoteWrite struct {
 	c                  context.Context
-	sigBlockRead       chan *planner.Block
+	sigSlabRead        chan *planner.Slab
 	url                string
 	shardsSet          *shardsSet
-	blocksPushed       atomic.Int64
+	slabsPushed        atomic.Int64
 	progressMetricName string // Metric name to main the last pushed maxt to remote write storage.
 	migrationJobName   string // Label value to the progress metric.
 	progressTimeSeries *prompb.TimeSeries
 }
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
-func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, numShards int, progressEnabled bool, sigRead chan *planner.Block) (*RemoteWrite, error) {
+func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, numShards int, progressEnabled bool, sigRead chan *planner.Slab) (*RemoteWrite, error) {
 	ss, err := newShardsSet(c, remoteWriteUrl, numShards)
 	if err != nil {
 		return nil, fmt.Errorf("creating shards: %w", err)
@@ -42,7 +42,7 @@ func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName
 		c:                  c,
 		shardsSet:          ss,
 		url:                remoteWriteUrl,
-		sigBlockRead:       sigRead,
+		sigSlabRead:        sigRead,
 		migrationJobName:   migrationJobName,
 		progressMetricName: progressMetricName,
 	}
@@ -51,7 +51,7 @@ func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName
 			Labels: utils.LabelSet(progressMetricName, migrationJobName),
 		}
 	}
-	write.blocksPushed.Store(0)
+	write.slabsPushed.Store(0)
 	return write, nil
 }
 
@@ -72,7 +72,7 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 			close(errChan)
 		}()
 		log.Info("msg", "writer is up")
-		isErrSig := func(ref *planner.Block, expectedSigs int) bool {
+		isErrSig := func(ref *planner.Slab, expectedSigs int) bool {
 			for i := 0; i < expectedSigs; i++ {
 				if err := <-shards.errChan; err != nil {
 					errChan <- fmt.Errorf("remote-write run: %w", err)
@@ -86,16 +86,16 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 			select {
 			case <-rw.c.Done():
 				return
-			case blockRef, ok := <-rw.sigBlockRead:
+			case slabRef, ok := <-rw.sigSlabRead:
 				if !ok {
 					return
 				}
-				blockRef.UpdatePBarMax(blockRef.PBarMax() + rw.shardsSet.num + 1)
+				slabRef.UpdatePBarMax(slabRef.PBarMax() + rw.shardsSet.num + 1)
 				// Pushing data to remote-write storage.
-				blockRef.SetDescription("preparing to push", 1)
-				numSigExpected := shards.scheduleTS(timeseriesRefToTimeseries(blockRef.Series()))
-				blockRef.SetDescription("pushing ...", 1)
-				if isErrSig(blockRef, numSigExpected) {
+				slabRef.SetDescription("preparing to push", 1)
+				numSigExpected := shards.scheduleTS(timeseriesRefToTimeseries(slabRef.Series()))
+				slabRef.SetDescription("pushing ...", 1)
+				if isErrSig(slabRef, numSigExpected) {
 					return
 				}
 				// Pushing progress-metric to remote-write storage.
@@ -103,13 +103,13 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 					// Execute the block only if progress-metric is enabled.
 					// Pushing progress-metric to remote-write storage.
 					// This is done after making sure that all shards have successfully completed pushing of data.
-					numSigExpected := rw.pushProgressMetric(blockRef.UpdateProgressSeries(rw.progressTimeSeries))
-					if isErrSig(blockRef, numSigExpected) {
+					numSigExpected := rw.pushProgressMetric(slabRef.UpdateProgressSeries(rw.progressTimeSeries))
+					if isErrSig(slabRef, numSigExpected) {
 						return
 					}
 				}
-				rw.blocksPushed.Add(1)
-				if err = blockRef.Done(); err != nil {
+				rw.slabsPushed.Add(1)
+				if err = slabRef.Done(); err != nil {
 					errChan <- fmt.Errorf("remote-write run: %w", err)
 					return
 				}
@@ -119,8 +119,8 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 }
 
 // Blocks returns the total number of blocks pushed to the remote-write storage.
-func (rw *RemoteWrite) Blocks() int64 {
-	return rw.blocksPushed.Load()
+func (rw *RemoteWrite) Slabs() int64 {
+	return rw.slabsPushed.Load()
 }
 
 // pushProgressMetric pushes the progress-metric to the remote storage system.

@@ -10,18 +10,18 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgQuerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewQueryable(q pgQuerier.Querier, labelsReader model.LabelsReader) promql.Queryable {
+func NewQueryable(q pgQuerier.Querier, labelsReader lreader.LabelsReader) promql.Queryable {
 	return &queryable{querier: q, labelsReader: labelsReader}
 }
 
 type queryable struct {
 	querier      pgQuerier.Querier
-	labelsReader model.LabelsReader
+	labelsReader lreader.LabelsReader
 }
 
 func (q queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querier, error) {
@@ -36,7 +36,7 @@ type querier struct {
 	ctx           context.Context
 	mint, maxt    int64
 	metricsReader pgQuerier.Querier
-	labelsReader  model.LabelsReader
+	labelsReader  lreader.LabelsReader
 }
 
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {

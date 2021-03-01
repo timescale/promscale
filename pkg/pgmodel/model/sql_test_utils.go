@@ -331,8 +331,9 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 		case int64:
 			_, ok1 := dest[i].(*int64)
 			_, ok2 := dest[i].(*SeriesID)
-			if !ok1 && !ok2 {
-				return fmt.Errorf("wrong value type int64")
+			_, ok3 := dest[i].(*SeriesEpoch)
+			if !ok1 && !ok2 && !ok3 {
+				return fmt.Errorf("wrong value type int64 for scan of %T", dest[i])
 			}
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
@@ -393,43 +394,9 @@ func (m *MockMetricCache) Set(metric string, tableName string) error {
 	return m.SetMetricErr
 }
 
-type MockCache struct {
-	seriesCache  map[string]SeriesID
-	getSeriesErr error
-	setSeriesErr error
-}
-
-var _ SeriesCache = (*MockCache)(nil)
-
-func (m *MockCache) GetSeries(lset Labels) (SeriesID, error) {
-	if m.getSeriesErr != nil {
-		return 0, m.getSeriesErr
-	}
-
-	val, ok := m.seriesCache[lset.String()]
-	if !ok {
-		return 0, errors.ErrEntryNotFound
-	}
-
-	return val, nil
-}
-
-func (m *MockCache) SetSeries(lset Labels, id SeriesID) error {
-	m.seriesCache[lset.String()] = id
-	return m.setSeriesErr
-}
-
-func (m *MockCache) NumElements() int {
-	return len(m.seriesCache)
-}
-
-func (m *MockCache) Capacity() int {
-	return len(m.seriesCache)
-}
-
 type MockInserter struct {
 	InsertedSeries  map[string]SeriesID
-	InsertedData    []map[string][]SamplesInfo
+	InsertedData    []map[string][]Samples
 	InsertSeriesErr error
 	InsertDataErr   error
 }
@@ -438,7 +405,7 @@ func (m *MockInserter) Close() {
 
 }
 
-func (m *MockInserter) InsertNewData(rows map[string][]SamplesInfo) (uint64, error) {
+func (m *MockInserter) InsertNewData(rows map[string][]Samples) (uint64, error) {
 	return m.InsertData(rows)
 }
 
@@ -446,15 +413,16 @@ func (m *MockInserter) CompleteMetricCreation() error {
 	return nil
 }
 
-func (m *MockInserter) InsertData(rows map[string][]SamplesInfo) (uint64, error) {
+func (m *MockInserter) InsertData(rows map[string][]Samples) (uint64, error) {
 	for _, v := range rows {
 		for i, si := range v {
-			id, ok := m.InsertedSeries[si.Labels.String()]
+			seriesStr := si.GetSeries().String()
+			id, ok := m.InsertedSeries[seriesStr]
 			if !ok {
 				id = SeriesID(len(m.InsertedSeries))
-				m.InsertedSeries[si.Labels.String()] = id
+				m.InsertedSeries[seriesStr] = id
 			}
-			v[i].SeriesID = id
+			v[i].GetSeries().seriesID = id
 		}
 	}
 	if m.InsertSeriesErr != nil {
@@ -464,7 +432,7 @@ func (m *MockInserter) InsertData(rows map[string][]SamplesInfo) (uint64, error)
 	ret := 0
 	for _, data := range rows {
 		for _, si := range data {
-			ret += len(si.Samples)
+			ret += si.CountSamples()
 		}
 	}
 	if m.InsertDataErr != nil {

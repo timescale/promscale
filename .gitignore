@@ -1,5 +1,6 @@
 *~
 /promscale*
+/prom-migrator*
 /dist
 /vendor
 /version.properties
