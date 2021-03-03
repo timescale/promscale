@@ -30,18 +30,18 @@ Templating is supported, and you can use:
 ```yaml
 connection:
   password:
-    secretTemplate: "{{ .Release.Name }}-timescaledb-passwords"
+    secretTemplate: "{{ .Release.Name }}-credentials"
 ```
 
 The data in the Secret object should look like this:
 
 ```yaml
 data:
-  username: base64encodedPassword
+  PATRONI_SUPERUSER_PASSWORD: base64encodedPassword
 ```
 
-where `username` is the user that the Connector will use to connect to the
-database. By default the *'postgres'* user is used, as set in `.Values.connection.user`.
+where `PATRONI_SUPERUSER_PASSWORD` references the default `postgres` user that the Connector will use to connect to the
+database. By default the *'postgres'* user is used, so we are configuring secret key as `PATRONI_SUPERUSER_PASSWORD`.
 
 OR 
 
@@ -99,7 +99,8 @@ helm install --name my-release -f myvalues.yaml .
 | `image`                           | The image (with tag) to pull                | `timescale/promscale`   |
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
-| `connection.password.secretTemplate`| The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-timescaledb-passwords` |
+| `connection.password.timescaleDBSuperUserKey`| The DB password key in secret object which will hold the db password for `postgres`  user | `PATRONI_SUPERUSER_PASSWORD` |
+| `connection.password.secretTemplate`| The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-credentials` |
 | `connection.dbURI.name`| DB uri name is used as a key for secret which will hold the db URI value | `db-uri` |
 | `connection.dbURI.secretTemplate`| The template for generating the name of a secret object which will hold the db URI | `` |
 | `connection.host.nameTemplate`    | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |

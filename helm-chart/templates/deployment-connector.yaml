@@ -47,7 +47,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ tpl .Values.connection.password.secretTemplate . }}
-                  key: {{ .Values.connection.user }}
+                  key: {{ .Values.connection.password.timescaleDBSuperUserKey }}
             - name: PROMSCALE_DB_HOST
               value: {{ tpl .Values.connection.host.nameTemplate . }}
             - name: PROMSCALE_DB_NAME

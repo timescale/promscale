@@ -36,7 +36,7 @@ spec:
                 valueFrom:
                   secretKeyRef:
                     name: {{ tpl .Values.connection.password.secretTemplate . }}
-                    key: {{ .Values.connection.user }}
+                    key: {{ .Values.connection.password.timescaleDBSuperUserKey }}
               - name: PGHOST
                 value: {{ tpl .Values.connection.host.nameTemplate . }}
               - name:  PGDATABASE
