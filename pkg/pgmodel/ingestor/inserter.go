@@ -121,7 +121,9 @@ func (p *pgxInserter) runSeriesEpochSync() {
 		select {
 		case <-p.seriesEpochRefresh.C:
 			epoch, err = p.refreshSeriesEpoch(epoch)
-			log.Error("msg", "error refreshing the series cache", "err", err)
+			if err != nil {
+				log.Error("msg", "error refreshing the series cache", "err", err)
+			}
 		case <-p.doneChannel:
 			return
 		}
