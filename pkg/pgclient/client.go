@@ -78,17 +78,22 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 	}
 
 	var pgConfig *pgxpool.Config
+	var connectionArgsFmt string
 	if cfg.DbUri == defaultDBUri {
-		pgConfig, err = pgxpool.ParseConfig(connectionStr + fmt.Sprintf(" pool_max_conns=%d pool_min_conns=%d", maxConnections, minConnections))
+		connectionArgsFmt = "%s pool_max_conns=%d pool_min_conns=%d"
 	} else {
-		pgConfig, err = pgxpool.ParseConfig(connectionStr + fmt.Sprintf("&pool_max_conns=%d&pool_min_conns=%d", maxConnections, minConnections))
+		connectionArgsFmt = "%s&pool_max_conns=%d&pool_min_conns=%d"
 	}
-
+	connectionStringWithArgs := fmt.Sprintf(connectionArgsFmt, connectionStr, maxConnections, minConnections)
+	pgConfig, err = pgxpool.ParseConfig(connectionStringWithArgs)
 	if err != nil {
 		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
 		return nil, numCopiers, err
 	}
-
+	if cfg.PreferSimpleProtocol {
+		log.Info("msg", "Using simple protocol for database connections")
+		pgConfig.ConnConfig.PreferSimpleProtocol = true
+	}
 	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections)
 	return pgConfig, numCopiers, nil
 }

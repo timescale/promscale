@@ -106,12 +106,16 @@ func (p *pgxInserter) runSeriesEpochSync() {
 	// we don't have any great place to report errors, and if the
 	// connection recovers we can still make progress, so we'll just log it
 	// and continue execution
-	log.Error("msg", "error refreshing the series cache", "err", err)
+	if err != nil {
+		log.Error("msg", "error refreshing the series cache", "err", err)
+	}
 	for {
 		select {
 		case <-p.seriesEpochRefresh.C:
 			epoch, err = p.refreshSeriesEpoch(epoch)
-			log.Error("msg", "error refreshing the series cache", "err", err)
+			if err != nil {
+				log.Error("msg", "error refreshing the series cache", "err", err)
+			}
 		case <-p.doneChannel:
 			return
 		}
