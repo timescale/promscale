@@ -14,6 +14,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -30,6 +31,7 @@ type pgxInserter struct {
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan bool
 	doneWG                 sync.WaitGroup
+	labelArrayOID          uint32
 }
 
 func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxInserter, error) {
@@ -73,9 +75,15 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 			}
 		}()
 	}
+
+	err := conn.QueryRow(context.Background(), `select '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&inserter.labelArrayOID)
+	if err != nil {
+		return nil, err
+	}
+
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
-	err := inserter.CompleteMetricCreation()
+	err = inserter.CompleteMetricCreation()
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +114,9 @@ func (p *pgxInserter) runSeriesEpochSync() {
 	// we don't have any great place to report errors, and if the
 	// connection recovers we can still make progress, so we'll just log it
 	// and continue execution
-	log.Error("msg", "error refreshing the series cache", "err", err)
+	if err != nil {
+		log.Error("msg", "error refreshing the series cache", "err", err)
+	}
 	for {
 		select {
 		case <-p.seriesEpochRefresh.C:
@@ -227,7 +237,7 @@ func (p *pgxInserter) getMetricInserter(metric string) chan *insertDataRequest {
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
-			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers)
+			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
 		}
 	}
 	return inserter.(chan *insertDataRequest)

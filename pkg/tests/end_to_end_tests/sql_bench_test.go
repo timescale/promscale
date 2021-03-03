@@ -461,14 +461,15 @@ func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricNa
 			panic(err)
 		}
 		start = time.Now()
-		res, err := db.Query(context.Background(), "SELECT r.* FROM unnest($2::prom_api.label_array[]) l INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l) r ON (TRUE)", metricName, labelArrayArray)
+		res, err := db.Query(context.Background(), "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(a, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.a) r ON (TRUE)", metricName, labelArrayArray)
 		if err != nil {
 			panic(err)
 		}
 		defer res.Close()
 
 		for res.Next() {
-			err := res.Scan(&tableName, &seriesIDKeyVal)
+			var index int64
+			err := res.Scan(&seriesIDKeyVal, &index)
 			if err != nil {
 				panic(err)
 			}
