@@ -60,7 +60,7 @@ func initializeInserterRoutine(conn pgxconn.PgxConn, metricName string, complete
 	return tableName, err
 }
 
-func runInserterRoutine(conn pgxconn.PgxConn, input chan *insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache, toCopiers chan copyRequest) {
+func runInserterRoutine(conn pgxconn.PgxConn, input chan *insertDataRequest, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache, toCopiers chan copyRequest, labelArrayOID uint32) {
 	var tableName string
 	var firstReq *insertDataRequest
 	firstReqSet := false
@@ -86,6 +86,7 @@ func runInserterRoutine(conn pgxconn.PgxConn, input chan *insertDataRequest, met
 		pending:         NewPendingBuffer(),
 		metricTableName: tableName,
 		toCopiers:       toCopiers,
+		labelArrayOID:   labelArrayOID,
 	}
 
 	handler.handleReq(firstReq)

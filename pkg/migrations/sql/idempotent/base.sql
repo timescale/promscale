@@ -740,6 +740,33 @@ COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(text, text[], text[
 IS 'converts a metric name, array of keys, and array of values to a label array';
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(metric_name TEXT, label_keys text[], label_values text[])
+RETURNS TABLE(pos int, id int, label_key text, label_value text) AS $$
+        SELECT
+            -- only call the functions to create new key positions
+            -- and label ids if they don't exist (for performance reasons)
+            coalesce(lkp.pos,
+              SCHEMA_CATALOG.get_or_create_label_key_pos(get_or_create_label_ids.metric_name, kv.key)) idx,
+            coalesce(l.id,
+              SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) val,
+              kv.key,
+              kv.value
+        FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
+            LEFT JOIN SCHEMA_CATALOG.label l
+               ON (l.key = kv.key AND l.value = kv.value)
+            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
+               ON
+               (
+                  lkp.metric_name = get_or_create_label_ids.metric_name AND
+                  lkp.key = kv.key
+               )
+$$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, text[], text[])
+IS 'converts a metric name, array of keys, and array of values label ids';
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(TEXT, text[], text[]) TO prom_writer;
+
+
 -- Returns ids, keys and values for a label_array
 -- the order may not be the same as the original labels
 -- This function needs to be optimized for performance
