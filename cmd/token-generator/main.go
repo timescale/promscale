@@ -14,26 +14,26 @@ func main() {
 	config := new(generator.Config)
 	var err error
 	if err = generatorFlags(config, os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "msg", "failed to parse flags", "error", err)
+		fmt.Fprintln(os.Stderr, "failed to parse flags\n", "error: ", err)
 		os.Exit(1)
 	}
 
 	if err = config.Validate(); err != nil {
-		fmt.Fprintln(os.Stderr, "msg", "failed to validate generator config", "error", err)
+		fmt.Fprintln(os.Stderr, "failed to validate generator config\n", "error: ", err)
 		os.Exit(1)
 	}
 
 	if err = config.FillKeyFromFile(); err != nil {
-		fmt.Fprintln(os.Stderr, "msg", "failed to fill key from file", "error", err)
+		fmt.Fprintln(os.Stderr, "failed to fill key from file\n", "error: ", err)
 		os.Exit(1)
 	}
 
 	token, err := generator.GenerateToken(config)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "msg", "failed to generate token", "error", err)
+		fmt.Fprintln(os.Stderr, "failed to generate token\n", "error: ", err)
 		os.Exit(1)
 	}
-	fmt.Fprintln(os.Stdout, "token", token)
+	fmt.Fprintln(os.Stdout, token)
 }
 
 func generatorFlags(config *generator.Config, args []string) error {
@@ -42,6 +42,8 @@ func generatorFlags(config *generator.Config, args []string) error {
 	flag.StringVar(&config.PrivateKeyPath, "private-key-path", "", "Path of the file containing private "+
 		"key value, based on RSA algorithm. It is mutually exclusive with 'private-key-file'. "+
 		"Supported bits: [512, 1024, 2048, 4096]")
+	flag.StringVar(&config.Password, "password", "", "Passphrase for accessing private key. Leave empty "+
+		"if the passphrase is not set.")
 	flag.StringVar(&config.Issuer, "jwt-issuer", "", "Principal that issued the JWT.")
 	// TODO(harkishen): Make audience as list of audiences.
 	flag.StringVar(&config.Audience, "jwt-audience", "", "Recipients that the JWT is intended for.")
