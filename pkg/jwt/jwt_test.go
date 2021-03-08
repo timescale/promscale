@@ -389,7 +389,7 @@ MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAOKQ0CoAqGjbzXqqCtoPUYqaHxEVBMmF
 	for _, tc := range tcs {
 		if tc.config.PrivateKeyPath != "" {
 			require.NoError(t, tc.config.Validate(), tc.name)
-			require.NoError(t, tc.config.FillKeyFromFiles(), tc.name)
+			require.NoError(t, tc.config.FillKeyFromFile(), tc.name)
 		}
 		token, err := generator.GenerateToken(tc.config)
 		require.NoErrorf(t, err, tc.name)
@@ -408,7 +408,7 @@ MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAOKQ0CoAqGjbzXqqCtoPUYqaHxEVBMmF
 
 		if verifierConfig.PublicKeyPath != "" {
 			require.NoError(t, verifierConfig.Validate(), tc.name)
-			require.NoError(t, verifierConfig.FillKeyFromFiles(), tc.name)
+			require.NoError(t, verifierConfig.FillKeyFromFile(), tc.name)
 		}
 
 		ok, err := verifier.VerifyToken(verifierConfig, token, tc.config.Audience)

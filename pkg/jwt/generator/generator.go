@@ -42,8 +42,8 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// FillKeyFromFiles fills the key from the supplied file path.
-func (c *Config) FillKeyFromFiles() error {
+// FillKeyFromFile fills the key from the supplied file path.
+func (c *Config) FillKeyFromFile() error {
 	if c.PrivateKeyPath == "" {
 		return fmt.Errorf("private key path is empty")
 	}
