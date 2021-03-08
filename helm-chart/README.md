@@ -114,6 +114,8 @@ helm install --name my-release -f myvalues.yaml .
 | `maintenance.successfulJobsHistoryLimit` | The number of successful maintenance pods to retain in-cluster | `3`      |
 | `maintenance.failedJobsHistoryLimit` | The number of failed maintenance pods to retain in-cluster | `1`              |
 | `maintenance.resources` | Requests and limits for maintenance cronjob | `{}`              |
+| `maintenance.nodeSelector`                    | Node labels to use for scheduling maintenance cronjob          | `{}`                               |
+| `maintenance.tolerations`                     | Tolerations to use for scheduling maintenance cronjob          | `[]`                               |
 | `resources`                       | Requests and limits for each of the pods    | `{}`                               |
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 | `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
