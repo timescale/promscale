@@ -77,14 +77,16 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 		return nil, numCopiers, err
 	}
 
-	var pgConfig *pgxpool.Config
-	var connectionArgsFmt string
+	var (
+		pgConfig          *pgxpool.Config
+		connectionArgsFmt string
+	)
 	if cfg.DbUri == defaultDBUri {
-		connectionArgsFmt = "%s pool_max_conns=%d pool_min_conns=%d"
+		connectionArgsFmt = "%s pool_max_conns=%d pool_min_conns=%d statement_cache_capacity=%d"
 	} else {
-		connectionArgsFmt = "%s&pool_max_conns=%d&pool_min_conns=%d"
+		connectionArgsFmt = "%s&pool_max_conns=%d&pool_min_conns=%d&statement_cache_capacity=%d"
 	}
-	connectionStringWithArgs := fmt.Sprintf(connectionArgsFmt, connectionStr, maxConnections, minConnections)
+	connectionStringWithArgs := fmt.Sprintf(connectionArgsFmt, connectionStr, maxConnections, minConnections, cfg.MetricsCacheSize)
 	pgConfig, err = pgxpool.ParseConfig(connectionStringWithArgs)
 	if err != nil {
 		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
