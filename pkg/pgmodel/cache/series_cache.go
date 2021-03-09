@@ -10,9 +10,12 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -28,13 +31,25 @@ type SeriesCache interface {
 }
 
 type SeriesCacheImpl struct {
-	cache *clockcache.Cache
+	cache     *clockcache.Cache
+	evictions int64
 }
 
 func NewSeriesCache(max uint64) *SeriesCacheImpl {
-	return &SeriesCacheImpl{
+	ret := &SeriesCacheImpl{
 		clockcache.WithMax(max),
+		0,
 	}
+
+	go func() {
+		prev := int64(0)
+		for range time.Tick(time.Second * 30) {
+			current := atomic.LoadInt64(&ret.evictions)
+			log.Info("msg", "Evictions", "in_period", current-prev, "total", current)
+			prev = current
+		}
+	}()
+	return ret
 }
 
 func (t *SeriesCacheImpl) Len() int {
@@ -69,6 +84,9 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 // LabelsFromSlice() instead.
 func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
 	val, _ := t.cache.Insert(str, lset)
+	if t.cache.Len() >= t.cache.Cap() {
+		atomic.AddInt64(&t.evictions, 1)
+	}
 	return val.(*model.Series)
 }
 
