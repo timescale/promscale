@@ -21,9 +21,9 @@ func getSeries(t *testing.T, scache *cache.SeriesCacheImpl, labels labels.Labels
 
 func TestLabelArrayCreator(t *testing.T) {
 	scache := cache.NewSeriesCache(100)
-	metricNameLabel := labels.Label{"__name__", "metric"}
-	valOne := labels.Label{"key", "one"}
-	valTwo := labels.Label{"key", "two"}
+	metricNameLabel := labels.Label{Name: "__name__", Value: "metric"}
+	valOne := labels.Label{Name: "key", Value: "one"}
+	valTwo := labels.Label{Name: "key", Value: "two"}
 	seriesSet := []*model.Series{
 		getSeries(t, scache, labels.Labels{metricNameLabel, valOne}),
 	}

@@ -763,7 +763,7 @@ RETURNS TABLE(pos int, id int, label_key text, label_value text) AS $$
 $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, text[], text[])
-IS 'converts a metric name, array of keys, and array of values label ids';
+IS 'converts a metric name, array of keys, and array of values to a list of label ids';
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(TEXT, text[], text[]) TO prom_writer;
 
 

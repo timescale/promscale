@@ -337,6 +337,11 @@ type labels_r struct {
 	labels_id int64
 }
 
+type labels_u struct {
+	key   string
+	value string
+}
+
 func makeUniqueLabels2(allKeys [][]string, allValues [][]string) ([]string, []string, map[labels_u]*labels_r) {
 	unique := make(map[labels_u]*labels_r, len(allKeys))
 	seriesLen := len(allKeys)
@@ -456,7 +461,7 @@ func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricNa
 	count := 0
 	if true {
 		labelArrayArray := pgtype.NewArrayType("prom_api.label_array[]", labelArrayOID, func() pgtype.ValueTranscoder { return &pgtype.Int4Array{} })
-		err = labelArrayArray.Set(*&labelArraySet)
+		err = labelArrayArray.Set(labelArraySet)
 		if err != nil {
 			panic(err)
 		}
@@ -503,11 +508,9 @@ func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricNa
 /*
 *   Insert series using key value array. This method is slower and no longer used.
 *   We keep the code around so as to be able to test against it
- */
-type labels_u struct {
-	key   string
-	value string
-}
+*
+
+
 
 func makeUniqueLabels(allKeys [][]string, allValues [][]string) ([]string, []string) {
 	unique := make(map[labels_u]bool, len(allKeys))
@@ -538,6 +541,7 @@ func makeUniqueLabels(allKeys [][]string, allValues [][]string) ([]string, []str
 	}
 	return labelKeys, labelValues
 }
+
 
 func getSeriesIDForKeyValueArrayBatchUsingKeyValueArray(db *pgxpool.Pool, metricName string, N int, allKeys [][]string, allValues [][]string) error {
 	var tableName string
@@ -642,6 +646,7 @@ func getSeriesIDForKeyValueArrayBatchUsingKeyValueArray(db *pgxpool.Pool, metric
 	}
 	return nil
 }
+*/
 
 func generateKeysAndValues(count int, prefix string) ([]string, []string) {
 	keys, values := make([]string, count), make([]string, count)

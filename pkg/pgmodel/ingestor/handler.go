@@ -81,6 +81,8 @@ type labelInfo struct {
 	Pos     int32
 }
 
+func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} }
+
 // Set all seriesIds for a samplesInfo, fetching any missing ones from the DB,
 // and repopulating the cache accordingly.
 // returns: the tableName for the metric being inserted into
@@ -99,6 +101,8 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 	metricName := seriesToInsert[0].MetricName()
 	labelMap := make(map[labels.Label]labelInfo, len(seriesToInsert))
 	labelList := model.NewLabelList(len(seriesToInsert))
+	//logically should be a separate function but we want
+	//to prevent labelMap from escaping, so keeping inline.
 	{
 		for _, series := range seriesToInsert {
 			names, values, ok := series.NameValues()
@@ -140,25 +144,35 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 		return nil
 	}
 
-	labelArrayArray := pgtype.NewArrayType("prom_api.label_array[]", h.labelArrayOID, func() pgtype.ValueTranscoder { return &pgtype.Int4Array{} })
+	labelArrayArray := pgtype.NewArrayType("prom_api.label_array[]", h.labelArrayOID, labelArrayTranscoder)
 	err = labelArrayArray.Set(labelArraySet)
 	if err != nil {
 		return fmt.Errorf("Error setting series id: cannot set label_array: %w", err)
 	}
 	res, err := h.conn.Query(context.Background(), "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)", metricName, labelArrayArray)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("Error setting series_id: cannot query for series_id: %w", err)
 	}
 	defer res.Close()
 
+	count := 0
 	for res.Next() {
-		var id model.SeriesID
-		var ordinality int64
+		var (
+			id         model.SeriesID
+			ordinality int64
+		)
 		err := res.Scan(&id, &ordinality)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("Error setting series_id: cannot scan series_id: %w", err)
 		}
 		seriesToInsert[int(ordinality)-1].SetSeriesID(id, dbEpoch)
+		count++
+	}
+	if count != len(seriesToInsert) {
+		//This should never happen according to the logic. This is purely defensive.
+		//panic since we may have set the seriesID incorrectly above and may
+		//get data corruption if we continue.
+		panic(fmt.Sprintf("number series returned %d doesn't match expected series %d", count, len(seriesToInsert)))
 	}
 	return nil
 }
@@ -197,7 +211,7 @@ func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelLi
 		res := labelInfo{}
 		err := rows.Scan(&res.Pos, &res.labelID, &key.Name, &key.Value)
 		if err != nil {
-			return dbEpoch, 0, fmt.Errorf("Error filling labels: %w", err)
+			return dbEpoch, 0, fmt.Errorf("Error filling labels in scan: %w", err)
 		}
 		_, ok := labelMap[key]
 		if !ok {

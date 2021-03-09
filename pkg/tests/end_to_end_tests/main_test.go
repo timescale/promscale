@@ -81,24 +81,7 @@ func TestMain(m *testing.M) {
 			var err error
 
 			var closer io.Closer
-			if *useExtension {
-				extensionState.UsePromscale()
-			}
-
-			if *useTimescaleDB {
-				extensionState.UseTimescaleDB()
-			}
-
-			if *useTimescale2 {
-				*useTimescaleDB = true
-				extensionState.UseTimescale2()
-			}
-
-			if *useMultinode {
-				extensionState.UseMultinode()
-				*useTimescaleDB = true
-				*useTimescale2 = true
-			}
+			setExtensionState()
 
 			pgContainerTestDataDir = generatePGTestDirFiles()
 
