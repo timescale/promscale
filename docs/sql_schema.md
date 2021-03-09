@@ -191,7 +191,7 @@ label matcher, you can run:
 ```SQL
 SELECT *
 FROM cpu_usage  u
-WHERE labels ? ('namepace' == 'dev') AND labels ? ('node' == 'brain')
+WHERE labels ? ('namespace' == 'dev') AND labels ? ('node' == 'brain')
 ```
 
 Label matchers are formed by using a qualifier of the form `labels ? (<tag_key> <operator> <pattern>)` (note: the parantheses are mandatory).
