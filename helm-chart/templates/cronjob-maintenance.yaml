@@ -57,3 +57,10 @@ spec:
               configMap:
                 name: {{ include "connector.fullname" . | trunc 51 }}-maintenance
           restartPolicy: OnFailure
+          {{- with .Values.maintenance.nodeSelector }}
+          nodeSelector:
+          {{ toYaml . | indent 2 }}
+          {{- end }}
+          {{- with .Values.maintenance.tolerations }}
+          tolerations: {{ toYaml . | nindent 10 }}
+          {{- end }}

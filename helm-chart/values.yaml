@@ -96,6 +96,8 @@ maintenance:
   failedJobsHistoryLimit: 1
   # configure cpu, memory requests and limits for maintenance cronjob if needed
   resources: {}
+  nodeSelector: {}
+  tolerations: []
 
 # set your own limits
 resources: {}
