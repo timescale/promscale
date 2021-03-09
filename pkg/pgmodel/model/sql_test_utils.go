@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -123,8 +124,21 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	if sql != row.Sql {
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.Sql)
 	}
-	if !reflect.DeepEqual(args, row.Args) {
-		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%#v\nexpected:\n\t%#v", idx, sql, args, row.Args)
+
+	require.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
+	for i := range row.Args {
+		switch row.Args[i].(type) {
+		case pgtype.TextEncoder:
+			ci := pgtype.NewConnInfo()
+			got, err := args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
+			require.NoError(r.t, err)
+			expected, err := row.Args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
+			require.NoError(r.t, err)
+			require.Equal(r.t, expected, got, "sql args aren't equal for query # %v: %v", idx, sql)
+		default:
+			require.Equal(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
+
+		}
 	}
 	return row.Results, row.Err
 }
@@ -315,7 +329,7 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetInt(int64(m.results[m.idx][i].(int32)))
 		case int32:
-			if _, ok := dest[i].(int32); !ok {
+			if _, ok := dest[i].(*int32); !ok {
 				return fmt.Errorf("wrong value type int32")
 			}
 			dv := reflect.ValueOf(dest[i])

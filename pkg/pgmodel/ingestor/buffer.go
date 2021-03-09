@@ -19,7 +19,6 @@ const (
 	flushSize                = 2000
 	getCreateMetricsTableSQL = "SELECT table_name FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
 	finalizeMetricCreation   = "CALL " + schema.Catalog + ".finalize_metric_creation()"
-	getSeriesIDForLabelSQL   = "SELECT * FROM " + schema.Catalog + ".get_or_create_series_id_for_kv_array($1, $2, $3)"
 	getEpochSQL              = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
 	maxCopyRequestsPerTxn    = 100
 )

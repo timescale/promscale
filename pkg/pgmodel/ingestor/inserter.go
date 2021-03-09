@@ -76,7 +76,7 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 		}()
 	}
 
-	err := conn.QueryRow(context.Background(), `select '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&inserter.labelArrayOID)
+	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&inserter.labelArrayOID)
 	if err != nil {
 		return nil, err
 	}
