@@ -132,7 +132,7 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 	//not across series.
 	dbEpoch, maxPos, err := h.fillLabelIDs(metricName, labelList, labelMap)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error setting series ids: %w", err)
 	}
 
 	//create the label arrays
@@ -168,6 +168,9 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 		seriesToInsert[int(ordinality)-1].SetSeriesID(id, dbEpoch)
 		count++
 	}
+	if err := res.Err(); err != nil {
+		return fmt.Errorf("Error setting series_id: reading series id rows: %w", err)
+	}
 	if count != len(seriesToInsert) {
 		//This should never happen according to the logic. This is purely defensive.
 		//panic since we may have set the seriesID incorrectly above and may
@@ -186,6 +189,10 @@ func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelLi
 	var dbEpoch model.SeriesEpoch
 	maxPos := 0
 
+	items := len(labelList.Names)
+	if items != len(labelMap) {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: map size doesn't match")
+	}
 	// The epoch will never decrease, so we can check it once at the beginning,
 	// at worst we'll store too small an epoch, which is always safe
 	batch.Queue(getEpochSQL)
@@ -206,6 +213,7 @@ func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelLi
 	}
 	defer rows.Close()
 
+	count := 0
 	for rows.Next() {
 		key := labels.Label{}
 		res := labelInfo{}
@@ -221,6 +229,13 @@ func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelLi
 		if int(res.Pos) > maxPos {
 			maxPos = int(res.Pos)
 		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: error reading label id rows: %w", err)
+	}
+	if count != items {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: not filling as many items as expected: %v vs %v", count, items)
 	}
 	return dbEpoch, maxPos, nil
 }
@@ -242,7 +257,7 @@ func createLabelArrays(series []*model.Series, labelMap map[labels.Label]labelIn
 				return nil, nil, fmt.Errorf("Error generating label array: missing key in map")
 			}
 			if res.labelID == 0 {
-				return nil, nil, fmt.Errorf("Error generating label array: missing id for label")
+				return nil, nil, fmt.Errorf("Error generating label array: missing id for label %v=>%v", names[i], values[i])
 			}
 			//Pos is 1-indexed, slices are 0-indexed
 			sliceIndex := int(res.Pos) - 1
