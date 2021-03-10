@@ -760,6 +760,8 @@ RETURNS TABLE(pos int, id int, label_key text, label_value text) AS $$
                   lkp.metric_name = get_or_create_label_ids.metric_name AND
                   lkp.key = kv.key
                )
+        --have to order by in SQL to control the order of label creation no matter the join
+        ORDER BY kv.key, kv.value
 $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, text[], text[])
