@@ -15,6 +15,8 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
+const seriesInsertSQL = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
+
 type insertHandler struct {
 	conn            pgxconn.PgxConn
 	input           chan *insertDataRequest
@@ -147,7 +149,7 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 	if err != nil {
 		return fmt.Errorf("Error setting series id: cannot set label_array: %w", err)
 	}
-	res, err := h.conn.Query(context.Background(), "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)", metricName, labelArrayArray)
+	res, err := h.conn.Query(context.Background(), seriesInsertSQL, metricName, labelArrayArray)
 	if err != nil {
 		return fmt.Errorf("Error setting series_id: cannot query for series_id: %w", err)
 	}
@@ -189,7 +191,7 @@ func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelLi
 
 	items := len(labelList.Names)
 	if items != len(labelMap) {
-		return dbEpoch, 0, fmt.Errorf("Error filling labels: map size doesn't match")
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: number of items in labelList and labelMap doesn't match")
 	}
 	// The epoch will never decrease, so we can check it once at the beginning,
 	// at worst we'll store too small an epoch, which is always safe

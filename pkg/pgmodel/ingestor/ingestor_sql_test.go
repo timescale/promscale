@@ -65,7 +65,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Err: error(nil),
 				},
 				{
-					Sql: "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)",
+					Sql: seriesInsertSQL,
 					Args: []interface{}{
 						"metric_1",
 						getTestLabelArray(t, [][]int32{{1, 2}}),
@@ -110,7 +110,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Err: error(nil),
 				},
 				{
-					Sql: "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)",
+					Sql: seriesInsertSQL,
 					Args: []interface{}{
 						"metric_1",
 						getTestLabelArray(t, [][]int32{{1, 3}, {2, 0, 4}}),
@@ -157,7 +157,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Err: error(nil),
 				},
 				{
-					Sql: "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)",
+					Sql: seriesInsertSQL,
 					Args: []interface{}{
 						"metric_1",
 						getTestLabelArray(t, [][]int32{{1, 3}, {2, 0, 4}, {1, 3}}),
@@ -287,7 +287,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Err: error(nil),
 		},
 		{
-			Sql: "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)",
+			Sql: seriesInsertSQL,
 			Args: []interface{}{
 				"metric_1",
 				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
@@ -334,7 +334,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Err: error(nil),
 		},
 		{
-			Sql: "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)",
+			Sql: seriesInsertSQL,
 			Args: []interface{}{
 				"metric_1",
 				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
