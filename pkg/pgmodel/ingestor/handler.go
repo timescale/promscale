@@ -147,7 +147,7 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 	if err != nil {
 		return fmt.Errorf("Error setting series id: cannot set label_array: %w", err)
 	}
-	res, err := h.conn.Query(context.Background(), "SELECT r.series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) INNER JOIN LATERAL _prom_catalog.get_or_create_series_id_for_label_array($1, l.elem) r ON (TRUE)", metricName, labelArrayArray)
+	res, err := h.conn.Query(context.Background(), "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem", metricName, labelArrayArray)
 	if err != nil {
 		return fmt.Errorf("Error setting series_id: cannot query for series_id: %w", err)
 	}
