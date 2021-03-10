@@ -98,8 +98,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "__name__", "name_1", "name_2"},
-						[]string{"metric_1", "metric_2", "value_1", "value_2"},
+						[]string{"__name__", "name_1", "__name__", "name_2"},
+						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
 					Results: model.RowResults{
 						{int32(1), int32(1), "__name__", "metric_1"},
@@ -145,8 +145,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "__name__", "name_1", "name_2"},
-						[]string{"metric_1", "metric_2", "value_1", "value_2"},
+						[]string{"__name__", "name_1", "__name__", "name_2"},
+						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
 					Results: model.RowResults{
 						{int32(1), int32(1), "__name__", "metric_1"},
@@ -189,8 +189,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "__name__", "name_1", "name_2"},
-						[]string{"metric_1", "metric_2", "value_1", "value_2"},
+						[]string{"__name__", "name_1", "__name__", "name_2"},
+						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
 					Results: model.RowResults{
 						{int32(1), int32(1), "__name__", "metric_1"},

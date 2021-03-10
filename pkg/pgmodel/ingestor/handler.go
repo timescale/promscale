@@ -7,7 +7,6 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -119,7 +118,6 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 				}
 			}
 		}
-		sort.Sort(labelList)
 	}
 	if len(labelMap) == 0 {
 		return nil
