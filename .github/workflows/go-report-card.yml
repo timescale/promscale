@@ -2,7 +2,7 @@ name: Go Report Card
 
 on:
   push:
-    branches: [master]
+    branches: [master, main]
 
 jobs:
   build:

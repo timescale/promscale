@@ -2,9 +2,9 @@ name: Go
 
 on:
   push:
-    branches: [ master ]
+    branches: [master, main, force_test, release-*]
   pull_request:
-    branches: [ master ]
+    branches: ['**']
 
 jobs:
 
@@ -136,4 +136,4 @@ jobs:
         TSDB: ${{ matrix.test-setups.tsdb }}
         TSDB2: ${{ matrix.test-setups.tsdb2 }}
         MULTI: ${{ matrix.test-setups.multi }}
-      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI 
+      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI
