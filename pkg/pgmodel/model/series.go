@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -96,6 +97,13 @@ func (l *Series) IsSeriesIDSet() bool {
 	defer l.lock.RUnlock()
 
 	return l.isSeriesIDSetNoLock()
+}
+
+//FinalSizeBytes returns the size in bytes /after/ the seriesID is set
+func (l *Series) FinalSizeBytes() uint64 {
+	//size is the base size of the struct + the str and metricName strings
+	//names and values are not counted since they will be nilled out
+	return uint64(unsafe.Sizeof(*l)) + uint64(len(l.str)+len(l.metricName)) // #nosec
 }
 
 func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {

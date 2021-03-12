@@ -37,7 +37,7 @@ type LabelsCache interface {
 	// canonical versions.
 	// returns the number of elements inserted, is lower than len(keys) if insertion
 	// starved
-	InsertBatch(keys []interface{}, values []interface{}) (numInserted int)
+	InsertBatch(keys []interface{}, values []interface{}, sizes []uint64) (numInserted int)
 	// Len returns the number of labels cached in the system.
 	Len() int
 	// Cap returns the capacity of the labels cache.
@@ -67,7 +67,8 @@ func (m *MetricNameCache) Set(metric string, tableName string) error {
 	tableBuilder := strings.Builder{}
 	tableBuilder.Grow(len(tableName))
 	tableBuilder.WriteString(tableName)
-	m.Metrics.Insert(metricBuilder.String(), tableBuilder.String())
+	//size includes an 8-byte overhead for each string
+	m.Metrics.Insert(metricBuilder.String(), tableBuilder.String(), uint64(metricBuilder.Len()+tableBuilder.Len()+16))
 	return nil
 }
 
