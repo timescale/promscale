@@ -17,7 +17,7 @@ func BenchmarkIntCache(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cache.Insert(keys[i], keys[i])
+		cache.Insert(keys[i], keys[i], 32)
 	}
 }
 
@@ -32,7 +32,7 @@ func BenchmarkStringCache(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cache.Insert(keys[i], keys[i])
+		cache.Insert(keys[i], keys[i], 32)
 	}
 }
 
@@ -64,7 +64,7 @@ func BenchmarkEviction(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				bval, _ = cache.Insert(insertKeys[i%n], insertKeys[i%n])
+				bval, _ = cache.Insert(insertKeys[i%n], insertKeys[i%n], 16)
 				cache.markAll()
 			}
 		})
@@ -85,9 +85,10 @@ func BenchmarkMembership(b *testing.B) {
 
 			keys := make([]interface{}, n)
 			vals := make([]interface{}, n)
+			sizes := make([]uint64, n)
 
 			for i := 0; i < n; i++ {
-				keys[i], vals[i] = i, i
+				keys[i], vals[i], sizes[i] = i, i, 16
 			}
 
 			rng.Shuffle(len(keys), func(i, j int) {
@@ -95,7 +96,7 @@ func BenchmarkMembership(b *testing.B) {
 			})
 
 			cache := WithMax(uint64(n))
-			cache.InsertBatch(keys, vals)
+			cache.InsertBatch(keys, vals, sizes)
 			b.ReportAllocs()
 			b.ResetTimer()
 
@@ -114,10 +115,11 @@ func BenchmarkNotFound(b *testing.B) {
 
 			keys := make([]interface{}, n)
 			vals := make([]interface{}, n)
+			sizes := make([]uint64, n)
 			gets := make([]interface{}, n)
 
 			for i := 0; i < n; i++ {
-				keys[i], vals[i] = i, i
+				keys[i], vals[i], sizes[i] = i, i, 16
 				gets[i] = n + i
 			}
 
@@ -126,7 +128,7 @@ func BenchmarkNotFound(b *testing.B) {
 			})
 
 			cache := WithMax(uint64(n))
-			cache.InsertBatch(keys, vals)
+			cache.InsertBatch(keys, vals, sizes)
 			b.ReportAllocs()
 			b.ResetTimer()
 
@@ -161,7 +163,7 @@ func BenchmarkInsertUnderCapacity(b *testing.B) {
 			inserts := 0
 			var inserted bool
 			for i := 0; i < b.N; i++ {
-				bval, inserted = cache.Insert(keys[i%n], vals[i%n])
+				bval, inserted = cache.Insert(keys[i%n], vals[i%n], 16)
 				if inserted {
 					inserts++
 				}
@@ -192,7 +194,7 @@ func BenchmarkInsertOverCapacity(b *testing.B) {
 			inserts := 0
 			var inserted bool
 			for i := 0; i < b.N; i++ {
-				bval, inserted = cache.Insert(keys[i%n], vals[i%n])
+				bval, inserted = cache.Insert(keys[i%n], vals[i%n], 16)
 				if inserted {
 					cache.Get(keys[i%n])
 					inserts++
@@ -224,7 +226,7 @@ func BenchmarkInsertConcurrent(b *testing.B) {
 				var val interface{}
 				i := 0
 				for pb.Next() {
-					val, _ = cache.Insert(keys[i%n], vals[i%n])
+					val, _ = cache.Insert(keys[i%n], vals[i%n], 16)
 					cache.Get(keys[i%n])
 					i++
 				}
@@ -232,4 +234,9 @@ func BenchmarkInsertConcurrent(b *testing.B) {
 			})
 		})
 	}
+}
+
+func BenchmarkMemoryEmptyCache(b *testing.B) {
+	b.ReportAllocs()
+	WithMax(uint64(b.N))
 }

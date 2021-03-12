@@ -68,7 +68,8 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
 func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
-	val, _ := t.cache.Insert(str, lset)
+	//str not counted twice in size since the key and lset.str will point to same thing.
+	val, _ := t.cache.Insert(str, lset, lset.FinalSizeBytes())
 	return val.(*model.Series)
 }
 

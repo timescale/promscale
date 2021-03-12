@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
@@ -169,12 +170,14 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 		numNewLabels = len(keys)
 		misses = misses[:len(keys)]
 		newLabels = newLabels[:len(keys)]
+		sizes := make([]uint64, numNewLabels)
 		for i := range newLabels {
 			misses[i] = ids[i]
 			newLabels[i] = labels.Label{Name: keys[i], Value: vals[i]}
+			sizes[i] = uint64(8 + int(unsafe.Sizeof(labels.Label{})) + len(keys[i]) + len(vals[i])) // #nosec
 		}
 
-		numInserted := lr.labels.InsertBatch(misses, newLabels)
+		numInserted := lr.labels.InsertBatch(misses, newLabels, sizes)
 		if numInserted < len(misses) {
 			log.Warn("msg", "labels cache starving, may need to increase size")
 		}
