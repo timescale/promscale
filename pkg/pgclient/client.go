@@ -92,11 +92,13 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
 		return nil, numCopiers, err
 	}
-	if cfg.PreferSimpleProtocol {
-		log.Info("msg", "Using simple protocol for database connections")
+	if cfg.EnableStatementsCache {
+		pgConfig.AfterRelease = observeStatementCacheState
+	} else {
+		log.Info("msg", "Statements cached disabled, using simple protocol for database connections.")
 		pgConfig.ConnConfig.PreferSimpleProtocol = true
 	}
-	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections)
+	log.Info("msg", util.MaskPassword(connectionStr), "numCopiers", numCopiers, "pool_max_conns", maxConnections, "pool_min_conns", minConnections, "statement_cache", cfg.EnableStatementsCache)
 	return pgConfig, numCopiers, nil
 }
 
@@ -133,7 +135,6 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 	}
 
 	InitClientMetrics(client)
-
 	return client, nil
 }
 
@@ -199,4 +200,23 @@ func (c *Client) HealthCheck() error {
 // with the same underlying Querier as the Client.
 func (c *Client) Queryable() promql.Queryable {
 	return c.queryable
+}
+
+func observeStatementCacheState(conn *pgx.Conn) bool {
+	// connections have been opened and are released already
+	// but the Client metrics have not been initialized yet
+	if statementCacheLen == nil || statementCacheCap == nil || statementCacheEnabled == nil {
+		return true
+	}
+	statementCache := conn.StatementCache()
+	if statementCache == nil {
+		statementCacheEnabled.Set(0.0)
+		return true
+	}
+
+	statementCacheEnabled.Set(1.0)
+	statementCacheCap.Set(float64(statementCache.Cap()))
+	statementCacheSize := statementCache.Len()
+	statementCacheLen.Observe(float64(statementCacheSize))
+	return true
 }
