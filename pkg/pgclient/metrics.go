@@ -7,6 +7,7 @@ package pgclient
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/util"
+	"math"
 )
 
 var (
@@ -19,6 +20,21 @@ var (
 	seriesCacheCap            prometheus.GaugeFunc
 	seriesCacheLen            prometheus.GaugeFunc
 	seriesCacheEvictions      prometheus.CounterFunc
+	statementCacheLen         prometheus.Histogram
+	statementCacheCap         = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "statement_cache_per_connection_capacity",
+			Help:      "Maximum number of statements in connection pool's statement cache",
+		},
+	)
+	statementCacheEnabled = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "statement_cache_enabled",
+			Help:      "Is the database connection pool's statement cache enabled",
+		},
+	)
 )
 
 func InitClientMetrics(client *Client) {
@@ -99,6 +115,7 @@ func InitClientMetrics(client *Client) {
 		return float64(client.seriesCache.Evictions())
 	})
 
+	statementCacheLen = createStatementCacheLengthHistogramMetric(client)
 	prometheus.MustRegister(
 		cachedMetricNames,
 		metricNamesCacheCap,
@@ -109,5 +126,37 @@ func InitClientMetrics(client *Client) {
 		seriesCacheEvictions,
 		metricNamesCacheEvictions,
 		labelsCacheEvictions,
+		statementCacheEnabled,
+		statementCacheCap,
+		statementCacheLen,
+	)
+}
+
+func createStatementCacheLengthHistogramMetric(client *Client) prometheus.Histogram {
+	// we know the upper bound of the cache, so we want
+	// to make that the last bucket of the histogram
+	statementCacheUpperBound := client.metricCache.Cap()
+	// we want to increase the buckets by a factor of 2
+	histogramBucketFactor := 2.0
+	// we want 10 total buckets
+	totalBuckets := 10
+	// If we take the last bucket of the histogram
+	// to be 2 to the power of some x, then
+	// 2^maxFactor=statementCacheUpperBound -> log_2(statementCacheUpperBound) = maxFactor
+	maxFactor := math.Floor(math.Log2(float64(statementCacheUpperBound)))
+	// Each bucket is calculated as 2^x, x being incremented by 1 for each bucket
+	// ending with 2^maxFactor. To find the start bucket of the histogram,
+	// We need to find minFactor so we can end up with 10 buckets
+	minFactor := maxFactor - float64(totalBuckets)
+	minFactor = math.Max(minFactor, 1) // in case maxFactor <= 10
+
+	histogramStartBucket := math.Pow(histogramBucketFactor, minFactor)
+	return prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Name:      "statement_cache_elements_stored",
+			Help:      "Number of statements in connection pool's statement cache",
+			Buckets:   prometheus.ExponentialBuckets(histogramStartBucket, histogramBucketFactor, totalBuckets),
+		},
 	)
 }
