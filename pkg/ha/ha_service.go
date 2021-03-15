@@ -21,6 +21,19 @@ const (
 	haLastWriteIntervalInSecs = 30
 )
 
+// actionToTake is an enumeration used to signal how the CheckLease
+// method should continue
+type actionToTake int
+
+const (
+	// deny the insert
+	deny actionToTake = iota + 1
+	// request a synchronous lease update from the db
+	doSync
+	// allow the insert to happen
+	allow
+)
+
 // Service contains the lease state for all prometheus clusters
 // and logic for determining if a specific sample should
 // be allowed to be inserted. Also it keeps the lease state
@@ -106,8 +119,19 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 		return false, time.Time{}, err
 	}
 	leaseView := lease.Clone()
-	if replicaName != leaseView.Leader {
+	whatToDo := determineCourseOfAction(leaseView, replicaName, minT, maxT)
+	if whatToDo == deny {
 		return false, time.Time{}, nil
+	} else if whatToDo == doSync {
+		err = lease.UpdateLease(s.leaseClient, replicaName, minT, maxT)
+		if err != nil {
+			return false, time.Time{}, err
+		}
+
+		leaseView = lease.Clone()
+		if leaseView.Leader != replicaName {
+			return false, time.Time{}, nil
+		}
 	}
 
 	acceptedMinT = minT
@@ -115,21 +139,23 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 		acceptedMinT = leaseView.LeaseStart
 	}
 
-	if !maxT.Before(leaseView.LeaseUntil) {
-		err = lease.UpdateLease(s.leaseClient, replicaName, minT, maxT)
-		if err != nil {
-			return false, time.Time{}, err
-		}
-
-		// on sync-up if notice leader has changed skip
-		// ingestion replica prom instance
-		if lease.GetLeader() != replicaName {
-			return false, time.Time{}, nil
-		}
-	}
-
 	// requesting replica is leader, allow
 	return true, acceptedMinT, nil
+}
+
+func determineCourseOfAction(leaseView *state.LeaseView, replicaName string, minT, maxT time.Time) actionToTake {
+	if replicaName == leaseView.Leader {
+		if !maxT.Before(leaseView.LeaseUntil) {
+			return doSync
+		}
+		return allow
+	}
+
+	if minT.Before(leaseView.LeaseUntil) {
+		return deny
+	} else {
+		return doSync
+	}
 }
 
 func (s *Service) Close() {

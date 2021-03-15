@@ -237,6 +237,57 @@ func TestHALeaderChangedFromOutsideCacheNotAwareAtFirst(t *testing.T) {
 	runHATest(t, testCase)
 }
 
+func TestHALeaderChangedFromOutsideSyncUpdateTriggeredBecauseOfSamplesOutOfCachedLease(t *testing.T) {
+	testCase := haTestCase{
+		db: "ha_leader_change_from_outside",
+		steps: []haTestCaseStep{
+			{
+				desc: "1 becomes leader; don't run sync; leader is changed from outside",
+				input: haTestInput{
+					replica: "1",
+					minT:    unixT(0),
+					maxT:    unixT(0),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 1,
+					expectedMaxTimeInDb: unixT(0),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "1",
+						leaseStart: unixT(0),
+						leaseUntil: unixT(60),
+					},
+				},
+				tickSyncRoutine: false,
+				explicitLease: &leaseState{
+					cluster:    "cluster",
+					leader:     "2",
+					leaseStart: unixT(60),
+					leaseUntil: unixT(120),
+				},
+			}, {
+				desc: "2 tries to send data after lease, lease is cached from before but will be synchronously updated",
+				input: haTestInput{
+					replica: "2",
+					minT:    unixT(60),
+					maxT:    unixT(60),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 2,
+					expectedMaxTimeInDb: unixT(60),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "2",
+						leaseStart: unixT(60),
+						leaseUntil: unixT(120),
+					},
+				},
+				tickSyncRoutine: true,
+			},
+		}}
+	runHATest(t, testCase)
+}
+
 func unixT(sec int64) time.Time {
 	return time.Unix(sec, 0)
 }
