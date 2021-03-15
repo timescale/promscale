@@ -30,7 +30,7 @@ type Auth0_JSONWebKeys struct {
 	X5c []string `json:"x5c"`
 }
 
-func publicKeyFromAuth0(domain string, token *jwt.Token) (*rsa.PublicKey, error) {
+func PublicKeyFromAuth0(domain string, token *jwt.Token) (*rsa.PublicKey, error) {
 	cert, err := getPemCert(domain, token)
 	if err != nil {
 		panic(err.Error())
