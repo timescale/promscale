@@ -65,11 +65,11 @@ func (h *haLeaseClientDB) UpdateLease(ctx context.Context, cluster, leader strin
 	row := h.dbConn.QueryRow(ctx, updateLeaseSql, cluster, leader, minTime, maxTime)
 	leaderHasChanged := false
 	if err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil)); err != nil {
-		if e, ok := err.(*pgconn.PgError); ok && e.Code == leaderChangedErrCode {
-			leaderHasChanged = true
-		} else {
+		if e, ok := err.(*pgconn.PgError); !ok || e.Code != leaderChangedErrCode {
 			return nil, fmt.Errorf("could not update lease: %w", err)
 		}
+
+		leaderHasChanged = true
 	}
 
 	// leader changed
