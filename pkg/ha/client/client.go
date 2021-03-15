@@ -24,7 +24,7 @@ const (
 )
 
 // LeaseDBState represents the current lock holder
-// as reported from the db
+// as reported from the DB.
 type LeaseDBState struct {
 	Cluster    string
 	Leader     string
