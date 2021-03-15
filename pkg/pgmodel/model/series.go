@@ -18,7 +18,10 @@ import (
 // to the PostgreSQL type in the series table (currently BIGINT).
 type SeriesID int64
 
-const invalidSeriesID = -1
+const (
+	invalidSeriesID    = -1
+	InvalidSeriesEpoch = -1
+)
 
 func (s SeriesID) String() string {
 	return strconv.FormatInt(int64(s), 10)
@@ -26,8 +29,6 @@ func (s SeriesID) String() string {
 
 //Epoch represents the series epoch
 type SeriesEpoch int64
-
-const InvalidSeriesEpoch = -1
 
 // Series stores a labels.Series in its canonical string representation
 type Series struct {

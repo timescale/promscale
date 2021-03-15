@@ -7,6 +7,7 @@ package lreader
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
 	"sort"
 	"unsafe"
 
@@ -150,31 +151,35 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 	defer rows.Close()
 
 	for rows.Next() {
-		var ids []int64
-		var keys []string
-		var vals []string
-		err = rows.Scan(&ids, &keys, &vals)
+		var (
+			ids  []int64
+			keys = new(pgsafetype.TextArray)
+			vals = new(pgsafetype.TextArray)
+		)
+		err = rows.Scan(&ids, keys, vals)
 		if err != nil {
 			return 0, err
 		}
-		if len(ids) != len(keys) {
-			return 0, fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys))
+		if len(ids) != len(keys.Elements) {
+			return 0, fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys.Elements))
 		}
-		if len(keys) != len(vals) {
-			return 0, fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys), len(vals))
+		if len(keys.Elements) != len(vals.Elements) {
+			return 0, fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys.Elements), len(vals.Elements))
 		}
-		if len(keys) > len(misses) {
-			return 0, fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys))
+		if len(keys.Elements) > len(misses) {
+			return 0, fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys.Elements))
 		}
 
-		numNewLabels = len(keys)
-		misses = misses[:len(keys)]
-		newLabels = newLabels[:len(keys)]
+		numNewLabels = len(keys.Elements)
+		misses = misses[:len(keys.Elements)]
+		newLabels = newLabels[:len(keys.Elements)]
 		sizes := make([]uint64, numNewLabels)
+		keysArr := keys.Get().([]string)
+		valsArr := vals.Get().([]string)
 		for i := range newLabels {
 			misses[i] = ids[i]
-			newLabels[i] = labels.Label{Name: keys[i], Value: vals[i]}
-			sizes[i] = uint64(8 + int(unsafe.Sizeof(labels.Label{})) + len(keys[i]) + len(vals[i])) // #nosec
+			newLabels[i] = labels.Label{Name: keysArr[i], Value: valsArr[i]}
+			sizes[i] = uint64(8 + int(unsafe.Sizeof(labels.Label{})) + len(keysArr[i]) + len(valsArr[i])) // #nosec
 		}
 
 		numInserted := lr.labels.InsertBatch(misses, newLabels, sizes)
