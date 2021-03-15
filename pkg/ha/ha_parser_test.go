@@ -34,7 +34,7 @@ func Test_haParser_ParseData(t *testing.T) {
 	// As Prometheus remote write sends sample timestamps
 	// in milli-seconds converting the test samples to milliseconds
 	inLeaseTimestamp := leaseStart.Add(time.Second).UnixNano() / 1000000
-	behindLeaseTimestamp := leaseStart.Add(-time.Second).UnixNano() / 1000000
+	behindLeaseTimestamp := (leaseStart.UnixNano()/1000000)-1
 	aheadLeaseTimestamp := leaseUntil.Add(time.Second).UnixNano() / 1000000
 	clusterInfo := []*client.LeaseDBState{
 		{
