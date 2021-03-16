@@ -21,7 +21,7 @@ type wanted struct {
 	samples []prompb.Sample
 }
 
-func Test_haParser_ParseData(t *testing.T) {
+func TestHaParserParseData(t *testing.T) {
 	type fields struct {
 		service *Service
 	}
@@ -36,50 +36,19 @@ func Test_haParser_ParseData(t *testing.T) {
 	inLeaseTimestamp := leaseStart.Add(time.Second).UnixNano() / 1000000
 	behindLeaseTimestamp := (leaseStart.UnixNano()/1000000)-1
 	aheadLeaseTimestamp := leaseUntil.Add(time.Second).UnixNano() / 1000000
-	clusterInfo := []*client.LeaseDBState{
-		{
-			Cluster:    "cluster1",
-			Leader:     "replica1",
-			LeaseStart: leaseStart,
-			LeaseUntil: leaseUntil,
-		},
-		{
-			Cluster:    "cluster2",
-			Leader:     "replica1",
-			LeaseStart: leaseStart,
-			LeaseUntil: leaseUntil,
-		},
-		{
-			Cluster:    "cluster3",
-			Leader:     "replica1",
-			LeaseStart: leaseStart,
-			LeaseUntil: leaseUntil,
-		},
-		{
-			Cluster:    "cluster4",
-			Leader:     "replica2",
-			LeaseStart: leaseStart,
-			LeaseUntil: leaseUntil,
-		},
-		{
-			Cluster:    "cluster5",
-			Leader:     "replica2",
-			LeaseStart: leaseStart,
-			LeaseUntil: leaseUntil,
-		},
-	}
 
-	mockService := MockNewHAService(clusterInfo)
+	mockService := MockNewHAService(nil)
 
 	tests := []struct {
-		name        string
-		fields      fields
-		args        args
-		wanted      map[string][]wanted
-		wantNumRows int
-		wantErr     bool
-		error       error
-		cluster     string
+		name            string
+		fields          fields
+		args            args
+		wanted          map[string][]wanted
+		wantNumRows     int
+		wantErr         bool
+		error           error
+		cluster         string
+		setClusterState *client.LeaseDBState
 	}{
 		{
 			name:   "Test: HA enabled but __replica__ && cluster are empty.",
@@ -159,6 +128,12 @@ func Test_haParser_ParseData(t *testing.T) {
 				}}},
 			wantNumRows: 1,
 			cluster:     "cluster1",
+			setClusterState: &client.LeaseDBState{
+				Cluster:    "cluster1",
+				Leader:     "replica1",
+				LeaseStart: leaseStart,
+				LeaseUntil: leaseUntil,
+			},
 		},
 		{
 			name:   "Test: HA enabled parse samples from standby prom instance.",
@@ -179,6 +154,12 @@ func Test_haParser_ParseData(t *testing.T) {
 			wanted:      nil,
 			wantNumRows: 0,
 			cluster:     "cluster2",
+			setClusterState: &client.LeaseDBState{
+				Cluster:    "cluster2",
+				Leader:     "replica1",
+				LeaseStart: leaseStart,
+				LeaseUntil: leaseUntil,
+			},
 		},
 		{
 			name:   "Test: HA enabled parse samples from leader prom instance.",
@@ -211,6 +192,12 @@ func Test_haParser_ParseData(t *testing.T) {
 			},
 			wantNumRows: 1,
 			cluster:     "cluster3",
+			setClusterState: &client.LeaseDBState{
+				Cluster:    "cluster3",
+				Leader:     "replica1",
+				LeaseStart: leaseStart,
+				LeaseUntil: leaseUntil,
+			},
 		},
 		{
 			name:   "Test: HA enabled parse from leader & samples are in interval [leaseStart-X, leaseUntil)",
@@ -247,6 +234,12 @@ func Test_haParser_ParseData(t *testing.T) {
 			},
 			wantNumRows: 1,
 			cluster:     "cluster3",
+			setClusterState: &client.LeaseDBState{
+				Cluster:    "cluster3",
+				Leader:     "replica1",
+				LeaseStart: leaseStart,
+				LeaseUntil: leaseUntil,
+			},
 		},
 		{
 			name:   "Test: HA enabled parse from leader & samples are in interval [leaseStart, leaseUntil+X].",
@@ -282,6 +275,12 @@ func Test_haParser_ParseData(t *testing.T) {
 			},
 			wantNumRows: 1,
 			cluster:     "cluster3",
+			setClusterState: &client.LeaseDBState{
+				Cluster:    "cluster3",
+				Leader:     "replica1",
+				LeaseStart: leaseStart,
+				LeaseUntil: leaseUntil,
+			},
 		},
 		{
 			name:   "Test: HA enabled, parse samples from standby instance. ReadLeaseState returns the updated leader as standby prom instance.",
@@ -317,6 +316,12 @@ func Test_haParser_ParseData(t *testing.T) {
 			},
 			wantNumRows: 1,
 			cluster:     "cluster4",
+			setClusterState: &client.LeaseDBState{
+				Cluster:    "cluster4",
+				Leader:     "replica2",
+				LeaseStart: leaseStart,
+				LeaseUntil: leaseUntil,
+			},
 		},
 		{
 			name:   "Test: HA enabled parse from standby. ReadLeaseState returns the updated leader as standby prom instance but samples aren't part lease range.",
@@ -337,10 +342,20 @@ func Test_haParser_ParseData(t *testing.T) {
 			wanted:      map[string][]wanted{},
 			wantNumRows: 0,
 			cluster:     "cluster5",
+			setClusterState: &client.LeaseDBState{
+				Cluster:    "cluster5",
+				Leader:     "replica2",
+				LeaseStart: leaseStart,
+				LeaseUntil: leaseUntil,
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setClusterState != nil {
+				state := tt.setClusterState
+				SetLeaderInMockService(tt.fields.service, state.Cluster, state.Leader, state.LeaseStart, state.LeaseUntil)
+			}
 			h := &haParser{
 				service: tt.fields.service,
 				scache:  cache.NewSeriesCache(cache.DefaultSeriesCacheSize),

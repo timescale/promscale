@@ -73,27 +73,26 @@ func NewLease(c client.LeaseClient, cluster, potentialLeader string, minT, maxT,
 // It either updates the lease, or a new leader with the assigned lease interval is set, as
 // signified by the database as the source of truth.
 // An error is returned if the db can't be reached.
-func (h *Lease) UpdateLease(c client.LeaseClient, potentialLeader string, minT, maxT time.Time) error {
+func (h *Lease) UpdateLease(c client.LeaseClient, potentialLeader string, minT, maxT time.Time) (*LeaseView, error) {
 	h._mu.RLock()
 	cluster := h.cluster
 	if h.leader != potentialLeader {
 		h._mu.RUnlock()
-		return fmt.Errorf("should never be updating the lease for a non-leader")
+		return nil, fmt.Errorf("should never be updating the lease for a non-leader")
 	}
 	h._mu.RUnlock()
 	stateFromDB, err := c.UpdateLease(context.Background(), cluster, potentialLeader, minT, maxT)
 	if err != nil {
-		return fmt.Errorf("could not update lease from db: %#v", err)
+		return nil, fmt.Errorf("could not update lease from db: %#v", err)
 	}
-	h.setUpdateFromDB(stateFromDB)
-	return nil
+	return h.setUpdateFromDB(stateFromDB), nil
 }
 
 // TryChangeLeader uses the supplied client to attempt to change the leader
 // of the cluster based on the maximum observed data time and the instance
 // that had it. If updates the lease with the latest state from the database.
 // An error is returned if the db can't be reached.
-func (h *Lease) TryChangeLeader(c client.LeaseClient) error {
+func (h *Lease) TryChangeLeader(c client.LeaseClient) (*LeaseView, error) {
 	h._mu.RLock()
 	cluster := h.cluster
 	maxTimeInstance := h.maxTimeInstance
@@ -104,11 +103,10 @@ func (h *Lease) TryChangeLeader(c client.LeaseClient) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("could not call try change leader from db: %#v", err)
+		return nil, fmt.Errorf("could not call try change leader from db: %#v", err)
 	}
 
-	h.setUpdateFromDB(leaseState)
-	return nil
+	return h.setUpdateFromDB(leaseState), nil
 }
 
 // UpdateMaxSeenTime updates the maximum data time seen by the current leader,
@@ -148,6 +146,9 @@ func (h *Lease) GetLeader() string {
 func (h *Lease) Clone() *LeaseView {
 	h._mu.RLock()
 	defer h._mu.RUnlock()
+	return h.locklessClone()
+}
+func (h *Lease) locklessClone() *LeaseView {
 	return &LeaseView{
 		Cluster:               h.cluster,
 		Leader:                h.leader,
@@ -160,7 +161,7 @@ func (h *Lease) Clone() *LeaseView {
 	}
 }
 
-func (h *Lease) setUpdateFromDB(stateFromDB *client.LeaseDBState) {
+func (h *Lease) setUpdateFromDB(stateFromDB *client.LeaseDBState) *LeaseView {
 	h._mu.Lock()
 	defer h._mu.Unlock()
 	oldLeader := h.leader
@@ -172,6 +173,7 @@ func (h *Lease) setUpdateFromDB(stateFromDB *client.LeaseDBState) {
 		h.recentLeaderWriteTime = time.Now()
 	}
 	exposeHAStateToMetrics(stateFromDB.Cluster, oldLeader, stateFromDB.Leader)
+	return h.locklessClone()
 }
 
 func exposeHAStateToMetrics(cluster, oldLeader, newLeader string) {
