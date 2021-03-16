@@ -13,6 +13,7 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffyaml"
 	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/util"
@@ -23,6 +24,7 @@ type Config struct {
 	PgmodelCfg                  pgclient.Config
 	LogCfg                      log.Config
 	APICfg                      api.Config
+	LimitsCfg                   limits.Config
 	ConfigFile                  string
 	TLSCertFile                 string
 	TLSKeyFile                  string
@@ -47,6 +49,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	pgclient.ParseFlags(fs, &cfg.PgmodelCfg)
 	log.ParseFlags(fs, &cfg.LogCfg)
 	api.ParseFlags(fs, &cfg.APICfg)
+	limits.ParseFlags(fs, &cfg.LimitsCfg)
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
