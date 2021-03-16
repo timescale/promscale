@@ -79,3 +79,11 @@ func (m *MetricNameCache) Len() int {
 func (m *MetricNameCache) Cap() int {
 	return m.Metrics.Cap()
 }
+
+func NewMetricCache(config Config) *MetricNameCache {
+	return &MetricNameCache{Metrics: clockcache.WithMax(config.MetricsCacheSize)}
+}
+
+func NewLabelsCache(config Config) LabelsCache {
+	return clockcache.WithMax(config.LabelsCacheSize)
+}

@@ -10,7 +10,6 @@ import (
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
@@ -95,14 +94,13 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
 func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
-	metricsCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
-	labelsCache := clockcache.WithMax(cfg.LabelsCacheSize)
-	seriesCache := cache.NewSeriesCache(cfg.SeriesCacheSize)
+	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
+	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
+	seriesCache := cache.NewSeriesCache(cfg.CacheConfig)
 	c := ingestor.Cfg{
-		AsyncAcks:       cfg.AsyncAcks,
-		ReportInterval:  cfg.ReportInterval,
-		SeriesCacheSize: cfg.SeriesCacheSize,
-		NumCopiers:      numCopiers,
+		AsyncAcks:      cfg.AsyncAcks,
+		ReportInterval: cfg.ReportInterval,
+		NumCopiers:     numCopiers,
 	}
 	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, seriesCache, &c)
 	if err != nil {

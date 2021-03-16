@@ -101,6 +101,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	if err := limits.Validate(&cfg.LimitsCfg); err != nil {
 		return nil, fmt.Errorf("error validating limits configuration: %w", err)
 	}
+	if err := pgclient.Validate(&cfg.PgmodelCfg, cfg.LimitsCfg); err != nil {
+		return nil, fmt.Errorf("error validating client configuration: %w", err)
+	}
 
 	cfg.StopAfterMigrate = false
 	if strings.EqualFold(migrateOption, "true") {
