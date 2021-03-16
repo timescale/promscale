@@ -13,12 +13,13 @@ import (
 	"github.com/timescale/promscale/pkg/ha/state"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/util"
-	"golang.org/x/sync/semaphore"
 )
 
 const (
 	haSyncerTimeInterval      = 15 * time.Second
 	haLastWriteIntervalInSecs = 30
+	tryLeaderChangeErrFmt     = "failed to attempt leader change for cluster %s"
+	failedToUpdateLeaseErrFmt = "failed to update lease for cluster %s"
 )
 
 // actionToTake is an enumeration used to signal how the CheckLease
@@ -30,6 +31,8 @@ const (
 	deny actionToTake = iota + 1
 	// request a synchronous lease update from the db
 	doSync
+	// try to change leader
+	tryChangeLeader
 	// allow the insert to happen
 	allow
 )
@@ -41,7 +44,6 @@ const (
 type Service struct {
 	state               *sync.Map
 	leaseClient         client.LeaseClient
-	leaderChangeLocks   *sync.Map
 	syncTicker          util.Ticker
 	currentTimeProvider func() time.Time
 	doneChannel         chan bool
@@ -66,7 +68,6 @@ func NewHAServiceWith(leaseClient client.LeaseClient, ticker util.Ticker, curren
 	service := &Service{
 		state:               &sync.Map{},
 		leaseClient:         leaseClient,
-		leaderChangeLocks:   &sync.Map{},
 		syncTicker:          ticker,
 		currentTimeProvider: currentTimeFn,
 		doneChannel:         make(chan bool),
@@ -90,16 +91,18 @@ func (s *Service) haStateSyncer() {
 				cluster := fmt.Sprint(c)
 				lease := l.(*state.Lease)
 				stateBeforeUpdate := lease.Clone()
-				err := lease.UpdateLease(s.leaseClient, stateBeforeUpdate.Leader, stateBeforeUpdate.LeaseStart, stateBeforeUpdate.MaxTimeSeenLeader)
+				stateAfterUpdate, err := lease.UpdateLease(s.leaseClient, stateBeforeUpdate.Leader, stateBeforeUpdate.LeaseStart, stateBeforeUpdate.MaxTimeSeenLeader)
 				if err != nil {
-					errMsg := fmt.Sprintf("failed to validate cluster %s state", cluster)
+					errMsg := fmt.Sprintf(failedToUpdateLeaseErrFmt, cluster)
 					log.Error("msg", errMsg, "err", err)
 					return true
 				}
 
-				stateAfterUpdate := lease.Clone()
 				if s.shouldTryToChangeLeader(stateAfterUpdate) {
-					go s.tryChangeLeader(cluster, lease)
+					if _, err := lease.TryChangeLeader(s.leaseClient); err != nil {
+						errMsg := fmt.Sprintf(tryLeaderChangeErrFmt, cluster)
+						log.Error("msg", errMsg, "err", err)
+					}
 				}
 				return true
 			})
@@ -116,19 +119,33 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 ) {
 	lease, err := s.getLocalClusterLease(clusterName, replicaName, minT, maxT)
 	if err != nil {
+		errMsg := fmt.Sprintf("error trying to get lease for cluster %s", clusterName)
+		log.Error("msg", errMsg, "err", err)
 		return false, time.Time{}, err
 	}
 	leaseView := lease.Clone()
-	whatToDo := determineCourseOfAction(leaseView, replicaName, minT, maxT)
-	if whatToDo == deny {
-		return false, time.Time{}, nil
-	} else if whatToDo == doSync {
-		err = lease.UpdateLease(s.leaseClient, replicaName, minT, maxT)
+	whatToDo := s.determineCourseOfAction(leaseView, replicaName, minT, maxT)
+	switch whatToDo {
+	case deny:
+		return false, time.Time{}, err
+	case doSync:
+		leaseView, err = lease.UpdateLease(s.leaseClient, replicaName, minT, maxT)
 		if err != nil {
+			errMsg := fmt.Sprintf(failedToUpdateLeaseErrFmt, clusterName)
+			log.Error("msg", errMsg, "err", err)
 			return false, time.Time{}, err
 		}
 
-		leaseView = lease.Clone()
+		if leaseView.Leader != replicaName {
+			return false, time.Time{}, nil
+		}
+	case tryChangeLeader:
+		leaseView, err := lease.TryChangeLeader(s.leaseClient)
+		if err != nil {
+			errMsg := fmt.Sprintf(tryLeaderChangeErrFmt, clusterName)
+			log.Error("msg", errMsg, "err", err)
+			return false, time.Time{}, err
+		}
 		if leaseView.Leader != replicaName {
 			return false, time.Time{}, nil
 		}
@@ -143,7 +160,12 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 	return true, acceptedMinT, nil
 }
 
-func determineCourseOfAction(leaseView *state.LeaseView, replicaName string, minT, maxT time.Time) actionToTake {
+func (s *Service) Close() {
+	close(s.doneChannel)
+	s.doneWG.Wait()
+}
+
+func (s *Service) determineCourseOfAction(leaseView *state.LeaseView, replicaName string, minT, maxT time.Time) actionToTake {
 	if replicaName == leaseView.Leader {
 		if !maxT.Before(leaseView.LeaseUntil) {
 			return doSync
@@ -154,13 +176,11 @@ func determineCourseOfAction(leaseView *state.LeaseView, replicaName string, min
 	if minT.Before(leaseView.LeaseUntil) {
 		return deny
 	} else {
+		if s.shouldTryToChangeLeader(leaseView) {
+			return tryChangeLeader
+		}
 		return doSync
 	}
-}
-
-func (s *Service) Close() {
-	close(s.doneChannel)
-	s.doneWG.Wait()
 }
 
 func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, maxT time.Time) (*state.Lease, error) {
@@ -178,27 +198,6 @@ func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, ma
 	l, _ = s.state.LoadOrStore(clusterName, newLease)
 	newLease = l.(*state.Lease)
 	return newLease, nil
-}
-
-func (s *Service) tryChangeLeader(cluster string, currentLease *state.Lease) {
-	clusterLock := s.getLeaderChangeLock(cluster)
-	ok := clusterLock.TryAcquire(1)
-	if !ok {
-		// change leader already in progress
-		return
-	}
-	defer clusterLock.Release(1)
-
-	if err := currentLease.TryChangeLeader(s.leaseClient); err != nil {
-		log.Error("msg", "Couldn't set update from db to lease", "err", err)
-		return
-	}
-}
-
-func (s *Service) getLeaderChangeLock(cluster string) *semaphore.Weighted {
-	// use a semaphore since we want a tryAcquire()
-	lock, _ := s.leaderChangeLocks.LoadOrStore(cluster, semaphore.NewWeighted(1))
-	return lock.(*semaphore.Weighted)
 }
 
 func (s *Service) shouldTryToChangeLeader(lease *state.LeaseView) bool {

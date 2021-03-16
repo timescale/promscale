@@ -197,6 +197,51 @@ func TestHALeaderChangeDueToInactivity(t *testing.T) {
 	runHATest(t, testCase)
 }
 
+func TestHALeaderChangeDueToInactivitySynchornously(t *testing.T) {
+	testCase := haTestCase{
+		db: "ha_leader_change_due_to_inactivity_in_sync",
+		steps: []haTestCaseStep{
+			{
+				desc: "1 becomes leader",
+				input: haTestInput{
+					replica: "1",
+					minT:    time.Unix(0, 0),
+					maxT:    time.Unix(0, 0),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 1,
+					expectedMaxTimeInDb: time.Unix(0, 0),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "1",
+						leaseStart: time.Unix(0, 0),
+						leaseUntil: time.Unix(60, 0),
+					},
+				},
+				tickSyncRoutine: false,
+			}, {
+				desc: "2 sends data after lease, change leader, allow",
+				input: haTestInput{
+					replica: "2",
+					minT:    unixT(60),
+					maxT:    unixT(60),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 2,
+					expectedMaxTimeInDb: time.Unix(60, 0),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "2",
+						leaseStart: time.Unix(60, 0),
+						leaseUntil: time.Unix(120, 0),
+					},
+				},
+				tickSyncRoutine: false,
+			},
+		}}
+	runHATest(t, testCase)
+}
+
 func TestHANoLeaderChange(t *testing.T) {
 	testCase := haTestCase{
 		db: "ha_no_leader_change",

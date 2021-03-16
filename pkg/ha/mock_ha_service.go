@@ -21,7 +21,6 @@ func MockNewHAService(clusterInfo []*client.LeaseDBState) *Service {
 	service := &Service{
 		state:               &sync.Map{},
 		leaseClient:         lockClient,
-		leaderChangeLocks:   &sync.Map{},
 		currentTimeProvider: time.Now,
 	}
 	return service
