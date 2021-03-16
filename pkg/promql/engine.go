@@ -226,7 +226,7 @@ func contextErr(err error, env string) error {
 type EngineOpts struct {
 	Logger             log.Logger
 	Reg                prometheus.Registerer
-	MaxSamples         int
+	MaxSamples         int64
 	Timeout            time.Duration
 	ActiveQueryTracker *ActiveQueryTracker
 	// LookbackDelta determines the time since the last sample after which a time
@@ -249,7 +249,7 @@ type Engine struct {
 	logger                   log.Logger
 	metrics                  *engineMetrics
 	timeout                  time.Duration
-	maxSamplesPerQuery       int
+	maxSamplesPerQuery       int64
 	activeQueryTracker       *ActiveQueryTracker
 	queryLogger              QueryLogger
 	queryLoggerLock          sync.RWMutex
@@ -893,8 +893,8 @@ type evaluator struct {
 	endTimestamp   int64 // End time in milliseconds.
 	interval       int64 // Interval in milliseconds.
 
-	maxSamples               int
-	currentSamples           int
+	maxSamples               int64
+	currentSamples           int64
 	logger                   log.Logger
 	lookbackDelta            time.Duration
 	topNode                  parser.Node
@@ -1117,10 +1117,10 @@ func (ev *evaluator) rangeEval(prepSeries func(labels.Labels, *EvalSeriesHelper)
 		enh.Out = result[:0] // Reuse result vector.
 		warnings = append(warnings, ws...)
 
-		ev.currentSamples += len(result)
+		ev.currentSamples += int64(len(result))
 		// When we reset currentSamples to tempNumSamples during the next iteration of the loop it also
 		// needs to include the samples from the result here, as they're still in memory.
-		tempNumSamples += len(result)
+		tempNumSamples += int64(len(result))
 
 		if ev.currentSamples > ev.maxSamples {
 			ev.error(ErrTooManySamples(env))
@@ -1133,7 +1133,7 @@ func (ev *evaluator) rangeEval(prepSeries func(labels.Labels, *EvalSeriesHelper)
 				s.Point.T = ts
 				mat[i] = Series{Metric: s.Metric, Points: []Point{s.Point}}
 			}
-			ev.currentSamples = originalNumSamples + mat.TotalSamples()
+			ev.currentSamples = int64(originalNumSamples + mat.TotalSamples())
 			return mat, warnings
 		}
 
@@ -1339,7 +1339,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 				defer func() {
 					// subquery result takes space in the memory. Get rid of that at the end.
 					val.VectorSelector.(*parser.VectorSelector).Series = nil
-					ev.currentSamples -= totalSamples
+					ev.currentSamples -= int64(totalSamples)
 				}()
 				break
 			}
@@ -1388,7 +1388,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		// Process all the calls for one time series at a time.
 		it := storage.NewBuffer(selRange)
 		for i, s := range selVS.Series {
-			ev.currentSamples -= len(points)
+			ev.currentSamples -= int64(len(points))
 			points = points[:0]
 			it.Reset(s.Iterator())
 			metric := selVS.Series[i].Labels()
@@ -1436,9 +1436,9 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 				it.ReduceDelta(stepRange)
 			}
 			if len(ss.Points) > 0 {
-				if ev.currentSamples+len(ss.Points) <= ev.maxSamples {
+				if ev.currentSamples+int64(len(ss.Points)) <= ev.maxSamples {
 					mat = append(mat, ss)
-					ev.currentSamples += len(ss.Points)
+					ev.currentSamples += int64(len(ss.Points))
 				} else {
 					ev.error(ErrTooManySamples(env))
 				}
@@ -1447,7 +1447,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 			}
 		}
 
-		ev.currentSamples -= len(points)
+		ev.currentSamples -= int64(len(points))
 		putPointSlice(points)
 
 		// The absent_over_time function returns 0 or 1 series. So far, the matrix
@@ -1818,13 +1818,13 @@ func (ev *evaluator) matrixIterSlice(it *storage.BufferedSeriesIterator, mint, m
 		var drop int
 		for drop = 0; out[drop].T < mint; drop++ {
 		}
-		ev.currentSamples -= drop
+		ev.currentSamples -= int64(drop)
 		copy(out, out[drop:])
 		out = out[:len(out)-drop]
 		// Only append points with timestamps after the last timestamp we have.
 		mint = out[len(out)-1].T + 1
 	} else {
-		ev.currentSamples -= len(out)
+		ev.currentSamples -= int64(len(out))
 		out = out[:0]
 	}
 

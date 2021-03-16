@@ -6,7 +6,6 @@ package query
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -14,12 +13,13 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewEngine(logger log.Logger, queryTimeout time.Duration, subqueryDefaultStepInterval time.Duration, enabledFeatures []string) (*promql.Engine, error) {
+func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultStepInterval time.Duration, maxSamples int64, enabledFeatures []string) (*promql.Engine, error) {
 	engineOpts := promql.EngineOpts{
 		Logger:                   logger,
 		Reg:                      prometheus.NewRegistry(),
-		MaxSamples:               math.MaxInt32,
+		MaxSamples:               maxSamples,
 		Timeout:                  queryTimeout,
+		LookbackDelta:            lookBackDelta,
 		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(subqueryDefaultStepInterval) },
 	}
 	for _, feature := range enabledFeatures {

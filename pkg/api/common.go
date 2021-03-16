@@ -93,6 +93,8 @@ type Config struct {
 	EnabledFeaturesList  []string
 	MaxQueryTimeout      time.Duration
 	SubQueryStepInterval time.Duration // Default step interval value if the user has not provided.
+	LookBackDelta        time.Duration
+	MaxSamples           int64
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
@@ -115,6 +117,10 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 		"'/api/v1/query.*' endpoints.")
 	fs.DurationVar(&cfg.SubQueryStepInterval, "promql-default-subquery-step-interval", 1*time.Minute, "Default step interval to be used for PromQL subquery evaluation. "+
 		"This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option.")
+	fs.DurationVar(&cfg.LookBackDelta, "promql-lookback-delta", time.Minute*5, "Maximum lookback duration for retrieving metrics during expression evaluations and federation.")
+	fs.Int64Var(&cfg.MaxSamples, "promql-max-samples", 50000000, "Maximum number of samples a single "+
+		"query can load into memory. Note that queries will fail if they try to load more samples than this into memory, "+
+		"so this also limits the number of samples a query can return.")
 	return cfg
 }
 
