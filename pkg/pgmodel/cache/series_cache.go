@@ -31,9 +31,9 @@ type SeriesCacheImpl struct {
 	cache *clockcache.Cache
 }
 
-func NewSeriesCache(max uint64) *SeriesCacheImpl {
+func NewSeriesCache(config Config) *SeriesCacheImpl {
 	return &SeriesCacheImpl{
-		clockcache.WithMax(max),
+		clockcache.WithMax(config.SeriesCacheInitialSize),
 	}
 }
 
