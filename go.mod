@@ -38,7 +38,6 @@ require (
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	go.uber.org/atomic v1.7.0
 	go.uber.org/goleak v1.1.10
-	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	gotest.tools v2.2.0+incompatible // indirect
 )
 
