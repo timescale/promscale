@@ -22,14 +22,14 @@ func TestPercent(t *testing.T) {
 		{"64.2%", 64, true},
 	}
 	for _, tc := range inputs {
-		var tm TargetMemory
+		var tm PercentageBytes
 		gotErr := tm.Set(tc.val)
 		require.Equal(t, tc.err, gotErr != nil, "input %v got error %v", tc.val, gotErr)
 		if gotErr != nil {
 			continue
 		}
 		require.Equal(t, tc.percent, tm.percentage)
-		require.True(t, tm.Bytes() > 20000)
+		require.Equal(t, uint64(0), tm.bytes)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestBytes(t *testing.T) {
 		{"1001", 1001, false},
 	}
 	for _, tc := range inputs {
-		var tm TargetMemory
+		var tm PercentageBytes
 		gotErr := tm.Set(tc.val)
 		require.Equal(t, tc.err, gotErr != nil, "input %v got error %v", tc.val, gotErr)
 		if gotErr != nil {
@@ -65,7 +65,7 @@ func TestBytes(t *testing.T) {
 func TestString(t *testing.T) {
 	t.Parallel()
 
-	var tm TargetMemory
+	var tm PercentageBytes
 	gotErr := tm.Set("80% ")
 	require.NoError(t, gotErr)
 	require.Equal(t, "80%", tm.String())
