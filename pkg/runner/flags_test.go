@@ -50,6 +50,15 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
+			name: "enable disabled-features",
+			args: []string{"-promql-enable-feature", "promql-at-modifier"},
+			result: func(c Config) Config {
+				c.APICfg.EnableFeatures = "promql-at-modifier"
+				c.APICfg.EnabledFeaturesList = []string{"promql-at-modifier"}
+				return c
+			},
+		},
+		{
 			name: "Only migrate",
 			args: []string{"-migrate", "only"},
 			result: func(c Config) Config {
@@ -147,7 +156,6 @@ func TestParseFlags(t *testing.T) {
 				}
 			}
 			config, err := ParseFlags(&Config{}, c.args)
-
 			if c.shouldError {
 				if err == nil {
 					t.Fatal("Unexpected error result, should not be nil")
