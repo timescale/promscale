@@ -98,6 +98,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	if err := api.Validate(&cfg.APICfg); err != nil {
 		return nil, fmt.Errorf("error validating API configuration: %w", err)
 	}
+	if err := limits.Validate(&cfg.LimitsCfg); err != nil {
+		return nil, fmt.Errorf("error validating limits configuration: %w", err)
+	}
 
 	cfg.StopAfterMigrate = false
 	if strings.EqualFold(migrateOption, "true") {
