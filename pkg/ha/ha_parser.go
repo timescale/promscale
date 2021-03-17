@@ -45,32 +45,7 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	}
 
 	// find samples time range
-	var (
-		minTUnix, maxTUnix int64
-		timesWereSet       = false
-	)
-	for i := range tts {
-		t := &tts[i]
-		if len(t.Samples) == 0 {
-			continue
-		}
-
-		for _, sample := range t.Samples {
-			if !timesWereSet {
-				timesWereSet = true
-				minTUnix = sample.Timestamp
-				maxTUnix = sample.Timestamp
-				continue
-			}
-			if sample.Timestamp < minTUnix {
-				minTUnix = sample.Timestamp
-			}
-
-			if sample.Timestamp > maxTUnix {
-				maxTUnix = sample.Timestamp
-			}
-		}
-	}
+	minTUnix, maxTUnix := findDataTimeRange(tts)
 
 	minT := promModel.Time(minTUnix).Time()
 	maxT := promModel.Time(maxTUnix).Time()
@@ -127,6 +102,34 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 	}
 
 	return dataSamples, rows, nil
+}
+
+// findDataTimeRange finds the minimum and maximum timestamps in a set of samples
+func findDataTimeRange(tts []prompb.TimeSeries) (minTUnix int64, maxTUnix int64) {
+	timesWereSet := false
+	for i := range tts {
+		t := &tts[i]
+		if len(t.Samples) == 0 {
+			continue
+		}
+
+		for _, sample := range t.Samples {
+			if !timesWereSet {
+				timesWereSet = true
+				minTUnix = sample.Timestamp
+				maxTUnix = sample.Timestamp
+				continue
+			}
+			if sample.Timestamp < minTUnix {
+				minTUnix = sample.Timestamp
+			}
+
+			if sample.Timestamp > maxTUnix {
+				maxTUnix = sample.Timestamp
+			}
+		}
+	}
+	return minTUnix, maxTUnix
 }
 
 func haLabels(labels []prompb.Label) (cluster, replica string) {

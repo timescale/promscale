@@ -91,7 +91,12 @@ func (s *Service) haStateSyncer() {
 				cluster := fmt.Sprint(c)
 				lease := l.(*state.Lease)
 				stateBeforeUpdate := lease.Clone()
-				stateAfterUpdate, err := lease.UpdateLease(s.leaseClient, stateBeforeUpdate.Leader, stateBeforeUpdate.LeaseStart, stateBeforeUpdate.MaxTimeSeenLeader)
+				stateAfterUpdate, err := lease.UpdateLease(
+					s.leaseClient,
+					stateBeforeUpdate.Leader,
+					stateBeforeUpdate.LeaseStart,
+					stateBeforeUpdate.MaxTimeSeenLeader,
+				)
 				if err != nil {
 					errMsg := fmt.Sprintf(failedToUpdateLeaseErrFmt, cluster)
 					log.Error("msg", errMsg, "err", err)
@@ -173,13 +178,13 @@ func (s *Service) determineCourseOfAction(leaseView *state.LeaseView, replicaNam
 		return allow
 	}
 
-	if minT.Before(leaseView.LeaseUntil) {
-		return deny
-	} else {
+	if minT.After(leaseView.LeaseUntil) {
 		if s.shouldTryToChangeLeader(leaseView) {
 			return tryChangeLeader
 		}
 		return doSync
+	} else {
+		return deny
 	}
 }
 
