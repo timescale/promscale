@@ -10,12 +10,15 @@ import (
 )
 
 var (
-	cachedMetricNames   prometheus.GaugeFunc
-	cachedLabels        prometheus.GaugeFunc
-	metricNamesCacheCap prometheus.GaugeFunc
-	labelsCacheCap      prometheus.GaugeFunc
-	seriesCacheCap      prometheus.GaugeFunc
-	seriesCacheLen      prometheus.GaugeFunc
+	cachedMetricNames         prometheus.GaugeFunc
+	cachedLabels              prometheus.GaugeFunc
+	metricNamesCacheCap       prometheus.GaugeFunc
+	metricNamesCacheEvictions prometheus.CounterFunc
+	labelsCacheCap            prometheus.GaugeFunc
+	labelsCacheEvictions      prometheus.CounterFunc
+	seriesCacheCap            prometheus.GaugeFunc
+	seriesCacheLen            prometheus.GaugeFunc
+	seriesCacheEvictions      prometheus.CounterFunc
 )
 
 func InitClientMetrics(client *Client) {
@@ -40,6 +43,14 @@ func InitClientMetrics(client *Client) {
 		return float64(client.MetricNamesCacheCapacity())
 	})
 
+	metricNamesCacheEvictions = prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: util.PromNamespace,
+		Name:      "metric_name_cache_evictions_total",
+		Help:      "Evictions in the metric names cache.",
+	}, func() float64 {
+		return float64(client.metricCache.Evictions())
+	})
+
 	cachedLabels = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: util.PromNamespace,
 		Name:      "label_cache_elements_stored",
@@ -54,6 +65,14 @@ func InitClientMetrics(client *Client) {
 		Help:      "Total number of label-id to label mappings cache.",
 	}, func() float64 {
 		return float64(client.LabelsCacheCapacity())
+	})
+
+	labelsCacheEvictions = prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: util.PromNamespace,
+		Name:      "label_cache_evictions_total",
+		Help:      "Total number of evictions in the label-id to label mappings cache.",
+	}, func() float64 {
+		return float64(client.labelsCache.Evictions())
 	})
 
 	seriesCacheLen = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
@@ -72,6 +91,14 @@ func InitClientMetrics(client *Client) {
 		return float64(client.seriesCache.Cap())
 	})
 
+	seriesCacheEvictions = prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: util.PromNamespace,
+		Name:      "series_cache_evictions_total",
+		Help:      "Total number of series cache evictions.",
+	}, func() float64 {
+		return float64(client.seriesCache.Evictions())
+	})
+
 	prometheus.MustRegister(
 		cachedMetricNames,
 		metricNamesCacheCap,
@@ -79,5 +106,8 @@ func InitClientMetrics(client *Client) {
 		labelsCacheCap,
 		seriesCacheLen,
 		seriesCacheCap,
+		seriesCacheEvictions,
+		metricNamesCacheEvictions,
+		labelsCacheEvictions,
 	)
 }
