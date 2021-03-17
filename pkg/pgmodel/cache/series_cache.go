@@ -10,15 +10,21 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-//this seems like a good upper bound on default /active/ series. Takes about 64MB
-const DefaultSeriesCacheSize = 500000
+//this seems like a good initial size for /active/ series. Takes about 32MB
+const DefaultSeriesCacheSize = 250000
+
+const GrowCheckDuration = time.Minute //check whether to grow the series cache this often
+const GrowEvictionThreshold = 0.2     // grow when evictions more than 20% of cache size
+const GrowFactor = float64(2.0)       // multiply cache size by this factor when growing the cache
 
 type SeriesCache interface {
 	Reset()
@@ -28,13 +34,64 @@ type SeriesCache interface {
 }
 
 type SeriesCacheImpl struct {
-	cache *clockcache.Cache
+	cache        *clockcache.Cache
+	maxSizeBytes uint64
 }
 
-func NewSeriesCache(config Config) *SeriesCacheImpl {
-	return &SeriesCacheImpl{
+func NewSeriesCache(config Config, closer <-chan struct{}) *SeriesCacheImpl {
+	cache := &SeriesCacheImpl{
 		clockcache.WithMax(config.SeriesCacheInitialSize),
+		config.SeriesCacheMemoryMaxBytes,
 	}
+
+	if closer != nil {
+		go cache.runSizeCheck(closer)
+	}
+	return cache
+}
+
+func (t *SeriesCacheImpl) runSizeCheck(closer <-chan struct{}) {
+	prev := uint64(0)
+	ticker := time.NewTicker(GrowCheckDuration)
+	for {
+		select {
+		case <-ticker.C:
+			current := t.cache.Evictions()
+			newEvictions := current - prev
+			evictionsThresh := uint64(float64(t.Len()) * GrowEvictionThreshold)
+			prev = current
+			if newEvictions > evictionsThresh {
+				t.grow(newEvictions)
+			}
+		case <-closer:
+			return
+		}
+	}
+}
+
+func (t *SeriesCacheImpl) grow(newEvictions uint64) {
+	sizeBytes := t.cache.SizeBytes()
+	if float64(sizeBytes)*1.2 >= float64(t.maxSizeBytes) {
+		log.Warn("msg", "Series cache is too small and cannot be grown",
+			"current_size_bytes", sizeBytes, "max_size_bytes", t.maxSizeBytes,
+			"len", t.Len(), "new_evictions", newEvictions, "check_interval", GrowCheckDuration)
+		return
+	}
+
+	multiplier := GrowFactor
+	if float64(sizeBytes)*multiplier >= float64(t.maxSizeBytes) {
+		multiplier = float64(t.maxSizeBytes) / float64(sizeBytes)
+	}
+	if multiplier < 1.0 {
+		return
+	}
+
+	oldSize := t.cache.Cap()
+	newNumElements := int(float64(oldSize) * multiplier)
+	log.Info("msg", "Growing the series cache",
+		"new_size", newNumElements, "old_size", oldSize,
+		"multiplier", multiplier, "projected_memory_bytes", float64(sizeBytes)*multiplier)
+	t.cache.ExpandTo(newNumElements)
 }
 
 func (t *SeriesCacheImpl) Len() int {

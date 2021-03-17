@@ -35,6 +35,7 @@ type Client struct {
 	labelsCache   cache.LabelsCache
 	seriesCache   cache.SeriesCache
 	closePool     bool
+	closer        chan struct{}
 }
 
 // Post connect validation function, useful for things such as acquiring locks
@@ -94,9 +95,10 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
 func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
+	closer := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
-	seriesCache := cache.NewSeriesCache(cfg.CacheConfig)
+	seriesCache := cache.NewSeriesCache(cfg.CacheConfig, closer)
 	c := ingestor.Cfg{
 		AsyncAcks:      cfg.AsyncAcks,
 		ReportInterval: cfg.ReportInterval,
@@ -121,6 +123,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		metricCache: metricsCache,
 		labelsCache: labelsCache,
 		seriesCache: seriesCache,
+		closer:      closer,
 	}
 
 	InitClientMetrics(client)
@@ -132,6 +135,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 func (c *Client) Close() {
 	log.Info("msg", "Shutting down Client")
 	c.ingestor.Close()
+	close(c.closer)
 	if c.closePool {
 		c.Connection.Close()
 	}

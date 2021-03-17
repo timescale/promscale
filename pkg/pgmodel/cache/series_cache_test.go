@@ -9,7 +9,7 @@ import (
 )
 
 func TestBigLables(t *testing.T) {
-	cache := NewSeriesCache(DefaultConfig)
+	cache := NewSeriesCache(DefaultConfig, nil)
 	builder := strings.Builder{}
 	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
 
