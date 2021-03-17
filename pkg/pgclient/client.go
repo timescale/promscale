@@ -86,7 +86,8 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 	} else {
 		connectionArgsFmt = "%s&pool_max_conns=%d&pool_min_conns=%d&statement_cache_capacity=%d"
 	}
-	connectionStringWithArgs := fmt.Sprintf(connectionArgsFmt, connectionStr, maxConnections, minConnections, cfg.MetricsCacheSize)
+	statementCacheCapacity := cfg.MetricsCacheSize * 2
+	connectionStringWithArgs := fmt.Sprintf(connectionArgsFmt, connectionStr, maxConnections, minConnections, statementCacheCapacity)
 	pgConfig, err = pgxpool.ParseConfig(connectionStringWithArgs)
 	if err != nil {
 		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
@@ -94,6 +95,8 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 	}
 	if cfg.EnableStatementsCache {
 		pgConfig.AfterRelease = observeStatementCacheState
+		statementCacheEnabled.Set(1)
+		statementCacheCap.Set(float64(statementCacheCapacity))
 	} else {
 		log.Info("msg", "Statements cached disabled, using simple protocol for database connections.")
 		pgConfig.ConnConfig.PreferSimpleProtocol = true
@@ -205,7 +208,7 @@ func (c *Client) Queryable() promql.Queryable {
 func observeStatementCacheState(conn *pgx.Conn) bool {
 	// connections have been opened and are released already
 	// but the Client metrics have not been initialized yet
-	if statementCacheLen == nil || statementCacheCap == nil || statementCacheEnabled == nil {
+	if statementCacheLen == nil {
 		return true
 	}
 	statementCache := conn.StatementCache()

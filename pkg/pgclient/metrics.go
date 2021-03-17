@@ -11,15 +11,27 @@ import (
 )
 
 var (
-	cachedMetricNames     prometheus.GaugeFunc
-	cachedLabels          prometheus.GaugeFunc
-	metricNamesCacheCap   prometheus.GaugeFunc
-	labelsCacheCap        prometheus.GaugeFunc
-	seriesCacheCap        prometheus.GaugeFunc
-	seriesCacheLen        prometheus.GaugeFunc
-	statementCacheLen     prometheus.Histogram
-	statementCacheEnabled prometheus.Gauge
-	statementCacheCap     prometheus.Gauge
+	cachedMetricNames   prometheus.GaugeFunc
+	cachedLabels        prometheus.GaugeFunc
+	metricNamesCacheCap prometheus.GaugeFunc
+	labelsCacheCap      prometheus.GaugeFunc
+	seriesCacheCap      prometheus.GaugeFunc
+	seriesCacheLen      prometheus.GaugeFunc
+	statementCacheLen   prometheus.Histogram
+	statementCacheCap   = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "statement_cache_capacity",
+			Help:      "Maximum number of statements in connection pool's statement cache",
+		},
+	)
+	statementCacheEnabled = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "statement_cache_enabled",
+			Help:      "Is the database connection pool's statement cache enabled",
+		},
+	)
 )
 
 func InitClientMetrics(client *Client) {
@@ -76,20 +88,6 @@ func InitClientMetrics(client *Client) {
 		return float64(client.seriesCache.Cap())
 	})
 
-	statementCacheCap = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Name:      "statement_cache_capacity",
-			Help:      "Maximum number of statements in connection pool's statement cache",
-		},
-	)
-	statementCacheEnabled = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Name:      "statement_cache_enabled",
-			Help:      "Is the database connection pool's statement cache enabled",
-		},
-	)
 	statementCacheLen = createStatementCacheLengthHistogramMetric(client)
 	prometheus.MustRegister(
 		cachedMetricNames,
