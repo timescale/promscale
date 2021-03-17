@@ -123,17 +123,17 @@ func TestHALeaderChangeDueToInactivity(t *testing.T) {
 				desc: "1 becomes leader",
 				input: haTestInput{
 					replica: "1",
-					minT:    time.Unix(0, 0),
-					maxT:    time.Unix(0, 0),
+					minT:    unixT(0),
+					maxT:    unixT(0),
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 1,
-					expectedMaxTimeInDb: time.Unix(0, 0),
+					expectedMaxTimeInDb: unixT(0),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "1",
-						leaseStart: time.Unix(0, 0),
-						leaseUntil: time.Unix(60, 0),
+						leaseStart: unixT(0),
+						leaseUntil: unixT(60),
 					},
 				},
 				tickSyncRoutine: true,
@@ -146,21 +146,21 @@ func TestHALeaderChangeDueToInactivity(t *testing.T) {
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 1,
-					expectedMaxTimeInDb: time.Unix(0, 0),
+					expectedMaxTimeInDb: unixT(0),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "1",
-						leaseStart: time.Unix(0, 0),
-						leaseUntil: time.Unix(60, 0),
+						leaseStart: unixT(0),
+						leaseUntil: unixT(60),
 					},
 				},
 				tickSyncRoutine: true,
 			}, {
-				desc: "2 sends data after lease, no insert -> triggers leader change",
+				desc: "2 sends data with maxT after lease, no insert -> triggers leader change",
 				input: haTestInput{
 					replica: "2",
-					minT:    time.Unix(61, 0),
-					maxT:    time.Unix(61, 0),
+					minT:    unixT(60),
+					maxT:    unixT(61),
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 1,
@@ -177,18 +177,18 @@ func TestHALeaderChangeDueToInactivity(t *testing.T) {
 				desc: "2 sends data again, is leader now",
 				input: haTestInput{
 					replica: "2",
-					minT:    time.Unix(62, 0),
-					maxT:    time.Unix(62, 0),
+					minT:    unixT(62),
+					maxT:    unixT(62),
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 2,
-					expectedMaxTimeInDb: time.Unix(62, 0),
+					expectedMaxTimeInDb: unixT(62),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "2",
-						leaseStart: time.Unix(60, 0),
+						leaseStart: unixT(60),
 						// leader was updated with maxTimeSeen in previous step 61 + 60 (lease refresh)
-						leaseUntil: time.Unix(121, 0),
+						leaseUntil: unixT(121),
 					},
 				},
 				tickSyncRoutine: true,
@@ -220,20 +220,20 @@ func TestHALeaderChangeDueToInactivitySynchornously(t *testing.T) {
 				},
 				tickSyncRoutine: false,
 			}, {
-				desc: "2 sends data after lease, change leader, allow",
+				desc: "2 sends data with minT after lease, change leader, allow",
 				input: haTestInput{
 					replica: "2",
-					minT:    unixT(60),
-					maxT:    unixT(60),
+					minT:    unixT(61),
+					maxT:    unixT(61),
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 2,
-					expectedMaxTimeInDb: time.Unix(60, 0),
+					expectedMaxTimeInDb: time.Unix(61, 0),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "2",
-						leaseStart: time.Unix(60, 0),
-						leaseUntil: time.Unix(120, 0),
+						leaseStart: unixT(60),
+						leaseUntil: unixT(121),
 					},
 				},
 				tickSyncRoutine: false,

@@ -58,9 +58,11 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 //		uint64 number or rows inserted
 //		error if the ingest failed
 func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	var data map[string][]model.Samples
-	var totalRows int
-	var err error
+	var (
+		data      map[string][]model.Samples
+		totalRows int
+		err       error
+	)
 
 	data, totalRows, err = i.parser.ParseData(tts)
 	// WriteRequests can contain pointers into the original buffer we deserialized
