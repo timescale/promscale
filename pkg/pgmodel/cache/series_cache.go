@@ -31,6 +31,7 @@ type SeriesCache interface {
 	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
 	Len() int
 	Cap() int
+	Evictions() uint64
 }
 
 type SeriesCacheImpl struct {
@@ -71,10 +72,12 @@ func (t *SeriesCacheImpl) runSizeCheck(closer <-chan struct{}) {
 
 func (t *SeriesCacheImpl) grow(newEvictions uint64) {
 	sizeBytes := t.cache.SizeBytes()
+	oldSize := t.cache.Cap()
 	if float64(sizeBytes)*1.2 >= float64(t.maxSizeBytes) {
 		log.Warn("msg", "Series cache is too small and cannot be grown",
-			"current_size_bytes", sizeBytes, "max_size_bytes", t.maxSizeBytes,
-			"len", t.Len(), "new_evictions", newEvictions, "check_interval", GrowCheckDuration)
+			"current_size_bytes", float64(sizeBytes), "max_size_bytes", float64(t.maxSizeBytes),
+			"current_size_elements", oldSize, "check_interval", GrowCheckDuration,
+			"new_evictions", newEvictions, "new_evictions_percent", 100*(float64(newEvictions)/float64(oldSize)))
 		return
 	}
 
@@ -86,11 +89,12 @@ func (t *SeriesCacheImpl) grow(newEvictions uint64) {
 		return
 	}
 
-	oldSize := t.cache.Cap()
 	newNumElements := int(float64(oldSize) * multiplier)
 	log.Info("msg", "Growing the series cache",
-		"new_size", newNumElements, "old_size", oldSize,
-		"multiplier", multiplier, "projected_memory_bytes", float64(sizeBytes)*multiplier)
+		"new_size_elements", newNumElements, "current_size_elements", oldSize,
+		"new_size_bytes", float64(sizeBytes)*multiplier, "max_size_bytes", float64(t.maxSizeBytes),
+		"multiplier", multiplier,
+		"new_evictions", newEvictions, "new_evictions_percent", 100*(float64(newEvictions)/float64(oldSize)))
 	t.cache.ExpandTo(newNumElements)
 }
 
@@ -100,6 +104,10 @@ func (t *SeriesCacheImpl) Len() int {
 
 func (t *SeriesCacheImpl) Cap() int {
 	return t.cache.Cap()
+}
+
+func (t *SeriesCacheImpl) Evictions() uint64 {
+	return t.cache.Evictions()
 }
 
 //ResetStoredLabels should be concurrency-safe

@@ -23,6 +23,7 @@ type MetricCache interface {
 	Len() int
 	// Cap returns the capacity of the metrics cache.
 	Cap() int
+	Evictions() uint64
 }
 
 type LabelsCache interface {
@@ -42,6 +43,7 @@ type LabelsCache interface {
 	Len() int
 	// Cap returns the capacity of the labels cache.
 	Cap() int
+	Evictions() uint64
 }
 
 // MetricNameCache stores and retrieves metric table names in a in-memory cache.
@@ -78,6 +80,10 @@ func (m *MetricNameCache) Len() int {
 
 func (m *MetricNameCache) Cap() int {
 	return m.Metrics.Cap()
+}
+
+func (m *MetricNameCache) Evictions() uint64 {
+	return m.Metrics.Evictions()
 }
 
 func NewMetricCache(config Config) *MetricNameCache {

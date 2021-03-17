@@ -390,6 +390,10 @@ func (m *MockMetricCache) Cap() int {
 	return len(m.MetricCache)
 }
 
+func (m *MockMetricCache) Evictions() uint64 {
+	return 0
+}
+
 func (m *MockMetricCache) Get(metric string) (string, error) {
 	if m.GetMetricErr != nil {
 		return "", m.GetMetricErr
