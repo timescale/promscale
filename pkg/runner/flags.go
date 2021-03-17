@@ -62,12 +62,16 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
 	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
 
-	util.ParseEnv("PROMSCALE", fs)
+	if err := util.ParseEnv("PROMSCALE", fs); err != nil {
+		return nil, fmt.Errorf("error parsing env variables: %w", err)
+	}
 	// Deprecated: TS_PROM is the old prefix which is deprecated and in here
 	// for legacy compatibility. Will be removed in the future. PROMSCALE prefix
 	// takes precedence and will be used if the same variable with both prefixes
 	// exist.
-	util.ParseEnv("TS_PROM", fs)
+	if err := util.ParseEnv("TS_PROM", fs); err != nil {
+		return nil, fmt.Errorf("error parsing env variables: %w", err)
+	}
 
 	if err := ff.Parse(fs, args,
 		ff.WithConfigFileFlag("config"),

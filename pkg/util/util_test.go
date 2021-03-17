@@ -6,6 +6,7 @@ package util
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
@@ -100,6 +101,7 @@ type flagValues struct {
 	First  string
 	Second string
 	Third  string
+	Fourth int
 }
 
 func TestParseEnv(t *testing.T) {
@@ -109,6 +111,7 @@ func TestParseEnv(t *testing.T) {
 		env        map[string]string
 		args       []string
 		flagValues flagValues
+		err        error
 	}{
 		{
 			name: "No env variables set",
@@ -147,6 +150,14 @@ func TestParseEnv(t *testing.T) {
 				First: "first value",
 			},
 		},
+		{
+			name:     "error parsing env variables, wrong type",
+			prefixes: []string{"PREFIX"},
+			env: map[string]string{
+				"PREFIX_FOURTH": "foobar",
+			},
+			err: fmt.Errorf(`error setting flag "fourth" from env variable "PREFIX_FOURTH": parse error`),
+		},
 	}
 
 	for _, c := range testCases {
@@ -164,9 +175,18 @@ func TestParseEnv(t *testing.T) {
 			fs.StringVar(&values.First, "first", "", "")
 			fs.StringVar(&values.Second, "second", "", "")
 			fs.StringVar(&values.Third, "third", "", "")
+			fs.IntVar(&values.Fourth, "fourth", 0, "")
 
 			for _, prefix := range c.prefixes {
-				ParseEnv(prefix, fs)
+				if err := ParseEnv(prefix, fs); err != nil {
+					if c.err == nil {
+						t.Fatalf("unexpected error while parsing env variables: %s", err)
+					}
+					if c.err.Error() != err.Error() {
+						t.Fatalf("unexpected error while parsing flags:\ngot\n%s\nwanted\n%s\n", err, c.err)
+					}
+					return
+				}
 			}
 			if err := fs.Parse(c.args); err != nil {
 				t.Fatalf("unexpected error while parsing flags: %s", err)
