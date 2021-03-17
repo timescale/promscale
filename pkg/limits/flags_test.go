@@ -1,9 +1,18 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license
+
 package limits
 
 import (
+	"flag"
+	"io/ioutil"
+	"os"
 	"testing"
 
+	"github.com/peterbourgon/ff/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/limits/mem"
 )
 
 func TestPercent(t *testing.T) {
@@ -72,4 +81,36 @@ func TestString(t *testing.T) {
 	gotErr = tm.Set(" 3000 ")
 	require.NoError(t, gotErr)
 	require.Equal(t, "3000", tm.String())
+}
+
+func fullyParse(t *testing.T, args []string, expectError bool) Config {
+	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	fs.SetOutput(ioutil.Discard)
+	config := &Config{}
+	ParseFlags(fs, config)
+	err := ff.Parse(fs, args)
+	if !expectError {
+		require.NoError(t, err)
+	} else {
+		require.Error(t, err)
+		return Config{}
+	}
+	require.NoError(t, Validate(config))
+	return *config
+}
+
+func TestParse(t *testing.T) {
+	config := fullyParse(t, []string{}, false)
+	require.Equal(t, PercentageBytes{percentage: 80}, config.targetMemoryFlag)
+	require.Equal(t, uint64(float64(mem.SystemMemory())*0.8), config.TargetMemoryBytes)
+
+	config = fullyParse(t, []string{"-memory-target", "60%"}, false)
+	require.Equal(t, PercentageBytes{percentage: 60}, config.targetMemoryFlag)
+	require.Equal(t, uint64(float64(mem.SystemMemory())*0.6), config.TargetMemoryBytes)
+
+	fullyParse(t, []string{"-memory-target", "60"}, true)
+
+	config = fullyParse(t, []string{"-memory-target", "60000"}, false)
+	require.Equal(t, PercentageBytes{bytes: 60000}, config.targetMemoryFlag)
+	require.Equal(t, uint64(60000), config.TargetMemoryBytes)
 }
