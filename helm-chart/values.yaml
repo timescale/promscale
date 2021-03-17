@@ -2,6 +2,13 @@ image: timescale/promscale
 # number of connector pods to spawn
 replicaCount: 1
 
+# Promscale deployment upgrade strategy
+# as Promscale upgrade requires no existing Promscale
+# connected with TimescaleDB. Recreate strategy helps
+# scale down to 0 and recreate the new version.
+upgradeStrategy: Recreate
+
+
 # Arguments that will be passed onto deployment pods
 # The list of available cli flags is available at
 # https://github.com/timescale/promscale/blob/master/docs/cli.md

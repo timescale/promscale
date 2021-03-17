@@ -9,6 +9,8 @@ metadata:
     heritage: {{ .Release.Service }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: {{ .Values.upgradeStrategy }}
   selector:
     matchLabels:
       app: {{ template "connector.fullname" . }}

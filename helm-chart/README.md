@@ -98,6 +98,7 @@ helm install --name my-release -f myvalues.yaml .
 |-----------------------------------|---------------------------------------------|------------------------------------|
 | `image`                           | The image (with tag) to pull                | `timescale/promscale`   |
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
+| `upgradeStrategy`                 | Promscale deployment upgrade strategy, By default set to `Recreate` as during Promscale upgrade we expect no Promscale to be connected to TimescaleDB       | `Recreate`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
 | `connection.password.timescaleDBSuperUserKey`| The DB password key in secret object which will hold the db password for `postgres`  user | `PATRONI_SUPERUSER_PASSWORD` |
 | `connection.password.secretTemplate`| The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-credentials` |
