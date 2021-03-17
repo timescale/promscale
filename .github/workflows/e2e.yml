@@ -26,10 +26,22 @@ jobs:
       run: ./scripts/end_to_end_tests.sh
       shell: bash
 
+    - name: Print debug logs
+      if: ${{ failure() }}
+      run: docker logs e2e-tsdb
+
     - name: Test against TimescaleDB 2.0
       run: ./scripts/end_to_end_tests.sh timescale/timescaledb:2.0.0-rc2-pg12
       shell: bash
 
+    - name: Print debug logs
+      if: ${{ failure() }}
+      run: docker logs e2e-tsdb
+
     - name: Test against TimescaleDB 2.0 with Promscale extension
       run: ./scripts/end_to_end_tests.sh timescaledev/promscale-extension:2.0.0-rc2-pg12
       shell: bash
+
+    - name: Print debug logs
+      if: ${{ failure() }}
+      run: docker logs e2e-tsdb
