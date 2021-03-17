@@ -269,12 +269,12 @@ func TestHALeaderChangedFromOutsideSyncUpdateTriggeredBecauseOfSamplesOutOfCache
 				desc: "2 tries to send data after lease, lease is cached from before but will be synchronously updated",
 				input: haTestInput{
 					replica: "2",
-					minT:    unixT(60),
-					maxT:    unixT(60),
+					minT:    unixT(61),
+					maxT:    unixT(61),
 				},
 				output: haTestOutput{
 					expectedNumRowsInDb: 2,
-					expectedMaxTimeInDb: unixT(60),
+					expectedMaxTimeInDb: unixT(61),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "2",
