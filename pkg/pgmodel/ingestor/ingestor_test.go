@@ -172,7 +172,7 @@ func TestDBIngestorIngest(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			scache := cache.NewSeriesCache(cache.DefaultConfig)
+			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			inserter := model.MockInserter{
 				InsertSeriesErr: c.insertSeriesErr,
 				InsertDataErr:   c.insertDataErr,

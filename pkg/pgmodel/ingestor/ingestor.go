@@ -42,7 +42,7 @@ func NewPgxIngestorWithMetricCache(conn pgxconn.PgxConn, cache cache.MetricCache
 // NewPgxIngestor returns a new Ingestor that write to PostgreSQL using PGX
 func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
 	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-	s := cache.NewSeriesCache(cache.DefaultConfig)
+	s := cache.NewSeriesCache(cache.DefaultConfig, nil)
 	return NewPgxIngestorWithMetricCache(conn, c, s, &Cfg{})
 }
 
