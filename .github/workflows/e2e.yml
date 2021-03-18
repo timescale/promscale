@@ -30,8 +30,8 @@ jobs:
       if: ${{ failure() }}
       run: docker logs e2e-tsdb
 
-    - name: Test against TimescaleDB 2.0
-      run: ./scripts/end_to_end_tests.sh timescale/timescaledb:2.0.0-rc2-pg12
+    - name: Test against TimescaleDB 2.1
+      run: ./scripts/end_to_end_tests.sh timescale/timescaledb:2.1.0-pg13
       shell: bash
 
     - name: Print debug logs
@@ -39,7 +39,7 @@ jobs:
       run: docker logs e2e-tsdb
 
     - name: Test against TimescaleDB 2.0 with Promscale extension
-      run: ./scripts/end_to_end_tests.sh timescaledev/promscale-extension:2.0.0-rc2-pg12
+      run: ./scripts/end_to_end_tests.sh timescaledev/promscale-extension:latest-ts2-pg12
       shell: bash
 
     - name: Print debug logs
