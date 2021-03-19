@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
@@ -77,15 +78,15 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		verifyRetentionPeriod(t, db, "test2", time.Duration(6*time.Hour))
-		verifyRetentionPeriod(t, db, "TEST", time.Duration(8*time.Hour))
+		verifyRetentionPeriod(t, db, "test2", 6*time.Hour)
+		verifyRetentionPeriod(t, db, "TEST", 8*time.Hour)
 
 		//set on a metric that doesn't exist should create the metric and set the parameter
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test_new_metric1', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
-		verifyRetentionPeriod(t, db, "test_new_metric1", time.Duration(7*time.Hour))
+		verifyRetentionPeriod(t, db, "test_new_metric1", 7*time.Hour)
 
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_retention_period(INTERVAL '2 hours')")
 		if err != nil {
@@ -342,7 +343,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, ingstr.DefaultParser(scache), &ingstr.Cfg{DisableEpochSync: true})
 		if err != nil {
 			t.Fatal(err)
 		}
