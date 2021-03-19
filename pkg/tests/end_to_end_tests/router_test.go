@@ -32,6 +32,7 @@ var (
 		"/debug/pprof/profile?seconds=1": "GET",
 		"/debug/pprof/symbol":            "GET",
 		"/debug/pprof/trace":             "GET",
+		"/debug/pprof/mutex":             "GET",
 		"/metrics":                       "GET",
 	}
 )
