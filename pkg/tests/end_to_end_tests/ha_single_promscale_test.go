@@ -104,7 +104,8 @@ func prepareIngestorWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, 
 	tooFarInTheFutureNowFn := func() time.Time { return time.Now().Add(time.Hour) }
 	leaseClient := haClient.NewHaLeaseClient(pgxconn.NewPgxConn(db))
 	haService := ha.NewHAServiceWith(leaseClient, ticker, tooFarInTheFutureNowFn)
-	scach := cache.NewSeriesCache(cache.DefaultSeriesCacheSize)
+	sigClose := make(chan struct{})
+	scach := cache.NewSeriesCache(cache.DefaultConfig, sigClose)
 	haParser := ha.NewHAParser(haService, scach)
 	cach := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 
