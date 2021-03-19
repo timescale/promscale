@@ -111,9 +111,6 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 				//was already set
 				continue
 			}
-			// Filter null chars from label names and label values. If this is done in fillLabelIDs(), then labelMap will
-			// throw error since the sanitized key does not have an entry in the map. Hence, the sanitization is done here
-			// to ensure that the labelMap also contains it.
 			for i := range names {
 				key := labels.Label{Name: names[i], Value: values[i]}
 				_, ok = labelMap[key]
@@ -225,11 +222,11 @@ func (h *insertHandler) fillLabelIDs(metricName string, names *pgsafetype.TextAr
 	defer rows.Close()
 
 	count := 0
+	labelName := new(pgsafetype.Text)
+	labelValue := new(pgsafetype.Text)
 	for rows.Next() {
-		labelName := new(pgsafetype.Text)
-		labelValue := new(pgsafetype.Text)
 		res := labelInfo{}
-		err := rows.Scan(&res.Pos, &res.labelID, labelName, labelValue)
+		err := rows.Scan(&res.Pos, &res.labelID, &labelName.String, &labelValue.String)
 		if err != nil {
 			return dbEpoch, 0, fmt.Errorf("Error filling labels in scan: %w", err)
 		}
