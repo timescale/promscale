@@ -82,6 +82,7 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Get("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
 	router.Get("/debug/pprof/block", pprof.Handler("block").ServeHTTP)
 	router.Get("/debug/pprof/allocs", pprof.Handler("allocs").ServeHTTP)
+	router.Get("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
 
 	return router, nil
 }
