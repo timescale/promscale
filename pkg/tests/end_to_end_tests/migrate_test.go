@@ -110,12 +110,12 @@ func TestMigrateLock(t *testing.T) {
 		reader.Close()
 		migrator.Close()
 
-		only_migrator, err := runner.CreateClient(&cfg3, metrics)
+		onlyMigrator, err := runner.CreateClient(&cfg3, metrics)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if only_migrator != nil {
-			t.Fatal(only_migrator)
+		if onlyMigrator != nil {
+			t.Fatal(onlyMigrator)
 		}
 
 		migrator, err = runner.CreateClient(&cfg2, metrics)
