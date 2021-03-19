@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
 	"testing"
 	"time"
 
@@ -206,6 +207,16 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
+			for i := range c.sqlQueries {
+				for j := range c.sqlQueries[i].Args {
+					if _, ok := c.sqlQueries[i].Args[j].([]string); ok {
+						tmp := &pgsafetype.TextArray{}
+						err := tmp.Set(c.sqlQueries[i].Args[j])
+						require.NoError(t, err)
+						c.sqlQueries[i].Args[j] = tmp
+					}
+				}
+			}
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
@@ -276,8 +287,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
 				"metric_1",
-				[]string{"__name__", "name_1", "name_1"},
-				[]string{"metric_1", "value_1", "value_2"},
+				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "__name__", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
+				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "metric_1", Status: 0x2}, pgtype.Text{String: "value_1", Status: 0x2}, pgtype.Text{String: "value_2", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
 			},
 			Results: model.RowResults{
 				{int32(1), int32(1), "__name__", "metric_1"},
@@ -323,8 +334,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
 				"metric_1",
-				[]string{"__name__", "name_1", "name_1"},
-				[]string{"metric_1", "value_1", "value_2"},
+				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "__name__", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
+				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "metric_1", Status: 0x2}, pgtype.Text{String: "value_1", Status: 0x2}, pgtype.Text{String: "value_2", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
 			},
 			Results: model.RowResults{
 				{int32(1), int32(1), "__name__", "metric_1"},

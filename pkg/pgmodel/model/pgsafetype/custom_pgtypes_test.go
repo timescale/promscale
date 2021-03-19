@@ -2,6 +2,7 @@ package pgsafetype
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -55,42 +56,56 @@ func TestSanitizeNullCharAndReverting(t *testing.T) {
 	}
 }
 
-// strings.ReplaceALL: BenchmarkSanitizationOnNullChars-8   	  287623	      4669 ns/op
-// strings.Map with rune: BenchmarkSanitizationOnNullChars-8   	  308642	      3868 ns/op
-func BenchmarkSanitizationOnNullChars(b *testing.B) {
-	for _, bc := range tcs {
-		for n := 0; n < b.N; n++ {
-			// Sanitize.
-			sanitizeNullChars(bc.input)
-		}
+func BenchmarkMapWithContains(b *testing.B) {
+	benchmarks := []struct {
+		name                string
+		testSanitizeString  string
+		testSanitizedString string
+	}{
+		{"No nulls", "this_is_a_normal_string", "this_is_a_normal_string"},
+		{"With nulls", fmt.Sprintf("this_%c_null_%c_string", NullChar, NullChar), fmt.Sprintf("this_%c_null_%c_string", NullCharSanitize, NullCharSanitize)},
+	}
+	for _, bm := range benchmarks {
+		s := bm.testSanitizeString
+		b.Run(bm.name+"_sanitize", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if strings.ContainsRune(s, NullChar) {
+					strings.Map(replaceFunc, s)
+				}
+			}
+		})
+		s = bm.testSanitizedString
+		b.Run(bm.name+"_revert", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if strings.ContainsRune(s, NullCharSanitize) {
+					strings.Map(revertFunc, s)
+				}
+			}
+		})
 	}
 }
 
-// To compare normal string vs null char string, look the results of BenchmarkStringsComp_normal-8 vs BenchmarkStringsComp_null_string-8 respectively.
-// BenchmarkStringsComp_normal-8   	 1849795	       551 ns/op
-func BenchmarkStringsComp_normal(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		// Sanitize normal string.
-		sanitizeNullChars("this_is_a_normal_string")
+func BenchmarkMapWithoutContains(b *testing.B) {
+	benchmarks := []struct {
+		name                string
+		testSanitizeString  string
+		testSanitizedString string
+	}{
+		{"No nulls", "this_is_a_normal_string", "this_is_a_normal_string"},
+		{"With nulls", fmt.Sprintf("this_%c_null_%c_string", NullChar, NullChar), fmt.Sprintf("this_%c_null_%c_string", NullCharSanitize, NullCharSanitize)},
 	}
-}
-
-// BenchmarkStringsComp_null_string-8   	 1069735	       999 ns/op
-func BenchmarkStringsComp_null_string(b *testing.B) {
-	s := fmt.Sprintf("this_%c_null_%c_string", NullChar, NullChar)
-	for n := 0; n < b.N; n++ {
-		// Sanitize null chars string.
-		sanitizeNullChars(s)
-	}
-}
-
-// using []pgtype.Text in pgsafetype.TextArray.Set(): BenchmarkTypeArray-8   	   85900	     13161 ns/op
-// using []string in pgsafetype.TextArray.Set(): 	  BenchmarkTypeArray-8   	   84028	     16224 ns/op
-func BenchmarkTypeArray(b *testing.B) {
-	stringArr := []string{"one", "two", "three", "four", "five", "six", "seven", "eight"}
-	for n := 0; n < b.N; n++ {
-		t := &TextArray{}
-		err := t.Set(stringArr)
-		require.NoError(b, err)
+	for _, bm := range benchmarks {
+		s := bm.testSanitizeString
+		b.Run(bm.name+"_sanitize", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				s = strings.Map(replaceFunc, s)
+			}
+		})
+		s = bm.testSanitizedString
+		b.Run(bm.name+"_revert", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				s = strings.Map(revertFunc, s)
+			}
+		})
 	}
 }
