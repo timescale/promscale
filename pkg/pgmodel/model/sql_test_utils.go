@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -309,7 +310,25 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 		case []string:
 			if d, ok := dest[i].(*[]string); ok {
 				*d = s
+				continue
 			}
+			// Ideally, we should be doing pgtype.BinaryDecoder. but doing that here will allow using only
+			// a single function that the interface pgtype.BinaryDecoder allows, i.e, DecodeBinary(). DecodeBinary() takes
+			// a pgtype.ConnInfo and []byte, which is the main problem. The ConnInfo can be nil, but []byte needs to be set
+			// for the DecodeBinary() to work. pgtype.Scan gets the byte slice from values which we do not implement here.
+			// Implementing it will require rewriting and changing the [][]interface{}{} to [][]byte and updating all our
+			// existing test setup to have the [][]byte (particularly the expected results part), which is lengthy.
+			// Plus, not all types convert to [][]byte. types like int will require binary.Little.Endian conversion
+			// which can be a overdo for just writing the results of the tests. So, we do a short-cut to directly
+			// leverage the .Set() of our custom type and quick the process.
+			if d, okk := dest[i].(*pgsafetype.TextArray); okk {
+				pgta := pgsafetype.TextArray{}
+				if err := pgta.Set(s); err != nil {
+					panic(err)
+				}
+				*d = pgta
+			}
+			return fmt.Errorf("wrong value type []string")
 		case time.Time:
 			if d, ok := dest[i].(*time.Time); ok {
 				*d = s

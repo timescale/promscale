@@ -74,6 +74,7 @@ func TestOperationWithNullChars(t *testing.T) {
 		require.NoError(t, err)
 		for _, l := range resp[0].Labels {
 			if l.Name == testNullLabelValReplacement {
+				fmt.Println("name", l.Name)
 				require.Fail(t, "reverting of null sanitized string did not happen")
 			}
 			if l.Value == testNullLabelValReplacement {

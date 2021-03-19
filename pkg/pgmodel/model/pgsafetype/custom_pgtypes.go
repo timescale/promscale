@@ -20,7 +20,7 @@ type Text struct {
 func (t *Text) Set(src interface{}) error {
 	text, ok := src.(string)
 	if !ok {
-		return fmt.Errorf("pgsafetype.Text Set(): src is not of 'string' type")
+		return fmt.Errorf("pgsafetype.Text.Set(): src is not of 'string' type")
 	}
 	if err := t.Text.Set(sanitizeNullChars(text)); err != nil {
 		return fmt.Errorf("safe text: %w", err)
@@ -29,6 +29,10 @@ func (t *Text) Set(src interface{}) error {
 }
 
 func (t *Text) Get() interface{} {
+	// Status is set to present in pgtype.Text when using pgtype.Text.Set(). However, when using a Scan(),
+	// this does not happen. In order to make this work, we need to explicitly tell here that data is present, otherwise
+	// data is not returned, rather a status is returned in pgtype.Text.Get().
+	t.Text.Status = pgtype.Present
 	s, ok := t.Text.Get().(string)
 	if !ok {
 		panic("'string' type not received from underlying 'pgtype.Text'")
@@ -36,18 +40,12 @@ func (t *Text) Get() interface{} {
 	return revertSanitization(s)
 }
 
-func (t *Text) AssignTo(dst interface{}) error {
-	if err := t.Text.AssignTo(dst); err != nil {
-		return fmt.Errorf("safe text: %w", err)
-	}
-	return nil
+func (t *Text) AssignTo(_ interface{}) error {
+	panic("pgsafetype.Text.AssignTo(): not implemented")
 }
 
-func (t *Text) Scan(src interface{}) error {
-	if err := t.Text.Scan(src); err != nil {
-		return fmt.Errorf("safe text: %w", err)
-	}
-	return nil
+func (t *Text) Scan(_ interface{}) error {
+	panic("pgsafetype.Text.Scan(): not implemented")
 }
 
 // TextArray is a custom pgtype that wraps the pgtype.TextArray. It is safe from null characters.
@@ -55,10 +53,17 @@ type TextArray struct {
 	pgtype.TextArray
 }
 
+func (t *TextArray) DecodeBinary(ci *pgtype.ConnInfo, src []byte) error {
+	if err := t.TextArray.DecodeBinary(ci, src); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
 func (t *TextArray) Set(src interface{}) error {
 	textArray, ok := src.([]string)
 	if !ok {
-		return fmt.Errorf("pgsafetype.TextArray Set(): src is not of '[]string' type")
+		return fmt.Errorf("pgsafetype.TextArray.Set(): src is not of '[]string' type")
 	}
 	buf := make([]pgtype.Text, len(textArray))
 	for i := range textArray {
@@ -69,38 +74,40 @@ func (t *TextArray) Set(src interface{}) error {
 		buf[i] = text
 	}
 	if err := t.TextArray.Set(buf); err != nil {
-		return fmt.Errorf("safe text: %w", err)
+		return fmt.Errorf("safe textarray: %w", err)
 	}
 	return nil
 }
 
-func (t *TextArray) Get() interface{} {
-	var (
-		arr = t.TextArray.Get().(pgtype.TextArray).Elements
-		s   = make([]string, len(arr))
-	)
-	for i := range arr {
-		tmp, ok := arr[i].Get().(string)
+func (t *TextArray) revertSanitization() {
+	val := t.TextArray.Get()
+	if val == nil {
+		return
+	}
+	arr := val.(pgtype.TextArray)
+	for i := range arr.Elements {
+		tmp, ok := arr.Elements[i].Get().(string)
 		if !ok {
 			panic("'string' type not received from underlying 'pgtype.Text' in 'pgsafetype.TextArray'")
 		}
-		s[i] = revertSanitization(tmp)
+		arr.Elements[i].String = revertSanitization(tmp)
 	}
-	return s
+	t.Elements = arr.Elements
 }
 
-func (t *TextArray) AssignTo(dst interface{}) error {
-	if err := t.TextArray.AssignTo(dst); err != nil {
-		return fmt.Errorf("safe text: %w", err)
-	}
-	return nil
+func (t *TextArray) Get() interface{} {
+	t.revertSanitization()
+	// General patterns of returns in Get() in pgtype package is a value and not a pointer. To keep things in line,
+	// we should do the same as well.
+	return *t
 }
 
-func (t *TextArray) Scan(src interface{}) error {
-	if err := t.TextArray.Scan(src); err != nil {
-		return fmt.Errorf("safe text: %w", err)
-	}
-	return nil
+func (t *TextArray) AssignTo(_ interface{}) error {
+	panic("pgsafetype.TextArray.AssignTo(): not implemented")
+}
+
+func (t *TextArray) Scan(_ interface{}) error {
+	panic("pgsafetype.TextArray.Scan(): not implemented")
 }
 
 func replaceFunc(r rune) rune {
@@ -118,9 +125,15 @@ func revertFunc(r rune) rune {
 }
 
 func sanitizeNullChars(s string) string {
-	return strings.Map(replaceFunc, s)
+	if strings.ContainsRune(s, NullChar) {
+		return strings.Map(replaceFunc, s)
+	}
+	return s
 }
 
 func revertSanitization(s string) string {
-	return strings.Map(revertFunc, s)
+	if strings.ContainsRune(s, NullCharSanitize) {
+		return strings.Map(revertFunc, s)
+	}
+	return s
 }

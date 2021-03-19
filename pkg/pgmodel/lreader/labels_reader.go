@@ -150,13 +150,14 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 	}
 	defer rows.Close()
 
+	var (
+		keys pgsafetype.TextArray
+		vals pgsafetype.TextArray
+	)
+
 	for rows.Next() {
-		var (
-			ids  []int64
-			keys = new(pgsafetype.TextArray)
-			vals = new(pgsafetype.TextArray)
-		)
-		err = rows.Scan(&ids, keys, vals)
+		var ids []int64
+		err = rows.Scan(&ids, &keys, &vals)
 		if err != nil {
 			return 0, err
 		}
@@ -173,13 +174,13 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 		numNewLabels = len(keys.Elements)
 		misses = misses[:len(keys.Elements)]
 		newLabels = newLabels[:len(keys.Elements)]
+		keys = keys.Get().(pgsafetype.TextArray)
+		vals = vals.Get().(pgsafetype.TextArray)
 		sizes := make([]uint64, numNewLabels)
-		keysArr := keys.Get().([]string)
-		valsArr := vals.Get().([]string)
 		for i := range newLabels {
 			misses[i] = ids[i]
-			newLabels[i] = labels.Label{Name: keysArr[i], Value: valsArr[i]}
-			sizes[i] = uint64(8 + int(unsafe.Sizeof(labels.Label{})) + len(keysArr[i]) + len(valsArr[i])) // #nosec
+			newLabels[i] = labels.Label{Name: keys.Elements[i].String, Value: vals.Elements[i].String}
+			sizes[i] = uint64(8 + int(unsafe.Sizeof(labels.Label{})) + len(keys.Elements[i].String) + len(vals.Elements[i].String)) // #nosec
 		}
 
 		numInserted := lr.labels.InsertBatch(misses, newLabels, sizes)
