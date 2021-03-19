@@ -44,6 +44,7 @@ var (
 		"idempotent": {
 			"base.sql",
 			"matcher-functions.sql",
+			"ha.sql",
 		},
 	}
 	migrateMutex = &sync.Mutex{}
