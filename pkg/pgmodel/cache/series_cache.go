@@ -39,19 +39,19 @@ type SeriesCacheImpl struct {
 	maxSizeBytes uint64
 }
 
-func NewSeriesCache(config Config, closer <-chan struct{}) *SeriesCacheImpl {
+func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
 	cache := &SeriesCacheImpl{
 		clockcache.WithMax(config.SeriesCacheInitialSize),
 		config.SeriesCacheMemoryMaxBytes,
 	}
 
-	if closer != nil {
-		go cache.runSizeCheck(closer)
+	if sigClose != nil {
+		go cache.runSizeCheck(sigClose)
 	}
 	return cache
 }
 
-func (t *SeriesCacheImpl) runSizeCheck(closer <-chan struct{}) {
+func (t *SeriesCacheImpl) runSizeCheck(sigClose <-chan struct{}) {
 	prev := uint64(0)
 	ticker := time.NewTicker(GrowCheckDuration)
 	for {
@@ -64,7 +64,7 @@ func (t *SeriesCacheImpl) runSizeCheck(closer <-chan struct{}) {
 			if newEvictions > evictionsThresh {
 				t.grow(newEvictions)
 			}
-		case <-closer:
+		case <-sigClose:
 			return
 		}
 	}

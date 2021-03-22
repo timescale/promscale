@@ -20,9 +20,15 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
 			Name:      "max_memory_target_bytes",
-			Help:      "The system will try to keep memory usage below this target",
+			Help:      "The target for the maximum amount of memory the application can use in bytes.",
 		})
 )
+
+func init() {
+	prometheus.MustRegister(
+		MemoryTargetMetric,
+	)
+}
 
 // PercentageBytes represents a flag passed in as either a percentage value or a byte value.
 
@@ -129,10 +135,4 @@ func Validate(cfg *Config) error {
 	}
 	MemoryTargetMetric.Set(float64(cfg.TargetMemoryBytes))
 	return nil
-}
-
-func init() {
-	prometheus.MustRegister(
-		MemoryTargetMetric,
-	)
 }
