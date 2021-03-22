@@ -46,7 +46,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", DefaultMetricCacheSize, "Maximum number of metric names to cache.")
 	fs.Uint64Var(&cfg.SeriesCacheInitialSize, "series-cache-initial-size", DefaultSeriesCacheSize, "Maximum number of series to cache.")
 	fs.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "Maximum number of labels to cache.")
-	fs.Var(&cfg.seriesCacheMemoryMaxFlag, "series-cache-max-bytes", "Target for amount of memory to use for the series cache. "+
+	fs.Var(&cfg.seriesCacheMemoryMaxFlag, "series-cache-max-bytes", "Initial number of elements in the series cache. "+
 		"Specified in bytes or as a percentage of the memory-target (e.g. 50%).")
 	return cfg
 }

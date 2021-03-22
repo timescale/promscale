@@ -21,8 +21,6 @@ You can also find information on flags with `promscale_<version> -help`.
 | leader-election-scheduled-interval | duration | 5 seconds | Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock. |
 | log-format | string | logfmt | Log format to use from [ "logfmt", "json" ]. |
 | log-level | string | debug | Log level to use from [ "error", "warn", "info", "debug" ]. |
-| labels-cache-size | unsigned-integer | 10000 | Maximum number of labels to cache. |
-| metrics-cache-size | unsigned-integer | 10000 | Maximum number of metric names to cache. |
 | migrate | string | true | Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. |
 | read-only | boolean | false | Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica. |
 | use-schema-version-lease | boolean | true | Use schema version lease to prevent race conditions during migration. |
@@ -33,6 +31,15 @@ You can also find information on flags with `promscale_<version> -help`.
 | web-enable-admin-api | boolean | false | Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series. |
 | web-listen-address | string | `:9201` | Address to listen on for web endpoints. |
 | web-telemetry-path | string | `/metrics` | Web endpoint for exposing Promscale's Prometheus metrics. |
+
+## Resource usage flags
+| Flag | Type | Default | Description |
+|------|:-----:|:-------:|:-----------|
+| memory-target | unsigned-integer or percentage | 80% | Target for max amount of memory to use. Specified in bytes or as a percentage of system memory (e.g. 80%). |
+| labels-cache-size P| unsigned-integer | 10000 | Maximum number of labels to cache. |
+| metrics-cache-size | unsigned-integer | 10000 | Maximum number of metric names to cache. |
+| series-cache-initial-size | unsigned-integer| 250000 | Initial number of elements in the series cache. |
+| series-cache-max-bytes | unsigned-integer or percentage | 50% |  Target for amount of memory to use for the series cache. Specified in bytes or as a percentage of the memory-target (e.g. 50%). |
 
 ## Auth flags
 
