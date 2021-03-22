@@ -15,7 +15,7 @@ require (
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/snappy v0.0.2
+	github.com/golang/snappy v0.0.3
 	github.com/hashicorp/go-hclog v0.12.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
@@ -32,8 +32,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.17.0
-	github.com/prometheus/prometheus v1.8.2-0.20210220153452-aff3c702abbf
+	github.com/prometheus/common v0.18.0
+	github.com/prometheus/prometheus v1.8.2-0.20210322105412-0d8db5295421
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
 	github.com/stretchr/testify v1.7.0

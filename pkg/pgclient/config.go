@@ -157,6 +157,5 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max/2))
 		numCopiers = max / 2
 	}
-
 	return
 }
