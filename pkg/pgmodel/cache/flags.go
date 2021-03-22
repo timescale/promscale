@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license
+
 package cache
 
 import (
@@ -9,16 +13,12 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-// This file and its contents are licensed under the Apache License 2.0.
-// Please see the included NOTICE for copyright information and
-// LICENSE for a copy of the license
-
 var (
 	SeriesCacheMaxBytesMetric = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
-			Name:      "series_cache_max_size_target_bytes",
-			Help:      "The maximum number of bytes of memory the series_cache will target",
+			Name:      "series_cache_max_bytes",
+			Help:      "The target for the maximum amount of memory the series_cache can use in bytes.",
 		})
 )
 
