@@ -15,11 +15,10 @@ type Cache struct {
 	// stores indexes into storage
 	elements map[interface{}]*element
 	storage  []element
-
-	//Information elements protected by elementsLock
-	//size of everything stored by storage, does not include size of the cache structure itself
+	// Information elements:
+	// size of everything stored by storage, does not include size of the cache structure itself
 	dataSize uint64
-	//number of evictions
+	// number of evictions
 	evictions uint64
 
 	// guards next, and len(storage) and ensures that at most one eviction
@@ -49,23 +48,25 @@ func WithMax(max uint64) *Cache {
 	}
 }
 
-// Insert a key/value mapping into the cache if the key is not already present
+// Insert a key/value mapping into the cache if the key is not already present,
+// The sizeBytes represents the in-memory size of the key and value (used to estimate cache size).
 // returns the canonical version of the value
 // and if the value is in the map
-func (self *Cache) Insert(key interface{}, value interface{}, size uint64) (canonicalValue interface{}, in_cache bool) {
+func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) (canonicalValue interface{}, in_cache bool) {
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
-	_, canonicalValue, in_cache = self.insert(key, value, size)
+	_, canonicalValue, in_cache = self.insert(key, value, sizeBytes)
 	return
 }
 
 // Insert a batch of keys with their corresponding values.
 // This function will _overwrite_ the keys and values slices with their
 // canonical versions.
+// sizesBytes is the in-memory size of the key+value of each element.
 // returns the number of elements inserted, is lower than len(keys) if insertion
 // starved
-func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizes []uint64) int {
+func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBytes []uint64) int {
 	if len(keys) != len(values) {
 		panic(fmt.Sprintf("keys and values are not the same len. %d keys, %d values", len(keys), len(values)))
 	}
@@ -75,7 +76,7 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizes [
 
 	for idx := range keys {
 		var inserted bool
-		keys[idx], values[idx], inserted = self.insert(keys[idx], values[idx], sizes[idx])
+		keys[idx], values[idx], inserted = self.insert(keys[idx], values[idx], sizesBytes[idx])
 		if !inserted {
 			return idx
 		}

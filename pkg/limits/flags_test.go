@@ -20,7 +20,7 @@ func TestPercent(t *testing.T) {
 
 	inputs := []struct {
 		val     string
-		percent int
+		percent uint64
 		err     bool
 	}{
 		{"80%", 80, false},
@@ -31,14 +31,14 @@ func TestPercent(t *testing.T) {
 		{"64.2%", 64, true},
 	}
 	for _, tc := range inputs {
-		var tm PercentageBytes
+		var tm PercentageAbsoluteBytesFlag
 		gotErr := tm.Set(tc.val)
 		require.Equal(t, tc.err, gotErr != nil, "input %v got error %v", tc.val, gotErr)
 		if gotErr != nil {
 			continue
 		}
-		require.Equal(t, tc.percent, tm.percentage)
-		require.Equal(t, uint64(0), tm.bytes)
+		require.Equal(t, Percentage, tm.kind)
+		require.Equal(t, tc.percent, tm.value)
 	}
 }
 
@@ -60,21 +60,21 @@ func TestBytes(t *testing.T) {
 		{"1001", 1001, false},
 	}
 	for _, tc := range inputs {
-		var tm PercentageBytes
+		var tm PercentageAbsoluteBytesFlag
 		gotErr := tm.Set(tc.val)
 		require.Equal(t, tc.err, gotErr != nil, "input %v got error %v", tc.val, gotErr)
 		if gotErr != nil {
 			continue
 		}
-		require.Equal(t, tc.bytes, tm.Bytes(), "input %v", tc.val)
-		require.Equal(t, 0, tm.percentage)
+		require.Equal(t, Absolute, tm.kind)
+		require.Equal(t, tc.bytes, tm.value, "input %v", tc.val)
 	}
 }
 
 func TestString(t *testing.T) {
 	t.Parallel()
 
-	var tm PercentageBytes
+	var tm PercentageAbsoluteBytesFlag
 	gotErr := tm.Set("80% ")
 	require.NoError(t, gotErr)
 	require.Equal(t, "80%", tm.String())
@@ -101,16 +101,16 @@ func fullyParse(t *testing.T, args []string, expectError bool) Config {
 
 func TestParse(t *testing.T) {
 	config := fullyParse(t, []string{}, false)
-	require.Equal(t, PercentageBytes{percentage: 80}, config.targetMemoryFlag)
+	require.Equal(t, PercentageAbsoluteBytesFlag{value: 80, kind: Percentage}, config.targetMemoryFlag)
 	require.Equal(t, uint64(float64(mem.SystemMemory())*0.8), config.TargetMemoryBytes)
 
 	config = fullyParse(t, []string{"-memory-target", "60%"}, false)
-	require.Equal(t, PercentageBytes{percentage: 60}, config.targetMemoryFlag)
+	require.Equal(t, PercentageAbsoluteBytesFlag{value: 60, kind: Percentage}, config.targetMemoryFlag)
 	require.Equal(t, uint64(float64(mem.SystemMemory())*0.6), config.TargetMemoryBytes)
 
 	fullyParse(t, []string{"-memory-target", "60"}, true)
 
 	config = fullyParse(t, []string{"-memory-target", "60000"}, false)
-	require.Equal(t, PercentageBytes{bytes: 60000}, config.targetMemoryFlag)
+	require.Equal(t, PercentageAbsoluteBytesFlag{value: 60000, kind: Absolute}, config.targetMemoryFlag)
 	require.Equal(t, uint64(60000), config.TargetMemoryBytes)
 }
