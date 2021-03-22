@@ -19,31 +19,42 @@ var (
 	MemoryTargetMetric = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
-			Name:      "memory_target_bytes",
-			Help:      "The number of bytes of memory the system will target using",
+			Name:      "max_memory_target_bytes",
+			Help:      "The system will try to keep memory usage below this target",
 		})
 )
 
-type PercentageBytes struct {
-	percentage int    //integer [1-100], only set if specified as percentage
-	bytes      uint64 //always set
+// PercentageBytes represents a flag passed in as either a percentage value or a byte value.
+
+type PercentageAbsoluteKind int8
+
+const (
+	Percentage PercentageAbsoluteKind = iota
+	Absolute
+)
+
+// PercentageAbsoluteBytesFlag is a CLI flag type representing either an absolute or relative number of bytes
+type PercentageAbsoluteBytesFlag struct {
+	kind  PercentageAbsoluteKind
+	value uint64
 }
 
-func (t *PercentageBytes) SetPercent(percent int) {
-	t.percentage = percent
-	t.bytes = 0
+func (t *PercentageAbsoluteBytesFlag) SetPercent(percent int) {
+	t.value = uint64(percent)
+	t.kind = Percentage
 }
 
-func (t *PercentageBytes) SetBytes(bytes uint64) {
-	t.percentage = 0
-	t.bytes = bytes
+func (t *PercentageAbsoluteBytesFlag) SetBytes(bytes uint64) {
+	t.value = bytes
+	t.kind = Absolute
 }
 
-func (t *PercentageBytes) Get() (int, uint64) {
-	return t.percentage, t.bytes
+func (t *PercentageAbsoluteBytesFlag) Get() (PercentageAbsoluteKind, uint64) {
+	return t.kind, t.value
 }
 
-func (t *PercentageBytes) Set(val string) error {
+// Set implements the flag interface to set value from the CLI
+func (t *PercentageAbsoluteBytesFlag) Set(val string) error {
 	val = strings.TrimSpace(val)
 	percentage := false
 	if val[len(val)-1] == '%' {
@@ -70,19 +81,19 @@ func (t *PercentageBytes) Set(val string) error {
 	return nil
 }
 
-func (t *PercentageBytes) String() string {
-	if t.percentage > 0 {
-		return fmt.Sprintf("%d%%", t.percentage)
+func (t *PercentageAbsoluteBytesFlag) String() string {
+	switch t.kind {
+	case Percentage:
+		return fmt.Sprintf("%d%%", int(t.value))
+	case Absolute:
+		return fmt.Sprintf("%d", t.value)
+	default:
+		panic("unknown kind")
 	}
-	return fmt.Sprintf("%d", t.bytes)
-}
-
-func (t *PercentageBytes) Bytes() uint64 {
-	return t.bytes
 }
 
 type Config struct {
-	targetMemoryFlag  PercentageBytes
+	targetMemoryFlag  PercentageAbsoluteBytesFlag
 	TargetMemoryBytes uint64
 }
 
@@ -91,28 +102,32 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	/* set defaults */
 	sysMem := mem.SystemMemory()
 	if sysMem > 0 {
+		//if we can auto-detect the system memory, set default to 80%
 		cfg.targetMemoryFlag.SetPercent(80)
 	} else {
-		cfg.targetMemoryFlag.SetBytes(1e9) //1 GB if cannot determine system memory.
+		//we can't detect system memory, try 1GB
+		cfg.targetMemoryFlag.SetBytes(1e9)
 	}
 
-	fs.Var(&cfg.targetMemoryFlag, "memory-target", "Target for amount of memory to use. "+
+	fs.Var(&cfg.targetMemoryFlag, "memory-target", "Target for max amount of memory to use. "+
 		"Specified in bytes or as a percentage of system memory (e.g. 80%).")
 	return cfg
 }
 
 func Validate(cfg *Config) error {
-	if cfg.targetMemoryFlag.percentage > 0 {
+	switch cfg.targetMemoryFlag.kind {
+	case Percentage:
 		sysMemory := mem.SystemMemory()
 		if sysMemory == 0 {
 			return fmt.Errorf("Cannot set target memory: specified in percentage terms but total system memory could not be determined")
 		}
-		cfg.TargetMemoryBytes = uint64(float64(sysMemory) * (float64(cfg.targetMemoryFlag.percentage) / 100.0))
-	} else {
-		cfg.TargetMemoryBytes = cfg.targetMemoryFlag.bytes
+		cfg.TargetMemoryBytes = uint64(float64(sysMemory) * (float64(cfg.targetMemoryFlag.value) / 100.0))
+	case Absolute:
+		cfg.TargetMemoryBytes = cfg.targetMemoryFlag.value
+	default:
+		return fmt.Errorf("Unknown kind of input")
 	}
 	MemoryTargetMetric.Set(float64(cfg.TargetMemoryBytes))
-
 	return nil
 }
 

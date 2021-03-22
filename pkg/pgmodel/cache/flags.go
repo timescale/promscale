@@ -17,14 +17,14 @@ var (
 	SeriesCacheMaxBytesMetric = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
-			Name:      "series_cache_max_bytes",
+			Name:      "series_cache_max_size_target_bytes",
 			Help:      "The maximum number of bytes of memory the series_cache will target",
 		})
 )
 
 type Config struct {
 	SeriesCacheInitialSize    uint64
-	seriesCacheMemoryMaxFlag  limits.PercentageBytes
+	seriesCacheMemoryMaxFlag  limits.PercentageAbsoluteBytesFlag
 	SeriesCacheMemoryMaxBytes uint64
 
 	MetricsCacheSize uint64
@@ -52,11 +52,14 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 }
 
 func Validate(cfg *Config, lcfg limits.Config) error {
-	percentage, bytes := cfg.seriesCacheMemoryMaxFlag.Get()
-	if percentage > 0 {
-		cfg.SeriesCacheMemoryMaxBytes = uint64(float64(lcfg.TargetMemoryBytes) * (float64(percentage) / 100.0))
-	} else {
-		cfg.SeriesCacheMemoryMaxBytes = bytes
+	kind, value := cfg.seriesCacheMemoryMaxFlag.Get()
+	switch kind {
+	case limits.Percentage:
+		cfg.SeriesCacheMemoryMaxBytes = uint64(float64(lcfg.TargetMemoryBytes) * (float64(value) / 100.0))
+	case limits.Absolute:
+		cfg.SeriesCacheMemoryMaxBytes = value
+	default:
+		return fmt.Errorf("series-cache-max-bytes flag has unknown kind")
 	}
 	SeriesCacheMaxBytesMetric.Set(float64(cfg.SeriesCacheMemoryMaxBytes))
 
