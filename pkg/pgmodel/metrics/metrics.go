@@ -44,30 +44,6 @@ var (
 			Name:      "decompress_min_unix_time",
 			Help:      "Earliest decdompression time",
 		}, []string{"table"})
-	NumInsertsPerBatch = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Namespace: util.PromNamespace,
-			Name:      "inserts_per_batch",
-			Help:      "number of INSERTs in a single transaction",
-			Buckets:   []float64{1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 75, 100},
-		},
-	)
-	NumRowsPerBatch = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Namespace: util.PromNamespace,
-			Name:      "rows_per_batch",
-			Help:      "number of rows inserted in a single transaction",
-			Buckets:   prometheus.LinearBuckets(100, 500, 10),
-		},
-	)
-	DbBatchInsertDuration = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Namespace: util.PromNamespace,
-			Name:      "db_batch_insert_duration_seconds",
-			Help:      "Duration of sample batch insert calls to the DB.",
-			Buckets:   prometheus.DefBuckets,
-		},
-	)
 	HAClusterLeaderDetails = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
@@ -91,9 +67,6 @@ func init() {
 		DecompressCalls,
 		DecompressEarliest,
 		DuplicateMetrics,
-		NumInsertsPerBatch,
-		NumRowsPerBatch,
-		DbBatchInsertDuration,
 		HAClusterLeaderDetails,
 		NumOfHAClusterLeaderChanges,
 	)
