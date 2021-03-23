@@ -19,6 +19,10 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
+const (
+	MetricBatcherChannelCap = 1000
+)
+
 type pgxInserter struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
@@ -47,7 +51,10 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 	// single channel. This should offer a decent compromise between batching
 	// and balancing: if an inserter is awake and has little work, it'll be more
 	// likely to win the race, while one that's busy or asleep won't.
-	toCopiers := make(chan copyRequest, numCopiers*maxCopyRequestsPerTxn)
+	copierCap := numCopiers * maxCopyRequestsPerTxn
+	toCopiers := make(chan copyRequest, copierCap)
+	setCopierChannelToMonitor(toCopiers)
+
 	for i := 0; i < numCopiers; i++ {
 		go runInserter(conn, toCopiers)
 	}
@@ -235,14 +242,16 @@ func (p *pgxInserter) getMetricInserter(metric string) chan *insertDataRequest {
 		// only start up the inserter routine if we know that we won the race
 		// to create the inserter, anything else will leave a zombie inserter
 		// lying around.
-		c := make(chan *insertDataRequest, 1000)
+		c := make(chan *insertDataRequest, MetricBatcherChannelCap)
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
 			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
 		}
 	}
-	return inserter.(chan *insertDataRequest)
+	ch := inserter.(chan *insertDataRequest)
+	MetricBatcherChLen.Observe(float64(len(ch)))
+	return ch
 }
 
 //nolint
