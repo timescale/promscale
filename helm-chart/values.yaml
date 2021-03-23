@@ -89,6 +89,10 @@ service:
 # settings for the maintenance CronJob that deletes data outside of
 # the retention period
 maintenance:
+  # if you are using >= TimescaleDB 2.0 you
+  # do not need maintenance job, so by default
+  # maintenance job is disabled
+  enabled: false
   schedule: "0,30 * * * *"
   # If startingDeadlineSeconds field is set (not null), the CronJob controller counts how
   # many missed jobs occurred from the value of startingDeadlineSeconds until now.
@@ -105,6 +109,7 @@ maintenance:
   resources: {}
   nodeSelector: {}
   tolerations: []
+  affinity: {}
 
 # set your own limits
 resources: {}
@@ -114,3 +119,6 @@ nodeSelector: {}
 
 # https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 tolerations: []
+
+# https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+affinity: {}

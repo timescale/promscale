@@ -1,3 +1,4 @@
+{{- if .Values.maintenance.enabled -}}
 apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
@@ -64,3 +65,7 @@ spec:
           {{- with .Values.maintenance.tolerations }}
           tolerations: {{ toYaml . | nindent 10 }}
           {{- end }}
+          {{- with .Values.maintenance.affinity }}
+          affinity: {{ toYaml . | nindent 12 }}
+          {{- end }}
+{{- end -}}
