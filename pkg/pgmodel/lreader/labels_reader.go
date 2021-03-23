@@ -7,7 +7,6 @@ package lreader
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
 	"sort"
 	"unsafe"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
