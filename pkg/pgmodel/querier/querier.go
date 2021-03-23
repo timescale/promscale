@@ -98,7 +98,6 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	results, err := buildTimeSeries(rows, q.labelsReader)
-
 	return results, err
 }
 

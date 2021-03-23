@@ -327,6 +327,7 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 					panic(err)
 				}
 				*d = pgta
+				continue
 			}
 			return fmt.Errorf("wrong value type []string")
 		case time.Time:
