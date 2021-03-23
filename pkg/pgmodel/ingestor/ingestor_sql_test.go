@@ -6,7 +6,6 @@ package ingestor
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
 	"testing"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -287,8 +287,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
 				"metric_1",
-				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "__name__", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
-				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "metric_1", Status: 0x2}, pgtype.Text{String: "value_1", Status: 0x2}, pgtype.Text{String: "value_2", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
+				[]string{"__name__", "name_1", "name_1"},
+				[]string{"metric_1", "value_1", "value_2"},
 			},
 			Results: model.RowResults{
 				{int32(1), int32(1), "__name__", "metric_1"},
@@ -334,8 +334,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
 				"metric_1",
-				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "__name__", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}, pgtype.Text{String: "name_1", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
-				&pgsafetype.TextArray{TextArray: pgtype.TextArray{Elements: []pgtype.Text{pgtype.Text{String: "metric_1", Status: 0x2}, pgtype.Text{String: "value_1", Status: 0x2}, pgtype.Text{String: "value_2", Status: 0x2}}, Dimensions: []pgtype.ArrayDimension{pgtype.ArrayDimension{Length: 3, LowerBound: 1}}, Status: 0x2}},
+				[]string{"__name__", "name_1", "name_1"},
+				[]string{"metric_1", "value_1", "value_2"},
 			},
 			Results: model.RowResults{
 				{int32(1), int32(1), "__name__", "metric_1"},
@@ -353,6 +353,17 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Results: model.RowResults{{int64(3), int64(1)}, {int64(4), int64(2)}},
 			Err:     error(nil),
 		},
+	}
+
+	for i := range sqlQueries {
+		for j := range sqlQueries[i].Args {
+			if _, ok := sqlQueries[i].Args[j].([]string); ok {
+				tmp := &pgsafetype.TextArray{}
+				err := tmp.Set(sqlQueries[i].Args[j])
+				require.NoError(t, err)
+				sqlQueries[i].Args[j] = tmp
+			}
+		}
 	}
 
 	mock := model.NewSqlRecorder(sqlQueries, t)

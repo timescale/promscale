@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package pgsafetype
 
 import (
@@ -15,6 +19,13 @@ const (
 // Text is a custom pgtype that wraps the pgtype.Text. It is safe from null characters.
 type Text struct {
 	pgtype.Text
+}
+
+func (t *Text) DecodeBinary(ci *pgtype.ConnInfo, src []byte) error {
+	if err := t.Text.DecodeBinary(ci, src); err != nil {
+		return fmt.Errorf("pgsafetype.Text.DecodeBinary: %w", err)
+	}
+	return nil
 }
 
 func (t *Text) Set(src interface{}) error {
@@ -55,7 +66,7 @@ type TextArray struct {
 
 func (t *TextArray) DecodeBinary(ci *pgtype.ConnInfo, src []byte) error {
 	if err := t.TextArray.DecodeBinary(ci, src); err != nil {
-		panic(err)
+		return fmt.Errorf("pgsafetype.TextArray.DecodeBinary: %w", err)
 	}
 	return nil
 }
