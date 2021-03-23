@@ -73,6 +73,7 @@ func (h *insertHandler) flushPending() {
 		return
 	}
 
+	MetricBatcherFlushSeries.Observe(float64(h.pending.batch.CountSeries()))
 	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
 	h.pending = NewPendingBuffer()
 }

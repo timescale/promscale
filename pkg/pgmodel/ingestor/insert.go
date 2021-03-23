@@ -329,6 +329,7 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	for r := range reqs {
 		req := &reqs[r]
 		numRows := req.data.batch.CountSamples()
+		NumRowsPerInsert.Observe(float64(numRows))
 
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
@@ -373,8 +374,8 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", schema.Catalog, schema.Catalog)
 	batch.Queue(epochCheck, int64(lowestEpoch))
 
-	metrics.NumRowsPerBatch.Observe(float64(numRowsTotal))
-	metrics.NumInsertsPerBatch.Observe(float64(len(reqs)))
+	NumRowsPerBatch.Observe(float64(numRowsTotal))
+	NumInsertsPerBatch.Observe(float64(len(reqs)))
 	start := time.Now()
 	results, err := conn.SendBatch(context.Background(), batch)
 	if err != nil {
@@ -401,6 +402,6 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		return err
 	}
 	reportDuplicates(affectedMetrics)
-	metrics.DbBatchInsertDuration.Observe(time.Since(start).Seconds())
+	DbBatchInsertDuration.Observe(time.Since(start).Seconds())
 	return nil
 }
