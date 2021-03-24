@@ -135,7 +135,7 @@ func InitClientMetrics(client *Client) {
 func createStatementCacheLengthHistogramMetric(client *Client) prometheus.Histogram {
 	// we know the upper bound of the cache, so we want
 	// to make that the last bucket of the histogram
-	statementCacheUpperBound := client.metricCache.Cap()
+	statementCacheUpperBound := client.metricCache.Cap() * 2
 	// we want to increase the buckets by a factor of 2
 	histogramBucketFactor := 2.0
 	// we want 10 total buckets
