@@ -19,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
+	"github.com/timescale/promscale/pkg/version"
 )
 
 const (
@@ -40,6 +41,7 @@ type config struct {
 	progressMetricName string
 	progressMetricURL  string
 	progressEnabled    bool
+	versionPrint       bool
 	readerAuth         utils.Auth
 	writerAuth         utils.Auth
 }
@@ -47,11 +49,17 @@ type config struct {
 func main() {
 	conf := new(config)
 	parseFlags(conf, os.Args[1:])
+	if conf.versionPrint {
+		fmt.Println("Version: ", version.Version)
+		os.Exit(0)
+	}
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	log.Info("Prom-migrator Version", version.Version)
 	if err := validateConf(conf); err != nil {
+		//fmt.Println("Version: ", version.Version)
 		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
 	}
@@ -154,6 +162,7 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.writerAuth.Password, "write-auth-password", "", "Auth password for remote-write storage.")
 	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Bearer token for remote-write storage. "+
 		"This should be mutually exclusive with username and password.")
+	flag.BoolVar(&conf.versionPrint, "version", false, "While passing this flag to the cli, the prom-migration version will be printed at first place.")
 	_ = flag.CommandLine.Parse(args)
 	convertSecFlagToMs(conf)
 }
