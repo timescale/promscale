@@ -59,7 +59,6 @@ func main() {
 	}
 	log.Info("Prom-migrator Version", version.Version)
 	if err := validateConf(conf); err != nil {
-		//fmt.Println("Version: ", version.Version)
 		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
 	}
