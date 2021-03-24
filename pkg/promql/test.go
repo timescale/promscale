@@ -16,6 +16,7 @@ package promql
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"io/ioutil"
 	"math"
 	"os"
@@ -51,7 +52,8 @@ var testStartTime = time.Unix(0, 0).UTC()
 
 type TestStorage struct {
 	*tsdb.DB
-	dir string
+	exemplarStorage tsdb.ExemplarStorage
+	dir             string
 }
 
 // New returns a new TestStorage for testing purposes
@@ -87,6 +89,18 @@ func (s TestStorage) Close() error {
 		return err
 	}
 	return os.RemoveAll(s.dir)
+}
+
+func (s TestStorage) ExemplarAppender() storage.ExemplarAppender {
+	return s
+}
+
+func (s TestStorage) ExemplarQueryable() storage.ExemplarQueryable {
+	return s.exemplarStorage
+}
+
+func (s TestStorage) AppendExemplar(ref uint64, l labels.Labels, e exemplar.Exemplar) (uint64, error) {
+	return ref, s.exemplarStorage.AddExemplar(l, e)
 }
 
 type QuerierWrapper struct {
@@ -159,6 +173,15 @@ func (t *Test) Storage() storage.Storage {
 // TSDB returns test's TSDB.
 func (t *Test) TSDB() *tsdb.DB {
 	return t.storage.DB
+}
+
+// ExemplarStorage returns the test's exemplar storage.
+func (t *Test) ExemplarStorage() storage.ExemplarStorage {
+	return t.storage
+}
+
+func (t *Test) ExemplarQueryable() storage.ExemplarQueryable {
+	return t.storage.ExemplarQueryable()
 }
 
 func raise(line int, format string, v ...interface{}) error {
@@ -710,7 +733,8 @@ type LazyLoader struct {
 
 	loadCmd *loadCmd
 
-	storage storage.Storage
+	storage          storage.Storage
+	SubqueryInterval time.Duration
 
 	queryEngine *Engine
 	context     context.Context
@@ -763,11 +787,12 @@ func (ll *LazyLoader) clear() {
 	ll.storage = teststorage.New(ll)
 
 	opts := EngineOpts{
-		Logger:           nil,
-		Reg:              nil,
-		MaxSamples:       10000,
-		Timeout:          100 * time.Second,
-		EnableAtModifier: true,
+		Logger:                   nil,
+		Reg:                      nil,
+		MaxSamples:               10000,
+		Timeout:                  100 * time.Second,
+		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(ll.SubqueryInterval) },
+		EnableAtModifier:         true,
 	}
 
 	ll.queryEngine = NewEngine(opts)

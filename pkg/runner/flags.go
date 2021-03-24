@@ -13,6 +13,7 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffyaml"
 	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/util"
@@ -23,6 +24,7 @@ type Config struct {
 	PgmodelCfg                  pgclient.Config
 	LogCfg                      log.Config
 	APICfg                      api.Config
+	LimitsCfg                   limits.Config
 	ConfigFile                  string
 	TLSCertFile                 string
 	TLSKeyFile                  string
@@ -47,6 +49,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	pgclient.ParseFlags(fs, &cfg.PgmodelCfg)
 	log.ParseFlags(fs, &cfg.LogCfg)
 	api.ParseFlags(fs, &cfg.APICfg)
+	limits.ParseFlags(fs, &cfg.LimitsCfg)
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
@@ -62,12 +65,16 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
 	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
 
-	util.ParseEnv("PROMSCALE", fs)
+	if err := util.ParseEnv("PROMSCALE", fs); err != nil {
+		return nil, fmt.Errorf("error parsing env variables: %w", err)
+	}
 	// Deprecated: TS_PROM is the old prefix which is deprecated and in here
 	// for legacy compatibility. Will be removed in the future. PROMSCALE prefix
 	// takes precedence and will be used if the same variable with both prefixes
 	// exist.
-	util.ParseEnv("TS_PROM", fs)
+	if err := util.ParseEnv("TS_PROM", fs); err != nil {
+		return nil, fmt.Errorf("error parsing env variables: %w", err)
+	}
 
 	if err := ff.Parse(fs, args,
 		ff.WithConfigFileFlag("config"),
@@ -90,6 +97,12 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	if err := api.Validate(&cfg.APICfg); err != nil {
 		return nil, fmt.Errorf("error validating API configuration: %w", err)
+	}
+	if err := limits.Validate(&cfg.LimitsCfg); err != nil {
+		return nil, fmt.Errorf("error validating limits configuration: %w", err)
+	}
+	if err := pgclient.Validate(&cfg.PgmodelCfg, cfg.LimitsCfg); err != nil {
+		return nil, fmt.Errorf("error validating client configuration: %w", err)
 	}
 
 	cfg.StopAfterMigrate = false

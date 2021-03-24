@@ -23,6 +23,7 @@ type MetricCache interface {
 	Len() int
 	// Cap returns the capacity of the metrics cache.
 	Cap() int
+	Evictions() uint64
 }
 
 type LabelsCache interface {
@@ -37,11 +38,12 @@ type LabelsCache interface {
 	// canonical versions.
 	// returns the number of elements inserted, is lower than len(keys) if insertion
 	// starved
-	InsertBatch(keys []interface{}, values []interface{}) (numInserted int)
+	InsertBatch(keys []interface{}, values []interface{}, sizes []uint64) (numInserted int)
 	// Len returns the number of labels cached in the system.
 	Len() int
 	// Cap returns the capacity of the labels cache.
 	Cap() int
+	Evictions() uint64
 }
 
 // MetricNameCache stores and retrieves metric table names in a in-memory cache.
@@ -67,7 +69,8 @@ func (m *MetricNameCache) Set(metric string, tableName string) error {
 	tableBuilder := strings.Builder{}
 	tableBuilder.Grow(len(tableName))
 	tableBuilder.WriteString(tableName)
-	m.Metrics.Insert(metricBuilder.String(), tableBuilder.String())
+	//size includes an 8-byte overhead for each string
+	m.Metrics.Insert(metricBuilder.String(), tableBuilder.String(), uint64(metricBuilder.Len()+tableBuilder.Len()+16))
 	return nil
 }
 
@@ -77,4 +80,16 @@ func (m *MetricNameCache) Len() int {
 
 func (m *MetricNameCache) Cap() int {
 	return m.Metrics.Cap()
+}
+
+func (m *MetricNameCache) Evictions() uint64 {
+	return m.Metrics.Evictions()
+}
+
+func NewMetricCache(config Config) *MetricNameCache {
+	return &MetricNameCache{Metrics: clockcache.WithMax(config.MetricsCacheSize)}
+}
+
+func NewLabelsCache(config Config) LabelsCache {
+	return clockcache.WithMax(config.LabelsCacheSize)
 }

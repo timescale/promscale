@@ -10,31 +10,92 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-//this seems like a good upper bound on default /active/ series. Takes about 64MB
-const DefaultSeriesCacheSize = 500000
+//this seems like a good initial size for /active/ series. Takes about 32MB
+const DefaultSeriesCacheSize = 250000
+
+const GrowCheckDuration = time.Minute //check whether to grow the series cache this often
+const GrowEvictionThreshold = 0.2     // grow when evictions more than 20% of cache size
+const GrowFactor = float64(2.0)       // multiply cache size by this factor when growing the cache
 
 type SeriesCache interface {
 	Reset()
 	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
 	Len() int
 	Cap() int
+	Evictions() uint64
 }
 
 type SeriesCacheImpl struct {
-	cache *clockcache.Cache
+	cache        *clockcache.Cache
+	maxSizeBytes uint64
 }
 
-func NewSeriesCache(max uint64) *SeriesCacheImpl {
-	return &SeriesCacheImpl{
-		clockcache.WithMax(max),
+func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
+	cache := &SeriesCacheImpl{
+		clockcache.WithMax(config.SeriesCacheInitialSize),
+		config.SeriesCacheMemoryMaxBytes,
 	}
+
+	if sigClose != nil {
+		go cache.runSizeCheck(sigClose)
+	}
+	return cache
+}
+
+func (t *SeriesCacheImpl) runSizeCheck(sigClose <-chan struct{}) {
+	prev := uint64(0)
+	ticker := time.NewTicker(GrowCheckDuration)
+	for {
+		select {
+		case <-ticker.C:
+			current := t.cache.Evictions()
+			newEvictions := current - prev
+			evictionsThresh := uint64(float64(t.Len()) * GrowEvictionThreshold)
+			prev = current
+			if newEvictions > evictionsThresh {
+				t.grow(newEvictions)
+			}
+		case <-sigClose:
+			return
+		}
+	}
+}
+
+func (t *SeriesCacheImpl) grow(newEvictions uint64) {
+	sizeBytes := t.cache.SizeBytes()
+	oldSize := t.cache.Cap()
+	if float64(sizeBytes)*1.2 >= float64(t.maxSizeBytes) {
+		log.Warn("msg", "Series cache is too small and cannot be grown",
+			"current_size_bytes", float64(sizeBytes), "max_size_bytes", float64(t.maxSizeBytes),
+			"current_size_elements", oldSize, "check_interval", GrowCheckDuration,
+			"new_evictions", newEvictions, "new_evictions_percent", 100*(float64(newEvictions)/float64(oldSize)))
+		return
+	}
+
+	multiplier := GrowFactor
+	if float64(sizeBytes)*multiplier >= float64(t.maxSizeBytes) {
+		multiplier = float64(t.maxSizeBytes) / float64(sizeBytes)
+	}
+	if multiplier < 1.0 {
+		return
+	}
+
+	newNumElements := int(float64(oldSize) * multiplier)
+	log.Info("msg", "Growing the series cache",
+		"new_size_elements", newNumElements, "current_size_elements", oldSize,
+		"new_size_bytes", float64(sizeBytes)*multiplier, "max_size_bytes", float64(t.maxSizeBytes),
+		"multiplier", multiplier,
+		"new_evictions", newEvictions, "new_evictions_percent", 100*(float64(newEvictions)/float64(oldSize)))
+	t.cache.ExpandTo(newNumElements)
 }
 
 func (t *SeriesCacheImpl) Len() int {
@@ -43,6 +104,10 @@ func (t *SeriesCacheImpl) Len() int {
 
 func (t *SeriesCacheImpl) Cap() int {
 	return t.cache.Cap()
+}
+
+func (t *SeriesCacheImpl) Evictions() uint64 {
+	return t.cache.Evictions()
 }
 
 //ResetStoredLabels should be concurrency-safe
@@ -68,7 +133,8 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 // This function should not be called directly, use labelProtosToLabels() or
 // LabelsFromSlice() instead.
 func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
-	val, _ := t.cache.Insert(str, lset)
+	//str not counted twice in size since the key and lset.str will point to same thing.
+	val, _ := t.cache.Insert(str, lset, lset.FinalSizeBytes())
 	return val.(*model.Series)
 }
 

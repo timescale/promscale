@@ -95,7 +95,8 @@ func MaskPassword(s string) string {
 // Note: when run with multiple times with different prefixes on the
 // same FlagSet, precedence will get values set with prefix which is
 // parsed first.
-func ParseEnv(p string, fs *flag.FlagSet) {
+func ParseEnv(p string, fs *flag.FlagSet) error {
+	var err error
 	// Build a map of explicitly set flags.
 	set := make(map[string]struct{})
 	fs.Visit(func(f *flag.Flag) {
@@ -103,6 +104,10 @@ func ParseEnv(p string, fs *flag.FlagSet) {
 	})
 
 	fs.VisitAll(func(f *flag.Flag) {
+		// If an error occured while processing other flags, abort.
+		if err != nil {
+			return
+		}
 		// Create an env var name
 		// based on the supplied prefix.
 		envVar := fmt.Sprintf("%s_%s", p, strings.ToUpper(f.Name))
@@ -114,10 +119,13 @@ func ParseEnv(p string, fs *flag.FlagSet) {
 			// Update the value if it hasn't
 			// already been set.
 			if _, defined := set[f.Name]; !defined {
-				// Ignore error since only error that can occur is
-				// when using a non-set flag name which cannot happen
-				// in this situation.
-				_ = fs.Set(f.Name, val)
+				if err = fs.Set(f.Name, val); err != nil {
+					err = fmt.Errorf(`error setting flag "%s" from env variable "%s": %w`,
+						f.Name,
+						envVar,
+						err)
+					return
+				}
 			}
 		}
 
@@ -125,4 +133,6 @@ func ParseEnv(p string, fs *flag.FlagSet) {
 		// Flag.Usage field.
 		f.Usage = fmt.Sprintf("%s [%s]", f.Usage, envVar)
 	})
+
+	return err
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/version"
@@ -20,6 +21,7 @@ import (
 
 // Config for the database.
 type Config struct {
+	CacheConfig             cache.Config
 	AppName                 string
 	Host                    string
 	Port                    int
@@ -31,9 +33,6 @@ type Config struct {
 	DbConnectionTimeout     time.Duration
 	AsyncAcks               bool
 	ReportInterval          int
-	LabelsCacheSize         uint64
-	MetricsCacheSize        uint64
-	SeriesCacheSize         uint64
 	WriteConnectionsPerProc int
 	MaxConnections          int
 	UsesHA                  bool
@@ -58,6 +57,8 @@ var (
 
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
+	cache.ParseFlags(fs, &cfg.CacheConfig)
+
 	fs.StringVar(&cfg.AppName, "app", DefaultApp, "'app' sets application_name in database connection string. This is helpful during debugging when looking at pg_stat_activity.")
 	fs.StringVar(&cfg.Host, "db-host", defaultDBHost, "Host for TimescaleDB/Vanilla Postgres.")
 	fs.IntVar(&cfg.Port, "db-port", defaultDBPort, "TimescaleDB/Vanilla Postgres connection password.")
@@ -69,13 +70,14 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.DurationVar(&cfg.DbConnectionTimeout, "db-connection-timeout", defaultConnectionTime, "Timeout for establishing the connection between Promscale and TimescaleDB.")
 	fs.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
 	fs.IntVar(&cfg.ReportInterval, "tput-report", 0, "Interval in seconds at which throughput should be reported.")
-	fs.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "Maximum number of labels to cache.")
-	fs.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", cache.DefaultMetricCacheSize, "Maximum number of metric names to cache.")
-	fs.Uint64Var(&cfg.SeriesCacheSize, "series-cache-size", cache.DefaultSeriesCacheSize, "Maximum number of series to cache.")
 	fs.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "Maximum number of database connections for writing per go process.")
 	fs.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle.")
 	fs.StringVar(&cfg.DbUri, "db-uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	return cfg
+}
+
+func Validate(cfg *Config, lcfg limits.Config) error {
+	return cache.Validate(&cfg.CacheConfig, lcfg)
 }
 
 // GetConnectionStr returns a Postgres connection string
@@ -155,6 +157,5 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max/2))
 		numCopiers = max / 2
 	}
-
 	return
 }

@@ -20,7 +20,7 @@ func getSeries(t *testing.T, scache *cache.SeriesCacheImpl, labels labels.Labels
 }
 
 func TestLabelArrayCreator(t *testing.T) {
-	scache := cache.NewSeriesCache(100)
+	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 	metricNameLabel := labels.Label{Name: "__name__", Value: "metric"}
 	valOne := labels.Label{Name: "key", Value: "one"}
 	valTwo := labels.Label{Name: "key", Value: "two"}

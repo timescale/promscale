@@ -293,7 +293,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		t.Skip("This test only runs on installs with TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		scache := cache.NewSeriesCache(100)
+		scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 		//this is the range_end of a chunk boundary (exclusive)
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 

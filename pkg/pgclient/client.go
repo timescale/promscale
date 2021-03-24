@@ -10,7 +10,6 @@ import (
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
@@ -36,6 +35,7 @@ type Client struct {
 	labelsCache   cache.LabelsCache
 	seriesCache   cache.SeriesCache
 	closePool     bool
+	sigClose      chan struct{}
 }
 
 // Post connect validation function, useful for things such as acquiring locks
@@ -95,14 +95,14 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
 func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
-	metricsCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cfg.MetricsCacheSize)}
-	labelsCache := clockcache.WithMax(cfg.LabelsCacheSize)
-	seriesCache := cache.NewSeriesCache(cfg.SeriesCacheSize)
+	sigClose := make(chan struct{})
+	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
+	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
+	seriesCache := cache.NewSeriesCache(cfg.CacheConfig, sigClose)
 	c := ingestor.Cfg{
-		AsyncAcks:       cfg.AsyncAcks,
-		ReportInterval:  cfg.ReportInterval,
-		SeriesCacheSize: cfg.SeriesCacheSize,
-		NumCopiers:      numCopiers,
+		AsyncAcks:      cfg.AsyncAcks,
+		ReportInterval: cfg.ReportInterval,
+		NumCopiers:     numCopiers,
 	}
 	ingestor, err := ingestor.NewPgxIngestorWithMetricCache(dbConn, metricsCache, seriesCache, &c)
 	if err != nil {
@@ -123,6 +123,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		metricCache: metricsCache,
 		labelsCache: labelsCache,
 		seriesCache: seriesCache,
+		sigClose:    sigClose,
 	}
 
 	InitClientMetrics(client)
@@ -134,6 +135,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 func (c *Client) Close() {
 	log.Info("msg", "Shutting down Client")
 	c.ingestor.Close()
+	close(c.sigClose)
 	if c.closePool {
 		c.Connection.Close()
 	}

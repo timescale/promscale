@@ -1,6 +1,8 @@
 name: Daily scheduled extended Go tests
 
 on:
+  push:
+    branches: [force_test, release-*]
   schedule:
     - cron: "6 0 * * *"
 
@@ -136,4 +138,4 @@ jobs:
         TSDB: ${{ matrix.test-setups.tsdb }}
         TSDB2: ${{ matrix.test-setups.tsdb2 }}
         MULTI: ${{ matrix.test-setups.multi }}
-      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI 
+      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI

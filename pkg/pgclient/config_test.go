@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 )
 
 func TestConfig_GetConnectionStr(t *testing.T) {
@@ -164,6 +166,11 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
+				CacheConfig: cache.Config{
+					LabelsCacheSize:        tt.fields.LabelsCacheSize,
+					MetricsCacheSize:       tt.fields.MetricsCacheSize,
+					SeriesCacheInitialSize: tt.fields.SeriesCacheSize,
+				},
 				AppName:                 tt.fields.App,
 				Host:                    tt.fields.Host,
 				Port:                    tt.fields.Port,
@@ -175,9 +182,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				DbConnectionTimeout:     tt.fields.DbConnectionTimeout,
 				AsyncAcks:               tt.fields.AsyncAcks,
 				ReportInterval:          tt.fields.ReportInterval,
-				LabelsCacheSize:         tt.fields.LabelsCacheSize,
-				MetricsCacheSize:        tt.fields.MetricsCacheSize,
-				SeriesCacheSize:         tt.fields.SeriesCacheSize,
 				WriteConnectionsPerProc: tt.fields.WriteConnectionsPerProc,
 				MaxConnections:          tt.fields.MaxConnections,
 				UsesHA:                  tt.fields.UsesHA,

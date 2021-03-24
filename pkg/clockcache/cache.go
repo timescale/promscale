@@ -15,6 +15,11 @@ type Cache struct {
 	// stores indexes into storage
 	elements map[interface{}]*element
 	storage  []element
+	// Information elements:
+	// size of everything stored by storage, does not include size of the cache structure itself
+	dataSize uint64
+	// number of evictions
+	evictions uint64
 
 	// guards next, and len(storage) and ensures that at most one eviction
 	// occurs at a time, always grabbed _before_ elementsLock
@@ -30,9 +35,10 @@ type element struct {
 
 	// CLOCK marker if this is recently used
 	used uint32
+	size uint64
 
 	// pad Elements out to be cache aligned
-	_ [24]byte
+	_ [16]byte
 }
 
 func WithMax(max uint64) *Cache {
@@ -42,23 +48,25 @@ func WithMax(max uint64) *Cache {
 	}
 }
 
-// Insert a key/value mapping into the cache if the key is not already present
+// Insert a key/value mapping into the cache if the key is not already present,
+// The sizeBytes represents the in-memory size of the key and value (used to estimate cache size).
 // returns the canonical version of the value
 // and if the value is in the map
-func (self *Cache) Insert(key interface{}, value interface{}) (canonicalValue interface{}, in_cache bool) {
+func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) (canonicalValue interface{}, in_cache bool) {
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
-	_, canonicalValue, in_cache = self.insert(key, value)
+	_, canonicalValue, in_cache = self.insert(key, value, sizeBytes)
 	return
 }
 
 // Insert a batch of keys with their corresponding values.
 // This function will _overwrite_ the keys and values slices with their
 // canonical versions.
+// sizesBytes is the in-memory size of the key+value of each element.
 // returns the number of elements inserted, is lower than len(keys) if insertion
 // starved
-func (self *Cache) InsertBatch(keys []interface{}, values []interface{}) int {
+func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBytes []uint64) int {
 	if len(keys) != len(values) {
 		panic(fmt.Sprintf("keys and values are not the same len. %d keys, %d values", len(keys), len(values)))
 	}
@@ -68,7 +76,7 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}) int {
 
 	for idx := range keys {
 		var inserted bool
-		keys[idx], values[idx], inserted = self.insert(keys[idx], values[idx])
+		keys[idx], values[idx], inserted = self.insert(keys[idx], values[idx], sizesBytes[idx])
 		if !inserted {
 			return idx
 		}
@@ -76,7 +84,7 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}) int {
 	return len(keys)
 }
 
-func (self *Cache) insert(key interface{}, value interface{}) (canonicalKey interface{}, canonicalValue interface{}, inserted bool) {
+func (self *Cache) insert(key interface{}, value interface{}, size uint64) (canonicalKey interface{}, canonicalValue interface{}, inserted bool) {
 	elem, present := self.elements[key]
 	if present {
 		// we'll count a double-insert as a hit. See the comment in get
@@ -95,11 +103,15 @@ func (self *Cache) insert(key interface{}, value interface{}) (canonicalKey inte
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
 		delete(self.elements, insertLocation.key)
-		*insertLocation = element{key: key, value: value}
+		self.dataSize -= insertLocation.size
+		self.dataSize += size
+		self.evictions++
+		*insertLocation = element{key: key, value: value, size: size}
 	} else {
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
-		self.storage = append(self.storage, element{key: key, value: value})
+		self.storage = append(self.storage, element{key: key, value: value, size: size})
+		self.dataSize += size
 		insertLocation = &self.storage[len(self.storage)-1]
 	}
 
@@ -286,6 +298,20 @@ func (self *Cache) Len() int {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	return len(self.storage)
+}
+
+func (self *Cache) Evictions() uint64 {
+	self.elementsLock.RLock()
+	defer self.elementsLock.RUnlock()
+	return self.evictions
+}
+
+func (self *Cache) SizeBytes() uint64 {
+	self.elementsLock.RLock()
+	defer self.elementsLock.RUnlock()
+	//derived from BenchmarkMemoryEmptyCache 120 bytes per element
+	cacheSize := cap(self.storage) * 120
+	return uint64(cacheSize) + self.dataSize
 }
 
 func (self *Cache) Cap() int {

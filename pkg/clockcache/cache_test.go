@@ -14,7 +14,7 @@ func TestWriteAndGetOnCache(t *testing.T) {
 
 	cache := WithMax(100)
 
-	cache.Insert("1", 1)
+	cache.Insert("1", 1, 8+1+8)
 	val, found := cache.Get("1")
 
 	// then
@@ -36,7 +36,7 @@ func TestEntryNotFound(t *testing.T) {
 		t.Errorf("found %d for noexistent key", val)
 	}
 
-	cache.Insert("key", 1)
+	cache.Insert("key", 1, 8+1+8)
 
 	val, found = cache.Get("nonExistingKey")
 	if found {
@@ -50,13 +50,13 @@ func TestEviction(t *testing.T) {
 	cache := WithMax(10)
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%d", i)
-		cache.Insert(key, int64(i))
+		cache.Insert(key, int64(i), uint64(8+len(key)+8))
 		if i != 5 {
 			cache.Get(key)
 		}
 	}
 
-	cache.Insert("100", 100)
+	cache.Insert("100", 100, 8+3+8)
 	cache.Get("100")
 
 	for i := 0; i < 10; i++ {
@@ -71,13 +71,16 @@ func TestEviction(t *testing.T) {
 			cache.unmark(key)
 		}
 	}
+	if cache.Evictions() != 1 {
+		t.Errorf("Got wrong number of evictions %v", cache.Evictions())
+	}
 
 	val, found := cache.Get("100")
 	if !found || val != 100 {
 		t.Errorf("missing value 100, got %d", val)
 	}
 
-	cache.Insert("101", 101)
+	cache.Insert("101", 101, 8+3+8)
 	cache.Get("101")
 
 	for i := 0; i < 10; i++ {
@@ -89,7 +92,9 @@ func TestEviction(t *testing.T) {
 			t.Errorf("%d not evicted", i)
 		}
 	}
-
+	if cache.Evictions() != 2 {
+		t.Errorf("Got wrong number of evictions %v", cache.Evictions())
+	}
 	val, found = cache.Get("100")
 	if !found || val != 100 {
 		t.Errorf("missing value 100, got %d", val)
@@ -111,7 +116,7 @@ func TestCacheGetRandomly(t *testing.T) {
 		for i := 0; i < ntest; i++ {
 			r := rand.Int63() % 20000
 			key := fmt.Sprintf("%d", r)
-			cache.Insert(key, r+1)
+			cache.Insert(key, r+1, uint64(8+len(key)+8))
 		}
 		wg.Done()
 	}()
@@ -133,7 +138,7 @@ func TestBatch(t *testing.T) {
 
 	cache := WithMax(10)
 
-	cache.InsertBatch([]interface{}{3, 6, 9, 12}, []interface{}{4, 7, 10, 13})
+	cache.InsertBatch([]interface{}{3, 6, 9, 12}, []interface{}{4, 7, 10, 13}, []uint64{16, 16, 16, 16})
 
 	keys := []interface{}{1, 2, 3, 6, 9, 12, 13}
 	vals := make([]interface{}, len(keys))
@@ -156,12 +161,12 @@ func TestBatch(t *testing.T) {
 
 func TestExpand(t *testing.T) {
 	cache := WithMax(3)
-	cache.Insert(1, 1)
+	cache.Insert(1, 1, 16)
 	cache.Get(1)
 
-	cache.Insert(2, 2)
+	cache.Insert(2, 2, 16)
 
-	cache.Insert(3, 3)
+	cache.Insert(3, 3, 16)
 	cache.Get(3)
 
 	expected := "[1: 1, 2: 2, 3: 3, ]"
@@ -169,10 +174,18 @@ func TestExpand(t *testing.T) {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
 	}
 
-	cache.Insert(4, 4)
+	if cache.SizeBytes() != 3*120+3*16 {
+		t.Errorf("Unexpected size %v", cache.SizeBytes())
+	}
+
+	cache.Insert(4, 4, 20)
 	expected = "[1: 1, 4: 4, 3: 3, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+
+	if cache.SizeBytes() != 3*120+2*16+20 {
+		t.Errorf("Unexpected size %v", cache.SizeBytes())
 	}
 
 	cache.ExpandTo(5)
@@ -181,30 +194,40 @@ func TestExpand(t *testing.T) {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
 	}
 
-	cache.Insert(5, 5)
+	if cache.SizeBytes() != 5*120+2*16+20 {
+		t.Errorf("Unexpected size %v", cache.SizeBytes())
+	}
+
+	cache.Insert(5, 5, 16)
 	cache.Get(5)
 
-	cache.Insert(6, 6)
+	cache.Insert(6, 6, 16)
 	expected = "[1: 1, 4: 4, 3: 3, 5: 5, 6: 6, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
 	}
+	if cache.SizeBytes() != 5*120+4*16+20 {
+		t.Errorf("Unexpected size %v", cache.SizeBytes())
+	}
 
-	cache.Insert(7, 7)
+	cache.Insert(7, 7, 16)
 	expected = "[1: 1, 4: 4, 3: 3, 5: 5, 7: 7, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+	if cache.SizeBytes() != 5*120+4*16+20 {
+		t.Errorf("Unexpected size %v", cache.SizeBytes())
 	}
 }
 
 func TestReset(t *testing.T) {
 	cache := WithMax(3)
-	cache.Insert(1, 1)
+	cache.Insert(1, 1, 16)
 	cache.Get(1)
 
-	cache.Insert(2, 2)
+	cache.Insert(2, 2, 16)
 
-	cache.Insert(3, 3)
+	cache.Insert(3, 3, 16)
 	cache.Get(3)
 
 	expected := "[1: 1, 2: 2, 3: 3, ]"
@@ -218,21 +241,21 @@ func TestReset(t *testing.T) {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
 	}
 
-	cache.Insert(5, 5)
+	cache.Insert(5, 5, 1)
 	cache.Get(5)
 	expected = "[5: 5, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
 	}
 
-	cache.Insert(6, 6)
-	cache.Insert(7, 7)
+	cache.Insert(6, 6, 1)
+	cache.Insert(7, 7, 1)
 	expected = "[5: 5, 6: 6, 7: 7, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
 	}
 
-	cache.Insert(8, 8)
+	cache.Insert(8, 8, 1)
 	expected = "[5: 5, 8: 8, 7: 7, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())

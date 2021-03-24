@@ -281,10 +281,9 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler, *pgclient.Client, error) {
 	metrics := api.InitMetrics(0)
 	conf := &pgclient.Config{
+		CacheConfig:             cache.DefaultConfig,
 		AsyncAcks:               false,
 		ReportInterval:          0,
-		LabelsCacheSize:         10000,
-		MetricsCacheSize:        cache.DefaultMetricCacheSize,
 		WriteConnectionsPerProc: 4,
 		MaxConnections:          -1,
 	}

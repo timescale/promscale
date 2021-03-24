@@ -2,9 +2,9 @@ name: Docker Compose tests
 
 on:
   push:
-    branches: [ master ]
+    branches: [master, main, force_test, release-*]
   pull_request:
-    branches: [ master ]
+    branches: [master, main, force_test, release-*]
 
 jobs:
 

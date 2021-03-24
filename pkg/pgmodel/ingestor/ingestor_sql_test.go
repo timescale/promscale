@@ -207,7 +207,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
-			scache := cache.NewSeriesCache(100)
+			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
 
 			inserter := insertHandler{
@@ -345,7 +345,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	mock := model.NewSqlRecorder(sqlQueries, t)
-	scache := cache.NewSeriesCache(100)
+	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 
 	handler := insertHandler{
 		conn: mock,
@@ -703,7 +703,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		c := co
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
-			scache := cache.NewSeriesCache(100)
+			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &model.MockMetricCache{

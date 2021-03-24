@@ -106,7 +106,8 @@ func HashLabels(lset prompb.Labels) uint64 {
 		b = append(b, seps[0])
 	}
 	sum := xxhash.Sum64(b)
-	labelsCache.Insert(lset.String(), sum)
+	str := lset.String()
+	labelsCache.Insert(str, sum, uint64(len(str)+8+8))
 	return sum
 }
 
