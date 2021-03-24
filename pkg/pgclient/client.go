@@ -7,11 +7,12 @@ package pgclient
 import (
 	"context"
 	"fmt"
-
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
+	multi_tenancy_config "github.com/timescale/promscale/pkg/multi-tenancy/config"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
@@ -45,7 +46,7 @@ type Client struct {
 type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
+func NewClient(cfg *Config, enableMultiTenancy bool, schemaLocker LockFunc) (*Client, error) {
 	pgConfig, numCopiers, err := getPgConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -59,7 +60,7 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 	}
 
 	dbConn := pgxconn.NewPgxConn(connectionPool)
-	client, err := NewClientWithPool(cfg, numCopiers, dbConn)
+	client, err := NewClientWithPool(cfg, numCopiers, dbConn, enableMultiTenancy)
 	if err != nil {
 		return client, err
 	}
@@ -122,7 +123,7 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
+func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, enableMultiTenancy bool) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -142,6 +143,28 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
 	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
+
+	if enableMultiTenancy {
+		// Configuring multi-tenancy in client.
+		mt := cfg.MT
+		multiTenancyConfig := &multi_tenancy_config.Config{
+			ValidTenants: mt.ValidTenants,
+		}
+		switch mt.TenancyType {
+		case "plain":
+			multiTenancyConfig.AuthType = multi_tenancy_config.Allow
+		case "bearer_token":
+			multiTenancyConfig.AuthType = multi_tenancy_config.BearerToken
+			multiTenancyConfig.BearerToken = mt.Token
+		default:
+			return nil, fmt.Errorf("invalid multi-tenancy type: %s", mt.TenancyType)
+		}
+		multiTenancy, err := multi_tenancy.NewMultiTenancy(multiTenancyConfig)
+		if err != nil {
+			return nil, fmt.Errorf("new multi-tenancy: %w", err)
+		}
+
+	}
 
 	healthChecker := health.NewHealthChecker(dbConn)
 	client := &Client{

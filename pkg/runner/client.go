@@ -155,9 +155,18 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	if !cfg.UseVersionLease {
 		leasingFunction = nil
 	}
+
+	if cfg.EnableMultiTenancy {
+		cfg.PgmodelCfg.MT = pgclient.MTClientConfig{
+			TenancyType:  cfg.MultiTenancyType,
+			ValidTenants: cfg.ValidTenantsList,
+			Token:        cfg.APICfg.Auth.BearerToken,
+		}
+	}
+
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.PgmodelCfg, leasingFunction)
+	client, err := pgclient.NewClient(&cfg.PgmodelCfg, cfg.EnableMultiTenancy, leasingFunction)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}

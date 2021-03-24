@@ -61,6 +61,13 @@ func NewSeries(key string, labelPairs []prompb.Label) *Series {
 	return series
 }
 
+// AddLabel appends a new label to the series's names and values.
+func (l *Series) AddLabel(key, value string) {
+	// todo (harkishen): a unit test to confirm the index positions of newly added pairs.
+	l.names = append(l.names, key)
+	l.values = append(l.values, value)
+}
+
 //NameValues returns the names and values, only valid if the seriesIDIsNotSet
 func (l *Series) NameValues() (names []string, values []string, ok bool) {
 	l.lock.RLock()

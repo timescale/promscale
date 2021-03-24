@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/timescale/promscale/pkg/clockcache"
+	multi_tenancy_write "github.com/timescale/promscale/pkg/multi-tenancy/write"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"

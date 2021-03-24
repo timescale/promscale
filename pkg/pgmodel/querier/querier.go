@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
+	multi_tenancy_read "github.com/timescale/promscale/pkg/multi-tenancy/read"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
@@ -62,6 +63,7 @@ type pgxQuerier struct {
 	conn             pgxconn.PgxConn
 	metricTableNames cache.MetricCache
 	labelsReader     lreader.LabelsReader
+	multiTenancy     multi_tenancy_read.Authorizer
 }
 
 var _ Querier = (*pgxQuerier)(nil)

@@ -8,12 +8,13 @@ const (
 	Allow = iota
 	// BearerToken allows only those requests to be ingested/querier that match the bearer_token.
 	BearerToken
+	TenantLabelKey = "__tenant__"
 )
 
 // Config defines the configuration for multi-tenancy.
 type Config struct {
-	AuthType uint8
-	BearerToken string
+	AuthType     uint8
+	BearerToken  string
 	ValidTenants []string
 }
 
