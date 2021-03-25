@@ -17,17 +17,17 @@ import (
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
 var (
-	testNullLabelVal            = fmt.Sprintf("fo%co", pgsafetype.NullChar)
-	testNullLabelValReplacement = fmt.Sprintf("fo%co", pgsafetype.NullCharSanitize)
-	testNullTagValue            = fmt.Sprintf("ta%cg", pgsafetype.NullChar)
-	testNullTagValReplacement   = fmt.Sprintf("ta%cg", pgsafetype.NullCharSanitize)
+	testNullLabelVal            = fmt.Sprintf("fo%co", pgutf8str.NullChar)
+	testNullLabelValReplacement = fmt.Sprintf("fo%co", pgutf8str.NullCharSanitize)
+	testNullTagValue            = fmt.Sprintf("ta%cg", pgutf8str.NullChar)
+	testNullTagValReplacement   = fmt.Sprintf("ta%cg", pgutf8str.NullCharSanitize)
 )
 
 func TestOperationWithNullChars(t *testing.T) {

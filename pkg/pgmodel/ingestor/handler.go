@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -116,7 +116,9 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 				_, ok = labelMap[key]
 				if !ok {
 					labelMap[key] = labelInfo{}
-					labelList.Add(names[i], values[i])
+					if err := labelList.Add(names[i], values[i]); err != nil {
+						return fmt.Errorf("failed to add label to labelList: %w", err)
+					}
 				}
 			}
 		}
@@ -124,21 +126,13 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 	if len(labelMap) == 0 {
 		return nil
 	}
-	safeListName := new(pgsafetype.TextArray)
-	if err := safeListName.Set(labelList.Names); err != nil {
-		return err
-	}
-	safeListValue := new(pgsafetype.TextArray)
-	if err := safeListValue.Set(labelList.Values); err != nil {
-		return err
-	}
 
 	//labels have to be created before series are since we need a canonical
 	//ordering for label creation to avoid deadlocks. Otherwise, if we create
 	//the labels for multiple series in same txn as we are creating the series,
 	//the ordering of label creation can only be canonical within a series and
 	//not across series.
-	dbEpoch, maxPos, err := h.fillLabelIDs(metricName, safeListName, safeListValue, labelMap)
+	dbEpoch, maxPos, err := h.fillLabelIDs(metricName, labelList, labelMap)
 	if err != nil {
 		return fmt.Errorf("Error setting series ids: %w", err)
 	}
@@ -188,7 +182,7 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 	return nil
 }
 
-func (h *insertHandler) fillLabelIDs(metricName string, names *pgsafetype.TextArray, values *pgsafetype.TextArray, labelMap map[labels.Label]labelInfo) (model.SeriesEpoch, int, error) {
+func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelList, labelMap map[labels.Label]labelInfo) (model.SeriesEpoch, int, error) {
 	//we cannot use the label cache here because that maps label ids => name, value.
 	//what we need here is name, value => id.
 	//we may want a new cache for that, at a later time.
@@ -197,6 +191,7 @@ func (h *insertHandler) fillLabelIDs(metricName string, names *pgsafetype.TextAr
 	var dbEpoch model.SeriesEpoch
 	maxPos := 0
 
+	names, values := labelList.Get()
 	items := len(names.Elements)
 	if items != len(labelMap) {
 		return dbEpoch, 0, fmt.Errorf("Error filling labels: number of items in labelList and labelMap doesn't match")
@@ -221,12 +216,15 @@ func (h *insertHandler) fillLabelIDs(metricName string, names *pgsafetype.TextAr
 	}
 	defer rows.Close()
 
-	count := 0
-	labelName := new(pgsafetype.Text)
-	labelValue := new(pgsafetype.Text)
+	var (
+		count      int
+		labelName  pgutf8str.Text
+		labelValue pgutf8str.Text
+	)
+
 	for rows.Next() {
 		res := labelInfo{}
-		err := rows.Scan(&res.Pos, &res.labelID, &labelName.String, &labelValue.String)
+		err := rows.Scan(&res.Pos, &res.labelID, &labelName, &labelValue)
 		if err != nil {
 			return dbEpoch, 0, fmt.Errorf("Error filling labels in scan: %w", err)
 		}
