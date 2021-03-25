@@ -51,14 +51,14 @@ func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	data, totalRows, err := i.parseData(tts, req)
+func (ingestor *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
+	data, totalRows, err := ingestor.parseData(tts, req)
 
 	if err != nil {
 		return 0, err
 	}
 
-	rowsInserted, err := i.db.InsertNewData(data)
+	rowsInserted, err := ingestor.db.InsertNewData(data)
 	if err == nil && int(rowsInserted) != totalRows {
 		return rowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}
@@ -66,8 +66,8 @@ func (i *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (
 }
 
 // Parts of metric creation not needed to insert data
-func (i *DBIngestor) CompleteMetricCreation() error {
-	return i.db.CompleteMetricCreation()
+func (ingestor *DBIngestor) CompleteMetricCreation() error {
+	return ingestor.db.CompleteMetricCreation()
 }
 
 // Parse data into a set of samplesInfo infos per-metric.
@@ -114,6 +114,6 @@ func (ingestor *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.Write
 }
 
 // Close closes the ingestor
-func (i *DBIngestor) Close() {
-	i.db.Close()
+func (ingestor *DBIngestor) Close() {
+	ingestor.db.Close()
 }
