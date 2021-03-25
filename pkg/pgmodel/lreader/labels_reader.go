@@ -14,7 +14,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -151,8 +151,8 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 	defer rows.Close()
 
 	var (
-		keys pgsafetype.TextArray
-		vals pgsafetype.TextArray
+		keys pgutf8str.TextArray
+		vals pgutf8str.TextArray
 	)
 
 	for rows.Next() {
@@ -174,13 +174,13 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 		numNewLabels = len(keys.Elements)
 		misses = misses[:len(keys.Elements)]
 		newLabels = newLabels[:len(keys.Elements)]
-		keys = keys.Get().(pgsafetype.TextArray)
-		vals = vals.Get().(pgsafetype.TextArray)
+		keyStrArr := keys.Get().([]string)
+		valStrArr := vals.Get().([]string)
 		sizes := make([]uint64, numNewLabels)
 		for i := range newLabels {
 			misses[i] = ids[i]
-			newLabels[i] = labels.Label{Name: keys.Elements[i].String, Value: vals.Elements[i].String}
-			sizes[i] = uint64(8 + int(unsafe.Sizeof(labels.Label{})) + len(keys.Elements[i].String) + len(vals.Elements[i].String)) // #nosec
+			newLabels[i] = labels.Label{Name: keyStrArr[i], Value: valStrArr[i]}
+			sizes[i] = uint64(8 + int(unsafe.Sizeof(labels.Label{})) + len(keyStrArr[i]) + len(valStrArr[i])) // #nosec
 		}
 
 		numInserted := lr.labels.InsertBatch(misses, newLabels, sizes)

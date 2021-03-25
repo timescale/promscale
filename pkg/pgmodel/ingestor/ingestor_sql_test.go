@@ -17,7 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -210,7 +210,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			for i := range c.sqlQueries {
 				for j := range c.sqlQueries[i].Args {
 					if _, ok := c.sqlQueries[i].Args[j].([]string); ok {
-						tmp := &pgsafetype.TextArray{}
+						tmp := &pgutf8str.TextArray{}
 						err := tmp.Set(c.sqlQueries[i].Args[j])
 						require.NoError(t, err)
 						c.sqlQueries[i].Args[j] = tmp
@@ -358,7 +358,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	for i := range sqlQueries {
 		for j := range sqlQueries[i].Args {
 			if _, ok := sqlQueries[i].Args[j].([]string); ok {
-				tmp := &pgsafetype.TextArray{}
+				tmp := &pgutf8str.TextArray{}
 				err := tmp.Set(sqlQueries[i].Args[j])
 				require.NoError(t, err)
 				sqlQueries[i].Args[j] = tmp

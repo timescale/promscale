@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgsafetype"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -321,8 +321,8 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			// Plus, not all types convert to [][]byte. types like int will require binary.Little.Endian conversion
 			// which can be a overdo for just writing the results of the tests. So, we do a short-cut to directly
 			// leverage the .Set() of our custom type and quick the process.
-			if d, okk := dest[i].(*pgsafetype.TextArray); okk {
-				pgta := pgsafetype.TextArray{}
+			if d, ok := dest[i].(*pgutf8str.TextArray); ok {
+				pgta := pgutf8str.TextArray{}
 				if err := pgta.Set(s); err != nil {
 					panic(err)
 				}
@@ -373,12 +373,21 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetInt(m.results[m.idx][i].(int64))
 		case string:
-			if _, ok := dest[i].(*string); !ok {
-				return fmt.Errorf("wrong value type string")
+			if _, ok := dest[i].(*string); ok {
+				dv := reflect.ValueOf(dest[i])
+				dvp := reflect.Indirect(dv)
+				dvp.SetString(m.results[m.idx][i].(string))
+				continue
 			}
-			dv := reflect.ValueOf(dest[i])
-			dvp := reflect.Indirect(dv)
-			dvp.SetString(m.results[m.idx][i].(string))
+			if d, ok := dest[i].(*pgutf8str.Text); ok {
+				pgt := pgutf8str.Text{}
+				if err := pgt.Set(s); err != nil {
+					panic(err)
+				}
+				*d = pgt
+				continue
+			}
+			return fmt.Errorf("wrong value type: neither 'string' or 'pgutf8str'")
 		}
 	}
 
