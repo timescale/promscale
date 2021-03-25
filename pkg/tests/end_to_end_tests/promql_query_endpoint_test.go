@@ -103,9 +103,9 @@ func genRangeRequest(apiURL, query string, start, end time.Time, step time.Durat
 }
 
 func TestPromQLQueryEndpointRealDataset(t *testing.T) {
-	if testing.Short() || !*extendedTest {
-		t.Skip("skipping integration test")
-	}
+	//if testing.Short() || !*extendedTest {
+	//	t.Skip("skipping integration test")
+	//}
 
 	testCases := []testCase{
 		{
@@ -178,7 +178,7 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 18",
-			query: `{__name__=~".*"}`,
+			query: `{__name__=~".*"}`, // This is from promlabs, but this fails on even prometheus. So we can ignore this.
 		},
 		{
 			name:  "real query 19",
@@ -2202,7 +2202,7 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 524",
-			query: fmt.Sprintf("sum(demo_cpu_usage_seconds_total[5m] @ %d)", samplesStartTime+30000/1000),
+			query: fmt.Sprintf("sum(demo_cpu_usage_seconds_total @ %d)", samplesStartTime+30000/1000), // Not form promlabs
 		},
 	}
 	start := time.Unix(samplesStartTime/1000, 0)
@@ -2211,9 +2211,9 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 }
 
 func TestPromQLQueryEndpoint(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
+	//if testing.Short() {
+	//	t.Skip("skipping integration test")
+	//}
 
 	testCases := []testCase{
 		{
@@ -2410,7 +2410,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		},
 		{
 			name:  "query with @ modifier",
-			query: fmt.Sprintf("sum(metric_1[5m] @ %d)", startTime+30000/1000),
+			query: fmt.Sprintf("sum(metric_1 @ %d)", startTime+30000/1000),
 		},
 		{
 			name:  "double name",
