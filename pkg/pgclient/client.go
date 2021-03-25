@@ -93,21 +93,26 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
 		return nil, numCopiers, err
 	}
+
+	var statementCacheLog string
 	if cfg.EnableStatementsCache {
 		pgConfig.AfterRelease = observeStatementCacheState
 		statementCacheEnabled.Set(1)
 		statementCacheCap.Set(float64(statementCacheCapacity))
+		statementCacheLog = fmt.Sprintf("%d statements", statementCacheCapacity)
 	} else {
 		log.Info("msg", "Statements cached disabled, using simple protocol for database connections.")
 		pgConfig.ConnConfig.PreferSimpleProtocol = true
 		statementCacheEnabled.Set(0)
 		statementCacheCap.Set(0)
+		statementCacheLog = "disabled"
+
 	}
 	log.Info("msg", util.MaskPassword(connectionStr),
 		"numCopiers", numCopiers,
 		"pool_max_conns", maxConnections,
 		"pool_min_conns", minConnections,
-		"statement_cache", cfg.EnableStatementsCache,
+		"statement_cache", statementCacheLog,
 	)
 	return pgConfig, numCopiers, nil
 }
