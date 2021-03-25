@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -50,6 +51,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 		begin := time.Now()
 		qry, err := queryEngine.NewInstantQuery(queryable, r.FormValue("query"), ts)
 		if err != nil {
+			fmt.Println("query=>", r.FormValue("query"))
 			log.Error("msg", "Query error", "err", err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			metrics.FailedQueries.Add(1)
@@ -60,6 +62,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 		metrics.QueryDuration.Observe(time.Since(begin).Seconds())
 
 		if res.Err != nil {
+			fmt.Println("actual=>", r.FormValue("query"))
 			log.Error("msg", res.Err, "endpoint", "query")
 			switch res.Err.(type) {
 			case promql.ErrQueryCanceled:
