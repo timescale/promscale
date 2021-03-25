@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package pgsafetype
+package pgutf8str
 
 import (
 	"fmt"
