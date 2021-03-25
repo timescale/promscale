@@ -10,6 +10,7 @@ SCRIPT_DIR=$(cd $(dirname ${0}) && pwd)
 ROOT_DIR=$(dirname ${SCRIPT_DIR})
 DB_URL="localhost:5432"
 CONNECTOR_URL="localhost:9201"
+CONNECTOR_URL_CONTAINER="host.docker.internal:9201"
 PROM_URL="localhost:9090"
 
 CONF=$(mktemp)
@@ -24,12 +25,12 @@ echo "scrape_configs:
     static_configs:
       - targets: ['localhost:9201']
 remote_read:
-- url: http://$CONNECTOR_URL/read
+- url: http://$CONNECTOR_URL_CONTAINER/read
   remote_timeout: 1m
   read_recent: true
 
 remote_write:
-- url: http://$CONNECTOR_URL/write
+- url: http://$CONNECTOR_URL_CONTAINER/write
   remote_timeout: 1m" > $CONF
 
 cleanup() {
@@ -43,8 +44,8 @@ cleanup() {
 
 trap cleanup EXIT
 
-docker run --rm --name e2e-tsdb -p 5432:5432/tcp -e "POSTGRES_PASSWORD=postgres" "${TIMESCALE_IMAGE}"  > /dev/null 2>&1 &
-docker run --rm --name e2e-prom --network="host" -p 9090:9090/tcp -v "$CONF:/etc/prometheus/prometheus.yml" prom/prometheus:latest > /dev/null 2>&1  &
+docker run --rm --name e2e-tsdb --network bridge -p 5432:5432/tcp -e "POSTGRES_PASSWORD=postgres" "${TIMESCALE_IMAGE}"  > /dev/null 2>&1 &
+docker run --rm --name e2e-prom --network bridge -p 9090:9090/tcp -v "$CONF:/etc/prometheus/prometheus.yml" prom/prometheus:latest > /dev/null 2>&1  &
 
 cd $ROOT_DIR/cmd/promscale
 go get ./...
