@@ -173,13 +173,16 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 
 				tsResp, tsErr := client.Do(tsReq)
 				if tsErr != nil {
-					t.Errorf("unexpected error returned from TS client:\n%s\n", tsErr.Error())
+					t.Fatalf("unexpected error returned from TS client:\n%s\n", tsErr.Error())
 					return
 				}
-				promResp, promErr := client.Do(promReq)
+				if tsResp.StatusCode != http.StatusOK {
+					t.Fatalf("promscale: expected status code %d, received %d", http.StatusOK, tsResp.StatusCode)
+				}
 
+				promResp, promErr := client.Do(promReq)
 				if promErr != nil {
-					t.Errorf("unexpected error returned from Prometheus client:\n%s\n", promErr.Error())
+					t.Fatalf("unexpected error returned from Prometheus client:\n%s\n", promErr.Error())
 					return
 				}
 
@@ -189,9 +192,14 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 					promResp, promErr = client.Do(promReq)
 
 					if promErr != nil {
-						t.Errorf("unexpected error returned from Prometheus client when retrying:\n%s\n", promErr.Error())
+						t.Fatalf("unexpected error returned from Prometheus client when retrying:\n%s\n", promErr.Error())
 						return
 					}
+				}
+
+
+				if promResp.StatusCode != http.StatusOK {
+					t.Fatalf("prometheus: expected status code %d, received %d", http.StatusOK, tsResp.StatusCode)
 				}
 
 				compareHTTPHeaders(t, promResp.Header, tsResp.Header)
@@ -199,7 +207,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 				promContent, err := ioutil.ReadAll(promResp.Body)
 
 				if err != nil {
-					t.Errorf("unexpected error returned when reading Prometheus response body:\n%s\n", err.Error())
+					t.Fatalf("unexpected error returned when reading Prometheus response body:\n%s\n", err.Error())
 					return
 				}
 				defer promResp.Body.Close()
@@ -207,14 +215,14 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 				tsContent, err := ioutil.ReadAll(tsResp.Body)
 
 				if err != nil {
-					t.Errorf("unexpected error returned when reading connector response body:\n%s\n", err.Error())
+					t.Fatalf("unexpected error returned when reading connector response body:\n%s\n", err.Error())
 					return
 				}
 				defer tsResp.Body.Close()
 
 				err = comparator(promContent, tsContent, log)
 				if err != nil {
-					t.Errorf("%s gives %s", log, err)
+					t.Fatalf("%s gives %s", log, err)
 					return
 				}
 			}()

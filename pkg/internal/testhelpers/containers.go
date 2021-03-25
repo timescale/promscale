@@ -595,7 +595,7 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 	}
 	prometheusPort := nat.Port("9090/tcp")
 	req := testcontainers.ContainerRequest{
-		Image:        "prom/prometheus",
+		Image:        "prom/prometheus:main",
 		ExposedPorts: []string{string(prometheusPort)},
 		WaitingFor:   wait.ForListeningPort(prometheusPort),
 		BindMounts: map[string]string{
@@ -608,6 +608,9 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 			"--storage.tsdb.path=/prometheus",
 			"--web.console.libraries=/usr/share/prometheus/console_libraries",
 			"--web.console.templates=/usr/share/prometheus/consoles",
+
+			// Enable features.
+			"--enable-feature=promql-at-modifier,promql-negative-offset",
 
 			// This is to stop Prometheus from messing with the data.
 			"--storage.tsdb.retention.time=30y",
