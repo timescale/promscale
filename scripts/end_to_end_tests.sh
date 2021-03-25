@@ -52,6 +52,9 @@ cleanup() {
     if [ -n "$CONN_PID" ]; then
         kill $CONN_PID
     fi
+    if [[ $FAILED -ne 0 ]]; then
+        docker logs e2e-tsdb || true
+    fi
     docker stop e2e-tsdb || true
 }
 
