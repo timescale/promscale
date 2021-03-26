@@ -20,9 +20,13 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
 <<<<<<< HEAD
+<<<<<<< HEAD
 	"github.com/timescale/promscale/pkg/runner"
 =======
 >>>>>>> feae7ef (add version flag to prom-migrator command)
+=======
+	"github.com/timescale/promscale/pkg/runner"
+>>>>>>> 03d9782 (use of runner/args.go for print)
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -47,13 +51,13 @@ type config struct {
 	progressMetricName string
 	progressMetricURL  string
 	progressEnabled    bool
-	versionPrint       bool
 	readerAuth         utils.Auth
 	writerAuth         utils.Auth
 }
 
 func main() {
 	conf := new(config)
+<<<<<<< HEAD
 <<<<<<< HEAD
 	args := os.Args[1:]
 
@@ -69,15 +73,28 @@ func main() {
 		os.Exit(0)
 	}
 >>>>>>> feae7ef (add version flag to prom-migrator command)
+=======
+	args := os.Args[1:]
+
+	if shouldProceed := runner.ParseArgs(args); !shouldProceed {
+		os.Exit(0)
+	}
+	parseFlags(conf, args)
+
+>>>>>>> 03d9782 (use of runner/args.go for print)
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 <<<<<<< HEAD
+<<<<<<< HEAD
 	log.Info("Version:", version.Version)
 =======
 	log.Info("Prom-migrator Version", version.Version)
 >>>>>>> feae7ef (add version flag to prom-migrator command)
+=======
+	log.Info("Version:", version.Version)
+>>>>>>> 03d9782 (use of runner/args.go for print)
 	if err := validateConf(conf); err != nil {
 		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
@@ -190,7 +207,6 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.writerAuth.Password, "write-auth-password", "", "Auth password for remote-write storage.")
 	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Bearer token for remote-write storage. "+
 		"This should be mutually exclusive with username and password.")
-	flag.BoolVar(&conf.versionPrint, "version", false, "While passing this flag to the cli, the prom-migration version will be printed at first place.")
 	_ = flag.CommandLine.Parse(args)
 	convertSecFlagToMs(conf)
 }
