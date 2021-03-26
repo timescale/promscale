@@ -31,7 +31,8 @@ var (
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
 	useExtension      = flag.Bool("use-extension", true, "use the promscale extension")
 	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
-	useTimescale2     = flag.Bool("use-timescale2", false, "use TimescaleDB 2.0")
+	useTimescale2     = flag.Bool("use-timescale2", true, "use TimescaleDB 2.0")
+	postgresVersion   = flag.Int("postgres-version-major", 13, "Major version of Postgres")
 	useMultinode      = flag.Bool("use-multinode", false, "use TimescaleDB 2.0 Multinode")
 	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	extendedTest      = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
@@ -46,6 +47,14 @@ var (
 
 // setExtensionState sets the value of extensionState based on the input flags.
 func setExtensionState() {
+	switch *postgresVersion {
+	case 12:
+		extensionState.UsePG12()
+	case 13:
+	default:
+		panic("Unknown Postgres version")
+	}
+
 	if *useExtension {
 		extensionState.UsePromscale()
 	}

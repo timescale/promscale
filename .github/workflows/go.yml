@@ -98,11 +98,11 @@ jobs:
     strategy:
       matrix:
         test-setups:
-        - {name: "W/O Promscale Extension", ext: false, tsdb: true,  tsdb2: false, multi: false}
-        - {name: "W/O TimescaleDB Extension", ext: false, tsdb: false, tsdb2: false, multi: false}
-        - {name: "on TimescaleDB 2.1", ext: true,  tsdb: true,  tsdb2: true,  multi: false}
-        - {name: "on TimescaleDB 2.1 W/O Promscale Extension", ext: false, tsdb: true,  tsdb2: true,  multi: false}
-        - {name: "on TimescaleDB 2.1 multinode", ext: true,  tsdb: true,  tsdb2: true, multi: true}
+        - {name: "Multinode",               ext: true,  tsdb: true,  tsdb2: true,  multi: true,  pg: 13}
+        - {name: "W/O Promscale Extension", ext: false, tsdb: true,  tsdb2: true,  multi: false, pg: 13}
+        - {name: "Plain Postgres",          ext: false, tsdb: false, tsdb2: false, multi: false, pg: 13}
+        - {name: "Timescaledb 1.x (pg 12)", ext: true,  tsdb: true,  tsdb2: false, multi: false, pg: 12}
+        - {name: "Plain Postgres (12)",     ext: false, tsdb: false, tsdb2: false, multi: false, pg: 12}
     steps:
 
     - name: Set up Go 1.14
@@ -136,4 +136,5 @@ jobs:
         TSDB: ${{ matrix.test-setups.tsdb }}
         TSDB2: ${{ matrix.test-setups.tsdb2 }}
         MULTI: ${{ matrix.test-setups.multi }}
-      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI
+        PG: ${{ matrix.test-setups.pg }}
+      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI -postgres-version-major=$PG

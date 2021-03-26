@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 )
 
 type dbSnapshot struct {
@@ -140,12 +141,27 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 
 var replaceChildren = regexp.MustCompile("timescaledb_internal\\._hyper_.*\n")
 
-func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, useTimescaleDB bool) (info dbSnapshot) {
-	info.schemaNames = getSchemas(t, db)
+func expectedSchemas(extstate testhelpers.ExtensionState) []string {
 	considerSchemas := schemas
-	if !useTimescaleDB {
+	if !extstate.UsesTimescaleDB() {
 		considerSchemas = schemasWOTimescaleDB
 	}
+	if !extstate.UsesPG12() {
+		filtered := make([]string, 0, len(considerSchemas))
+		for _, s := range considerSchemas {
+			if s != "pg_temp_1" && s != "pg_toast_temp_1" {
+				filtered = append(filtered, s)
+			}
+		}
+		considerSchemas = filtered
+	}
+	return considerSchemas
+}
+
+func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, extstate testhelpers.ExtensionState) (info dbSnapshot) {
+	info.schemaNames = getSchemas(t, db)
+	considerSchemas := expectedSchemas(extstate)
+
 	if !reflect.DeepEqual(info.schemaNames, considerSchemas) {
 		t.Errorf(
 			"unexpected schemas.\nexpected\n\t%v\ngot\n\t%v",
@@ -172,8 +188,8 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 	return
 }
 
-func GetDbInfoIgnoringTable(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, ignoreTableSchema string, ignoreTableName string, useTimescaleDB bool) dbSnapshot {
-	snapshot := SnapshotDB(t, container, dbName, outputDir, db, useTimescaleDB)
+func GetDbInfoIgnoringTable(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, ignoreTableSchema string, ignoreTableName string, extState testhelpers.ExtensionState) dbSnapshot {
+	snapshot := SnapshotDB(t, container, dbName, outputDir, db, extState)
 	return ClearTableFromSnapshot(snapshot, ignoreTableSchema, ignoreTableName)
 }
 
