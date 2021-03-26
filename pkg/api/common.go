@@ -110,7 +110,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 
 	// PromQL configuration flags.
 	fs.StringVar(&cfg.EnableFeatures, "promql-enable-feature", "", "[EXPERIMENTAL] Enable optional PromQL features, separated by commas. These are disabled by default in Promscale's PromQL engine. "+
-		"Currently, this includes 'promql-at-modifier' only. For more information, see https://github.com/prometheus/prometheus/blob/master/docs/disabled_features.md")
+		"Currently, this includes 'promql-at-modifier' and 'promql-negative-offset'. For more information, see https://github.com/prometheus/prometheus/blob/master/docs/disabled_features.md")
 	fs.DurationVar(&cfg.MaxQueryTimeout, "promql-query-timeout", 2*time.Minute, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
 		"'/api/v1/query.*' endpoints.")
 	fs.DurationVar(&cfg.SubQueryStepInterval, "promql-default-subquery-step-interval", 1*time.Minute, "Default step interval to be used for PromQL subquery evaluation. "+

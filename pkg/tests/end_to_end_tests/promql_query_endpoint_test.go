@@ -103,9 +103,9 @@ func genRangeRequest(apiURL, query string, start, end time.Time, step time.Durat
 }
 
 func TestPromQLQueryEndpointRealDataset(t *testing.T) {
-	//if testing.Short() || !*extendedTest {
-	//	t.Skip("skipping integration test")
-	//}
+	if testing.Short() || !*extendedTest {
+		t.Skip("skipping integration test")
+	}
 
 	testCases := []testCase{
 		{
@@ -178,7 +178,7 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 18",
-			query: `{__name__=~".*"}`, // This is from promlabs, but this fails on even prometheus. So we can ignore this.
+			query: `{__name__=~".*"}`,
 		},
 		{
 			name:  "real query 19",
@@ -2202,18 +2202,18 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 		},
 		{
 			name:  "real query 524",
-			query: fmt.Sprintf("sum(demo_cpu_usage_seconds_total @ %d)", samplesStartTime+30000/1000), // Not form promlabs
+			query: fmt.Sprintf("sum(demo_cpu_usage_seconds_total[5m] @ %d)", samplesStartTime+30000/1000), // Not from promlabs
 		},
 	}
 	start := time.Unix(samplesStartTime/1000, 0)
 	end := time.Unix(samplesEndTime/1000, 0)
-	runPromQLQueryTests(t, testCases, start, end)
+	runPromQLQueryTests(t, testCases, start, end, false) // We set false to failing on status errors since the aim here is to be compliant with Prometheus's output.
 }
 
 func TestPromQLQueryEndpoint(t *testing.T) {
-	//if testing.Short() {
-	//	t.Skip("skipping integration test")
-	//}
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
 
 	testCases := []testCase{
 		{
@@ -2409,8 +2409,12 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			query: `holt_winters(metric_1[10m], 0.1, 0.5)`,
 		},
 		{
-			name:  "query with @ modifier",
+			name:  "enabled-feature: query with @ modifier",
 			query: fmt.Sprintf("sum(metric_1 @ %d)", startTime+30000/1000),
+		},
+		{
+			name:  "enabled-feature: query with -ve offset",
+			query: "sum_over_time(metric[5m] offset -5m)",
 		},
 		{
 			name:  "double name",
@@ -2427,7 +2431,7 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 	}
 	start := time.Unix(startTime/1000, 0)
 	end := time.Unix(endTime/1000, 0)
-	runPromQLQueryTests(t, testCases, start, end)
+	runPromQLQueryTests(t, testCases, start, end, true)
 }
 
 type testCase struct {
@@ -2435,7 +2439,7 @@ type testCase struct {
 	query string
 }
 
-func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
+func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time, failOnStatusErrors bool) {
 	steps := []time.Duration{10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 30 * time.Minute}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
@@ -2496,7 +2500,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 			}
 			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start+30sec query=%v)", c.name, c.query)})
 		}
-		testMethod := testRequestConcurrent(requestCases, client, queryResultComparator)
+		testMethod := testRequestConcurrent(requestCases, client, queryResultComparator, failOnStatusErrors)
 		tester.Run("test instant query endpoint", testMethod)
 
 		requestCases = nil
@@ -2526,7 +2530,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s, straddles_end, query=%v)", c.name, step.String(), c.query)})
 			}
 		}
-		testMethod = testRequestConcurrent(requestCases, client, queryResultComparator)
+		testMethod = testRequestConcurrent(requestCases, client, queryResultComparator, failOnStatusErrors)
 		tester.Run("test range query endpoint", testMethod)
 	})
 }

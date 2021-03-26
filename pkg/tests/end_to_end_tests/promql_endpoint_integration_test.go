@@ -156,7 +156,7 @@ func testRequest(tsReq, promReq *http.Request, client *http.Client, comparator r
 	}
 }
 
-func testRequestConcurrent(requestCases []requestCase, client *http.Client, comparator resultComparator) func(*testing.T) {
+func testRequestConcurrent(requestCases []requestCase, client *http.Client, comparator resultComparator, failOnStatusErrors bool) func(*testing.T) {
 	return func(t *testing.T) {
 
 		perm := rand.Perm(len(requestCases))
@@ -168,6 +168,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 			promReq := requestCases[perm[i]].promReq
 			log := requestCases[perm[i]].log
 			wg.Add(1)
+			//nolint
 			go func() {
 				defer wg.Done()
 
@@ -176,7 +177,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 					t.Fatalf("unexpected error returned from TS client:\n%s\n", tsErr.Error())
 					return
 				}
-				if tsResp.StatusCode != http.StatusOK {
+				if failOnStatusErrors && tsResp.StatusCode != http.StatusOK {
 					t.Fatalf("promscale: expected status code %d, received %d", http.StatusOK, tsResp.StatusCode)
 				}
 
@@ -197,8 +198,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 					}
 				}
 
-
-				if promResp.StatusCode != http.StatusOK {
+				if failOnStatusErrors && promResp.StatusCode != http.StatusOK {
 					t.Fatalf("prometheus: expected status code %d, received %d", http.StatusOK, tsResp.StatusCode)
 				}
 
@@ -278,7 +278,7 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 		TelemetryPath:        "/metrics",
 		MaxQueryTimeout:      time.Minute * 2,
 		SubQueryStepInterval: time.Minute,
-		EnabledFeaturesList:  []string{"promql-at-modifier"},
+		EnabledFeaturesList:  []string{"promql-at-modifier", "promql-negative-offset"},
 	}
 
 	return buildRouterWithAPIConfig(pool, apiConfig)
