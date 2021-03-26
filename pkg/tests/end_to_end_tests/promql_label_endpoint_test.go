@@ -128,7 +128,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 			}
 			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("get label values for %s", label)})
 		}
-		testMethod = testRequestConcurrent(requestCases, client, labelsResultComparator)
+		testMethod = testRequestConcurrent(requestCases, client, labelsResultComparator, true)
 		tester.Run("test label endpoint", testMethod)
 	})
 }

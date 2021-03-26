@@ -26,6 +26,8 @@ func NewEngine(logger log.Logger, queryTimeout time.Duration, subqueryDefaultSte
 		switch feature {
 		case "promql-at-modifier":
 			engineOpts.EnableAtModifier = true
+		case "promql-negative-offset":
+			engineOpts.EnableNegativeOffset = true
 		default:
 			return nil, fmt.Errorf("invalid feature: %s", feature)
 		}

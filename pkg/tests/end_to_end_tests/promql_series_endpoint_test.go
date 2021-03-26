@@ -159,7 +159,7 @@ func TestPromQLSeriesEndpoint(t *testing.T) {
 			}
 			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("get no time series for %s", c.name)})
 		}
-		testMethod := testRequestConcurrent(requestCases, client, seriesResultComparator)
+		testMethod := testRequestConcurrent(requestCases, client, seriesResultComparator, true)
 		tester.Run("test series endpoint", testMethod)
 	})
 }
