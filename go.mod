@@ -13,6 +13,7 @@ require (
 	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.0.0
+	github.com/gin-gonic/gin v1.6.2 // indirect
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.3
@@ -37,11 +38,9 @@ require (
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
 	github.com/stretchr/testify v1.7.0
-	github.com/testcontainers/testcontainers-go v0.5.1
+	github.com/testcontainers/testcontainers-go v0.10.0
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	go.uber.org/atomic v1.7.0
 	go.uber.org/goleak v1.1.10
 	gotest.tools v2.2.0+incompatible // indirect
 )
-
-replace github.com/docker/docker => github.com/docker/engine v0.0.0-20190717161051-705d9623b7c1
