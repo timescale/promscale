@@ -48,6 +48,8 @@ func TestMain(m *testing.M) {
 	var code int
 	flag.Parse()
 	baseExtensionState.UseTimescaleDB()
+	baseExtensionState.UseTimescale2()
+	baseExtensionState.UsePG12()
 	if *useExtension {
 		baseExtensionState.UsePromscale()
 	}
@@ -60,16 +62,22 @@ func TestMain(m *testing.M) {
 
 /* Prev image is the db image with the old promscale extension. We do NOT test timescaleDB extension upgrades here. */
 func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean string) {
-	switch extensionState {
-	case testhelpers.MultinodeAndPromscale:
-		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
-	case testhelpers.Timescale1AndPromscale:
-		return "timescaledev/promscale-extension:0.1.1-ts1-pg12", "timescaledev/promscale-extension:latest-ts1-pg12"
-	case testhelpers.Timescale1:
-		return "timescale/timescaledb:latest-pg12", "timescale/timescaledb:latest-pg12"
-	default:
-		panic("Unexpected extension state in upgradeTest")
+	if extensionState.UsesPG12() {
+		if extensionState.UsesMultinode() {
+			return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
+		}
+		if extensionState.UsesTimescaleDB() {
+			if extensionState.UsesTimescale2() {
+				return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
+			} else {
+				return "timescaledev/promscale-extension:0.1.1-ts1-pg12", "timescaledev/promscale-extension:latest-ts1-pg12"
+			}
+		}
+		if !extensionState.UsesTimescaleDB() {
+			return "timescale/timescaledb:latest-pg12", "timescale/timescaledb:latest-pg12"
+		}
 	}
+	panic("Unexpected extension state in upgradeTest")
 }
 
 func TestUpgradeFromPrev(t *testing.T) {
@@ -107,7 +115,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, extensionState testhelpers.Ext
 	// we test that upgrading from the previous version gives the correct output
 	// by induction, this property should hold true for any chain of versions
 	prevVersion := semver.MustParse(version.EarliestUpgradeTestVersion)
-	if extensionState.UsesMultinode() {
+	if extensionState.UsesMultinode() || extensionState.UsesTimescale2() {
 		prevVersion = semver.MustParse(version.EarliestUpgradeTestVersionMultinode)
 	}
 	// TODO we could probably improve performance of this test by 2x if we
@@ -147,7 +155,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, extensionState testhelpers.Ext
 				ingestor.Close()
 
 			}
-			upgradedDbInfo = SnapshotDB(t, dbContainer, *testDatabase, dbTmpDir, db, true)
+			upgradedDbInfo = SnapshotDB(t, dbContainer, *testDatabase, dbTmpDir, db, extensionState)
 		})
 	return
 }
@@ -178,7 +186,7 @@ func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.Ext
 
 				doIngest(t, ingestor, postUpgradeData1, postUpgradeData2)
 			}
-			pristineDbInfo = SnapshotDB(t, container, *testDatabase, tmpDir, db, true)
+			pristineDbInfo = SnapshotDB(t, container, *testDatabase, tmpDir, db, extensionState)
 		})
 	return
 }
@@ -306,7 +314,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		db.Close()
 
 		connectorImage := "timescale/promscale:" + prevVersion.String()
-		connector, err := testhelpers.StartConnectorWithImage(context.Background(), connectorImage, *printLogs, []string{}, *testDatabase)
+		connector, err := testhelpers.StartConnectorWithImage(context.Background(), dbContainer, connectorImage, *printLogs, []string{}, *testDatabase)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -519,7 +527,7 @@ func TestExtensionUpgrade(t *testing.T) {
 	func() {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
-		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, []string{}, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, []string{}, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -543,7 +551,7 @@ func TestExtensionUpgrade(t *testing.T) {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
 		flags := []string{"-upgrade-prerelease-extensions", "true"}
-		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, flags, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, flags, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -582,7 +590,7 @@ func TestMigrationFailure(t *testing.T) {
 	func() {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
-		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, []string{}, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, []string{}, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -624,7 +632,7 @@ func TestMigrationFailure(t *testing.T) {
 	func() {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
-		connector, err := testhelpers.StartConnectorWithImage(ctx, connectorImage, *printLogs, []string{}, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, []string{}, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}

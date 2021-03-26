@@ -23,7 +23,7 @@ var (
 	testDatabase = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 )
 
-const extensionState = Timescale1AndPromscale
+const extensionState = timescaleBit | promscaleBit | postgres12Bit
 
 func TestPGConnection(t *testing.T) {
 	if testing.Short() {

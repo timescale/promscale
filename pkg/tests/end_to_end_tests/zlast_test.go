@@ -35,12 +35,12 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
-		startSnapShot := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", *useTimescaleDB)
+		startSnapShot := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", extensionState)
 		tts := generateSmallTimeseries()
 		if _, err := ingestor.Ingest(copyMetrics(tts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
-		snapShotAfterNewMetrics := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", *useTimescaleDB)
+		snapShotAfterNewMetrics := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", extensionState)
 		if reflect.DeepEqual(startSnapShot, snapShotAfterNewMetrics) {
 			t.Fatal("start=snapshot and snapshot-after-new-metric-ingestion should not be equal")
 		}
@@ -52,7 +52,7 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("err executing delete query: %v", err)
 		}
-		endSnapShot := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", *useTimescaleDB)
+		endSnapShot := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", extensionState)
 		if !reflect.DeepEqual(startSnapShot, endSnapShot) {
 			upgrade_tests.PrintDbSnapshotDifferences(t, startSnapShot, endSnapShot)
 			t.Fatal("start-snapshot and end-snapshot should be equal")

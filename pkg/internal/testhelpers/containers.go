@@ -43,6 +43,7 @@ const (
 	promscaleBit  = 1 << iota
 	timescale2Bit = 1 << iota
 	multinodeBit  = 1 << iota
+	postgres12Bit = 1 << iota
 )
 
 const (
@@ -71,37 +72,28 @@ func (e *ExtensionState) UseMultinode() {
 	*e |= timescaleBit | timescale2Bit | multinodeBit
 }
 
-func (e ExtensionState) usesTimescaleDB() bool {
-	switch e {
-	case VanillaPostgres:
-		return false
-	default:
-		return true
-	}
+func (e *ExtensionState) UsePG12() {
+	*e |= postgres12Bit
+}
+
+func (e ExtensionState) UsesTimescaleDB() bool {
+	return (e & timescaleBit) != 0
+}
+
+func (e ExtensionState) UsesTimescale2() bool {
+	return (e & timescale2Bit) != 0
 }
 
 func (e ExtensionState) UsesMultinode() bool {
-	switch e {
-	case Multinode:
-		return true
-	case MultinodeAndPromscale:
-		return true
-	default:
-		return false
-	}
+	return (e & multinodeBit) != 0
 }
 
 func (e ExtensionState) usesPromscale() bool {
-	switch e {
-	case Timescale1AndPromscale:
-		return true
-	case Timescale2AndPromscale:
-		return true
-	case MultinodeAndPromscale:
-		return true
-	default:
-		return false
-	}
+	return (e & promscaleBit) != 0
+}
+
+func (e ExtensionState) UsesPG12() bool {
+	return (e & postgres12Bit) != 0
 }
 
 var (
@@ -244,21 +236,33 @@ func StartPGContainer(
 	printLogs bool,
 ) (testcontainers.Container, io.Closer, error) {
 	var image string
-	switch extensionState {
+	PGMajor := "13"
+	if extensionState.UsesPG12() {
+		PGMajor = "12"
+	}
+	PGTag := "pg" + PGMajor
+
+	switch extensionState &^ postgres12Bit {
 	case MultinodeAndPromscale:
-		image = "timescaledev/promscale-extension:latest-ts2-pg12"
+		image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
 	case Multinode:
-		image = "timescale/timescaledb:2.0.1-pg12"
+		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale2AndPromscale:
-		image = "timescaledev/promscale-extension:latest-ts2-pg12"
+		image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
 	case Timescale2:
-		image = "timescale/timescaledb:2.0.1-pg12"
+		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale1AndPromscale:
+		if PGMajor != "12" {
+			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")
+		}
 		image = "timescaledev/promscale-extension:latest-ts1-pg12"
 	case Timescale1:
+		if PGMajor != "12" {
+			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")
+		}
 		image = "timescale/timescaledb:1.7.4-pg12"
 	case VanillaPostgres:
-		image = "postgres:12"
+		image = "postgres:" + PGMajor
 	}
 
 	return StartDatabaseImage(ctx, image, testDataDir, "", printLogs, extensionState)
@@ -374,7 +378,7 @@ func startPGInstance(
 	printLogs bool,
 	networks []string,
 	containerPort nat.Port,
-) (container testcontainers.Container, closer func(), err error) {
+) (testcontainers.Container, func(), error) {
 	// we map the access node to port 5432 and the others to other ports
 	isDataNode := containerPort.Port() != "5432"
 	nodeType := "AN"
@@ -403,7 +407,7 @@ func startPGInstance(
 		"-i",
 	}
 
-	if extensionState.usesTimescaleDB() {
+	if extensionState.UsesTimescaleDB() {
 		req.Cmd = append(req.Cmd,
 			"-c", "shared_preload_libraries=timescaledb",
 			"-c", "timescaledb.max_background_workers=0",
@@ -429,13 +433,13 @@ func startPGInstance(
 		} else {
 			bindDir = dataDir + "/an"
 		}
-		if err = os.Mkdir(bindDir, 0700); err != nil && !os.IsExist(err) {
+		if err := os.Mkdir(bindDir, 0700); err != nil && !os.IsExist(err) {
 			return nil, nil, err
 		}
 		req.BindMounts[bindDir] = "/var/lib/postgresql/data"
 	}
 
-	container, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          false,
 	})
@@ -460,12 +464,8 @@ func startPGInstance(
 		}
 	}
 
-	closer = func() {
-		if printLogs {
-			_ = container.StopLogProducer()
-		}
-
-		_ = container.Terminate(ctx)
+	closer := func() {
+		StopContainer(ctx, container, printLogs)
 	}
 
 	if isDataNode {
@@ -640,7 +640,7 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 
 var ConnectorPort = nat.Port("9201/tcp")
 
-func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, cmds []string, dbname string) (testcontainers.Container, error) {
+func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Container, image string, printLogs bool, cmds []string, dbname string) (testcontainers.Container, error) {
 	dbUser := promUser
 	if dbname == "postgres" {
 		dbUser = "postgres"
@@ -649,17 +649,17 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 	req := testcontainers.ContainerRequest{
 		Image:        image,
 		ExposedPorts: []string{string(ConnectorPort)},
-		WaitingFor:   wait.ForHTTP("/write").WithPort(ConnectorPort).WithAllowInsecure(true),
+		WaitingFor:   wait.ForHTTP("/metrics").WithPort(ConnectorPort).WithAllowInsecure(true),
 		SkipReaper:   false, /* switch to true not to kill docker container */
 		Cmd: []string{
-			"-db-host", "172.17.0.1", // IP refering to the docker's host network
+			"-db-host", "172.17.0.1",
 			"-db-port", pgPort.Port(),
 			"-db-user", dbUser,
 			"-db-password", "password",
 			"-db-name", dbname,
 			"-db-ssl-mode", "prefer",
-			"-web-listen-address", "0.0.0.0:" + ConnectorPort.Port(),
 		},
+		//Networks: []string{"promscale-network"},
 	}
 
 	req.Cmd = append(req.Cmd, cmds...)
@@ -694,10 +694,16 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 
 func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool) {
 	if printLogs {
-		_ = container.StopLogProducer()
+		err := container.StopLogProducer()
+		if err != nil {
+			fmt.Println("couldn't stop log producer", err)
+		}
 	}
 
-	_ = container.Terminate(ctx)
+	err := container.Terminate(ctx)
+	if err != nil {
+		fmt.Println("couldn't terminate container", err)
+	}
 }
 
 // TempDir returns a temp directory for tests
