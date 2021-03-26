@@ -47,7 +47,7 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 		}
 		if !shouldWrite {
 			metrics.LeaderGauge.Set(0)
-			log.Debug("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
+			log.DebugRateLimited("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
 			return
 		}
 
@@ -111,7 +111,7 @@ func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
 		}
 	case "application/json":
 		var (
-			i    importPayload
+			i    jsonPayload
 			body io.Reader = r.Body
 			err  error
 			msg  string
@@ -138,7 +138,7 @@ func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
 				return nil, err, "JSON decode error"
 			}
 
-			req = appendImportPayload(i, req)
+			req = appendJSONPayload(req, i)
 		}
 	default:
 		// Cannot get here because of header validation.
@@ -240,17 +240,17 @@ func buildWriteError(w http.ResponseWriter, err string) {
 	http.Error(w, err, http.StatusBadRequest)
 }
 
-type importPayload struct {
+type jsonPayload struct {
 	Labels  map[string]string `json:"labels"`
-	Samples []importSample    `json:"samples"`
+	Samples []jsonSample      `json:"samples"`
 }
 
-type importSample struct {
+type jsonSample struct {
 	Timestamp int64
 	Value     float64
 }
 
-func (i *importSample) UnmarshalJSON(data []byte) error {
+func (i *jsonSample) UnmarshalJSON(data []byte) error {
 	var (
 		s  string
 		v  []interface{}
@@ -286,7 +286,7 @@ func (i *importSample) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func appendImportPayload(i importPayload, req *prompb.WriteRequest) *prompb.WriteRequest {
+func appendJSONPayload(req *prompb.WriteRequest, i jsonPayload) *prompb.WriteRequest {
 	if len(i.Samples) == 0 || len(i.Labels) == 0 {
 		return req
 	}

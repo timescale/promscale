@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/NYTimes/gziphandler"
@@ -91,6 +92,10 @@ func series(queryable promql.Queryable) http.HandlerFunc {
 		if set.Err() != nil {
 			respondError(w, http.StatusUnprocessableEntity, set.Err(), "execution")
 		}
+
+		sort.Slice(metrics, func(i, j int) bool {
+			return labels.Compare(metrics[i], metrics[j]) < 0
+		})
 
 		respondSeries(w, &promql.Result{
 			Value: metrics,

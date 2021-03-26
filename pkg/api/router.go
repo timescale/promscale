@@ -5,6 +5,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) http.Handler {
+func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
 	authWrapper := func(name string, h http.HandlerFunc) http.HandlerFunc {
 		return authHandler(apiConf, h)
 	}
@@ -44,12 +45,15 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Post("/delete_series", deleteHandler)
 
 	queryable := client.Queryable()
-	queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
-	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable))
+	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.SubQueryStepInterval, apiConf.EnabledFeaturesList)
+	if err != nil {
+		return nil, fmt.Errorf("creating query-engine: %w", err)
+	}
+	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, metrics))
 	router.Get("/api/v1/query", queryHandler)
 	router.Post("/api/v1/query", queryHandler)
 
-	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable))
+	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, metrics))
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
@@ -73,8 +77,13 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Get("/debug/pprof/profile", pprof.Profile)
 	router.Get("/debug/pprof/symbol", pprof.Symbol)
 	router.Get("/debug/pprof/trace", pprof.Trace)
+	router.Get("/debug/pprof/heap", pprof.Handler("heap").ServeHTTP)
+	router.Get("/debug/pprof/goroutine", pprof.Handler("goroutine").ServeHTTP)
+	router.Get("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
+	router.Get("/debug/pprof/block", pprof.Handler("block").ServeHTTP)
+	router.Get("/debug/pprof/allocs", pprof.Handler("allocs").ServeHTTP)
 
-	return router
+	return router, nil
 }
 
 func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
@@ -83,7 +92,7 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 	}
 
 	if cfg.Auth.BasicAuthUsername != "" {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
 			user, pass, ok := r.BasicAuth()
 			if !ok || cfg.Auth.BasicAuthUsername != user || cfg.Auth.BasicAuthPassword != pass {
 				log.Error("msg", "Unauthorized access to endpoint, invalid username or password")
@@ -91,11 +100,11 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			handler.ServeHTTP(w, r)
-		})
+		}
 	}
 
 	if cfg.Auth.BearerToken != "" {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
 			splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
 			if cfg.Auth.BearerToken != splitToken[1] {
 				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token")
@@ -103,7 +112,7 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			handler.ServeHTTP(w, r)
-		})
+		}
 	}
 
 	return handler

@@ -34,8 +34,10 @@ type config struct {
 	mintSec            int64
 	maxt               int64
 	maxtSec            int64
-	maxBlockSizeBytes  int64
-	maxBlockSize       string
+	maxSlabSizeBytes   int64
+	maxSlabSize        string
+	concurrentPulls    int
+	concurrentPush     int
 	readURL            string
 	writeURL           string
 	progressMetricName string
@@ -73,13 +75,14 @@ func main() {
 	}
 
 	planConfig := &plan.Config{
-		Mint:                conf.mint,
-		Maxt:                conf.maxt,
-		JobName:             conf.name,
-		BlockSizeLimitBytes: conf.maxBlockSizeBytes,
-		ProgressEnabled:     conf.progressEnabled,
-		ProgressMetricName:  conf.progressMetricName,
-		ProgressMetricURL:   conf.progressMetricURL,
+		Mint:               conf.mint,
+		Maxt:               conf.maxt,
+		JobName:            conf.name,
+		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
+		NumStores:          conf.concurrentPulls,
+		ProgressEnabled:    conf.progressEnabled,
+		ProgressMetricName: conf.progressMetricName,
+		ProgressMetricURL:  conf.progressMetricURL,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	if err != nil {
@@ -93,15 +96,15 @@ func main() {
 	var (
 		readErrChan  = make(chan error)
 		writeErrChan = make(chan error)
-		sigBlockRead = make(chan *plan.Block)
+		sigSlabRead  = make(chan *plan.Slab)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, sigBlockRead)
+	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigSlabRead)
 	if err != nil {
 		log.Error("msg", "could not create reader", "error", err)
 		os.Exit(2)
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, sigBlockRead)
+	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.concurrentPush, conf.progressEnabled, sigSlabRead)
 	if err != nil {
 		log.Error("msg", "could not create writer", "error", err)
 		os.Exit(2)
@@ -139,8 +142,16 @@ func parseFlags(conf *config, args []string) {
 	flag.Int64Var(&conf.mintSec, "mint", 0, "Minimum timestamp (in seconds) for carrying out data migration. (inclusive)")
 	flag.Int64Var(&conf.maxtSec, "maxt", time.Now().Unix(), "Maximum timestamp (in seconds) for carrying out data migration (exclusive). "+
 		"Setting this value less than zero will indicate all data from mint upto now. ")
-	flag.StringVar(&conf.maxBlockSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
+	flag.StringVar(&conf.maxSlabSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
 		"More the read size, faster will be the migration but higher will be the memory usage. Example: 250MB.")
+	flag.IntVar(&conf.concurrentPush, "concurrent-push", 1, "Concurrent push enables pushing of slabs concurrently. "+
+		"Each slab is divided into 'concurrent-push' (value) parts and then pushed to the remote-write storage concurrently. This may lead to higher throughput on "+
+		"the remote-write storage provided it is capable of handling the load. Note: Larger shards count will lead to significant memory usage.")
+	flag.IntVar(&conf.concurrentPulls, "concurrent-pulls", 1, "Concurrent pulls enables fetching of data concurrently. "+
+		"Each fetch query is divided into 'concurrent-pulls' (value) parts and then fetched concurrently. "+
+		"This may enable higher throughput by pulling data faster from remote-read storage. "+
+		"Note: Setting concurrent-pulls > 1 will show progress of concurrent fetching of data in the progress-bar and disable real-time transfer rate. "+
+		"However, setting this value too high may cause TLS handshake error on the read storage side or may lead to starvation of fetch requests, depending on your internet bandwidth.")
 	flag.StringVar(&conf.readURL, "read-url", "", "URL address for the storage where the data is to be read from.")
 	flag.StringVar(&conf.writeURL, "write-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+
@@ -204,10 +215,10 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("writer auth validation: %w", err)
 	}
 
-	maxBlockSizeBytes, err := bytesize.Parse(conf.maxBlockSize)
+	maxSlabSizeBytes, err := bytesize.Parse(conf.maxSlabSize)
 	if err != nil {
 		return fmt.Errorf("parsing byte-size: %w", err)
 	}
-	conf.maxBlockSizeBytes = int64(maxBlockSizeBytes)
+	conf.maxSlabSizeBytes = int64(maxSlabSizeBytes)
 	return nil
 }

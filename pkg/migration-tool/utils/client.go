@@ -85,7 +85,6 @@ func NewClient(remoteName, urlString string, clientType uint, timeout model.Dura
 	}, nil
 }
 
-// Read reads from a remote endpoint. It returns the response size of compressed and uncompressed in bytes.
 func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (result *prompb.QueryResult, numBytesCompressed int, numBytesUncompressed int, err error) {
 	req := &prompb.ReadRequest{
 		Queries: []*prompb.Query{
@@ -158,6 +157,29 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 	}
 
 	return resp.Results[0], len(compressed), len(uncompressed), nil
+}
+
+// PrompbResponse is a type that contains promb-result and information pertaining to it.
+type PrompbResponse struct {
+	ID                   int
+	Result               *prompb.QueryResult
+	NumBytesCompressed   int
+	NumBytesUncompressed int
+}
+
+// ReadChannels calls the Read and responds on the channels.
+func (c *Client) ReadChannels(ctx context.Context, query *prompb.Query, shardID int, desc string, responseChan chan<- interface{}) {
+	result, numBytesCompressed, numBytesUncompressed, err := c.Read(ctx, query, desc)
+	if err != nil {
+		responseChan <- fmt.Errorf("read-channels: %w", err)
+		return
+	}
+	responseChan <- &PrompbResponse{
+		ID:                   shardID,
+		Result:               result,
+		NumBytesCompressed:   numBytesCompressed,
+		NumBytesUncompressed: numBytesUncompressed,
+	}
 }
 
 // RecoverableError is an error for which the send samples can retry with a backoff.

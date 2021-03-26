@@ -137,7 +137,7 @@ func (se *ScheduledElector) scheduledElection() {
 		if !se.isScheduledElectionPaused() {
 			se.elect()
 		} else {
-			log.Debug("msg", "Scheduled election is paused. Instance can't become a leader until scheduled election is resumed (Prometheus comes up again)")
+			log.DebugRateLimited("msg", "Scheduled election is paused. Instance can't become a leader until scheduled election is resumed (Prometheus comes up again)")
 		}
 	}
 }

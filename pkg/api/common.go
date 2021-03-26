@@ -87,6 +87,11 @@ type Config struct {
 	TelemetryPath   string
 
 	Auth *Auth
+
+	// PromQL configuration.
+	EnabledFeaturesList  []string
+	MaxQueryTimeout      time.Duration
+	SubQueryStepInterval time.Duration // Default step interval value if the user has not provided.
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
@@ -101,6 +106,20 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "auth-password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
 	fs.StringVar(&cfg.Auth.BearerToken, "bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
 	fs.StringVar(&cfg.Auth.BearerTokenFile, "bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
+
+	// PromQL configuration flags.
+	var enabledFeatures string
+	fs.StringVar(&enabledFeatures, "promql-enable-feature", "", "[EXPERIMENTAL] Enable optional PromQL features, separated by commas. These are disabled by default in Promscale's PromQL engine. "+
+		"Currently, this includes 'promql-at-modifier' only. For more information, see https://github.com/prometheus/prometheus/blob/master/docs/disabled_features.md")
+	if enabledFeatures != "" {
+		cfg.EnabledFeaturesList = strings.Split(enabledFeatures, ",")
+	} else {
+		cfg.EnabledFeaturesList = []string{}
+	}
+	fs.DurationVar(&cfg.MaxQueryTimeout, "promql-query-timeout", 2*time.Minute, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
+		"'/api/v1/query.*' endpoints.")
+	fs.DurationVar(&cfg.SubQueryStepInterval, "promql-default-subquery-step-interval", 1*time.Minute, "Default step interval to be used for PromQL subquery evaluation. "+
+		"This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option.")
 	return cfg
 }
 

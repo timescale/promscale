@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 )
 
@@ -24,9 +25,12 @@ const (
 )
 
 type queryResponse struct {
-	Status   string    `json:"status"`
-	Data     queryData `json:"data,omitempty"`
-	Warnings []string  `json:"warnings,omitempty"`
+	Status    string    `json:"status"`
+	Data      queryData `json:"data,omitempty"`
+	Warnings  []string  `json:"warnings,omitempty"`
+	ErrorType string    `json:"errorType,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	Message   string    `json:"message,omitempty"`
 }
 
 func (q queryResponse) Equal(other queryResponse) bool {
@@ -2196,6 +2200,10 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 			name:  "real query 523",
 			query: `avg_over_time(rate(demo_cpu_usage_seconds_total[1m])[2m:10s])`,
 		},
+		{
+			name:  "real query 524",
+			query: fmt.Sprintf("sum(demo_cpu_usage_seconds_total[5m] @ %d)", samplesStartTime+30000/1000),
+		},
 	}
 	start := time.Unix(samplesStartTime/1000, 0)
 	end := time.Unix(samplesEndTime/1000, 0)
@@ -2206,8 +2214,6 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	start := time.Unix(startTime/1000, 0)
-	end := time.Unix(endTime/1000, 0)
 
 	testCases := []testCase{
 		{
@@ -2402,8 +2408,25 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			name:  "complex query 3",
 			query: `holt_winters(metric_1[10m], 0.1, 0.5)`,
 		},
+		{
+			name:  "query with @ modifier",
+			query: fmt.Sprintf("sum(metric_1[5m] @ %d)", startTime+30000/1000),
+		},
+		{
+			name:  "double name",
+			query: `{__name__="metric_1", __name__="metric_1"}`,
+		},
+		{
+			name:  "contradictory name",
+			query: `{__name__="metric_1", __name__="metric_2"}`,
+		},
+		{
+			name:  "non-contradictory name",
+			query: `{__name__="metric_1", __name__!="metric_2"}`,
+		},
 	}
-
+	start := time.Unix(startTime/1000, 0)
+	end := time.Unix(endTime/1000, 0)
 	runPromQLQueryTests(t, testCases, start, end)
 }
 
@@ -2446,8 +2469,6 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
 		client := &http.Client{Timeout: 300 * time.Second}
 
-		start := time.Unix(startTime/1000, 0)
-		end := time.Unix(endTime/1000, 0)
 		var (
 			requestCases []requestCase
 			tsReq        *http.Request
@@ -2462,7 +2483,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 			if err != nil {
 				t.Fatalf("unable to create Prometheus PromQL query request: %s", err)
 			}
-			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start)", c.name)})
+			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start query=%v)", c.name, c.query)})
 
 			// Instant Query, 30 seconds after start
 			tsReq, err = genInstantRequest(tsURL, c.query, start.Add(time.Second*30))
@@ -2473,7 +2494,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 			if err != nil {
 				t.Fatalf("unable to create Prometheus PromQL query request: %s", err)
 			}
-			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start+30sec)", c.name)})
+			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start+30sec query=%v)", c.name, c.query)})
 		}
 		testMethod := testRequestConcurrent(requestCases, client, queryResultComparator)
 		tester.Run("test instant query endpoint", testMethod)
@@ -2489,7 +2510,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 				if err != nil {
 					t.Fatalf("unable to create Prometheus PromQL range query request: %s", err)
 				}
-				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s)", c.name, step.String())})
+				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s, query=%v)", c.name, step.String(), c.query)})
 			}
 
 			//range that straddles the end of the generated data
@@ -2502,7 +2523,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 				if err != nil {
 					t.Fatalf("unable to create Prometheus PromQL range query request: %s", err)
 				}
-				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s, straddles_end)", c.name, step.String())})
+				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s, straddles_end, query=%v)", c.name, step.String(), c.query)})
 			}
 		}
 		testMethod = testRequestConcurrent(requestCases, client, queryResultComparator)
@@ -2510,25 +2531,27 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time) {
 	})
 }
 
-func queryResultComparator(promContent []byte, tsContent []byte) error {
-	var got, wanted queryResponse
+func queryResultComparator(promContent []byte, tsContent []byte, log string) error {
+	var tsRes, promRes queryResponse
 
-	err := json.Unmarshal(tsContent, &got)
+	err := json.Unmarshal(tsContent, &tsRes)
 	if err != nil {
-		return fmt.Errorf("unexpected error returned when reading connector response body:\n%s\nbody:\n%s\n", err.Error(), tsContent)
+		return fmt.Errorf("Unexpected error returned when reading connector response body:\n%s\nbody:\n%s\n", err.Error(), tsContent)
 	}
 
-	err = json.Unmarshal(promContent, &wanted)
+	err = json.Unmarshal(promContent, &promRes)
 	if err != nil {
-		return fmt.Errorf("unexpected error returned when reading Prometheus response body:\n%s\nbody:\n%s\n", err.Error(), promContent)
+		return fmt.Errorf("Unexpected error returned when reading Prometheus response body:\n%s\nbody:\n%s\n", err.Error(), promContent)
 	}
 
 	// Sorting to make sure
-	sort.Sort(got.Data.Result)
-	sort.Sort(wanted.Data.Result)
+	sort.Sort(tsRes.Data.Result)
+	sort.Sort(promRes.Data.Result)
 
-	if !got.Equal(wanted) {
-		return fmt.Errorf("unexpected response:\ngot\n%+v\nwanted\n%+v", got, wanted)
+	if !tsRes.Equal(promRes) {
+		dmp := diffmatchpatch.New()
+		diffs := dmp.DiffMain(fmt.Sprintf("%+v", tsRes), fmt.Sprintf("%+v", promRes), false)
+		return fmt.Errorf("unexpected response:\ntimescale\n%+v\nprom\n%+v\ndiff\n%v", tsRes, promRes, dmp.DiffPrettyText(diffs))
 	}
 
 	return nil

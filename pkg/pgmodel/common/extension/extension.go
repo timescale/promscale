@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -21,13 +22,56 @@ var (
 	ExtensionIsInstalled = false
 )
 
-// CheckVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
-func CheckVersions(conn *pgx.Conn) error {
-	if err := checkPgVersion(conn); err != nil {
-		return fmt.Errorf("Problem checking PostgreSQL version: %w", err)
+type ExtensionMigrateOptions struct {
+	Install           bool
+	Upgrade           bool
+	UpgradePreRelease bool
+}
+
+// MigrateTimescaleDBExtension installs or updates TimescaleDB
+// Note that after this call any previous connections can break
+// so this has to be called ahead of opening connections.
+//
+// Also this takes a connection string not a connection because for
+// updates the ALTER has to be the first command on the connection
+// thus we cannot reuse existing connections
+func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMigrateOptions) error {
+	db, err := pgx.Connect(context.Background(), connstr)
+	if err != nil {
+		return err
 	}
-	if err := CheckExtensionsVersion(conn); err != nil {
-		return fmt.Errorf("Problem checking Promescale extension version: %w", err)
+	defer func() { _ = db.Close(context.Background()) }()
+
+	err = MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
+	if err != nil {
+		return fmt.Errorf("could not install timescaledb: %w", err)
+	}
+
+	return nil
+
+}
+
+func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrateOptions) (bool, error) {
+	ExtensionIsInstalled = false
+	err := MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
+	if err != nil {
+		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
+	}
+
+	if err = CheckExtensionsVersion(db, false, extOptions); err != nil {
+		return false, fmt.Errorf("error encountered while migrating extension: %w", err)
+	}
+
+	return ExtensionIsInstalled, nil
+}
+
+// CheckVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
+func CheckVersions(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
+	if err := checkPgVersion(conn); err != nil {
+		return fmt.Errorf("problem checking PostgreSQL version: %w", err)
+	}
+	if err := CheckExtensionsVersion(conn, migrationFailedDueToLockError, extOptions); err != nil {
+		return fmt.Errorf("problem checking extension version: %w", err)
 	}
 	return nil
 }
@@ -58,12 +102,12 @@ func checkPgVersion(conn *pgx.Conn) error {
 
 // CheckExtensionsVersion checks for the correct version and enables the extension if
 // it is at the right version
-func CheckExtensionsVersion(conn *pgx.Conn) error {
+func CheckExtensionsVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	if err := checkTimescaleDBVersion(conn); err != nil {
-		return err
+		return fmt.Errorf("problem checking timescaledb extension version: %w", err)
 	}
-	if err := checkPromscaleExtensionVersion(conn); err != nil {
-		return err
+	if err := checkPromscaleExtensionVersion(conn, migrationFailedDueToLockError, extOptions); err != nil {
+		return fmt.Errorf("problem checking promscale extension version: %w", err)
 	}
 	return nil
 }
@@ -96,16 +140,24 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 	return nil
 }
 
-func checkPromscaleExtensionVersion(conn *pgx.Conn) error {
-	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "promscale")
+func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
+	currentVersion, newVersion, err := extensionVersions(conn, "promscale", version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
-		return fmt.Errorf("could not get the installed extension version: %w", err)
+		ExtensionIsInstalled = false
+		if err == errors.ErrExtUnavailable {
+			//the promscale extension is optional
+			return nil
+		}
+		return fmt.Errorf("could not get the extension versions: %w", err)
 	}
-	if !isInstalled {
+	if (currentVersion == nil || currentVersion.Compare(*newVersion) < 0) && migrationFailedDueToLockError {
+		log.Warn("msg", "Unable to install/update the Promscale extension; failed to acquire the lock. Ensure there are no other connectors running and try again.")
+	}
+	if currentVersion == nil {
 		ExtensionIsInstalled = false
 		return nil
 	}
-	if version.ExtVersionRange(currentVersion) {
+	if version.ExtVersionRange(*currentVersion) {
 		ExtensionIsInstalled = true
 	} else {
 		ExtensionIsInstalled = false
@@ -113,41 +165,68 @@ func checkPromscaleExtensionVersion(conn *pgx.Conn) error {
 	return nil
 }
 
-func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, validRange semver.Range, rangeString string) error {
+func extensionVersions(conn *pgx.Conn, extName string, validRange semver.Range, rangeString string, extOptions ExtensionMigrateOptions) (currentVersion *semver.Version, newVersion *semver.Version, err error) {
 	availableVersions, err := fetchAvailableExtensionVersions(conn, extName)
 	if err != nil {
-		return err
+		return nil, nil, fmt.Errorf("problem fetching available version: %w", err)
 	}
 	if len(availableVersions) == 0 {
-		return errors.ErrExtUnavailable
+		return nil, nil, errors.ErrExtUnavailable
 	}
 
 	defaultVersion, err := fetchDefaultExtensionVersions(conn, extName)
 	if err != nil {
+		return nil, nil, fmt.Errorf("problem fetching default version: %w", err)
+	}
+
+	current, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("problem getting the installed extension version: %w", err)
+	}
+
+	new, ok := getNewExtensionVersion(extName, availableVersions, defaultVersion, validRange, isInstalled, extOptions.UpgradePreRelease, current)
+	if !ok {
+		return nil, nil, fmt.Errorf("The %v extension is not available at the right version, need version: %v and the default version is %s ", extName, rangeString, defaultVersion)
+	}
+
+	if !isInstalled {
+		return nil, &new, nil
+	}
+	return &current, &new, nil
+}
+
+func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, validRange semver.Range, rangeString string, extOptions ExtensionMigrateOptions) error {
+	currentVersion, newVersion, err := extensionVersions(conn, extName, validRange, rangeString, extOptions)
+	if err != nil {
 		return err
 	}
+	isInstalled := currentVersion != nil
 
-	currentVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
-	if err != nil {
-		return fmt.Errorf("Could not get the installed extension version: %w", err)
+	if !isInstalled && !extOptions.Install {
+		log.Info("msg", "skipping "+extName+" extension install as install extension is disabled.")
+		return nil
 	}
 
-	newVersion, ok := getNewExtensionVersion(extName, availableVersions, defaultVersion, validRange, isInstalled, currentVersion)
-	if !ok {
-		return fmt.Errorf("the extension is not available at the right version, need version: %v", rangeString)
+	if isInstalled && !extOptions.Upgrade {
+		log.Info("msg", "skipping "+extName+" extension upgrade as upgrade extension is disabled. The current extension version is "+currentVersion.String())
+		if !validRange(*currentVersion) {
+			return fmt.Errorf("The %v extension is not installed at the right version and upgrades are disabled, need version: %v and the installed version is %s ", extName, rangeString, currentVersion)
+		}
+		return nil
 	}
 
 	if !isInstalled {
 		_, extErr := conn.Exec(context.Background(),
 			fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s WITH SCHEMA %s VERSION '%s'",
-				extName, extSchemaName, getSqlVersion(newVersion, extName)))
+				extName, extSchemaName, getSqlVersion(*newVersion, extName)))
 		if extErr != nil {
 			return extErr
 		}
+		log.Info("msg", "successfully installed "+extName+" extension of version "+newVersion.String())
 		return nil
 	}
 
-	comparator := currentVersion.Compare(newVersion)
+	comparator := currentVersion.Compare(*newVersion)
 	if comparator > 0 {
 		//currentVersion greater than what we can handle, don't use the extension
 		return fmt.Errorf("the extension at a greater version than supported by the connector: %v > %v", currentVersion, newVersion)
@@ -168,9 +247,13 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 		}
 		_, err := connAlter.Exec(context.Background(),
 			fmt.Sprintf("ALTER EXTENSION %s UPDATE TO '%s'", extName,
-				getSqlVersion(newVersion, extName)))
+				getSqlVersion(*newVersion, extName)))
+		// if migration fails, Do not crash just log an error. As there is an extension already present.
 		if err != nil {
-			return err
+			if !validRange(*currentVersion) {
+				return fmt.Errorf("The %v extension is not installed at the right version and the upgrades failed, need version: %v and the installed version is %s and the upgrade failed with %w ", extName, rangeString, currentVersion, err)
+			}
+			log.Error("msg", fmt.Sprintf("Failed to migrate extension %v from %v to %v: %v", extName, currentVersion, newVersion, err))
 		}
 	}
 
@@ -192,11 +275,15 @@ func fetchAvailableExtensionVersions(conn *pgx.Conn, extName string) (semver.Ver
 
 	for i := range versionStrings {
 		vString := correctVersionString(versionStrings[i], extName)
-		v, err := semver.Parse(vString)
-		if err != nil {
-			return versions, fmt.Errorf("Could not parse available extension version %v: %w", vString, err)
+		// ignore mock ext versions
+		ok := strings.HasPrefix(vString, "mock")
+		if !ok {
+			v, err := semver.Parse(vString)
+			if err != nil {
+				return versions, fmt.Errorf("Could not parse available extension version %v: %w", vString, err)
+			}
+			versions = append(versions, v)
 		}
-		versions = append(versions, v)
 	}
 
 	return versions, nil
@@ -261,7 +348,7 @@ func getNewExtensionVersion(extName string,
 	availableVersions semver.Versions,
 	defaultVersion semver.Version,
 	validRange semver.Range,
-	validCurrentVersion bool,
+	validCurrentVersion, upgradePreRelease bool,
 	currentVersion semver.Version) (semver.Version, bool) {
 	//sort higher extensions first
 	sort.Sort(sort.Reverse(availableVersions))
@@ -271,6 +358,14 @@ func getNewExtensionVersion(extName string,
 		if availableVersions[i].GT(defaultVersion) {
 			continue
 		}
+
+		// if upgradePreRelease is false skip the pre-releases.
+		// if the current installed version is an rc version return it as an valid available version.
+		if len(availableVersions[i].Pre) > 0 && !upgradePreRelease && availableVersions[i].String() != currentVersion.String() {
+			log.Warn("msg", "skipping upgrade to prerelease version "+availableVersions[i].String()+" as --upgrade-prerelease-extensions is disabled.")
+			continue
+		}
+
 		/* Do not auto-upgrade across Major versions of extensions */
 		if validCurrentVersion && currentVersion.Major != availableVersions[i].Major {
 			/* Print a warning if there is a a non-prerelease newer major version available */

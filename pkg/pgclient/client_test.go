@@ -37,10 +37,6 @@ func (q *mockQuerier) LabelNames() ([]string, error) {
 	return q.labelNames, q.labelNamesErr
 }
 
-func (q *mockQuerier) LabelValues(string) ([]string, error) {
-	return nil, nil
-}
-
 func (q *mockQuerier) NumCachedLabels() int {
 	return 0
 }

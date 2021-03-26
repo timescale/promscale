@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -114,11 +116,29 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	}
 	row := r.queries[idx]
 	r.nextQuery += 1
+
+	space := regexp.MustCompile(`\s+`)
+	sql = space.ReplaceAllString(sql, " ")
+	row.Sql = space.ReplaceAllString(row.Sql, " ")
+
 	if sql != row.Sql {
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.Sql)
 	}
-	if !reflect.DeepEqual(args, row.Args) {
-		r.t.Errorf("@ %d unexpected query args for\n\t%s\ngot:\n\t%#v\nexpected:\n\t%#v", idx, sql, args, row.Args)
+
+	require.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
+	for i := range row.Args {
+		switch row.Args[i].(type) {
+		case pgtype.TextEncoder:
+			ci := pgtype.NewConnInfo()
+			got, err := args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
+			require.NoError(r.t, err)
+			expected, err := row.Args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
+			require.NoError(r.t, err)
+			require.Equal(r.t, expected, got, "sql args aren't equal for query # %v: %v", idx, sql)
+		default:
+			require.Equal(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
+
+		}
 	}
 	return row.Results, row.Err
 }
@@ -309,7 +329,7 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetInt(int64(m.results[m.idx][i].(int32)))
 		case int32:
-			if _, ok := dest[i].(int32); !ok {
+			if _, ok := dest[i].(*int32); !ok {
 				return fmt.Errorf("wrong value type int32")
 			}
 			dv := reflect.ValueOf(dest[i])
@@ -325,8 +345,9 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 		case int64:
 			_, ok1 := dest[i].(*int64)
 			_, ok2 := dest[i].(*SeriesID)
-			if !ok1 && !ok2 {
-				return fmt.Errorf("wrong value type int64")
+			_, ok3 := dest[i].(*SeriesEpoch)
+			if !ok1 && !ok2 && !ok3 {
+				return fmt.Errorf("wrong value type int64 for scan of %T", dest[i])
 			}
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
@@ -387,43 +408,9 @@ func (m *MockMetricCache) Set(metric string, tableName string) error {
 	return m.SetMetricErr
 }
 
-type MockCache struct {
-	seriesCache  map[string]SeriesID
-	getSeriesErr error
-	setSeriesErr error
-}
-
-var _ SeriesCache = (*MockCache)(nil)
-
-func (m *MockCache) GetSeries(lset Labels) (SeriesID, error) {
-	if m.getSeriesErr != nil {
-		return 0, m.getSeriesErr
-	}
-
-	val, ok := m.seriesCache[lset.String()]
-	if !ok {
-		return 0, errors.ErrEntryNotFound
-	}
-
-	return val, nil
-}
-
-func (m *MockCache) SetSeries(lset Labels, id SeriesID) error {
-	m.seriesCache[lset.String()] = id
-	return m.setSeriesErr
-}
-
-func (m *MockCache) NumElements() int {
-	return len(m.seriesCache)
-}
-
-func (m *MockCache) Capacity() int {
-	return len(m.seriesCache)
-}
-
 type MockInserter struct {
 	InsertedSeries  map[string]SeriesID
-	InsertedData    []map[string][]SamplesInfo
+	InsertedData    []map[string][]Samples
 	InsertSeriesErr error
 	InsertDataErr   error
 }
@@ -432,7 +419,7 @@ func (m *MockInserter) Close() {
 
 }
 
-func (m *MockInserter) InsertNewData(rows map[string][]SamplesInfo) (uint64, error) {
+func (m *MockInserter) InsertNewData(rows map[string][]Samples) (uint64, error) {
 	return m.InsertData(rows)
 }
 
@@ -440,15 +427,16 @@ func (m *MockInserter) CompleteMetricCreation() error {
 	return nil
 }
 
-func (m *MockInserter) InsertData(rows map[string][]SamplesInfo) (uint64, error) {
+func (m *MockInserter) InsertData(rows map[string][]Samples) (uint64, error) {
 	for _, v := range rows {
 		for i, si := range v {
-			id, ok := m.InsertedSeries[si.Labels.String()]
+			seriesStr := si.GetSeries().String()
+			id, ok := m.InsertedSeries[seriesStr]
 			if !ok {
 				id = SeriesID(len(m.InsertedSeries))
-				m.InsertedSeries[si.Labels.String()] = id
+				m.InsertedSeries[seriesStr] = id
 			}
-			v[i].SeriesID = id
+			v[i].GetSeries().seriesID = id
 		}
 	}
 	if m.InsertSeriesErr != nil {
@@ -458,7 +446,7 @@ func (m *MockInserter) InsertData(rows map[string][]SamplesInfo) (uint64, error)
 	ret := 0
 	for _, data := range rows {
 		for _, si := range data {
-			ret += len(si.Samples)
+			ret += si.CountSamples()
 		}
 	}
 	if m.InsertDataErr != nil {

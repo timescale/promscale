@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -171,6 +172,7 @@ func TestDBIngestorIngest(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
+			scache := cache.NewSeriesCache(100)
 			inserter := model.MockInserter{
 				InsertSeriesErr: c.insertSeriesErr,
 				InsertDataErr:   c.insertDataErr,
@@ -178,7 +180,8 @@ func TestDBIngestorIngest(t *testing.T) {
 			}
 
 			i := DBIngestor{
-				db: &inserter,
+				db:     &inserter,
+				scache: scache,
 			}
 
 			count, err := i.Ingest(c.metrics, NewWriteRequest())

@@ -7,7 +7,9 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net/http"
 	"reflect"
@@ -35,6 +37,7 @@ type sample struct {
 	Raw       string
 	Metric    model.Metric       `json:"metric"`
 	Values    []model.SamplePair `json:"values"`
+	Value     model.SamplePair   `json:"value"`
 }
 
 type dummySample sample
@@ -68,17 +71,30 @@ func (s sample) Equal(other sample) bool {
 		return false
 	}
 
+	valuesAreWiithinThreshold := func(left model.SamplePair, right model.SamplePair) bool {
+		if left.Value.Equal(right.Value) {
+			return true
+		}
+
+		diff := float64(left.Value) - float64(right.Value)
+		return math.Abs(diff) < valueDiffThreshold
+	}
+
+	if !valuesAreWiithinThreshold(s.Value, other.Value) {
+		return false
+	}
+
+	if len(s.Values) != len(other.Values) {
+		return false
+	}
 	for i, v := range s.Values {
 		if v.Timestamp != other.Values[i].Timestamp {
 			return false
 		}
 
-		diff := v.Value - other.Values[i].Value
-
-		if diff > valueDiffThreshold || diff < -valueDiffThreshold {
+		if !valuesAreWiithinThreshold(v, other.Values[i]) {
 			return false
 		}
-
 	}
 
 	return true
@@ -91,6 +107,9 @@ func (s samples) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s samples) Less(i, j int) bool { return s[i].Metric.Before(s[j].Metric) }
 
 func (s samples) Equal(other samples) bool {
+	if len(s) != len(other) {
+		return false
+	}
 	for i, cur := range s {
 		if !cur.Equal(other[i]) {
 			return false
@@ -100,9 +119,9 @@ func (s samples) Equal(other samples) bool {
 	return true
 }
 
-type resultComparator func(promContent []byte, tsContent []byte) error
+type resultComparator func(promContent []byte, tsContent []byte, log string) error
 
-func testRequest(tsReq, promReq *http.Request, client *http.Client, comparator resultComparator) func(*testing.T) {
+func testRequest(tsReq, promReq *http.Request, client *http.Client, comparator resultComparator, log string) func(*testing.T) {
 	return func(t *testing.T) {
 		tsResp, tsErr := client.Do(tsReq)
 
@@ -130,7 +149,7 @@ func testRequest(tsReq, promReq *http.Request, client *http.Client, comparator r
 		}
 		defer tsResp.Body.Close()
 
-		err = comparator(promContent, tsContent)
+		err = comparator(promContent, tsContent, log)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,7 +212,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 				}
 				defer tsResp.Body.Close()
 
-				err = comparator(promContent, tsContent)
+				err = comparator(promContent, tsContent, log)
 				if err != nil {
 					t.Errorf("%s gives %s", log, err)
 					return
@@ -247,8 +266,11 @@ func dateHeadersMatch(expected, actual []string) bool {
 // buildRouter builds a testing router from a connection pool.
 func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 	apiConfig := &api.Config{
-		AllowedOrigin: regexp.MustCompile(".*"),
-		TelemetryPath: "/metrics",
+		AllowedOrigin:        regexp.MustCompile(".*"),
+		TelemetryPath:        "/metrics",
+		MaxQueryTimeout:      time.Minute * 2,
+		SubQueryStepInterval: time.Minute,
+		EnabledFeaturesList:  []string{"promql-at-modifier"},
 	}
 
 	return buildRouterWithAPIConfig(pool, apiConfig)
@@ -273,5 +295,9 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")
 	}
 
-	return api.GenerateRouter(cfg, metrics, pgClient, nil), pgClient, nil
+	hander, err := api.GenerateRouter(cfg, metrics, pgClient, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate router: %w", err)
+	}
+	return hander, pgClient, nil
 }

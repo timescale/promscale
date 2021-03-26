@@ -18,11 +18,11 @@ schema-qualify a view name. Each metric has a view named after the metric
 name (.e.g. the `cpu_usage` metric would have a `prom_metric.cpu_usage` or
 simply `cpu_usage` view). The view contains a the following column:
 
- - time - The timestamp of the measurement
- - value - The value of the measurement
- - series_id - The ID of the series
- - labels - The array of label ids
- - plus a column for each label name's id in the metric's label set
+- time - The timestamp of the measurement
+- value - The value of the measurement
+- series_id - The ID of the series
+- labels - The array of label ids
+- plus a column for each label name's id in the metric's label set
 
 A label value can be retrieved from the label name id using the `val`
 function. A full json for the series can be retrieved with `jsonb(labels)`.
@@ -46,8 +46,8 @@ Example query for single point with their labels:
 
 ```SQL
 SELECT
-    jsonb(labels) as labels,
-    value
+  jsonb(labels) as labels,
+  value
 FROM cpu_usage
 WHERE time < now();
 ```
@@ -65,8 +65,8 @@ Example query for a rollup:
 
 ```SQL
 SELECT
-   val(node_id) as node,
-   avg(value)
+  val(node_id) as node,
+  avg(value)
 FROM cpu_usage
 WHERE time < now()
 GROUP BY node_id
@@ -224,7 +224,7 @@ For example, to join 2 series that are scraped at the same time:
 ```SQL
 SELECT *
 FROM cpu_usage  u
-INNER JOIN cpu_total t  ON (u.time=t.time AND eq(u.labels, t.labels))
+       INNER JOIN cpu_total t  ON (u.time=t.time AND eq(u.labels, t.labels))
 WHERE u.labels ? ('namespace' == 'dev') AND u.labels ? ('node' ==~ 'pin*')
 ```
 
@@ -258,3 +258,12 @@ no matter whether they were created before or after the call to
 `set_default_retention_period`.
 
 [design-doc]: https://tsdb.co/prom-design-doc
+
+## Compression
+
+By default, Promscale applies compression on hypertable (or metric_table) chunks in intervals of 1 hour.
+You can turn off compression with `SELECT set_default_compression_setting(FALSE);`.
+
+Note: Each metric hypertable contains some data in an uncompressed chunks format for better querying performance. The uncompressed
+data is of a constant size and does not grow with time. You can view more details on compression of your data in
+`prom_info.metric` or `timescaledb_information.compressed_hypertable_stats` views respectively.

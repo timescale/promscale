@@ -7,44 +7,34 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"sort"
-	"time"
 
-	"github.com/timescale/promscale/pkg/log"
+	"github.com/jackc/pgtype"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-type insertHandler struct {
-	conn               pgxconn.PgxConn
-	input              chan insertDataRequest
-	pending            *pendingBuffer
-	seriesCache        map[string]model.SeriesID
-	seriesCacheEpoch   Epoch
-	seriesCacheRefresh *time.Ticker
-	metricTableName    string
-	toCopiers          chan copyRequest
-}
+const seriesInsertSQL = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
 
-func (h *insertHandler) hasPendingReqs() bool {
-	return len(h.pending.batch.SampleInfos) > 0
+type insertHandler struct {
+	conn            pgxconn.PgxConn
+	input           chan *insertDataRequest
+	pending         *pendingBuffer
+	metricTableName string
+	toCopiers       chan copyRequest
+	labelArrayOID   uint32
 }
 
 func (h *insertHandler) blockingHandleReq() bool {
-	for {
-		select {
-		case req, ok := <-h.input:
-			if !ok {
-				return false
-			}
-
-			h.handleReq(req)
-
-			return true
-		case <-h.seriesCacheRefresh.C:
-			h.refreshSeriesCache()
-		}
+	req, ok := <-h.input
+	if !ok {
+		return false
 	}
+
+	h.handleReq(req)
+
+	return true
 }
 
 func (h *insertHandler) nonblockingHandleReq() bool {
@@ -57,44 +47,17 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 	}
 }
 
-func (h *insertHandler) handleReq(req insertDataRequest) bool {
-	// we fill in any SeriesIds we have in cache now so we can free any Labels
-	// that are no longer needed, and because the SeriesIds might get flushed.
-	// (neither of these are that critical at the moment)
-	_, epoch := h.fillKnownSeriesIds(req.data)
-	needsFlush := h.pending.addReq(req, epoch)
-	if needsFlush {
+func (h *insertHandler) handleReq(req *insertDataRequest) bool {
+	h.pending.addReq(req)
+	if h.pending.IsFull() {
 		h.flushPending()
 		return true
 	}
 	return false
 }
 
-// Fill in any SeriesIds we already have in cache.
-// This must be idempotent: if called a second time it should not affect any
-// sampleInfo whose series was already set.
-func (h *insertHandler) fillKnownSeriesIds(sampleInfos []model.SamplesInfo) (numMissingSeries int, epoch Epoch) {
-	epoch = h.seriesCacheEpoch
-	for i, series := range sampleInfos {
-		// When we first create the sampleInfos we should have set the seriesID
-		// to -1 for any series whose labels field is nil. Real seriesIds must
-		// always be greater than 0.
-		if series.SeriesID > -1 {
-			continue
-		}
-		id, ok := h.seriesCache[series.Labels.String()]
-		if ok {
-			sampleInfos[i].SeriesID = id
-			series.Labels = nil
-		} else {
-			numMissingSeries++
-		}
-	}
-	return
-}
-
 func (h *insertHandler) flush() {
-	if !h.hasPendingReqs() {
+	if h.pending.IsEmpty() {
 		return
 	}
 	h.flushPending()
@@ -102,163 +65,217 @@ func (h *insertHandler) flush() {
 
 // Set all unset SeriesIds and flush to the next layer
 func (h *insertHandler) flushPending() {
-	_, epoch, err := h.setSeriesIds(h.pending.batch.SampleInfos)
+	err := h.setSeriesIds(h.pending.batch.GetSeriesSamples())
 	if err != nil {
 		h.pending.reportResults(err)
 		h.pending.release()
-		h.pending = pendingBuffers.Get().(*pendingBuffer)
+		h.pending = NewPendingBuffer()
 		return
 	}
 
-	h.pending.addEpoch(epoch)
-
 	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
-	h.pending = pendingBuffers.Get().(*pendingBuffer)
+	h.pending = NewPendingBuffer()
 }
+
+type labelInfo struct {
+	labelID int32
+	Pos     int32
+}
+
+func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} }
 
 // Set all seriesIds for a samplesInfo, fetching any missing ones from the DB,
 // and repopulating the cache accordingly.
 // returns: the tableName for the metric being inserted into
 // TODO move up to the rest of insertHandler
-func (h *insertHandler) setSeriesIds(sampleInfos []model.SamplesInfo) (string, Epoch, error) {
-	numMissingSeries, epoch := h.fillKnownSeriesIds(sampleInfos)
-
-	if numMissingSeries == 0 {
-		return "", epoch, nil
-	}
-
-	seriesToInsert := make([]*model.SamplesInfo, 0, numMissingSeries)
-	for i, series := range sampleInfos {
-		if series.SeriesID < 0 {
-			seriesToInsert = append(seriesToInsert, &sampleInfos[i])
+func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
+	seriesToInsert := make([]*model.Series, 0, len(seriesSamples))
+	for i, series := range seriesSamples {
+		if !series.GetSeries().IsSeriesIDSet() {
+			seriesToInsert = append(seriesToInsert, seriesSamples[i].GetSeries())
 		}
 	}
-	var lastSeenLabel *model.Labels
+	if len(seriesToInsert) == 0 {
+		return nil
+	}
+
+	metricName := seriesToInsert[0].MetricName()
+	labelMap := make(map[labels.Label]labelInfo, len(seriesToInsert))
+	labelList := model.NewLabelList(len(seriesToInsert))
+	//logically should be a separate function but we want
+	//to prevent labelMap from escaping, so keeping inline.
+	{
+		for _, series := range seriesToInsert {
+			names, values, ok := series.NameValues()
+			if !ok {
+				//was already set
+				continue
+			}
+			for i := range names {
+				key := labels.Label{Name: names[i], Value: values[i]}
+				_, ok = labelMap[key]
+				if !ok {
+					labelMap[key] = labelInfo{}
+					labelList.Add(names[i], values[i])
+				}
+			}
+		}
+	}
+	if len(labelMap) == 0 {
+		return nil
+	}
+
+	//labels have to be created before series are since we need a canonical
+	//ordering for label creation to avoid deadlocks. Otherwise, if we create
+	//the labels for multiple series in same txn as we are creating the series,
+	//the ordering of label creation can only be canonical within a series and
+	//not across series.
+	dbEpoch, maxPos, err := h.fillLabelIDs(metricName, labelList, labelMap)
+	if err != nil {
+		return fmt.Errorf("Error setting series ids: %w", err)
+	}
+
+	//create the label arrays
+	labelArraySet, seriesToInsert, err := createLabelArrays(seriesToInsert, labelMap, maxPos)
+	if err != nil {
+		return fmt.Errorf("Error setting series ids: %w", err)
+	}
+	if len(labelArraySet) == 0 {
+		return nil
+	}
+
+	labelArrayArray := pgtype.NewArrayType("prom_api.label_array[]", h.labelArrayOID, labelArrayTranscoder)
+	err = labelArrayArray.Set(labelArraySet)
+	if err != nil {
+		return fmt.Errorf("Error setting series id: cannot set label_array: %w", err)
+	}
+	res, err := h.conn.Query(context.Background(), seriesInsertSQL, metricName, labelArrayArray)
+	if err != nil {
+		return fmt.Errorf("Error setting series_id: cannot query for series_id: %w", err)
+	}
+	defer res.Close()
+
+	count := 0
+	for res.Next() {
+		var (
+			id         model.SeriesID
+			ordinality int64
+		)
+		err := res.Scan(&id, &ordinality)
+		if err != nil {
+			return fmt.Errorf("Error setting series_id: cannot scan series_id: %w", err)
+		}
+		seriesToInsert[int(ordinality)-1].SetSeriesID(id, dbEpoch)
+		count++
+	}
+	if err := res.Err(); err != nil {
+		return fmt.Errorf("Error setting series_id: reading series id rows: %w", err)
+	}
+	if count != len(seriesToInsert) {
+		//This should never happen according to the logic. This is purely defensive.
+		//panic since we may have set the seriesID incorrectly above and may
+		//get data corruption if we continue.
+		panic(fmt.Sprintf("number series returned %d doesn't match expected series %d", count, len(seriesToInsert)))
+	}
+	return nil
+}
+
+func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelList, labelMap map[labels.Label]labelInfo) (model.SeriesEpoch, int, error) {
+	//we cannot use the label cache here because that maps label ids => name, value.
+	//what we need here is name, value => id.
+	//we may want a new cache for that, at a later time.
 
 	batch := h.conn.NewBatch()
+	var dbEpoch model.SeriesEpoch
+	maxPos := 0
 
+	items := len(labelList.Names)
+	if items != len(labelMap) {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: number of items in labelList and labelMap doesn't match")
+	}
 	// The epoch will never decrease, so we can check it once at the beginning,
 	// at worst we'll store too small an epoch, which is always safe
-	batch.Queue("BEGIN;")
 	batch.Queue(getEpochSQL)
-	batch.Queue("COMMIT;")
-
-	numSQLFunctionCalls := 0
-	// Sort and remove duplicates. The sort is needed to remove duplicates. Each series is inserted
-	// in a different transaction, thus deadlocks are not an issue.
-	sort.Slice(seriesToInsert, func(i, j int) bool {
-		return seriesToInsert[i].Labels.Compare(seriesToInsert[j].Labels) < 0
-	})
-
-	batchSeries := make([][]*model.SamplesInfo, 0, len(seriesToInsert))
-	// group the seriesToInsert by labels, one slice array per unique labels
-	for _, curr := range seriesToInsert {
-		if lastSeenLabel != nil && lastSeenLabel.Equal(curr.Labels) {
-			batchSeries[len(batchSeries)-1] = append(batchSeries[len(batchSeries)-1], curr)
-			continue
-		}
-
-		batch.Queue("BEGIN;")
-		batch.Queue(getSeriesIDForLabelSQL, curr.Labels.MetricName, curr.Labels.Names, curr.Labels.Values)
-		batch.Queue("COMMIT;")
-		numSQLFunctionCalls++
-		batchSeries = append(batchSeries, []*model.SamplesInfo{curr})
-
-		lastSeenLabel = curr.Labels
-	}
-
-	if numSQLFunctionCalls != len(batchSeries) {
-		return "", epoch, fmt.Errorf("unexpected difference in numQueries and batchSeries")
-	}
-
+	batch.Queue("SELECT * FROM "+schema.Catalog+".get_or_create_label_ids($1, $2, $3)", metricName, labelList.Names, labelList.Values)
 	br, err := h.conn.SendBatch(context.Background(), batch)
 	if err != nil {
-		return "", epoch, err
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: %w", err)
 	}
 	defer br.Close()
 
-	// BEGIN;
-	_, err = br.Exec()
+	err = br.QueryRow().Scan(&dbEpoch)
 	if err != nil {
-		return "", epoch, err
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: %w", err)
 	}
-
-	var newEpoch int64
-	row := br.QueryRow()
-	err = row.Scan(&newEpoch)
+	rows, err := br.Query()
 	if err != nil {
-		return "", epoch, err
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: %w", err)
 	}
-	if epoch == -1 || newEpoch < epoch {
-		epoch = newEpoch
-	}
-	if h.seriesCacheEpoch == -1 || newEpoch < h.seriesCacheEpoch {
-		h.seriesCacheEpoch = newEpoch
-	}
+	defer rows.Close()
 
-	// COMMIT;
-	_, err = br.Exec()
-	if err != nil {
-		return "", epoch, err
-	}
-
-	var tableName string
-	for i := 0; i < numSQLFunctionCalls; i++ {
-		// BEGIN;
-		_, err = br.Exec()
+	count := 0
+	for rows.Next() {
+		key := labels.Label{}
+		res := labelInfo{}
+		err := rows.Scan(&res.Pos, &res.labelID, &key.Name, &key.Value)
 		if err != nil {
-			return "", epoch, err
+			return dbEpoch, 0, fmt.Errorf("Error filling labels in scan: %w", err)
 		}
-
-		var id model.SeriesID
-		row = br.QueryRow()
-		err = row.Scan(&tableName, &id)
-		if err != nil {
-			return "", epoch, err
+		_, ok := labelMap[key]
+		if !ok {
+			return dbEpoch, 0, fmt.Errorf("Error filling labels: getting a key never sent to the db")
 		}
-		seriesString := batchSeries[i][0].Labels.String()
-		h.seriesCache[seriesString] = id
-		for _, lsi := range batchSeries[i] {
-			lsi.SeriesID = id
+		labelMap[key] = res
+		if int(res.Pos) > maxPos {
+			maxPos = int(res.Pos)
 		}
-
-		// COMMIT;
-		_, err = br.Exec()
-		if err != nil {
-			return "", epoch, err
-		}
+		count++
 	}
-
-	return tableName, epoch, nil
+	if err := rows.Err(); err != nil {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: error reading label id rows: %w", err)
+	}
+	if count != items {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels: not filling as many items as expected: %v vs %v", count, items)
+	}
+	return dbEpoch, maxPos, nil
 }
 
-func (h *insertHandler) refreshSeriesCache() {
-	newEpoch, err := h.getServerEpoch()
-	if err != nil {
-		// we don't have any great place to report this error, and if the
-		// connection recovers we can still make progress, so we'll just log it
-		// and continue execution
-		msg := fmt.Sprintf("error refreshing the series cache for %s", h.metricTableName)
-		log.Error("msg", msg, "metric_table", h.metricTableName, "err", err)
-		// Trash the cache just in case an epoch change occurred, seems safer
-		h.seriesCache = map[string]model.SeriesID{}
-		h.seriesCacheEpoch = -1
-		return
+func createLabelArrays(series []*model.Series, labelMap map[labels.Label]labelInfo, maxPos int) ([][]int32, []*model.Series, error) {
+	labelArraySet := make([][]int32, 0, len(series))
+	dest := 0
+	for src := 0; src < len(series); src++ {
+		names, values, ok := series[src].NameValues()
+		if !ok {
+			continue
+		}
+		lArray := make([]int32, maxPos)
+		maxIndex := 0
+		for i := range names {
+			key := labels.Label{Name: names[i], Value: values[i]}
+			res, ok := labelMap[key]
+			if !ok {
+				return nil, nil, fmt.Errorf("Error generating label array: missing key in map")
+			}
+			if res.labelID == 0 {
+				return nil, nil, fmt.Errorf("Error generating label array: missing id for label %v=>%v", names[i], values[i])
+			}
+			//Pos is 1-indexed, slices are 0-indexed
+			sliceIndex := int(res.Pos) - 1
+			lArray[sliceIndex] = int32(res.labelID)
+			if sliceIndex > maxIndex {
+				maxIndex = sliceIndex
+			}
+		}
+		lArray = lArray[:maxIndex+1]
+		labelArraySet = append(labelArraySet, lArray)
+		//this logic is needed for when continue is hit above
+		if src != dest {
+			series[dest] = series[src]
+		}
+		dest++
 	}
-
-	if newEpoch != h.seriesCacheEpoch {
-		h.seriesCache = map[string]model.SeriesID{}
-		h.seriesCacheEpoch = newEpoch
+	if len(labelArraySet) != len(series[:dest]) {
+		return nil, nil, fmt.Errorf("Error generating label array: lengths not equal")
 	}
-}
-
-func (h *insertHandler) getServerEpoch() (Epoch, error) {
-	var newEpoch int64
-	row := h.conn.QueryRow(context.Background(), getEpochSQL)
-	err := row.Scan(&newEpoch)
-	if err != nil {
-		return -1, err
-	}
-
-	return newEpoch, nil
+	return labelArraySet, series[:dest], nil
 }

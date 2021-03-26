@@ -179,13 +179,16 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
 DECLARE
   label_id INT;
 BEGIN
-   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL)',
+   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
                     NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
         IF SCHEMA_CATALOG.is_multinode() THEN
+            --Note: we intentionally do not partition by series_id here. The assumption is
+            --that we'll have more "heavy metrics" than nodes and thus partitioning /individual/
+            --metrics won't gain us much for inserts and would be detrimental for many queries.
             PERFORM create_distributed_hypertable(
                 format('SCHEMA_DATA.%I', NEW.table_name),
                 'time',
@@ -212,7 +215,7 @@ BEGIN
             CHECK(metric_id = %3$L),
             CONSTRAINT series_labels_id_%3$s UNIQUE(labels) INCLUDE (id),
             CONSTRAINT series_pkey_%3$s PRIMARY KEY(id)
-        )
+        ) WITH (autovacuum_vacuum_threshold = 100, autovacuum_analyze_threshold = 100)
     $$, NEW.table_name, label_id, NEW.id);
 
    RETURN NEW;
@@ -610,6 +613,32 @@ $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_key_position(text, text) to prom_reader;
 
+-- drop_metric deletes a metric and related series hypertable from the database along with the related series, views and unreferenced labels.
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.drop_metric(metric_name_to_be_dropped text) RETURNS VOID
+AS
+$$
+    DECLARE
+        hypertable_name TEXT;
+        deletable_metric_id INTEGER;
+    BEGIN
+        IF (SELECT NOT pg_try_advisory_xact_lock(SCHEMA_LOCK_ID)) THEN
+            RAISE NOTICE 'drop_metric can run only when no Promscale connectors are running. Please shutdown the Promscale connectors';
+            PERFORM pg_advisory_xact_lock(SCHEMA_LOCK_ID);
+        END IF;
+        SELECT table_name, id INTO hypertable_name, deletable_metric_id FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_to_be_dropped;
+        RAISE NOTICE 'deleting "%" metric with metric_id as "%" and table_name as "%"', metric_name_to_be_dropped, deletable_metric_id, hypertable_name;
+        EXECUTE FORMAT('DROP VIEW SCHEMA_SERIES.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP VIEW SCHEMA_METRIC.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP TABLE SCHEMA_DATA_SERIES.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP TABLE SCHEMA_DATA.%1$I;', hypertable_name);
+        DELETE FROM SCHEMA_CATALOG.metric WHERE id=deletable_metric_id;
+        -- clean up unreferenced labels, label_keys and its position.
+        DELETE FROM SCHEMA_CATALOG.label_key_position WHERE metric_name=metric_name_to_be_dropped;
+        DELETE FROM SCHEMA_CATALOG.label_key WHERE key NOT IN (select key from SCHEMA_CATALOG.label_key_position);
+    END;
+$$
+LANGUAGE plpgsql;
+
 --Get the label_id for a key, value pair
 -- no need for a get function only as users will not be using ids directly
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_id(
@@ -710,6 +739,35 @@ LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(text, text[], text[])
 IS 'converts a metric name, array of keys, and array of values to a label array';
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(metric_name TEXT, label_keys text[], label_values text[])
+RETURNS TABLE(pos int, id int, label_key text, label_value text) AS $$
+        SELECT
+            -- only call the functions to create new key positions
+            -- and label ids if they don't exist (for performance reasons)
+            coalesce(lkp.pos,
+              SCHEMA_CATALOG.get_or_create_label_key_pos(get_or_create_label_ids.metric_name, kv.key)) idx,
+            coalesce(l.id,
+              SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) val,
+              kv.key,
+              kv.value
+        FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
+            LEFT JOIN SCHEMA_CATALOG.label l
+               ON (l.key = kv.key AND l.value = kv.value)
+            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
+               ON
+               (
+                  lkp.metric_name = get_or_create_label_ids.metric_name AND
+                  lkp.key = kv.key
+               )
+        --have to order by in SQL to control the order of label creation no matter the join
+        ORDER BY kv.key, kv.value
+$$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, text[], text[])
+IS 'converts a metric name, array of keys, and array of values to a list of label ids';
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(TEXT, text[], text[]) TO prom_writer;
+
 
 -- Returns ids, keys and values for a label_array
 -- the order may not be the same as the original labels
@@ -880,6 +938,47 @@ END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
+
+
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(metric_name TEXT, larray SCHEMA_PROM.label_array, OUT table_name NAME, OUT series_id BIGINT)
+AS $func$
+DECLARE
+  metric_id int;
+BEGIN
+   --need to make sure the series partition exists
+   SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
+   INTO metric_id, table_name;
+
+   -- the data table could be locked during label key creation
+   -- and must be locked before the series parent according to lock ordering
+   EXECUTE format($query$
+        LOCK TABLE ONLY SCHEMA_DATA.%1$I IN ACCESS SHARE MODE
+    $query$, table_name);
+
+   EXECUTE format($query$
+    WITH existing AS (
+        SELECT id, delete_epoch
+        FROM SCHEMA_DATA_SERIES.%1$I as series
+        WHERE labels = $1
+    ), updates AS (
+        UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = NULL
+        WHERE id IN (SELECT id FROM existing WHERE delete_epoch IS NOT NULL)
+    )
+    SELECT id FROM existing
+    UNION ALL
+    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, $1)
+    LIMIT 1
+   $query$, table_name, metric_id)
+   USING larray
+   INTO series_id;
+
+   RETURN;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
+
 --
 -- Parameter manipulation functions
 --
@@ -993,7 +1092,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name
 RETURNS BOOLEAN
 AS $func$
     UPDATE SCHEMA_CATALOG.metric SET retention_period = NULL
-    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name));
+    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(reset_metric_retention_period.metric_name));
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
@@ -1691,30 +1790,51 @@ $$;
 --------------------------------- Views --------------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_view()
-RETURNS TABLE(id int, metric_name text, table_name name, retention_period interval,
-                         chunk_interval interval, label_keys text[], size text, compression_ratio numeric,
-                         total_chunks bigint, compressed_chunks bigint)
+RETURNS TABLE(id int, metric_name text, table_name name, label_keys text[], retention_period interval,
+              chunk_interval interval, compressed_interval interval, total_interval interval,
+              before_compression_bytes bigint, after_compression_bytes bigint,
+              total_size_bytes bigint, total_size text, compression_ratio numeric,
+              total_chunks bigint, compressed_chunks bigint)
 AS $func$
 BEGIN
         IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
-                    RETURN QUERY
+            RETURN QUERY
+                SELECT
+                   id,
+                   metric_name,
+                   table_name,
+                   label_keys,
+                   retention_period,
+                   chunk_interval,
+                   NULL::interval compressed_interval,
+                   NULL::interval total_interval,
+                   pg_size_bytes(total_size) as before_compression_bytes,
+                   NULL::bigint as after_compression_bytes,
+                   pg_size_bytes(total_size) as total_size_bytes,
+                   total_size,
+                   compression_ratio,
+                   total_chunks,
+                   compressed_chunks
+                FROM
+                (
                     SELECT
                         m.id,
                         m.metric_name,
                         m.table_name,
-                        SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
-                        NULL::interval as chunk_interval,
                         ARRAY(
                             SELECT key
                             FROM SCHEMA_CATALOG.label_key_position lkp
                             WHERE lkp.metric_name = m.metric_name
                             ORDER BY key) label_keys,
-                        pg_size_pretty(pg_total_relation_size(format('SCHEMA_DATA.%I', m.table_name)::regclass)) as size,
+                        SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                        NULL::interval as chunk_interval,
+                        pg_size_pretty(pg_total_relation_size(format('SCHEMA_DATA.%I', m.table_name)::regclass)) as total_size,
                         0.0 as compression_ratio,
                         NULL::bigint as total_chunks,
                         NULL::bigint as compressed_chunks
-                    FROM SCHEMA_CATALOG.metric m;
-                    RETURN;
+                    FROM SCHEMA_CATALOG.metric m
+                ) AS i;
+            RETURN;
         END IF;
 
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
@@ -1723,14 +1843,19 @@ BEGIN
                 m.id,
                 m.metric_name,
                 m.table_name,
-                SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
-                dims.time_interval as chunk_interval,
                 ARRAY(
                     SELECT key
                     FROM SCHEMA_CATALOG.label_key_position lkp
                     WHERE lkp.metric_name = m.metric_name
                     ORDER BY key) label_keys,
-                pg_size_pretty(hds.total_bytes) as size,
+                SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                dims.time_interval as chunk_interval,
+                ci.compressed_interval,
+                ci.total_interval,
+                hcs.before_compression_total_bytes::bigint,
+                hcs.after_compression_total_bytes::bigint,
+                hds.total_bytes::bigint as total_size_bytes,
+                pg_size_pretty(hds.total_bytes) as total_size,
                 (1.0 - (hcs.after_compression_total_bytes::NUMERIC / hcs.before_compression_total_bytes::NUMERIC)) * 100 as compression_ratio,
                 hcs.total_chunks::BIGINT,
                 hcs.number_compressed_chunks::BIGINT as compressed_chunks
@@ -1738,45 +1863,75 @@ BEGIN
             LEFT JOIN timescaledb_information.dimensions dims ON
                     (dims.hypertable_schema = 'SCHEMA_DATA' AND dims.hypertable_name = m.table_name)
             LEFT JOIN LATERAL (SELECT SUM(h.total_bytes) as total_bytes
-                FROM hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+               FROM hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
             ) hds ON true
             LEFT JOIN LATERAL (SELECT
-                    SUM(h.after_compression_total_bytes) as after_compression_total_bytes,
-                    SUM(h.before_compression_total_bytes) as before_compression_total_bytes,
-                    SUM(h.total_chunks) as total_chunks,
-                    SUM(h.number_compressed_chunks) as number_compressed_chunks
-                FROM hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
-            ) hcs ON true;
+                SUM(h.after_compression_total_bytes) as after_compression_total_bytes,
+                SUM(h.before_compression_total_bytes) as before_compression_total_bytes,
+                SUM(h.total_chunks) as total_chunks,
+                SUM(h.number_compressed_chunks) as number_compressed_chunks
+            FROM hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+            ) hcs ON true
+            LEFT JOIN LATERAL (
+                SELECT
+                   COALESCE(SUM(range_end-range_start) FILTER(WHERE is_compressed), INTERVAL '0') AS compressed_interval,
+                   COALESCE(SUM(range_end-range_start), INTERVAL '0') AS total_interval
+                FROM timescaledb_information.chunks c
+                WHERE hypertable_schema='SCHEMA_DATA' AND hypertable_name=m.table_name
+            ) ci ON TRUE;
         ELSE
             RETURN QUERY
-            SELECT
-                m.id,
-                m.metric_name,
-                m.table_name,
-                SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                SELECT
+                    m.id,
+                    m.metric_name,
+                    m.table_name,
+                    ARRAY(
+                        SELECT key
+                            FROM _prom_catalog.label_key_position lkp
+                        WHERE lkp.metric_name = m.metric_name
+                        ORDER BY key
+                    ) label_keys,
+                    _prom_catalog.get_metric_retention_period(m.metric_name) as retention_period,
+                    (
+                        SELECT _timescaledb_internal.to_interval(interval_length)
+                            FROM _timescaledb_catalog.dimension d
+                        WHERE d.hypertable_id = h.id
+                        ORDER BY d.id ASC LIMIT 1
+                    ) as chunk_interval,
+                    ci.compressed_interval,
+                    ci.total_interval,
+                    pg_size_bytes(chs.uncompressed_total_bytes) as before_compression_bytes,
+                    pg_size_bytes(chs.compressed_total_bytes) as after_compression_bytes,
+                    pg_size_bytes(hi.total_size) as total_bytes,
+                    hi.total_size as total_size,
+                    (1.0 - (pg_size_bytes(chs.compressed_total_bytes)::numeric / pg_size_bytes(chs.uncompressed_total_bytes)::numeric)) * 100 as compression_ratio,
+                    chs.total_chunks,
+                    chs.number_compressed_chunks as compressed_chunks
+                FROM _prom_catalog.metric m
+                    LEFT JOIN timescaledb_information.hypertable hi ON
+                (hi.table_schema = 'prom_data' AND hi.table_name = m.table_name)
+                    LEFT JOIN timescaledb_information.compressed_hypertable_stats chs ON
+                (chs.hypertable_name = format('%I.%I', 'prom_data', m.table_name)::regclass)
+                    LEFT JOIN _timescaledb_catalog.hypertable h ON
+                (h.schema_name = 'prom_data' AND h.table_name = m.table_name)
+                    LEFT JOIN LATERAL
                 (
-                    SELECT _timescaledb_internal.to_interval(interval_length)
-                    FROM _timescaledb_catalog.dimension d
-                    WHERE d.hypertable_id = h.id
-                    ORDER BY d.id ASC
-                    LIMIT 1
-                ) as chunk_interval,
-                ARRAY(
-                    SELECT key
-                    FROM SCHEMA_CATALOG.label_key_position lkp
-                    WHERE lkp.metric_name = m.metric_name
-                    ORDER BY key) label_keys,
-                hi.total_size as size,
-                (1.0 - (pg_size_bytes(chs.compressed_total_bytes)::numeric / pg_size_bytes(chs.uncompressed_total_bytes)::numeric)) * 100 as compression_ratio,
-                chs.total_chunks,
-                chs.number_compressed_chunks as compressed_chunks
-            FROM SCHEMA_CATALOG.metric m
-            LEFT JOIN timescaledb_information.hypertable hi ON
-                        (hi.table_schema = 'SCHEMA_DATA' AND hi.table_name = m.table_name)
-            LEFT JOIN timescaledb_information.compressed_hypertable_stats chs ON
-                        (chs.hypertable_name = format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass)
-            LEFT JOIN _timescaledb_catalog.hypertable h ON
-                        (h.schema_name = 'SCHEMA_DATA' AND h.table_name = m.table_name);
+                    SELECT COALESCE(
+                        SUM(
+                            UPPER(rs.ranges[1]::TSTZRANGE) - LOWER(rs.ranges[1]::TSTZRANGE)
+                        ),
+                        INTERVAL '0'
+                    ) total_interval,
+                    COALESCE(
+                        SUM(
+                            UPPER(rs.ranges[1]::TSTZRANGE) - LOWER(rs.ranges[1]::TSTZRANGE)
+                        ) FILTER (WHERE cs.compression_status = 'Compressed'),
+                        INTERVAL '0'
+                    ) compressed_interval
+                        FROM public.chunk_relation_size_pretty(FORMAT('prom_data.%I', m.table_name)) rs
+                        LEFT JOIN timescaledb_information.compressed_chunk_stats cs ON
+                    (cs.chunk_name::text = rs.chunk_table::text)
+                ) as ci ON TRUE;
         END IF;
 END
 $func$
@@ -1846,7 +2001,7 @@ END
 $$
 LANGUAGE PLPGSQL;
 
-CALL execute_everywhere($ee$
+CALL execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
     --Decompression should take place in a procedure because we don't want locks held across
     --decompress_chunk calls since that function takes some heavier locks at the end.
     --Thus, transactional parameter should usually be false
@@ -1921,7 +2076,7 @@ BEGIN
 END
 $proc$ LANGUAGE PLPGSQL;
 
-CALL execute_everywhere($ee$
+CALL execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
     CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
     AS $$
     DECLARE
@@ -1992,8 +2147,8 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression() TO 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
 AS $$
 DECLARE
-    r RECORD;
-    remaining_metrics text[] DEFAULT '{}';
+    r SCHEMA_CATALOG.metric;
+    remaining_metrics SCHEMA_CATALOG.metric[] DEFAULT '{}';
 BEGIN
     --Do one loop with metric that could be locked without waiting.
     --This allows you to do everything you can while avoiding lock contention.
@@ -2005,7 +2160,7 @@ BEGIN
         FROM SCHEMA_CATALOG.get_metrics_that_need_compression()
     LOOP
         IF NOT SCHEMA_CATALOG.lock_metric_for_maintenance(r.id, wait=>false) THEN
-            remaining_metrics := remaining_metrics || r.metric_name;
+            remaining_metrics := remaining_metrics || r;
             CONTINUE;
         END IF;
 
@@ -2014,8 +2169,8 @@ BEGIN
     END LOOP;
 
     FOR r IN
-        SELECT
-        FROM unnest(remaining_metrics) as m(metric_name)
+        SELECT *
+        FROM unnest(remaining_metrics)
     LOOP
         PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
@@ -2025,3 +2180,23 @@ END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
 IS 'compress data according to the policy. This procedure should be run regularly in a cron job';
+
+CREATE OR REPLACE PROCEDURE SCHEMA_PROM.add_prom_node(node_name TEXT, attach_to_existing_metrics BOOLEAN = true)
+AS $func$
+DECLARE
+    command_row record;
+BEGIN
+    FOR command_row IN
+        SELECT command, transactional
+        FROM SCHEMA_CATALOG.remote_commands
+        ORDER BY seq asc
+    LOOP
+        CALL distributed_exec(command_row.command,node_list=>array[node_name]);
+    END LOOP;
+
+    IF attach_to_existing_metrics THEN
+        PERFORM attach_data_node(node_name, hypertable => format('%I.%I', 'SCHEMA_DATA', table_name))
+        FROM SCHEMA_CATALOG.metric;
+    END IF;
+END
+$func$ LANGUAGE PLPGSQL;

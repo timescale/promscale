@@ -1020,10 +1020,7 @@ func (m *WriteRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthRemote
-			}
-			if (iNdEx + skippy) < 0 {
+			if skippy < 0 || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthRemote
 			}
 			if (iNdEx + skippy) > l {
@@ -1177,10 +1174,7 @@ func (m *ReadRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthRemote
-			}
-			if (iNdEx + skippy) < 0 {
+			if skippy < 0 || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthRemote
 			}
 			if (iNdEx + skippy) > l {
@@ -1265,10 +1259,7 @@ func (m *ReadResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthRemote
-			}
-			if (iNdEx + skippy) < 0 {
+			if skippy < 0 || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthRemote
 			}
 			if (iNdEx + skippy) > l {
@@ -1427,10 +1418,7 @@ func (m *Query) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthRemote
-			}
-			if (iNdEx + skippy) < 0 {
+			if skippy < 0 || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthRemote
 			}
 			if (iNdEx + skippy) > l {
@@ -1515,10 +1503,7 @@ func (m *QueryResult) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthRemote
-			}
-			if (iNdEx + skippy) < 0 {
+			if skippy < 0 || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthRemote
 			}
 			if (iNdEx + skippy) > l {
@@ -1622,10 +1607,7 @@ func (m *ChunkedReadResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthRemote
-			}
-			if (iNdEx + skippy) < 0 {
+			if skippy < 0 || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthRemote
 			}
 			if (iNdEx + skippy) > l {

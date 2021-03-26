@@ -197,6 +197,62 @@ func TestExpand(t *testing.T) {
 	}
 }
 
+func TestReset(t *testing.T) {
+	cache := WithMax(3)
+	cache.Insert(1, 1)
+	cache.Get(1)
+
+	cache.Insert(2, 2)
+
+	cache.Insert(3, 3)
+	cache.Get(3)
+
+	expected := "[1: 1, 2: 2, 3: 3, ]"
+	if cache.debugString() != expected {
+		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+
+	cache.Reset()
+	expected = "[]"
+	if cache.debugString() != expected {
+		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+
+	cache.Insert(5, 5)
+	cache.Get(5)
+	expected = "[5: 5, ]"
+	if cache.debugString() != expected {
+		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+
+	cache.Insert(6, 6)
+	cache.Insert(7, 7)
+	expected = "[5: 5, 6: 6, 7: 7, ]"
+	if cache.debugString() != expected {
+		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+
+	cache.Insert(8, 8)
+	expected = "[5: 5, 8: 8, 7: 7, ]"
+	if cache.debugString() != expected {
+		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+
+	cache.Reset()
+	cache.Reset()
+	expected = "[]"
+	if cache.debugString() != expected {
+		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
+	}
+
+	if cache.Len() != 0 {
+		t.Error("Incorrrect len")
+	}
+	if cache.Cap() != 3 {
+		t.Error("Incorrrect len")
+	}
+}
+
 func TestElementCacheAligned(t *testing.T) {
 	elementSize := unsafe.Sizeof(element{})
 	if elementSize%64 != 0 {

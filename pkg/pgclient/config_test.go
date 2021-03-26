@@ -1,9 +1,14 @@
 package pgclient
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+	"time"
+)
 
 func TestConfig_GetConnectionStr(t *testing.T) {
 	type fields struct {
+		App                     string
 		Host                    string
 		Port                    int
 		User                    string
@@ -11,6 +16,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 		Database                string
 		SslMode                 string
 		DbConnectRetries        int
+		DbConnectionTimeout     time.Duration
 		AsyncAcks               bool
 		ReportInterval          int
 		LabelsCacheSize         uint64
@@ -31,6 +37,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 		{
 			name: "Testcase with user provided db flag values and db-uri as default",
 			fields: fields{
+				App:                     DefaultApp,
 				Host:                    "localhost",
 				Port:                    5433,
 				User:                    "postgres",
@@ -38,6 +45,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale1",
 				SslMode:                 "require",
 				DbConnectRetries:        0,
+				DbConnectionTimeout:     time.Minute * 2,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -48,7 +56,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "",
 			},
-			want:    "host=localhost port=5433 user=postgres dbname=timescale1 password='Timescale123' sslmode=require connect_timeout=10",
+			want:    fmt.Sprintf("application_name=%s host=localhost port=5433 user=postgres dbname=timescale1 password='Timescale123' sslmode=require connect_timeout=120", DefaultApp),
 			wantErr: false,
 			err:     nil,
 		},
@@ -103,6 +111,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 		{
 			name: "Testcase with default db flags",
 			fields: fields{
+				App:                     DefaultApp,
 				Host:                    "localhost",
 				Port:                    5432,
 				User:                    "postgres",
@@ -110,6 +119,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale",
 				SslMode:                 "require",
 				DbConnectRetries:        0,
+				DbConnectionTimeout:     time.Hour,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -120,13 +130,14 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "",
 			},
-			want:    "host=localhost port=5432 user=postgres dbname=timescale password='' sslmode=require connect_timeout=10",
+			want:    fmt.Sprintf("application_name=%s host=localhost port=5432 user=postgres dbname=timescale password='' sslmode=require connect_timeout=3600", DefaultApp),
 			wantErr: false,
 			err:     nil,
 		},
 		{
 			name: "Testcase with default db flags & user provided db-uri",
 			fields: fields{
+				App:                     DefaultApp,
 				Host:                    "localhost",
 				Port:                    5432,
 				User:                    "postgres",
@@ -134,6 +145,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale",
 				SslMode:                 "require",
 				DbConnectRetries:        0,
+				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -144,7 +156,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "postgres://postgres:password@localhost:5432/postgres?sslmode=allow",
 			},
-			want:    "postgres://postgres:password@localhost:5432/postgres?sslmode=allow&connect_timeout=10",
+			want:    "postgres://postgres:password@localhost:5432/postgres?sslmode=allow",
 			wantErr: false,
 			err:     nil,
 		},
@@ -152,6 +164,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
+				AppName:                 tt.fields.App,
 				Host:                    tt.fields.Host,
 				Port:                    tt.fields.Port,
 				User:                    tt.fields.User,
@@ -159,6 +172,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                tt.fields.Database,
 				SslMode:                 tt.fields.SslMode,
 				DbConnectRetries:        tt.fields.DbConnectRetries,
+				DbConnectionTimeout:     tt.fields.DbConnectionTimeout,
 				AsyncAcks:               tt.fields.AsyncAcks,
 				ReportInterval:          tt.fields.ReportInterval,
 				LabelsCacheSize:         tt.fields.LabelsCacheSize,

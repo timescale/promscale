@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	PromNamespace              = "ts_prom"
+	PromNamespace              = "promscale"
 	maskPasswordReplaceString1 = "password=$1'****'"
 	maskPasswordReplaceString2 = "password:$1****$3"
 	/* #nosec */
@@ -24,7 +24,7 @@ const (
 
 var (
 	maskPasswordRegex1 = regexp.MustCompile(`[p|P]assword=(\s*?)'([^']+?)'`)
-	maskPasswordRegex2 = regexp.MustCompile(`[p|P]assword:(\s*?)([^\s]+?)( |$)`)
+	maskPasswordRegex2 = regexp.MustCompile(`[p|P]assword:(\s*)(.*?)(\s*\w+:|$)`)
 	maskPasswordRegex3 = regexp.MustCompile(`postgres:(([^:]*\:){1})([^@]*)`)
 )
 

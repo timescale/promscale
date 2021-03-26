@@ -1,7 +1,22 @@
-CREATE OR REPLACE PROCEDURE execute_everywhere(command TEXT, transactional BOOLEAN = true)
+ --perms for schema will be addressed later;
+ CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG;
+
+--table to save commands so they can be run when adding new nodes
+ CREATE TABLE SCHEMA_CATALOG.remote_commands(
+    key TEXT PRIMARY KEY,
+    seq SERIAL,
+    transactional BOOLEAN,
+    command TEXT
+);
+
+
+CREATE OR REPLACE PROCEDURE execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
     EXECUTE command;
+
+    INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
+    ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
 
     BEGIN
         CALL distributed_exec(command);

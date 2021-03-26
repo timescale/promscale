@@ -10,13 +10,22 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgtype"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+func getTestLabelArray(t *testing.T, l [][]int32) *pgtype.ArrayType {
+	labelArrayArray := pgtype.NewArrayType("prom_api.label_array[]", 0, labelArrayTranscoder)
+	err := labelArrayArray.Set(l)
+	require.NoError(t, err)
+	return labelArrayArray
+}
 func TestPGXInserterInsertSeries(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -36,26 +45,34 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			},
 
 			sqlQueries: []model.SqlQuery{
-				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
 						[]string{"__name__", "name_1"},
 						[]string{"metric_1", "value_1"},
 					},
-					Results: model.RowResults{{"table", int64(1)}},
+					Results: model.RowResults{
+						{int32(1), int32(1), "__name__", "metric_1"},
+						{int32(2), int32(2), "name_1", "value_1"},
+					},
+					Err: error(nil),
+				},
+				{
+					Sql: seriesInsertSQL,
+					Args: []interface{}{
+						"metric_1",
+						getTestLabelArray(t, [][]int32{{1, 2}}),
+					},
+					Results: model.RowResults{{int64(1), int64(1)}},
 					Err:     error(nil),
 				},
-				{Sql: "COMMIT;"},
 			},
 		},
 		{
@@ -71,38 +88,36 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "name_1"},
-						[]string{"metric_1", "value_1"},
+						[]string{"__name__", "name_1", "__name__", "name_2"},
+						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
-					Results: model.RowResults{{"table", int64(1)}},
-					Err:     error(nil),
+					Results: model.RowResults{
+						{int32(1), int32(1), "__name__", "metric_1"},
+						{int32(1), int32(2), "__name__", "metric_2"},
+						{int32(2), int32(3), "name_1", "value_1"},
+						{int32(3), int32(4), "name_2", "value_2"},
+					},
+					Err: error(nil),
 				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					Sql: seriesInsertSQL,
 					Args: []interface{}{
-						"metric_2",
-						[]string{"__name__", "name_2"},
-						[]string{"metric_2", "value_2"},
+						"metric_1",
+						getTestLabelArray(t, [][]int32{{1, 3}, {2, 0, 4}}),
 					},
-					Results: model.RowResults{{"table", int64(2)}},
+					Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}},
 					Err:     error(nil),
 				},
-				{Sql: "COMMIT;"},
 			},
 		},
 		{
@@ -120,37 +135,36 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "name_1"},
-						[]string{"metric_1", "value_1"},
+						[]string{"__name__", "name_1", "__name__", "name_2"},
+						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
-					Results: model.RowResults{{"table", int64(1)}},
-					Err:     error(nil),
+					Results: model.RowResults{
+						{int32(1), int32(1), "__name__", "metric_1"},
+						{int32(1), int32(2), "__name__", "metric_2"},
+						{int32(2), int32(3), "name_1", "value_1"},
+						{int32(3), int32(4), "name_2", "value_2"},
+					},
+					Err: error(nil),
 				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					Sql: seriesInsertSQL,
 					Args: []interface{}{
-						"metric_2", []string{"__name__", "name_2"},
-						[]string{"metric_2", "value_2"},
+						"metric_1",
+						getTestLabelArray(t, [][]int32{{1, 3}, {2, 0, 4}, {1, 3}}),
 					},
-					Results: model.RowResults{{"table", int64(2)}},
+					Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}, {int64(1), int64(1)}},
 					Err:     error(nil),
 				},
-				{Sql: "COMMIT;"},
 			},
 		},
 		{
@@ -165,38 +179,27 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "name_1"},
-						[]string{"metric_1", "value_1"},
+						[]string{"__name__", "name_1", "__name__", "name_2"},
+						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
-					Results: model.RowResults{{"table", int64(1)}},
-					Err:     fmt.Errorf("some query error"),
-				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
-				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
-					Args: []interface{}{
-						"metric_2",
-						[]string{"__name__", "name_2"},
-						[]string{"metric_2", "value_2"},
+					Results: model.RowResults{
+						{int32(1), int32(1), "__name__", "metric_1"},
+						{int32(1), int32(2), "__name__", "metric_2"},
+						{int32(2), int32(3), "name_1", "value_1"},
+						{int32(3), int32(4), "name_2", "value_2"},
 					},
-					Results: model.RowResults{{"table", int64(2)}},
-					Err:     error(nil),
+					Err: fmt.Errorf("some query error"),
 				},
-				{Sql: "COMMIT;"},
 			},
 		},
 	}
@@ -204,29 +207,29 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
+			scache := cache.NewSeriesCache(100)
+			scache.Reset()
 
 			inserter := insertHandler{
-				conn:             mock,
-				seriesCache:      make(map[string]model.SeriesID),
-				seriesCacheEpoch: -1,
+				conn: mock,
 			}
 
-			lsi := make([]model.SamplesInfo, 0)
+			lsi := make([]model.Samples, 0)
 			for _, ser := range c.series {
-				ls, err := model.LabelsFromSlice(ser)
+				ls, err := scache.GetSeriesFromLabels(ser)
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
-				lsi = append(lsi, model.SamplesInfo{Labels: ls, SeriesID: -1})
+				lsi = append(lsi, model.NewPromSample(ls, nil))
 			}
 
-			_, _, err := inserter.setSeriesIds(lsi)
+			err := inserter.setSeriesIds(lsi)
 			if err != nil {
 				foundErr := false
 				for _, q := range c.sqlQueries {
 					if q.Err != nil {
 						foundErr = true
-						if err != q.Err {
+						if !errors.Is(err, q.Err) {
 							t.Errorf("unexpected query error:\ngot\n%s\nwanted\n%s", err, q.Err)
 						}
 					}
@@ -238,9 +241,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if err == nil {
 				for _, si := range lsi {
-					if si.SeriesID <= 0 {
-						t.Error("Series not set", lsi)
-					}
+					si, se, err := si.GetSeries().GetSeriesID()
+					require.NoError(t, err)
+					require.True(t, si > 0, "series id not set")
+					require.True(t, se > 0, "epoch not set")
 				}
 			}
 		})
@@ -248,7 +252,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 }
 
 func TestPGXInserterCacheReset(t *testing.T) {
-
 	series := []labels.Labels{
 		{
 			{Name: "__name__", Value: "metric_1"},
@@ -263,38 +266,35 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	sqlQueries := []model.SqlQuery{
 
 		// first series cache fetch
-		{Sql: "BEGIN;"},
 		{
 			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 			Args:    []interface{}(nil),
 			Results: model.RowResults{{int64(1)}},
 			Err:     error(nil),
 		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
 		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
 				"metric_1",
-				[]string{"__name__", "name_1"},
-				[]string{"metric_1", "value_1"},
+				[]string{"__name__", "name_1", "name_1"},
+				[]string{"metric_1", "value_1", "value_2"},
 			},
-			Results: model.RowResults{{"table", int64(1)}},
-			Err:     error(nil),
+			Results: model.RowResults{
+				{int32(1), int32(1), "__name__", "metric_1"},
+				{int32(2), int32(2), "name_1", "value_1"},
+				{int32(2), int32(3), "name_1", "value_2"},
+			},
+			Err: error(nil),
 		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
 		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			Sql: seriesInsertSQL,
 			Args: []interface{}{
 				"metric_1",
-				[]string{"__name__", "name_1"},
-				[]string{"metric_1", "value_2"},
+				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
 			},
-			Results: model.RowResults{{"table", int64(2)}},
+			Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}},
 			Err:     error(nil),
 		},
-		{Sql: "COMMIT;"},
 
 		// first labels cache refresh, does not trash
 		{
@@ -313,150 +313,163 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		},
 
 		// repopulate the cache
-		{Sql: "BEGIN;"},
 		{
 			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 			Args:    []interface{}(nil),
 			Results: model.RowResults{{int64(2)}},
 			Err:     error(nil),
 		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
 		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
 				"metric_1",
-				[]string{"__name__", "name_1"},
-				[]string{"metric_1", "value_1"},
+				[]string{"__name__", "name_1", "name_1"},
+				[]string{"metric_1", "value_1", "value_2"},
 			},
-			Results: model.RowResults{{"table", int64(3)}},
-			Err:     error(nil),
+			Results: model.RowResults{
+				{int32(1), int32(1), "__name__", "metric_1"},
+				{int32(2), int32(2), "name_1", "value_1"},
+				{int32(2), int32(3), "name_1", "value_2"},
+			},
+			Err: error(nil),
 		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
 		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)",
+			Sql: seriesInsertSQL,
 			Args: []interface{}{
 				"metric_1",
-				[]string{"__name__", "name_1"},
-				[]string{"metric_1", "value_2"},
+				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
 			},
-			Results: model.RowResults{{"table", int64(4)}},
+			Results: model.RowResults{{int64(3), int64(1)}, {int64(4), int64(2)}},
 			Err:     error(nil),
 		},
-		{Sql: "COMMIT;"},
 	}
 
 	mock := model.NewSqlRecorder(sqlQueries, t)
+	scache := cache.NewSeriesCache(100)
 
-	inserter := insertHandler{
-		conn:             mock,
-		seriesCache:      make(map[string]model.SeriesID),
-		seriesCacheEpoch: -1,
+	handler := insertHandler{
+		conn: mock,
+	}
+	inserter := pgxInserter{
+		conn:   mock,
+		scache: scache,
 	}
 
-	makeSamples := func(series []labels.Labels) []model.SamplesInfo {
-		lsi := make([]model.SamplesInfo, 0)
+	makeSamples := func(series []labels.Labels) []model.Samples {
+		lsi := make([]model.Samples, 0)
 		for _, ser := range series {
-			ls, err := model.LabelsFromSlice(ser)
+			ls, err := scache.GetSeriesFromLabels(ser)
 			if err != nil {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
-			lsi = append(lsi, model.SamplesInfo{Labels: ls, SeriesID: -1})
+			lsi = append(lsi, model.NewPromSample(ls, nil))
 		}
 		return lsi
 	}
 
 	samples := makeSamples(series)
-	_, _, err := inserter.setSeriesIds(samples)
+	err := handler.setSeriesIds(samples)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expectedIds := map[string]model.SeriesID{
-		"value_1": model.SeriesID(1),
-		"value_2": model.SeriesID(2),
+	expectedIds := []model.SeriesID{
+		model.SeriesID(1),
+		model.SeriesID(2),
 	}
 
-	for _, si := range samples {
-		value := si.Labels.Values[1]
-		expectedId := expectedIds[value]
-		if si.SeriesID != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.SeriesID, expectedId)
+	for index, si := range samples {
+		_, _, ok := si.GetSeries().NameValues()
+		require.False(t, ok)
+		expectedId := expectedIds[index]
+		gotId, _, err := si.GetSeries().GetSeriesID()
+		require.NoError(t, err)
+		if gotId != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
 		}
 	}
 
 	// refreshing during the same epoch givesthe same IDs without checking the DB
-	inserter.refreshSeriesCache()
+	_, err = inserter.refreshSeriesEpoch(1)
+	require.NoError(t, err)
 
 	samples = makeSamples(series)
-	_, _, err = inserter.setSeriesIds(samples)
+	err = handler.setSeriesIds(samples)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, si := range samples {
-		value := si.Labels.Values[1]
-		expectedId := expectedIds[value]
-		if si.SeriesID != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.SeriesID, expectedId)
+	for index, si := range samples {
+		_, _, ok := si.GetSeries().NameValues()
+		require.False(t, ok)
+		expectedId := expectedIds[index]
+		gotId, _, err := si.GetSeries().GetSeriesID()
+		require.NoError(t, err)
+		if gotId != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
 		}
 	}
 
 	// trash the cache
-	inserter.refreshSeriesCache()
+	_, err = inserter.refreshSeriesEpoch(1)
+	require.NoError(t, err)
 
 	// retrying rechecks the DB and uses the new IDs
 	samples = makeSamples(series)
-	_, _, err = inserter.setSeriesIds(samples)
+	err = handler.setSeriesIds(samples)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expectedIds = map[string]model.SeriesID{
-		"value_1": model.SeriesID(3),
-		"value_2": model.SeriesID(4),
+	expectedIds = []model.SeriesID{
+		model.SeriesID(3),
+		model.SeriesID(4),
 	}
 
-	for _, si := range samples {
-		value := si.Labels.Values[1]
-		expectedId := expectedIds[value]
-		if si.SeriesID != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", si.SeriesID, expectedId)
+	for index, si := range samples {
+		_, _, ok := si.GetSeries().NameValues()
+		require.False(t, ok)
+		expectedId := expectedIds[index]
+		gotId, _, err := si.GetSeries().GetSeriesID()
+		require.NoError(t, err)
+		if gotId != expectedId {
+			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
 		}
 	}
 }
 
 func TestPGXInserterInsertData(t *testing.T) {
+	makeLabel := func() *model.Series {
+		l := &model.Series{}
+		l.SetSeriesID(1, 1)
+		return l
+	}
+
 	testCases := []struct {
 		name          string
-		rows          map[string][]model.SamplesInfo
+		rows          map[string][]model.Samples
 		sqlQueries    []model.SqlQuery
 		metricsGetErr error
 	}{
 		{
 			name: "Zero data",
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 			},
 		},
 		{
 			name: "One data",
-			rows: map[string][]model.SamplesInfo{
-				"metric_0": {{Samples: make([]prompb.Sample, 1)}},
+			rows: map[string][]model.Samples{
+				"metric_0": {model.NewPromSample(makeLabel(), make([]prompb.Sample, 1))},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
 					Results: model.RowResults{{"metric_0", true}},
-					Err:     error(nil),
-				},
-				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
 				{
@@ -464,22 +477,29 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0)},
 						[]float64{0},
-						[]int64{0},
+						[]int64{1},
 					},
 					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
 			},
 		},
 		{
 			name: "Two data",
-			rows: map[string][]model.SamplesInfo{
+			rows: map[string][]model.Samples{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -487,36 +507,38 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
-				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     error(nil),
-				},
+
 				{
 					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0)},
 						[]float64{0, 0},
-						[]int64{0, 0},
+						[]int64{1, 1},
 					},
 					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
 			},
 		},
 		{
 			name: "Create table error",
-			rows: map[string][]model.SamplesInfo{
+			rows: map[string][]model.Samples{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -528,10 +550,13 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Epoch Error",
-			rows: map[string][]model.SamplesInfo{
-				"metric_0": {{Samples: make([]prompb.Sample, 1)}},
+			rows: map[string][]model.Samples{
+				"metric_0": {
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -539,19 +564,31 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
-				{
-					//this is the attempt on the full batch
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     fmt.Errorf("epoch error"),
-				},
+
 				{
 					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0)},
 						[]float64{0},
-						[]int64{0},
+						[]int64{1},
+					},
+					Results: model.RowResults{},
+					Err:     error(nil),
+				},
+				{
+					//this is the attempt on the full batch
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
+					Err:     fmt.Errorf("epoch error"),
+				},
+
+				{
+					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Args: []interface{}{
+						[]time.Time{time.Unix(0, 0)},
+						[]float64{0},
+						[]int64{1},
 					},
 					Results: model.RowResults{},
 					Err:     error(nil),
@@ -559,35 +596,26 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					//this is the attempt on the individual copyRequests
 					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
+					Args:    []interface{}{int64(1)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     fmt.Errorf("epoch error"),
-				},
-				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
-					Args: []interface{}{
-						[]time.Time{time.Unix(0, 0)},
-						[]float64{0},
-						[]int64{0},
-					},
-					Results: model.RowResults{},
-					Err:     error(nil),
 				},
 			},
 		},
 		{
 			name: "Copy from error",
-			rows: map[string][]model.SamplesInfo{
+			rows: map[string][]model.Samples{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -595,19 +623,31 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
-				{
-					// this is the entire batch insert
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     error(nil),
-				},
+
 				{
 					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
 					Args: []interface{}{
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
 						make([]float64, 5),
-						make([]int64, 5),
+						[]int64{1, 1, 1, 1, 1},
+					},
+					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Err:     fmt.Errorf("some INSERT error"),
+				},
+				{
+					// this is the entire batch insert
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
+					Err:     error(nil),
+				},
+
+				{
+					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Args: []interface{}{
+						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
+						make([]float64, 5),
+						[]int64{1, 1, 1, 1, 1},
 					},
 					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
 					Err:     fmt.Errorf("some INSERT error"),
@@ -615,34 +655,25 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					// this is the retry on individual copy requests
 					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(-1)},
+					Args:    []interface{}{int64(1)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
-				},
-				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
-					Args: []interface{}{
-						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
-						make([]float64, 5),
-						make([]int64, 5),
-					},
-					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
-					Err:     fmt.Errorf("some INSERT error"),
 				},
 			},
 		},
 		{
 			name: "Can't find/create table in DB",
-			rows: map[string][]model.SamplesInfo{
+			rows: map[string][]model.Samples{
 				"metric_0": {
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
-					{Samples: make([]prompb.Sample, 1)},
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:  "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -655,11 +686,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 		{
 			name: "Metrics get error",
-			rows: map[string][]model.SamplesInfo{
-				"metric_0": {{Samples: make([]prompb.Sample, 1)}},
+			rows: map[string][]model.Samples{
+				"metric_0": {
+					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
+				},
 			},
 			metricsGetErr: fmt.Errorf("some metrics error"),
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 			},
 		},
@@ -669,13 +703,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 		c := co
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
+			scache := cache.NewSeriesCache(100)
 
 			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &model.MockMetricCache{
 				MetricCache:  metricCache,
 				GetMetricErr: c.metricsGetErr,
 			}
-			inserter, err := newPgxInserter(mock, mockMetrics, &Cfg{})
+			inserter, err := newPgxInserter(mock, mockMetrics, scache, &Cfg{DisableEpochSync: true})
 			if err != nil {
 				t.Fatal(err)
 			}

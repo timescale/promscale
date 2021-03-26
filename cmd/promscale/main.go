@@ -14,8 +14,12 @@ import (
 )
 
 func main() {
+	args := os.Args[1:]
+	if shouldProceed := runner.ParseArgs(args); !shouldProceed {
+		os.Exit(1)
+	}
 	cfg := &runner.Config{}
-	cfg, err := runner.ParseFlags(cfg, os.Args[1:])
+	cfg, err := runner.ParseFlags(cfg, args)
 	if err != nil {
 		fmt.Println("Version: ", version.Version, "Commit Hash: ", version.CommitHash)
 		fmt.Println("Fatal error: cannot parse flags: ", err)

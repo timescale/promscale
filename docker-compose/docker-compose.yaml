@@ -1,23 +1,21 @@
 version: '3.0'
-
 services:
   db:
-    image: timescaledev/promscale-extension:latest-pg12
+    image: timescaledev/timescaledb-ha:pg12-latest
     ports:
       - 5432:5432/tcp
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: password
       POSTGRES_USER: postgres
-      POSTGRES_DB: timescale
 
   prometheus:
     image: prom/prometheus:latest
     ports:
       - 9090:9090/tcp
     volumes:
-      - ./sample-docker-prometheus:/etc/prometheus/prometheus:ro
+      - ${PWD}/prometheus.yml:/etc/prometheus/prometheus.yml
 
-  promscale-connector:
+  promscale:
     image: timescale/promscale:latest
     ports:
       - 9201:9201/tcp
@@ -28,9 +26,11 @@ services:
       - db
       - prometheus
     environment:
-      PROMSCALE_LOG_LEVEL: debug
       PROMSCALE_DB_CONNECT_RETRIES: 10
-      PROMSCALE_DB_HOST: db
-      PROMSCALE_DB_PASSWORD: postgres
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
-      PROMSCALE_DB_SSL_MODE: allow
+      PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter
+    ports:
+      - "9100:9100"

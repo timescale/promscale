@@ -27,17 +27,9 @@ var (
 
 // inserter is responsible for inserting label, series and data into the storage.
 type Inserter interface {
-	InsertNewData(rows map[string][]SamplesInfo) (uint64, error)
+	InsertNewData(rows map[string][]Samples) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
-}
-
-// SeriesCache provides a caching mechanism for labels and series.
-type SeriesCache interface {
-	GetSeries(lset Labels) (SeriesID, error)
-	SetSeries(lset Labels, id SeriesID) error
-	NumElements() int
-	Capacity() int
 }
 
 func MetricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {

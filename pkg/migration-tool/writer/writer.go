@@ -10,11 +10,7 @@ import (
 	"go.uber.org/atomic"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
@@ -27,31 +23,35 @@ const (
 
 type RemoteWrite struct {
 	c                  context.Context
-	sigBlockRead       chan *planner.Block
-	client             *utils.Client
-	blocksPushed       atomic.Int64
+	sigSlabRead        chan *planner.Slab
+	url                string
+	shardsSet          *shardsSet
+	slabsPushed        atomic.Int64
 	progressMetricName string // Metric name to main the last pushed maxt to remote write storage.
 	migrationJobName   string // Label value to the progress metric.
 	progressTimeSeries *prompb.TimeSeries
 }
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
-func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, sigRead chan *planner.Block) (*RemoteWrite, error) {
-	wc, err := utils.NewClient(fmt.Sprintf("writer-%d", 1), remoteWriteUrl, utils.Write, model.Duration(defaultWriteTimeout))
+func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName string, numShards int, progressEnabled bool, sigRead chan *planner.Slab) (*RemoteWrite, error) {
+	ss, err := newShardsSet(c, remoteWriteUrl, numShards)
 	if err != nil {
-		return nil, fmt.Errorf("creating write-client: %w", err)
+		return nil, fmt.Errorf("creating shards: %w", err)
 	}
 	write := &RemoteWrite{
 		c:                  c,
-		client:             wc,
-		sigBlockRead:       sigRead,
+		shardsSet:          ss,
+		url:                remoteWriteUrl,
+		sigSlabRead:        sigRead,
 		migrationJobName:   migrationJobName,
 		progressMetricName: progressMetricName,
-		progressTimeSeries: &prompb.TimeSeries{
-			Labels: utils.LabelSet(progressMetricName, migrationJobName),
-		},
 	}
-	write.blocksPushed.Store(0)
+	if progressEnabled {
+		write.progressTimeSeries = &prompb.TimeSeries{
+			Labels: utils.LabelSet(progressMetricName, migrationJobName),
+		}
+	}
+	write.slabsPushed.Store(0)
 	return write, nil
 }
 
@@ -60,33 +60,56 @@ func New(c context.Context, remoteWriteUrl, progressMetricName, migrationJobName
 // the data locally, it gives back the writing access to the remote-reader for further fetches.
 func (rw *RemoteWrite) Run(errChan chan<- error) {
 	var (
-		buf []byte
-		err error
-		ts  []prompb.TimeSeries
+		err    error
+		shards = rw.shardsSet
 	)
 	go func() {
 		defer func() {
+			for _, cancelFunc := range shards.cancelFuncs {
+				cancelFunc()
+			}
 			log.Info("msg", "writer is down")
 			close(errChan)
 		}()
 		log.Info("msg", "writer is up")
+		isErrSig := func(ref *planner.Slab, expectedSigs int) bool {
+			for i := 0; i < expectedSigs; i++ {
+				if err := <-shards.errChan; err != nil {
+					errChan <- fmt.Errorf("remote-write run: %w", err)
+					return true
+				}
+				ref.SetDescription(fmt.Sprintf("pushing (%d/%d) ...", i+1, expectedSigs), 1)
+			}
+			return false
+		}
 		for {
 			select {
 			case <-rw.c.Done():
 				return
-			case blockRef, ok := <-rw.sigBlockRead:
+			case slabRef, ok := <-rw.sigSlabRead:
 				if !ok {
 					return
 				}
-				blockRef.SetDescription("preparing to push", 1)
-				ts = timeseriesRefToTimeseries(blockRef.MergeProgressSeries(rw.progressTimeSeries))
-				buf = []byte{}
-				if err = rw.sendSamplesWithBackoff(context.Background(), ts, &buf); err != nil {
-					errChan <- fmt.Errorf("remote-write run: %w", err)
+				slabRef.UpdatePBarMax(slabRef.PBarMax() + rw.shardsSet.num + 1)
+				// Pushing data to remote-write storage.
+				slabRef.SetDescription("preparing to push", 1)
+				numSigExpected := shards.scheduleTS(timeseriesRefToTimeseries(slabRef.Series()))
+				slabRef.SetDescription("pushing ...", 1)
+				if isErrSig(slabRef, numSigExpected) {
 					return
 				}
-				rw.blocksPushed.Add(1)
-				if err = blockRef.Done(); err != nil {
+				// Pushing progress-metric to remote-write storage.
+				if rw.progressTimeSeries != nil {
+					// Execute the block only if progress-metric is enabled.
+					// Pushing progress-metric to remote-write storage.
+					// This is done after making sure that all shards have successfully completed pushing of data.
+					numSigExpected := rw.pushProgressMetric(slabRef.UpdateProgressSeries(rw.progressTimeSeries))
+					if isErrSig(slabRef, numSigExpected) {
+						return
+					}
+				}
+				rw.slabsPushed.Add(1)
+				if err = slabRef.Done(); err != nil {
 					errChan <- fmt.Errorf("remote-write run: %w", err)
 					return
 				}
@@ -96,75 +119,12 @@ func (rw *RemoteWrite) Run(errChan chan<- error) {
 }
 
 // Blocks returns the total number of blocks pushed to the remote-write storage.
-func (rw *RemoteWrite) Blocks() int64 {
-	return rw.blocksPushed.Load()
+func (rw *RemoteWrite) Slabs() int64 {
+	return rw.slabsPushed.Load()
 }
 
-// sendSamples to the remote storage with backoff for recoverable errors.
-func (rw *RemoteWrite) sendSamplesWithBackoff(ctx context.Context, samples []prompb.TimeSeries, buf *[]byte) error {
-	// TODO: Add metrics similar to upstream for tool details.
-	req, err := buildWriteRequest(samples, *buf)
-	if err != nil {
-		// Failing to build the write request is non-recoverable, since it will
-		// only error if marshaling the proto to bytes fails.
-		return err
-	}
-
-	backoff := backOffRetryDuration
-	*buf = req
-
-	attemptStore := func() error {
-		if err := rw.client.Store(ctx, *buf); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		err = attemptStore()
-
-		if err != nil {
-			// If the error is unrecoverable, we should not retry.
-			if _, ok := err.(remote.RecoverableError); !ok {
-				return err
-			}
-
-			// If we make it this far, we've encountered a recoverable error and will retry.
-			time.Sleep(backoff)
-			continue
-		}
-		return nil
-	}
-}
-
-func buildWriteRequest(samples []prompb.TimeSeries, buf []byte) ([]byte, error) {
-	req := &prompb.WriteRequest{
-		Timeseries: samples,
-	}
-	data, err := proto.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	// snappy uses len() to see if it needs to allocate a new slice. Make the
-	// buffer as long as possible.
-	if buf != nil {
-		buf = buf[0:cap(buf)]
-	}
-	compressed := snappy.Encode(buf, data)
-	return compressed, nil
-}
-
-func timeseriesRefToTimeseries(tsr []*prompb.TimeSeries) (ts []prompb.TimeSeries) {
-	ts = make([]prompb.TimeSeries, len(tsr))
-	for i := range tsr {
-		ts[i] = *tsr[i]
-	}
-	return
+// pushProgressMetric pushes the progress-metric to the remote storage system.
+func (rw *RemoteWrite) pushProgressMetric(series *prompb.TimeSeries) int {
+	var shards = rw.shardsSet
+	return shards.scheduleTS([]prompb.TimeSeries{*series})
 }

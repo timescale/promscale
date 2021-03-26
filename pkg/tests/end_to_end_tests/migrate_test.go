@@ -28,6 +28,7 @@ func TestMigrate(t *testing.T) {
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		var dbVersion string
+		extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true}
 		err := db.QueryRow(context.Background(), "SELECT version FROM prom_schema_migrations").Scan(&dbVersion)
 		if err != nil {
 			t.Fatal(err)
@@ -43,12 +44,12 @@ func TestMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer conn.Release()
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version})
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version}, false, extOptions)
 		if err != nil {
 			t.Error(err)
 		}
 
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"})
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"}, false, extOptions)
 		if err == nil {
 			t.Errorf("Expected error in CheckDependencies")
 		}
@@ -70,6 +71,7 @@ func TestMigrateLock(t *testing.T) {
 			StopAfterMigrate: false,
 			UseVersionLease:  true,
 			PgmodelCfg: pgclient.Config{
+				AppName:                 pgclient.DefaultApp,
 				Database:                *testDatabase,
 				Host:                    pgxcfg.Host,
 				Port:                    int(pgxcfg.Port),
@@ -132,11 +134,80 @@ func TestMigrateLock(t *testing.T) {
 	})
 }
 
+func verifyExtensionExists(t *testing.T, db *pgxpool.Pool, name string, expectExists bool) {
+	var count int
+	err := db.QueryRow(context.Background(), `SELECT count(*) FROM pg_extension where extname=$1`, name).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actualExists := count > 0
+	if expectExists != actualExists {
+		t.Fatalf("extension %v is not in the right exists state. Expected %v got %v.", name, expectExists, actualExists)
+	}
+}
+
+func TestInstallFlagPromscaleExtension(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useExtension {
+		t.Skip(("need promscale extension for this test"))
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, _ testing.TB) {
+		conn, err := db.Acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		pgxcfg := conn.Conn().Config()
+		cfg := runner.Config{
+			Migrate:           true,
+			InstallExtensions: false,
+			StopAfterMigrate:  false,
+			UseVersionLease:   true,
+			PgmodelCfg: pgclient.Config{
+				AppName:                 pgclient.DefaultApp,
+				Database:                *testDatabase,
+				Host:                    pgxcfg.Host,
+				Port:                    int(pgxcfg.Port),
+				User:                    pgxcfg.User,
+				Password:                pgxcfg.Password,
+				SslMode:                 "allow",
+				MaxConnections:          -1,
+				WriteConnectionsPerProc: 1,
+			},
+		}
+		conn.Release()
+		_, err = db.Exec(context.Background(), "DROP EXTENSION IF EXISTS promscale")
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyExtensionExists(t, db, "promscale", false)
+
+		metrics := api.InitMetrics(0)
+		cfg.InstallExtensions = false
+		migrator, err := runner.CreateClient(&cfg, metrics)
+		if err != nil {
+			t.Fatal(err)
+		}
+		migrator.Close()
+
+		verifyExtensionExists(t, db, "promscale", false)
+
+		cfg.InstallExtensions = true
+		migrator, err = runner.CreateClient(&cfg, metrics)
+		if err != nil {
+			t.Fatal(err)
+		}
+		migrator.Close()
+		verifyExtensionExists(t, db, "promscale", true)
+	})
+}
+
 func TestMigrateTwice(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
 		if *useExtension && !extension.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
@@ -192,7 +263,7 @@ func TestMigrationLib(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		testTOC := map[string][]string{
 			"idempotent": {
 				"2-toc-run_first.sql",

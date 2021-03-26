@@ -24,6 +24,13 @@ var (
 			Help:      "Total number of writes that contained duplicates",
 		},
 	)
+	DuplicateMetrics = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Name:      "duplicate_metrics_total",
+			Help:      "Total number of affected metrics due to duplicate samples.",
+		},
+	)
 	DecompressCalls = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
@@ -69,6 +76,7 @@ func init() {
 		DuplicateWrites,
 		DecompressCalls,
 		DecompressEarliest,
+		DuplicateMetrics,
 		NumInsertsPerBatch,
 		NumRowsPerBatch,
 		DbBatchInsertDuration,

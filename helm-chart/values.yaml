@@ -32,8 +32,9 @@ connection:
     # the template for generating the name of
     # a Secret object containing the password to
     # connect to TimescaleDB. The password should
-    # be indexed by the user name (connection.user)
-    secretTemplate: "{{ .Release.Name }}-timescaledb-passwords"
+    # be indexed by the below key
+    timescaleDBSuperUserKey: PATRONI_SUPERUSER_PASSWORD
+    secretTemplate: "{{ .Release.Name }}-credentials"
   host:
     # the template for generating the database host
     # location
@@ -93,8 +94,16 @@ maintenance:
   successfulJobsHistoryLimit: 3
   # The number of failed maintenance pods to retain in-cluster
   failedJobsHistoryLimit: 1
+  # configure cpu, memory requests and limits for maintenance cronjob if needed
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
 
 # set your own limits
 resources: {}
+
 # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
 nodeSelector: {}
+
+# https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+tolerations: []

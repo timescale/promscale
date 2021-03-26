@@ -161,7 +161,17 @@ func TestRangedQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			handler := queryRange(engine, query.NewQueryable(tc.querier, nil))
+			receivedQueriesCounter := &mockMetric{}
+			failedQueriesCounter := &mockMetric{}
+			invalidQueryReqs := &mockMetric{}
+			queryDuration := &mockMetric{}
+			metrics := &Metrics{
+				FailedQueries:    failedQueriesCounter,
+				ReceivedQueries:  receivedQueriesCounter,
+				InvalidQueryReqs: invalidQueryReqs,
+				QueryDuration:    queryDuration,
+			}
+			handler := queryRange(engine, query.NewQueryable(tc.querier, nil), metrics)
 			queryUrl := constructRangedQuery(tc.metric, tc.start, tc.end, tc.step, tc.timeout)
 			w := doRangedQuery(t, handler, queryUrl, tc.canceled)
 

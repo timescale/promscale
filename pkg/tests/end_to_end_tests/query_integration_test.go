@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"runtime"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -135,6 +137,94 @@ func TestSQLQuery(t *testing.T) {
 						Type:  prompb.LabelMatcher_EQ,
 						Name:  pgmodel.MetricNameLabelName,
 						Value: "firstMetric",
+					},
+				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
+			},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: pgmodel.MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
+					},
+				},
+			},
+		},
+		{
+			name: "two matcher, duplicate name",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
+			},
+			expectResponse: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: pgmodel.MetricNameLabelName, Value: "firstMetric"},
+						{Name: "common", Value: "tag"},
+						{Name: "empty", Value: ""},
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+						{Timestamp: 2, Value: 0.2},
+						{Timestamp: 3, Value: 0.3},
+					},
+				},
+			},
+		},
+		{
+			name: "two matcher, contradictory name",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "secondMetric",
+					},
+				},
+				StartTimestampMs: 1,
+				EndTimestampMs:   3,
+			},
+			expectResponse: []*prompb.TimeSeries{},
+		},
+		{
+			name: "two matcher, non-contradictory name",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_EQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "firstMetric",
+					},
+					{
+						Type:  prompb.LabelMatcher_NEQ,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "secondMetric",
 					},
 				},
 				StartTimestampMs: 1,
@@ -533,13 +623,13 @@ func TestSQLQuery(t *testing.T) {
 		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Query(c.query)
 
-				if err != nil && err.Error() != c.expectErr.Error() {
+				if err != nil && (c.expectErr == nil || err.Error() != c.expectErr.Error()) {
 					t.Fatalf("unexpected error returned:\ngot\n%s\nwanted\n%s", err, c.expectErr)
 				}
 
@@ -869,7 +959,7 @@ func TestPromQL(t *testing.T) {
 		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
@@ -911,16 +1001,19 @@ func generatePrometheusWALFile() (string, error) {
 		// so switch to cross-user tmp dir
 		tmpDir = "/tmp"
 	}
-	path, err := ioutil.TempDir(tmpDir, "prom_test_storage")
+	dbPath, err := ioutil.TempDir(tmpDir, "prom_dbtest_storage")
+	if err != nil {
+		return "", err
+	}
+	snapPath, err := ioutil.TempDir(tmpDir, "prom_snaptest_storage")
 	if err != nil {
 		return "", err
 	}
 
-	st, err := tsdb.Open(path, nil, nil, &tsdb.Options{
+	st, err := tsdb.Open(dbPath, nil, nil, &tsdb.Options{
 		RetentionDuration: 15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
 		NoLockfile:        true,
 	})
-
 	if err != nil {
 		return "", err
 	}
@@ -941,11 +1034,15 @@ func generatePrometheusWALFile() (string, error) {
 			builder.Set(l.Name, l.Value)
 		}
 
-		labels := builder.Labels()
+		var (
+			labels  = builder.Labels()
+			tempRef uint64
+			err     error
+		)
 
 		for _, s := range ts.Samples {
-			if ref == nil {
-				tempRef, err := app.Add(labels, s.Timestamp, s.Value)
+			if ref == nil || *ref == 0 {
+				tempRef, err = app.Append(tempRef, labels, s.Timestamp, s.Value)
 				if err != nil {
 					return "", err
 				}
@@ -953,7 +1050,7 @@ func generatePrometheusWALFile() (string, error) {
 				continue
 			}
 
-			err = app.AddFast(*ref, s.Timestamp, s.Value)
+			_, err = app.Append(*ref, labels, s.Timestamp, s.Value)
 
 			if err != nil {
 				return "", err
@@ -964,10 +1061,17 @@ func generatePrometheusWALFile() (string, error) {
 	if err := app.Commit(); err != nil {
 		return "", err
 	}
+	if err := st.Snapshot(snapPath, true); err != nil {
+		return "", err
+	}
+	if err := os.Mkdir(snapPath+"/wal", 0700); err != nil {
+		return "", err
+	}
+	if err := st.Close(); err != nil {
+		return "", err
+	}
 
-	st.Close()
-
-	return path, nil
+	return snapPath, nil
 }
 
 func TestPushdown(t *testing.T) {
@@ -1026,10 +1130,13 @@ func TestPushdown(t *testing.T) {
 		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := pgmodel.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		queryable := query.NewQueryable(r, labelsReader)
-		queryEngine := query.NewEngine(log.GetLogger(), time.Minute)
+		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute, []string{})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		for _, c := range testCases {
 			tc := c

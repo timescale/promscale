@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -105,12 +105,12 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 			t.Fatalf("unable to create Prometheus PromQL label names request: %v", err)
 		}
 
-		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator)
+		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator, "label endpoint")
 		tester.Run("get label names", testMethod)
 
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := model.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		labelNames, err := labelsReader.LabelNames()
 		if err != nil {
 			t.Fatalf("could not get label names from querier")
@@ -133,7 +133,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 	})
 }
 
-func labelsResultComparator(promContent []byte, tsContent []byte) error {
+func labelsResultComparator(promContent []byte, tsContent []byte, log string) error {
 	var got, wanted labelsResponse
 
 	err := json.Unmarshal(tsContent, &got)

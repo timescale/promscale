@@ -14,7 +14,7 @@ Promscale is built on top of [TimescaleDB](https://www.timescale.com/), the
 leading relational database for time-series.
 
 
-<img src="./docs/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
+<img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
 By allowing a user to use SQL, in addition to
 PromQL, this platform empowers the user to ask complex analytical
@@ -50,13 +50,17 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Binaries](docs/binary.md)
   * [Source](docs/binary.md#building-from-source)
   * [Helm](helm-chart/README.md)
+  * [Tutorial: Bare Metal Setup for a Monitoring Suite](docs/bare-metal-promscale-stack.md)
 * **[Analyzing Data Using SQL](docs/sql_schema.md)**
   * [Data Model](docs/sql_schema.md#data-model-schema)
   * [Filtering Series](docs/sql_schema.md#filtering-series)
   * [Data Retention](docs/sql_schema.md#data-retention)
 * **[Writing Data to Promscale](docs/writing_to_promscale.md)**
+* **[Alerting & Recording Rules](docs/alerting-recording.md)**
+* **[Deleting Data](docs/metric_deletion_retention.md)**
 * **[Quick Tips](#-quick-tips)**
 * **[High Availability](docs/high-avaliability/prometheus-HA.md)**
+* **[Multi-Node TimescaleDB](docs/multinode.md)**
 * **[FAQ](docs/faq.md)**
 * **[Contributing](#%EF%B8%8F-contributing)**
 
@@ -103,7 +107,7 @@ Click the video below for an overview of Promscale:
   high-availability deployments of [TimescaleDB itself](https://blog.timescale.com/blog/high-availability-timescaledb-postgresql-patroni-a4572264a831/).
 * **Simple architecture**. Unlike some other long-term stores, our architecture consists of only three components: Prometheus, Promscale, and TimescaleDB.
 * **ACID compliance** to ensure consistency of your data.
-* **Horizontal scalability** using [multiinode support](https://blog.timescale.com/blog/timescaledb-2-0-a-multi-node-petabyte-scale-completely-free-relational-database-for-time-series/) with TimescaleDB version 2.0.
+* **Horizontal scalability** using [multinode support](https://blog.timescale.com/blog/timescaledb-2-0-a-multi-node-petabyte-scale-completely-free-relational-database-for-time-series/) with TimescaleDB version 2.0.
 
 ## 🔧 Choose your own (installation) adventure
 

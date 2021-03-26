@@ -93,7 +93,8 @@ func TestParseFlags(t *testing.T) {
 				c.Migrate = false
 				c.StopAfterMigrate = false
 				c.UseVersionLease = false
-				c.InstallTimescaleDB = false
+				c.InstallExtensions = false
+				c.UpgradeExtensions = false
 				return c
 			},
 		},
@@ -116,7 +117,7 @@ func TestParseFlags(t *testing.T) {
 		{
 			name: "Running install TimescaleDB and read-only error",
 			args: []string{
-				"-install-timescaledb",
+				"-install-extensions",
 				"-read-only",
 			},
 			shouldError: true,

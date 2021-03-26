@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -25,16 +26,13 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/version"
 )
 
 const (
-	metadataUpdateWithExtension = "SELECT update_tsprom_metadata($1, $2, $3)"
-	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
-	createMigrationsTable       = "CREATE TABLE IF NOT EXISTS prom_schema_migrations (version text not null primary key)"
-	getVersion                  = "SELECT version FROM prom_schema_migrations LIMIT 1"
-	setVersion                  = "INSERT INTO prom_schema_migrations (version) VALUES ($1)"
-	truncateMigrationsTable     = "TRUNCATE prom_schema_migrations"
+	createMigrationsTable   = "CREATE TABLE IF NOT EXISTS prom_schema_migrations (version text not null primary key)"
+	getVersion              = "SELECT version FROM prom_schema_migrations LIMIT 1"
+	setVersion              = "INSERT INTO prom_schema_migrations (version) VALUES ($1)"
+	truncateMigrationsTable = "TRUNCATE prom_schema_migrations"
 
 	preinstallScripts = "preinstall"
 	versionScripts    = "versions/dev"
@@ -86,33 +84,10 @@ func (p prefixedNames) getNames() []string {
 	return names
 }
 
-// MigrateTimescaleDBExtension installs or updates TimescaleDB
-// Note that after this call any previous connections can break
-// so this has to be called ahead of opening connections.
-//
-// Also this takes a connection string not a connection because for
-// updates the ALTER has to be the first command on the connection
-// thus we cannot reuse existing connections
-func MigrateTimescaleDBExtension(connstr string) error {
-	db, err := pgx.Connect(context.Background(), connstr)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close(context.Background()) }()
-
-	err = extension.MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString)
-	if err != nil {
-		return fmt.Errorf("could not install timescaledb: %w", err)
-	}
-	return nil
-
-}
-
 // Migrate performs a database migration to the latest version
-func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
+func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.ExtensionMigrateOptions) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
-	extension.ExtensionIsInstalled = false
 
 	appVersion, err := semver.Make(versionInfo.Version)
 	if err != nil {
@@ -126,41 +101,31 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
 
-	extension.ExtensionIsInstalled = false
-	err = extension.MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString)
-	if err != nil {
-		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
-	}
-
-	if err = extension.CheckExtensionsVersion(db); err != nil {
-		return fmt.Errorf("Error encountered while migrating extension: %w", err)
-	}
-
-	metadataUpdate(db, extension.ExtensionIsInstalled, "version", versionInfo.Version)
-	metadataUpdate(db, extension.ExtensionIsInstalled, "commit_hash", versionInfo.CommitHash)
 	return nil
 }
 
 // CheckDependencies makes sure all project dependencies, including the DB schema
 // the extension, are set up correctly. This will set the ExtensionIsInstalled
 // flag and thus should only be called once, at initialization.
-func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo) (err error) {
-	if err = CheckSchemaVersion(context.Background(), db, versionInfo); err != nil {
+func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool, extOptions extension.ExtensionMigrateOptions) (err error) {
+	if err = CheckSchemaVersion(context.Background(), db, versionInfo, migrationFailedDueToLockError); err != nil {
 		return err
 	}
-
-	return extension.CheckVersions(db)
+	return extension.CheckVersions(db, migrationFailedDueToLockError, extOptions)
 }
 
 // CheckSchemaVersion checks the DB schema version without checking the extension
-func CheckSchemaVersion(ctx context.Context, conn *pgx.Conn, versionInfo VersionInfo) error {
+func CheckSchemaVersion(ctx context.Context, conn *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool) error {
 	expectedVersion := semver.MustParse(versionInfo.Version)
 	dbVersion, err := getSchemaVersionOnConnection(ctx, conn)
 	if err != nil {
 		return fmt.Errorf("failed to check schema version: %w", err)
 	}
-	if dbVersion.Compare(expectedVersion) != 0 {
-		return fmt.Errorf("db schema version is incorrect: expected %v, got %v", expectedVersion, dbVersion)
+	if versionCompare := dbVersion.Compare(expectedVersion); versionCompare != 0 {
+		if versionCompare < 0 && migrationFailedDueToLockError {
+			return fmt.Errorf("Failed to acquire the migration lock to upgrade the schema version and unable to run with the old version. Please ensure that no other Promscale connectors with the old schema version are running. Received schema version %v but expected %v", dbVersion, expectedVersion)
+		}
+		return fmt.Errorf("Error while comparing schema version: received schema version %v but expected %v", dbVersion, expectedVersion)
 	}
 	return nil
 }
@@ -403,6 +368,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	}
 	s := buf.String()
 	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", schema.Catalog)
+	s = strings.ReplaceAll(s, "SCHEMA_LOCK_ID", strconv.Itoa(schema.LockID))
 	s = strings.ReplaceAll(s, "SCHEMA_EXT", schema.Ext)
 	s = strings.ReplaceAll(s, "SCHEMA_PROM", schema.Prom)
 	s = strings.ReplaceAll(s, "SCHEMA_SERIES", schema.SeriesView)
@@ -518,13 +484,4 @@ func setDBVersion(tx pgx.Tx, version *semver.Version) error {
 	}
 
 	return nil
-}
-
-func metadataUpdate(db *pgx.Conn, withExtension bool, key string, value string) {
-	/* Ignore error if it doesn't work */
-	if withExtension {
-		_, _ = db.Exec(context.Background(), metadataUpdateWithExtension, key, value, true)
-	} else {
-		_, _ = db.Exec(context.Background(), metadataUpdateNoExtension, key, value, true)
-	}
 }

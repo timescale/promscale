@@ -19,7 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -44,7 +44,7 @@ const (
 
 // NewQuerier returns a new pgxQuerier that reads from PostgreSQL using PGX
 // and caches metric table names and label sets using the supplied caches.
-func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader model.LabelsReader) Querier {
+func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader) Querier {
 	return &pgxQuerier{
 		conn:             conn,
 		labelsReader:     labelsReader,
@@ -61,7 +61,7 @@ type metricTimeRangeFilter struct {
 type pgxQuerier struct {
 	conn             pgxconn.PgxConn
 	metricTableNames cache.MetricCache
-	labelsReader     model.LabelsReader
+	labelsReader     lreader.LabelsReader
 }
 
 var _ Querier = (*pgxQuerier)(nil)
@@ -139,10 +139,12 @@ type timescaleRow struct {
 // supplied query parameters.
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
 	// Build a subquery per metric matcher.
-	metric, cases, values, err := BuildSubQueries(matchers)
+	builder, err := BuildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	metric := builder.GetMetricName()
 
 	filter := metricTimeRangeFilter{
 		metric:    metric,
@@ -153,10 +155,18 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 	// If all metric matchers match on a single metric (common case),
 	// we query only that single metric.
 	if metric != "" {
-		return q.querySingleMetric(metric, filter, cases, values, hints, path)
+		clauses, values, err := builder.Build(false)
+		if err != nil {
+			return nil, nil, err
+		}
+		return q.querySingleMetric(metric, filter, clauses, values, hints, path)
 	}
 
-	return q.queryMultipleMetrics(filter, cases, values)
+	clauses, values, err := builder.Build(true)
+	if err != nil {
+		return nil, nil, err
+	}
+	return q.queryMultipleMetrics(filter, clauses, values)
 }
 
 // querySingleMetric returns all the result rows for a single metric using the

@@ -82,7 +82,7 @@ jobs:
         fi
 
     - name: Test
-      run: go test -v -race ./...
+      run: go test -v -race ./... -timeout 15m
 
     - name: Test extended dataset
       run: go test -v -race -timeout=30m ./pkg/tests/end_to_end_tests/ -extended-test
