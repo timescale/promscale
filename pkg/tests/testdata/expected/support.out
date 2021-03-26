@@ -1,0 +1,54 @@
+\set ON_ERROR_STOP 1
+SELECT _prom_catalog.get_or_create_metric_table_name('cpu_usage');
+ get_or_create_metric_table_name 
+---------------------------------
+ (1,cpu_usage,t)
+(1 row)
+
+SELECT _prom_catalog.get_or_create_metric_table_name('cpu_total');
+ get_or_create_metric_table_name 
+---------------------------------
+ (2,cpu_total,t)
+(1 row)
+
+CALL _prom_catalog.finalize_metric_creation();
+psql:/testdata/sql/support.sql:6: NOTICE:  adding index _compressed_hypertable_3_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_3 USING BTREE(series_id, _ts_meta_sequence_num)
+psql:/testdata/sql/support.sql:6: NOTICE:  adding index _compressed_hypertable_4_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_4 USING BTREE(series_id, _ts_meta_sequence_num)
+CALL
+INSERT INTO prom_data.cpu_usage
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"dev", "node": "brain"}')
+FROM generate_series(1,10) g;
+INSERT 0 10
+INSERT INTO prom_data.cpu_usage
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.1 + g, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_usage", "namespace":"production", "node": "pinky", "new_tag":"foo"}')
+FROM generate_series(1,10) g;
+INSERT 0 10
+INSERT INTO prom_data.cpu_total
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"dev", "node": "brain"}')
+FROM generate_series(1,10) g;
+INSERT 0 10
+INSERT INTO prom_data.cpu_total
+SELECT timestamptz '2000-01-01 02:03:04'+(interval '1s' * g), 100.0, _prom_catalog.get_or_create_series_id('{"__name__": "cpu_total", "namespace":"production", "node": "pinky", "new_tag_2":"bar"}')
+FROM generate_series(1,10) g;
+INSERT 0 10
+--this should use a subquery with the Promscale extension but not without
+--this is thanks to the support function make_call_subquery_support
+ANALYZE;
+ANALYZE
+EXPLAIN (costs off) SELECT time, value, jsonb(labels), val(namespace_id) FROM cpu_usage WHERE labels ? ('namespace' !== 'dev' ) ORDER BY time, series_id LIMIT 5;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit
+   InitPlan 1 (returns $0)
+     ->  Result
+   ->  Result
+         ->  Sort
+               Sort Key: data."time", data.series_id
+               ->  Hash Join
+                     Hash Cond: (data.series_id = series.id)
+                     ->  Seq Scan on _hyper_1_1_chunk data
+                     ->  Hash
+                           ->  Seq Scan on cpu_usage series
+                                 Filter: (NOT ((labels)::integer[] && ($0)::integer[]))
+(12 rows)
+
