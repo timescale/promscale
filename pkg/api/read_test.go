@@ -87,7 +87,7 @@ func TestRead(t *testing.T) {
 				ReceivedQueries:    receivedQueriesCounter,
 				InvalidReadReqs:    invalidReadReqs,
 			}
-			handler := Read(mockReader, metrics)
+			handler := Read(&Config{}, mockReader, metrics)
 
 			test := GenerateReadHandleTester(t, handler, c.name == "bad header")
 

@@ -7,7 +7,6 @@ package querier
 import (
 	"context"
 	"fmt"
-
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgtype"
@@ -45,11 +44,12 @@ const (
 
 // NewQuerier returns a new pgxQuerier that reads from PostgreSQL using PGX
 // and caches metric table names and label sets using the supplied caches.
-func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader) Querier {
+func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader, mtAuthr multi_tenancy_read.Authorizer) Querier {
 	return &pgxQuerier{
 		conn:             conn,
 		labelsReader:     labelsReader,
 		metricTableNames: metricCache,
+		multiTenancy:     mtAuthr,
 	}
 }
 
@@ -88,13 +88,11 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	matchers, err := fromLabelMatchers(query.Matchers)
-
 	if err != nil {
 		return nil, err
 	}
 
 	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
-
 	if err != nil {
 		return nil, err
 	}

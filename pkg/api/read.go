@@ -6,6 +6,7 @@ package api
 
 import (
 	"fmt"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -18,7 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-func Read(reader querier.Reader, metrics *Metrics) http.Handler {
+func Read(apiConf *Config, reader querier.Reader, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !validateReadHeaders(w, r) {
 			metrics.InvalidReadReqs.Inc()
@@ -44,6 +45,17 @@ func Read(reader querier.Reader, metrics *Metrics) http.Handler {
 			log.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+
+		var tenantToken string
+		if authr := apiConf.MultiTenancy.ReadAuthorizer(); authr != nil {
+			// We do not ask for token in read requests since that is already handled by auth handler.
+			_, tenantToken = getTenantAndToken(r)
+			if !authr.IsValid(tenantToken) {
+				log.Error("msg", multi_tenancy.ErrUnauthorized.Error()+tenantToken)
+				http.Error(w, multi_tenancy.ErrUnauthorized.Error()+tenantToken, http.StatusUnauthorized)
+				return
+			}
 		}
 
 		queryCount := float64(len(req.Queries))

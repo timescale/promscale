@@ -6,6 +6,8 @@ package runner
 import (
 	"context"
 	"fmt"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
+	multi_tenancy_config "github.com/timescale/promscale/pkg/multi-tenancy/config"
 	"regexp"
 	"strconv"
 	"sync/atomic"
@@ -156,17 +158,36 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		leasingFunction = nil
 	}
 
+	var multiTenancy = multi_tenancy.NewNoopMultiTenancy()
 	if cfg.EnableMultiTenancy {
-		cfg.PgmodelCfg.MT = pgclient.MTClientConfig{
-			TenancyType:  cfg.MultiTenancyType,
+		// Configuring multi-tenancy in client.
+		multiTenancyConfig := &multi_tenancy_config.Config{
 			ValidTenants: cfg.ValidTenantsList,
-			Token:        cfg.APICfg.Auth.BearerToken,
 		}
+		switch cfg.MultiTenancyType {
+		case "plain":
+			multiTenancyConfig.AuthType = multi_tenancy_config.Allow
+		case "bearer_token":
+			multiTenancyConfig.AuthType = multi_tenancy_config.BearerToken
+			multiTenancyConfig.BearerToken = cfg.APICfg.Auth.BearerToken
+		default:
+			return nil, fmt.Errorf("invalid multi-tenancy type: %s", cfg.MultiTenancyType)
+		}
+		if err := multiTenancyConfig.Validate(); err != nil {
+			return nil, fmt.Errorf("multi-tenancy config: %w", err)
+		}
+		multiTenancy, err = multi_tenancy.NewMultiTenancy(multiTenancyConfig)
+		if err != nil {
+			return nil, fmt.Errorf("new multi-tenancy: %w", err)
+		}
+		// This will be used to check authority of tokens before the request is passed down the tree. We can check tokens
+		// in respective functions but then problem arises for /query endpoint. Hence, its better to authorize in start itself.
 	}
+	cfg.APICfg.MultiTenancy = multiTenancy // If multi-tenancy is disabled, the noopMultiTenancy will be used.
 
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.PgmodelCfg, cfg.EnableMultiTenancy, leasingFunction)
+	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}

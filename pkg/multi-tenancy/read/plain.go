@@ -35,6 +35,9 @@ func (a *plainReadAuthorizer) IsValid(_ string) bool {
 }
 
 func (a *plainReadAuthorizer) ApplySafetyMatcher(ms []*labels.Matcher) []*labels.Matcher {
+	if a.mtSafetyLabelMatcher == nil {
+		return ms
+	}
 	ms = append(ms, a.mtSafetyLabelMatcher)
 	return ms
 }

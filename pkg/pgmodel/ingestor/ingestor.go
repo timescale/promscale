@@ -53,31 +53,8 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	var totalRows uint64
-	dataSamples := make(map[string][]model.Samples)
-	for i := range tts {
-		ts := &tts[i]
-		if len(ts.Samples) == 0 {
-			continue
-		}
-		// Normalize and canonicalize t.Labels.
-		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := ingestor.sCache.GetSeriesFromProtos(ts.Labels)
-		if err != nil {
-			return 0, err
-		}
-		if metricName == "" {
-			return 0, errors.ErrNoMetricName
-		}
-		sample := model.NewPromSample(seriesLabels, ts.Samples)
-		totalRows += uint64(len(ts.Samples))
-
-		dataSamples[metricName] = append(dataSamples[metricName], sample)
-		// we're going to free req after this, but we still need the samples,
-		// so nil the field
-		ts.Samples = nil
-	}
+func (ingestor *DBIngestor) Ingest(tenant string, tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
+	data, totalRows, err := ingestor.parser.ParseData(tenant, tts)
 	// WriteRequests can contain pointers into the original buffer we deserialized
 	// them out of, and can be quite large in and of themselves. In order to prevent
 	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest

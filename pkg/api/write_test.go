@@ -255,7 +255,7 @@ func TestWrite(t *testing.T) {
 			}
 			dataParser := parser.NewParser()
 
-			handler := Write(mock, dataParser, elector, &Metrics{
+			handler := Write(&Config{}, mock, elector, &Metrics{
 				LeaderGauge:       leaderGauge,
 				ReceivedSamples:   receivedSamplesGauge,
 				FailedSamples:     failedSamplesGauge,
@@ -351,7 +351,7 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(series []prompb.TimeSeries, request *prompb.WriteRequest) (uint64, error) {
+func (m *mockInserter) Ingest(tenant string, series []prompb.TimeSeries, request *prompb.WriteRequest) (uint64, error) {
 	m.ts = series
 	return m.result, m.err
 }

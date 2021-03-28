@@ -20,6 +20,7 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -117,6 +118,15 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 			invalidRequestError(w, "parser error", err.Error(), m)
 			return false
 		}
+		var tenant, tenantToken string
+		if authr := apiConf.MultiTenancy.WriteAuthorizer(); authr != nil {
+			tenant, tenantToken = getTenantAndToken(r)
+			if !authr.IsAuthorized(tenantToken, tenant) {
+				log.Error("msg", multi_tenancy.ErrUnauthorized.Error()+tenantToken)
+				http.Error(w, multi_tenancy.ErrUnauthorized.Error()+tenantToken, http.StatusUnauthorized)
+				return
+			}
+		}
 
 		// if samples in write request are empty the we do not need to
 		// proceed further
@@ -134,7 +144,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		m.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		numSamples, err := inserter.Ingest(req.Timeseries, req)
+		numSamples, err := inserter.Ingest(tenant, req.Timeseries, req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)

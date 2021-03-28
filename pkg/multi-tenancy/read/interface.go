@@ -21,10 +21,6 @@ type authorizerConfig struct {
 type Authorizer interface {
 	// IsValid validates the given token against the provided token during start.
 	IsValid(token string) bool
-	// IsTenantAllowed checks if the given tenant is allowed to be queried from Promscale. This function is to be called
-	// while making the seriesSet in order to save the resources of PromQL engine and save memory.
-	//IsTenantAllowed(tenantName string) bool
-	// todo: remove the above func
 	// ApplySafetyMatcher applies a safety matcher to incoming query matchers. This safety matcher is responsible
 	// from prevent unauthorized query reads from tenants that the incoming query is not supposed to read.
 	ApplySafetyMatcher(ms []*labels.Matcher) []*labels.Matcher
@@ -32,6 +28,9 @@ type Authorizer interface {
 
 // initSafetyLabelMatcher creates a new safety label matcher, from the given list of valid tenants.
 func initSafetyLabelMatcher(validTenants []string) (*labels.Matcher, error) {
+	if len(validTenants) == 0 {
+		return nil, nil
+	}
 	mtSafetyLabelVal := strings.Join(validTenants, regexOR)
 	mtSafetyLabelMatcher, err := labels.NewMatcher(labels.MatchRegexp, config.TenantLabelKey, mtSafetyLabelVal)
 	if err != nil {

@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 )
@@ -87,7 +88,8 @@ type Config struct {
 	AdminAPIEnabled  bool
 	TelemetryPath    string
 
-	Auth *Auth
+	Auth         *Auth
+	MultiTenancy multi_tenancy.MultiTenancy
 
 	// PromQL configuration.
 	EnableFeatures       string
@@ -133,6 +135,21 @@ func Validate(cfg *Config) error {
 		cfg.EnabledFeaturesList = []string{}
 	}
 	return cfg.Auth.Validate()
+}
+
+func getTenantAndToken(r *http.Request) (tenant, token string) {
+	if tn := r.Header.Get("TENANT"); tn != "" {
+		// This request will be considered as multi-tenant request only if tenant name exists.
+		tenant = tn
+	}
+	// This is used during a write request.
+	splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
+	if len(splitToken) < 2 {
+		// Bearer_token does not exists.
+		return
+	}
+	token = splitToken[1]
+	return
 }
 
 func readFromFile(path string, defaultValue string) (string, error) {

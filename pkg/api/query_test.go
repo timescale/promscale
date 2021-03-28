@@ -216,7 +216,7 @@ func TestQuery(t *testing.T) {
 				InvalidQueryReqs: invalidQueryReqs,
 				QueryDuration:    queryDuration,
 			}
-			handler := queryHandler(engine, query.NewQueryable(tc.querier, tc.labelsReader), metrics)
+			handler := queryHandler(&Config{}, engine, query.NewQueryable(tc.querier, tc.labelsReader), metrics)
 			queryURL := constructQuery(tc.metric, tc.time, tc.timeout)
 			w := doQuery(t, handler, queryURL, tc.canceled)
 

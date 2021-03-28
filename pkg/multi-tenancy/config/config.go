@@ -16,6 +16,7 @@ type Config struct {
 	AuthType     uint8
 	BearerToken  string
 	ValidTenants []string
+	tenantsCache map[string]struct{}
 }
 
 // Validate validates the configuration of multi-tenancy config.
@@ -32,11 +33,15 @@ func (cfg *Config) Validate() error {
 	default:
 		panic(fmt.Sprintf("invalid multi-tenancy type: %d", cfg.AuthType))
 	}
+	cfg.tenantsCache = make(map[string]struct{})
+	for _, tname := range cfg.ValidTenants {
+		cfg.tenantsCache[tname] = struct{}{}
+	}
 	return nil
 }
 
 // isTokenValid returns true if the token given matches with the token provided in the start.
-func (cfg *Config) isTokenValid(token string) bool {
+func (cfg *Config) IsTokenValid(token string) bool {
 	if cfg.BearerToken == token {
 		return true
 	}
@@ -44,14 +49,12 @@ func (cfg *Config) isTokenValid(token string) bool {
 }
 
 // IsTenantAllowed returns true if the given tenantName is allowed to be ingested.
-func (cfg *Config) isTenantAllowed(tenantName string) bool {
-	if len(cfg.ValidTenants) == 0 {
+func (cfg *Config) IsTenantAllowed(tenantName string) bool {
+	if len(cfg.tenantsCache) == 0 {
 		return true
 	}
-	for _, tenant := range cfg.ValidTenants {
-		if tenant == tenantName {
-			return true
-		}
+	if _, ok := cfg.tenantsCache[tenantName]; ok {
+		return true
 	}
 	return false
 }

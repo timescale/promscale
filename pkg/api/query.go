@@ -11,15 +11,16 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/timescale/promscale/pkg/log"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
 func Query(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.Handler {
-	hf := corsWrapper(conf, queryHandler(queryEngine, queryable, metrics))
+	hf := corsWrapper(conf, queryHandler(conf, queryEngine, queryable, metrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryHandler(apiConf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
 		var err error
@@ -44,6 +45,17 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 
 			ctx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
+		}
+
+		var tenantToken string
+		if authr := apiConf.MultiTenancy.ReadAuthorizer(); authr != nil {
+			// We do not ask for token in read requests since that is already handled by auth handler.
+			_, tenantToken = getTenantAndToken(r)
+			if !authr.IsValid(tenantToken) {
+				log.Error("msg", multi_tenancy.ErrUnauthorized.Error()+tenantToken)
+				http.Error(w, multi_tenancy.ErrUnauthorized.Error()+tenantToken, http.StatusUnauthorized)
+				return
+			}
 		}
 
 		metrics.ReceivedQueries.Add(1)

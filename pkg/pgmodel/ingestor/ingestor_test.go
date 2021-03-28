@@ -183,7 +183,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				sCache:     sCache,
 			}
 
-			count, err := i.Ingest(c.metrics, NewWriteRequest())
+			count, err := i.Ingest("", c.metrics, NewWriteRequest())
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {
