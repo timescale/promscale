@@ -129,7 +129,7 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 		return false, time.Time{}, err
 	}
 	leaseView := lease.Clone()
-	whatToDo := s.determineCourseOfAction(leaseView, replicaName, minT, maxT)
+	whatToDo := s.determineCourseOfAction(leaseView, replicaName, maxT)
 	switch whatToDo {
 	case deny:
 		return false, time.Time{}, err
@@ -145,7 +145,7 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 			return false, time.Time{}, nil
 		}
 	case tryChangeLeader:
-		leaseView, err := lease.TryChangeLeader(s.leaseClient)
+		leaseView, err = lease.TryChangeLeader(s.leaseClient)
 		if err != nil {
 			errMsg := fmt.Sprintf(tryLeaderChangeErrFmt, clusterName)
 			log.Error("msg", errMsg, "err", err)
@@ -170,7 +170,7 @@ func (s *Service) Close() {
 	s.doneWG.Wait()
 }
 
-func (s *Service) determineCourseOfAction(leaseView *state.LeaseView, replicaName string, minT, maxT time.Time) actionToTake {
+func (s *Service) determineCourseOfAction(leaseView *state.LeaseView, replicaName string, maxT time.Time) actionToTake {
 	if replicaName == leaseView.Leader {
 		if !maxT.Before(leaseView.LeaseUntil) {
 			return doSync
@@ -178,7 +178,7 @@ func (s *Service) determineCourseOfAction(leaseView *state.LeaseView, replicaNam
 		return allow
 	}
 
-	if minT.After(leaseView.LeaseUntil) {
+	if maxT.After(leaseView.LeaseUntil) {
 		if s.shouldTryToChangeLeader(leaseView) {
 			return tryChangeLeader
 		}
