@@ -80,6 +80,10 @@ func (e ExtensionState) UsesTimescaleDB() bool {
 	return (e & timescaleBit) != 0
 }
 
+func (e ExtensionState) UsesTimescale2() bool {
+	return (e & timescale2Bit) != 0
+}
+
 func (e ExtensionState) UsesMultinode() bool {
 	return (e & multinodeBit) != 0
 }
@@ -637,7 +641,7 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 
 var ConnectorPort = nat.Port("9201/tcp")
 
-func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, cmds []string, dbname string) (testcontainers.Container, error) {
+func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Container, image string, printLogs bool, cmds []string, dbname string) (testcontainers.Container, error) {
 	dbUser := promUser
 	if dbname == "postgres" {
 		dbUser = "postgres"
@@ -646,17 +650,17 @@ func StartConnectorWithImage(ctx context.Context, image string, printLogs bool, 
 	req := testcontainers.ContainerRequest{
 		Image:        image,
 		ExposedPorts: []string{string(ConnectorPort)},
-		WaitingFor:   wait.ForHTTP("/write").WithPort(ConnectorPort).WithAllowInsecure(true),
+		WaitingFor:   wait.ForHTTP("/metrics").WithPort(ConnectorPort).WithAllowInsecure(true),
 		SkipReaper:   false, /* switch to true not to kill docker container */
 		Cmd: []string{
-			"-db-host", "172.17.0.1", // IP refering to the docker's host network
+			"-db-host", "172.17.0.1",
 			"-db-port", pgPort.Port(),
 			"-db-user", dbUser,
 			"-db-password", "password",
 			"-db-name", dbname,
 			"-db-ssl-mode", "prefer",
-			"-web-listen-address", "0.0.0.0:" + ConnectorPort.Port(),
 		},
+		//Networks: []string{"promscale-network"},
 	}
 
 	req.Cmd = append(req.Cmd, cmds...)

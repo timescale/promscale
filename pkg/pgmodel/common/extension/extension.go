@@ -222,7 +222,7 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 		if extErr != nil {
 			return extErr
 		}
-		log.Info("msg", "successfully installed "+extName+" extension of version "+newVersion.String())
+		log.Info("msg", "successfully created "+extName+" extension at version "+newVersion.String())
 		return nil
 	}
 
@@ -255,6 +255,7 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 			}
 			log.Error("msg", fmt.Sprintf("Failed to migrate extension %v from %v to %v: %v", extName, currentVersion, newVersion, err))
 		}
+		log.Info("msg", "successfully updated "+extName+" extension to version "+newVersion.String())
 	}
 
 	return nil
