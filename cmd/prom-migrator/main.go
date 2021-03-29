@@ -21,12 +21,16 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 	"github.com/timescale/promscale/pkg/runner"
 =======
 >>>>>>> feae7ef (add version flag to prom-migrator command)
 =======
 	"github.com/timescale/promscale/pkg/runner"
 >>>>>>> 03d9782 (use of runner/args.go for print)
+=======
+	"github.com/timescale/promscale/pkg/runner"
+>>>>>>> 03d9782f41aac04e624c0f2780b101bbd2df7947
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -59,6 +63,9 @@ func main() {
 	conf := new(config)
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 03d9782f41aac04e624c0f2780b101bbd2df7947
 	args := os.Args[1:]
 
 	if shouldProceed := runner.ParseArgs(args); !shouldProceed {
@@ -66,6 +73,7 @@ func main() {
 	}
 	parseFlags(conf, args)
 
+<<<<<<< HEAD
 =======
 	parseFlags(conf, os.Args[1:])
 	if conf.versionPrint {
@@ -82,10 +90,13 @@ func main() {
 	parseFlags(conf, args)
 
 >>>>>>> 03d9782 (use of runner/args.go for print)
+=======
+>>>>>>> 03d9782f41aac04e624c0f2780b101bbd2df7947
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 	log.Info("Version:", version.Version)
@@ -95,6 +106,9 @@ func main() {
 =======
 	log.Info("Version:", version.Version)
 >>>>>>> 03d9782 (use of runner/args.go for print)
+=======
+	log.Info("Version:", version.Version)
+>>>>>>> 03d9782f41aac04e624c0f2780b101bbd2df7947
 	if err := validateConf(conf); err != nil {
 		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
