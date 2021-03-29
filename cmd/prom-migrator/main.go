@@ -62,7 +62,7 @@ func main() {
 		log.Error("msg", "could not set read-auth in authStore", "error", err)
 		os.Exit(1)
 	}
-	if err := utils.SetAuthStore(utils.Write, conf.readerAuth.ToHTTPClientConfig()); err != nil {
+	if err := utils.SetAuthStore(utils.Write, conf.writerAuth.ToHTTPClientConfig()); err != nil {
 		log.Error("msg", "could not set write-auth in authStore", "error", err)
 		os.Exit(1)
 	}
