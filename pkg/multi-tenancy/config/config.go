@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package config
 
 import "fmt"
@@ -50,6 +54,10 @@ func (cfg *Config) IsTokenValid(token string) bool {
 
 // IsTenantAllowed returns true if the given tenantName is allowed to be ingested.
 func (cfg *Config) IsTenantAllowed(tenantName string) bool {
+	if tenantName == "" {
+		// Do not allow empty tenant names.
+		return false
+	}
 	if len(cfg.tenantsCache) == 0 {
 		return true
 	}

@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package multi_tenancy
 
 import (
@@ -8,7 +12,7 @@ import (
 	"github.com/timescale/promscale/pkg/multi-tenancy/write"
 )
 
-var ErrUnauthorized = fmt.Errorf("unauthorized token or tenant")
+var ErrUnauthorized = fmt.Errorf("invalid token or tenant: ")
 
 type MultiTenancy interface {
 	// ReadAuthorizer returns a authorizer that authorizes read operations.

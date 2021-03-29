@@ -6,7 +6,6 @@ package api
 
 import (
 	"fmt"
-	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/timescale/promscale/pkg/log"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -49,7 +49,6 @@ func Read(apiConf *Config, reader querier.Reader, metrics *Metrics) http.Handler
 
 		var tenantToken string
 		if authr := apiConf.MultiTenancy.ReadAuthorizer(); authr != nil {
-			// We do not ask for token in read requests since that is already handled by auth handler.
 			_, tenantToken = getTenantAndToken(r)
 			if !authr.IsValid(tenantToken) {
 				log.Error("msg", multi_tenancy.ErrUnauthorized.Error()+tenantToken)

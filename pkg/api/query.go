@@ -49,7 +49,6 @@ func queryHandler(apiConf *Config, queryEngine *promql.Engine, queryable promql.
 
 		var tenantToken string
 		if authr := apiConf.MultiTenancy.ReadAuthorizer(); authr != nil {
-			// We do not ask for token in read requests since that is already handled by auth handler.
 			_, tenantToken = getTenantAndToken(r)
 			if !authr.IsValid(tenantToken) {
 				log.Error("msg", multi_tenancy.ErrUnauthorized.Error()+tenantToken)

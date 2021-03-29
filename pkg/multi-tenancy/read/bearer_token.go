@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package read
 
 import (
@@ -16,6 +20,7 @@ func NewBearerTokenReadAuthorizer(cfg *config.Config) (Authorizer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create bearer_token read-authorizer: %w", err)
 	}
+	fmt.Println("matcher is", matcher)
 	return &bearerTokenReadAuthorizer{
 		authorizerConfig{
 			config:               cfg,
@@ -32,6 +37,9 @@ func (a *bearerTokenReadAuthorizer) IsValid(token string) bool {
 }
 
 func (a *bearerTokenReadAuthorizer) ApplySafetyMatcher(ms []*labels.Matcher) []*labels.Matcher {
+	if a.mtSafetyLabelMatcher == nil {
+		return ms
+	}
 	ms = append(ms, a.mtSafetyLabelMatcher)
 	return ms
 }

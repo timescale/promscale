@@ -71,6 +71,9 @@ var _ Querier = (*pgxQuerier)(nil)
 // Select implements the Querier interface. It is the entry point for our
 // own version of the Prometheus engine.
 func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	if q.multiTenancy != nil {
+		ms = q.multiTenancy.ApplySafetyMatcher(ms)
+	}
 	rows, topNode, err := q.getResultRows(mint, maxt, hints, path, ms)
 	if err != nil {
 		return errorSeriesSet{err: err}, nil
@@ -90,6 +93,10 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	matchers, err := fromLabelMatchers(query.Matchers)
 	if err != nil {
 		return nil, err
+	}
+
+	if q.multiTenancy != nil {
+		matchers = q.multiTenancy.ApplySafetyMatcher(matchers)
 	}
 
 	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)

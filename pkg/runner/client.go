@@ -6,8 +6,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
-	multi_tenancy_config "github.com/timescale/promscale/pkg/multi-tenancy/config"
 	"regexp"
 	"strconv"
 	"sync/atomic"
@@ -16,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/log"
+	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
+	multi_tenancy_config "github.com/timescale/promscale/pkg/multi-tenancy/config"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
