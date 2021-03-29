@@ -22,7 +22,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.ha_leases_audit_fn()
 AS
 $func$
 BEGIN
-    RAISE 'Just a stub, should be overwritten'
+    RAISE 'Just a stub, should be overwritten';
     RETURN NEW;
 END;
 $func$ LANGUAGE plpgsql VOLATILE;

@@ -38,7 +38,7 @@ func TestOperationWithNullChars(t *testing.T) {
 		ts[i].Labels = applyNullCharsToTag(t, ts[i].Labels) // insert null char in label value.
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		require.NoError(t, err)
 		defer ingestor.Close()
 

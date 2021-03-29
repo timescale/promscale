@@ -555,19 +555,19 @@ func TestExtensionUpgrade(t *testing.T) {
 		}
 		defer testhelpers.StopContainer(ctx, connector, *printLogs)
 
-		var version string
+		var versionStr string
 		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&versionStr)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		db.Close(ctx)
 
-		if version != "2.0.0-rc4" {
+		if versionStr != "2.0.0-rc4" {
 			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension true")
 		}
 		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions true")

@@ -34,7 +34,7 @@ func TestHaParserParseData(t *testing.T) {
 	// As Prometheus remote write sends sample timestamps
 	// in milli-seconds converting the test samples to milliseconds
 	inLeaseTimestamp := leaseStart.Add(time.Second).UnixNano() / 1000000
-	behindLeaseTimestamp := (leaseStart.UnixNano()/1000000)-1
+	behindLeaseTimestamp := (leaseStart.UnixNano() / 1000000) - 1
 	aheadLeaseTimestamp := leaseUntil.Add(time.Second).UnixNano() / 1000000
 
 	mockService := MockNewHAService(nil)
@@ -358,7 +358,7 @@ func TestHaParserParseData(t *testing.T) {
 			}
 			h := &haParser{
 				service: tt.fields.service,
-				scache:  cache.NewSeriesCache(cache.DefaultSeriesCacheSize),
+				scache:  cache.NewSeriesCache(cache.DefaultConfig, nil),
 			}
 			gotSamplesPerMetric, gotTotalRows, err := h.ParseData(tt.args.tts)
 			if (err != nil) != tt.wantErr {
