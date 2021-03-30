@@ -60,7 +60,7 @@ func TestWithDB(t *testing.T) {
 	})
 }
 
-func TestMain(m *testing.M) {
+func runMain(m *testing.M) int {
 	flag.Parse()
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
@@ -99,6 +99,8 @@ func TestMain(m *testing.M) {
 			}
 		}()
 	}
-	code := m.Run()
-	os.Exit(code)
+	return m.Run()
+}
+func TestMain(m *testing.M) {
+	os.Exit(runMain(m))
 }
