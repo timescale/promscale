@@ -18,7 +18,7 @@ func ParseArgs(args []string) (shouldProceed bool) {
 		switch flag {
 		case "version":
 			shouldProceed = false
-			fmt.Println(version.Version)
+			fmt.Println(version.Promscale)
 		}
 	}
 	return

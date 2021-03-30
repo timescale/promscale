@@ -29,7 +29,7 @@ var (
 )
 
 func Run(cfg *Config) error {
-	log.Info("msg", "Version:"+version.Version+"; Commit Hash: "+version.CommitHash)
+	log.Info("msg", "Version:"+version.Promscale+"; Commit Hash: "+version.CommitHash)
 	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
 
 	if cfg.APICfg.ReadOnly {

@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	appVersion         = pgmodel.VersionInfo{Version: version.Version, CommitHash: version.CommitHash}
+	appVersion         = pgmodel.VersionInfo{Version: version.Promscale, CommitHash: version.CommitHash}
 	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
 )
 

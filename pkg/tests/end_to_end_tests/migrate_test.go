@@ -33,8 +33,8 @@ func TestMigrate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if dbVersion != version.Version {
-			t.Errorf("Version unexpected:\ngot\n%s\nwanted\n%s", dbVersion, version.Version)
+		if dbVersion != version.Promscale {
+			t.Errorf("Version unexpected:\ngot\n%s\nwanted\n%s", dbVersion, version.Promscale)
 		}
 
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
@@ -44,7 +44,7 @@ func TestMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer conn.Release()
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Version}, false, extOptions)
+		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale}, false, extOptions)
 		if err != nil {
 			t.Error(err)
 		}
@@ -232,8 +232,8 @@ func TestMigrateTwice(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if versionString != version.Version {
-				t.Fatalf("wrong version, expected %v got %v", version.Version, versionString)
+			if versionString != version.Promscale {
+				t.Fatalf("wrong version, expected %v got %v", version.Promscale, versionString)
 			}
 		}
 	})
