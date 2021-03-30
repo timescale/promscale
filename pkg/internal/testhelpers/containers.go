@@ -659,7 +659,6 @@ func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Con
 			"-db-name", dbname,
 			"-db-ssl-mode", "prefer",
 		},
-		//Networks: []string{"promscale-network"},
 	}
 
 	req.Cmd = append(req.Cmd, cmds...)
@@ -696,13 +695,13 @@ func StopContainer(ctx context.Context, container testcontainers.Container, prin
 	if printLogs {
 		err := container.StopLogProducer()
 		if err != nil {
-			fmt.Println("couldn't stop log producer", err)
+			fmt.Fprintln(os.Stderr, "couldn't stop log producer", err)
 		}
 	}
 
 	err := container.Terminate(ctx)
 	if err != nil {
-		fmt.Println("couldn't terminate container", err)
+		fmt.Fprintln(os.Stderr, "couldn't terminate container", err)
 	}
 }
 

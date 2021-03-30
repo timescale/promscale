@@ -149,6 +149,7 @@ func expectedSchemas(extstate testhelpers.ExtensionState) []string {
 	if !extstate.UsesPG12() {
 		filtered := make([]string, 0, len(considerSchemas))
 		for _, s := range considerSchemas {
+			//these schemas don't exist in PG version > 12
 			if s != "pg_temp_1" && s != "pg_toast_temp_1" {
 				filtered = append(filtered, s)
 			}

@@ -62,22 +62,20 @@ func TestMain(m *testing.M) {
 
 /* Prev image is the db image with the old promscale extension. We do NOT test timescaleDB extension upgrades here. */
 func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean string) {
-	if extensionState.UsesPG12() {
-		if extensionState.UsesMultinode() {
-			return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
-		}
-		if extensionState.UsesTimescaleDB() {
-			if extensionState.UsesTimescale2() {
-				return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
-			} else {
-				return "timescaledev/promscale-extension:0.1.1-ts1-pg12", "timescaledev/promscale-extension:latest-ts1-pg12"
-			}
-		}
-		if !extensionState.UsesTimescaleDB() {
-			return "timescale/timescaledb:latest-pg12", "timescale/timescaledb:latest-pg12"
-		}
+	if !extensionState.UsesPG12() {
+		//TODO add tests after release with PG13 support
+		panic("Can't test PG13 yet because haven't had a PG13 release")
 	}
-	panic("Unexpected extension state in upgradeTest")
+	switch {
+	case extensionState.UsesMultinode():
+		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
+	case !extensionState.UsesTimescaleDB():
+		return "timescale/timescaledb:latest-pg12", "timescale/timescaledb:latest-pg12"
+	case extensionState.UsesTimescale2():
+		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
+	default:
+		return "timescaledev/promscale-extension:0.1.1-ts1-pg12", "timescaledev/promscale-extension:latest-ts1-pg12"
+	}
 }
 
 func TestUpgradeFromPrev(t *testing.T) {

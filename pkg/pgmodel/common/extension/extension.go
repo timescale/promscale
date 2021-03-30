@@ -255,7 +255,7 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 			}
 			log.Error("msg", fmt.Sprintf("Failed to migrate extension %v from %v to %v: %v", extName, currentVersion, newVersion, err))
 		}
-		log.Info("msg", "successfully updated "+extName+" extension to version "+newVersion.String())
+		log.Info("msg", "successfully updated extension", "extension_name", extName, "old_version", currentVersion, "new_version", newVersion)
 	}
 
 	return nil
