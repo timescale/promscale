@@ -465,11 +465,7 @@ func startPGInstance(
 	}
 
 	closer := func() {
-		if printLogs {
-			_ = container.StopLogProducer()
-		}
-
-		_ = container.Terminate(ctx)
+		StopContainer(ctx, container, printLogs)
 	}
 
 	if isDataNode {
@@ -695,10 +691,16 @@ func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Con
 
 func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool) {
 	if printLogs {
-		_ = container.StopLogProducer()
+		err := container.StopLogProducer()
+		if err != nil {
+			fmt.Println("couldn't stop log producer", err)
+		}
 	}
 
-	_ = container.Terminate(ctx)
+	err := container.Terminate(ctx)
+	if err != nil {
+		fmt.Println("couldn't terminate container", err)
+	}
 }
 
 // TempDir returns a temp directory for tests
