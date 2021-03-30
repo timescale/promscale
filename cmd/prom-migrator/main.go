@@ -19,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
+	"github.com/timescale/promscale/pkg/version"
 )
 
 const (
@@ -48,11 +49,19 @@ type config struct {
 
 func main() {
 	conf := new(config)
+	args := os.Args[1:]
+	if shouldProceed := parseArgs(args); !shouldProceed {
+		os.Exit(0)
+	}
+
 	parseFlags(conf, os.Args[1:])
+
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
+		fmt.Println("Version: ", version.PromMigrator)
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	log.Info("Version", version.PromMigrator)
 	if err := validateConf(conf); err != nil {
 		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
@@ -167,6 +176,19 @@ func parseFlags(conf *config, args []string) {
 		"This should be mutually exclusive with username and password.")
 	_ = flag.CommandLine.Parse(args)
 	convertSecFlagToMs(conf)
+}
+
+func parseArgs(args []string) (shouldProceed bool) {
+	shouldProceed = true // Some flags like 'version' are just to get information and not proceed the actual execution. We should stop in such cases.
+	for _, flag := range args {
+		flag = flag[1:]
+		switch flag {
+		case "version":
+			shouldProceed = false
+			fmt.Println(version.PromMigrator)
+		}
+	}
+	return
 }
 
 func convertSecFlagToMs(conf *config) {

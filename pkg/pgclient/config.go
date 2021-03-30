@@ -54,7 +54,7 @@ const (
 )
 
 var (
-	DefaultApp         = fmt.Sprintf("promscale@%s", version.Version)
+	DefaultApp         = fmt.Sprintf("promscale@%s", version.Promscale)
 	excessDBFlagsError = fmt.Errorf("failed to build DB credentials with provided flags. Please use either db flags or db-uri not both")
 )
 

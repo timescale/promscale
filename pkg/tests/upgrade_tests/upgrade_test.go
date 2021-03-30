@@ -342,9 +342,9 @@ func withDBStartingAtOldVersionAndUpgrading(
 
 	defer func() { _ = closer.Close() }()
 
-	t.Logf("upgrading versions %v => %v", prevVersion, version.Version)
+	t.Logf("upgrading versions %v => %v", prevVersion, version.Promscale)
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
-	migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
+	migrateToVersion(t, connectURL, version.Promscale, "azxtestcommit")
 
 	if extensionState.UsesMultinode() {
 		//add a node after upgrade; this tests strictly more functionality since we already have one node set up before
@@ -386,7 +386,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 
 		defer func() { _ = closer.Close() }()
 		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, extensionState, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
-			migrateToVersion(t, connectURL, version.Version, "azxtestcommit")
+			migrateToVersion(t, connectURL, version.Promscale, "azxtestcommit")
 
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
 			db, err := pgxpool.Connect(context.Background(), connectURL)

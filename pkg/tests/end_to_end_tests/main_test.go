@@ -227,7 +227,7 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		t.Fatal(err)
 	}
 	defer conn.Release()
-	err = runner.SetupDBState(conn.Conn(), pgmodel.VersionInfo{Version: version.Version, CommitHash: "azxtestcommit"}, nil, extOptions)
+	err = runner.SetupDBState(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
