@@ -25,7 +25,7 @@ func TestBigLables(t *testing.T) {
 		},
 	}
 
-	_, err := cache.GetSeriesFromLabels(l)
+	_, _, err := cache.GetSeriesFromLabels(l)
 	if err == nil {
 		t.Errorf("expected error")
 	}

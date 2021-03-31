@@ -512,6 +512,70 @@ func TestWrite(t *testing.T) {
 				"Content-Encoding": "snappy",
 			},
 		},
+		{
+			name:             "happy path text format",
+			isLeader:         true,
+			responseCode:     http.StatusOK,
+			requestBody:      string(snappy.Encode(nil, []byte(`go_goroutines 123`))),
+			inserterResponse: 1,
+			customHeaders: map[string]string{
+				"Content-Type":     "text/plain",
+				"Content-Encoding": "snappy",
+			},
+		},
+		{
+			name:             "text format content type 1",
+			isLeader:         true,
+			responseCode:     http.StatusOK,
+			requestBody:      string(snappy.Encode(nil, []byte(`go_goroutines 123`))),
+			inserterResponse: 1,
+			customHeaders: map[string]string{
+				"Content-Type":     "text/plain; version=0.0.4",
+				"Content-Encoding": "snappy",
+			},
+		},
+		{
+			name:             "text format content type 2",
+			isLeader:         true,
+			responseCode:     http.StatusOK,
+			requestBody:      string(snappy.Encode(nil, []byte(`go_goroutines 123`))),
+			inserterResponse: 1,
+			customHeaders: map[string]string{
+				"Content-Type":     "application/openmetrics-text; version=1.0.0; charset=utf-8",
+				"Content-Encoding": "snappy",
+			},
+		},
+		{
+			name:             "text format no snappy",
+			isLeader:         true,
+			responseCode:     http.StatusOK,
+			requestBody:      string(snappy.Encode(nil, []byte(`go_goroutines 123`))),
+			inserterResponse: 1,
+			customHeaders: map[string]string{
+				"Content-Type": "application/openmetrics-text; version=1.0.0; charset=utf-8",
+			},
+		},
+		{
+			name:         "text format bad snappy format",
+			isLeader:     true,
+			responseCode: http.StatusBadRequest,
+			requestBody:  `go_goroutines 123`,
+			customHeaders: map[string]string{
+				"Content-Type":     "application/openmetrics-text; version=1.0.0; charset=utf-8",
+				"Content-Encoding": "snappy",
+			},
+		},
+		{
+			name:         "text format write error",
+			isLeader:     true,
+			responseCode: http.StatusInternalServerError,
+			inserterErr:  fmt.Errorf("some error"),
+			requestBody:  string(snappy.Encode(nil, []byte(`go_goroutines 123`))),
+			customHeaders: map[string]string{
+				"Content-Type":     "application/openmetrics-text; version=1.0.0; charset=utf-8",
+				"Content-Encoding": "snappy",
+			},
+		},
 	}
 
 	for _, c := range testCases {
@@ -630,8 +694,12 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(series []prompb.TimeSeries, request *prompb.WriteRequest) (uint64, error) {
+func (m *mockInserter) IngestProto(series []prompb.TimeSeries, request *prompb.WriteRequest) (uint64, error) {
 	m.ts = series
+	return m.result, m.err
+}
+
+func (m *mockInserter) IngestText(r io.Reader, contentType string, scrapeTime time.Time) (uint64, error) {
 	return m.result, m.err
 }
 

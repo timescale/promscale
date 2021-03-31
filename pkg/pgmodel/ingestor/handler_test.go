@@ -14,7 +14,7 @@ import (
 )
 
 func getSeries(t *testing.T, scache *cache.SeriesCacheImpl, labels labels.Labels) *model.Series {
-	series, err := scache.GetSeriesFromLabels(labels)
+	series, _, err := scache.GetSeriesFromLabels(labels)
 	require.NoError(t, err)
 	return series
 }

@@ -29,6 +29,7 @@ const GrowFactor = float64(2.0)       // multiply cache size by this factor when
 type SeriesCache interface {
 	Reset()
 	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
+	GetSeriesFromLabels(ll labels.Labels) (series *model.Series, metricName string, err error)
 	Len() int
 	Cap() int
 	Evictions() uint64
@@ -204,14 +205,13 @@ func generateKey(labels []prompb.Label) (key string, metricName string, error er
 }
 
 // GetSeriesFromLabels converts a labels.Labels to a canonical Labels object
-func (t *SeriesCacheImpl) GetSeriesFromLabels(ls labels.Labels) (*model.Series, error) {
+func (t *SeriesCacheImpl) GetSeriesFromLabels(ls labels.Labels) (*model.Series, string, error) {
 	ll := make([]prompb.Label, len(ls))
 	for i := range ls {
 		ll[i].Name = ls[i].Name
 		ll[i].Value = ls[i].Value
 	}
-	l, _, err := t.GetSeriesFromProtos(ll)
-	return l, err
+	return t.GetSeriesFromProtos(ll)
 }
 
 // GetSeriesFromProtos converts a prompb.Label to a canonical Labels object

@@ -89,7 +89,7 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
+		if _, err := ingestor.IngestProto(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
@@ -171,7 +171,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
+		if _, err := ingestor.IngestProto(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation()
@@ -255,7 +255,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
+		if _, err := ingestor.IngestProto(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
@@ -379,7 +379,7 @@ func TestDeleteMixins(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
+		if _, err := ingestor.IngestProto(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}

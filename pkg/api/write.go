@@ -53,24 +53,49 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 
 		metrics.LeaderGauge.Set(1)
 
-		req, err, logMsg := loadWriteRequest(r)
-		if err != nil {
-			log.Error("msg", logMsg, "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		var (
+			numSamples         uint64
+			receivedBatchCount float64
+			begin              time.Time
+		)
+
+		if isTextFormatRequest(r) {
+			var (
+				begin           = time.Now()
+				body  io.Reader = r.Body
+				msg   string
+			)
+			snappyEncoding := strings.Contains(r.Header.Get("Content-Encoding"), "snappy")
+			if snappyEncoding {
+				body, err, msg = decodeSnappy(r.Body)
+				if err != nil {
+					log.Error("msg", msg, "err", err.Error())
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			numSamples, err = writer.IngestText(body, r.Header.Get("Content-Type"), begin)
+		} else {
+			req, innerErr, logMsg := loadWriteRequest(r)
+			if innerErr != nil {
+				log.Error("msg", logMsg, "err", innerErr.Error())
+				http.Error(w, innerErr.Error(), http.StatusBadRequest)
+				return
+			}
+
+			ts := req.GetTimeseries()
+			receivedBatchCount := 0
+
+			for _, t := range ts {
+				receivedBatchCount = receivedBatchCount + len(t.Samples)
+			}
+
+			metrics.ReceivedSamples.Add(float64(receivedBatchCount))
+			begin = time.Now()
+
+			numSamples, err = writer.IngestProto(req.GetTimeseries(), req)
 		}
 
-		ts := req.GetTimeseries()
-		receivedBatchCount := 0
-
-		for _, t := range ts {
-			receivedBatchCount = receivedBatchCount + len(t.Samples)
-		}
-
-		metrics.ReceivedSamples.Add(float64(receivedBatchCount))
-		begin := time.Now()
-
-		numSamples, err := writer.Ingest(req.GetTimeseries(), req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -92,6 +117,16 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 		}
 
 	})
+}
+
+func isTextFormatRequest(r *http.Request) bool {
+	switch r.Header.Get("Content-Type") {
+	case "text/plain; version=0.0.4",
+		"text/plain",
+		"application/openmetrics-text; version=1.0.0; charset=utf-8":
+		return true
+	}
+	return false
 }
 
 func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
@@ -142,7 +177,7 @@ func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
 		}
 	default:
 		// Cannot get here because of header validation.
-		return nil, fmt.Errorf("unsupported data format (not protobuf or json)"), "Write header validation error"
+		return nil, fmt.Errorf("unsupported data format (not protobuf, json, or plain text)"), "Write header validation error"
 	}
 
 	return req, nil, ""
@@ -227,8 +262,12 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 		}
 	case "application/json":
 		// Don't need any other header checks for JSON content type.
+	case "text/plain; version=0.0.4",
+		"text/plain",
+		"application/openmetrics-text; version=1.0.0; charset=utf-8":
+		// Don't need any other header checks for plain text formats.
 	default:
-		buildWriteError(w, "unsupported data format (not protobuf or json)")
+		buildWriteError(w, "unsupported data format (not protobuf, json, or plain text)")
 		return false
 	}
 

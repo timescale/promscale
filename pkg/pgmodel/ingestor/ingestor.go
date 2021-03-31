@@ -6,7 +6,13 @@ package ingestor
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
+	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
@@ -46,13 +52,95 @@ func NewPgxIngestor(conn pgxconn.PgxConn) (*DBIngestor, error) {
 	return NewPgxIngestorWithMetricCache(conn, c, s, &Cfg{})
 }
 
-// Ingest transforms and ingests the timeseries data into Timescale database.
+// Ingest transforms and ingests the text format timeseries data into Timescale database.
+// input:
+//     r io.Reader containing the text format data
+func (i *DBIngestor) IngestText(r io.Reader, contentType string, scrapeTime time.Time) (uint64, error) {
+	data, totalRows, err := i.parseTextData(r, contentType, scrapeTime)
+
+	if err != nil {
+		return 0, err
+	}
+
+	rowsInserted, err := i.db.InsertNewData(data)
+	if err == nil && int(rowsInserted) != totalRows {
+		return rowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
+	}
+	return rowsInserted, err
+}
+
+// Parse data into a set of samplesInfo infos per-metric.
+// returns: map[metric name][]SamplesInfo, total rows to insert
+func (ingestor *DBIngestor) parseTextData(r io.Reader, contentType string, scrapeTime time.Time) (map[string][]model.Samples, int, error) {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, 0, fmt.Errorf("error reading request body: %w", err)
+	}
+
+	var (
+		p           = textparse.New(b, contentType)
+		defTime     = timestamp.FromTime(scrapeTime)
+		et          textparse.Entry
+		dataSamples = make(map[string][]model.Samples)
+		rows        = 0
+	)
+
+	for {
+		if et, err = p.Next(); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, 0, fmt.Errorf("error parsing text entries: %w", err)
+		}
+
+		switch et {
+		case textparse.EntryType,
+			textparse.EntryHelp,
+			textparse.EntryUnit,
+			textparse.EntryComment:
+			continue
+		default:
+		}
+
+		t := defTime
+		_, tp, v := p.Series()
+		if tp != nil {
+			t = *tp
+		}
+
+		var lset labels.Labels
+		_ = p.Metric(&lset)
+
+		// Normalize and canonicalize t.Labels.
+		// After this point t.Labels should never be used again.
+		seriesLabels, metricName, err := ingestor.scache.GetSeriesFromLabels(lset)
+		if err != nil {
+			return nil, 0, err
+		}
+		// Cannot really happen since text parser would throw the error before we ever get here.
+		if metricName == "" {
+			return nil, 0, errors.ErrNoMetricName
+		}
+		sample := model.NewPromSample(seriesLabels, []prompb.Sample{
+			{
+				Timestamp: t,
+				Value:     v,
+			},
+		})
+		rows++
+		dataSamples[metricName] = append(dataSamples[metricName], sample)
+	}
+
+	return dataSamples, rows, nil
+}
+
+// IngestProto transforms and ingests the timeseries data into Timescale database.
 // input:
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	data, totalRows, err := ingestor.parseData(tts, req)
+func (ingestor *DBIngestor) IngestProto(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
+	data, totalRows, err := ingestor.parseProtoData(tts, req)
 
 	if err != nil {
 		return 0, err
@@ -74,7 +162,7 @@ func (ingestor *DBIngestor) CompleteMetricCreation() error {
 // returns: map[metric name][]SamplesInfo, total rows to insert
 // NOTE: req will be added to our WriteRequest pool in this function, it must
 //       not be used afterwards.
-func (ingestor *DBIngestor) parseData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]model.Samples, int, error) {
+func (ingestor *DBIngestor) parseProtoData(tts []prompb.TimeSeries, req *prompb.WriteRequest) (map[string][]model.Samples, int, error) {
 	dataSamples := make(map[string][]model.Samples)
 	rows := 0
 

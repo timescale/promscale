@@ -7,6 +7,8 @@ package pgclient
 import (
 	"context"
 	"fmt"
+	"io"
+	"time"
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -165,8 +167,13 @@ func (c *Client) Close() {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	return c.ingestor.Ingest(tts, req)
+func (c *Client) IngestProto(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
+	return c.ingestor.IngestProto(tts, req)
+}
+
+// Ingest writes Prometheus text format data into the DB.
+func (c *Client) IngestText(r io.Reader, contentType string, scrapeTime time.Time) (uint64, error) {
+	return c.ingestor.IngestText(r, contentType, scrapeTime)
 }
 
 // Read returns the promQL query results
