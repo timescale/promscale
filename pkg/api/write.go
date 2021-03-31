@@ -68,9 +68,9 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 			return
 		}
 
-		receivedBatchCount := 0
+		var receivedBatchCount uint64
 		for _, t := range timeseries {
-			receivedBatchCount = receivedBatchCount + len(t.Samples)
+			receivedBatchCount += uint64(len(t.Samples))
 		}
 
 		metrics.ReceivedSamples.Add(float64(receivedBatchCount))
@@ -80,7 +80,7 @@ func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) 
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			metrics.FailedSamples.Add(float64(receivedBatchCount))
+			metrics.FailedSamples.Add(float64(receivedBatchCount - numSamples))
 			return
 		}
 
