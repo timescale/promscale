@@ -89,7 +89,9 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 	} else {
 		connectionArgsFmt = "%s&pool_max_conns=%d&pool_min_conns=%d&statement_cache_capacity=%d"
 	}
-	statementCacheCapacity := cfg.CacheConfig.MetricsCacheSize * 2
+
+	// Using the PGX default of 512 for statement cache capacity.
+	statementCacheCapacity := 512
 	connectionStringWithArgs := fmt.Sprintf(connectionArgsFmt, connectionStr, maxConnections, minConnections, statementCacheCapacity)
 	pgConfig, err = pgxpool.ParseConfig(connectionStringWithArgs)
 	if err != nil {

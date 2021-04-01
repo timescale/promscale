@@ -46,7 +46,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 			},
-			err: fmt.Errorf("wrong value type int"),
+			err: fmt.Errorf("wrong value type int for scan of *string"),
 		},
 		{
 			name: "Error first query",

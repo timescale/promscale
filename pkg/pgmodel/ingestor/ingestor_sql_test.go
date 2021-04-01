@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pgtype"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -495,13 +494,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{
+						"metric_0",
 						[]time.Time{time.Unix(0, 0)},
 						[]float64{0},
 						[]int64{1},
 					},
-					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
 				{
@@ -531,13 +531,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 
 				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{
+						"metric_0",
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0)},
 						[]float64{0, 0},
 						[]int64{1, 1},
 					},
-					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
 				{
@@ -588,13 +589,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 
 				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{
+						"metric_0",
 						[]time.Time{time.Unix(0, 0)},
 						[]float64{0},
 						[]int64{1},
 					},
-					Results: model.RowResults{},
+					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
 				{
@@ -606,13 +608,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 
 				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{
+						"metric_0",
 						[]time.Time{time.Unix(0, 0)},
 						[]float64{0},
 						[]int64{1},
 					},
-					Results: model.RowResults{},
+					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
 				{
@@ -647,13 +650,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 
 				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{
+						"metric_0",
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
 						make([]float64, 5),
 						[]int64{1, 1, 1, 1, 1},
 					},
-					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Results: model.RowResults{{int64(1)}},
 					Err:     fmt.Errorf("some INSERT error"),
 				},
 				{
@@ -665,13 +669,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 
 				{
-					Sql: `INSERT INTO "prom_data"."metric_0"(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING`,
+					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{
+						"metric_0",
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
 						make([]float64, 5),
 						[]int64{1, 1, 1, 1, 1},
 					},
-					Results: model.RowResults{{pgconn.CommandTag{'1'}}},
+					Results: model.RowResults{{int64(1)}},
 					Err:     fmt.Errorf("some INSERT error"),
 				},
 				{
