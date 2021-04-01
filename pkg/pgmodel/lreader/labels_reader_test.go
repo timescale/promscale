@@ -76,8 +76,8 @@ func TestLabelsReaderLabelsNames(t *testing.T) {
 			}
 
 			if tc.name == "Error on scanning values" {
-				if err.Error() != "wrong value type int" {
-					expectedErr = fmt.Errorf("wrong value type int")
+				if err.Error() != "wrong value type int for scan of *string" {
+					expectedErr = fmt.Errorf("wrong value type int for scan of *string")
 					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 					return
 				}
@@ -163,8 +163,8 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 			}
 
 			if tc.name == "Error on scanning values" {
-				if err.Error() != "wrong value type int" {
-					expectedErr = fmt.Errorf("wrong value type int")
+				if err.Error() != "wrong value type int for scan of *string" {
+					expectedErr = fmt.Errorf("wrong value type int for scan of *string")
 					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 					return
 				}

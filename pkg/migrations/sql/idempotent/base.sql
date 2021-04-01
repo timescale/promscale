@@ -2200,3 +2200,24 @@ BEGIN
     END IF;
 END
 $func$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.insert_metric_row(
+    metric_table name,
+    time_array timestamptz[],
+    value_array DOUBLE PRECISION[],
+    series_id_array bigint[]
+) RETURNS BIGINT AS
+$$
+DECLARE
+  num_rows BIGINT;
+BEGIN
+    EXECUTE FORMAT(
+     'INSERT INTO  SCHEMA_DATA.%1$I (time, value, series_id)
+          SELECT * FROM unnest($1, $2, $3) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING',
+        metric_table
+    ) USING time_array, value_array, series_id_array;
+    GET DIAGNOSTICS num_rows = ROW_COUNT;
+    RETURN num_rows;
+END;
+$$
+LANGUAGE PLPGSQL;

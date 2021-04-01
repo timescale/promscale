@@ -342,12 +342,12 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetFloat(float64(m.results[m.idx][i].(float64)))
 		case int:
-			if _, ok := dest[i].(int); !ok {
-				return fmt.Errorf("wrong value type int")
+			if _, ok := dest[i].(*int); !ok {
+				return fmt.Errorf("wrong value type int for scan of %T", dest[i])
 			}
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
-			dvp.SetInt(int64(m.results[m.idx][i].(int32)))
+			dvp.SetInt(int64(m.results[m.idx][i].(int)))
 		case int32:
 			if _, ok := dest[i].(*int32); !ok {
 				return fmt.Errorf("wrong value type int32")

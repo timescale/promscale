@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -363,8 +362,7 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 		numRowsTotal += numRows
 		numRowsPerInsert = append(numRowsPerInsert, numRows)
-		queryString := fmt.Sprintf("INSERT INTO %s(time, value, series_id) SELECT * FROM unnest($1::TIMESTAMPTZ[], $2::DOUBLE PRECISION[], $3::BIGINT[]) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING", pgx.Identifier{schema.Data, req.table}.Sanitize())
-		batch.Queue(queryString, times, vals, series)
+		batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, times, vals, series)
 	}
 
 	//note the epoch increment takes an access exclusive on the table before incrementing.
@@ -385,13 +383,15 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 
 	var affectedMetrics uint64
 	for _, numRows := range numRowsPerInsert {
-		ct, err := results.Exec()
+		var insertedRows int64
+		err := results.QueryRow().Scan(&insertedRows)
 		if err != nil {
 			return err
 		}
-		if int64(numRows) != ct.RowsAffected() {
+		numRowsExpected := int64(numRows)
+		if numRowsExpected != insertedRows {
 			affectedMetrics++
-			registerDuplicates(int64(numRows) - ct.RowsAffected())
+			registerDuplicates(numRowsExpected - insertedRows)
 		}
 	}
 
