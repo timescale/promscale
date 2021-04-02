@@ -129,7 +129,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO p
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
 AS $proc$
 DECLARE
-    r RECORD;
+    r SCHEMA_CATALOG.metric;
     created boolean;
 BEGIN
     FOR r IN
@@ -150,20 +150,19 @@ BEGIN
             CONTINUE;
         END IF;
 
-        IF SCHEMA_CATALOG.is_timescaledb_installed() AND SCHEMA_CATALOG.get_default_compression_setting() THEN
-            PERFORM SCHEMA_PROM.set_compression_on_metric_table(r.table_name, TRUE);
-        END IF;
-
         --do this before taking exclusive lock to minimize work after taking lock
         UPDATE SCHEMA_CATALOG.metric SET creation_completed = TRUE WHERE id = r.id;
 
         --we will need this lock for attaching the partition so take it now
-        --to avoid lock upgrade. Its critical to minimize work done while this
-        --lock is taken.
-        LOCK TABLE ONLY SCHEMA_CATALOG.series IN ACCESS EXCLUSIVE mode;
+        --This may not be strictly necessary but good
+        --to enforce lock ordering (parent->child) explicitly. Note:
+        --creating a table as a partition takes a stronger lock (access exclusive)
+        --so, attaching a partition is better
+        LOCK TABLE ONLY SCHEMA_CATALOG.series IN SHARE UPDATE EXCLUSIVE mode;
 
-        EXECUTE format($$
-           ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
+        EXECUTE
+        format($$
+            ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
         $$, r.table_name, r.id);
         COMMIT;
     END LOOP;
@@ -209,6 +208,14 @@ BEGIN
                              create_default_indexes=>false);
         END IF;
     END IF;
+
+    --Do not move this into the finalize step, because it's cheap to do while the table is empty
+    --but takes a heavyweight blocking lock otherwise.
+    IF  SCHEMA_CATALOG.is_timescaledb_installed()
+            AND SCHEMA_CATALOG.get_default_compression_setting() THEN
+            PERFORM SCHEMA_PROM.set_compression_on_metric_table(NEW.table_name, TRUE);
+    END IF;
+
 
     SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
     INTO STRICT label_id;
