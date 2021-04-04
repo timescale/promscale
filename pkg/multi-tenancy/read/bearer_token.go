@@ -20,7 +20,6 @@ func NewBearerTokenReadAuthorizer(cfg *config.Config) (Authorizer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create bearer_token read-authorizer: %w", err)
 	}
-	fmt.Println("matcher is", matcher)
 	return &bearerTokenReadAuthorizer{
 		authorizerConfig{
 			config:               cfg,

@@ -88,7 +88,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 			if err != nil {
 				return nil, err
 			}
-			log.Info("msg", "Migration successful, exiting")
+			log.Info("msg", "Migrationvalid successful, exiting")
 			return nil, nil
 		}
 	} else {

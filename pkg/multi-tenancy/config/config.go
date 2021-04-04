@@ -35,7 +35,7 @@ func (cfg *Config) Validate() error {
 			return fmt.Errorf("bearer_token is required for a bearer_token multi-tenancy type")
 		}
 	default:
-		panic(fmt.Sprintf("invalid multi-tenancy type: %d", cfg.AuthType))
+		return fmt.Errorf("invalid multi-tenancy type: %d", cfg.AuthType)
 	}
 	cfg.tenantsCache = make(map[string]struct{})
 	for _, tname := range cfg.ValidTenants {

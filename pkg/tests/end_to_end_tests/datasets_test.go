@@ -5,6 +5,7 @@
 package end_to_end_tests
 
 import (
+	"github.com/timescale/promscale/pkg/multi-tenancy/config"
 	"io/ioutil"
 	"os"
 
@@ -186,4 +187,55 @@ func generateRealTimeseries() []prompb.TimeSeries {
 	}
 
 	return wr.Timeseries
+}
+
+func generateSmallMultiTenantTimeseries() ([]prompb.TimeSeries, []string) {
+	return []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "firstMetric"},
+				{Name: "foo", Value: "bar"},
+				{Name: "common", Value: "tag"},
+				{Name: "empty", Value: ""},
+				{Name: config.TenantLabelKey, Value: "tenant-a"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 0.1},
+				{Timestamp: 2, Value: 0.2},
+				{Timestamp: 3, Value: 0.3},
+				{Timestamp: 4, Value: 0.4},
+				{Timestamp: 5, Value: 0.5},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "firstMetric"},
+				{Name: "foo", Value: "baz"},
+				{Name: "common", Value: "tag"},
+				{Name: config.TenantLabelKey, Value: "tenant-b"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 1.1},
+				{Timestamp: 2, Value: 1.2},
+				{Timestamp: 3, Value: 1.3},
+				{Timestamp: 4, Value: 1.4},
+				{Timestamp: 5, Value: 1.5},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "firstMetric"},
+				{Name: "foo", Value: "baz"},
+				{Name: "common", Value: "tag"},
+				{Name: config.TenantLabelKey, Value: "tenant-c"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 2.1},
+				{Timestamp: 2, Value: 2.2},
+				{Timestamp: 3, Value: 2.3},
+				{Timestamp: 4, Value: 2.4},
+				{Timestamp: 5, Value: 2.5},
+			},
+		},
+	}, []string{"tenant-a", "tenant-b", "tenant-c"}
 }
