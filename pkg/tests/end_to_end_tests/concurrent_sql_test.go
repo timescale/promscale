@@ -226,7 +226,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
+	_, err = ingestor.Ingest("", copyMetrics(metrics), ingstr.NewWriteRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 	}
 
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
+	_, err = ingestor.Ingest("", copyMetrics(metrics), ingstr.NewWriteRequest())
 	if err != nil {
 		t.Fatal(err)
 	}

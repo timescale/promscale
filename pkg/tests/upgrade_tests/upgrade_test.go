@@ -470,7 +470,7 @@ func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.Tim
 
 func doIngest(t *testing.T, ingestor *ingestor.DBIngestor, data ...[]prompb.TimeSeries) {
 	for _, data := range data {
-		_, err := ingestor.Ingest(copyMetrics(data), &prompb.WriteRequest{})
+		_, err := ingestor.Ingest("", copyMetrics(data), &prompb.WriteRequest{})
 		if err != nil {
 			t.Fatalf("ingest error: %v", err)
 		}

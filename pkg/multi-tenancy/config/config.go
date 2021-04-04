@@ -46,10 +46,7 @@ func (cfg *Config) Validate() error {
 
 // isTokenValid returns true if the token given matches with the token provided in the start.
 func (cfg *Config) IsTokenValid(token string) bool {
-	if cfg.BearerToken == token {
-		return true
-	}
-	return false
+	return cfg.BearerToken == token
 }
 
 // IsTenantAllowed returns true if the given tenantName is allowed to be ingested.

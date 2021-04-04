@@ -29,10 +29,7 @@ func NewBearerTokenReadAuthorizer(cfg *config.Config) (Authorizer, error) {
 }
 
 func (a *bearerTokenReadAuthorizer) IsValid(token string) bool {
-	if token == a.config.BearerToken {
-		return true
-	}
-	return false
+	return token == a.config.BearerToken
 }
 
 func (a *bearerTokenReadAuthorizer) ApplySafetyMatcher(ms []*labels.Matcher) []*labels.Matcher {
