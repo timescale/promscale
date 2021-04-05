@@ -17,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/util"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -57,7 +58,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// lock on schemaLockId, and we attempt to grab an exclusive lock on it
 	// before running migrate. This implies that migration must be run when no
 	// other connector is running.
-	schemaVersionLease, err := util.NewPgAdvisoryLock(schemaLockId, connStr)
+	schemaVersionLease, err := util.NewPgAdvisoryLock(schema.LockID, connStr)
 	if err != nil {
 		log.Error("msg", "error creating schema version lease", "err", err)
 		return nil, startupError
@@ -272,7 +273,7 @@ func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {
 // said lease; in such and event the connector will be shutdown anyway, and
 // connection-death will close the connection.
 func getSchemaLease(ctx context.Context, conn *pgx.Conn) error {
-	err := util.GetSharedLease(ctx, conn, schemaLockId)
+	err := util.GetSharedLease(ctx, conn, schema.LockID)
 	if err != nil {
 		return err
 	}
