@@ -72,26 +72,34 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id 
     RETURNS BOOLEAN
 AS $func$
 DECLARE
+    res BOOLEAN;
 BEGIN
     IF NOT wait THEN
-        PERFORM m.*
-        FROM SCHEMA_CATALOG.metric m
-        WHERE m.id = metric_id
-        FOR NO KEY UPDATE SKIP LOCKED;
+        SELECT pg_try_advisory_lock(ADVISORY_LOCK_PREFIX_MAINTENACE, metric_id) INTO STRICT res;
 
-        RETURN FOUND;
+        RETURN res;
     ELSE
-        PERFORM m.*
-        FROM SCHEMA_CATALOG.metric m
-        WHERE m.id = metric_id
-        FOR NO KEY UPDATE;
+        PERFORM pg_advisory_lock(ADVISORY_LOCK_PREFIX_MAINTENACE, metric_id);
 
-        RETURN FOUND;
+        RETURN TRUE;
     END IF;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(int, boolean) TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(metric_id int)
+    RETURNS VOID
+AS $func$
+DECLARE
+BEGIN
+    PERFORM pg_advisory_unlock(ADVISORY_LOCK_PREFIX_MAINTENACE, metric_id);
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO prom_writer;
+
+
 --Canonical lock ordering:
 --metrics
 --data table
@@ -1452,7 +1460,6 @@ BEGIN
         END IF;
         -- end this txn so we're not holding any locks on the catalog
     COMMIT;
-    PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id);
 
     IF older_than IS NULL THEN
         -- even though there are no new Ids in need of deletion,
@@ -1464,7 +1471,6 @@ BEGIN
     -- transaction 2
         PERFORM SCHEMA_CATALOG.mark_unused_series(metric_table, older_than, check_time);
     COMMIT;
-    PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id);
 
     -- transaction 3
         IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
@@ -1485,7 +1491,6 @@ BEGIN
             EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
         END IF;
     COMMIT;
-    PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id);
 
     -- transaction 4
         PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at);
@@ -1538,8 +1543,9 @@ BEGIN
         FROM SCHEMA_CATALOG.get_metrics_that_need_drop_chunk()
     LOOP
         CONTINUE WHEN NOT SCHEMA_CATALOG.lock_metric_for_maintenance(r.id, wait=>false);
-
         CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
+        PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
+
         COMMIT;
     END LOOP;
 
@@ -1549,6 +1555,8 @@ BEGIN
     LOOP
         PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name));
+        PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
+
         COMMIT;
     END LOOP;
 END;
@@ -1559,6 +1567,8 @@ IS 'drops old data according to the data retention policy. This procedure should
 --public procedure to be called by cron
 --right now just does data retention but name is generic so that
 --we can add stuff later without needing people to change their cron scripts
+--should be the last thing run in a session so that all session locks
+--are guaranteed released on error.
 CREATE OR REPLACE PROCEDURE SCHEMA_PROM.execute_maintenance()
 AS $$
 BEGIN
@@ -1993,7 +2003,7 @@ BEGIN
         WHERE h.schema_name = 'SCHEMA_DATA' and h.table_name = ht_table;
 
         --alter job schedule is not currently concurrency-safe (timescaledb issue #2165)
-        PERFORM pg_advisory_xact_lock(12377, bgw_job_id);
+        PERFORM pg_advisory_xact_lock(ADVISORY_LOCK_PREFIX_JOB, bgw_job_id);
 
         PERFORM alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
     END IF;
@@ -2163,8 +2173,9 @@ BEGIN
             remaining_metrics := remaining_metrics || r;
             CONTINUE;
         END IF;
-
         CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
+        PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
+
         COMMIT;
     END LOOP;
 
@@ -2174,6 +2185,8 @@ BEGIN
     LOOP
         PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
+        PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
+
         COMMIT;
     END LOOP;
 END;
