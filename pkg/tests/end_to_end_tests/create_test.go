@@ -606,6 +606,74 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 	})
 }
 
+func TestMetricBatcherLabelsBatching(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("compression meaningless without TimescaleDB")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ts := []prompb.TimeSeries{}
+
+		for i := 0; i < 120; i++ {
+			t := prompb.TimeSeries{
+				Labels: []prompb.Label{
+					{Name: model.MetricNameLabelName, Value: "tEsT"},
+					{Name: "key1", Value: fmt.Sprintf("%v", i)},
+					{Name: "key2", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key3", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key4", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key5", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key6", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key7", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key8", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key9", Value: fmt.Sprintf("val%v", i)},
+					{Name: "key10", Value: fmt.Sprintf("val%v", i)},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 100000000, Value: float64(i)},
+				},
+			}
+			ts = append(ts, t)
+		}
+
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		keys := make([]string, 0)
+		vals := make([]string, 0)
+
+		rows, err := db.Query(context.Background(), "SELECT (key_value_array(labels)).* FROM prom_data_series.\"tEsT\" order by val(labels[2])::int")
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := 0
+		for rows.Next() {
+			err = rows.Scan(&keys, &vals)
+			if err != nil {
+				t.Fatal(err)
+			}
+			require.Equal(t, 11, len(keys))
+			require.Equal(t, fmt.Sprintf("%v", i), vals[1])
+			require.Equal(t, fmt.Sprintf("val%v", i), vals[2])
+			i++
+		}
+		require.Equal(t, 120, i)
+	})
+}
+
 func TestInsertCompressed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

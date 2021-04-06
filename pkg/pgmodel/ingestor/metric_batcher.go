@@ -296,49 +296,95 @@ func (h *metricBatcher) fillLabelIDs(metricName string, labelList *model.LabelLi
 	}
 	// The epoch will never decrease, so we can check it once at the beginning,
 	// at worst we'll store too small an epoch, which is always safe
+	batch.Queue("BEGIN;")
 	batch.Queue(getEpochSQL)
-	batch.Queue("SELECT * FROM "+schema.Catalog+".get_or_create_label_ids($1, $2, $3)", metricName, names, values)
+	batch.Queue("COMMIT;")
+
+	//getLabels in batches of 1000 to prevent locks on label creation
+	//from being taken for too long.
+	itemsPerBatch := 1000
+	labelBatches := 0
+	for i := 0; i < len(names.Elements); i += itemsPerBatch {
+		labelBatches++
+		high := i + itemsPerBatch
+		if len(names.Elements) < high {
+			high = len(names.Elements)
+		}
+		namesSlice, err := names.Slice(i, high)
+		if err != nil {
+			return dbEpoch, 0, fmt.Errorf("Error filling labels: slicing names: %w", err)
+		}
+		valuesSlice, err := values.Slice(i, high)
+		if err != nil {
+			return dbEpoch, 0, fmt.Errorf("Error filling labels: slicing values: %w", err)
+		}
+		batch.Queue("BEGIN;")
+		batch.Queue("SELECT * FROM "+schema.Catalog+".get_or_create_label_ids($1, $2, $3)", metricName, namesSlice, valuesSlice)
+		batch.Queue("COMMIT;")
+	}
 	br, err := h.conn.SendBatch(context.Background(), batch)
 	if err != nil {
 		return dbEpoch, 0, fmt.Errorf("Error filling labels: %w", err)
 	}
 	defer br.Close()
 
+	if _, err := br.Exec(); err != nil {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels on begin: %w", err)
+	}
 	err = br.QueryRow().Scan(&dbEpoch)
 	if err != nil {
 		return dbEpoch, 0, fmt.Errorf("Error filling labels: %w", err)
 	}
-	rows, err := br.Query()
-	if err != nil {
-		return dbEpoch, 0, fmt.Errorf("Error filling labels: %w", err)
+	if _, err := br.Exec(); err != nil {
+		return dbEpoch, 0, fmt.Errorf("Error filling labels on commit: %w", err)
 	}
-	defer rows.Close()
 
-	var (
-		count      int
-		labelName  pgutf8str.Text
-		labelValue pgutf8str.Text
-	)
+	var count int
+	for i := 0; i < labelBatches; i++ {
+		if _, err := br.Exec(); err != nil {
+			return dbEpoch, 0, fmt.Errorf("Error filling labels on begin label batch: %w", err)
+		}
 
-	for rows.Next() {
-		res := labelInfo{}
-		err := rows.Scan(&res.Pos, &res.labelID, &labelName, &labelValue)
+		err := func() error {
+			rows, err := br.Query()
+			if err != nil {
+				return fmt.Errorf("Error filling labels: %w", err)
+			}
+			defer rows.Close()
+
+			var (
+				labelName  pgutf8str.Text
+				labelValue pgutf8str.Text
+			)
+
+			for rows.Next() {
+				res := labelInfo{}
+				err := rows.Scan(&res.Pos, &res.labelID, &labelName, &labelValue)
+				if err != nil {
+					return fmt.Errorf("Error filling labels in scan: %w", err)
+				}
+				key := labels.Label{Name: labelName.Get().(string), Value: labelValue.Get().(string)}
+				_, ok := labelMap[key]
+				if !ok {
+					return fmt.Errorf("Error filling labels: getting a key never sent to the db")
+				}
+				labelMap[key] = res
+				if int(res.Pos) > maxPos {
+					maxPos = int(res.Pos)
+				}
+				count++
+			}
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("Error filling labels: error reading label id rows: %w", err)
+			}
+			return nil
+		}()
 		if err != nil {
-			return dbEpoch, 0, fmt.Errorf("Error filling labels in scan: %w", err)
+			return dbEpoch, 0, err
 		}
-		key := labels.Label{Name: labelName.Get().(string), Value: labelValue.Get().(string)}
-		_, ok := labelMap[key]
-		if !ok {
-			return dbEpoch, 0, fmt.Errorf("Error filling labels: getting a key never sent to the db")
+		if _, err := br.Exec(); err != nil {
+			return dbEpoch, 0, fmt.Errorf("Error filling labels on commit label batch: %w", err)
 		}
-		labelMap[key] = res
-		if int(res.Pos) > maxPos {
-			maxPos = int(res.Pos)
-		}
-		count++
-	}
-	if err := rows.Err(); err != nil {
-		return dbEpoch, 0, fmt.Errorf("Error filling labels: error reading label id rows: %w", err)
 	}
 	if count != items {
 		return dbEpoch, 0, fmt.Errorf("Error filling labels: not filling as many items as expected: %v vs %v", count, items)
