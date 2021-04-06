@@ -369,7 +369,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	}
 	s := buf.String()
 	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", schema.Catalog)
-	s = strings.ReplaceAll(s, "SCHEMA_LOCK_ID", strconv.Itoa(schema.LockID))
+	s = strings.ReplaceAll(s, "SCHEMA_LOCK_ID", strconv.FormatInt(schema.LockID, 10))
 	s = strings.ReplaceAll(s, "SCHEMA_EXT", schema.Ext)
 	s = strings.ReplaceAll(s, "SCHEMA_PROM", schema.Prom)
 	s = strings.ReplaceAll(s, "SCHEMA_SERIES", schema.SeriesView)

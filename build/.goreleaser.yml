@@ -47,7 +47,7 @@ archives:
   format: binary
   builds:
   - prom-migrator
-  name_template: "{{ .Binary }}_0.0.1_beta.1_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+  name_template: "{{ .Binary }}_0.0.1_beta.2_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
   replacements:
     darwin: Darwin
     linux: Linux
@@ -109,7 +109,7 @@ dockers:
   - pkg
   - cmd
   image_templates:
-  - "timescale/prom-migrator:0.0.1-beta.1"
+  - "timescale/prom-migrator:0.0.1-beta.2"
   - "timescale/prom-migrator:latest"
 
 docker_manifests:
