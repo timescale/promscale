@@ -68,12 +68,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	// Multi-tenancy flags.
 	// TODO(Harkishen): update the docs in docs/cli.md
 	fs.BoolVar(&cfg.EnableMultiTenancy, "multi-tenancy", false, "Use multi-tenancy mode in Promscale.")
-	fs.StringVar(&cfg.MultiTenancyType, "multi-tenancy-type", "", "Promscale supports 2 types of multi-tenancy modes: [plain, bearer_token]. "+
-		"In 'plain' multi-tenancy, Promscale does not verify the authorization of incoming write or read reqeusts. It just checks if the read/write request "+
-		"for a particular tenant is allowed or not, based on the 'multi-tenancy-valid-tenants' list. In 'bearer_token' multi-tenancy, Promscale verifies both, the "+
-		"authorization of incoming read/write requests, by checking the bearer_token, which is expected to be in the 'Authorization' header of incoming read/write requests "+
-		"and whether the read/write request respect the 'multi-tenancy-valid-tenants list.")
-	fs.StringVar(&cfg.ValidTenantsListStr, "multi-tenancy-valid-tenants", "", "Comma separated tenant names that Promscale is allowed to write into or "+
+	fs.StringVar(&cfg.validTenantsListStr, "multi-tenancy-valid-tenants", "", "Comma separated tenant names that Promscale is allowed to write into or "+
 		"read from the database. If this list is left empty, then all tenants are valid by default for read/write operation.")
 
 	if err := util.ParseEnv("PROMSCALE", fs); err != nil {
@@ -165,22 +160,21 @@ func validate(cfg *Config) error {
 }
 
 func validateMultiTenancyFlags(cfg *Config) error {
-	if cfg.EnableMultiTenancy {
-		switch cfg.MultiTenancyType {
-		case "":
-			return fmt.Errorf("multi-tenancy-type cannot be empty. It must be either 'plain' or 'bearer_token'")
-		case "plain":
-			// We do not need to check anything here for validation.
-		case "bearer_token":
-			if cfg.APICfg.Auth.BearerToken == "" && cfg.APICfg.Auth.BearerTokenFile == "" {
-				return fmt.Errorf("'bearer-token' or 'bearer-token-file' needs to be provided when using 'bearer_token' multi-tenancy type")
-			}
-		default:
-			return fmt.Errorf("invalid multi-tenancy type. Multi-tenancy type must be either 'plain' or 'bearer_token'. Received %s as type", cfg.MultiTenancyType)
-		}
-	}
-	if cfg.ValidTenantsListStr != "" {
-		cfg.ValidTenantsList = strings.Split(cfg.ValidTenantsListStr, ",")
+	if cfg.validTenantsListStr != "" {
+		cfg.ValidTenantsList = strings.Split(cfg.validTenantsListStr, ",")
+		cfg.ValidTenantsList = removeEmptyTenants(cfg.ValidTenantsList)
 	}
 	return nil
+}
+
+// removeEmptyTenants protects against corner cases, when the user enters comma separated tenants
+// such that there is a trailing comma towards the end.
+func removeEmptyTenants(t []string) (tenants []string) {
+	for i := 0; i < len(t); i++ {
+		if len(t[i]) == 0 {
+			continue
+		}
+		tenants = append(tenants, t[i])
+	}
+	return
 }

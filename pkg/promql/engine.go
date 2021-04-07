@@ -124,7 +124,7 @@ func (e ErrStorage) Error() string {
 	return e.Err.Error()
 }
 
-// QueryLogger is an interface that can be used to log all the queries logged
+// QueryLogger is an samples-parser that can be used to log all the queries logged
 // by the engine.
 type QueryLogger interface {
 	Log(...interface{}) error
@@ -146,7 +146,7 @@ type Query interface {
 	Cancel()
 }
 
-// query implements the Query interface.
+// query implements the Query samples-parser.
 type query struct {
 	// Underlying data provider.
 	queryable Queryable
@@ -167,31 +167,31 @@ type query struct {
 
 type queryOrigin struct{}
 
-// Statement implements the Query interface.
+// Statement implements the Query samples-parser.
 func (q *query) Statement() parser.Statement {
 	return q.stmt
 }
 
-// Stats implements the Query interface.
+// Stats implements the Query samples-parser.
 func (q *query) Stats() *stats.QueryTimers {
 	return q.stats
 }
 
-// Cancel implements the Query interface.
+// Cancel implements the Query samples-parser.
 func (q *query) Cancel() {
 	if q.cancel != nil {
 		q.cancel()
 	}
 }
 
-// Close implements the Query interface.
+// Close implements the Query samples-parser.
 func (q *query) Close() {
 	for _, s := range q.matrix {
 		putPointSlice(s.Points)
 	}
 }
 
-// Exec implements the Query interface.
+// Exec implements the Query samples-parser.
 func (q *query) Exec(ctx context.Context) *Result {
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		span.SetTag(queryTag, q.stmt.String())

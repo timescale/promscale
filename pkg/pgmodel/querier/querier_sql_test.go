@@ -167,7 +167,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 			},
-			err: fmt.Errorf("mock scanning error, missing results for scanning: got 1 []interface {}{0}\nwanted 2"),
+			err: fmt.Errorf("mock scanning error, missing results for scanning: got 1 []samples-parser {}{0}\nwanted 2"),
 		},
 		{
 			name:   "Empty query",

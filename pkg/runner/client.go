@@ -88,7 +88,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 			if err != nil {
 				return nil, err
 			}
-			log.Info("msg", "Migrationvalid successful, exiting")
+			log.Info("msg", "Migration successful, exiting")
 			return nil, nil
 		}
 	} else {
@@ -161,27 +161,16 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	var multiTenancy = multi_tenancy.NewNoopMultiTenancy()
 	if cfg.EnableMultiTenancy {
 		// Configuring multi-tenancy in client.
-		multiTenancyConfig := &multi_tenancy_config.Config{
-			ValidTenants: cfg.ValidTenantsList,
-		}
-		switch cfg.MultiTenancyType {
-		case "plain":
-			multiTenancyConfig.AuthType = multi_tenancy_config.Allow
-		case "bearer_token":
-			multiTenancyConfig.AuthType = multi_tenancy_config.BearerToken
-			multiTenancyConfig.BearerToken = cfg.APICfg.Auth.BearerToken
-		default:
-			return nil, fmt.Errorf("invalid multi-tenancy type: %s", cfg.MultiTenancyType)
-		}
-		if err := multiTenancyConfig.Validate(); err != nil {
-			return nil, fmt.Errorf("multi-tenancy config: %w", err)
+		var multiTenancyConfig multi_tenancy_config.Config
+		if len(cfg.ValidTenantsList) > 0 {
+			multiTenancyConfig = multi_tenancy_config.NewSelectiveTenancyConfig(cfg.ValidTenantsList)
+		} else {
+			multiTenancyConfig = multi_tenancy_config.NewOpenTenancyConfig()
 		}
 		multiTenancy, err = multi_tenancy.NewMultiTenancy(multiTenancyConfig)
 		if err != nil {
 			return nil, fmt.Errorf("new multi-tenancy: %w", err)
 		}
-		// This will be used to check authority of tokens before the request is passed down the tree. We can check tokens
-		// in respective functions but then problem arises for /query endpoint. Hence, its better to authorize in start itself.
 	}
 	cfg.APICfg.MultiTenancy = multiTenancy // If multi-tenancy is disabled, the noopMultiTenancy will be used.
 

@@ -64,7 +64,7 @@ func (m *mockPgxRows) Next() bool {
 
 // Scan reads the values from the current row into dest values positionally.
 // dest can include pointers to core types, values implementing the Scanner
-// interface, []byte, and nil. []byte will skip the decoding process and directly
+// samples-parser, []byte, and nil. []byte will skip the decoding process and directly
 // copy the raw bytes received from PostgreSQL. nil will skip the value entirely.
 func (m *mockPgxRows) Scan(dest ...interface{}) error {
 	if m.err != nil {

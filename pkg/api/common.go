@@ -137,19 +137,14 @@ func Validate(cfg *Config) error {
 	return cfg.Auth.Validate()
 }
 
-func getTenantAndToken(r *http.Request) (tenant, token string) {
+func getTenant(r *http.Request) (tenant string) {
+	// We do not look for `X-` since it has been deprecated as mentioned in https://datatracker.ietf.org/doc/html/rfc6648.
 	if tn := r.Header.Get("TENANT"); tn == "" {
 		// This request will be considered as multi-tenant request only if tenant name exists.
 		return
 	} else {
 		tenant = tn
 	}
-	splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
-	if len(splitToken) < 2 {
-		// Bearer_token does not exists.
-		return
-	}
-	token = splitToken[1]
 	return
 }
 

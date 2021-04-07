@@ -328,7 +328,7 @@ func (t *Test) parse(input string) error {
 	return nil
 }
 
-// testCommand is an interface that ensures that only the package internal
+// testCommand is an samples-parser that ensures that only the package internal
 // types can be a valid command for a test.
 type testCommand interface {
 	testCmd()

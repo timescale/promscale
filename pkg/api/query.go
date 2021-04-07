@@ -11,7 +11,6 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/timescale/promscale/pkg/log"
-	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -45,16 +44,6 @@ func queryHandler(apiConf *Config, queryEngine *promql.Engine, queryable promql.
 
 			ctx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
-		}
-
-		var tenantToken string
-		if authr := apiConf.MultiTenancy.ReadAuthorizer(); authr != nil {
-			_, tenantToken = getTenantAndToken(r)
-			if !authr.IsValid(tenantToken) {
-				log.Error("msg", multi_tenancy.ErrUnauthorized.Error()+tenantToken)
-				http.Error(w, multi_tenancy.ErrUnauthorized.Error()+tenantToken, http.StatusUnauthorized)
-				return
-			}
 		}
 
 		metrics.ReceivedQueries.Add(1)

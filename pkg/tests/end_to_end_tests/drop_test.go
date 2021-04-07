@@ -6,6 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/samples-parser"
 	"testing"
 	"time"
 

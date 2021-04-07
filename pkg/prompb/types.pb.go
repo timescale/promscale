@@ -127,7 +127,7 @@ func (Chunk_Encoding) EnumDescriptor() ([]byte, []int) {
 
 type MetricMetadata struct {
 	// Represents the metric type, these match the set from Prometheus.
-	// Refer to pkg/textparse/interface.go for details.
+	// Refer to pkg/textparse/samples-parser.go for details.
 	Type                 MetricMetadata_MetricType `protobuf:"varint,1,opt,name=type,proto3,enum=prometheus.MetricMetadata_MetricType" json:"type,omitempty"`
 	MetricFamilyName     string                    `protobuf:"bytes,2,opt,name=metric_family_name,json=metricFamilyName,proto3" json:"metric_family_name,omitempty"`
 	Help                 string                    `protobuf:"bytes,4,opt,name=help,proto3" json:"help,omitempty"`

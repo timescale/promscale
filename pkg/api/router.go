@@ -120,10 +120,6 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 
 	if cfg.Auth.BearerToken != "" {
 		return func(w http.ResponseWriter, r *http.Request) {
-			errLogs := func(token string) {
-				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token: "+token)
-				http.Error(w, "Unauthorized access to endpoint, invalid bearer token.", http.StatusUnauthorized)
-			}
 			splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
 			if len(splitToken) < 2 || cfg.Auth.BearerToken != splitToken[1] {
 				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token")

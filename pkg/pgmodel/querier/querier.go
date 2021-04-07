@@ -49,7 +49,7 @@ func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReade
 		conn:             conn,
 		labelsReader:     labelsReader,
 		metricTableNames: metricCache,
-		multiTenancy:     mtAuthr,
+		mtAuthr:          mtAuthr,
 	}
 }
 
@@ -63,16 +63,16 @@ type pgxQuerier struct {
 	conn             pgxconn.PgxConn
 	metricTableNames cache.MetricCache
 	labelsReader     lreader.LabelsReader
-	multiTenancy     multi_tenancy_read.Authorizer
+	mtAuthr          multi_tenancy_read.Authorizer
 }
 
 var _ Querier = (*pgxQuerier)(nil)
 
-// Select implements the Querier interface. It is the entry point for our
+// Select implements the Querier samples-parser. It is the entry point for our
 // own version of the Prometheus engine.
 func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	if q.multiTenancy != nil {
-		ms = q.multiTenancy.ApplySafetyMatcher(ms)
+	if q.mtAuthr != nil {
+		ms = q.mtAuthr.ApplySafetyMatcher(ms)
 	}
 	rows, topNode, err := q.getResultRows(mint, maxt, hints, path, ms)
 	if err != nil {
@@ -83,7 +83,7 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 	return ss, topNode
 }
 
-// Query implements the Querier interface. It is the entry point for
+// Query implements the Querier samples-parser. It is the entry point for
 // remote-storage queries.
 func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	if query == nil {
@@ -95,8 +95,8 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	if q.multiTenancy != nil {
-		matchers = q.multiTenancy.ApplySafetyMatcher(matchers)
+	if q.mtAuthr != nil {
+		matchers = q.mtAuthr.ApplySafetyMatcher(matchers)
 	}
 
 	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)

@@ -9,23 +9,16 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-func TestMultiTenancyPlainWrite(t *testing.T) {
+func TestMultiTenancyWrite(t *testing.T) {
 	var (
 		lblsArr    = getlbls()
-		token      = ""
 		tenantName = "tenant-a" // Assume from TENANT header.
 	)
 
 	// With valid tenants.
-	conf := &config.Config{
-		AuthType:     config.Allow,
-		ValidTenants: []string{"tenant-a", "tenant-b"},
-	}
-	err := conf.Validate()
-	require.NoError(t, err)
-
-	authr := NewPlainWriteAuthorizer(conf)
-	require.True(t, authr.IsAuthorized(token, tenantName))
+	conf := config.NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"})
+	authr := NewAuthorizer(conf)
+	require.True(t, authr.IsAuthorized(tenantName))
 	for _, lbls := range lblsArr {
 		lb, ok := authr.VerifyAndApplyTenantLabel(tenantName, lbls)
 		require.True(t, ok)
@@ -33,53 +26,9 @@ func TestMultiTenancyPlainWrite(t *testing.T) {
 	}
 
 	// Should not verify.
-	conf = &config.Config{
-		AuthType:     config.Allow,
-		ValidTenants: []string{"tenant-b"},
-	}
-	err = conf.Validate()
-	require.NoError(t, err)
-
-	authr = NewPlainWriteAuthorizer(conf)
-	require.False(t, authr.IsAuthorized(token, tenantName))
-}
-
-func TestMultiTenancyTokenWrite(t *testing.T) {
-	var (
-		lblsArr      = getlbls()
-		token        = "token"
-		invalidToken = "invalidToken"
-		tenantName   = "tenant-a" // Assume from TENANT header.
-	)
-
-	// With valid tenants.
-	conf := &config.Config{
-		AuthType:     config.BearerToken,
-		BearerToken:  token,
-		ValidTenants: []string{"tenant-a", "tenant-b"},
-	}
-	err := conf.Validate()
-	require.NoError(t, err)
-
-	authr := NewBearerTokenWriteAuthorizer(conf)
-	require.True(t, authr.IsAuthorized(token, tenantName))
-	for _, lbls := range lblsArr {
-		lb, ok := authr.VerifyAndApplyTenantLabel(tenantName, lbls)
-		require.True(t, ok)
-		require.True(t, containsAppliedTenantLabel(lb))
-	}
-
-	// Should not verify.
-	conf = &config.Config{
-		AuthType:     config.BearerToken,
-		BearerToken:  token,
-		ValidTenants: []string{"tenant-a", "tenant-b"},
-	}
-	err = conf.Validate()
-	require.NoError(t, err)
-
-	authr = NewBearerTokenWriteAuthorizer(conf)
-	require.False(t, authr.IsAuthorized(invalidToken, tenantName))
+	conf = config.NewSelectiveTenancyConfig([]string{"tenant-b"})
+	authr = NewAuthorizer(conf)
+	require.False(t, authr.IsAuthorized(tenantName))
 }
 
 func containsAppliedTenantLabel(lbls []prompb.Label) bool {

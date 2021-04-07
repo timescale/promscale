@@ -120,8 +120,8 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		}
 		var tenant, tenantToken string
 		if authr := apiConf.MultiTenancy.WriteAuthorizer(); authr != nil {
-			tenant, tenantToken = getTenantAndToken(r)
-			if !authr.IsAuthorized(tenantToken, tenant) {
+			tenant = getTenant(r)
+			if !authr.IsAuthorized(tenant) {
 				log.Error("msg", multi_tenancy.ErrUnauthorized.Error()+tenantToken)
 				http.Error(w, multi_tenancy.ErrUnauthorized.Error()+tenantToken, http.StatusUnauthorized)
 				return

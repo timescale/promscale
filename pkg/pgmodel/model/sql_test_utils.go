@@ -246,7 +246,7 @@ func (m *MockRows) Next() bool {
 
 // Scan reads the values from the current row into dest values positionally.
 // dest can include pointers to core types, values implementing the Scanner
-// interface, []byte, and nil. []byte will skip the decoding process and directly
+// samples-parser, []byte, and nil. []byte will skip the decoding process and directly
 // copy the raw bytes received from PostgreSQL. nil will skip the value entirely.
 func (m *MockRows) Scan(dest ...interface{}) error {
 	defer func() { m.idx++ }()
@@ -313,10 +313,10 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				continue
 			}
 			// Ideally, we should be doing pgtype.BinaryDecoder. but doing that here will allow using only
-			// a single function that the interface pgtype.BinaryDecoder allows, i.e, DecodeBinary(). DecodeBinary() takes
+			// a single function that the samples-parser pgtype.BinaryDecoder allows, i.e, DecodeBinary(). DecodeBinary() takes
 			// a pgtype.ConnInfo and []byte, which is the main problem. The ConnInfo can be nil, but []byte needs to be set
 			// for the DecodeBinary() to work. pgtype.Scan gets the byte slice from values which we do not implement here.
-			// Implementing it will require rewriting and changing the [][]interface{}{} to [][]byte and updating all our
+			// Implementing it will require rewriting and changing the [][]samples-parser{}{} to [][]byte and updating all our
 			// existing test setup to have the [][]byte (particularly the expected results part), which is lengthy.
 			// Plus, not all types convert to [][]byte. types like int will require binary.Little.Endian conversion
 			// which can be a overdo for just writing the results of the tests. So, we do a short-cut to directly

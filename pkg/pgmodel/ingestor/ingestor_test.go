@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/samples-parser"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"

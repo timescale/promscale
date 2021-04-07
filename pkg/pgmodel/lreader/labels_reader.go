@@ -47,7 +47,7 @@ type labelsReader struct {
 	labels cache.LabelsCache
 }
 
-// LabelValues implements the LabelsReader interface. It returns all distinct values
+// LabelValues implements the LabelsReader samples-parser. It returns all distinct values
 // for a specified label name.
 func (lr *labelsReader) LabelValues(labelName string) ([]string, error) {
 	rows, err := lr.conn.Query(context.Background(), getLabelValuesSQL, labelName)
@@ -72,7 +72,7 @@ func (lr *labelsReader) LabelValues(labelName string) ([]string, error) {
 	return labelValues, nil
 }
 
-// LabelNames implements the LabelReader interface. It returns all distinct
+// LabelNames implements the LabelReader samples-parser. It returns all distinct
 // label names available in the database.
 func (lr *labelsReader) LabelNames() ([]string, error) {
 	rows, err := lr.conn.Query(context.Background(), getLabelNamesSQL)

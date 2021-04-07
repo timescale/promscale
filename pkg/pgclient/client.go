@@ -16,6 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/samples-parser"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -123,7 +124,7 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, multiTenancy multi_tenancy.MultiTenancy) (*Client, error) {
+func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt multi_tenancy.MultiTenancy) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -135,13 +136,13 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mult
 	}
 
 	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, &c)
-
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
+
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
-	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader, multiTenancy.ReadAuthorizer())
+	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)
@@ -172,6 +173,10 @@ func (c *Client) Close() {
 	if c.haService != nil {
 		c.haService.Close()
 	}
+}
+
+func (c *Client) Ingestor() *ingestor.DBIngestor {
+	return c.ingestor
 }
 
 // Ingest writes the timeseries object into the DB
@@ -223,7 +228,7 @@ func (c *Client) HealthCheck() error {
 	return c.healthCheck()
 }
 
-// Queryable returns the Prometheus promql.Queryable interface that's running
+// Queryable returns the Prometheus promql.Queryable samples-parser that's running
 // with the same underlying Querier as the Client.
 func (c *Client) Queryable() promql.Queryable {
 	return c.queryable
