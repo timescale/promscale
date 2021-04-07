@@ -13,7 +13,6 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -21,9 +20,13 @@ import (
 
 const (
 	MetricBatcherChannelCap = 1000
+	finalizeMetricCreation  = "CALL " + schema.Catalog + ".finalize_metric_creation()"
+	getEpochSQL             = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
 )
 
-type pgxInserter struct {
+// pgxDispatcher redirects incoming samples to the appropriate metricBatcher
+// corresponding to the metric in the sample.
+type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
@@ -38,7 +41,7 @@ type pgxInserter struct {
 	labelArrayOID          uint32
 }
 
-func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxInserter, error) {
+func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxDispatcher, error) {
 	cmc := make(chan struct{}, 1)
 
 	numCopiers := cfg.NumCopiers
@@ -56,10 +59,10 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 	setCopierChannelToMonitor(toCopiers)
 
 	for i := 0; i < numCopiers; i++ {
-		go runInserter(conn, toCopiers)
+		go runCopier(conn, toCopiers)
 	}
 
-	inserter := &pgxInserter{
+	inserter := &pgxDispatcher{
 		conn:                   conn,
 		metricTableNames:       cache,
 		scache:                 scache,
@@ -107,7 +110,7 @@ func newPgxInserter(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 	return inserter, nil
 }
 
-func (p *pgxInserter) runCompleteMetricCreationWorker() {
+func (p *pgxDispatcher) runCompleteMetricCreationWorker() {
 	for range p.completeMetricCreation {
 		err := p.CompleteMetricCreation()
 		if err != nil {
@@ -116,7 +119,7 @@ func (p *pgxInserter) runCompleteMetricCreationWorker() {
 	}
 }
 
-func (p *pgxInserter) runSeriesEpochSync() {
+func (p *pgxDispatcher) runSeriesEpochSync() {
 	epoch, err := p.refreshSeriesEpoch(model.InvalidSeriesEpoch)
 	// we don't have any great place to report errors, and if the
 	// connection recovers we can still make progress, so we'll just log it
@@ -137,7 +140,7 @@ func (p *pgxInserter) runSeriesEpochSync() {
 	}
 }
 
-func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model.SeriesEpoch, error) {
+func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model.SeriesEpoch, error) {
 	dbEpoch, err := p.getServerEpoch()
 	if err != nil {
 		// Trash the cache just in case an epoch change occurred, seems safer
@@ -150,7 +153,7 @@ func (p *pgxInserter) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model
 	return dbEpoch, nil
 }
 
-func (p *pgxInserter) getServerEpoch() (model.SeriesEpoch, error) {
+func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
 	var newEpoch int64
 	row := p.conn.QueryRow(context.Background(), getEpochSQL)
 	err := row.Scan(&newEpoch)
@@ -161,7 +164,7 @@ func (p *pgxInserter) getServerEpoch() (model.SeriesEpoch, error) {
 	return model.SeriesEpoch(newEpoch), nil
 }
 
-func (p *pgxInserter) CompleteMetricCreation() error {
+func (p *pgxDispatcher) CompleteMetricCreation() error {
 	_, err := p.conn.Exec(
 		context.Background(),
 		finalizeMetricCreation,
@@ -169,7 +172,7 @@ func (p *pgxInserter) CompleteMetricCreation() error {
 	return err
 }
 
-func (p *pgxInserter) Close() {
+func (p *pgxDispatcher) Close() {
 	close(p.completeMetricCreation)
 	p.inserters.Range(func(key, value interface{}) bool {
 		close(value.(chan *insertDataRequest))
@@ -180,17 +183,13 @@ func (p *pgxInserter) Close() {
 	p.doneWG.Wait()
 }
 
-func (p *pgxInserter) InsertNewData(rows map[string][]model.Samples) (uint64, error) {
-	return p.InsertData(rows)
-}
-
 // Insert a batch of data into the DB.
 // The data should be grouped by metric name.
 // returns the number of rows we intended to insert (_not_ how many were
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxInserter) InsertData(rows map[string][]model.Samples) (uint64, error) {
+func (p *pgxDispatcher) InsertData(rows map[string][]model.Samples) (uint64, error) {
 	var numRows uint64
 	workFinished := &sync.WaitGroup{}
 	workFinished.Add(len(rows))
@@ -203,7 +202,7 @@ func (p *pgxInserter) InsertData(rows map[string][]model.Samples) (uint64, error
 			numRows += uint64(si.CountSamples())
 		}
 		// the following is usually non-blocking, just a channel insert
-		p.getMetricInserter(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
 
 	var err error
@@ -234,7 +233,7 @@ func (p *pgxInserter) InsertData(rows map[string][]model.Samples) (uint64, error
 }
 
 // Get the handler for a given metric name, creating a new one if none exists
-func (p *pgxInserter) getMetricInserter(metric string) chan *insertDataRequest {
+func (p *pgxDispatcher) getMetricBatcher(metric string) chan *insertDataRequest {
 	inserter, ok := p.inserters.Load(metric)
 	if !ok {
 		// The ordering is important here: we need to ensure that every call
@@ -246,67 +245,12 @@ func (p *pgxInserter) getMetricInserter(metric string) chan *insertDataRequest {
 		actual, old := p.inserters.LoadOrStore(metric, c)
 		inserter = actual
 		if !old {
-			go runInserterRoutine(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
+			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
 		}
 	}
 	ch := inserter.(chan *insertDataRequest)
 	MetricBatcherChLen.Observe(float64(len(ch)))
 	return ch
-}
-
-//nolint
-func (p *pgxInserter) createMetricTable(metric string) (string, error) {
-	res, err := p.conn.Query(
-		context.Background(),
-		getCreateMetricsTableSQL,
-		metric,
-	)
-
-	if err != nil {
-		return "", err
-	}
-
-	var tableName string
-	defer res.Close()
-	if !res.Next() {
-		err = res.Err()
-		if err != nil {
-			return "", err
-		}
-		return "", errors.ErrMissingTableName
-	}
-
-	if err := res.Scan(&tableName); err != nil {
-		return "", err
-	}
-
-	return tableName, nil
-}
-
-//nolint
-func (p *pgxInserter) getMetricTableName(metric string) (string, error) {
-	var err error
-	var tableName string
-
-	tableName, err = p.metricTableNames.Get(metric)
-
-	if err == nil {
-		return tableName, nil
-	}
-
-	if err != errors.ErrEntryNotFound {
-		return "", err
-	}
-
-	tableName, err = p.createMetricTable(metric)
-
-	if err != nil {
-		return "", err
-	}
-
-	err = p.metricTableNames.Set(metric, tableName)
-
-	return tableName, err
 }
 
 type insertDataRequest struct {
@@ -324,22 +268,4 @@ func (idr *insertDataRequest) reportResult(err error) {
 		}
 	}
 	idr.finished.Done()
-}
-
-type insertDataTask struct {
-	finished *sync.WaitGroup
-	errChan  chan error
-}
-
-// Report that this task is completed, along with any error that may have
-// occurred. Since this is a back-edge on the goroutine graph, it
-// _must never block_: blocking here will cause deadlocks.
-func (idt *insertDataTask) reportResult(err error) {
-	if err != nil {
-		select {
-		case idt.errChan <- err:
-		default:
-		}
-	}
-	idt.finished.Done()
 }

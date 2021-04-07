@@ -25,9 +25,9 @@ var (
 	MaxTime = time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()
 )
 
-// inserter is responsible for inserting label, series and data into the storage.
-type Inserter interface {
-	InsertNewData(rows map[string][]Samples) (uint64, error)
+// Dispatcher is responsible for inserting label, series and data into the storage.
+type Dispatcher interface {
+	InsertData(rows map[string][]Samples) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
 }
