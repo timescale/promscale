@@ -86,11 +86,13 @@ func (s *Slab) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64
 		if totalRequests == 1 {
 			descriptionMsg = fmt.Sprintf("%s | time-range: %d mins", s.pbarDescriptionPrefix, timeRangeMinutesDelta)
 		}
-		go client.ReadChannels(cctx, readRequest, i, descriptionMsg, responseChan)
+		go client.ReadConcurrent(cctx, readRequest, i, descriptionMsg, responseChan)
 	}
 	var (
 		bytesCompressed   int
 		bytesUncompressed int
+		// pendingResponses is used to ensure that concurrent fetch results are appending in sorted order of time.
+		pendingResponses = make([]*utils.PrompbResponse, totalRequests)
 	)
 	for i := 0; i < totalRequests; i++ {
 		resp := <-responseChan
@@ -98,7 +100,20 @@ func (s *Slab) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64
 		case *utils.PrompbResponse:
 			bytesCompressed += response.NumBytesCompressed
 			bytesUncompressed += response.NumBytesUncompressed
-			s.timeseries = append(s.timeseries, response.Result.Timeseries...)
+			// pendingResponses is in shard order. This means it is in time-order as increasing shard deals with
+			// higher time-ranges of sub-slabs, when fetched concurrently.
+			//
+			// Eg: If a slab (say S, from time-range Ta to Tb) is divided into 5 sub-slabs (s1, s2, s3, s4, s5). Then,
+			// the time-range of those sub-slabs are t1 to t2, t2 to t3, t3 to t4, t4 to t5, t5 to t6 such that
+			// t1 < t2 < t3 < t4 < t5 < t6 and t1 = Ta and t6 = Tb.
+			//
+			// In order to ensure order when we combine these sub-slabs to make a slab, this has to be combined
+			// in the same order (strictly), i.e., s1 + s2 + s3 + s4 + s5, only then the fetched time-series reserve the
+			// order of time.
+			//
+			// Note: Here, response.ID takes care of the 1, 2, 3, 4, 5 respectively, with the only difference that
+			// it starts from 0 in place of 1.
+			pendingResponses[response.ID] = response
 			s.SetDescription(fmt.Sprintf("pulling (%d/%d) ...", i+1, totalRequests), 1)
 		case error:
 			for _, cancelFnc := range cancelFuncs {
@@ -108,6 +123,17 @@ func (s *Slab) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64
 		}
 	}
 	close(responseChan)
+	// Combine and append samples.
+	if totalRequests > 1 {
+		s.timeseries = s.mergeSubSlabsToSlab(pendingResponses)
+		s.SetDescription("finished combining series", 1)
+	} else {
+		// Short path optimization. When not fetching concurrently, we can skip from memory allocations.
+		if l := len(pendingResponses); l > 1 || l == 0 {
+			return fmt.Errorf("fatal: expected a single pending request when totalRequest is 1. Received pending %d requests", l)
+		}
+		s.timeseries = pendingResponses[0].Result.Timeseries
+	}
 	// We set compressed bytes in slab since those are the bytes that will be pushed over the network to the write storage after snappy compression.
 	// The pushed bytes are not exactly the bytesCompressed since while pushing, we add the progress metric. But,
 	// the size of progress metric along with the sample is negligible. So, it is safe to consider bytesCompressed
@@ -116,6 +142,46 @@ func (s *Slab) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64
 	s.numBytesUncompressed = bytesUncompressed
 	s.plan.update(bytesUncompressed)
 	return nil
+}
+
+func (s *Slab) mergeSubSlabsToSlab(subSlabs []*utils.PrompbResponse) []*prompb.TimeSeries {
+	l := len(subSlabs)
+	s.UpdatePBarMax(s.PBarMax() + 2)
+	s.SetDescription(fmt.Sprintf("combining fetched series from %d responses", l), 1)
+	timeseries := make(map[string]*prompb.TimeSeries)
+	for i := 0; i < l; i++ {
+		ts := subSlabs[i].Result.Timeseries
+		for _, series := range ts {
+			if s, ok := timeseries[getLabelsStr(series.Labels)]; len(series.Samples) > 0 && ok {
+				l := len(s.Samples)
+				if len(s.Samples) > 1 && s.Samples[l-1].Timestamp == series.Samples[0].Timestamp {
+					// Edge case: When concurrent pulls makes the remote-storage send duplicate samples that was sent
+					// in previous concurrent time-range pull.
+					s.Samples = append(s.Samples, series.Samples[1:]...)
+				} else {
+					s.Samples = append(s.Samples, series.Samples...)
+				}
+			} else {
+				timeseries[getLabelsStr(series.Labels)] = series
+			}
+		}
+	}
+	// Form series slice after combining the concurrent responses.
+	series := make([]*prompb.TimeSeries, len(timeseries))
+	i := 0
+	for _, ts := range timeseries {
+		series[i] = ts
+		i++
+	}
+	return series
+}
+
+func getLabelsStr(lbls []prompb.Label) (ls string) {
+	for i := 0; i < len(lbls); i++ {
+		ls += fmt.Sprintf("%s|%s|", lbls[i].Name, lbls[i].Value)
+	}
+	ls = ls[:len(ls)-1] // Ignore the ending '|'.
+	return
 }
 
 // Series returns the time-series in the slab.
