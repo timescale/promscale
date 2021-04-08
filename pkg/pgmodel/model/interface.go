@@ -47,6 +47,9 @@ func MetricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) 
 	var possiblyNew bool
 	defer res.Close()
 	if !res.Next() {
+		if res.Err() != nil {
+			return "", true, err
+		}
 		return "", true, errors.ErrMissingTableName
 	}
 
