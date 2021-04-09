@@ -3,6 +3,7 @@ package writer
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/common/config"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -27,7 +28,7 @@ type shardsSet struct {
 // newShardsSet creates a shards-set and initializes it. It creates independent clients for each shard,
 // contexts and starts the shards. The shards listens to the writer routine, which is responsible for
 // feeding the shards with data blocks for faster (due to sharded data) flushing.
-func newShardsSet(writerCtx context.Context, writeURL string, numShards int) (*shardsSet, error) {
+func newShardsSet(writerCtx context.Context, httpConfig config.HTTPClientConfig, writeURL string, numShards int) (*shardsSet, error) {
 	var (
 		set         = make([]*shard, numShards)
 		cancelFuncs = make([]context.CancelFunc, numShards)
@@ -37,7 +38,7 @@ func newShardsSet(writerCtx context.Context, writeURL string, numShards int) (*s
 		errChan: make(chan error, numShards),
 	}
 	for i := 0; i < numShards; i++ {
-		client, err := utils.NewClient(fmt.Sprintf("writer-shard-%d", i), writeURL, utils.Write, model.Duration(defaultWriteTimeout))
+		client, err := utils.NewClient(fmt.Sprintf("writer-shard-%d", i), writeURL, httpConfig, model.Duration(defaultWriteTimeout))
 		if err != nil {
 			return nil, fmt.Errorf("creating write-shard-client-%d: %w", i, err)
 		}

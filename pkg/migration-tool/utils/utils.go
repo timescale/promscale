@@ -6,10 +6,8 @@ package utils
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/timescale/promscale/pkg/clockcache"
@@ -22,48 +20,12 @@ const (
 )
 
 var (
-	// authStore is used while creating a client. This is done to avoid complexity in the writer and reader code, thereby
-	// keeping them independent of the auth.
-	authStore   sync.Map
 	labelsCache *clockcache.Cache
 	seps        = []byte{'\xff'}
 )
 
 func init() {
 	labelsCache = clockcache.WithMax(maxLabelsCacheSize)
-}
-
-// Auth defines the authentication for prom-migrator.
-type Auth struct {
-	Username    string
-	Password    string
-	BearerToken string
-}
-
-// Convert converts the auth credentials to HTTP client compatible format.
-func (a *Auth) ToHTTPClientConfig() config.HTTPClientConfig {
-	conf := config.HTTPClientConfig{}
-	if a.Password != "" {
-		conf.BasicAuth = &config.BasicAuth{
-			Username: a.Username,
-			Password: config.Secret(a.Password),
-		}
-	}
-	if a.BearerToken != "" {
-		// Since Password and BearerToken are mutually exclusive, we assign both on input flag condition
-		// and leave upto the HTTPClientConfig.Validate() for validation.
-		conf.BearerToken = config.Secret(a.BearerToken)
-	}
-	return conf
-}
-
-// SetAuthStore sets the authStore map.
-func SetAuthStore(clientType uint, clientConfig config.HTTPClientConfig) error {
-	if _, ok := authStore.Load(clientType); ok {
-		return fmt.Errorf("auth store is read-only. Attempting to change pre-existing key: %d", clientType)
-	}
-	authStore.Store(clientType, clientConfig)
-	return nil
 }
 
 // CreatePrombRequest creates a new promb query based on the matchers.

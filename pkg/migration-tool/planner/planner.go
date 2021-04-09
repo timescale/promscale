@@ -7,6 +7,7 @@ package planner
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/common/config"
 	"go.uber.org/atomic"
 	"os"
 	"sync"
@@ -53,6 +54,7 @@ type Config struct {
 	JobName            string
 	ProgressMetricURL  string
 	ProgressMetricName string // Name for progress metric.
+	HTTPConfig         config.HTTPClientConfig
 }
 
 // InitPlan creates an in-memory planner and initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
@@ -104,7 +106,7 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
-	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressMetricURL, utils.Write, model.Duration(time.Minute*2))
+	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressMetricURL, c.HTTPConfig, model.Duration(time.Minute*2))
 	if err != nil {
 		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
 	}

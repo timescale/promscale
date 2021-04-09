@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
@@ -18,76 +19,80 @@ import (
 
 const defaultReadTimeout = time.Minute * 5
 
-type RemoteRead struct {
-	c               context.Context
-	url             string
-	client          *utils.Client
-	plan            *plan.Plan
-	concurrentPulls int
-	sigSlabRead     chan *plan.Slab // To the writer.
-	SigSlabStop     chan struct{}
+// Config is config for reader.
+type Config struct {
+	Context    context.Context
+	Url        string
+	Plan       *plan.Plan
+	HTTPConfig config.HTTPClientConfig
+
+	ConcurrentPulls int
+
+	SigSlabRead chan *plan.Slab // To the writer.
+	SigSlabStop chan struct{}
 }
 
-// New creates a new RemoteRead. It creates a ReadClient that is imported from Prometheus remote storage.
-// RemoteRead takes help of plan to understand how to create fetchers.
-func New(c context.Context, readStorageUrl string, p *plan.Plan, numConcurrentPulls int, sigRead chan *plan.Slab) (*RemoteRead, error) {
-	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), readStorageUrl, utils.Read, model.Duration(defaultReadTimeout))
+type Read struct {
+	Config
+	client *utils.Client
+}
+
+// New creates a new Read. It creates a ReadClient that is imported from Prometheus remote storage.
+// Read takes help of plan to understand how to create fetchers.
+func New(config Config) (*Read, error) {
+	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), config.Url, config.HTTPConfig, model.Duration(defaultReadTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
 	}
-	read := &RemoteRead{
-		c:               c,
-		url:             readStorageUrl,
-		plan:            p,
-		client:          rc,
-		concurrentPulls: numConcurrentPulls,
-		sigSlabRead:     sigRead,
+	read := &Read{
+		Config: config,
+		client: rc,
 	}
 	return read, nil
 }
 
 // Run runs the remote read and starts fetching the samples from the read storage.
-func (rr *RemoteRead) Run(errChan chan<- error) {
+func (rr *Read) Run(errChan chan<- error) {
 	var (
 		err     error
 		slabRef *plan.Slab
 	)
 	go func() {
 		defer func() {
-			close(rr.sigSlabRead)
+			close(rr.SigSlabRead)
 			log.Info("msg", "reader is down")
 			close(errChan)
 		}()
 		log.Info("msg", "reader is up")
 		select {
-		case <-rr.c.Done():
+		case <-rr.Context.Done():
 			return
 		default:
 		}
-		for rr.plan.ShouldProceed() {
+		for rr.Plan.ShouldProceed() {
 			select {
-			case <-rr.c.Done():
+			case <-rr.Context.Done():
 				return
 			case <-rr.SigSlabStop:
 				return
 			default:
 			}
-			slabRef, err = rr.plan.NextSlab()
+			slabRef, err = rr.Plan.NextSlab()
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
 			ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")}
-			err = slabRef.Fetch(rr.c, rr.client, slabRef.Mint(), slabRef.Maxt(), ms)
+			err = slabRef.Fetch(rr.Context, rr.client, slabRef.Mint(), slabRef.Maxt(), ms)
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
 			if slabRef.IsEmpty() {
-				rr.plan.DecrementSlabCount()
+				rr.Plan.DecrementSlabCount()
 				continue
 			}
-			rr.sigSlabRead <- slabRef
+			rr.SigSlabRead <- slabRef
 			slabRef = nil
 		}
 	}()

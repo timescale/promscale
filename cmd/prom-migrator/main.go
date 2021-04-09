@@ -45,6 +45,7 @@ type config struct {
 	progressEnabled    bool
 	readerAuth         utils.Auth
 	writerAuth         utils.Auth
+	progressMetricAuth utils.Auth
 }
 
 func main() {
@@ -67,14 +68,6 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("msg", fmt.Sprintf("%v+", conf))
-	if err := utils.SetAuthStore(utils.Read, conf.readerAuth.ToHTTPClientConfig()); err != nil {
-		log.Error("msg", "could not set read-auth in authStore", "error", err)
-		os.Exit(1)
-	}
-	if err := utils.SetAuthStore(utils.Write, conf.writerAuth.ToHTTPClientConfig()); err != nil {
-		log.Error("msg", "could not set write-auth in authStore", "error", err)
-		os.Exit(1)
-	}
 
 	planConfig := &plan.Config{
 		Mint:               conf.mint,
@@ -85,6 +78,7 @@ func main() {
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
 		ProgressMetricURL:  conf.progressMetricURL,
+		HTTPConfig:         conf.progressMetricAuth.ToHTTPClientConfig(),
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	if err != nil {
@@ -101,12 +95,31 @@ func main() {
 		sigSlabRead  = make(chan *plan.Slab)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigSlabRead)
+	readerConfig := reader.Config{
+		Context:         cont,
+		Url:             conf.readURL,
+		Plan:            planner,
+		HTTPConfig:      conf.readerAuth.ToHTTPClientConfig(),
+		ConcurrentPulls: conf.concurrentPulls,
+		SigSlabRead:     sigSlabRead,
+	}
+	read, err := reader.New(readerConfig)
 	if err != nil {
 		log.Error("msg", "could not create reader", "error", err)
 		os.Exit(2)
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.concurrentPush, conf.progressEnabled, sigSlabRead)
+
+	writerConfig := writer.Config{
+		Context:            cont,
+		Url:                conf.writeURL,
+		HTTPConfig:         conf.writerAuth.ToHTTPClientConfig(),
+		ProgressEnabled:    conf.progressEnabled,
+		ProgressMetricName: conf.progressMetricName,
+		MigrationJobName:   conf.name,
+		ConcurrentPush:     conf.concurrentPush,
+		SigSlabRead:        sigSlabRead,
+	}
+	write, err := writer.New(writerConfig)
 	if err != nil {
 		log.Error("msg", "could not create writer", "error", err)
 		os.Exit(2)
@@ -163,7 +176,7 @@ func parseFlags(conf *config, args []string) {
 		"set this to the remote write storage that the migrator is writing along with the progress-enabled.")
 	flag.BoolVar(&conf.progressEnabled, "progress-enabled", true, "This flag tells the migrator, whether or not to use the progress mechanism. It is helpful if you want to "+
 		"carry out migration with the same time-range. If this is enabled, the migrator will resume the migration from the last time, where it was stopped/interrupted. "+
-		"If you do not want any extra metric(s) while migration, you can set this to false. But, setting this to false will disble progress-metric and hence, the ability to resume migration.")
+		"If you do not want any extra metric(s) while migration, you can set this to false. But, setting this to false will disable progress-metric and hence, the ability to resume migration.")
 	// Authentication.
 	// TODO: Auth/password via password_file and bearer_token via bearer_token_file.
 	flag.StringVar(&conf.readerAuth.Username, "read-auth-username", "", "Auth username for remote-read storage.")
@@ -174,6 +187,12 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.writerAuth.Password, "write-auth-password", "", "Auth password for remote-write storage.")
 	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Bearer token for remote-write storage. "+
 		"This should be mutually exclusive with username and password.")
+	flag.StringVar(&conf.progressMetricAuth.Username, "progress-metric-auth-username", "", "Read auth username for remote-write storage.")
+	flag.StringVar(&conf.progressMetricAuth.Password, "progress-metric-password", "", "Read auth password for remote-write storage.")
+	flag.StringVar(&conf.progressMetricAuth.BearerToken, "progress-metric-bearer-token", "", "Read bearer token for remote-write storage. "+
+		"This should be mutually exclusive with username and password.")
+	// TLS configurations.
+
 	_ = flag.CommandLine.Parse(args)
 	convertSecFlagToMs(conf)
 }

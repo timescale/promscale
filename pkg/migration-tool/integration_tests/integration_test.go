@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/config"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
@@ -75,11 +76,31 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		sigSlabRead  = make(chan *plan.Slab)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigSlabRead)
+
+	readerConfig := reader.Config{
+		Context:         cont,
+		Url:             conf.readURL,
+		Plan:            planner,
+		HTTPConfig:      config.HTTPClientConfig{},
+		ConcurrentPulls: conf.concurrentPulls,
+		SigSlabRead:     sigSlabRead,
+	}
+	read, err := reader.New(readerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigSlabRead)
+
+	writerConfig := writer.Config{
+		Context:            cont,
+		Url:                conf.writeURL,
+		HTTPConfig:         config.HTTPClientConfig{},
+		ProgressEnabled:    conf.progressEnabled,
+		ProgressMetricName: conf.progressMetricName,
+		MigrationJobName:   conf.name,
+		ConcurrentPush:     conf.numShards,
+		SigSlabRead:        sigSlabRead,
+	}
+	write, err := writer.New(writerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -176,12 +197,31 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		sigRead      = make(chan *plan.Slab)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigRead)
+	readerConfig := reader.Config{
+		Context:         cont,
+		Url:             conf.readURL,
+		Plan:            planner,
+		HTTPConfig:      config.HTTPClientConfig{},
+		ConcurrentPulls: conf.concurrentPulls,
+		SigSlabRead:     sigRead,
+	}
+	read, err := reader.New(readerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
 	read.SigSlabStop = make(chan struct{})
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigRead)
+
+	writerConfig := writer.Config{
+		Context:            cont,
+		Url:                conf.writeURL,
+		HTTPConfig:         config.HTTPClientConfig{},
+		ProgressEnabled:    conf.progressEnabled,
+		ProgressMetricName: conf.progressMetricName,
+		MigrationJobName:   conf.name,
+		ConcurrentPush:     conf.numShards,
+		SigSlabRead:        sigRead,
+	}
+	write, err := writer.New(writerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -209,11 +249,17 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	sigRead = make(chan *plan.Slab)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
-	read, err = reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigRead)
+
+	readerConfig.Context = cont
+	readerConfig.SigSlabRead = sigRead
+	read, err = reader.New(readerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigRead)
+
+	writerConfig.Context = cont
+	writerConfig.SigSlabRead = sigRead
+	write, err = writer.New(writerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -317,12 +363,32 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 		sigRead      = make(chan *plan.Slab)
 	)
 	cont, cancelFunc := context.WithCancel(context.Background())
-	read, err := reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigRead)
+
+	readerConfig := reader.Config{
+		Context:         cont,
+		Url:             conf.readURL,
+		Plan:            planner,
+		HTTPConfig:      config.HTTPClientConfig{},
+		ConcurrentPulls: conf.concurrentPulls,
+		SigSlabRead:     sigRead,
+	}
+	read, err := reader.New(readerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
 	read.SigSlabStop = make(chan struct{})
-	write, err := writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigRead)
+
+	writerConfig := writer.Config{
+		Context:            cont,
+		Url:                conf.writeURL,
+		HTTPConfig:         config.HTTPClientConfig{},
+		ProgressEnabled:    conf.progressEnabled,
+		ProgressMetricName: conf.progressMetricName,
+		MigrationJobName:   conf.name,
+		ConcurrentPush:     conf.numShards,
+		SigSlabRead:        sigRead,
+	}
+	write, err := writer.New(writerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
@@ -350,11 +416,17 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 	sigRead = make(chan *plan.Slab)
 
 	cont, cancelFunc = context.WithCancel(context.Background())
-	read, err = reader.New(cont, conf.readURL, planner, conf.concurrentPulls, sigRead)
+
+	readerConfig.Context = cont
+	readerConfig.SigSlabRead = sigRead
+	read, err = reader.New(readerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create reader", "error", err.Error())
 	}
-	write, err = writer.New(cont, conf.writeURL, conf.progressMetricName, conf.name, conf.numShards, conf.progressEnabled, sigRead)
+
+	writerConfig.Context = cont
+	writerConfig.SigSlabRead = sigRead
+	write, err = writer.New(writerConfig)
 	if err != nil {
 		t.Fatal("msg", "could not create writer", "error", err.Error())
 	}
