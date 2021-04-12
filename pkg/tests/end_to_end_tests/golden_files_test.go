@@ -104,7 +104,7 @@ func TestSQLGoldenFiles(t *testing.T) {
 			}
 
 			if string(expected) != string(actual) {
-				t.Fatalf("Golden file does not match result: diff %s %s", expectedFile, actualFile)
+				t.Fatalf("Golden file does not match result: diff\nexpected\n%s\nactual\n%s\n", expected, actual)
 			}
 
 		})
