@@ -6,11 +6,13 @@ package end_to_end_tests
 
 import (
 	"context"
-	"github.com/timescale/promscale/pkg/util"
 	"math/rand"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/timescale/promscale/pkg/util"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	promModel "github.com/prometheus/common/model"
@@ -93,15 +95,22 @@ func runHATest(t *testing.T, testCase haTestCase) {
 	})
 }
 
+var tCount int32
+
 func prepareIngestorWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, *ingestor.DBIngestor, error) {
-	// manuel ticker, ticked when we want
-	// to explicitly let the state sync routine run
-	ticker := util.NewManualTicker(1)
 	// function that returns time that is always in the future
-	// so the calls to ha.Service.checkLeaseUntilAndLastWrite
+	// and at least one hour apart from each other so
+	// that calls to ha.Service.shouldTryToChangeLeader
 	// depends only on the max time seen by an instance
 	// and try_change_leader is called when we want
-	tooFarInTheFutureNowFn := func() time.Time { return time.Now().Add(time.Hour) }
+	tooFarInTheFutureNowFn := func() time.Time {
+		return time.Now().Add(time.Duration(atomic.AddInt32(&tCount, 1)) * time.Hour)
+	}
+
+	// manual ticker, ticked when we want
+	// to explicitly let the state sync routine run
+	ticker := util.NewManualTicker(1)
+
 	leaseClient := haClient.NewHaLeaseClient(pgxconn.NewPgxConn(db))
 	haService := ha.NewHAServiceWith(leaseClient, ticker, tooFarInTheFutureNowFn)
 	sigClose := make(chan struct{})

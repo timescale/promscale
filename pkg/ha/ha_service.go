@@ -17,7 +17,7 @@ import (
 
 const (
 	haSyncerTimeInterval      = 15 * time.Second
-	haLastWriteIntervalInSecs = 30
+	haLastWriteInterval       = 30 * time.Second
 	tryLeaderChangeErrFmt     = "failed to attempt leader change for cluster %s"
 	failedToUpdateLeaseErrFmt = "failed to update lease for cluster %s"
 )
@@ -209,7 +209,7 @@ func (s *Service) shouldTryToChangeLeader(lease *state.LeaseView) bool {
 	diff := s.currentTimeProvider().Sub(lease.RecentLeaderWriteTime)
 	// check leaseUntil is after maxT received from samples or
 	// recent leader write is not more than 30 secs older.
-	if diff <= haLastWriteIntervalInSecs || lease.LeaseUntil.After(lease.MaxTimeSeen) {
+	if diff <= haLastWriteInterval || lease.LeaseUntil.After(lease.MaxTimeSeen) {
 		return false
 	}
 	return true
