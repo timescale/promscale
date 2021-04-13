@@ -11,7 +11,7 @@ import (
 	"github.com/timescale/promscale/pkg/ha/client"
 )
 
-func MockNewHAService(clusterInfo []*client.LeaseDBState) *Service {
+func MockNewHAService(clusterInfo []client.LeaseDBState) *Service {
 	lockClient := newMockLockClient()
 
 	for _, c := range clusterInfo {
@@ -27,7 +27,7 @@ func MockNewHAService(clusterInfo []*client.LeaseDBState) *Service {
 }
 
 func SetLeaderInMockService(service *Service, cluster, leader string, minT, maxT time.Time) {
-	service.leaseClient.(*mockLockClient).leadersPerCluster[cluster] = &client.LeaseDBState{
+	service.leaseClient.(*mockLockClient).leadersPerCluster[cluster] = client.LeaseDBState{
 		Cluster:    cluster,
 		Leader:     leader,
 		LeaseStart: minT,

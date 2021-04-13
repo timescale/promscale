@@ -6,11 +6,12 @@ package end_to_end_tests
 
 import (
 	"context"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 func callTryChangeLeader(db *pgxpool.Pool, cluster, writer string, maxT time.Time) (*leaseState, error) {

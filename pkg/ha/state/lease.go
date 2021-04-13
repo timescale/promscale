@@ -21,33 +21,16 @@ const (
 // instance that sent data through this Promscale,
 // the maximum data time seen by the leader,
 // and the real time when the leader last sent data.
-// 	Access to any field should be controlled through the _mu RW Mutex.
 type Lease struct {
-	client                client.LeaseClient
-	cluster               string
-	leader                string
-	leaseStart            time.Time
-	leaseUntil            time.Time
-	maxTimeSeen           time.Time // max data time seen from any prometheus replica
-	maxTimeInstance       string    // the replica name that’s seen the maxtime
-	maxTimeSeenLeader     time.Time // max data time seen by current leader
-	recentLeaderWriteTime time.Time // real time when leader last wrote data
+	// _mu protects all data fields, client is not protected.
 	_mu                   sync.RWMutex
-}
+	state                 client.LeaseDBState
+	MaxTimeSeen           time.Time // max data time seen from any prometheus replica
+	MaxTimeInstance       string    // the replica name that’s seen the maxtime
+	MaxTimeSeenLeader     time.Time // max data time seen by current leader
+	RecentLeaderWriteTime time.Time // real time when leader last wrote data
 
-// LeaseView represents a snapshot of a lease
-// to be used locally in a single goroutine
-// so the caller doesn't need to acquire a mutex.
-// Obtained by calling Lease.Clone()
-type LeaseView struct {
-	Cluster               string
-	Leader                string
-	LeaseStart            time.Time
-	LeaseUntil            time.Time
-	MaxTimeSeen           time.Time
-	MaxTimeInstance       string
-	MaxTimeSeenLeader     time.Time
-	RecentLeaderWriteTime time.Time
+	client client.LeaseClient
 }
 
 // Creates a new Lease and immediately synchronizes with the database, it either
@@ -57,28 +40,27 @@ type LeaseView struct {
 //	  new Lease.
 // An error is returned if an error occurred querying the database.
 func NewLease(c client.LeaseClient, cluster, potentialLeader string, minT, maxT, currentTime time.Time) (*Lease, error) {
-	dbState, err := c.UpdateLease(context.Background(), cluster, potentialLeader, minT, maxT)
+	stateFromDB, err := c.UpdateLease(context.Background(), cluster, potentialLeader, minT, maxT)
 	if err != nil {
 		return nil, fmt.Errorf("could not create new lease: %#v", err)
 	}
 
 	return &Lease{
 		client:                c,
-		cluster:               dbState.Cluster,
-		leader:                dbState.Leader,
-		leaseStart:            dbState.LeaseStart,
-		leaseUntil:            dbState.LeaseUntil,
-		maxTimeSeen:           maxT,
-		maxTimeInstance:       potentialLeader,
-		maxTimeSeenLeader:     maxT,
-		recentLeaderWriteTime: currentTime,
+		state:                 stateFromDB,
+		MaxTimeSeen:           maxT,
+		MaxTimeInstance:       potentialLeader,
+		MaxTimeSeenLeader:     maxT,
+		RecentLeaderWriteTime: currentTime,
 	}, nil
 }
 
+// ValidateSamplesInfo verifies if the replica and time range can insert the samples into
+// storage. It returns if it can insert, minimum time that can be inserted and error if any happens.
 func (l *Lease) ValidateSamplesInfo(replica string, minT, maxT, currT time.Time) (bool, time.Time, error) {
 	l._mu.RLock()
-	leader := l.leader
-	leaseUntil := l.leaseUntil
+	leader := l.state.Leader
+	leaseUntil := l.state.LeaseUntil
 	l._mu.RUnlock()
 
 	if leader == replica {
@@ -102,8 +84,8 @@ func (l *Lease) ValidateSamplesInfo(replica string, minT, maxT, currT time.Time)
 
 func (l *Lease) confirmLeaseValidation(replica string, minT time.Time) (bool, time.Time, error) {
 	l._mu.RLock()
-	leader := l.leader
-	leaseStart := l.leaseStart
+	leader := l.state.Leader
+	leaseStart := l.state.LeaseStart
 	l._mu.RUnlock()
 
 	if leader != replica {
@@ -116,11 +98,12 @@ func (l *Lease) confirmLeaseValidation(replica string, minT time.Time) (bool, ti
 	return true, minT, nil
 }
 
+// RefreshLease tries to extend the current lease with the current leader.
 func (l *Lease) RefreshLease() error {
 	l._mu.RLock()
-	leader := l.leader
-	leaseStart := l.leaseStart
-	maxTimeSeenLeader := l.maxTimeSeenLeader
+	leader := l.state.Leader
+	leaseStart := l.state.LeaseStart
+	maxTimeSeenLeader := l.MaxTimeSeenLeader
 	l._mu.RUnlock()
 	return l.updateLease(leader, leaseStart, maxTimeSeenLeader)
 }
@@ -131,8 +114,8 @@ func (l *Lease) RefreshLease() error {
 // An error is returned if the db can't be reached.
 func (h *Lease) updateLease(potentialLeader string, minT, maxT time.Time) error {
 	h._mu.RLock()
-	cluster := h.cluster
-	if h.leader != potentialLeader {
+	cluster := h.state.Cluster
+	if h.state.Leader != potentialLeader {
 		h._mu.RUnlock()
 		return fmt.Errorf("should never be updating the lease for a non-leader")
 	}
@@ -151,11 +134,11 @@ func (h *Lease) updateLease(potentialLeader string, minT, maxT time.Time) error 
 // An error is returned if the db can't be reached.
 func (l *Lease) TryChangeLeader(currT time.Time) error {
 	l._mu.RLock()
-	cluster := l.cluster
-	leaseUntil := l.leaseUntil
-	maxTimeInstance := l.maxTimeInstance
-	maxTimeSeen := l.maxTimeSeen
-	recentLeaderSeen := l.recentLeaderWriteTime
+	cluster := l.state.Cluster
+	leaseUntil := l.state.LeaseUntil
+	maxTimeInstance := l.MaxTimeInstance
+	maxTimeSeen := l.MaxTimeSeen
+	recentLeaderSeen := l.RecentLeaderWriteTime
 	l._mu.RUnlock()
 
 	// Only proceed if we have seen samples after the lease expired.
@@ -198,32 +181,30 @@ func (l *Lease) changeLeader(cluster string, leader string, maxTimeSeen time.Tim
 func (h *Lease) UpdateMaxSeenTime(currentReplica string, currentMaxT, currentWallTime time.Time) {
 	h._mu.Lock()
 	defer h._mu.Unlock()
-	if currentMaxT.After(h.maxTimeSeen) {
-		h.maxTimeInstance = currentReplica
-		h.maxTimeSeen = currentMaxT
+	if currentMaxT.After(h.MaxTimeSeen) {
+		h.MaxTimeInstance = currentReplica
+		h.MaxTimeSeen = currentMaxT
 	}
 
-	if currentReplica != h.leader {
+	if currentReplica != h.state.Leader {
 		return
 	}
 
-	if currentMaxT.After(h.maxTimeSeenLeader) {
-		h.maxTimeSeenLeader = currentMaxT
+	if currentMaxT.After(h.MaxTimeSeenLeader) {
+		h.MaxTimeSeenLeader = currentMaxT
 	}
-	h.recentLeaderWriteTime = currentWallTime
+	h.RecentLeaderWriteTime = currentWallTime
 }
 
-func (h *Lease) setUpdateFromDB(stateFromDB *client.LeaseDBState) {
+func (h *Lease) setUpdateFromDB(stateFromDB client.LeaseDBState) {
 	h._mu.Lock()
-	defer h._mu.Unlock()
-	oldLeader := h.leader
-	h.leader = stateFromDB.Leader
-	h.leaseStart = stateFromDB.LeaseStart
-	h.leaseUntil = stateFromDB.LeaseUntil
-	if oldLeader != h.leader {
-		h.maxTimeSeenLeader = time.Time{}
-		h.recentLeaderWriteTime = time.Now()
+	oldLeader := h.state.Leader
+	h.state = stateFromDB
+	if oldLeader != h.state.Leader {
+		h.MaxTimeSeenLeader = time.Time{}
+		h.RecentLeaderWriteTime = time.Now()
 	}
+	h._mu.Unlock()
 	exposeHAStateToMetrics(stateFromDB.Cluster, oldLeader, stateFromDB.Leader)
 }
 

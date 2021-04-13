@@ -13,13 +13,13 @@ import (
 )
 
 type mockLockClient struct {
-	leadersPerCluster map[string]*client.LeaseDBState
+	leadersPerCluster map[string]client.LeaseDBState
 }
 
-func (m *mockLockClient) UpdateLease(_ context.Context, cluster, leader string, minTime, maxTime time.Time) (*client.LeaseDBState, error) {
+func (m *mockLockClient) UpdateLease(_ context.Context, cluster, leader string, minTime, maxTime time.Time) (client.LeaseDBState, error) {
 	lock, exists := m.leadersPerCluster[cluster]
 	if !exists {
-		lock = &client.LeaseDBState{
+		lock = client.LeaseDBState{
 			Cluster:    cluster,
 			Leader:     leader,
 			LeaseStart: minTime,
@@ -31,12 +31,12 @@ func (m *mockLockClient) UpdateLease(_ context.Context, cluster, leader string, 
 	return lock, nil
 }
 
-func (m *mockLockClient) TryChangeLeader(_ context.Context, cluster, newLeader string, maxTime time.Time) (*client.LeaseDBState, error) {
+func (m *mockLockClient) TryChangeLeader(_ context.Context, cluster, newLeader string, maxTime time.Time) (client.LeaseDBState, error) {
 	lock, exists := m.leadersPerCluster[cluster]
 	if !exists {
-		return nil, fmt.Errorf("no leader for %s, UpdateLease never called before TryChangeLeader", cluster)
+		return lock, fmt.Errorf("no leader for %s, UpdateLease never called before TryChangeLeader", cluster)
 	}
-	lock = &client.LeaseDBState{
+	lock = client.LeaseDBState{
 		Cluster:    cluster,
 		Leader:     newLeader,
 		LeaseStart: lock.LeaseUntil,
@@ -47,5 +47,5 @@ func (m *mockLockClient) TryChangeLeader(_ context.Context, cluster, newLeader s
 }
 
 func newMockLockClient() *mockLockClient {
-	return &mockLockClient{leadersPerCluster: make(map[string]*client.LeaseDBState)}
+	return &mockLockClient{leadersPerCluster: make(map[string]client.LeaseDBState)}
 }

@@ -7,10 +7,11 @@ package client
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgconn"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"time"
 )
 
 const (
@@ -42,12 +43,12 @@ type LeaseClient interface {
 	//		the check couldn't be performed
 	//		or a leaderHasChanged error signifying the leader has changed and HAState
 	//		needs to be updated
-	UpdateLease(ctx context.Context, cluster, replica string, minTime, maxTime time.Time) (*LeaseDBState, error)
+	UpdateLease(ctx context.Context, cluster, replica string, minTime, maxTime time.Time) (LeaseDBState, error)
 	// tryChangeLeader tries to set a new leader for a cluster
 	// returns:
 	// *haLockState current state of the lock (if try was successful state.leader == newLeader)
 	// error signifying the call couldn't be made
-	TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*LeaseDBState, error)
+	TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (LeaseDBState, error)
 }
 
 type haLeaseClientDB struct {
@@ -58,15 +59,14 @@ func NewHaLeaseClient(dbConn pgxconn.PgxConn) LeaseClient {
 	return &haLeaseClientDB{dbConn: dbConn}
 }
 
-func (h *haLeaseClientDB) UpdateLease(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (
-	dbState *LeaseDBState, err error,
-) {
-	dbState = new(LeaseDBState)
+func (h *haLeaseClientDB) UpdateLease(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (LeaseDBState, error) {
+	dbState := LeaseDBState{}
 	row := h.dbConn.QueryRow(ctx, updateLeaseSql, cluster, leader, minTime, maxTime)
 	leaderHasChanged := false
-	if err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil)); err != nil {
+	err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil))
+	if err != nil {
 		if e, ok := err.(*pgconn.PgError); !ok || e.Code != leaderChangedErrCode {
-			return nil, fmt.Errorf("could not update lease: %w", err)
+			return dbState, fmt.Errorf("could not update lease: %w", err)
 		}
 
 		leaderHasChanged = true
@@ -78,26 +78,26 @@ func (h *haLeaseClientDB) UpdateLease(ctx context.Context, cluster, leader strin
 		dbState, err = h.readLeaseState(context.Background(), cluster)
 		// couldn't get latest lease state
 		if err != nil {
-			return nil, fmt.Errorf("could not update lease: %#v", err)
+			return dbState, fmt.Errorf("could not update lease: %#v", err)
 		}
 	}
-	return
+	return dbState, nil
 }
 
-func (h *haLeaseClientDB) TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (*LeaseDBState, error) {
-	dbLock := LeaseDBState{}
+func (h *haLeaseClientDB) TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (LeaseDBState, error) {
+	dbState := LeaseDBState{}
 	row := h.dbConn.QueryRow(ctx, tryChangeLeaderSql, cluster, newLeader, maxTime)
-	if err := row.Scan(&(dbLock.Cluster), &(dbLock.Leader), &(dbLock.LeaseStart), &(dbLock.LeaseUntil)); err != nil {
-		return nil, err
+	if err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil)); err != nil {
+		return dbState, err
 	}
-	return &dbLock, nil
+	return dbState, nil
 }
 
-func (h *haLeaseClientDB) readLeaseState(ctx context.Context, cluster string) (*LeaseDBState, error) {
-	dbLock := LeaseDBState{Cluster: cluster}
+func (h *haLeaseClientDB) readLeaseState(ctx context.Context, cluster string) (LeaseDBState, error) {
+	dbState := LeaseDBState{Cluster: cluster}
 	row := h.dbConn.QueryRow(ctx, latestLeaseStateSql, cluster)
-	if err := row.Scan(&dbLock.Leader, &dbLock.LeaseStart, &dbLock.LeaseUntil); err != nil {
-		return nil, err
+	if err := row.Scan(&dbState.Leader, &dbState.LeaseStart, &dbState.LeaseUntil); err != nil {
+		return dbState, err
 	}
-	return &dbLock, nil
+	return dbState, nil
 }

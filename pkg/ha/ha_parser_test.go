@@ -6,10 +6,11 @@ package ha
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 
 	"github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
