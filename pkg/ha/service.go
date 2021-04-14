@@ -34,20 +34,20 @@ type Service struct {
 	doneWG              sync.WaitGroup
 }
 
-// NewHaService constructs a new HA service with the supplied
+// NewService constructs a new HA lease service with the supplied
 // database connection and the default sync interval.
 // The sync interval determines how often the leases for
 // all clusters are refreshed from the database.
-func NewHAService(leaseClient client.LeaseClient) *Service {
-	return NewHAServiceWith(leaseClient, util.NewTicker(haSyncerTimeInterval), time.Now)
+func NewService(leaseClient client.LeaseClient) *Service {
+	return NewServiceWith(leaseClient, util.NewTicker(haSyncerTimeInterval), time.Now)
 }
 
-// NewHaServiceWith constructs a new HA service with the leaseClient,
+// NewServiceWith constructs a new HA lease service with the leaseClient,
 // ticker and a current time provide function.
 // The ticker determines when the lease states for all clusters
 // are refreshed from the database, the currentTimeFn determines the
 // current time, used for deterministic tests.
-func NewHAServiceWith(leaseClient client.LeaseClient, ticker util.Ticker, currentTimeFn func() time.Time) *Service {
+func NewServiceWith(leaseClient client.LeaseClient, ticker util.Ticker, currentTimeFn func() time.Time) *Service {
 
 	service := &Service{
 		state:               &sync.Map{},

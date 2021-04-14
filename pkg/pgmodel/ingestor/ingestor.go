@@ -24,19 +24,19 @@ type Cfg struct {
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
 	db     model.Inserter
-	scache cache.SeriesCache
+	sCache cache.SeriesCache
 	parser Parser
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, parser Parser, cfg *Cfg) (*DBIngestor, error) {
-	pi, err := newPgxInserter(conn, cache, scache, cfg)
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, parser Parser, cfg *Cfg) (*DBIngestor, error) {
+	pi, err := newPgxInserter(conn, cache, sCache, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DBIngestor{db: pi, scache: scache, parser: parser}, nil
+	return &DBIngestor{db: pi, sCache: sCache, parser: parser}, nil
 }
 
 // NewPgxIngestorForTests returns a new Ingestor that write to PostgreSQL using PGX
@@ -44,7 +44,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.
 func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 	s := cache.NewSeriesCache(cache.DefaultConfig, nil)
-	return NewPgxIngestor(conn, c, s, &dataParser{scache: s}, &Cfg{})
+	return NewPgxIngestor(conn, c, s, Parser{sCache: s}, &Cfg{})
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.

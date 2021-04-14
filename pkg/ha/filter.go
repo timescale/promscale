@@ -6,62 +6,58 @@ package ha
 
 import (
 	"fmt"
-	promModel "github.com/prometheus/common/model"
+
+	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const ReplicaNameLabel = "__replica__"
 const ClusterNameLabel = "cluster"
 
-type haParser struct {
+// Filter is a HA filter which filters data based on lease information it
+// gets from the lease service.
+type Filter struct {
 	service *Service
-	scache  cache.SeriesCache
 }
 
-func NewHAParser(service *Service, scache cache.SeriesCache) *haParser {
-	return &haParser{
+// NewFilter creates a new Filter based on the provided Service.
+func NewFilter(service *Service) *Filter {
+	return &Filter{
 		service: service,
-		scache:  scache,
 	}
 }
 
-// ParseData parses timeseries into a set of samplesInfo infos per-metric.
-// returns: map[metric name][]SamplesInfo, total rows to insert
-// When Prometheus & Promscale are running HA mode the below parseData is used
+// FilterData validates and filters timeseries based on lease info from the service.
+// When Prometheus & Promscale are running HA mode the below FilterData is used
 // to validate leader replica samples & ha_locks in TimescaleDB.
-func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Samples, int, error) {
+func (h *Filter) FilterData(tts []prompb.TimeSeries) (bool, error) {
 	if len(tts) == 0 {
-		return nil, 0, nil
+		return false, nil
 	}
 
 	clusterName, replicaName := haLabels(tts[0].Labels)
 
 	if err := validateClusterLabels(clusterName, replicaName); err != nil {
-		return nil, 0, err
+		return false, err
 	}
 
 	// find samples time range
 	minTUnix, maxTUnix := findDataTimeRange(tts)
 
-	minT := promModel.Time(minTUnix).Time()
-	maxT := promModel.Time(maxTUnix).Time()
+	minT := model.Time(minTUnix).Time()
+	maxT := model.Time(maxTUnix).Time()
 	allowInsert, acceptedMinT, err := h.service.CheckLease(minT, maxT, clusterName, replicaName)
 	if err != nil {
-		return nil, 0, fmt.Errorf("could not check ha lease: %#v", err)
+		return false, fmt.Errorf("could not check ha lease: %#v", err)
 	}
 	if !allowInsert {
-		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert")
-		return nil, 0, nil
+		log.Debug("the samples aren't from the leader prom instance. skipping the insert")
+		return false, nil
 	}
 
 	// insert allowed -> parse samples
-	acceptedMinTUnix := int64(promModel.TimeFromUnixNano(acceptedMinT.UnixNano()))
-	dataSamples := make(map[string][]model.Samples)
-	rows := 0
+	acceptedMinTUnix := int64(model.TimeFromUnixNano(acceptedMinT.UnixNano()))
 	for i := range tts {
 		t := &tts[i]
 
@@ -69,6 +65,8 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 			t.Samples = filterSamples(t.Samples, acceptedMinTUnix)
 		}
 		if len(t.Samples) == 0 {
+			// Empty the labels for posterity.
+			t.Labels = make([]prompb.Label, 0)
 			continue
 		}
 
@@ -81,27 +79,9 @@ func (h *haParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Sample
 				break
 			}
 		}
-
-		// Normalize and canonicalize t.Labels.
-		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := h.scache.GetSeriesFromProtos(t.Labels)
-		if err != nil {
-			return nil, 0, err
-		}
-		if metricName == "" {
-			return nil, 0, errors.ErrNoMetricName
-		}
-
-		sample := model.NewPromSample(seriesLabels, t.Samples)
-		rows += len(t.Samples)
-
-		dataSamples[metricName] = append(dataSamples[metricName], sample)
-		// we're going to free req after this, but we still need the samples,
-		// so nil the field
-		t.Samples = nil
 	}
 
-	return dataSamples, rows, nil
+	return true, nil
 }
 
 // findDataTimeRange finds the minimum and maximum timestamps in a set of samples

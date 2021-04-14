@@ -51,17 +51,17 @@ type LeaseClient interface {
 	TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (LeaseDBState, error)
 }
 
-type haLeaseClientDB struct {
+type leaseClientDB struct {
 	dbConn pgxconn.PgxConn
 }
 
-func NewHaLeaseClient(dbConn pgxconn.PgxConn) LeaseClient {
-	return &haLeaseClientDB{dbConn: dbConn}
+func NewLeaseClient(dbConn pgxconn.PgxConn) LeaseClient {
+	return &leaseClientDB{dbConn: dbConn}
 }
 
-func (h *haLeaseClientDB) UpdateLease(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (LeaseDBState, error) {
+func (l *leaseClientDB) UpdateLease(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (LeaseDBState, error) {
 	dbState := LeaseDBState{}
-	row := h.dbConn.QueryRow(ctx, updateLeaseSql, cluster, leader, minTime, maxTime)
+	row := l.dbConn.QueryRow(ctx, updateLeaseSql, cluster, leader, minTime, maxTime)
 	leaderHasChanged := false
 	err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil))
 	if err != nil {
@@ -75,7 +75,7 @@ func (h *haLeaseClientDB) UpdateLease(ctx context.Context, cluster, leader strin
 	// leader changed
 	if leaderHasChanged {
 		// read latest lease state
-		dbState, err = h.readLeaseState(context.Background(), cluster)
+		dbState, err = l.readLeaseState(context.Background(), cluster)
 		// couldn't get latest lease state
 		if err != nil {
 			return dbState, fmt.Errorf("could not update lease: %#v", err)
@@ -84,18 +84,18 @@ func (h *haLeaseClientDB) UpdateLease(ctx context.Context, cluster, leader strin
 	return dbState, nil
 }
 
-func (h *haLeaseClientDB) TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (LeaseDBState, error) {
+func (l *leaseClientDB) TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (LeaseDBState, error) {
 	dbState := LeaseDBState{}
-	row := h.dbConn.QueryRow(ctx, tryChangeLeaderSql, cluster, newLeader, maxTime)
+	row := l.dbConn.QueryRow(ctx, tryChangeLeaderSql, cluster, newLeader, maxTime)
 	if err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil)); err != nil {
 		return dbState, err
 	}
 	return dbState, nil
 }
 
-func (h *haLeaseClientDB) readLeaseState(ctx context.Context, cluster string) (LeaseDBState, error) {
+func (l *leaseClientDB) readLeaseState(ctx context.Context, cluster string) (LeaseDBState, error) {
 	dbState := LeaseDBState{Cluster: cluster}
-	row := h.dbConn.QueryRow(ctx, latestLeaseStateSql, cluster)
+	row := l.dbConn.QueryRow(ctx, latestLeaseStateSql, cluster)
 	if err := row.Scan(&dbState.Leader, &dbState.LeaseStart, &dbState.LeaseUntil); err != nil {
 		return dbState, err
 	}

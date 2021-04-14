@@ -10,24 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
-
 	"github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-type wanted struct {
-	labels  []prompb.Label
-	samples []prompb.Sample
-}
-
 func TestHaParserParseData(t *testing.T) {
 	type fields struct {
 		service *Service
-	}
-	type args struct {
-		tts []prompb.TimeSeries
 	}
 
 	leaseStart := time.Unix(1, 0)
@@ -43,18 +33,18 @@ func TestHaParserParseData(t *testing.T) {
 	tests := []struct {
 		name            string
 		fields          fields
-		args            args
-		wanted          map[string][]wanted
-		wantNumRows     int
+		args            []prompb.TimeSeries
+		wanted          []prompb.TimeSeries
+		proceed         bool
 		wantErr         bool
-		error           error
+		resultError     error
 		cluster         string
 		setClusterState *client.LeaseDBState
 	}{
 		{
 			name:   "Test: HA enabled but __replica__ && cluster are empty.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -63,15 +53,16 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
-			wantErr: true,
-			error:   fmt.Errorf("ha mode is enabled and one/both of the cluster, __replica__ labels is/are empty"),
-			cluster: "",
+			},
+			proceed:     false,
+			wantErr:     true,
+			resultError: fmt.Errorf("HA enabled, but both cluster and __replica__ labels are empty"),
+			cluster:     "",
 		},
 		{
 			name:   "Test: HA enabled but __replica__ is empty.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -81,15 +72,16 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
-			wantErr: true,
-			error:   fmt.Errorf("ha mode is enabled and one/both of the cluster, __replica__ labels is/are empty"),
-			cluster: "cluster1",
+			},
+			proceed:     false,
+			wantErr:     true,
+			resultError: fmt.Errorf("HA enabled, but __replica__ label is empty; cluster set to: cluster1"),
+			cluster:     "cluster1",
 		},
 		{
 			name:   "Test: HA enabled but cluster is empty.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -99,14 +91,15 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
-			wantErr: true,
-			error:   fmt.Errorf("ha mode is enabled and one/both of the cluster, __replica__ labels is/are empty"),
+			},
+			proceed:     false,
+			wantErr:     true,
+			resultError: fmt.Errorf("HA enabled, but cluster label is empty; __replica__ set to: replica1"),
 		},
 		{
 			name:   "Test: HA enabled parse samples from leader prom instance.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -117,18 +110,21 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
+			},
+			proceed: true,
 			wantErr: false,
-			wanted: map[string][]wanted{
-				"test": {{
-					labels: []prompb.Label{
-						{Name: ClusterNameLabel, Value: "cluster1"},
+			wanted: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: ClusterNameLabel, Value: "cluster1"},
 					},
-					samples: []prompb.Sample{{Value: 0.1, Timestamp: inLeaseTimestamp}},
-				}}},
-			wantNumRows: 1,
-			cluster:     "cluster1",
+					Samples: []prompb.Sample{
+						{Timestamp: inLeaseTimestamp, Value: 0.1},
+					},
+				},
+			},
+			cluster: "cluster1",
 			setClusterState: &client.LeaseDBState{
 				Cluster:    "cluster1",
 				Leader:     "replica1",
@@ -139,7 +135,7 @@ func TestHaParserParseData(t *testing.T) {
 		{
 			name:   "Test: HA enabled parse samples from standby prom instance.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -150,11 +146,10 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
-			wantErr:     false,
-			wanted:      nil,
-			wantNumRows: 0,
-			cluster:     "cluster2",
+			},
+			proceed: false,
+			wantErr: false,
+			cluster: "cluster2",
 			setClusterState: &client.LeaseDBState{
 				Cluster:    "cluster2",
 				Leader:     "replica1",
@@ -165,7 +160,7 @@ func TestHaParserParseData(t *testing.T) {
 		{
 			name:   "Test: HA enabled parse samples from leader prom instance.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -176,23 +171,21 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
+			},
+			proceed: true,
 			wantErr: false,
-			wanted: map[string][]wanted{
-				"test": {
-					{
-						labels: []prompb.Label{{Name: ClusterNameLabel, Value: "cluster3"}, {Name: model.MetricNameLabelName, Value: "test"}},
-						samples: []prompb.Sample{
-							{
-								Value:     0.1,
-								Timestamp: inLeaseTimestamp,
-							},
-						},
+			wanted: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: ClusterNameLabel, Value: "cluster3"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
 			},
-			wantNumRows: 1,
-			cluster:     "cluster3",
+			cluster: "cluster3",
 			setClusterState: &client.LeaseDBState{
 				Cluster:    "cluster3",
 				Leader:     "replica1",
@@ -203,7 +196,7 @@ func TestHaParserParseData(t *testing.T) {
 		{
 			name:   "Test: HA enabled parse from leader & samples are in interval [leaseStart-X, leaseUntil)",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -215,26 +208,21 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.2},
 					},
 				},
-			}},
+			},
+			proceed: true,
 			wantErr: false,
-			wanted: map[string][]wanted{
-				"test": {
-					{
-						labels: []prompb.Label{
-							{Name: ClusterNameLabel, Value: "cluster3"},
-							{Name: model.MetricNameLabelName, Value: "test"},
-						},
-						samples: []prompb.Sample{
-							{
-								Value:     0.2,
-								Timestamp: inLeaseTimestamp,
-							},
-						},
+			wanted: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: ClusterNameLabel, Value: "cluster3"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: inLeaseTimestamp, Value: 0.2},
 					},
 				},
 			},
-			wantNumRows: 1,
-			cluster:     "cluster3",
+			cluster: "cluster3",
 			setClusterState: &client.LeaseDBState{
 				Cluster:    "cluster3",
 				Leader:     "replica1",
@@ -245,7 +233,7 @@ func TestHaParserParseData(t *testing.T) {
 		{
 			name:   "Test: HA enabled parse from leader & samples are in interval [leaseStart, leaseUntil+X].",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -256,26 +244,21 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: aheadLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
+			},
+			proceed: true,
 			wantErr: false,
-			wanted: map[string][]wanted{
-				"test": {
-					{
-						labels: []prompb.Label{
-							{Name: ClusterNameLabel, Value: "cluster3"},
-							{Name: model.MetricNameLabelName, Value: "test"},
-						},
-						samples: []prompb.Sample{
-							{
-								Value:     0.1,
-								Timestamp: aheadLeaseTimestamp,
-							},
-						},
+			wanted: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: ClusterNameLabel, Value: "cluster3"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: aheadLeaseTimestamp, Value: 0.1},
 					},
 				},
 			},
-			wantNumRows: 1,
-			cluster:     "cluster3",
+			cluster: "cluster3",
 			setClusterState: &client.LeaseDBState{
 				Cluster:    "cluster3",
 				Leader:     "replica1",
@@ -286,7 +269,7 @@ func TestHaParserParseData(t *testing.T) {
 		{
 			name:   "Test: HA enabled, parse samples from standby instance. ReadLeaseState returns the updated leader as standby prom instance.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -297,26 +280,21 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
+			},
+			proceed: true,
 			wantErr: false,
-			wanted: map[string][]wanted{
-				"test": {
-					{
-						labels: []prompb.Label{
-							{Name: ClusterNameLabel, Value: "cluster4"},
-							{Name: model.MetricNameLabelName, Value: "test"},
-						},
-						samples: []prompb.Sample{
-							{
-								Value:     0.1,
-								Timestamp: inLeaseTimestamp,
-							},
-						},
+			wanted: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: ClusterNameLabel, Value: "cluster4"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: inLeaseTimestamp, Value: 0.1},
 					},
 				},
 			},
-			wantNumRows: 1,
-			cluster:     "cluster4",
+			cluster: "cluster4",
 			setClusterState: &client.LeaseDBState{
 				Cluster:    "cluster4",
 				Leader:     "replica2",
@@ -327,7 +305,7 @@ func TestHaParserParseData(t *testing.T) {
 		{
 			name:   "Test: HA enabled parse from standby. ReadLeaseState returns the updated leader as standby prom instance but samples aren't part lease range.",
 			fields: fields{service: mockService},
-			args: args{tts: []prompb.TimeSeries{
+			args: []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
 						{Name: model.MetricNameLabelName, Value: "test"},
@@ -338,11 +316,16 @@ func TestHaParserParseData(t *testing.T) {
 						{Timestamp: behindLeaseTimestamp, Value: 0.1},
 					},
 				},
-			}},
-			wantErr:     false,
-			wanted:      map[string][]wanted{},
-			wantNumRows: 0,
-			cluster:     "cluster5",
+			},
+			proceed: true,
+			wantErr: false,
+			wanted: []prompb.TimeSeries{
+				{
+					Samples: make([]prompb.Sample, 0),
+					Labels:  make([]prompb.Label, 0),
+				},
+			},
+			cluster: "cluster5",
 			setClusterState: &client.LeaseDBState{
 				Cluster:    "cluster5",
 				Leader:     "replica2",
@@ -351,79 +334,40 @@ func TestHaParserParseData(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.setClusterState != nil {
-				state := tt.setClusterState
-				SetLeaderInMockService(tt.fields.service, state.Cluster, state.Leader, state.LeaseStart, state.LeaseUntil)
+	for _, c := range tests {
+		t.Run(c.name, func(t *testing.T) {
+			if c.setClusterState != nil {
+				state := c.setClusterState
+				SetLeaderInMockService(c.fields.service, state.Cluster, state.Leader, state.LeaseStart, state.LeaseUntil)
 			}
-			h := &haParser{
-				service: tt.fields.service,
-				scache:  cache.NewSeriesCache(cache.DefaultConfig, nil),
+			h := &Filter{
+				service: c.fields.service,
 			}
-			gotSamplesPerMetric, gotTotalRows, err := h.ParseData(tt.args.tts)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseData() error = %v, wantErr %v", err, tt.wantErr)
+			proceed, err := h.FilterData(c.args)
+			if err != nil {
+				if !c.wantErr {
+					t.Fatalf("FilterData() returned unexpected error: %s", err.Error())
+				}
+				if err.Error() != c.resultError.Error() {
+					t.Fatalf("FilterData() error = %v, wantErr %v", err, c.resultError)
+				}
+				return
+			} else if c.wantErr {
+				t.Fatalf("wanted error from FilterData, got nil")
+			}
+
+			if proceed != c.proceed {
+				t.Fatalf("unexpected proceed signal from FilterData, got %t want %t", proceed, c.proceed)
+			}
+			if !proceed {
 				return
 			}
 
-			if errStr := compareSamples(tt.wanted, gotSamplesPerMetric, h.scache); errStr != "" {
-				t.Fatal(errStr)
-				return
-			}
-
-			if gotTotalRows != tt.wantNumRows {
-				t.Errorf("ParseData() gotTotalRows = %v, wantSamples %v", gotTotalRows, tt.wantNumRows)
+			if !reflect.DeepEqual(c.wanted, c.args) {
+				t.Fatalf("unexpected result from FilterData:\ngot\n%+v\nwant\n%+v\n", c.args, c.wanted)
 			}
 		})
 	}
-}
-
-func compareSamples(wantedResponse map[string][]wanted, receivedResponse map[string][]model.Samples, scache cache.SeriesCache) string {
-	if wantedResponse == nil && receivedResponse != nil {
-		return fmt.Sprintf("want nil samples, got: %v ", receivedResponse)
-	} else if wantedResponse != nil && receivedResponse == nil {
-		return fmt.Sprintf("got nil samples; want: %v", wantedResponse)
-	} else if wantedResponse == nil {
-		return ""
-	}
-
-	for metric, wantedSamplesInfos := range wantedResponse {
-		receivedSamplesInfos, ok := receivedResponse[metric]
-		if !ok {
-			return fmt.Sprintf("wanted sample infos for metric [%s] weren't present", metric)
-		}
-		if len(wantedSamplesInfos) != len(receivedSamplesInfos) {
-			return fmt.Sprintf("wanted [%d] sample infos for metric [%s]; got [%d]",
-				len(wantedSamplesInfos), metric, len(receivedSamplesInfos),
-			)
-		}
-		for i, wantedSamplesInfo := range wantedSamplesInfos {
-			receivedSamplesInfo := receivedSamplesInfos[i]
-			wantedSeries, _, _ := scache.GetSeriesFromProtos(wantedSamplesInfo.labels)
-			if !wantedSeries.Equal(receivedSamplesInfo.GetSeries()) {
-				return fmt.Sprintf("series for metric [%s] are not equal\nwant: %v\ngot: %v",
-					metric, wantedSeries, receivedSamplesInfo.GetSeries(),
-				)
-			}
-
-			wantedBatch := model.NewSamplesBatch()
-			wantedSamplesInfoConverted := model.NewPromSample(wantedSeries, wantedSamplesInfo.samples)
-			wantedBatch.Append(wantedSamplesInfoConverted)
-			receivedBatch := model.NewSamplesBatch()
-			receivedBatch.Append(receivedSamplesInfo)
-			wantedBatch.GetSeriesSamples()
-			for wantedBatch.Next() && receivedBatch.Next() {
-				wantedTS, wantedVal, wantedSerId, wantedEpoch := wantedBatch.Values()
-				receivedTS, receivedVal, receivedSerId, receivedEpoch := receivedBatch.Values()
-				if wantedTS != receivedTS || wantedVal != receivedVal || wantedSerId != receivedSerId ||
-					wantedEpoch != receivedEpoch {
-					return fmt.Sprintf("samples missmatch for metric [%s]\n want: %v\n got: %v", metric, wantedSamplesInfo, receivedSamplesInfo)
-				}
-			}
-		}
-	}
-	return ""
 }
 
 func TestFilterSamples(t *testing.T) {

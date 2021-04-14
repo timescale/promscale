@@ -5,27 +5,42 @@
 package ingestor
 
 import (
+	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-type Parser interface {
-	ParseData([]prompb.TimeSeries) (map[string][]model.Samples, int, error)
-}
-
-type dataParser struct {
-	scache cache.SeriesCache
+// Data parser is responsible for parsing incoming request data into the
+// appropriate format and filter it using the appropriate filter.
+type Parser struct {
+	filter *ha.Filter
+	sCache cache.SeriesCache
 }
 
 func DefaultParser(seriesCache cache.SeriesCache) Parser {
-	return &dataParser{scache: seriesCache}
+	return Parser{sCache: seriesCache}
 }
 
-// Parse data into a set of samplesInfo infos per-metric.
+// SetFilter sets the HA filter used for filtering the data before parsing
+// it into the correct output format.
+func (d *Parser) SetFilter(filter *ha.Filter) {
+	d.filter = filter
+}
+
+// ParseData filters and parses data into a set of samplesInfo infos per-metric.
 // returns: map[metric name][]SamplesInfo, total rows to insert
-func (d *dataParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Samples, int, error) {
+func (d *Parser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Samples, int, error) {
+	if d.filter != nil {
+		canProceed, err := d.filter.FilterData(tts)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !canProceed {
+			return nil, 0, nil
+		}
+	}
 	dataSamples := make(map[string][]model.Samples)
 	rows := 0
 
@@ -37,7 +52,7 @@ func (d *dataParser) ParseData(tts []prompb.TimeSeries) (map[string][]model.Samp
 
 		// Normalize and canonicalize t.Labels.
 		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := d.scache.GetSeriesFromProtos(t.Labels)
+		seriesLabels, metricName, err := d.sCache.GetSeriesFromProtos(t.Labels)
 		if err != nil {
 			return nil, rows, err
 		}
