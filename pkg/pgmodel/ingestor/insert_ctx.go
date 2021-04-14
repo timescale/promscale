@@ -20,6 +20,12 @@ func NewWriteRequest() *prompb.WriteRequest {
 	return wrPool.Get().(*prompb.WriteRequest)
 }
 
+func NewWriteRequestWithTs(ts []prompb.TimeSeries) *prompb.WriteRequest {
+	wr := wrPool.Get().(*prompb.WriteRequest)
+	wr.Timeseries = ts
+	return wr
+}
+
 func FinishWriteRequest(wr *prompb.WriteRequest) {
 	for i := range wr.Timeseries {
 		ts := &wr.Timeseries[i]

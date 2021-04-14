@@ -6,7 +6,6 @@ package ingestor
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor/samples-parser"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -184,7 +183,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				sCache:     sCache,
 			}
 
-			count, err := i.Ingest("", c.metrics, NewWriteRequest())
+			count, err := i.Ingest(Request{"", &prompb.WriteRequest{Timeseries: c.metrics}})
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {

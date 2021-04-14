@@ -9,7 +9,6 @@ import (
 
 func TestParseFlags(t *testing.T) {
 	defaultConfig, err := ParseFlags(&Config{}, []string{})
-
 	if err != nil {
 		t.Fatal("error occured on default config with no arguments")
 	}
@@ -84,6 +83,11 @@ func TestParseFlags(t *testing.T) {
 				c.UpgradeExtensions = false
 				return c
 			},
+		},
+		{
+			name:        "Invalid migrate option",
+			args:        []string{"-migrate", "invalid"},
+			shouldError: true,
 		},
 		{
 			name: "Running HA and read-only error",
@@ -171,7 +175,6 @@ func TestParseFlags(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestParseFlagsConfigPrecedence(t *testing.T) {

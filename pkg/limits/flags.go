@@ -59,7 +59,7 @@ func (t *PercentageAbsoluteBytesFlag) Get() (PercentageAbsoluteKind, uint64) {
 	return t.kind, t.value
 }
 
-// Set implements the flag samples-parser to set value from the CLI
+// Set implements the flag interface to set value from the CLI
 func (t *PercentageAbsoluteBytesFlag) Set(val string) error {
 	val = strings.TrimSpace(val)
 	percentage := false

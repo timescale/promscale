@@ -6,7 +6,6 @@ package ingestor
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor/samples-parser"
 
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -14,6 +13,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 type Cfg struct {
@@ -27,6 +27,7 @@ type Cfg struct {
 type DBIngestor struct {
 	dispatcher model.Dispatcher
 	sCache     cache.SeriesCache
+	wAuth      tenancy.WriteAuthorizer
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
@@ -48,20 +49,67 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 	return NewPgxIngestor(conn, c, s, &Cfg{})
 }
 
+// Request is a write request for timeseries into Promscale.
+type Request struct {
+	Tenant string
+	Req    *prompb.WriteRequest
+}
+
+// SetWriteAuthorizer sets the write authorizer for multi-tenancy.
+func (ingestor *DBIngestor) SetWriteAuthorizer(wAuth tenancy.WriteAuthorizer) {
+	ingestor.wAuth = wAuth
+}
+
 // Ingest transforms and ingests the timeseries data into Timescale database.
 // input:
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(tenant string, tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	data, totalRows, err := ingestor.parser.ParseData(tenant, tts)
+func (ingestor *DBIngestor) Ingest(r Request) (uint64, error) {
+	var (
+		err       error
+		labels    []prompb.Label
+		totalRows uint64
+
+		dataSamples = make(map[string][]model.Samples)
+		timeseries  = r.Req.Timeseries
+	)
+	for i := range timeseries {
+		ts := timeseries[i]
+		if len(ts.Samples) == 0 {
+			continue
+		}
+		labels = ts.Labels
+		if ingestor.wAuth != nil {
+			labels, err = ingestor.wAuth.VerifyAndApplyTenantLabel(r.Tenant, labels)
+			if err != nil {
+				return 0, fmt.Errorf("db-ingestor: %w", err)
+			}
+		}
+		// Normalize and canonicalize t.Labels.
+		// After this point t.Labels should never be used again.
+		seriesLabels, metricName, err := ingestor.sCache.GetSeriesFromProtos(labels)
+		if err != nil {
+			return 0, err
+		}
+		if metricName == "" {
+			return 0, errors.ErrNoMetricName
+		}
+		sample := model.NewPromSample(seriesLabels, ts.Samples)
+		totalRows += uint64(len(ts.Samples))
+
+		dataSamples[metricName] = append(dataSamples[metricName], sample)
+		// we're going to free req after this, but we still need the samples,
+		// so nil the field
+		ts.Samples = nil
+	}
 	// WriteRequests can contain pointers into the original buffer we deserialized
 	// them out of, and can be quite large in and of themselves. In order to prevent
 	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest
 	// here, allowing it to be either garbage collected or reused for a new request.
 	// In order for this to work correctly, any data we wish to keep using (e.g.
 	// samples) must no longer be reachable from req.
-	FinishWriteRequest(req)
+	FinishWriteRequest(r.Req)
 
 	rowsInserted, err := ingestor.dispatcher.InsertData(dataSamples)
 	if err == nil && rowsInserted != totalRows {

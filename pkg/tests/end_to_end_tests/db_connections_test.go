@@ -44,7 +44,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		for _, m := range metrics[:3] {
 			count += len(m.Samples)
 		}
-		ingested, err := pgClient.Ingest("", metrics[:3], ingstr.NewWriteRequest())
+		ingested, err := pgClient.Ingest(ingstr.Request{Req: ingstr.NewWriteRequestWithTs(metrics[:3])})
 		if err != nil {
 			t.Fatalf("got an unexpected error %v", err)
 		}
@@ -74,7 +74,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		}
 
 		// Try ingesting and reading from DB, expect to error.
-		_, err = pgClient.Ingest("", metrics[3:], ingstr.NewWriteRequest())
+		_, err = pgClient.Ingest(ingstr.Request{Req: ingstr.NewWriteRequestWithTs(metrics[3:])})
 		if ignoreBlockedConnectionError(err) != nil {
 			t.Fatalf("got an unexpected error: %v", err)
 		}
@@ -94,7 +94,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		for _, m := range metrics[3:] {
 			count += len(m.Samples)
 		}
-		ingested, err = pgClient.Ingest("", metrics[3:], ingstr.NewWriteRequest())
+		ingested, err = pgClient.Ingest(ingstr.Request{Req: ingstr.NewWriteRequestWithTs(metrics[3:])})
 		if err != nil {
 			t.Fatalf("got an unexpected error: %v", err)
 		}

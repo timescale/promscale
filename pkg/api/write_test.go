@@ -21,9 +21,10 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
-
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -255,7 +256,7 @@ func TestWrite(t *testing.T) {
 			}
 			dataParser := parser.NewParser()
 
-			handler := Write(&Config{}, mock, elector, &Metrics{
+			handler := Write(mock, dataParser, elector, &Metrics{
 				LeaderGauge:       leaderGauge,
 				ReceivedSamples:   receivedSamplesGauge,
 				FailedSamples:     failedSamplesGauge,
@@ -351,8 +352,8 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(tenant string, series []prompb.TimeSeries, request *prompb.WriteRequest) (uint64, error) {
-	m.ts = series
+func (m *mockInserter) Ingest(r ingestor.Request) (uint64, error) {
+	m.ts = r.Req.Timeseries
 	return m.result, m.err
 }
 

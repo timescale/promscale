@@ -50,7 +50,7 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 
 	router.Post("/write", writeHandler)
 
-	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics))
+	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(client, metrics))
 	router.Get("/read", readHandler)
 	router.Post("/read", readHandler)
 

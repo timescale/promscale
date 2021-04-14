@@ -12,17 +12,16 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
-	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor/samples-parser"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -47,7 +46,7 @@ type Client struct {
 type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config, multiTenancy multi_tenancy.MultiTenancy, schemaLocker LockFunc) (*Client, error) {
+func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc) (*Client, error) {
 	pgConfig, numCopiers, err := getPgConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -61,7 +60,7 @@ func NewClient(cfg *Config, multiTenancy multi_tenancy.MultiTenancy, schemaLocke
 	}
 
 	dbConn := pgxconn.NewPgxConn(connectionPool)
-	client, err := NewClientWithPool(cfg, numCopiers, dbConn, multiTenancy)
+	client, err := NewClientWithPool(cfg, numCopiers, dbConn, mt)
 	if err != nil {
 		return client, err
 	}
@@ -124,7 +123,7 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt multi_tenancy.MultiTenancy) (*Client, error) {
+func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt tenancy.Authorizer) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -140,6 +139,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt m
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
+	dbIngestor.SetWriteAuthorizer(mt.WriteAuthorizer()) // Save to set since if multi-tenancy is disabled, this will implement noop tenancy.
 
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
 	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader, mt.ReadAuthorizer())
@@ -180,8 +180,8 @@ func (c *Client) Ingestor() *ingestor.DBIngestor {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(tenant string, tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	return c.ingestor.Ingest(tenant, tts, req)
+func (c *Client) Ingest(r ingestor.Request) (uint64, error) {
+	return c.ingestor.Ingest(r)
 }
 
 // Read returns the promQL query results
@@ -228,7 +228,7 @@ func (c *Client) HealthCheck() error {
 	return c.healthCheck()
 }
 
-// Queryable returns the Prometheus promql.Queryable samples-parser that's running
+// Queryable returns the Prometheus promql.Queryable interface that's running
 // with the same underlying Querier as the Client.
 func (c *Client) Queryable() promql.Queryable {
 	return c.queryable

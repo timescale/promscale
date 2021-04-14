@@ -468,13 +468,13 @@ func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.Tim
 	}
 }
 
-func doIngest(t *testing.T, ingestor *ingestor.DBIngestor, data ...[]prompb.TimeSeries) {
+func doIngest(t *testing.T, ingstr *ingestor.DBIngestor, data ...[]prompb.TimeSeries) {
 	for _, data := range data {
-		_, err := ingestor.Ingest("", copyMetrics(data), &prompb.WriteRequest{})
+		_, err := ingstr.Ingest(ingestor.Request{Req: &prompb.WriteRequest{Timeseries: copyMetrics(data)}})
 		if err != nil {
 			t.Fatalf("ingest error: %v", err)
 		}
-		_ = ingestor.CompleteMetricCreation()
+		_ = ingstr.CompleteMetricCreation()
 	}
 }
 

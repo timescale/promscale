@@ -33,7 +33,7 @@ type LeaseDBState struct {
 	LeaseUntil time.Time
 }
 
-// LeaseClient defines an samples-parser for checking and changing leader status
+// LeaseClient defines an interface for checking and changing leader status
 type LeaseClient interface {
 	// updateLease confirms permissions for a given leader wanting to insert
 	// data in a given time range.

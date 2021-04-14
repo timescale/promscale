@@ -6,7 +6,6 @@ package end_to_end_tests
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -24,6 +23,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 type requestCase struct {
@@ -297,10 +297,10 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		MaxConnections:          -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool), nil)
+	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool), tenancy.NewNoopAuthorizer())
 
 	if err != nil {
-		return nil, pgClient, errors.New("Cannot run test, cannot instantiate pgClient")
+		return nil, pgClient, fmt.Errorf("Cannot run test, cannot instantiate pgClient")
 	}
 
 	hander, err := api.GenerateRouter(cfg, metrics, pgClient, nil)

@@ -21,9 +21,9 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
-	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 var (
@@ -89,7 +89,7 @@ type Config struct {
 	TelemetryPath    string
 
 	Auth         *Auth
-	MultiTenancy multi_tenancy.MultiTenancy
+	MultiTenancy tenancy.Authorizer
 
 	// PromQL configuration.
 	EnableFeatures       string
@@ -137,15 +137,9 @@ func Validate(cfg *Config) error {
 	return cfg.Auth.Validate()
 }
 
-func getTenant(r *http.Request) (tenant string) {
+func getTenant(r *http.Request) string {
 	// We do not look for `X-` since it has been deprecated as mentioned in https://datatracker.ietf.org/doc/html/rfc6648.
-	if tn := r.Header.Get("TENANT"); tn == "" {
-		// This request will be considered as multi-tenant request only if tenant name exists.
-		return
-	} else {
-		tenant = tn
-	}
-	return
+	return r.Header.Get("TENANT")
 }
 
 func readFromFile(path string, defaultValue string) (string, error) {

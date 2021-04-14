@@ -7,6 +7,7 @@ package querier
 import (
 	"context"
 	"fmt"
+
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgtype"
@@ -15,13 +16,13 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
-	multi_tenancy_read "github.com/timescale/promscale/pkg/multi-tenancy/read"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 // Reader reads the data based on the provided read request.
@@ -44,12 +45,12 @@ const (
 
 // NewQuerier returns a new pgxQuerier that reads from PostgreSQL using PGX
 // and caches metric table names and label sets using the supplied caches.
-func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader, mtAuthr multi_tenancy_read.Authorizer) Querier {
+func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader, rAuth tenancy.ReadAuthorizer) Querier {
 	return &pgxQuerier{
 		conn:             conn,
 		labelsReader:     labelsReader,
 		metricTableNames: metricCache,
-		mtAuthr:          mtAuthr,
+		rAuth:            rAuth,
 	}
 }
 
@@ -63,17 +64,14 @@ type pgxQuerier struct {
 	conn             pgxconn.PgxConn
 	metricTableNames cache.MetricCache
 	labelsReader     lreader.LabelsReader
-	mtAuthr          multi_tenancy_read.Authorizer
+	rAuth            tenancy.ReadAuthorizer
 }
 
 var _ Querier = (*pgxQuerier)(nil)
 
-// Select implements the Querier samples-parser. It is the entry point for our
+// Select implements the Querier interface. It is the entry point for our
 // own version of the Prometheus engine.
 func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	if q.mtAuthr != nil {
-		ms = q.mtAuthr.ApplySafetyMatcher(ms)
-	}
 	rows, topNode, err := q.getResultRows(mint, maxt, hints, path, ms)
 	if err != nil {
 		return errorSeriesSet{err: err}, nil
@@ -83,7 +81,7 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 	return ss, topNode
 }
 
-// Query implements the Querier samples-parser. It is the entry point for
+// Query implements the Querier interface. It is the entry point for
 // remote-storage queries.
 func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	if query == nil {
@@ -93,10 +91,6 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	matchers, err := fromLabelMatchers(query.Matchers)
 	if err != nil {
 		return nil, err
-	}
-
-	if q.mtAuthr != nil {
-		matchers = q.mtAuthr.ApplySafetyMatcher(matchers)
 	}
 
 	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
@@ -144,6 +138,9 @@ type timescaleRow struct {
 // getResultRows fetches the result row datasets from the database using the
 // supplied query parameters.
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
+	if q.rAuth != nil {
+		matchers = q.rAuth.AppendTenantMatcher(matchers)
+	}
 	// Build a subquery per metric matcher.
 	builder, err := BuildSubQueries(matchers)
 	if err != nil {

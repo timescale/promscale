@@ -16,6 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -25,6 +26,7 @@ type Config struct {
 	LogCfg                      log.Config
 	APICfg                      api.Config
 	LimitsCfg                   limits.Config
+	TenancyCfg                  tenancy.Config
 	ConfigFile                  string
 	TLSCertFile                 string
 	TLSKeyFile                  string
@@ -50,6 +52,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	log.ParseFlags(fs, &cfg.LogCfg)
 	api.ParseFlags(fs, &cfg.APICfg)
 	limits.ParseFlags(fs, &cfg.LimitsCfg)
+	tenancy.ParseFlags(fs, &cfg.TenancyCfg)
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
@@ -64,12 +67,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.BoolVar(&cfg.UpgradePrereleaseExtensions, "upgrade-prerelease-extensions", false, "Upgrades to pre-release TimescaleDB, Promscale extensions.")
 	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
 	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
-
-	// Multi-tenancy flags.
-	// TODO(Harkishen): update the docs in docs/cli.md
-	fs.BoolVar(&cfg.EnableMultiTenancy, "multi-tenancy", false, "Use multi-tenancy mode in Promscale.")
-	fs.StringVar(&cfg.validTenantsListStr, "multi-tenancy-valid-tenants", "", "Comma separated tenant names that Promscale is allowed to write into or "+
-		"read from the database. If this list is left empty, then all tenants are valid by default for read/write operation.")
 
 	if err := util.ParseEnv("PROMSCALE", fs); err != nil {
 		return nil, fmt.Errorf("error parsing env variables: %w", err)
@@ -103,12 +100,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	if err := validate(cfg); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
-	}
-	if err := limits.Validate(&cfg.LimitsCfg); err != nil {
-		return nil, fmt.Errorf("error validating limits configuration: %w", err)
-	}
-	if err := pgclient.Validate(&cfg.PgmodelCfg, cfg.LimitsCfg); err != nil {
-		return nil, fmt.Errorf("error validating client configuration: %w", err)
 	}
 
 	cfg.StopAfterMigrate = false
@@ -153,28 +144,14 @@ func validate(cfg *Config) error {
 	if err := api.Validate(&cfg.APICfg); err != nil {
 		return fmt.Errorf("error validating API configuration: %w", err)
 	}
-	if err := validateMultiTenancyFlags(cfg); err != nil {
-		return fmt.Errorf("error validating mlti-tenancy configuration: %w", err)
+	if err := limits.Validate(&cfg.LimitsCfg); err != nil {
+		return fmt.Errorf("error validating limits configuration: %w", err)
+	}
+	if err := pgclient.Validate(&cfg.PgmodelCfg, cfg.LimitsCfg); err != nil {
+		return fmt.Errorf("error validating client configuration: %w", err)
+	}
+	if err := tenancy.Validate(&cfg.TenancyCfg); err != nil {
+		return fmt.Errorf("error validating multi-tenancy configuration: %w", err)
 	}
 	return nil
-}
-
-func validateMultiTenancyFlags(cfg *Config) error {
-	if cfg.validTenantsListStr != "" {
-		cfg.ValidTenantsList = strings.Split(cfg.validTenantsListStr, ",")
-		cfg.ValidTenantsList = removeEmptyTenants(cfg.ValidTenantsList)
-	}
-	return nil
-}
-
-// removeEmptyTenants protects against corner cases, when the user enters comma separated tenants
-// such that there is a trailing comma towards the end.
-func removeEmptyTenants(t []string) (tenants []string) {
-	for i := 0; i < len(t); i++ {
-		if len(t[i]) == 0 {
-			continue
-		}
-		tenants = append(tenants, t[i])
-	}
-	return
 }

@@ -35,7 +35,7 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, err := ingestor.Ingest("", copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(ingstr.Request{Req: ingstr.NewWriteRequestWithTs(copyMetrics(ts))}); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation()
@@ -44,7 +44,7 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 		}
 		startSnapShot := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", extensionState)
 		tts := generateSmallTimeseries()
-		if _, err := ingestor.Ingest("", copyMetrics(tts), ingstr.NewWriteRequest()); err != nil {
+		if _, err := ingestor.Ingest(ingstr.Request{Req: ingstr.NewWriteRequestWithTs(copyMetrics(tts))}); err != nil {
 			t.Fatal(err)
 		}
 		snapShotAfterNewMetrics := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", extensionState)

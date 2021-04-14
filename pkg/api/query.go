@@ -15,11 +15,11 @@ import (
 )
 
 func Query(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.Handler {
-	hf := corsWrapper(conf, queryHandler(conf, queryEngine, queryable, metrics))
+	hf := corsWrapper(conf, queryHandler(queryEngine, queryable, metrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryHandler(apiConf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
 		var err error

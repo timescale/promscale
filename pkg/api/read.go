@@ -18,7 +18,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-func Read(apiConf *Config, reader querier.Reader, metrics *Metrics) http.Handler {
+func Read(reader querier.Reader, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !validateReadHeaders(w, r) {
 			metrics.InvalidReadReqs.Inc()

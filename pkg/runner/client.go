@@ -14,12 +14,11 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/log"
-	multi_tenancy "github.com/timescale/promscale/pkg/multi-tenancy"
-	multi_tenancy_config "github.com/timescale/promscale/pkg/multi-tenancy/config"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/util"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -158,21 +157,19 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		leasingFunction = nil
 	}
 
-	var multiTenancy = multi_tenancy.NewNoopMultiTenancy()
-	if cfg.EnableMultiTenancy {
-		// Configuring multi-tenancy in client.
-		var multiTenancyConfig multi_tenancy_config.Config
-		if len(cfg.ValidTenantsList) > 0 {
-			multiTenancyConfig = multi_tenancy_config.NewSelectiveTenancyConfig(cfg.ValidTenantsList)
+	multiTenancy := tenancy.NewNoopAuthorizer()
+	if cfg.TenancyCfg.EnableMultiTenancy {
+		var multiTenancyConfig tenancy.AuthConfig
+		if cfg.TenancyCfg.SkipTenantValidation {
+			multiTenancyConfig = tenancy.NewAllowAllTenantsConfig(cfg.TenancyCfg.AllowNonMTWrites)
 		} else {
-			multiTenancyConfig = multi_tenancy_config.NewOpenTenancyConfig()
+			multiTenancyConfig = tenancy.NewSelectiveTenancyConfig(cfg.TenancyCfg.ValidTenantsList, cfg.TenancyCfg.AllowNonMTWrites)
 		}
-		multiTenancy, err = multi_tenancy.NewMultiTenancy(multiTenancyConfig)
+		multiTenancy, err = tenancy.NewAuthorizer(multiTenancyConfig)
 		if err != nil {
-			return nil, fmt.Errorf("new multi-tenancy: %w", err)
+			return nil, fmt.Errorf("new tenancy: %w", err)
 		}
 	}
-	cfg.APICfg.MultiTenancy = multiTenancy // If multi-tenancy is disabled, the noopMultiTenancy will be used.
 
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings

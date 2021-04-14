@@ -11,7 +11,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 )
 
-// Election defines an samples-parser for adapter leader election.
+// Election defines an interface for adapter leader election.
 // If you are running Prometheus in HA mode where each Prometheus instance sends data to corresponding adapter you probably
 // want to allow writes into the database from only one adapter at the time. We need to elect a leader who can write to
 // the database. If leader goes down, another leader is elected. Look at `lock.go` for an implementation based on PostgreSQL
