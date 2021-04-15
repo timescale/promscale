@@ -1,0 +1,4 @@
+status = ["Build and Lint", "Go Tests", "Go End-to-End Test Results", "Bash End-to-End Tests"]
+delete-merged-branches = true
+required_approvals = 1
+timeout_sec = 3600 # one hours
