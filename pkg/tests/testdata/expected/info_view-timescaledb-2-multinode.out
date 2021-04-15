@@ -32,8 +32,8 @@ INSERT 0 10
 SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', compressed_interval > interval '7 hour', before_compression_bytes, after_compression_bytes, label_keys, total_size, total_size_bytes, compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
  id | metric_name | table_name | retention_period | ?column? | ?column? | before_compression_bytes | after_compression_bytes |             label_keys              | total_size | total_size_bytes | compression_ratio | total_chunks | compressed_chunks 
 ----+-------------+------------+------------------+----------+----------+--------------------------+-------------------------+-------------------------------------+------------+------------------+-------------------+--------------+-------------------
-  1 | cpu_usage   | cpu_usage  | 90 days          | t        | f        |                          |                         | {__name__,namespace,new_tag,node}   | 24 kB      |            24576 |                   |            2 |                 0
-  2 | cpu_total   | cpu_total  | 90 days          | t        | f        |                          |                         | {__name__,namespace,new_tag_2,node} | 24 kB      |            24576 |                   |            2 |                 0
+  1 | cpu_usage   | cpu_usage  | 90 days          | t        | f        |                          |                         | {__name__,namespace,new_tag,node}   | 48 kB      |            49152 |                   |            1 |                 0
+  2 | cpu_total   | cpu_total  | 90 days          | t        | f        |                          |                         | {__name__,namespace,new_tag_2,node} | 48 kB      |            49152 |                   |            1 |                 0
 (2 rows)
 
 -- compress chunks
@@ -53,8 +53,8 @@ SELECT compress_chunk(show_chunks('prom_data.cpu_total'));
 SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', compressed_interval > interval '7 hour', before_compression_bytes, after_compression_bytes, label_keys, total_size, total_size_bytes, compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
  id | metric_name | table_name | retention_period | ?column? | ?column? | before_compression_bytes | after_compression_bytes |             label_keys              | total_size | total_size_bytes |  compression_ratio   | total_chunks | compressed_chunks 
 ----+-------------+------------+------------------+----------+----------+--------------------------+-------------------------+-------------------------------------+------------+------------------+----------------------+--------------+-------------------
-  1 | cpu_usage   | cpu_usage  | 90 days          | t        | f        |                    24576 |                   32768 | {__name__,namespace,new_tag,node}   | 40 kB      |            40960 | -33.3333333333333300 |            2 |                 1
-  2 | cpu_total   | cpu_total  | 90 days          | t        | f        |                    24576 |                   32768 | {__name__,namespace,new_tag_2,node} | 40 kB      |            40960 | -33.3333333333333300 |            2 |                 1
+  1 | cpu_usage   | cpu_usage  | 90 days          | t        | f        |                    24576 |                   32768 | {__name__,namespace,new_tag,node}   | 64 kB      |            65536 | -33.3333333333333300 |            1 |                 1
+  2 | cpu_total   | cpu_total  | 90 days          | t        | f        |                    24576 |                   32768 | {__name__,namespace,new_tag_2,node} | 64 kB      |            65536 | -33.3333333333333300 |            1 |                 1
 (2 rows)
 
 SELECT * FROM prom_info.label ORDER BY key;
