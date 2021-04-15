@@ -98,3 +98,5 @@ INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
 ('metric_compression', (exists(select * from pg_proc where proname = 'compress_chunk')::text));
 
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA SCHEMA_CATALOG TO prom_writer;
+GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_writer;

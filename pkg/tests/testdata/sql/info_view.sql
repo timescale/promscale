@@ -22,6 +22,8 @@ SELECT id , metric_name , table_name, retention_period, chunk_interval > interva
 SELECT compress_chunk(show_chunks('prom_data.cpu_usage'));
 SELECT compress_chunk(show_chunks('prom_data.cpu_total'));
 -- fetch stats with compressed chunks
+
+SET ROLE prom_reader;
 SELECT id , metric_name , table_name, retention_period, chunk_interval > interval '7 hour', compressed_interval > interval '7 hour', before_compression_bytes, after_compression_bytes, label_keys, total_size, total_size_bytes, compression_ratio, total_chunks, compressed_chunks FROM prom_info.metric ORDER BY id;
 SELECT * FROM prom_info.label ORDER BY key;
 SELECT * FROM prom_info.metric_stats ORDER BY num_series_approx;

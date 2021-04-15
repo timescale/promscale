@@ -174,12 +174,13 @@ compare_connector_and_prom "series?match%5B%5D=ts_prom_sent_samples_total"
 
 # Labels endpoint cannot be compared to Prometheus becuase it will always differ due to direct backfilling of the real dataset.
 # We have to compare it to the correct expected output. Note that `namespace` and `node` labels are from JSON import payload.
-EXPECTED_OUTPUT='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
+EXPECTED_OUTPUT1='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
+EXPECTED_OUTPUT2='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status"]}'
 LABELS_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/labels")
 echo "  labels response: ${LABELS_OUTPUT}"
-echo "expected response: ${EXPECTED_OUTPUT}"
+echo "expected response: ${EXPECTED_OUTPUT1}"
 
-if [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT}" ]; then
+if [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT1}" ] && [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT2}" ]; then
     echo "TEST FAILED: mismatched output"
     ((FAILED+=1))
 else

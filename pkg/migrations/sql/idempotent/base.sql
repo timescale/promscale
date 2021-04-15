@@ -1720,6 +1720,7 @@ DECLARE
    label_value_cols text;
    view_name text;
    metric_id int;
+   view_exists boolean;
 BEGIN
     SELECT
         ',' || string_agg(
@@ -1734,6 +1735,12 @@ BEGIN
     FROM SCHEMA_CATALOG.metric m
     WHERE m.metric_name = create_series_view.metric_name;
 
+    SELECT COUNT(*) > 0 into view_exists
+    FROM pg_class
+    WHERE
+      relname = view_name AND
+      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA_SERIES');
+
     EXECUTE FORMAT($$
         CREATE OR REPLACE VIEW SCHEMA_SERIES.%1$I AS
         SELECT
@@ -1744,6 +1751,10 @@ BEGIN
             SCHEMA_DATA_SERIES.%1$I AS series
         WHERE delete_epoch IS NULL
     $$, view_name, label_value_cols);
+
+    IF NOT view_exists THEN
+        EXECUTE FORMAT('GRANT SELECT ON SCHEMA_SERIES.%1$I TO prom_reader', view_name);
+    END IF;
     RETURN true;
 END
 $func$
@@ -1763,6 +1774,7 @@ DECLARE
    label_value_cols text;
    table_name text;
    metric_id int;
+   view_exists boolean;
 BEGIN
     SELECT
         ',' || string_agg(
@@ -1777,6 +1789,12 @@ BEGIN
     FROM SCHEMA_CATALOG.metric m
     WHERE m.metric_name = create_metric_view.metric_name;
 
+    SELECT COUNT(*) > 0 into view_exists
+    FROM pg_class
+    WHERE
+      relname = table_name AND
+      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA_METRIC');
+
     EXECUTE FORMAT($$
         CREATE OR REPLACE VIEW SCHEMA_METRIC.%1$I AS
         SELECT
@@ -1789,6 +1807,11 @@ BEGIN
             SCHEMA_DATA.%1$I AS data
             LEFT JOIN SCHEMA_DATA_SERIES.%1$I AS series ON (series.id = data.series_id)
     $$, table_name, label_value_cols);
+
+    IF NOT view_exists THEN
+        EXECUTE FORMAT('GRANT SELECT ON SCHEMA_METRIC.%1$I TO prom_reader', table_name);
+    END IF;
+
     RETURN true;
 END
 $func$
@@ -1993,6 +2016,7 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.metric AS
    SELECT
      *
     FROM SCHEMA_CATALOG.metric_view();
+GRANT SELECT ON SCHEMA_INFO.metric TO prom_reader;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
     SELECT
@@ -2004,6 +2028,7 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
     FROM SCHEMA_CATALOG.label_key lk
     INNER JOIN LATERAL(SELECT key, array_agg(value ORDER BY value) as values FROM SCHEMA_CATALOG.label GROUP BY key)
     AS va ON (va.key = lk.key) ORDER BY num_values DESC;
+GRANT SELECT ON SCHEMA_INFO.label TO prom_reader;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
     SELECT
@@ -2019,12 +2044,14 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
     (
         SELECT count(*) FROM SCHEMA_CATALOG.label
     ) AS num_labels;
+GRANT SELECT ON SCHEMA_INFO.system_stats TO prom_reader;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
     SELECT metric_name,
     SCHEMA_CATALOG.safe_approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
     (SELECT SCHEMA_CATALOG.safe_approximate_row_count(format('prom_data.%I',table_name)::regclass)) AS num_samples_approx
     FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
+GRANT SELECT ON SCHEMA_INFO.metric_stats TO prom_reader;
 
 --this should the only thing run inside the transaction. It's important the txn ends after calling this function
 --to release locks

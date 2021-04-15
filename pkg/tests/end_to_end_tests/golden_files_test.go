@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/sergi/go-diff/diffmatchpatch"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 )
@@ -104,7 +105,12 @@ func TestSQLGoldenFiles(t *testing.T) {
 			}
 
 			if string(expected) != string(actual) {
-				t.Fatalf("Golden file does not match result: diff\nexpected\n%s\nactual\n%s\n", expected, actual)
+				dmp := diffmatchpatch.New()
+				fileAdmp, fileBdmp, dmpStrings := dmp.DiffLinesToChars(string(expected), string(actual))
+				diffs := dmp.DiffMain(fileAdmp, fileBdmp, false)
+				diffs = dmp.DiffCharsToLines(diffs, dmpStrings)
+				diffs = dmp.DiffCleanupSemantic(diffs)
+				t.Errorf("Golden file does not match result: diff %s %s\n\n%v", expectedFile, actualFile, dmp.DiffPrettyText(diffs))
 			}
 
 		})
