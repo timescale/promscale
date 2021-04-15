@@ -92,6 +92,11 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 		for _, m := range matchers {
 			var countBeforeDelete, countAfterDelete int
@@ -258,6 +263,10 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
@@ -382,6 +391,11 @@ func TestDeleteMixins(t *testing.T) {
 		if _, err := ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest()); err != nil {
 			t.Fatal(err)
 		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
