@@ -96,3 +96,5 @@ INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
 ('chunk_interval', (INTERVAL '8 hours')::text),
 ('retention_period', (90 * INTERVAL '1 day')::text),
 ('metric_compression', (exists(select * from pg_proc where proname = 'compress_chunk')::text));
+
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA SCHEMA_CATALOG TO prom_writer;

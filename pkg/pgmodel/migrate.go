@@ -221,6 +221,11 @@ func ensureVersionTable(db *pgx.Conn) error {
 		return fmt.Errorf("error creating migration table: %w", err)
 	}
 
+	_, err = db.Exec(context.Background(), "GRANT SELECT ON prom_schema_migrations TO public")
+	if err != nil {
+		return fmt.Errorf("error creating migration table: %w", err)
+	}
+
 	return nil
 }
 
@@ -231,15 +236,18 @@ func getSchemaVersion(db *pgx.Conn) (semver.Version, error) {
 func getSchemaVersionOnConnection(ctx context.Context, db *pgx.Conn) (semver.Version, error) {
 	var version semver.Version
 	res, err := db.Query(ctx, getVersion)
-
 	if err != nil {
 		return version, fmt.Errorf("Error getting DB version: %w", err)
 	}
+	defer res.Close()
 
 	for res.Next() {
 		err = res.Scan(&version)
 	}
-
+	if err != nil {
+		return version, fmt.Errorf("Error getting DB version: %w", err)
+	}
+	err = res.Err()
 	if err != nil {
 		return version, fmt.Errorf("Error getting DB version: %w", err)
 	}

@@ -52,7 +52,7 @@ cleanup() {
     if [ -n "$CONN_PID" ]; then
         kill $CONN_PID
     fi
-    if [[ $FAILED -ne 0 ]]; then
+    if [[ $PASSED -ne 5 ]]; then
         docker logs e2e-tsdb || true
     fi
     docker stop e2e-tsdb || true
@@ -86,7 +86,22 @@ PROMSCALE_DB_PASSWORD=postgres \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale &
+./promscale -migrate=only
+
+docker exec e2e-tsdb psql -U postgres -d postgres \
+  -c "CREATE ROLE writer PASSWORD 'test' LOGIN" \
+  -c "GRANT prom_writer TO writer" \
+    -c "CREATE ROLE reader PASSWORD 'test' LOGIN" \
+  -c "GRANT prom_reader TO reader"
+
+PROMSCALE_LOG_LEVEL=debug \
+PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_DB_PASSWORD=test \
+PROMSCALE_DB_USER=writer \
+PROMSCALE_DB_NAME=postgres \
+PROMSCALE_DB_SSL_MODE=disable \
+PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
+./promscale -install-extensions=false -migrate=false -upgrade-extensions=false &
 
 CONN_PID=$!
 
@@ -126,6 +141,23 @@ compare_connector_and_prom() {
         ((PASSED+=1))
     fi
 }
+
+kill $CONN_PID
+
+PROMSCALE_LOG_LEVEL=debug \
+PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_DB_PASSWORD=test \
+PROMSCALE_DB_USER=reader \
+PROMSCALE_DB_NAME=postgres \
+PROMSCALE_DB_SSL_MODE=disable \
+PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
+./promscale -install-extensions=false -migrate=false -upgrade-extensions=false -read-only &
+
+CONN_PID=$!
+
+echo "Waiting for connector to be up..."
+wait_for "$CONNECTOR_URL"
+
 END_TIME=$(date +"%s")
 
 DATASET_START_TIME="2020-08-10T10:35:20Z"

@@ -126,6 +126,24 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO p
 --is insignificant in practice.
 --
 --lock-order: metric table, data_table, series parent, series partition
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.attach_series_partition(metric_record SCHEMA_CATALOG.metric) RETURNS VOID
+AS $proc$
+DECLARE
+BEGIN
+        EXECUTE format($$
+           ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
+        $$, metric_record.table_name, metric_record.id);
+END;
+$proc$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) TO prom_writer;
+
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
 AS $proc$
 DECLARE
@@ -160,10 +178,8 @@ BEGIN
         --so, attaching a partition is better
         LOCK TABLE ONLY SCHEMA_CATALOG.series IN SHARE UPDATE EXCLUSIVE mode;
 
-        EXECUTE
-        format($$
-            ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
-        $$, r.table_name, r.id);
+        PERFORM SCHEMA_CATALOG.attach_series_partition(r);
+
         COMMIT;
     END LOOP;
 END;
@@ -188,6 +204,8 @@ DECLARE
 BEGIN
    EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
                     NEW.table_name);
+   EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA.%I TO prom_reader', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA.%I TO prom_writer', NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
 
@@ -196,14 +214,14 @@ BEGIN
             --Note: we intentionally do not partition by series_id here. The assumption is
             --that we'll have more "heavy metrics" than nodes and thus partitioning /individual/
             --metrics won't gain us much for inserts and would be detrimental for many queries.
-            PERFORM create_distributed_hypertable(
+            PERFORM public.create_distributed_hypertable(
                 format('SCHEMA_DATA.%I', NEW.table_name),
                 'time',
                 chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                 create_default_indexes=>false
             );
         ELSE
-            PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
+            PERFORM public.create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
             chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                              create_default_indexes=>false);
         END IF;
@@ -232,11 +250,17 @@ BEGIN
             CONSTRAINT series_pkey_%3$s PRIMARY KEY(id)
         ) WITH (autovacuum_vacuum_threshold = 100, autovacuum_analyze_threshold = 100)
     $$, NEW.table_name, label_id, NEW.id);
-
+   EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_SERIES.%I TO prom_reader', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_SERIES.%I TO prom_writer', NEW.table_name);
    RETURN NEW;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.make_metric_table() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.make_metric_table() TO prom_writer;
 
 DROP TRIGGER IF EXISTS make_metric_table_trigger ON SCHEMA_CATALOG.metric CASCADE;
@@ -1251,11 +1275,11 @@ BEGIN
         --chunks where the end time is before now()-1 hour will be compressed
         --per-ht compression policy only used for timescale 1.x
         IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+            PERFORM public.add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
         END IF;
     ELSE
         IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
+            PERFORM public.remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
         END IF;
 
         CALL SCHEMA_CATALOG.decompress_chunks_after(metric_table_name::name, timestamptz '-Infinity', transactional=>true);
@@ -1723,7 +1747,12 @@ BEGIN
     RETURN true;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_series_view(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series_view(text) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_view(
@@ -1763,7 +1792,12 @@ BEGIN
     RETURN true;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(name text, series_ids bigint[])
@@ -2012,11 +2046,17 @@ BEGIN
         --alter job schedule is not currently concurrency-safe (timescaledb issue #2165)
         PERFORM pg_advisory_xact_lock(ADVISORY_LOCK_PREFIX_JOB, bgw_job_id);
 
-        PERFORM alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
+        PERFORM public.alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
     END IF;
 END
 $$
-LANGUAGE PLPGSQL;
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) TO prom_writer;
 
 CALL execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
     --Decompression should take place in a procedure because we don't want locks held across
