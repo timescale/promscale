@@ -177,21 +177,54 @@ func parseFlags(conf *config, args []string) {
 	flag.BoolVar(&conf.progressEnabled, "progress-enabled", true, "This flag tells the migrator, whether or not to use the progress mechanism. It is helpful if you want to "+
 		"carry out migration with the same time-range. If this is enabled, the migrator will resume the migration from the last time, where it was stopped/interrupted. "+
 		"If you do not want any extra metric(s) while migration, you can set this to false. But, setting this to false will disable progress-metric and hence, the ability to resume migration.")
+
 	// Authentication.
-	// TODO: Auth/password via password_file and bearer_token via bearer_token_file.
 	flag.StringVar(&conf.readerAuth.Username, "read-auth-username", "", "Auth username for remote-read storage.")
-	flag.StringVar(&conf.readerAuth.Password, "read-auth-password", "", "Auth password for remote-read storage.")
-	flag.StringVar(&conf.readerAuth.BearerToken, "read-auth-bearer-token", "", "Bearer token for remote-read storage. "+
-		"This should be mutually exclusive with username and password.")
+	flag.StringVar(&conf.readerAuth.Password, "read-auth-password", "", "Auth password for remote-read storage. Mutually exclusive with password-file.")
+	flag.StringVar(&conf.readerAuth.PasswordFile, "read-auth-password-file", "", "Auth password-file for remote-read storage. Mutually exclusive with password.")
+	flag.StringVar(&conf.readerAuth.BearerToken, "read-auth-bearer-token", "", "Bearer-token for remote-read storage. "+
+		"This should be mutually exclusive with username and password and bearer-token file.")
+	flag.StringVar(&conf.readerAuth.BearerTokenFile, "read-auth-bearer-token-file", "", "Bearer-token file for remote-read storage. "+
+		"This should be mutually exclusive with username and password and bearer-token.")
+
 	flag.StringVar(&conf.writerAuth.Username, "write-auth-username", "", "Auth username for remote-write storage.")
-	flag.StringVar(&conf.writerAuth.Password, "write-auth-password", "", "Auth password for remote-write storage.")
-	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Bearer token for remote-write storage. "+
-		"This should be mutually exclusive with username and password.")
+	flag.StringVar(&conf.writerAuth.Password, "write-auth-password", "", "Auth password for remote-write storage. Mutually exclusive with password-file.")
+	flag.StringVar(&conf.writerAuth.PasswordFile, "write-auth-password-file", "", "Auth password-file for remote-write storage. Mutually exclusive with password.")
+	flag.StringVar(&conf.writerAuth.BearerToken, "write-auth-bearer-token", "", "Bearer-token for remote-write storage. "+
+		"This should be mutually exclusive with username and password and bearer-token file.")
+	flag.StringVar(&conf.writerAuth.BearerTokenFile, "write-auth-bearer-token-file", "", "Bearer-token for remote-write storage. "+
+		"This should be mutually exclusive with username and password and bearer-token.")
+
 	flag.StringVar(&conf.progressMetricAuth.Username, "progress-metric-auth-username", "", "Read auth username for remote-write storage.")
-	flag.StringVar(&conf.progressMetricAuth.Password, "progress-metric-password", "", "Read auth password for remote-write storage.")
-	flag.StringVar(&conf.progressMetricAuth.BearerToken, "progress-metric-bearer-token", "", "Read bearer token for remote-write storage. "+
-		"This should be mutually exclusive with username and password.")
+	flag.StringVar(&conf.progressMetricAuth.Password, "progress-metric-password", "", "Read auth password for remote-write storage. Mutually exclusive with password-file.")
+	flag.StringVar(&conf.progressMetricAuth.PasswordFile, "progress-metric-password-file", "", "Read auth password for remote-write storage. Mutually exclusive with password.")
+	flag.StringVar(&conf.progressMetricAuth.BearerToken, "progress-metric-bearer-token", "", "Read bearer-token for remote-write storage. "+
+		"This should be mutually exclusive with username and password and bearer-token file.")
+	flag.StringVar(&conf.progressMetricAuth.BearerTokenFile, "progress-metric-bearer-token-file", "", "Read bearer-token for remote-write storage. "+
+		"This should be mutually exclusive with username and password and bearer-token.")
+
 	// TLS configurations.
+	// TODO: Update prom-migrator cli param doc.
+	// Reader.
+	flag.StringVar(&conf.readerAuth.TLSConfig.CAFile, "reader-tls-ca-file", "", "TLS CA file for remote-read component.")
+	flag.StringVar(&conf.readerAuth.TLSConfig.CertFile, "reader-tls-cert-file", "", "TLS certificate file for remote-read component.")
+	flag.StringVar(&conf.readerAuth.TLSConfig.KeyFile, "reader-tls-key-file", "", "TLS key file for remote-read component.")
+	flag.StringVar(&conf.readerAuth.TLSConfig.ServerName, "reader-tls-server-name", "", "TLS server name for remote-read component.")
+	flag.BoolVar(&conf.readerAuth.TLSConfig.InsecureSkipVerify, "reader-tls-insecure-skip-verify", false, "TLS insecure skip verify for remote-read component.")
+
+	// Writer.
+	flag.StringVar(&conf.writerAuth.TLSConfig.CAFile, "writer-tls-ca-file", "", "TLS CA file for remote-writer component.")
+	flag.StringVar(&conf.writerAuth.TLSConfig.CertFile, "writer-tls-cert-file", "", "TLS certificate file for remote-writer component.")
+	flag.StringVar(&conf.writerAuth.TLSConfig.KeyFile, "writer-tls-key-file", "", "TLS key file for remote-writer component.")
+	flag.StringVar(&conf.writerAuth.TLSConfig.ServerName, "writer-tls-server-name", "", "TLS server name for remote-writer component.")
+	flag.BoolVar(&conf.writerAuth.TLSConfig.InsecureSkipVerify, "writer-tls-insecure-skip-verify", false, "TLS insecure skip verify for remote-writer component.")
+
+	// Progress-metric storage.
+	flag.StringVar(&conf.progressMetricAuth.TLSConfig.CAFile, "progress-metric-tls-ca-file", "", "TLS CA file for progress-metric component.")
+	flag.StringVar(&conf.progressMetricAuth.TLSConfig.CertFile, "progress-metric-tls-cert-file", "", "TLS certificate file for progress-metric component.")
+	flag.StringVar(&conf.progressMetricAuth.TLSConfig.KeyFile, "progress-metric-tls-key-file", "", "TLS key file for progress-metric component.")
+	flag.StringVar(&conf.progressMetricAuth.TLSConfig.ServerName, "progress-metric-tls-server-name", "", "TLS server name for progress-metric component.")
+	flag.BoolVar(&conf.progressMetricAuth.TLSConfig.InsecureSkipVerify, "progress-metric-tls-insecure-skip-verify", false, "TLS insecure skip verify for progress-metric component.")
 
 	_ = flag.CommandLine.Parse(args)
 	convertSecFlagToMs(conf)
@@ -239,6 +272,8 @@ func validateConf(conf *config) error {
 	case conf.progressEnabled && strings.TrimSpace(conf.progressMetricURL) == "":
 		return fmt.Errorf("invalid input: read url for remote-write storage should be provided when progress metric is enabled. To disable progress metric, use -progress-enabled=false")
 	}
+
+	// Validate auths.
 	httpConfig := conf.readerAuth.ToHTTPClientConfig()
 	if err := httpConfig.Validate(); err != nil {
 		return fmt.Errorf("reader auth validation: %w", err)
@@ -246,6 +281,10 @@ func validateConf(conf *config) error {
 	httpConfig = conf.writerAuth.ToHTTPClientConfig()
 	if err := httpConfig.Validate(); err != nil {
 		return fmt.Errorf("writer auth validation: %w", err)
+	}
+	httpConfig = conf.progressMetricAuth.ToHTTPClientConfig()
+	if err := httpConfig.Validate(); err != nil {
+		return fmt.Errorf("progress-metric storage auth validation: %w", err)
 	}
 
 	maxSlabSizeBytes, err := bytesize.Parse(conf.maxSlabSize)

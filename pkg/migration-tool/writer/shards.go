@@ -3,11 +3,11 @@ package writer
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/common/config"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"

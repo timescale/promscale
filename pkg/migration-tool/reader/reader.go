@@ -52,47 +52,47 @@ func New(config Config) (*Read, error) {
 }
 
 // Run runs the remote read and starts fetching the samples from the read storage.
-func (rr *Read) Run(errChan chan<- error) {
+func (r *Read) Run(errChan chan<- error) {
 	var (
 		err     error
 		slabRef *plan.Slab
 	)
 	go func() {
 		defer func() {
-			close(rr.SigSlabRead)
+			close(r.SigSlabRead)
 			log.Info("msg", "reader is down")
 			close(errChan)
 		}()
 		log.Info("msg", "reader is up")
 		select {
-		case <-rr.Context.Done():
+		case <-r.Context.Done():
 			return
 		default:
 		}
-		for rr.Plan.ShouldProceed() {
+		for r.Plan.ShouldProceed() {
 			select {
-			case <-rr.Context.Done():
+			case <-r.Context.Done():
 				return
-			case <-rr.SigSlabStop:
+			case <-r.SigSlabStop:
 				return
 			default:
 			}
-			slabRef, err = rr.Plan.NextSlab()
+			slabRef, err = r.Plan.NextSlab()
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
 			ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")}
-			err = slabRef.Fetch(rr.Context, rr.client, slabRef.Mint(), slabRef.Maxt(), ms)
+			err = slabRef.Fetch(r.Context, r.client, slabRef.Mint(), slabRef.Maxt(), ms)
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
 			if slabRef.IsEmpty() {
-				rr.Plan.DecrementSlabCount()
+				r.Plan.DecrementSlabCount()
 				continue
 			}
-			rr.SigSlabRead <- slabRef
+			r.SigSlabRead <- slabRef
 			slabRef = nil
 		}
 	}()
