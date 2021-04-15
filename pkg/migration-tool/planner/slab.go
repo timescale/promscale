@@ -125,7 +125,11 @@ func (s *Slab) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64
 	close(responseChan)
 	// Combine and append samples.
 	if totalRequests > 1 {
-		s.timeseries = s.mergeSubSlabsToSlab(pendingResponses)
+		ts, err := s.mergeSubSlabsToSlab(pendingResponses)
+		if err != nil {
+			return fmt.Errorf("merge subSlabs into a slab: %w", err)
+		}
+		s.timeseries = ts
 		s.SetDescription("finished combining series", 1)
 	} else {
 		// Short path optimization. When not fetching concurrently, we can skip from memory allocations.
@@ -144,25 +148,24 @@ func (s *Slab) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64
 	return nil
 }
 
-func (s *Slab) mergeSubSlabsToSlab(subSlabs []*utils.PrompbResponse) []*prompb.TimeSeries {
-	l := len(subSlabs)
+func (s *Slab) mergeSubSlabsToSlab(subSlabs []*utils.PrompbResponse) ([]*prompb.TimeSeries, error) {
 	s.UpdatePBarMax(s.PBarMax() + 2)
-	s.SetDescription(fmt.Sprintf("combining fetched series from %d responses", l), 1)
+	s.SetDescription(fmt.Sprintf("combining fetched series from %d responses", len(subSlabs)), 1)
 	timeseries := make(map[string]*prompb.TimeSeries)
-	for i := 0; i < l; i++ {
+	for i := 0; i < len(subSlabs); i++ {
 		ts := subSlabs[i].Result.Timeseries
 		for _, series := range ts {
-			if s, ok := timeseries[getLabelsStr(series.Labels)]; len(series.Samples) > 0 && ok {
+			labelsStr := getLabelsStr(series.Labels)
+			if s, ok := timeseries[labelsStr]; len(series.Samples) > 0 && ok {
 				l := len(s.Samples)
 				if len(s.Samples) > 1 && s.Samples[l-1].Timestamp == series.Samples[0].Timestamp {
-					// Edge case: When concurrent pulls makes the remote-storage send duplicate samples that was sent
-					// in previous concurrent time-range pull.
-					s.Samples = append(s.Samples, series.Samples[1:]...)
-				} else {
-					s.Samples = append(s.Samples, series.Samples...)
+					return nil, fmt.Errorf("overlapping samples detected when fetching data from read storage. " +
+						"Please report an issue at https://github.com/timescale/promscale/issues with details about your " +
+						"migration and the name of read storage system")
 				}
+				s.Samples = append(s.Samples, series.Samples...)
 			} else {
-				timeseries[getLabelsStr(series.Labels)] = series
+				timeseries[labelsStr] = series
 			}
 		}
 	}
@@ -173,14 +176,16 @@ func (s *Slab) mergeSubSlabsToSlab(subSlabs []*utils.PrompbResponse) []*prompb.T
 		series[i] = ts
 		i++
 	}
-	return series
+	return series, nil
 }
 
 func getLabelsStr(lbls []prompb.Label) (ls string) {
 	for i := 0; i < len(lbls); i++ {
 		ls += fmt.Sprintf("%s|%s|", lbls[i].Name, lbls[i].Value)
 	}
-	ls = ls[:len(ls)-1] // Ignore the ending '|'.
+	if len(lbls) > 1 {
+		ls = ls[:len(ls)-1] // Ignore the ending '|'.
+	}
 	return
 }
 
