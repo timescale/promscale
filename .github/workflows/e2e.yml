@@ -2,14 +2,14 @@ name: End-to-end test
 
 on:
   push:
-    branches: [master, main, force_test, release-*]
+    branches: [master, main, force_test, release-*, staging, trying]
   pull_request:
     branches: [master, main, force_test, release-*]
 
 jobs:
 
   build:
-    name: Run
+    name: Bash End-to-End Tests
     runs-on: ubuntu-latest
     steps:
 
