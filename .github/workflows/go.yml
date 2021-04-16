@@ -2,14 +2,14 @@ name: Go
 
 on:
   push:
-    branches: [master, main, force_test, release-*]
+    branches: [master, main, force_test, release-*, staging, trying]
   pull_request:
     branches: ['**']
 
 jobs:
 
   build:
-    name: Build
+    name: Build and Lint
     runs-on: ubuntu-latest
     steps:
 
@@ -54,7 +54,7 @@ jobs:
       run: go build -v ./...
 
   test:
-    name: Test
+    name: Go Tests
     runs-on: ubuntu-latest
     steps:
 
@@ -94,7 +94,7 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: complete-test-run.log 
+        name: complete-test-run.log
         path: complete-test-run.log
         retention-days: 5
 
@@ -104,7 +104,7 @@ jobs:
         git diff --exit-code
 
   test-end-to-end:
-    name: Test end-to-end extension combinations
+    name: Go End-to-End Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -161,6 +161,6 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ matrix.test-setups.shortname }}-test-run.log 
+        name: ${{ matrix.test-setups.shortname }}-test-run.log
         path: ${{ matrix.test-setups.shortname }}-test-run.log
         retention-days: 5
