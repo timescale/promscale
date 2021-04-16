@@ -31,6 +31,7 @@ type Config struct {
 	SslMode                 string
 	DbConnectRetries        int
 	DbConnectionTimeout     time.Duration
+	IgnoreCompressedChunks  bool
 	AsyncAcks               bool
 	ReportInterval          int
 	WriteConnectionsPerProc int
@@ -61,7 +62,8 @@ var (
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	cache.ParseFlags(fs, &cfg.CacheConfig)
 
-	fs.StringVar(&cfg.AppName, "app", DefaultApp, "'app' sets application_name in database connection string. This is helpful during debugging when looking at pg_stat_activity.")
+	fs.StringVar(&cfg.AppName, "app", DefaultApp, "'app' sets application_name in database connection string. "+
+		"This is helpful during debugging when looking at pg_stat_activity.")
 	fs.StringVar(&cfg.Host, "db-host", defaultDBHost, "Host for TimescaleDB/Vanilla Postgres.")
 	fs.IntVar(&cfg.Port, "db-port", defaultDBPort, "TimescaleDB/Vanilla Postgres connection password.")
 	fs.StringVar(&cfg.User, "db-user", defaultDBUser, "TimescaleDB/Vanilla Postgres user.")
@@ -70,12 +72,19 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.StringVar(&cfg.SslMode, "db-ssl-mode", defaultSSLMode, "TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass 'allow' as value.")
 	fs.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "Number of retries Promscale should make for establishing connection with the database.")
 	fs.DurationVar(&cfg.DbConnectionTimeout, "db-connection-timeout", defaultConnectionTime, "Timeout for establishing the connection between Promscale and TimescaleDB.")
-	fs.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
+	fs.BoolVar(&cfg.IgnoreCompressedChunks, "ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
+		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
+		"However, setting this to true will save your resources that may be required during decompression. ")
+	fs.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge asynchronous inserts. "+
+		"If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
 	fs.IntVar(&cfg.ReportInterval, "tput-report", 0, "Interval in seconds at which throughput should be reported.")
 	fs.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "Maximum number of database connections for writing per go process.")
-	fs.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle.")
-	fs.StringVar(&cfg.DbUri, "db-uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
-	fs.BoolVar(&cfg.EnableStatementsCache, "db-statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. Disable if using PgBouncer")
+	fs.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum number of connections to the database that should be opened at once. "+
+		"It defaults to 80% of the maximum connections that the database can handle.")
+	fs.StringVar(&cfg.DbUri, "db-uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. "+
+		"Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
+	fs.BoolVar(&cfg.EnableStatementsCache, "db-statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
+		"Disable if using PgBouncer")
 	return cfg
 }
 

@@ -26,8 +26,8 @@ var (
 		"2006-01-02T15:04:05.000Z07:00",
 	)
 
-	logStoreMux sync.Mutex
-	logStore    = make(map[string][]interface{})
+	logMux   sync.RWMutex
+	logStore = make(map[key][]interface{})
 )
 
 // Config represents a logger configuration used upon initialization.
@@ -113,7 +113,12 @@ func parseLogLevel(logLevel string) (level.Option, error) {
 	}
 }
 
-const logOnceTimedDuration = time.Minute
+const (
+	logOnceTimedDuration = time.Minute
+
+	debug = iota
+	warn
+)
 
 // timedLogger logs from logStore every logOnceTimedDuration. It deletes the log entry from the store
 // after it has logged once.
@@ -124,24 +129,49 @@ func timedLogger() {
 		newLogMsg = append(newLogMsg, logMsg...)
 		return
 	}
-	logStoreMux.Lock()
-	defer logStoreMux.Unlock()
-	for _, logMsg := range logStore {
-		Debug(applyKind(logMsg)...)
+	logMux.Lock()
+	defer logMux.Unlock()
+	for k, line := range logStore {
+		switch k.typ {
+		case debug:
+			Debug(applyKind(line)...)
+		case warn:
+			Warn(applyKind(line)...)
+		default:
+			panic("invalid type")
+		}
 	}
-	logStore = make(map[string][]interface{})
+	logStore = make(map[key][]interface{}) // Clear stale logs.
+}
+
+type key struct {
+	typ uint8
+	k   string
+}
+
+func rateLimit(typ uint8, keyvals ...interface{}) {
+	kv := fmt.Sprintf("%v", keyvals)
+	k := key{typ, kv}
+	logMux.RLock()
+	_, contains := logStore[k]
+	logMux.RUnlock()
+	if contains {
+		return
+	}
+	logMux.Lock()
+	defer logMux.Unlock()
+	if len(logStore) == 0 {
+		go timedLogger()
+	}
+	logStore[k] = keyvals
+}
+
+// WarnRateLimited warns once in every logOnceTimedDuration.
+func WarnRateLimited(keyvals ...interface{}) {
+	rateLimit(warn, keyvals...)
 }
 
 // DebugRateLimited logs Debug level logs once in every logOnceTimedDuration.
 func DebugRateLimited(keyvals ...interface{}) {
-	logStoreMux.Lock()
-	defer logStoreMux.Unlock()
-	val := fmt.Sprintf("%v", keyvals)
-	if len(logStore) == 0 {
-		go timedLogger()
-	}
-	if _, toBeLogged := logStore[val]; toBeLogged {
-		return
-	}
-	logStore[val] = keyvals
+	rateLimit(debug, keyvals...)
 }

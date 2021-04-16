@@ -643,7 +643,7 @@ func TestSQLQuery(t *testing.T) {
 }
 
 func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.TimeSeries) {
-	ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+	ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

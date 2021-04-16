@@ -30,7 +30,7 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 		if *extendedTest {
 			ts = generateRealTimeseries()
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

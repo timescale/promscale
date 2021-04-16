@@ -105,7 +105,7 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			ts = generateRealTimeseries()
 		}
 
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -214,7 +214,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		if *extendedTest {
 			ts = generateRealTimeseries()
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -320,7 +320,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 		if *extendedTest {
 			ts = generateRealTimeseries()
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -470,7 +470,7 @@ func TestDeleteMixins(t *testing.T) {
 		if *extendedTest {
 			ts = generateRealTimeseries()
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

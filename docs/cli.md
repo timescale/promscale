@@ -75,8 +75,9 @@ You can also find information on flags with `promscale_<version> -help`.
 | db-ssl-mode | string | require | TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass `allow` as value. |
 | db-writer-connection-concurrency | integer | 4 | Maximum number of database connections for writing per go process. |
 | db-uri | string | | TimescaleDB/Vanilla PostgresSQL URI. Example:`postgres://postgres:password@localhost:5432/timescale?sslmode=require` |
-| async-acks | boolean | false | Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss. |
 | db-statements-cache | boolean | true | Whether database connection pool should use cached prepared statements. Disable if using PgBouncer. |
+| ignore-samples-written-to-compressed-chunks | boolean | false | Ignore/drop samples that are being written to compressed chunks. Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. However, setting this to true will save your resources that may be required during decompression. |
+| async-acks | boolean | false | Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss. |
 
 ## PromQL engine evaluation flags
 
