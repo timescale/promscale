@@ -20,7 +20,6 @@ import (
 
 const (
 	promLivenessCheck = time.Second
-	schemaLockId      = 0x4D829C732AAFCEDE // chosen randomly.
 )
 
 var (
