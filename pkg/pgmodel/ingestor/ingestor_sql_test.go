@@ -220,7 +220,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
 
-			inserter := insertHandler{
+			inserter := metricBatcher{
 				conn: mock,
 			}
 
@@ -368,10 +368,10 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	mock := model.NewSqlRecorder(sqlQueries, t)
 	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 
-	handler := insertHandler{
+	handler := metricBatcher{
 		conn: mock,
 	}
-	inserter := pgxInserter{
+	inserter := pgxDispatcher{
 		conn:   mock,
 		scache: scache,
 	}
@@ -737,7 +737,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				MetricCache:  metricCache,
 				GetMetricErr: c.metricsGetErr,
 			}
-			inserter, err := newPgxInserter(mock, mockMetrics, scache, &Cfg{DisableEpochSync: true})
+			inserter, err := newPgxDispatcher(mock, mockMetrics, scache, &Cfg{DisableEpochSync: true})
 			if err != nil {
 				t.Fatal(err)
 			}

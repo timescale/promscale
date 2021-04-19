@@ -7,8 +7,11 @@ package ingestor
 import (
 	"context"
 	"fmt"
+
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -17,7 +20,7 @@ import (
 
 const seriesInsertSQL = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
 
-type insertHandler struct {
+type metricBatcher struct {
 	conn            pgxconn.PgxConn
 	input           chan *insertDataRequest
 	pending         *pendingBuffer
@@ -26,7 +29,101 @@ type insertHandler struct {
 	labelArrayOID   uint32
 }
 
-func (h *insertHandler) blockingHandleReq() bool {
+// Create the metric table for the metric we handle, if it does not already
+// exist. This only does the most critical part of metric table creation, the
+// rest is handled by completeMetricTableCreation().
+func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
+	tableName, err = metricTableNames.Get(metricName)
+	if err == errors.ErrEntryNotFound {
+		var possiblyNew bool
+		tableName, possiblyNew, err = model.MetricTableName(conn, metricName)
+		if err != nil {
+			return "", err
+		}
+
+		//ignore error since this is just an optimization
+		_ = metricTableNames.Set(metricName, tableName)
+
+		if possiblyNew {
+			//pass a signal if there is space
+			select {
+			case completeMetricCreationSignal <- struct{}{}:
+			default:
+			}
+		}
+	} else if err != nil {
+		return "", err
+	}
+	return tableName, err
+}
+
+func runMetricBatcher(conn pgxconn.PgxConn,
+	input chan *insertDataRequest,
+	metricName string,
+	completeMetricCreationSignal chan struct{},
+	metricTableNames cache.MetricCache,
+	toCopiers chan copyRequest,
+	labelArrayOID uint32) {
+
+	var tableName string
+	var firstReq *insertDataRequest
+	firstReqSet := false
+	for firstReq = range input {
+		var err error
+		tableName, err = initializeMetricBatcher(conn, metricName, completeMetricCreationSignal, metricTableNames)
+		if err != nil {
+			firstReq.reportResult(fmt.Errorf("initializing the insert routine has failed with %w", err))
+		} else {
+			firstReqSet = true
+			break
+		}
+	}
+
+	//input channel was closed before getting a successful request
+	if !firstReqSet {
+		return
+	}
+
+	handler := metricBatcher{
+		conn:            conn,
+		input:           input,
+		pending:         NewPendingBuffer(),
+		metricTableName: tableName,
+		toCopiers:       toCopiers,
+		labelArrayOID:   labelArrayOID,
+	}
+
+	handler.handleReq(firstReq)
+
+	// Grab new requests from our channel and handle them. We do this hot-load
+	// style: we keep grabbing requests off the channel while we can do so
+	// without blocking, and flush them to the next layer when we run out, or
+	// reach a predetermined threshold. The theory is that wake/sleep and
+	// flushing is relatively expensive, and can be easily amortized over
+	// multiple requests, so it pays to batch as much as we are able. However,
+	// writes to a given metric can be relatively rare, so if we don't have
+	// additional requests immediately we're likely not going to for a while.
+	for {
+		if handler.pending.IsEmpty() {
+			stillAlive := handler.blockingHandleReq()
+			if !stillAlive {
+				return
+			}
+			continue
+		}
+
+	hotReceive:
+		for handler.nonblockingHandleReq() {
+			if handler.pending.IsFull() {
+				break hotReceive
+			}
+		}
+
+		handler.flush()
+	}
+}
+
+func (h *metricBatcher) blockingHandleReq() bool {
 	req, ok := <-h.input
 	if !ok {
 		return false
@@ -37,7 +134,7 @@ func (h *insertHandler) blockingHandleReq() bool {
 	return true
 }
 
-func (h *insertHandler) nonblockingHandleReq() bool {
+func (h *metricBatcher) nonblockingHandleReq() bool {
 	select {
 	case req := <-h.input:
 		h.handleReq(req)
@@ -47,7 +144,7 @@ func (h *insertHandler) nonblockingHandleReq() bool {
 	}
 }
 
-func (h *insertHandler) handleReq(req *insertDataRequest) bool {
+func (h *metricBatcher) handleReq(req *insertDataRequest) bool {
 	h.pending.addReq(req)
 	if h.pending.IsFull() {
 		h.flushPending()
@@ -56,7 +153,7 @@ func (h *insertHandler) handleReq(req *insertDataRequest) bool {
 	return false
 }
 
-func (h *insertHandler) flush() {
+func (h *metricBatcher) flush() {
 	if h.pending.IsEmpty() {
 		return
 	}
@@ -64,7 +161,7 @@ func (h *insertHandler) flush() {
 }
 
 // Set all unset SeriesIds and flush to the next layer
-func (h *insertHandler) flushPending() {
+func (h *metricBatcher) flushPending() {
 	err := h.setSeriesIds(h.pending.batch.GetSeriesSamples())
 	if err != nil {
 		h.pending.reportResults(err)
@@ -89,7 +186,7 @@ func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} 
 // and repopulating the cache accordingly.
 // returns: the tableName for the metric being inserted into
 // TODO move up to the rest of insertHandler
-func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
+func (h *metricBatcher) setSeriesIds(seriesSamples []model.Samples) error {
 	seriesToInsert := make([]*model.Series, 0, len(seriesSamples))
 	for i, series := range seriesSamples {
 		if !series.GetSeries().IsSeriesIDSet() {
@@ -183,7 +280,7 @@ func (h *insertHandler) setSeriesIds(seriesSamples []model.Samples) error {
 	return nil
 }
 
-func (h *insertHandler) fillLabelIDs(metricName string, labelList *model.LabelList, labelMap map[labels.Label]labelInfo) (model.SeriesEpoch, int, error) {
+func (h *metricBatcher) fillLabelIDs(metricName string, labelList *model.LabelList, labelMap map[labels.Label]labelInfo) (model.SeriesEpoch, int, error) {
 	//we cannot use the label cache here because that maps label ids => name, value.
 	//what we need here is name, value => id.
 	//we may want a new cache for that, at a later time.

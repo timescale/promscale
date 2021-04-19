@@ -254,9 +254,9 @@ func TestDBIngestorIngest(t *testing.T) {
 				InsertedSeries:  make(map[string]model.SeriesID),
 			}
 			i := DBIngestor{
-				db:     &inserter,
-				sCache: sCache,
-				parser: Parser{sCache: sCache},
+				dispatcher: &inserter,
+				sCache:     sCache,
+				parser:     Parser{sCache: sCache},
 			}
 
 			if c.ha {

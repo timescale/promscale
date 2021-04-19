@@ -23,20 +23,20 @@ type Cfg struct {
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
-	db     model.Inserter
-	sCache cache.SeriesCache
-	parser Parser
+	dispatcher model.Dispatcher
+	sCache     cache.SeriesCache
+	parser     Parser
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
 func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, parser Parser, cfg *Cfg) (*DBIngestor, error) {
-	pi, err := newPgxInserter(conn, cache, sCache, cfg)
+	dispatcher, err := newPgxDispatcher(conn, cache, sCache, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DBIngestor{db: pi, sCache: sCache, parser: parser}, nil
+	return &DBIngestor{dispatcher: dispatcher, sCache: sCache, parser: parser}, nil
 }
 
 // NewPgxIngestorForTests returns a new Ingestor that write to PostgreSQL using PGX
@@ -68,7 +68,7 @@ func (ingestor *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteReq
 		return 0, err
 	}
 
-	rowsInserted, err := ingestor.db.InsertNewData(data)
+	rowsInserted, err := ingestor.dispatcher.InsertData(data)
 	if err == nil && int(rowsInserted) != totalRows {
 		return rowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}
@@ -77,10 +77,10 @@ func (ingestor *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteReq
 
 // Parts of metric creation not needed to insert data
 func (ingestor *DBIngestor) CompleteMetricCreation() error {
-	return ingestor.db.CompleteMetricCreation()
+	return ingestor.dispatcher.CompleteMetricCreation()
 }
 
 // Close closes the ingestor
 func (ingestor *DBIngestor) Close() {
-	ingestor.db.Close()
+	ingestor.dispatcher.Close()
 }

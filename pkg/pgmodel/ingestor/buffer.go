@@ -7,21 +7,32 @@ package ingestor
 import (
 	"sync"
 
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
-const (
-	// maximum number of insertDataRequests that should be buffered before the
-	// insertHandler flushes to the next layer. We don't want too many as this
-	// increases the number of lost writes if the connector dies. This number
-	// was chosen arbitrarily.
-	flushSize                = 2000
-	getCreateMetricsTableSQL = "SELECT table_name FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
-	finalizeMetricCreation   = "CALL " + schema.Catalog + ".finalize_metric_creation()"
-	getEpochSQL              = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
-	maxCopyRequestsPerTxn    = 100
-)
+// maximum number of insertDataRequests that should be buffered before the
+// insertHandler flushes to the next layer. We don't want too many as this
+// increases the number of lost writes if the connector dies. This number
+// was chosen arbitrarily.
+const flushSize = 2000
+
+type insertDataTask struct {
+	finished *sync.WaitGroup
+	errChan  chan error
+}
+
+// Report that this task is completed, along with any error that may have
+// occurred. Since this is a back-edge on the goroutine graph, it
+// _must never block_: blocking here will cause deadlocks.
+func (idt *insertDataTask) reportResult(err error) {
+	if err != nil {
+		select {
+		case idt.errChan <- err:
+		default:
+		}
+	}
+	idt.finished.Done()
+}
 
 type pendingBuffer struct {
 	needsResponse []insertDataTask

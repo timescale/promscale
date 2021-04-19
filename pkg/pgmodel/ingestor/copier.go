@@ -16,13 +16,13 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
+
+const maxCopyRequestsPerTxn = 100
 
 type copyRequest struct {
 	data  *pendingBuffer
@@ -31,110 +31,16 @@ type copyRequest struct {
 
 var getBatchMutex = &sync.Mutex{}
 
-// Create the metric table for the metric we handle, if it does not already
-// exist. This only does the most critical part of metric table creation, the
-// rest is handled by completeMetricTableCreation().
-func initializeInserterRoutine(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
-	tableName, err = metricTableNames.Get(metricName)
-	if err == errors.ErrEntryNotFound {
-		var possiblyNew bool
-		tableName, possiblyNew, err = pgmodel.MetricTableName(conn, metricName)
-		if err != nil {
-			return "", err
-		}
-
-		//ignore error since this is just an optimization
-		_ = metricTableNames.Set(metricName, tableName)
-
-		if possiblyNew {
-			//pass a signal if there is space
-			select {
-			case completeMetricCreationSignal <- struct{}{}:
-			default:
-			}
-		}
-	} else if err != nil {
-		return "", err
-	}
-	return tableName, err
-}
-
-func runInserterRoutine(conn pgxconn.PgxConn,
-	input chan *insertDataRequest,
-	metricName string,
-	completeMetricCreationSignal chan struct{},
-	metricTableNames cache.MetricCache,
-	toCopiers chan copyRequest,
-	labelArrayOID uint32) {
-
-	var tableName string
-	var firstReq *insertDataRequest
-	firstReqSet := false
-	for firstReq = range input {
-		var err error
-		tableName, err = initializeInserterRoutine(conn, metricName, completeMetricCreationSignal, metricTableNames)
-		if err != nil {
-			firstReq.reportResult(fmt.Errorf("initializing the insert routine has failed with %w", err))
-		} else {
-			firstReqSet = true
-			break
-		}
-	}
-
-	//input channel was closed before getting a successful request
-	if !firstReqSet {
-		return
-	}
-
-	handler := insertHandler{
-		conn:            conn,
-		input:           input,
-		pending:         NewPendingBuffer(),
-		metricTableName: tableName,
-		toCopiers:       toCopiers,
-		labelArrayOID:   labelArrayOID,
-	}
-
-	handler.handleReq(firstReq)
-
-	// Grab new requests from our channel and handle them. We do this hot-load
-	// style: we keep grabbing requests off the channel while we can do so
-	// without blocking, and flush them to the next layer when we run out, or
-	// reach a predetermined threshold. The theory is that wake/sleep and
-	// flushing is relatively expensive, and can be easily amortized over
-	// multiple requests, so it pays to batch as much as we are able. However,
-	// writes to a given metric can be relatively rare, so if we don't have
-	// additional requests immediately we're likely not going to for a while.
-	for {
-		if handler.pending.IsEmpty() {
-			stillAlive := handler.blockingHandleReq()
-			if !stillAlive {
-				return
-			}
-			continue
-		}
-
-	hotReceive:
-		for handler.nonblockingHandleReq() {
-			if handler.pending.IsFull() {
-				break hotReceive
-			}
-		}
-
-		handler.flush()
-	}
-}
-
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runInserter(conn pgxconn.PgxConn, in chan copyRequest) {
+func runCopier(conn pgxconn.PgxConn, in chan copyRequest) {
 	// We grab copyRequests off the channel one at a time. This, and the name is
 	// a legacy from when we used CopyFrom to perform the insertions, and may
 	// change in the future.
 	insertBatch := make([]copyRequest, 0, maxCopyRequestsPerTxn)
 	for {
 		var ok bool
-		insertBatch, ok = inserterGetBatch(insertBatch, in)
+		insertBatch, ok = copierGetBatch(insertBatch, in)
 		if !ok {
 			return
 		}
@@ -174,7 +80,7 @@ func runInserter(conn pgxconn.PgxConn, in chan copyRequest) {
 	}
 }
 
-func inserterGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, bool) {
+func copierGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, bool) {
 	//This mutex is not for safety, but rather for better batching.
 	//It guarantees that only one copier is reading from the channel at one time
 	//This ensures bigger batches as well as less spread of a
