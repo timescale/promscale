@@ -1078,6 +1078,8 @@ github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635/go.mod h1:hkRG
 github.com/tchap/go-patricia v2.2.6+incompatible/go.mod h1:bmLyhP68RS6kStMGxByiQ23RP/odRBOTVjwp2cDyi6I=
 github.com/testcontainers/testcontainers-go v0.10.0 h1:ASWe0nwTNg5z8K3WSQ8aBNB6j5vrNJocFPEZF4NS0qI=
 github.com/testcontainers/testcontainers-go v0.10.0/go.mod h1:zFYk0JndthnMHEwtVRHCpLwIP/Ik1G7mvIAQ2MdZ+Ig=
+github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514 h1:Gw0AVZdk8yF5sJL50bGWv8cZqYZn55JisAdT9rrvJVc=
+github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514/go.mod h1:zFYk0JndthnMHEwtVRHCpLwIP/Ik1G7mvIAQ2MdZ+Ig=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
 github.com/tinylib/msgp v1.0.2/go.mod h1:+d+yLhGm8mzTaHzB+wgMYrodPfmZrzkirds8fDWklFE=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
