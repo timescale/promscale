@@ -24,7 +24,8 @@ You can also find information on flags with `promscale_<version> -help`.
 | migrate | string | true | Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. |
 | read-only | boolean | false | Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica. |
 | use-schema-version-lease | boolean | true | Use schema version lease to prevent race conditions during migration. |
-| tput-report | integer | 0 (disabled) | Interval in seconds at which throughput should be reported. |
+| async-acks | boolean | false | Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss. |
+| tput-report | duration | 1 second | Interval in seconds at which throughput should be reported. Setting it to `0` will disable reporting throughput. |
 | tls-cert-file | string | "" (disabled) | TLS certificate file path for web server. To disable TLS, leave this field as blank. |
 | tls-key-file | string | "" (disabled) | TLS key file path for web server. To disable TLS, leave this field as blank. |
 | web-cors-origin | string | `.*` |  Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com' |

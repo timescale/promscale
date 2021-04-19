@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -23,6 +24,7 @@ import (
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/runner"
+	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -47,6 +49,10 @@ var (
 	// extensionState expects setExtensionState() to be called before using its value.
 	extensionState testhelpers.ExtensionState
 )
+
+func init() {
+	tput.InitWatcher(time.Second)
+}
 
 // setExtensionState sets the value of extensionState based on the input flags.
 func setExtensionState() {

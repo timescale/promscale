@@ -58,7 +58,7 @@ func TestInitElector(t *testing.T) {
 	}
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			metrics := api.InitMetrics(0)
+			metrics := api.InitMetrics()
 			elector, err := initElector(c.cfg, metrics)
 
 			switch {

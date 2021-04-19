@@ -14,8 +14,10 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
 
 const (
@@ -33,7 +35,6 @@ type pgxDispatcher struct {
 	batchers               sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
-	insertedDatapoints     *int64
 	toCopiers              chan<- copyRequest
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
@@ -70,25 +71,12 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		metricTableNames:       cache,
 		scache:                 scache,
 		completeMetricCreation: make(chan struct{}, 1),
-		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
 		doneChannel:        make(chan struct{}),
 	}
-	runThroughputWatcher(inserter.doneChannel)
-	if cfg.AsyncAcks && cfg.ReportInterval > 0 {
-		inserter.insertedDatapoints = new(int64)
-		reportInterval := int64(cfg.ReportInterval)
-		go func() {
-			log.Info("msg", fmt.Sprintf("outputting throughput info once every %ds", reportInterval))
-			tick := time.Tick(time.Duration(reportInterval) * time.Second)
-			for range tick {
-				inserted := atomic.SwapInt64(inserter.insertedDatapoints, 0)
-				log.Info("msg", "Samples write throughput", "samples/sec", inserted/reportInterval)
-			}
-		}()
-	}
+	runBatchWatcher(inserter.doneChannel)
 
 	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&inserter.labelArrayOID)
 	if err != nil {
@@ -196,8 +184,9 @@ func (p *pgxDispatcher) Close() {
 func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 	var (
 		numRows      uint64
+		maxt         int64
 		rows         = dataTS.Rows
-		workFinished = &sync.WaitGroup{}
+		workFinished = new(sync.WaitGroup)
 	)
 	workFinished.Add(len(rows))
 	// we only allocate enough space for a single error message here as we only
@@ -207,6 +196,12 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 	for metricName, data := range rows {
 		for _, si := range data {
 			numRows += uint64(si.CountSamples())
+			ls := si.LastSample()
+			if maxt < ls.Timestamp {
+				// Since by default, samples are expected to arrive in sorted order with time,
+				// the last sample should be the maxt of that series. This assumption helps avoid costly inner loops.
+				maxt = ls.Timestamp
+			}
 		}
 		// the following is usually non-blocking, just a channel insert
 		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
@@ -225,6 +220,7 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 		case err = <-errChan:
 		default:
 		}
+		postIngestTasks(maxt, numRows, 0)
 		close(errChan)
 	} else {
 		go func() {
@@ -237,9 +233,8 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 			close(errChan)
 			if err != nil {
 				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "err", err)
-			} else if p.insertedDatapoints != nil {
-				atomic.AddInt64(p.insertedDatapoints, int64(numRows))
 			}
+			postIngestTasks(maxt, numRows, 0)
 		}()
 	}
 
@@ -252,10 +247,23 @@ func (p *pgxDispatcher) InsertMetadata(metadata []model.Metadata) (uint64, error
 	if err != nil {
 		return insertedRows, err
 	}
+	postIngestTasks(0, 0, insertedRows)
 	if totalRows != insertedRows {
 		return insertedRows, fmt.Errorf("failed to insert all metadata: inserted %d rows out of %d rows in total", insertedRows, totalRows)
 	}
 	return insertedRows, nil
+}
+
+// postIngestTasks performs a set of tasks that are due after ingesting series data.
+func postIngestTasks(maxTs int64, numSamples, numMetadata uint64) {
+	tput.ReportDataProcessed(maxTs, numSamples, numMetadata)
+
+	// Max_sent_timestamp stats.
+	if maxTs < atomic.LoadInt64(&MaxSentTimestamp) {
+		return
+	}
+	atomic.StoreInt64(&MaxSentTimestamp, maxTs)
+	metrics.MaxSentTimestamp.Set(float64(maxTs))
 }
 
 // Get the handler for a given metric name, creating a new one if none exists

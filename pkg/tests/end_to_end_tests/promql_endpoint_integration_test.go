@@ -293,11 +293,9 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 // buildRouterWithAPIConfig builds a testing router from a connection pool and
 // an API config.
 func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler, *pgclient.Client, error) {
-	metrics := api.InitMetrics(0)
+	api.InitMetrics()
 	conf := &pgclient.Config{
 		CacheConfig:             cache.DefaultConfig,
-		AsyncAcks:               false,
-		ReportInterval:          0,
 		WriteConnectionsPerProc: 4,
 		MaxConnections:          -1,
 	}
@@ -308,7 +306,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		return nil, pgClient, fmt.Errorf("Cannot run test, cannot instantiate pgClient")
 	}
 
-	hander, err := api.GenerateRouter(cfg, metrics, pgClient, nil)
+	hander, err := api.GenerateRouter(cfg, pgClient, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}

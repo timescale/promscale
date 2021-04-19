@@ -72,6 +72,8 @@ type result struct {
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
 func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, numMetadata uint64, err error) {
+	activeWriteRequests.Inc()
+	defer activeWriteRequests.Dec() // Dec() is defered otherwise it will lead to loosing a decrement if some error occurs.
 	var (
 		timeseries = r.Timeseries
 		metadata   = r.Metadata

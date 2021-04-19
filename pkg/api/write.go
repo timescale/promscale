@@ -12,24 +12,20 @@ import (
 	"mime"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus"
-	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/util"
 )
 
-type writeStage func(http.ResponseWriter, *http.Request, *Metrics) bool
+type writeStage func(http.ResponseWriter, *http.Request) bool
 
 type writeHandler struct {
-	stages  []writeStage
-	metrics *Metrics
+	stages []writeStage
 }
 
 func (wh *writeHandler) addStages(stages ...writeStage) {
@@ -44,7 +40,7 @@ func (wh *writeHandler) addStages(stages ...writeStage) {
 func (wh *writeHandler) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, stage := range wh.stages {
-			if !stage(w, r, wh.metrics) {
+			if !stage(w, r) {
 				return
 			}
 		}
@@ -52,8 +48,8 @@ func (wh *writeHandler) handler() http.Handler {
 }
 
 // Write returns an http.Handler that is responsible for data ingest.
-func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elector *util.Elector, metrics *Metrics) http.Handler {
-	wh := writeHandler{metrics: metrics}
+func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elector *util.Elector) http.Handler {
+	wh := writeHandler{}
 	wh.addStages(
 		validateWriteHeaders,
 		checkLegacyHA(elector),
@@ -63,33 +59,33 @@ func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elect
 	return wh.handler()
 }
 
-func validateWriteHeaders(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
+func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
 	if r.Method != "POST" {
-		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), m)
+		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), metrics)
 		return false
 	}
 
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
-		validateError(w, "Error parsing media type from Content-Type header", m)
+		validateError(w, "Error parsing media type from Content-Type header", metrics)
 		return false
 	}
 	switch mediaType {
 	case "application/x-protobuf":
 		if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
-			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), m)
+			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), metrics)
 			return false
 		}
 
 		remoteWriteVersion := r.Header.Get("X-Prometheus-Remote-Write-Version")
 		if remoteWriteVersion == "" {
-			validateError(w, "Missing X-Prometheus-Remote-Write-Version header", m)
+			validateError(w, "Missing X-Prometheus-Remote-Write-Version header", metrics)
 			return false
 		}
 
 		if !strings.HasPrefix(remoteWriteVersion, "0.1.") {
-			validateError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion), m)
+			validateError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion), metrics)
 			return false
 		}
 	case "application/json":
@@ -97,36 +93,36 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request, m *Metrics) bo
 	case "text/plain", "application/openmetrics":
 		// Don't need any other header checks for text content type.
 	default:
-		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", m)
+		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", metrics)
 		return false
 	}
 
 	return true
 }
 
-func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Request, *Metrics) bool {
+func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Request) bool {
 	if elector == nil {
 		return nil
 	}
 
-	return func(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
+	return func(w http.ResponseWriter, r *http.Request) bool {
 		// We need to record this time even if we're not the leader as it's
 		// used to determine if we're eligible to become the leader.
-		atomic.StoreInt64(&m.LastRequestUnixNano, time.Now().UnixNano())
+		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
 
 		shouldWrite, err := elector.IsLeader()
 		if err != nil {
-			m.LeaderGauge.Set(0)
+			metrics.LeaderGauge.Set(0)
 			log.Error("msg", "IsLeader check failed", "err", err)
 			return false
 		}
 		if !shouldWrite {
-			m.LeaderGauge.Set(0)
+			metrics.LeaderGauge.Set(0)
 			log.DebugRateLimited("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
 			return false
 		}
 
-		m.LeaderGauge.Set(1)
+		metrics.LeaderGauge.Set(1)
 		return true
 	}
 }
@@ -144,7 +140,7 @@ func (rc *readCloser) Close() error {
 	return rc.closer.Close()
 }
 
-func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
+func decodeSnappy(w http.ResponseWriter, r *http.Request) bool {
 	snappyEncoding := strings.Contains(r.Header.Get("Content-Encoding"), "snappy")
 	if !snappyEncoding {
 		return true
@@ -152,7 +148,7 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 	buf := make([]byte, 10)
 	size, err := r.Body.Read(buf)
 	if err != nil {
-		invalidRequestError(w, "snappy decode error", "payload too short or corrupt", m)
+		invalidRequestError(w, "snappy decode error", "payload too short or corrupt", metrics)
 		return false
 	}
 
@@ -169,14 +165,14 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 
 	compressed, err := ioutil.ReadAll(mr)
 	if err != nil {
-		invalidRequestError(w, "request body read error", err.Error(), m)
+		invalidRequestError(w, "request body read error", err.Error(), metrics)
 		return false
 	}
 
 	// Snappy block format.
 	decoded, err := snappy.Decode(nil, compressed)
 	if err != nil {
-		invalidRequestError(w, "snappy decode error", err.Error(), m)
+		invalidRequestError(w, "snappy decode error", err.Error(), metrics)
 		return false
 	}
 
@@ -188,13 +184,13 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 	return true
 }
 
-func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func(http.ResponseWriter, *http.Request, *Metrics) bool {
-	return func(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
+func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func(http.ResponseWriter, *http.Request) bool {
+	return func(w http.ResponseWriter, r *http.Request) bool {
 		req := ingestor.NewWriteRequest()
 		err := dataParser.ParseRequest(r, req)
 		if err != nil {
 			ingestor.FinishWriteRequest(req)
-			invalidRequestError(w, "parser error", err.Error(), m)
+			invalidRequestError(w, "parser error", err.Error(), metrics)
 			return false
 		}
 
@@ -205,51 +201,31 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 			return false
 		}
 
-		var receivedBatchCount uint64
+		var receivedSamplesCount, receivedMetadataCount int64
 
 		for _, ts := range req.Timeseries {
-			receivedBatchCount += uint64(len(ts.Samples))
+			receivedSamplesCount += int64(len(ts.Samples))
 		}
+		receivedMetadataCount += int64(len(req.Metadata))
 
-		m.ReceivedSamples.Add(float64(receivedBatchCount))
+		metrics.ReceivedSamples.Add(float64(receivedSamplesCount))
 		begin := time.Now()
 
 		numSamples, numMetadata, err := inserter.Ingest(req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			m.FailedSamples.Add(float64(receivedBatchCount - numSamples))
+			metrics.FailedSamples.Add(float64(uint64(receivedSamplesCount) - numSamples))
+			metrics.FailedMetadata.Add(float64(uint64(receivedMetadataCount) - numMetadata))
 			return false
 		}
 
 		duration := time.Since(begin).Seconds()
-
-		m.SentSamples.Add(float64(numSamples))
-		m.SentMetadata.Add(float64(numMetadata))
-		m.SentBatchDuration.Observe(duration)
-
-		m.WriteThroughput.SetCurrent(util.ThroughputValues{Samples: getCounterValue(m.SentSamples), Metadata: getCounterValue(m.SentMetadata)})
-
-		select {
-		case d := <-m.WriteThroughput.Values:
-			log.Info("msg", "write-throughput", "samples/sec", d.Samples, "metadata/sec", d.Metadata)
-		default:
-		}
-
+		metrics.SentSamples.Add(float64(numSamples))
+		metrics.SentMetadata.Add(float64(numMetadata))
+		metrics.SentBatchDuration.Observe(duration)
 		return true
 	}
-}
-
-var promClientPool = sync.Pool{New: func() interface{} { return new(io_prometheus_client.Metric) }}
-
-func getCounterValue(counter prometheus.Counter) float64 {
-	dtoMetric := promClientPool.Get().(*io_prometheus_client.Metric)
-	if err := counter.Write(dtoMetric); err != nil {
-		log.Warn("msg", "Error reading counter value", "err", err, "counter", counter)
-	}
-	val := dtoMetric.GetCounter().GetValue()
-	promClientPool.Put(dtoMetric)
-	return val
 }
 
 func invalidRequestError(w http.ResponseWriter, msg, err string, m *Metrics) {

@@ -9,76 +9,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
-	"time"
 )
 
-const (
-	PromNamespace = "promscale"
-)
-
-type ThroughputValues struct {
-	Samples  float64
-	Metadata float64
-}
-
-//ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
-type ThroughputCalc struct {
-	tickInterval time.Duration
-	previous     ThroughputValues
-	current      chan ThroughputValues
-	Values       chan ThroughputValues
-	running      bool
-	lock         sync.Mutex
-}
-
-// NewThroughputCalc returns a throughput calculator based on a duration
-func NewThroughputCalc(interval time.Duration) *ThroughputCalc {
-	return &ThroughputCalc{tickInterval: interval, current: make(chan ThroughputValues, 1), Values: make(chan ThroughputValues, 1)}
-}
-
-// GetTickInterval returns the tick interval of the throughput calculator.
-func (dt *ThroughputCalc) GetTickInterval() time.Duration {
-	return dt.tickInterval
-}
-
-// SetCurrent sets the value of the counter
-func (dt *ThroughputCalc) SetCurrent(value ThroughputValues) {
-	select {
-	case dt.current <- value:
-	default:
-	}
-}
-
-// Start the throughput calculator
-func (dt *ThroughputCalc) Start() {
-	dt.lock.Lock()
-	defer dt.lock.Unlock()
-	if !dt.running {
-		dt.running = true
-		ticker := time.NewTicker(dt.tickInterval)
-		go func() {
-			for range ticker.C {
-				if !dt.running {
-					return
-				}
-				var (
-					current      = <-dt.current
-					diffSamples  = current.Samples - dt.previous.Samples
-					diffMetadata = current.Metadata - dt.previous.Metadata
-				)
-				dt.previous = current
-				select {
-				case dt.Values <- ThroughputValues{
-					Samples:  diffSamples / dt.tickInterval.Seconds(),
-					Metadata: diffMetadata / dt.tickInterval.Seconds(),
-				}:
-				default:
-				}
-			}
-		}()
-	}
-}
+const PromNamespace = "promscale"
 
 // ParseEnv takes a prefix string p and *flag.FlagSet. Each flag
 // in the FlagSet is exposed as an upper case environment variable

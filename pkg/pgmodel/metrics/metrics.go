@@ -58,6 +58,13 @@ var (
 			Help:      "Total number of times leader changed per cluster.",
 		},
 		[]string{"cluster"})
+	MaxSentTimestamp = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "max_sent_timestamp_milliseconds",
+			Help:      "Maximum sample timestamp that Promscale sent to the database.",
+		},
+	)
 )
 
 func init() {
@@ -69,5 +76,6 @@ func init() {
 		DuplicateMetrics,
 		HAClusterLeaderDetails,
 		NumOfHAClusterLeaderChanges,
+		MaxSentTimestamp,
 	)
 }

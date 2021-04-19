@@ -15,6 +15,7 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/util"
+	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -35,10 +36,11 @@ func Run(cfg *Config) error {
 
 	if cfg.APICfg.ReadOnly {
 		log.Info("msg", "Migrations disabled for read-only mode")
+	} else {
+		tput.InitWatcher(cfg.ThroughputInterval)
 	}
 
-	promMetrics := api.InitMetrics(cfg.PgmodelCfg.ReportInterval)
-
+	promMetrics := api.InitMetrics()
 	client, err := CreateClient(cfg, promMetrics)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", err.Error())
@@ -51,7 +53,7 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
-	router, err := api.GenerateRouter(&cfg.APICfg, promMetrics, client, elector)
+	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)

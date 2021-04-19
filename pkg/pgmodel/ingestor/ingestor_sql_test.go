@@ -18,6 +18,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/prompb"
+	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
 
 func getTestLabelArray(t *testing.T, l [][]int32) *pgtype.ArrayType {
@@ -26,6 +27,11 @@ func getTestLabelArray(t *testing.T, l [][]int32) *pgtype.ArrayType {
 	require.NoError(t, err)
 	return labelArrayArray
 }
+
+func init() {
+	tput.InitWatcher(time.Second)
+}
+
 func TestPGXInserterInsertSeries(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -784,7 +790,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 			_, err = inserter.InsertTs(model.Data{Rows: c.rows})
 
 			var expErr error
-
 			switch {
 			case c.metricsGetErr != nil:
 				//cache errors recover

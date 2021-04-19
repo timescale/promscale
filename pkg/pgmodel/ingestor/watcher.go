@@ -28,7 +28,7 @@ const (
 // routine and keeps the track of incoming write batches. It keeps a ratio of
 // incoming samples vs outgoing samples and warn about low throughput to the user
 // which might be due to external causes like network latency, resources allocated, etc.
-type throughtputWatcher struct {
+type batchWatcher struct {
 	// Warn based on ratio.
 	incomingBatches *ewma.Rate
 	outgoingBatches *ewma.Rate
@@ -41,19 +41,19 @@ type throughtputWatcher struct {
 }
 
 var (
-	watcher  *throughtputWatcher
+	watcher  *batchWatcher
 	tWatcher = new(sync.Once)
 )
 
-func runThroughputWatcher(stop chan struct{}) {
+func runBatchWatcher(stop chan struct{}) {
 	tWatcher.Do(func() {
 		watcher := newThroughputWatcher(stop)
 		go watcher.watch()
 	})
 }
 
-func newThroughputWatcher(stop chan struct{}) *throughtputWatcher {
-	watcher = &throughtputWatcher{
+func newThroughputWatcher(stop chan struct{}) *batchWatcher {
+	watcher = &batchWatcher{
 		incomingBatches: ewma.NewEWMARate(1, checkRatioInterval),
 		outgoingBatches: ewma.NewEWMARate(1, checkRatioInterval),
 		stop:            stop,
@@ -63,7 +63,7 @@ func newThroughputWatcher(stop chan struct{}) *throughtputWatcher {
 }
 
 // watchBatches watches the ratio between incomingBatches and outgoingBatches every checkRatioInterval.
-func (w *throughtputWatcher) watch() {
+func (w *batchWatcher) watch() {
 	t := time.NewTicker(checkRatioInterval)
 	defer t.Stop()
 	for {

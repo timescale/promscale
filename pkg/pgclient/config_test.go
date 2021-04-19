@@ -206,8 +206,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 tt.fields.SslMode,
 				DbConnectRetries:        tt.fields.DbConnectRetries,
 				DbConnectionTimeout:     tt.fields.DbConnectionTimeout,
-				AsyncAcks:               tt.fields.AsyncAcks,
-				ReportInterval:          tt.fields.ReportInterval,
 				WriteConnectionsPerProc: tt.fields.WriteConnectionsPerProc,
 				MaxConnections:          tt.fields.MaxConnections,
 				UsesHA:                  tt.fields.UsesHA,

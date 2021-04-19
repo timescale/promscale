@@ -11,8 +11,6 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-const defaultTickInterval = time.Second
-
 var metrics *Metrics
 
 type Metrics struct {
@@ -21,11 +19,12 @@ type Metrics struct {
 	LastRequestUnixNano int64
 	LeaderGauge         prometheus.Gauge
 	ReceivedSamples     prometheus.Counter
+	ReceivedMetadata    prometheus.Counter
 	FailedSamples       prometheus.Counter
+	FailedMetadata      prometheus.Counter
 	SentSamples         prometheus.Counter
 	SentMetadata        prometheus.Counter
 	SentBatchDuration   prometheus.Histogram
-	WriteThroughput     *util.ThroughputCalc
 	ReceivedQueries     prometheus.Counter
 	FailedQueries       prometheus.Counter
 	QueryBatchDuration  prometheus.Histogram
@@ -37,20 +36,21 @@ type Metrics struct {
 }
 
 // InitMetrics sets up and returns the Prometheus metrics which Promscale exposes.
-// It receives the number of seconds which is the tick interval for global
-// write throughput metric.
-func InitMetrics(writeMetricInterval int) *Metrics {
+// This needs to be set before calling objects from the api package.
+func InitMetrics() *Metrics {
 	if metrics != nil {
 		return metrics
 	}
-	metrics = createMetrics(writeMetricInterval)
+	metrics = createMetrics()
 	prometheus.MustRegister(
 		metrics.LeaderGauge,
 		metrics.ReceivedSamples,
+		metrics.ReceivedMetadata,
 		metrics.ReceivedQueries,
 		metrics.SentSamples,
 		metrics.SentMetadata,
 		metrics.FailedSamples,
+		metrics.FailedMetadata,
 		metrics.FailedQueries,
 		metrics.InvalidReadReqs,
 		metrics.InvalidWriteReqs,
@@ -59,16 +59,11 @@ func InitMetrics(writeMetricInterval int) *Metrics {
 		metrics.QueryDuration,
 		metrics.HTTPRequestDuration,
 	)
-	metrics.WriteThroughput.Start()
 
 	return metrics
 }
 
-func createMetrics(writeMetricInterval int) *Metrics {
-	tickInterval := time.Duration(writeMetricInterval) * time.Second
-	if tickInterval < defaultTickInterval {
-		tickInterval = defaultTickInterval
-	}
+func createMetrics() *Metrics {
 	return &Metrics{
 		LeaderGauge: prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -84,11 +79,25 @@ func createMetrics(writeMetricInterval int) *Metrics {
 				Help:      "Total number of received samples.",
 			},
 		),
+		ReceivedMetadata: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "received_metadata_total",
+				Help:      "Total number of received metadata.",
+			},
+		),
 		FailedSamples: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
 				Name:      "failed_samples_total",
 				Help:      "Total number of processed samples which failed on send to remote storage.",
+			},
+		),
+		FailedMetadata: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "failed_metadata_total",
+				Help:      "Total number of processed metadata which failed on send to remote storage.",
 			},
 		),
 		SentSamples: prometheus.NewCounter(
@@ -113,7 +122,6 @@ func createMetrics(writeMetricInterval int) *Metrics {
 				Buckets:   prometheus.DefBuckets,
 			},
 		),
-		WriteThroughput:     util.NewThroughputCalc(tickInterval),
 		LastRequestUnixNano: time.Now().UnixNano(),
 		QueryBatchDuration: prometheus.NewHistogram(
 			prometheus.HistogramOpts{
