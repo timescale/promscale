@@ -46,7 +46,7 @@ SELECT compress_chunk(show_chunks('prom_data.cpu_usage'));
 SELECT compress_chunk(show_chunks('prom_data.cpu_total'));
              compress_chunk             
 ----------------------------------------
- _timescaledb_internal._hyper_2_2_chunk
+ _timescaledb_internal._hyper_3_2_chunk
 (1 row)
 
 -- fetch stats with compressed chunks
