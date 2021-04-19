@@ -7,13 +7,14 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 type leaseState struct {

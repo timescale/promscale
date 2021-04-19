@@ -247,7 +247,7 @@ func TestDBIngestorIngest(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
+			sCache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			inserter := model.MockInserter{
 				InsertSeriesErr: c.insertSeriesErr,
 				InsertDataErr:   c.insertDataErr,
@@ -255,8 +255,8 @@ func TestDBIngestorIngest(t *testing.T) {
 			}
 			i := DBIngestor{
 				db:     &inserter,
-				scache: scache,
-				parser: &dataParser{scache: scache},
+				sCache: sCache,
+				parser: Parser{sCache: sCache},
 			}
 
 			if c.ha {
@@ -265,7 +265,7 @@ func TestDBIngestorIngest(t *testing.T) {
 					info := c.haSetLeader
 					ha.SetLeaderInMockService(mock, info.cluster, info.leader, info.minT, info.maxT)
 				}
-				i.parser = ha.NewHAParser(mock, scache)
+				i.parser.SetFilter(ha.NewFilter(mock))
 			}
 
 			count, err := i.Ingest(c.metrics, NewWriteRequest())

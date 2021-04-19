@@ -111,14 +111,15 @@ func prepareIngestorWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, 
 	// to explicitly let the state sync routine run
 	ticker := util.NewManualTicker(1)
 
-	leaseClient := haClient.NewHaLeaseClient(pgxconn.NewPgxConn(db))
-	haService := ha.NewHAServiceWith(leaseClient, ticker, tooFarInTheFutureNowFn)
+	leaseClient := haClient.NewLeaseClient(pgxconn.NewPgxConn(db))
+	haService := ha.NewServiceWith(leaseClient, ticker, tooFarInTheFutureNowFn)
 	sigClose := make(chan struct{})
-	scach := cache.NewSeriesCache(cache.DefaultConfig, sigClose)
-	haParser := ha.NewHAParser(haService, scach)
-	cach := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+	sCache := cache.NewSeriesCache(cache.DefaultConfig, sigClose)
+	parser := ingestor.DefaultParser(sCache)
+	parser.SetFilter(ha.NewFilter(haService))
+	mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 
-	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), cach, scach, haParser, &ingestor.Cfg{})
+	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), mCache, sCache, parser, &ingestor.Cfg{})
 	if err != nil {
 		t.Fatalf("could not create ingestor: %v", err)
 	}

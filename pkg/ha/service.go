@@ -17,24 +17,8 @@ import (
 
 const (
 	haSyncerTimeInterval      = 15 * time.Second
-	haLastWriteInterval       = 30 * time.Second
 	tryLeaderChangeErrFmt     = "failed to attempt leader change for cluster %s"
 	failedToUpdateLeaseErrFmt = "failed to update lease for cluster %s"
-)
-
-// actionToTake is an enumeration used to signal how the CheckLease
-// method should continue
-type actionToTake int
-
-const (
-	// deny the insert
-	deny actionToTake = iota + 1
-	// request a synchronous lease update from the db
-	doSync
-	// try to change leader
-	tryChangeLeader
-	// allow the insert to happen
-	allow
 )
 
 // Service contains the lease state for all prometheus clusters
@@ -50,20 +34,20 @@ type Service struct {
 	doneWG              sync.WaitGroup
 }
 
-// NewHaService constructs a new HA service with the supplied
+// NewService constructs a new HA lease service with the supplied
 // database connection and the default sync interval.
 // The sync interval determines how often the leases for
 // all clusters are refreshed from the database.
-func NewHAService(leaseClient client.LeaseClient) *Service {
-	return NewHAServiceWith(leaseClient, util.NewTicker(haSyncerTimeInterval), time.Now)
+func NewService(leaseClient client.LeaseClient) *Service {
+	return NewServiceWith(leaseClient, util.NewTicker(haSyncerTimeInterval), time.Now)
 }
 
-// NewHaServiceWith constructs a new HA service with the leaseClient,
+// NewServiceWith constructs a new HA lease service with the leaseClient,
 // ticker and a current time provide function.
 // The ticker determines when the lease states for all clusters
 // are refreshed from the database, the currentTimeFn determines the
 // current time, used for deterministic tests.
-func NewHAServiceWith(leaseClient client.LeaseClient, ticker util.Ticker, currentTimeFn func() time.Time) *Service {
+func NewServiceWith(leaseClient client.LeaseClient, ticker util.Ticker, currentTimeFn func() time.Time) *Service {
 
 	service := &Service{
 		state:               &sync.Map{},
@@ -90,24 +74,15 @@ func (s *Service) haStateSyncer() {
 			s.state.Range(func(c, l interface{}) bool {
 				cluster := fmt.Sprint(c)
 				lease := l.(*state.Lease)
-				stateBeforeUpdate := lease.Clone()
-				stateAfterUpdate, err := lease.UpdateLease(
-					s.leaseClient,
-					stateBeforeUpdate.Leader,
-					stateBeforeUpdate.LeaseStart,
-					stateBeforeUpdate.MaxTimeSeenLeader,
-				)
-				if err != nil {
+				if err := lease.RefreshLease(); err != nil {
 					errMsg := fmt.Sprintf(failedToUpdateLeaseErrFmt, cluster)
 					log.Error("msg", errMsg, "err", err)
 					return true
 				}
 
-				if s.shouldTryToChangeLeader(stateAfterUpdate) {
-					if _, err := lease.TryChangeLeader(s.leaseClient); err != nil {
-						errMsg := fmt.Sprintf(tryLeaderChangeErrFmt, cluster)
-						log.Error("msg", errMsg, "err", err)
-					}
+				if err := lease.TryChangeLeader(s.currentTimeProvider()); err != nil {
+					errMsg := fmt.Sprintf(tryLeaderChangeErrFmt, cluster)
+					log.Error("msg", errMsg, "err", err)
 				}
 				return true
 			})
@@ -128,64 +103,13 @@ func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName stri
 		log.Error("msg", errMsg, "err", err)
 		return false, time.Time{}, err
 	}
-	leaseView := lease.Clone()
-	whatToDo := s.determineCourseOfAction(leaseView, replicaName, maxT)
-	switch whatToDo {
-	case deny:
-		return false, time.Time{}, err
-	case doSync:
-		leaseView, err = lease.UpdateLease(s.leaseClient, replicaName, minT, maxT)
-		if err != nil {
-			errMsg := fmt.Sprintf(failedToUpdateLeaseErrFmt, clusterName)
-			log.Error("msg", errMsg, "err", err)
-			return false, time.Time{}, err
-		}
 
-		if leaseView.Leader != replicaName {
-			return false, time.Time{}, nil
-		}
-	case tryChangeLeader:
-		leaseView, err = lease.TryChangeLeader(s.leaseClient)
-		if err != nil {
-			errMsg := fmt.Sprintf(tryLeaderChangeErrFmt, clusterName)
-			log.Error("msg", errMsg, "err", err)
-			return false, time.Time{}, err
-		}
-		if leaseView.Leader != replicaName {
-			return false, time.Time{}, nil
-		}
-	}
-
-	acceptedMinT = minT
-	if minT.Before(leaseView.LeaseStart) {
-		acceptedMinT = leaseView.LeaseStart
-	}
-
-	// requesting replica is leader, allow
-	return true, acceptedMinT, nil
+	return lease.ValidateSamplesInfo(replicaName, minT, maxT, s.currentTimeProvider())
 }
 
 func (s *Service) Close() {
 	close(s.doneChannel)
 	s.doneWG.Wait()
-}
-
-func (s *Service) determineCourseOfAction(leaseView *state.LeaseView, replicaName string, maxT time.Time) actionToTake {
-	if replicaName == leaseView.Leader {
-		if !maxT.Before(leaseView.LeaseUntil) {
-			return doSync
-		}
-		return allow
-	}
-
-	if maxT.After(leaseView.LeaseUntil) {
-		if s.shouldTryToChangeLeader(leaseView) {
-			return tryChangeLeader
-		}
-		return doSync
-	} else {
-		return deny
-	}
 }
 
 func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, maxT time.Time) (*state.Lease, error) {
@@ -203,14 +127,4 @@ func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, ma
 	l, _ = s.state.LoadOrStore(clusterName, newLease)
 	newLease = l.(*state.Lease)
 	return newLease, nil
-}
-
-func (s *Service) shouldTryToChangeLeader(lease *state.LeaseView) bool {
-	diff := s.currentTimeProvider().Sub(lease.RecentLeaderWriteTime)
-	// check leaseUntil is after maxT received from samples or
-	// recent leader write is not more than 30 secs older.
-	if diff <= haLastWriteInterval || lease.LeaseUntil.After(lease.MaxTimeSeen) {
-		return false
-	}
-	return true
 }

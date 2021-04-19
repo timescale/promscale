@@ -134,13 +134,12 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		NumCopiers:     numCopiers,
 	}
 
-	var parser ingestor.Parser
+	parser := ingestor.DefaultParser(seriesCache)
 	if cfg.HAEnabled {
-		leaseClient := haClient.NewHaLeaseClient(dbConn)
-		parser = ha.NewHAParser(ha.NewHAService(leaseClient), seriesCache)
-	} else {
-		parser = ingestor.DefaultParser(seriesCache)
+		service := ha.NewService(haClient.NewLeaseClient(dbConn))
+		parser.SetFilter(ha.NewFilter(service))
 	}
+
 	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, parser, &c)
 
 	if err != nil {
