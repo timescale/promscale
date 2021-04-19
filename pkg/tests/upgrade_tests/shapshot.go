@@ -15,14 +15,17 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 )
 
 type dbSnapshot struct {
-	schemaNames []string
-	schemas     []schemaInfo
-	extensions  string // \dx
+	schemaNames       []string
+	schemas           []schemaInfo
+	extensions        string // \dx
+	schemaOutputs     string // \dn+
+	defaultPrivileges string // \ddp
 }
 
 var schemas = []string{
@@ -91,6 +94,16 @@ type tableInfo struct {
 	values []string
 }
 
+func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, msg string) bool {
+	if upgradedOuput == pristineOutput {
+		return false
+	}
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(pristineOutput, upgradedOuput, false)
+	t.Logf("%s:\n%v", msg, dmp.DiffPrettyText(diffs))
+	return true
+}
+
 func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgradedDbInfo dbSnapshot) {
 	t.Errorf("upgrade differences")
 	if !reflect.DeepEqual(upgradedDbInfo.schemaNames, pristineDbInfo.schemaNames) {
@@ -99,6 +112,9 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 	if !reflect.DeepEqual(upgradedDbInfo.extensions, pristineDbInfo.extensions) {
 		t.Logf("different extensions\nexpected:\n\t%v\ngot:\n\t%v", pristineDbInfo.extensions, upgradedDbInfo.extensions)
 	}
+	printOutputDiff(t, upgradedDbInfo.schemaOutputs, pristineDbInfo.schemaOutputs, "schema outputs differ")
+	printOutputDiff(t, upgradedDbInfo.defaultPrivileges, pristineDbInfo.defaultPrivileges, "default privileges differ")
+
 	pristineSchemas := make(map[string]schemaInfo)
 	for _, schema := range pristineDbInfo.schemas {
 		pristineSchemas[schema.name] = schema
@@ -124,18 +140,16 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 		if functionsDiff {
 			t.Logf("functions\nexpected:\n\t%s\ngot:\n\t%s", expected.functions, schema.functions)
 		}
-		if privilegesDiff {
-			t.Logf("privileges\nexpected:\n\t%s\ngot:\n\t%s", expected.privileges, schema.privileges)
-		}
+		printOutputDiff(t, expected.privileges, schema.privileges, "privileges differ for schema "+schema.name)
+
 		if indicesDiff {
 			t.Logf("indices\nexpected:\n\t%s\ngot:\n\t%s", expected.indices, schema.indices)
 		}
 		if triggersDiff {
 			t.Logf("triggers\nexpected:\n\t%s\ngot:\n\t%s", expected.triggers, schema.triggers)
 		}
-		if dataDiff {
-			t.Logf("data\nexpected:\n\t%+v\ngot:\n\t%+v", expected.data, schema.data)
-		}
+
+		printOutputDiff(t, fmt.Sprintf("%+v", expected.data), fmt.Sprintf("%+v", schema.data), "data differs for schema "+schema.name)
 	}
 }
 
@@ -172,6 +186,8 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 	}
 
 	info.extensions = getPsqlInfo(t, container, dbName, outputDir, "\\dx")
+	info.schemaOutputs = getPsqlInfo(t, container, dbName, outputDir, "\\dn+")
+	info.defaultPrivileges = getPsqlInfo(t, container, dbName, outputDir, "\\ddp")
 	info.schemas = make([]schemaInfo, len(ourSchemas))
 	for i, schema := range ourSchemas {
 		info := &info.schemas[i]
