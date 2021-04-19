@@ -99,19 +99,15 @@ func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, 
 		return false
 	}
 	dmp := diffmatchpatch.New()
-	diffs := dmp.DiffMain(pristineOutput, upgradedOuput, false)
+	diffs := dmp.DiffMain(upgradedOuput, pristineOutput, false)
 	t.Logf("%s:\n%v", msg, dmp.DiffPrettyText(diffs))
 	return true
 }
 
 func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgradedDbInfo dbSnapshot) {
 	t.Errorf("upgrade differences")
-	if !reflect.DeepEqual(upgradedDbInfo.schemaNames, pristineDbInfo.schemaNames) {
-		t.Logf("different schemas\nexpected:\n\t%v\ngot:\n\t%v", pristineDbInfo.schemaNames, upgradedDbInfo.schemaNames)
-	}
-	if !reflect.DeepEqual(upgradedDbInfo.extensions, pristineDbInfo.extensions) {
-		t.Logf("different extensions\nexpected:\n\t%v\ngot:\n\t%v", pristineDbInfo.extensions, upgradedDbInfo.extensions)
-	}
+	printOutputDiff(t, fmt.Sprintf("%+v", upgradedDbInfo.schemaNames), fmt.Sprintf("%+v", pristineDbInfo.schemaNames), "schema names differ")
+	printOutputDiff(t, upgradedDbInfo.extensions, pristineDbInfo.extensions, "extension outputs differ")
 	printOutputDiff(t, upgradedDbInfo.schemaOutputs, pristineDbInfo.schemaOutputs, "schema outputs differ")
 	printOutputDiff(t, upgradedDbInfo.defaultPrivileges, pristineDbInfo.defaultPrivileges, "default privileges differ")
 
@@ -119,37 +115,18 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 	for _, schema := range pristineDbInfo.schemas {
 		pristineSchemas[schema.name] = schema
 	}
-	for _, schema := range upgradedDbInfo.schemas {
-		expected, ok := pristineSchemas[schema.name]
+	for _, upgradedSchema := range upgradedDbInfo.schemas {
+		pristineSchema, ok := pristineSchemas[upgradedSchema.name]
 		if !ok {
-			t.Logf("extra schema %s", schema.name)
+			t.Logf("extra schema %s", upgradedSchema.name)
 			continue
 		}
-		tablesDiff := schema.tables != expected.tables
-		functionsDiff := schema.functions != expected.functions
-		privilegesDiff := schema.privileges != expected.privileges
-		indicesDiff := schema.indices != expected.indices
-		triggersDiff := schema.triggers != expected.triggers
-		dataDiff := !reflect.DeepEqual(schema.data, expected.data)
-		if tablesDiff || functionsDiff || privilegesDiff || indicesDiff || triggersDiff || dataDiff {
-			t.Logf("differences in schema: %s", schema.name)
-		}
-		if tablesDiff {
-			t.Logf("tables\nexpected:\n\t%s\ngot:\n\t%s", expected.tables, schema.tables)
-		}
-		if functionsDiff {
-			t.Logf("functions\nexpected:\n\t%s\ngot:\n\t%s", expected.functions, schema.functions)
-		}
-		printOutputDiff(t, expected.privileges, schema.privileges, "privileges differ for schema "+schema.name)
-
-		if indicesDiff {
-			t.Logf("indices\nexpected:\n\t%s\ngot:\n\t%s", expected.indices, schema.indices)
-		}
-		if triggersDiff {
-			t.Logf("triggers\nexpected:\n\t%s\ngot:\n\t%s", expected.triggers, schema.triggers)
-		}
-
-		printOutputDiff(t, fmt.Sprintf("%+v", expected.data), fmt.Sprintf("%+v", schema.data), "data differs for schema "+schema.name)
+		printOutputDiff(t, upgradedSchema.tables, pristineSchema.tables, "tables differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, upgradedSchema.functions, pristineSchema.functions, "functions differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, upgradedSchema.privileges, pristineSchema.privileges, "privileges differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, upgradedSchema.indices, pristineSchema.indices, "indicies differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, upgradedSchema.triggers, pristineSchema.triggers, "triggers differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, fmt.Sprintf("%+v", upgradedSchema.data), fmt.Sprintf("%+v", pristineSchema.data), "data differs for schema "+upgradedSchema.name)
 	}
 }
 
