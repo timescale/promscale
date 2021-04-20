@@ -13,11 +13,12 @@
 CREATE OR REPLACE PROCEDURE execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
+    IF command_key IS NOT NULL THEN
+       INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
+       ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
+    END IF;
+
     EXECUTE command;
-
-    INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
-    ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
-
     BEGIN
         CALL distributed_exec(command);
     EXCEPTION
@@ -28,5 +29,16 @@ BEGIN
             -- we're not the access node, just return
             RETURN;
     END;
+END
+$func$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE PROCEDURE update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
+AS $func$
+BEGIN
+    UPDATE SCHEMA_CATALOG.remote_commands
+    SET
+        command=update_execute_everywhere_entry.command,
+        transactional=update_execute_everywhere_entry.transactional
+    WHERE key = command_key;
 END
 $func$ LANGUAGE PLPGSQL;
