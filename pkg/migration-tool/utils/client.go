@@ -45,29 +45,14 @@ type Client struct {
 	timeout    time.Duration
 }
 
-// clientConfig configures a client.
-type clientConfig struct {
-	URL              *configutil.URL
-	Timeout          model.Duration
-	HTTPClientConfig configutil.HTTPClientConfig
-}
-
 // NewClient creates a new read or write client. The `clientType` should be either `read` or `write`. The client type
 // is used to get the auth from the auth store. If the `clientType` is other than the ones specified, then auth may not work.
-func NewClient(remoteName, urlString string, clientType uint, timeout model.Duration) (*Client, error) {
+func NewClient(remoteName, urlString string, httpConfig configutil.HTTPClientConfig, timeout model.Duration) (*Client, error) {
 	parsedUrl, err := url.Parse(urlString)
 	if err != nil {
-		return nil, fmt.Errorf("parsing-%d-url: %w", clientType, err)
+		return nil, fmt.Errorf("parsing-%s-url: %w", remoteName, err)
 	}
-	conf := &clientConfig{
-		URL:     &config.URL{URL: parsedUrl},
-		Timeout: timeout,
-	}
-	clientConfig, ok := authStore.Load(clientType)
-	if ok {
-		conf.HTTPClientConfig = clientConfig.(configutil.HTTPClientConfig)
-	}
-	httpClient, err := configutil.NewClientFromConfig(conf.HTTPClientConfig, fmt.Sprintf("remote_storage_%d_client", clientType), false, false)
+	httpClient, err := configutil.NewClientFromConfig(httpConfig, fmt.Sprintf("%s_client", remoteName), false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -79,9 +64,9 @@ func NewClient(remoteName, urlString string, clientType uint, timeout model.Dura
 
 	return &Client{
 		remoteName: remoteName,
-		url:        conf.URL,
+		url:        &config.URL{URL: parsedUrl},
 		Client:     httpClient,
-		timeout:    time.Duration(conf.Timeout),
+		timeout:    time.Duration(timeout),
 	}, nil
 }
 

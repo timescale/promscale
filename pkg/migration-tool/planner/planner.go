@@ -7,11 +7,12 @@ package planner
 import (
 	"context"
 	"fmt"
-	"go.uber.org/atomic"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/schollz/progressbar/v3"
@@ -32,10 +33,10 @@ var (
 type Plan struct {
 	config *Config
 	// Slab configs.
-	slabCounts         atomic.Int64 // Used in maintaining the ID of the in-memory slabs.
+	slabCounts         int64 // Used in maintaining the ID of the in-memory slabs.
 	pbarMux            *sync.Mutex
 	nextMint           int64
-	lastNumBytes       atomic.Int64
+	lastNumBytes       int64
 	lastTimeRangeDelta int64
 	deltaIncRegion     int64 // Time region for which the time-range delta can continue to increase by laIncrement.
 	// Test configs.
@@ -53,6 +54,7 @@ type Config struct {
 	JobName            string
 	ProgressMetricURL  string
 	ProgressMetricName string // Name for progress metric.
+	HTTPConfig         config.HTTPClientConfig
 }
 
 // InitPlan creates an in-memory planner and initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
@@ -90,7 +92,6 @@ func Init(config *Config) (*Plan, bool, error) {
 		nextMint:       config.Mint,
 		deltaIncRegion: config.SlabSizeLimitBytes / 2, // 50% of the total slab size limit.
 	}
-	plan.slabCounts.Store(0)
 	return plan, true, nil
 }
 
@@ -104,7 +105,7 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
-	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressMetricURL, utils.Write, model.Duration(time.Minute*2))
+	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressMetricURL, c.HTTPConfig, model.Duration(time.Minute*2))
 	if err != nil {
 		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
 	}
@@ -130,7 +131,7 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 }
 
 func (p *Plan) DecrementSlabCount() {
-	p.slabCounts.Sub(1)
+	atomic.AddInt64(&p.slabCounts, -1)
 }
 
 // ShouldProceed reports whether the fetching process should proceeds further. If any time-range is left to be
@@ -141,16 +142,16 @@ func (p *Plan) ShouldProceed() bool {
 
 // update updates the details of the planner that are dependent on previous fetch stats.
 func (p *Plan) update(numBytes int) {
-	p.lastNumBytes.Store(int64(numBytes))
+	atomic.StoreInt64(&p.lastNumBytes, int64(numBytes))
 }
 
 func (p *Plan) LastMemoryFootprint() int64 {
-	return p.lastNumBytes.Load()
+	return atomic.LoadInt64(&p.lastNumBytes)
 }
 
 // NewSlab returns a new slab after allocating the time-range for fetch.
 func (p *Plan) NextSlab() (reference *Slab, err error) {
-	timeDelta := determineTimeDelta(p.lastNumBytes.Load(), p.config.SlabSizeLimitBytes, p.lastTimeRangeDelta)
+	timeDelta := determineTimeDelta(atomic.LoadInt64(&p.lastNumBytes), p.config.SlabSizeLimitBytes, p.lastTimeRangeDelta)
 	mint := p.nextMint
 	maxt := mint + timeDelta
 	if maxt > p.config.Maxt {
@@ -170,7 +171,7 @@ func (p *Plan) createSlab(mint, maxt int64) (reference *Slab, err error) {
 	if err = p.validateT(mint, maxt); err != nil {
 		return nil, fmt.Errorf("create-slab: %w", err)
 	}
-	id := p.slabCounts.Add(1)
+	id := atomic.AddInt64(&p.slabCounts, 1)
 	timeRangeInMinutes := (maxt - mint) / minute
 	percent := float64(maxt-p.config.Mint) * 100 / float64(p.config.Maxt-p.config.Mint)
 	if percent > 100 {
