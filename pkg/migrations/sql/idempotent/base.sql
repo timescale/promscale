@@ -555,6 +555,7 @@ BEGIN
     END IF;
 END;
 $$;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.safe_approximate_row_count(regclass) to prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_catalog_row(
     metric_table name,
@@ -633,6 +634,7 @@ AS
 $$
     SELECT count(*)::INT FROM SCHEMA_CATALOG.series s WHERE s.labels @> array[label_id];
 $$ STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_cardinality(int) to prom_reader;
 
 --public function to get the array position for a label key if it exists
 --useful in case users want to group by a specific label key
@@ -1016,7 +1018,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(TEXT, SCHEMA_PROM.label_array) TO prom_writer;
 
 --
 -- Parameter manipulation functions
@@ -1296,7 +1298,6 @@ COMMENT ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN)
 IS 'set a compression for a specific metric table';
 
 
-
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_compression_setting(metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
@@ -1332,6 +1333,7 @@ END;
 $func$ LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.epoch_abort(BIGINT)
 IS 'ABORT an INSERT transaction due to the ID epoch being out of date';
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.epoch_abort TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.mark_unused_series(
     metric_table TEXT, older_than TIMESTAMPTZ, check_time TIMESTAMPTZ
@@ -2159,6 +2161,7 @@ BEGIN
     END IF;
 END
 $proc$ LANGUAGE PLPGSQL;
+GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(name, TIMESTAMPTZ, boolean) TO prom_writer;
 
 CALL execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
     CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
@@ -2225,7 +2228,6 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression() TO prom_reader;
 
 --only for timescaledb 2.0 in 1.x we use compression policies
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
@@ -2308,3 +2310,4 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.insert_metric_row(NAME, TIMESTAMPTZ[], DOUBLE PRECISION[], BIGINT[]) TO prom_writer;

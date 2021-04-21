@@ -1,9 +1,6 @@
 CALL execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
     CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
     GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
-    --remove default exec privileges by default
-    REVOKE ALL ON ALL FUNCTIONS IN SCHEMA SCHEMA_CATALOG FROM PUBLIC;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_CATALOG REVOKE ALL ON FUNCTIONS FROM PUBLIC;
 
     CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- public functions
     GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;

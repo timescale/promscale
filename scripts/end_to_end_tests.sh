@@ -47,15 +47,15 @@ remote_write:
   remote_timeout: 1m" > $CONF
 
 cleanup() {
-    rm $CONF
-    docker stop e2e-prom || true
-    if [ -n "$CONN_PID" ]; then
-        kill $CONN_PID
-    fi
     if [[ $PASSED -ne 5 ]]; then
         docker logs e2e-tsdb || true
     fi
+    rm $CONF || true
+    docker stop e2e-prom || true
     docker stop e2e-tsdb || true
+    if [ -n "$CONN_PID" ]; then
+        kill $CONN_PID
+    fi
 }
 
 trap cleanup EXIT
