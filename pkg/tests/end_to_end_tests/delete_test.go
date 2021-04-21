@@ -38,7 +38,7 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 	if *useMultinode && !*extendedTest {
 		t.Skip("delete tests run in extended mode only for multi-node configuration")
 	}
-	var matchers = []deleteStr{
+	matchers := []deleteStr{
 		// Normal matchers.
 		{
 			name:           "demo_api_http_requests_in_progress",
@@ -81,8 +81,25 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			expectedReturn: `[demo_api_request_duration_seconds_bucket] 754 581568 0`,
 		},
 	}
+
+	matchersSmall := []deleteStr{
+		{
+			name:           "metric_1",
+			matchers:       `{__name__="metric_1"}`,
+			expectedReturn: `[metric_1] 3 5001 0`,
+		},
+		{
+			name:           "metric_3",
+			matchers:       `{__name__="metric_3"}`,
+			expectedReturn: `[metric_3] 2 3334 0`,
+		},
+	}
+
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ts := generateRealTimeseries()
+		ts := generateLargeTimeseries()
+		if *extendedTest {
+			ts = generateRealTimeseries()
+		}
 
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
@@ -98,6 +115,9 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 		}
 
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		if !*extendedTest {
+			matchers = matchersSmall
+		}
 		for _, m := range matchers {
 			var countBeforeDelete, countAfterDelete int
 			matcher, err := getMatchers(m.matchers)
@@ -106,11 +126,11 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
-			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.%s", m.name)).Scan(&countBeforeDelete)
+			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.\"%s\"", m.name)).Scan(&countBeforeDelete)
 			require.NoError(t, err)
 			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
-			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.%s", m.name)).Scan(&countAfterDelete)
+			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.\"%s\"", m.name)).Scan(&countAfterDelete)
 			require.NoError(t, err)
 			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v %v %v", touchedMetrics, len(deletedSeriesIDs), countBeforeDelete, countAfterDelete), "expected returns does not match in", m.name)
 			require.True(t, countBeforeDelete != countAfterDelete, "samples count should not be similar: before %d | after %d in", countBeforeDelete, countAfterDelete, m.name)
@@ -125,7 +145,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("skipping delete tests with compression: compression tests cannot run if timescaledb is not installed.")
 	}
-	var matchers = []deleteStr{
+	matchers := []deleteStr{
 		// Normal matchers.
 		{
 			name:           "demo_api_http_requests_in_progress",
@@ -169,8 +189,24 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		},
 	}
 
+	matchersSmall := []deleteStr{
+		{
+			name:           "metric_1",
+			matchers:       `{__name__="metric_1"}`,
+			expectedReturn: `[metric_1] 3`,
+		},
+		{
+			name:           "metric_2",
+			matchers:       `{__name__="metric_2"}`,
+			expectedReturn: `[metric_2] 3`,
+		},
+	}
+
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ts := generateRealTimeseries()
+		ts := generateLargeTimeseries()
+		if *extendedTest {
+			ts = generateRealTimeseries()
+		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
@@ -183,11 +219,14 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if !*extendedTest {
+			matchers = matchersSmall
+		}
 		for _, m := range matchers {
 			var tableName string
 			err = db.QueryRow(context.Background(), "SELECT table_name from _prom_catalog.metric WHERE metric_name=$1", m.name).Scan(&tableName)
 			require.NoError(t, err)
-			_, err = db.Exec(context.Background(), fmt.Sprintf("SELECT compress_chunk(i) from show_chunks('prom_data.%s') i;", tableName))
+			_, err = db.Exec(context.Background(), fmt.Sprintf("SELECT compress_chunk(i) from show_chunks('prom_data.\"%s\"') i;", tableName))
 			if err != nil {
 				if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
 					// Already compressed (could happen if policy already ran). This is fine.
@@ -214,7 +253,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 	if *useMultinode && !*extendedTest {
 		t.Skip("delete tests run in extended mode only for multi-node configuration")
 	}
-	var matchers = []deleteStr{
+	matchers := []deleteStr{
 		// Normal regex matchers.
 		{
 			name:           "demo_api_http_requests_regex",
@@ -253,8 +292,24 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 		},
 	}
 
+	matchersSmall := []deleteStr{
+		{
+			name:           "normal regex",
+			matchers:       `{foo=~"ba.*"}`,
+			expectedReturn: `[METRIC_4 metric_1 metric_2] 7`,
+		},
+		{
+			name:           "two regex",
+			matchers:       `{instance=~"1.*", foo=~"ba.+"}`,
+			expectedReturn: `[metric_1 metric_2] 2`,
+		},
+	}
+
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ts := generateRealTimeseries()
+		ts := generateLargeTimeseries()
+		if *extendedTest {
+			ts = generateRealTimeseries()
+		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
@@ -268,6 +323,9 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			t.Fatal(err)
 		}
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		if !*extendedTest {
+			matchers = matchersSmall
+		}
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)
@@ -279,7 +337,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
 			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
-			if m.name == "delete_all_regex" {
+			if *extendedTest && m.name == "delete_all_regex" {
 				require.Equal(t, 1025, len(deletedSeriesIDs), "delete all series does not match in", m.name)
 				require.Equal(t, 62, len(touchedMetrics), "delete all metrics does not match in", m.name)
 			}
@@ -291,7 +349,7 @@ func TestDeleteMixins(t *testing.T) {
 	if *useMultinode && !*extendedTest {
 		t.Skip("delete tests run in extended mode only for multi-node configuration")
 	}
-	var matchers = []deleteStr{
+	matchers := []deleteStr{
 		// Normal regex matchers.
 		{
 			name:           "demo_instance",
@@ -381,8 +439,24 @@ func TestDeleteMixins(t *testing.T) {
 		},
 	}
 
+	matchersSmall := []deleteStr{
+		{
+			name:           "normal regex",
+			matchers:       `{foo=~".*"}`,
+			expectedReturn: `[METRIC_4 metric_1 metric_2 metric_3] 9`,
+		},
+		{
+			name:           "two regex",
+			matchers:       `{instance!~"1.*", foo=~"ba.+"}`,
+			expectedReturn: `[METRIC_4 metric_1 metric_2] 5`,
+		},
+	}
+
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ts := generateRealTimeseries()
+		ts := generateLargeTimeseries()
+		if *extendedTest {
+			ts = generateRealTimeseries()
+		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
@@ -397,6 +471,9 @@ func TestDeleteMixins(t *testing.T) {
 		}
 
 		pgDelete := &pgDel.PgDelete{Conn: pgxconn.NewPgxConn(db)}
+		if !*extendedTest {
+			matchers = matchersSmall
+		}
 		for _, m := range matchers {
 			matcher, err := getMatchers(m.matchers)
 			require.NoError(t, err)

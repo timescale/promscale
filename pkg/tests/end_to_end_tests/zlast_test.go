@@ -26,7 +26,10 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 		container = pgContainer
 	)
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, tb testing.TB) {
-		ts := generateRealTimeseries()
+		ts := generateLargeTimeseries()
+		if *extendedTest {
+			ts = generateRealTimeseries()
+		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		if err != nil {
 			t.Fatal(err)
