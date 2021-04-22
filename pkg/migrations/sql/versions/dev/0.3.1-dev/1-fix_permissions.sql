@@ -1,4 +1,4 @@
-DROP PROCEDURE execute_everywhere(text, TEXT, BOOLEAN);
+DROP PROCEDURE IF EXISTS execute_everywhere(text, TEXT, BOOLEAN);
 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$

@@ -381,6 +381,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	s = strings.ReplaceAll(s, "SCHEMA_LOCK_ID", strconv.FormatInt(schema.LockID, 10))
 	s = strings.ReplaceAll(s, "SCHEMA_EXT", schema.Ext)
 	s = strings.ReplaceAll(s, "SCHEMA_PROM", schema.Prom)
+	s = strings.ReplaceAll(s, "SCHEMA_TIMESCALE", schema.Timescale)
 	s = strings.ReplaceAll(s, "SCHEMA_SERIES", schema.SeriesView)
 	s = strings.ReplaceAll(s, "SCHEMA_METRIC", schema.MetricView)
 	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", schema.DataSeries)

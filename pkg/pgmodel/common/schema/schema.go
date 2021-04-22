@@ -5,11 +5,12 @@
 package schema
 
 const (
-	Prom    = "prom_api"
-	Data    = "prom_data"
-	Info    = "prom_info"
-	Ext     = "_prom_ext"
-	Catalog = "_prom_catalog"
+	Prom      = "prom_api"
+	Data      = "prom_data"
+	Info      = "prom_info"
+	Ext       = "_prom_ext"
+	Catalog   = "_prom_catalog"
+	Timescale = "public"
 
 	LockID = 0x4D829C732AAFCEDE // Chosen randomly.
 

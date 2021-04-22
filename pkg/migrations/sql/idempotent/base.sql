@@ -99,6 +99,22 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.attach_series_partition(metric_record SCHEMA_CATALOG.metric) RETURNS VOID
+AS $proc$
+DECLARE
+BEGIN
+        EXECUTE format($$
+           ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
+        $$, metric_record.table_name, metric_record.id);
+END;
+$proc$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) TO prom_writer;
 
 --Canonical lock ordering:
 --metrics
@@ -126,23 +142,6 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO p
 --is insignificant in practice.
 --
 --lock-order: metric table, data_table, series parent, series partition
-
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.attach_series_partition(metric_record SCHEMA_CATALOG.metric) RETURNS VOID
-AS $proc$
-DECLARE
-BEGIN
-        EXECUTE format($$
-           ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
-        $$, metric_record.table_name, metric_record.id);
-END;
-$proc$
-LANGUAGE PLPGSQL
-SECURITY DEFINER
---search path must be set for security definer
-SET search_path = pg_temp;
---redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) TO prom_writer;
 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
 AS $proc$
@@ -214,14 +213,14 @@ BEGIN
             --Note: we intentionally do not partition by series_id here. The assumption is
             --that we'll have more "heavy metrics" than nodes and thus partitioning /individual/
             --metrics won't gain us much for inserts and would be detrimental for many queries.
-            PERFORM public.create_distributed_hypertable(
+            PERFORM SCHEMA_TIMESCALE.create_distributed_hypertable(
                 format('SCHEMA_DATA.%I', NEW.table_name),
                 'time',
                 chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                 create_default_indexes=>false
             );
         ELSE
-            PERFORM public.create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
+            PERFORM SCHEMA_TIMESCALE.create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
             chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                              create_default_indexes=>false);
         END IF;
@@ -1264,7 +1263,7 @@ BEGIN
         --rc4 of multinode doesn't properly hand down compression when turned on
         --inside of a function; this gets around that.
         IF SCHEMA_CATALOG.is_multinode() THEN
-            CALL public.distributed_exec(
+            CALL SCHEMA_TIMESCALE.distributed_exec(
                 format($$
                 ALTER TABLE SCHEMA_DATA.%I SET (
                     timescaledb.compress,
@@ -1277,11 +1276,11 @@ BEGIN
         --chunks where the end time is before now()-1 hour will be compressed
         --per-ht compression policy only used for timescale 1.x
         IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM public.add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+            PERFORM SCHEMA_TIMESCALE.add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
         END IF;
     ELSE
         IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM public.remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
+            PERFORM SCHEMA_TIMESCALE.remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
         END IF;
 
         CALL SCHEMA_CATALOG.decompress_chunks_after(metric_table_name::name, timestamptz '-Infinity', transactional=>true);
@@ -1939,14 +1938,14 @@ BEGIN
             LEFT JOIN timescaledb_information.dimensions dims ON
                     (dims.hypertable_schema = 'SCHEMA_DATA' AND dims.hypertable_name = m.table_name)
             LEFT JOIN LATERAL (SELECT SUM(h.total_bytes) as total_bytes
-               FROM public.hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+               FROM SCHEMA_TIMESCALE.hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
             ) hds ON true
             LEFT JOIN LATERAL (SELECT
                 SUM(h.after_compression_total_bytes) as after_compression_total_bytes,
                 SUM(h.before_compression_total_bytes) as before_compression_total_bytes,
                 SUM(h.total_chunks) as total_chunks,
                 SUM(h.number_compressed_chunks) as number_compressed_chunks
-            FROM public.hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+            FROM SCHEMA_TIMESCALE.hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
             ) hcs ON true
             LEFT JOIN LATERAL (
                 SELECT
@@ -2004,7 +2003,7 @@ BEGIN
                         ) FILTER (WHERE cs.compression_status = 'Compressed'),
                         INTERVAL '0'
                     ) compressed_interval
-                        FROM public.chunk_relation_size_pretty(FORMAT('prom_data.%I', m.table_name)) rs
+                        FROM SCHEMA_TIMESCALE.chunk_relation_size_pretty(FORMAT('prom_data.%I', m.table_name)) rs
                         LEFT JOIN timescaledb_information.compressed_chunk_stats cs ON
                     (cs.chunk_name::text = rs.chunk_table::text)
                 ) as ci ON TRUE;
@@ -2081,7 +2080,7 @@ BEGIN
         --alter job schedule is not currently concurrency-safe (timescaledb issue #2165)
         PERFORM pg_advisory_xact_lock(ADVISORY_LOCK_PREFIX_JOB, bgw_job_id);
 
-        PERFORM public.alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
+        PERFORM SCHEMA_TIMESCALE.alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
     END IF;
 END
 $$
@@ -2157,7 +2156,7 @@ BEGIN
     -- access node; right now executing on the access node will do a lot of work
     -- and locking for no result.
     IF SCHEMA_CATALOG.is_multinode() THEN
-        CALL public.distributed_exec(
+        CALL SCHEMA_TIMESCALE.distributed_exec(
             format(
                 $dist$ CALL do_decompress_chunks_after(%L, %L, %L) $dist$,
                 metric_table, min_time, transactional),
@@ -2208,7 +2207,7 @@ BEGIN
     -- not updated on the access node, therefore we need to one the compressor
     -- on all the datanodes to search for uncompressed chunks
     IF SCHEMA_CATALOG.is_multinode() THEN
-        CALL public.distributed_exec(format($dist$
+        CALL SCHEMA_TIMESCALE.distributed_exec(format($dist$
             CALL SCHEMA_CATALOG.compress_old_chunks(%L, now() - INTERVAL '1 hour')
         $dist$, metric_table), transactional => false);
     ELSE
@@ -2286,7 +2285,7 @@ BEGIN
         FROM SCHEMA_CATALOG.remote_commands
         ORDER BY seq asc
     LOOP
-        CALL public.distributed_exec(command_row.command,node_list=>array[node_name]);
+        CALL SCHEMA_TIMESCALE.distributed_exec(command_row.command,node_list=>array[node_name]);
     END LOOP;
 
     IF attach_to_existing_metrics THEN
