@@ -350,7 +350,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value !~ $2)\n\t" +
 						"GROUP BY m.metric_name\n\t" +
 						"ORDER BY m.metric_name",
-					Args:    []interface{}{"__name__", "^$"},
+					Args:    []interface{}{"__name__", "^(?:)$"},
 					Results: model.RowResults{{"foo", []int64{1}}, {"bar", []int64{1}}},
 					Err:     error(nil),
 				},
@@ -520,7 +520,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)\n\t" +
 						"GROUP BY m.metric_name\n\t" +
 						"ORDER BY m.metric_name",
-					Args:    []interface{}{"foo", "bar", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
+					Args:    []interface{}{"foo", "bar", "foo1", "bar1", "foo2", "^(?:^bar2)$", "foo3", "^(?:bar3$)$"},
 					Results: model.RowResults{{"metric", []int64{1, 4, 5}}},
 					Err:     error(nil),
 				},
@@ -580,7 +580,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)\n\t" +
 						"GROUP BY m.metric_name\n\t" +
 						"ORDER BY m.metric_name",
-					Args:    []interface{}{"foo", "", "foo1", "bar1", "foo2", "^bar2$", "foo3", "^bar3$"},
+					Args:    []interface{}{"foo", "", "foo1", "bar1", "foo2", "^(?:^bar2$)$", "foo3", "^(?:bar3)$"},
 					Results: model.RowResults{{"metric", []int64{1, 2}}},
 					Err:     error(nil),
 				},

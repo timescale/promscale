@@ -427,25 +427,8 @@ func GetSeriesPerMetric(rows pgx.Rows) ([]string, [][]pgmodel.SeriesID, error) {
 // anchorValue adds anchors to values in regexps since PromQL docs
 // states that "Regex-matches are fully anchored."
 func anchorValue(str string) string {
-	l := len(str)
-
-	if l == 0 {
-		return "^$"
-	}
-
-	if str[0] == '^' && str[l-1] == '$' {
-		return str
-	}
-
-	if str[0] == '^' {
-		return fmt.Sprintf("%s$", str)
-	}
-
-	if str[l-1] == '$' {
-		return fmt.Sprintf("^%s", str)
-	}
-
-	return fmt.Sprintf("^%s$", str)
+	//Reference:  NewFastRegexMatcher in Prometheus source code
+	return "^(?:" + str + ")$"
 }
 
 func toMilis(t time.Time) int64 {
