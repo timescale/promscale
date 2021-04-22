@@ -9,6 +9,8 @@ CREATE TABLE public.prom_installation_info (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+GRANT SELECT ON TABLE public.prom_installation_info TO PUBLIC;
+--all modifications can only be done by owner
 
 INSERT INTO public.prom_installation_info(key, value) VALUES
     ('catalog schema',        'SCHEMA_CATALOG'),
@@ -26,13 +28,17 @@ CREATE TABLE SCHEMA_CATALOG.series (
     labels SCHEMA_PROM.label_array NOT NULL, --labels are globally unique because of how partitions are defined
     delete_epoch bigint NULL DEFAULT NULL -- epoch after which this row can be deleted
 ) PARTITION BY LIST(metric_id);
+GRANT SELECT ON TABLE SCHEMA_CATALOG.series TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.series TO prom_writer;
+
 
 CREATE INDEX series_labels_id ON SCHEMA_CATALOG.series USING GIN (labels);
-
 CREATE INDEX series_deleted
     ON SCHEMA_CATALOG.series(delete_epoch, id)
     WHERE delete_epoch IS NOT NULL;
+
 CREATE SEQUENCE SCHEMA_CATALOG.series_id;
+GRANT USAGE ON SEQUENCE SCHEMA_CATALOG.series_id TO prom_writer;
 
 
 CREATE TABLE SCHEMA_CATALOG.label (
@@ -42,6 +48,9 @@ CREATE TABLE SCHEMA_CATALOG.label (
     PRIMARY KEY (id) INCLUDE (key, value),
     UNIQUE (key, value) INCLUDE (id)
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.label TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.label TO prom_writer;
+GRANT USAGE ON SEQUENCE SCHEMA_CATALOG.label_id_seq TO prom_writer;
 
 CREATE TABLE SCHEMA_CATALOG.ids_epoch(
     current_epoch BIGINT NOT NULL,
@@ -50,6 +59,8 @@ CREATE TABLE SCHEMA_CATALOG.ids_epoch(
     is_unique BOOLEAN NOT NULL DEFAULT true CHECK (is_unique = true),
     UNIQUE (is_unique)
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.ids_epoch TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.ids_epoch TO prom_writer;
 
 -- uses an arbitrary start time so pristine and migrated DBs have the same values
 INSERT INTO SCHEMA_CATALOG.ids_epoch VALUES (0, '1970-01-01 00:00:00 UTC', true);
@@ -66,6 +77,9 @@ CREATE TABLE SCHEMA_CATALOG.label_key(
     PRIMARY KEY (id),
     UNIQUE(key)
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.label_key TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.label_key TO prom_writer;
+GRANT USAGE ON SEQUENCE SCHEMA_CATALOG.label_key_id_seq TO prom_writer;
 
 CREATE TABLE SCHEMA_CATALOG.label_key_position (
     metric_name text, --references metric.metric_name NOT metric.id for performance reasons
@@ -73,6 +87,8 @@ CREATE TABLE SCHEMA_CATALOG.label_key_position (
     pos int,
     UNIQUE (metric_name, key) INCLUDE (pos)
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.label_key_position TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.label_key_position TO prom_writer;
 
 CREATE TABLE SCHEMA_CATALOG.metric (
     id SERIAL PRIMARY KEY,
@@ -86,17 +102,17 @@ CREATE TABLE SCHEMA_CATALOG.metric (
     UNIQUE (metric_name) INCLUDE (table_name),
     UNIQUE(table_name)
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.metric TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.metric TO prom_writer;
+GRANT USAGE ON SEQUENCE SCHEMA_CATALOG.metric_id_seq TO prom_writer;
 
 CREATE TABLE SCHEMA_CATALOG.default (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.default TO prom_reader;
 
 INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
 ('chunk_interval', (INTERVAL '8 hours')::text),
 ('retention_period', (90 * INTERVAL '1 day')::text),
 ('metric_compression', (exists(select * from pg_proc where proname = 'compress_chunk')::text));
-
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA SCHEMA_CATALOG TO prom_writer;
-GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_writer;

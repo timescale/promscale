@@ -2093,7 +2093,7 @@ SET search_path = pg_temp;
 REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) TO prom_writer;
 
-CALL execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
+CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
     --Decompression should take place in a procedure because we don't want locks held across
     --decompress_chunk calls since that function takes some heavier locks at the end.
     --Thus, transactional parameter should usually be false
@@ -2169,7 +2169,7 @@ END
 $proc$ LANGUAGE PLPGSQL;
 GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(name, TIMESTAMPTZ, boolean) TO prom_writer;
 
-CALL execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
+CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
     CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
     AS $$
     DECLARE

@@ -5,6 +5,8 @@ CREATE TABLE SCHEMA_CATALOG.ha_leases
     lease_start  TIMESTAMPTZ,
     lease_until  TIMESTAMPTZ
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.ha_leases TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.ha_leases TO prom_writer;
 
 CREATE TABLE SCHEMA_CATALOG.ha_leases_logs
 (
@@ -14,6 +16,8 @@ CREATE TABLE SCHEMA_CATALOG.ha_leases_logs
     lease_until  TIMESTAMPTZ,          -- exclusive
     PRIMARY KEY (cluster_name, leader_name, lease_start)
 );
+GRANT SELECT ON TABLE SCHEMA_CATALOG.ha_leases_logs TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.ha_leases_logs TO prom_writer;
 
 
 -- STUB for function that trigger to automatically keep the log calls - real implementation in ha.sql
@@ -39,7 +43,3 @@ INSERT INTO SCHEMA_CATALOG.default(key, value)
 VALUES ('ha_lease_timeout', '1m'),
        ('ha_lease_refresh', '10s')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
-
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA SCHEMA_CATALOG TO prom_writer;
-GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_writer

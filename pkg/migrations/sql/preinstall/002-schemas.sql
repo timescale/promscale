@@ -1,4 +1,4 @@
-CALL execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
+CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
     CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
     GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
 

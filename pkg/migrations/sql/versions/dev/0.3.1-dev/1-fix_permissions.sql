@@ -1,4 +1,6 @@
-CREATE OR REPLACE PROCEDURE execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
+DROP PROCEDURE execute_everywhere(text, TEXT, BOOLEAN);
+
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
     IF command_key IS NOT NULL THEN
@@ -19,8 +21,9 @@ BEGIN
     END;
 END
 $func$ LANGUAGE PLPGSQL;
+ REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.execute_everywhere(text, text, boolean) FROM PUBLIC;
 
-CREATE OR REPLACE PROCEDURE update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
     UPDATE SCHEMA_CATALOG.remote_commands
@@ -30,9 +33,10 @@ BEGIN
     WHERE key = command_key;
 END
 $func$ LANGUAGE PLPGSQL;
+REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(text, text, boolean) FROM PUBLIC;
 
 
-CALL execute_everywhere(null::text, command =>
+CALL SCHEMA_CATALOG.execute_everywhere(null::text, command =>
 $ee$ DO $$ BEGIN
     REVOKE USAGE ON SCHEMA SCHEMA_CATALOG FROM prom_writer;
     REVOKE USAGE ON SCHEMA SCHEMA_DATA FROM prom_writer;
@@ -51,9 +55,14 @@ $ee$ DO $$ BEGIN
     ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_SERIES REVOKE SELECT ON TABLES FROM prom_reader;
 
     GRANT USAGE ON ALL SEQUENCES IN SCHEMA SCHEMA_CATALOG TO prom_writer;
+    GRANT SELECT ON TABLE public.prom_installation_info TO PUBLIC;
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.default FROM prom_writer;
+    REVOKE SELECT ON TABLE SCHEMA_CATALOG.remote_commands FROM prom_reader;
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.remote_commands FROM prom_writer;
+    REVOKE USAGE ON SEQUENCE SCHEMA_CATALOG.remote_commands_seq_seq FROM prom_writer;
 END $$ $ee$);
 
-CALL update_execute_everywhere_entry('create_schemas', $ee$ DO $$ BEGIN
+CALL SCHEMA_CATALOG.update_execute_everywhere_entry('create_schemas', $ee$ DO $$ BEGIN
     CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
     GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
 

@@ -8,9 +8,12 @@
     transactional BOOLEAN,
     command TEXT
 );
+--only the prom owner has any permissions.
+GRANT ALL ON TABLE SCHEMA_CATALOG.remote_commands to CURRENT_USER;
+GRANT ALL ON SEQUENCE SCHEMA_CATALOG.remote_commands_seq_seq to CURRENT_USER;
 
 
-CREATE OR REPLACE PROCEDURE execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
     IF command_key IS NOT NULL THEN
@@ -31,8 +34,10 @@ BEGIN
     END;
 END
 $func$ LANGUAGE PLPGSQL;
+--redundant given schema settings but extra caution for this function
+REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.execute_everywhere(text, text, boolean) FROM PUBLIC;
 
-CREATE OR REPLACE PROCEDURE update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
     UPDATE SCHEMA_CATALOG.remote_commands
@@ -42,3 +47,5 @@ BEGIN
     WHERE key = command_key;
 END
 $func$ LANGUAGE PLPGSQL;
+--redundant given schema settings but extra caution for this function
+REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(text, text, boolean) FROM PUBLIC;
