@@ -2204,6 +2204,14 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 			name:  "real query 524",
 			query: fmt.Sprintf("sum(demo_cpu_usage_seconds_total[5m] @ %d)", samplesStartTime+30000/1000), // Not from promlabs
 		},
+		{
+			name:  "real query 525",
+			query: `demo_disk_usage_bytes{instance=~"|"}`, // Not from promlabs
+		},
+		{
+			name:  "real query 526",
+			query: `demo_disk_usage_bytes{instance=~"demo|"}`, // Not from promlabs
+		},
 	}
 	start := time.Unix(samplesStartTime/1000, 0)
 	end := time.Unix(samplesEndTime/1000, 0)
@@ -2427,6 +2435,34 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		{
 			name:  "non-contradictory name",
 			query: `{__name__="metric_1", __name__!="metric_2"}`,
+		},
+		{
+			name:  "anchored-regex 1",
+			query: `{__name__="metric_2", foo=~"bar"}`,
+		},
+		{
+			name:  "anchored-regex 2",
+			query: `{__name__="metric_2", foo=~"^bar$"}`,
+		},
+		{
+			name:  "anchored-regex 3",
+			query: `{__name__="metric_2", foo=~"bar|"}`,
+		},
+		{
+			name:  "anchored-regex 4",
+			query: `{__name__="metric_2", foo=~"^bar$|^$"}`,
+		},
+		{
+			name:  "anchored-regex 5",
+			query: `{__name__="metric_2", foo=~"^bar|$"}`,
+		},
+		{
+			name:  "anchored-regex 6",
+			query: `{__name__="metric_2", foo=~""}`,
+		},
+		{
+			name:  "anchored-regex 7",
+			query: `{__name__="metric_2", foo=~"^$"}`,
 		},
 	}
 	start := time.Unix(startTime/1000, 0)
