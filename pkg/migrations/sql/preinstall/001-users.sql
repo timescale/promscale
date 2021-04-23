@@ -1,4 +1,4 @@
-CALL execute_everywhere('create_prom_reader', $ee$
+CALL SCHEMA_CATALOG.execute_everywhere('create_prom_reader', $ee$
     DO $$
         BEGIN
             CREATE ROLE prom_reader;
@@ -9,7 +9,7 @@ CALL execute_everywhere('create_prom_reader', $ee$
     $$;
 $ee$);
 
-CALL execute_everywhere('create_prom_writer', $ee$
+CALL SCHEMA_CATALOG.execute_everywhere('create_prom_writer', $ee$
     DO $$
         BEGIN
             CREATE ROLE prom_writer;
@@ -20,6 +20,6 @@ CALL execute_everywhere('create_prom_writer', $ee$
     $$;
 $ee$);
 
-CALL execute_everywhere('grant_prom_reader_prom_writer',$ee$
+CALL SCHEMA_CATALOG.execute_everywhere('grant_prom_reader_prom_writer',$ee$
     GRANT prom_reader TO prom_writer;
 $ee$);

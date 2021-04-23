@@ -645,6 +645,10 @@ func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Con
 	if dbname == "postgres" {
 		dbUser = "postgres"
 	}
+	dbHost := "172.17.0.1"
+	if runtime.GOOS == "darwin" {
+		dbHost = "host.docker.internal"
+	}
 
 	req := testcontainers.ContainerRequest{
 		Image:        image,
@@ -652,7 +656,7 @@ func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Con
 		WaitingFor:   wait.ForHTTP("/metrics").WithPort(ConnectorPort).WithAllowInsecure(true),
 		SkipReaper:   false, /* switch to true not to kill docker container */
 		Cmd: []string{
-			"-db-host", "172.17.0.1",
+			"-db-host", dbHost,
 			"-db-port", pgPort.Port(),
 			"-db-user", dbUser,
 			"-db-password", "password",

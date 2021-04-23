@@ -35,7 +35,8 @@ require (
 	github.com/sergi/go-diff v1.0.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
 	github.com/stretchr/testify v1.7.0
-	github.com/testcontainers/testcontainers-go v0.10.0
+	github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	go.uber.org/goleak v1.1.10
+	gotest.tools v2.2.0+incompatible // indirect
 )

@@ -99,6 +99,22 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.attach_series_partition(metric_record SCHEMA_CATALOG.metric) RETURNS VOID
+AS $proc$
+DECLARE
+BEGIN
+        EXECUTE format($$
+           ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
+        $$, metric_record.table_name, metric_record.id);
+END;
+$proc$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) TO prom_writer;
 
 --Canonical lock ordering:
 --metrics
@@ -126,6 +142,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO p
 --is insignificant in practice.
 --
 --lock-order: metric table, data_table, series parent, series partition
+
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
 AS $proc$
 DECLARE
@@ -160,10 +177,8 @@ BEGIN
         --so, attaching a partition is better
         LOCK TABLE ONLY SCHEMA_CATALOG.series IN SHARE UPDATE EXCLUSIVE mode;
 
-        EXECUTE
-        format($$
-            ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
-        $$, r.table_name, r.id);
+        PERFORM SCHEMA_CATALOG.attach_series_partition(r);
+
         COMMIT;
     END LOOP;
 END;
@@ -188,6 +203,8 @@ DECLARE
 BEGIN
    EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
                     NEW.table_name);
+   EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA.%I TO prom_reader', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA.%I TO prom_writer', NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
 
@@ -196,14 +213,14 @@ BEGIN
             --Note: we intentionally do not partition by series_id here. The assumption is
             --that we'll have more "heavy metrics" than nodes and thus partitioning /individual/
             --metrics won't gain us much for inserts and would be detrimental for many queries.
-            PERFORM create_distributed_hypertable(
+            PERFORM SCHEMA_TIMESCALE.create_distributed_hypertable(
                 format('SCHEMA_DATA.%I', NEW.table_name),
                 'time',
                 chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                 create_default_indexes=>false
             );
         ELSE
-            PERFORM create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
+            PERFORM SCHEMA_TIMESCALE.create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
             chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                              create_default_indexes=>false);
         END IF;
@@ -232,11 +249,17 @@ BEGIN
             CONSTRAINT series_pkey_%3$s PRIMARY KEY(id)
         ) WITH (autovacuum_vacuum_threshold = 100, autovacuum_analyze_threshold = 100)
     $$, NEW.table_name, label_id, NEW.id);
-
+   EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_SERIES.%I TO prom_reader', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_SERIES.%I TO prom_writer', NEW.table_name);
    RETURN NEW;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.make_metric_table() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.make_metric_table() TO prom_writer;
 
 DROP TRIGGER IF EXISTS make_metric_table_trigger ON SCHEMA_CATALOG.metric CASCADE;
@@ -531,6 +554,7 @@ BEGIN
     END IF;
 END;
 $$;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.safe_approximate_row_count(regclass) to prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_catalog_row(
     metric_table name,
@@ -609,6 +633,7 @@ AS
 $$
     SELECT count(*)::INT FROM SCHEMA_CATALOG.series s WHERE s.labels @> array[label_id];
 $$ STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_cardinality(int) to prom_reader;
 
 --public function to get the array position for a label key if it exists
 --useful in case users want to group by a specific label key
@@ -992,7 +1017,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(TEXT, SCHEMA_PROM.label_array) TO prom_writer;
 
 --
 -- Parameter manipulation functions
@@ -1238,7 +1263,7 @@ BEGIN
         --rc4 of multinode doesn't properly hand down compression when turned on
         --inside of a function; this gets around that.
         IF SCHEMA_CATALOG.is_multinode() THEN
-            CALL distributed_exec(
+            CALL SCHEMA_TIMESCALE.distributed_exec(
                 format($$
                 ALTER TABLE SCHEMA_DATA.%I SET (
                     timescaledb.compress,
@@ -1251,11 +1276,11 @@ BEGIN
         --chunks where the end time is before now()-1 hour will be compressed
         --per-ht compression policy only used for timescale 1.x
         IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+            PERFORM SCHEMA_TIMESCALE.add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
         END IF;
     ELSE
         IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
+            PERFORM SCHEMA_TIMESCALE.remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
         END IF;
 
         CALL SCHEMA_CATALOG.decompress_chunks_after(metric_table_name::name, timestamptz '-Infinity', transactional=>true);
@@ -1270,7 +1295,6 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN)
 IS 'set a compression for a specific metric table';
-
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_compression_setting(metric_name TEXT)
@@ -1308,6 +1332,7 @@ END;
 $func$ LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.epoch_abort(BIGINT)
 IS 'ABORT an INSERT transaction due to the ID epoch being out of date';
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.epoch_abort TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.mark_unused_series(
     metric_table TEXT, older_than TIMESTAMPTZ, check_time TIMESTAMPTZ
@@ -1696,6 +1721,7 @@ DECLARE
    label_value_cols text;
    view_name text;
    metric_id int;
+   view_exists boolean;
 BEGIN
     SELECT
         ',' || string_agg(
@@ -1710,6 +1736,12 @@ BEGIN
     FROM SCHEMA_CATALOG.metric m
     WHERE m.metric_name = create_series_view.metric_name;
 
+    SELECT COUNT(*) > 0 into view_exists
+    FROM pg_class
+    WHERE
+      relname = view_name AND
+      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA_SERIES');
+
     EXECUTE FORMAT($$
         CREATE OR REPLACE VIEW SCHEMA_SERIES.%1$I AS
         SELECT
@@ -1720,10 +1752,19 @@ BEGIN
             SCHEMA_DATA_SERIES.%1$I AS series
         WHERE delete_epoch IS NULL
     $$, view_name, label_value_cols);
+
+    IF NOT view_exists THEN
+        EXECUTE FORMAT('GRANT SELECT ON SCHEMA_SERIES.%1$I TO prom_reader', view_name);
+    END IF;
     RETURN true;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_series_view(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series_view(text) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_view(
@@ -1734,6 +1775,7 @@ DECLARE
    label_value_cols text;
    table_name text;
    metric_id int;
+   view_exists boolean;
 BEGIN
     SELECT
         ',' || string_agg(
@@ -1748,6 +1790,12 @@ BEGIN
     FROM SCHEMA_CATALOG.metric m
     WHERE m.metric_name = create_metric_view.metric_name;
 
+    SELECT COUNT(*) > 0 into view_exists
+    FROM pg_class
+    WHERE
+      relname = table_name AND
+      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA_METRIC');
+
     EXECUTE FORMAT($$
         CREATE OR REPLACE VIEW SCHEMA_METRIC.%1$I AS
         SELECT
@@ -1760,10 +1808,20 @@ BEGIN
             SCHEMA_DATA.%1$I AS data
             LEFT JOIN SCHEMA_DATA_SERIES.%1$I AS series ON (series.id = data.series_id)
     $$, table_name, label_value_cols);
+
+    IF NOT view_exists THEN
+        EXECUTE FORMAT('GRANT SELECT ON SCHEMA_METRIC.%1$I TO prom_reader', table_name);
+    END IF;
+
     RETURN true;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(name text, series_ids bigint[])
@@ -1880,14 +1938,14 @@ BEGIN
             LEFT JOIN timescaledb_information.dimensions dims ON
                     (dims.hypertable_schema = 'SCHEMA_DATA' AND dims.hypertable_name = m.table_name)
             LEFT JOIN LATERAL (SELECT SUM(h.total_bytes) as total_bytes
-               FROM hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+               FROM SCHEMA_TIMESCALE.hypertable_detailed_size(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
             ) hds ON true
             LEFT JOIN LATERAL (SELECT
                 SUM(h.after_compression_total_bytes) as after_compression_total_bytes,
                 SUM(h.before_compression_total_bytes) as before_compression_total_bytes,
                 SUM(h.total_chunks) as total_chunks,
                 SUM(h.number_compressed_chunks) as number_compressed_chunks
-            FROM hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
+            FROM SCHEMA_TIMESCALE.hypertable_compression_stats(format('%I.%I', 'SCHEMA_DATA', m.table_name)::regclass) h
             ) hcs ON true
             LEFT JOIN LATERAL (
                 SELECT
@@ -1945,20 +2003,27 @@ BEGIN
                         ) FILTER (WHERE cs.compression_status = 'Compressed'),
                         INTERVAL '0'
                     ) compressed_interval
-                        FROM public.chunk_relation_size_pretty(FORMAT('prom_data.%I', m.table_name)) rs
+                        FROM SCHEMA_TIMESCALE.chunk_relation_size_pretty(FORMAT('prom_data.%I', m.table_name)) rs
                         LEFT JOIN timescaledb_information.compressed_chunk_stats cs ON
                     (cs.chunk_name::text = rs.chunk_table::text)
                 ) as ci ON TRUE;
         END IF;
 END
 $func$
-LANGUAGE PLPGSQL STABLE;
+LANGUAGE PLPGSQL STABLE
+SECURITY DEFINER
+--search path must be set for security definer
+--need to include public(the timescaledb schema) for some timescale functions to work.
+SET search_path = public, pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.metric_view() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.metric_view() TO prom_reader;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.metric AS
    SELECT
      *
     FROM SCHEMA_CATALOG.metric_view();
+GRANT SELECT ON SCHEMA_INFO.metric TO prom_reader;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
     SELECT
@@ -1970,6 +2035,7 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
     FROM SCHEMA_CATALOG.label_key lk
     INNER JOIN LATERAL(SELECT key, array_agg(value ORDER BY value) as values FROM SCHEMA_CATALOG.label GROUP BY key)
     AS va ON (va.key = lk.key) ORDER BY num_values DESC;
+GRANT SELECT ON SCHEMA_INFO.label TO prom_reader;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
     SELECT
@@ -1985,12 +2051,14 @@ CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
     (
         SELECT count(*) FROM SCHEMA_CATALOG.label
     ) AS num_labels;
+GRANT SELECT ON SCHEMA_INFO.system_stats TO prom_reader;
 
 CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
     SELECT metric_name,
     SCHEMA_CATALOG.safe_approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
     (SELECT SCHEMA_CATALOG.safe_approximate_row_count(format('prom_data.%I',table_name)::regclass)) AS num_samples_approx
     FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
+GRANT SELECT ON SCHEMA_INFO.metric_stats TO prom_reader;
 
 --this should the only thing run inside the transaction. It's important the txn ends after calling this function
 --to release locks
@@ -2012,13 +2080,19 @@ BEGIN
         --alter job schedule is not currently concurrency-safe (timescaledb issue #2165)
         PERFORM pg_advisory_xact_lock(ADVISORY_LOCK_PREFIX_JOB, bgw_job_id);
 
-        PERFORM alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
+        PERFORM SCHEMA_TIMESCALE.alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
     END IF;
 END
 $$
-LANGUAGE PLPGSQL;
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) TO prom_writer;
 
-CALL execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
+CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
     --Decompression should take place in a procedure because we don't want locks held across
     --decompress_chunk calls since that function takes some heavier locks at the end.
     --Thus, transactional parameter should usually be false
@@ -2082,7 +2156,7 @@ BEGIN
     -- access node; right now executing on the access node will do a lot of work
     -- and locking for no result.
     IF SCHEMA_CATALOG.is_multinode() THEN
-        CALL distributed_exec(
+        CALL SCHEMA_TIMESCALE.distributed_exec(
             format(
                 $dist$ CALL do_decompress_chunks_after(%L, %L, %L) $dist$,
                 metric_table, min_time, transactional),
@@ -2092,8 +2166,9 @@ BEGIN
     END IF;
 END
 $proc$ LANGUAGE PLPGSQL;
+GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(name, TIMESTAMPTZ, boolean) TO prom_writer;
 
-CALL execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
+CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
     CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
     AS $$
     DECLARE
@@ -2132,7 +2207,7 @@ BEGIN
     -- not updated on the access node, therefore we need to one the compressor
     -- on all the datanodes to search for uncompressed chunks
     IF SCHEMA_CATALOG.is_multinode() THEN
-        CALL distributed_exec(format($dist$
+        CALL SCHEMA_TIMESCALE.distributed_exec(format($dist$
             CALL SCHEMA_CATALOG.compress_old_chunks(%L, now() - INTERVAL '1 hour')
         $dist$, metric_table), transactional => false);
     ELSE
@@ -2158,7 +2233,6 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression() TO prom_reader;
 
 --only for timescaledb 2.0 in 1.x we use compression policies
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
@@ -2211,7 +2285,7 @@ BEGIN
         FROM SCHEMA_CATALOG.remote_commands
         ORDER BY seq asc
     LOOP
-        CALL distributed_exec(command_row.command,node_list=>array[node_name]);
+        CALL SCHEMA_TIMESCALE.distributed_exec(command_row.command,node_list=>array[node_name]);
     END LOOP;
 
     IF attach_to_existing_metrics THEN
@@ -2241,3 +2315,4 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.insert_metric_row(NAME, TIMESTAMPTZ[], DOUBLE PRECISION[], BIGINT[]) TO prom_writer;

@@ -45,6 +45,7 @@ var (
 			"base.sql",
 			"matcher-functions.sql",
 			"ha.sql",
+			"apply_permissions.sql", //should be last
 		},
 	}
 	migrateMutex = &sync.Mutex{}
@@ -221,6 +222,11 @@ func ensureVersionTable(db *pgx.Conn) error {
 		return fmt.Errorf("error creating migration table: %w", err)
 	}
 
+	_, err = db.Exec(context.Background(), "GRANT SELECT ON prom_schema_migrations TO public")
+	if err != nil {
+		return fmt.Errorf("error creating migration table: %w", err)
+	}
+
 	return nil
 }
 
@@ -231,15 +237,18 @@ func getSchemaVersion(db *pgx.Conn) (semver.Version, error) {
 func getSchemaVersionOnConnection(ctx context.Context, db *pgx.Conn) (semver.Version, error) {
 	var version semver.Version
 	res, err := db.Query(ctx, getVersion)
-
 	if err != nil {
 		return version, fmt.Errorf("Error getting DB version: %w", err)
 	}
+	defer res.Close()
 
 	for res.Next() {
 		err = res.Scan(&version)
 	}
-
+	if err != nil {
+		return version, fmt.Errorf("Error getting DB version: %w", err)
+	}
+	err = res.Err()
 	if err != nil {
 		return version, fmt.Errorf("Error getting DB version: %w", err)
 	}
@@ -372,6 +381,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	s = strings.ReplaceAll(s, "SCHEMA_LOCK_ID", strconv.FormatInt(schema.LockID, 10))
 	s = strings.ReplaceAll(s, "SCHEMA_EXT", schema.Ext)
 	s = strings.ReplaceAll(s, "SCHEMA_PROM", schema.Prom)
+	s = strings.ReplaceAll(s, "SCHEMA_TIMESCALE", schema.Timescale)
 	s = strings.ReplaceAll(s, "SCHEMA_SERIES", schema.SeriesView)
 	s = strings.ReplaceAll(s, "SCHEMA_METRIC", schema.MetricView)
 	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", schema.DataSeries)

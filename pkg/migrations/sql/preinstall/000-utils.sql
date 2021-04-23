@@ -8,16 +8,20 @@
     transactional BOOLEAN,
     command TEXT
 );
+--only the prom owner has any permissions.
+GRANT ALL ON TABLE SCHEMA_CATALOG.remote_commands to CURRENT_USER;
+GRANT ALL ON SEQUENCE SCHEMA_CATALOG.remote_commands_seq_seq to CURRENT_USER;
 
 
-CREATE OR REPLACE PROCEDURE execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
+    IF command_key IS NOT NULL THEN
+       INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
+       ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
+    END IF;
+
     EXECUTE command;
-
-    INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
-    ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
-
     BEGIN
         CALL distributed_exec(command);
     EXCEPTION
@@ -30,3 +34,18 @@ BEGIN
     END;
 END
 $func$ LANGUAGE PLPGSQL;
+--redundant given schema settings but extra caution for this function
+REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.execute_everywhere(text, text, boolean) FROM PUBLIC;
+
+CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
+AS $func$
+BEGIN
+    UPDATE SCHEMA_CATALOG.remote_commands
+    SET
+        command=update_execute_everywhere_entry.command,
+        transactional=update_execute_everywhere_entry.transactional
+    WHERE key = command_key;
+END
+$func$ LANGUAGE PLPGSQL;
+--redundant given schema settings but extra caution for this function
+REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(text, text, boolean) FROM PUBLIC;

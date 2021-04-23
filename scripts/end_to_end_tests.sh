@@ -47,15 +47,15 @@ remote_write:
   remote_timeout: 1m" > $CONF
 
 cleanup() {
-    rm $CONF
+    if [[ $PASSED -ne 5 ]]; then
+        docker logs e2e-tsdb || true
+    fi
+    rm $CONF || true
     docker stop e2e-prom || true
+    docker stop e2e-tsdb || true
     if [ -n "$CONN_PID" ]; then
         kill $CONN_PID
     fi
-    if [[ $FAILED -ne 0 ]]; then
-        docker logs e2e-tsdb || true
-    fi
-    docker stop e2e-tsdb || true
 }
 
 trap cleanup EXIT
@@ -86,7 +86,22 @@ PROMSCALE_DB_PASSWORD=postgres \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale &
+./promscale -migrate=only
+
+docker exec e2e-tsdb psql -U postgres -d postgres \
+  -c "CREATE ROLE writer PASSWORD 'test' LOGIN" \
+  -c "GRANT prom_writer TO writer" \
+    -c "CREATE ROLE reader PASSWORD 'test' LOGIN" \
+  -c "GRANT prom_reader TO reader"
+
+PROMSCALE_LOG_LEVEL=debug \
+PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_DB_PASSWORD=test \
+PROMSCALE_DB_USER=writer \
+PROMSCALE_DB_NAME=postgres \
+PROMSCALE_DB_SSL_MODE=disable \
+PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
+./promscale -install-extensions=false -migrate=false -upgrade-extensions=false &
 
 CONN_PID=$!
 
@@ -126,6 +141,23 @@ compare_connector_and_prom() {
         ((PASSED+=1))
     fi
 }
+
+kill $CONN_PID
+
+PROMSCALE_LOG_LEVEL=debug \
+PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_DB_PASSWORD=test \
+PROMSCALE_DB_USER=reader \
+PROMSCALE_DB_NAME=postgres \
+PROMSCALE_DB_SSL_MODE=disable \
+PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
+./promscale -install-extensions=false -migrate=false -upgrade-extensions=false -read-only &
+
+CONN_PID=$!
+
+echo "Waiting for connector to be up..."
+wait_for "$CONNECTOR_URL"
+
 END_TIME=$(date +"%s")
 
 DATASET_START_TIME="2020-08-10T10:35:20Z"
@@ -142,12 +174,13 @@ compare_connector_and_prom "series?match%5B%5D=ts_prom_sent_samples_total"
 
 # Labels endpoint cannot be compared to Prometheus becuase it will always differ due to direct backfilling of the real dataset.
 # We have to compare it to the correct expected output. Note that `namespace` and `node` labels are from JSON import payload.
-EXPECTED_OUTPUT='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
+EXPECTED_OUTPUT1='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
+EXPECTED_OUTPUT2='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status"]}'
 LABELS_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/labels")
 echo "  labels response: ${LABELS_OUTPUT}"
-echo "expected response: ${EXPECTED_OUTPUT}"
+echo "expected response: ${EXPECTED_OUTPUT1}"
 
-if [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT}" ]; then
+if [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT1}" ] && [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT2}" ]; then
     echo "TEST FAILED: mismatched output"
     ((FAILED+=1))
 else

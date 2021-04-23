@@ -47,6 +47,8 @@ SELECT count(compress_chunk(i)) from show_chunks('prom_data.cpu_usage') i;
 (1 row)
 
 \set ON_ERROR_STOP 0
+SET role prom_reader;
+SET
 SELECT * FROM cpu_usage ORDER BY time, series_id LIMIT 5;
           time          | value | series_id |  labels   | node_id | namespace_id | new_tag_id 
 ------------------------+-------+-----------+-----------+---------+--------------+------------
