@@ -196,9 +196,11 @@ func (p *pgxDispatcher) Close() {
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
 func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
-	rows := dataTS.Rows
-	var numRows uint64
-	workFinished := &sync.WaitGroup{}
+	var (
+		numRows      uint64
+		rows         = dataTS.Rows
+		workFinished = &sync.WaitGroup{}
+	)
 	workFinished.Add(len(rows))
 	// we only allocate enough space for a single error message here as we only
 	// report one error back upstream. The inserter should not block on this
@@ -211,12 +213,16 @@ func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
 		// the following is usually non-blocking, just a channel insert
 		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
+	reportIncomingBatch(numRows)
+	reportOutgoing := func() {
+		reportOutgoingBatch(numRows)
+		reportBatchProcessingTime(dataTS.ReceivedTime)
+	}
 
 	var err error
 	if !p.asyncAcks {
 		workFinished.Wait()
-		decBatch(numRows)
-		registerIngestionDuration(dataTS.InTime)
+		reportOutgoing()
 		select {
 		case err = <-errChan:
 		default:
@@ -225,8 +231,7 @@ func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
 	} else {
 		go func() {
 			workFinished.Wait()
-			decBatch(numRows)
-			registerIngestionDuration(dataTS.InTime)
+			reportOutgoing()
 			select {
 			case err = <-errChan:
 			default:

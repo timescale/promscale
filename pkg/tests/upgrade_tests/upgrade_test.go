@@ -499,7 +499,7 @@ func TestExtensionUpgrade(t *testing.T) {
 	var version string
 	ctx := context.Background()
 	buildPromscaleImageFromRepo(t)
-	db, dbContainer, closer := startDB(t, ctx)
+	_, dbContainer, closer := startDB(t, ctx)
 	defer closer.Close()
 
 	defer testhelpers.StopContainer(ctx, dbContainer, false)
@@ -509,7 +509,7 @@ func TestExtensionUpgrade(t *testing.T) {
 	extVersion := "2.0.0-rc2"
 	dropAndCreateExt(t, ctx, extVersion)
 
-	db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+	db, err := pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
 	if err != nil {
 		t.Fatal(err)
 	}

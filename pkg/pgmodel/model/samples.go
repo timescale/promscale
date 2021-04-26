@@ -21,8 +21,8 @@ type Samples interface {
 // Data wraps incoming data with its in-timestamp. It is used to warn if the rate
 // of incoming samples vs outgoing samples is too low, based on time.
 type Data struct {
-	Rows   map[string][]Samples
-	InTime time.Time
+	Rows         map[string][]Samples
+	ReceivedTime time.Time
 }
 
 type promSample struct {

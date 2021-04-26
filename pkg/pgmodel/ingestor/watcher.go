@@ -6,9 +6,11 @@ package ingestor
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/timescale/promscale/pkg/ewma"
 	"github.com/timescale/promscale/pkg/log"
 )
 
@@ -16,25 +18,20 @@ const (
 	// reportThreshold is a value above which the warn would be logged. This value is
 	// the value of the ratio between incoming batches vs outgoing batches.
 	reportRatioThreshold = 3
-	refreshIteration     = 10 // This means that values of watcher.incomingBatches and watcher.outgoingBatches gets renewed every (refreshIteration * checkThroughputInterval).
 	checkRatioInterval   = time.Minute
 
 	// Duration warnings constants.
-	reportDurationThreshold        = time.Minute
-	checkIngestionDurationInterval = time.Minute
+	reportDurationThreshold = time.Minute
 )
 
 // throughtputWatcher is a light weight samples batch watching type, that serves as a watching
 // routine and keeps the track of incoming write batches. It keeps a ratio of
 // incoming samples vs outgoing samples and warn about low throughput to the user
 // which might be due to external causes like network latency, resources allocated, etc.
-//
-// We watch the batches than the samples in total, since watching batching is fast
-// and does the same purpose of watching samples, but on a higher-level.
 type throughtputWatcher struct {
 	// Warn based on ratio.
-	incomingBatches uint64
-	outgoingBatches uint64
+	incomingBatches *ewma.Rate
+	outgoingBatches *ewma.Rate
 
 	// Warn based on ingestion duration.
 	shouldReportLastDuration atomic.Value
@@ -43,76 +40,77 @@ type throughtputWatcher struct {
 	stop chan struct{}
 }
 
-var watcher *throughtputWatcher
+var (
+	watcher  *throughtputWatcher
+	tWatcher = new(sync.Once)
+)
 
 func runThroughputWatcher(stop chan struct{}) {
+	tWatcher.Do(func() {
+		watcher := newThroughputWatcher(stop)
+		go watcher.watch()
+	})
+}
+
+func newThroughputWatcher(stop chan struct{}) *throughtputWatcher {
 	watcher = &throughtputWatcher{
-		incomingBatches: 0,
-		outgoingBatches: 0,
+		incomingBatches: ewma.NewEWMARate(1, checkRatioInterval),
+		outgoingBatches: ewma.NewEWMARate(1, checkRatioInterval),
 		stop:            stop,
 	}
 	watcher.shouldReportLastDuration.Store(false)
-	go watcher.watch()
-	go watcher.watchTime()
+	return watcher
 }
 
-// watch watches the ratio between incomingBatches and outgoingBatches every checkThroughputInterval.
+// watchBatches watches the ratio between incomingBatches and outgoingBatches every checkRatioInterval.
 func (w *throughtputWatcher) watch() {
-	var (
-		itr uint8
-		t   = time.NewTicker(checkRatioInterval)
-	)
-	for range t.C {
+	t := time.NewTicker(checkRatioInterval)
+	defer t.Stop()
+	for {
 		select {
+		case <-t.C:
 		case <-w.stop:
 			return
-		default:
 		}
-		itr++
-		if w.outgoingBatches > 1 {
-			if ratio := float64(atomic.LoadUint64(&w.incomingBatches)) / float64(atomic.LoadUint64(&w.outgoingBatches)); ratio > reportRatioThreshold {
-				w.warn(ratio)
+		w.outgoingBatches.Tick()
+		w.incomingBatches.Tick()
+		outgoingRate := w.outgoingBatches.Rate()
+		incomingRate := w.incomingBatches.Rate()
+		if outgoingRate > 0 {
+			r := incomingRate / outgoingRate
+			if r > reportRatioThreshold {
+				warnHighRatio(r, incomingRate, outgoingRate)
 			}
 		}
-		if itr > refreshIteration {
-			// refresh every 'refreshIteration' of outgoing ratio checks.
-			atomic.StoreUint64(&watcher.incomingBatches, 0)
-			atomic.StoreUint64(&watcher.outgoingBatches, 0)
-		}
-	}
-}
-
-func (w *throughtputWatcher) warn(ratio float64) {
-	log.Warn("msg", "[WARNING] Incoming samples rate higher than outgoing samples. This may happen due to poor network latency, "+
-		"less resources allocated, or few concurrent writes (shards) from Prometheus. Please tune your resource to improve performance. ",
-		"Throughput ratio", fmt.Sprintf("%.2f", ratio), "Ratio threshold", reportRatioThreshold)
-}
-
-func (w *throughtputWatcher) watchTime() {
-	t := time.NewTicker(checkIngestionDurationInterval)
-	for range t.C {
-		select {
-		case <-w.stop:
-			return
-		default:
-		}
 		if w.shouldReportLastDuration.Load().(bool) {
-			log.Warn("msg", "[WARNING] Ingestion is taking too long", "ingest duration",
-				w.lastIngestionDuration.Load().(time.Duration).String(), "threshold", reportDurationThreshold.String())
+			warnSlowIngestion(w.lastIngestionDuration.Load().(time.Duration))
 			w.shouldReportLastDuration.Store(false)
 		}
 	}
 }
 
-func incBatch(size uint64) {
-	atomic.AddUint64(&watcher.incomingBatches, size)
+func warnHighRatio(ratio float64, inRate, outRate float64) {
+	log.Warn("msg", "[WARNING] Incoming samples rate much higher than the rate of samples being saved. "+
+		"This may happen due to poor network latency, not enough resources allocated to Promscale, or some other performance-related reason. "+
+		"Please tune your system or reach out to the Promscale team.",
+		"incoming-rate", inRate, "outgoing-rate", outRate,
+		"throughput-ratio", fmt.Sprintf("%.2f", ratio), "threshold", reportRatioThreshold)
 }
 
-func decBatch(size uint64) {
-	atomic.AddUint64(&watcher.outgoingBatches, size)
+func warnSlowIngestion(duration time.Duration) {
+	log.Warn("msg", "[WARNING] Ingestion is a very long time", "duration",
+		duration.String(), "threshold", reportDurationThreshold.String())
 }
 
-func registerIngestionDuration(inTime time.Time) {
+func reportIncomingBatch(size uint64) {
+	watcher.incomingBatches.Incr(int64(size))
+}
+
+func reportOutgoingBatch(size uint64) {
+	watcher.outgoingBatches.Incr(int64(size))
+}
+
+func reportBatchProcessingTime(inTime time.Time) {
 	d := time.Since(inTime)
 	if d.Seconds() > reportDurationThreshold.Seconds() {
 		watcher.shouldReportLastDuration.Store(true)
