@@ -16,7 +16,7 @@ import (
 func main() {
 	args := os.Args[1:]
 	if shouldProceed := runner.ParseArgs(args); !shouldProceed {
-		os.Exit(1)
+		os.Exit(0)
 	}
 	cfg := &runner.Config{}
 	cfg, err := runner.ParseFlags(cfg, args)
