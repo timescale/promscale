@@ -38,5 +38,4 @@ require (
 	github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	go.uber.org/goleak v1.1.10
-	gotest.tools v2.2.0+incompatible // indirect
 )

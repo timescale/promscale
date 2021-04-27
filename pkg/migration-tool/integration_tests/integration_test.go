@@ -21,7 +21,7 @@ var largeTimeSeries, tsMint, tsMaxt = generateLargeTimeseries()
 func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries)
 	defer remoteReadStorage.Close()
-	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t)
+	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true)
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
@@ -46,7 +46,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    false,
-		concurrentPulls:    2,
+		concurrentPulls:    20,
 		maxSlabSizeBytes:   500 * utils.Megabyte,
 	}
 
@@ -137,12 +137,15 @@ loop:
 	if remoteWriteStorage.SamplesProgress() != 0 {
 		t.Fatalf("progress-metric samples count do not match the number of slabs created: samples: %d and slabs created: %d", remoteWriteStorage.SamplesProgress(), write.Slabs())
 	}
+	if !remoteWriteStorage.AreReceivedSamplesOrdered() {
+		t.Fatal("received samples not in order")
+	}
 }
 
 func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries)
 	defer remoteReadStorage.Close()
-	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t)
+	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true)
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
@@ -296,13 +299,17 @@ loop:
 	if remoteWriteStorage.SamplesProgress() != int(write.Slabs()+previousWriteSlabs) {
 		t.Fatalf("progress-metric samples count do not match the number of slabs created: progress metric samples: %d and write slabs: %d", remoteWriteStorage.SamplesProgress(), write.Slabs())
 	}
+	// Verify orderedness of received samples.
+	if !remoteWriteStorage.AreReceivedSamplesOrdered() {
+		t.Fatal("received samples not in order")
+	}
 }
 
 func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T) {
 	var largeTimeSeries, tsMint, tsMaxt = generateVeryLargeTimeseries()
 	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries)
 	defer remoteReadStorage.Close()
-	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t)
+	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true)
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
@@ -462,5 +469,9 @@ loop:
 	// Verify the progress metric samples count.
 	if remoteWriteStorage.SamplesProgress() != int(write.Slabs()+previousWriteSlabs) {
 		t.Fatalf("progress-metric samples count do not match the number of slabs created: progress metric samples: %d and write slabs: %d", remoteWriteStorage.SamplesProgress(), write.Slabs())
+	}
+	// Verify orderedness of received samples.
+	if !remoteWriteStorage.AreReceivedSamplesOrdered() {
+		t.Fatal("received samples not in order")
 	}
 }

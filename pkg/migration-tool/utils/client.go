@@ -152,8 +152,8 @@ type PrompbResponse struct {
 	NumBytesUncompressed int
 }
 
-// ReadChannels calls the Read and responds on the channels.
-func (c *Client) ReadChannels(ctx context.Context, query *prompb.Query, shardID int, desc string, responseChan chan<- interface{}) {
+// ReadConcurrent calls the Read and responds on the channels.
+func (c *Client) ReadConcurrent(ctx context.Context, query *prompb.Query, shardID int, desc string, responseChan chan<- interface{}) {
 	result, numBytesCompressed, numBytesUncompressed, err := c.Read(ctx, query, desc)
 	if err != nil {
 		responseChan <- fmt.Errorf("read-channels: %w", err)

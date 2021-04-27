@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
@@ -29,13 +31,19 @@ type remoteWriteServer struct {
 	writeStorageTimeSeries map[string]prompb.TimeSeries
 }
 
+var serverMintReceived, serverMaxtReceived int64
+
 // createRemoteWriteServer creates a write server that exposes a /write endpoint for ingesting samples. It returns a server
 // which is expected to be closed by the caller.
-func createRemoteWriteServer(t *testing.T) (*remoteWriteServer, string, string) {
+func createRemoteWriteServer(t *testing.T, respectTimeOrder bool) (*remoteWriteServer, string, string) {
+	if respectTimeOrder {
+		atomic.StoreInt64(&serverMintReceived, math.MaxInt64)
+		atomic.StoreInt64(&serverMaxtReceived, math.MinInt64)
+	}
 	rws := &remoteWriteServer{
 		writeStorageTimeSeries: make(map[string]prompb.TimeSeries),
 	}
-	s := httptest.NewServer(getWriteHandler(t, rws))
+	s := httptest.NewServer(getWriteHandler(t, rws, respectTimeOrder))
 	spg := httptest.NewServer(getProgressHandler(t, rws, matcherProgress))
 	rws.writeServer = s
 	rws.progressServer = spg
@@ -66,6 +74,17 @@ func (rwss *remoteWriteServer) Samples() int {
 	return numSamples
 }
 
+func (rwss *remoteWriteServer) AreReceivedSamplesOrdered() bool {
+	rwss.mux.RLock()
+	defer rwss.mux.RUnlock()
+	for _, ts := range rwss.writeStorageTimeSeries {
+		if !areSamplesSorted(ts.Samples) {
+			return false
+		}
+	}
+	return true
+}
+
 // Samples returns the number of samples in the remoteWriteServer.
 func (rwss *remoteWriteServer) SamplesProgress() int {
 	rwss.mux.RLock()
@@ -79,7 +98,7 @@ func (rwss *remoteWriteServer) Close() {
 	rwss.progressServer.Close()
 }
 
-func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
+func getWriteHandler(t *testing.T, rws *remoteWriteServer, respectTimeOrder bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// we treat invalid requests as the same as no request for
@@ -99,7 +118,24 @@ func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
 		rws.mux.Lock()
 		defer rws.mux.Unlock()
 		if len(req.Timeseries) > 0 {
+			if respectTimeOrder {
+				if !(atomic.LoadInt64(&serverMintReceived) == math.MaxInt64 && atomic.LoadInt64(&serverMaxtReceived) == math.MinInt64) {
+					mint, maxt := getTsMintMaxt(req.Timeseries)
+					if l := atomic.LoadInt64(&serverMintReceived); mint < l {
+						t.Fatalf("time order not respected: received mint %d, less than global mint %d", mint, l)
+					}
+					if l := atomic.LoadInt64(&serverMaxtReceived); maxt < l {
+						t.Fatalf("time order not respected: received maxt %d, less than global maxt %d", maxt, l)
+					}
+				}
+				currentBatchMint, currentBatchMaxt := getTsMintMaxt(req.Timeseries)
+				atomic.StoreInt64(&serverMintReceived, currentBatchMint)
+				atomic.StoreInt64(&serverMaxtReceived, currentBatchMaxt)
+			}
 			for _, ts := range req.Timeseries {
+				if respectTimeOrder && !areSamplesSorted(ts.Samples) {
+					t.Fatal("received samples are not sorted in ascending order with respect to time")
+				}
 				m, ok := rws.writeStorageTimeSeries[fmt.Sprintf("%v", ts.Labels)]
 				if !ok {
 					rws.writeStorageTimeSeries[fmt.Sprintf("%v", ts.Labels)] = ts
@@ -111,6 +147,33 @@ func getWriteHandler(t *testing.T, rws *remoteWriteServer) http.Handler {
 		}
 		FinishWriteRequest(req)
 	})
+}
+
+func areSamplesSorted(s []prompb.Sample) bool {
+	for i := 0; i < len(s)-1; i++ {
+		if s[i].Timestamp > s[i+1].Timestamp {
+			return false
+		}
+	}
+	return true
+}
+
+func getTsMintMaxt(ts []prompb.TimeSeries) (mint, maxt int64) {
+	mint = math.MaxInt64
+	maxt = math.MinInt64
+
+	for _, t := range ts {
+		for _, sample := range t.Samples {
+			timestamp := sample.Timestamp
+			if sample.Timestamp < mint {
+				mint = timestamp
+			}
+			if sample.Timestamp > maxt {
+				maxt = timestamp
+			}
+		}
+	}
+	return
 }
 
 func getProgressHandler(t *testing.T, rws *remoteWriteServer, labels string) http.Handler {
