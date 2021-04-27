@@ -1133,7 +1133,7 @@ func TestPushdown(t *testing.T) {
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader)
 		queryable := query.NewQueryable(r, labelsReader)
-		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute, []string{})
+		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, []string{})
 		if err != nil {
 			t.Fatal(err)
 		}

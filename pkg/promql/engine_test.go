@@ -744,7 +744,7 @@ load 10s
 	// Exceeding the limit will be tested by doing -1 to the MaxSamples.
 	cases := []struct {
 		Query      string
-		MaxSamples int
+		MaxSamples int64
 		Start      time.Time
 		End        time.Time
 		Interval   time.Duration

@@ -45,7 +45,7 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Post("/delete_series", deleteHandler)
 
 	queryable := client.Queryable()
-	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.SubQueryStepInterval, apiConf.EnabledFeaturesList)
+	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.LookBackDelta, apiConf.SubQueryStepInterval, apiConf.MaxSamples, apiConf.EnabledFeaturesList)
 	if err != nil {
 		return nil, fmt.Errorf("creating query-engine: %w", err)
 	}
