@@ -52,7 +52,7 @@ func NewClient(remoteName, urlString string, httpConfig configutil.HTTPClientCon
 	if err != nil {
 		return nil, fmt.Errorf("parsing-%s-url: %w", remoteName, err)
 	}
-	httpClient, err := configutil.NewClientFromConfig(httpConfig, fmt.Sprintf("%s_client", remoteName), false, false)
+	httpClient, err := configutil.NewClientFromConfig(httpConfig, fmt.Sprintf("%s_client", remoteName), configutil.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
 	}

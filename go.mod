@@ -27,10 +27,10 @@ require (
 	github.com/pbnjay/memory v0.0.0-20201129165224-b12e5d931931
 	github.com/peterbourgon/ff/v3 v3.0.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.9.0
+	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.18.0
-	github.com/prometheus/prometheus v1.8.2-0.20210322105412-0d8db5295421
+	github.com/prometheus/common v0.21.0
+	github.com/prometheus/prometheus v1.8.2-0.20210426225522-e36e5fa83399
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
