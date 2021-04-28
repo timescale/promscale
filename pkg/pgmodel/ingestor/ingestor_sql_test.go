@@ -45,12 +45,15 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			},
 
 			sqlQueries: []model.SqlQuery{
+				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
+				{Sql: "COMMIT;"},
+				{Sql: "BEGIN;"},
 				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
@@ -64,6 +67,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					},
 					Err: error(nil),
 				},
+				{Sql: "COMMIT;"},
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
@@ -88,12 +92,15 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
+				{Sql: "COMMIT;"},
+				{Sql: "BEGIN;"},
 				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
@@ -109,6 +116,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					},
 					Err: error(nil),
 				},
+				{Sql: "COMMIT;"},
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
@@ -135,12 +143,15 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
+				{Sql: "COMMIT;"},
+				{Sql: "BEGIN;"},
 				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
@@ -156,6 +167,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					},
 					Err: error(nil),
 				},
+				{Sql: "COMMIT;"},
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
@@ -179,12 +191,15 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "BEGIN;"},
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
+				{Sql: "COMMIT;"},
+				{Sql: "BEGIN;"},
 				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
@@ -200,6 +215,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					},
 					Err: fmt.Errorf("some query error"),
 				},
+				{Sql: "COMMIT;"},
 			},
 		},
 	}
@@ -276,12 +292,15 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	sqlQueries := []model.SqlQuery{
 
 		// first series cache fetch
+		{Sql: "BEGIN;"},
 		{
 			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 			Args:    []interface{}(nil),
 			Results: model.RowResults{{int64(1)}},
 			Err:     error(nil),
 		},
+		{Sql: "COMMIT;"},
+		{Sql: "BEGIN;"},
 		{
 			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
@@ -296,6 +315,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			},
 			Err: error(nil),
 		},
+		{Sql: "COMMIT;"},
 		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{
@@ -321,6 +341,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Results: model.RowResults{{int64(2)}},
 			Err:     error(nil),
 		},
+		{Sql: "BEGIN;"},
 
 		// repopulate the cache
 		{
@@ -329,6 +350,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Results: model.RowResults{{int64(2)}},
 			Err:     error(nil),
 		},
+		{Sql: "COMMIT;"},
+		{Sql: "BEGIN;"},
 		{
 			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 			Args: []interface{}{
@@ -343,6 +366,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			},
 			Err: error(nil),
 		},
+		{Sql: "COMMIT;"},
 		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{

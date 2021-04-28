@@ -71,6 +71,12 @@ func (t *TextArray) DecodeBinary(ci *pgtype.ConnInfo, src []byte) error {
 	return nil
 }
 
+func (t *TextArray) Slice(low, high int) (*TextArray, error) {
+	var new TextArray
+	err := new.TextArray.Set(t.Elements[low:high])
+	return &new, err
+}
+
 func (t *TextArray) Set(src interface{}) error {
 	textArray, ok := src.([]string)
 	if !ok {

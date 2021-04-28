@@ -434,7 +434,7 @@ BEGIN
     INTO metric_table;
     --lock as for ALTER TABLE because we are in effect changing the schema here
     --also makes sure the next_position below is correct in terms of concurrency
-    EXECUTE format('LOCK TABLE SCHEMA_DATA.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
+    EXECUTE format('LOCK TABLE SCHEMA_DATA_SERIES.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
     --second check after lock
     SELECT
         pos
