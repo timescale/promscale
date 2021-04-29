@@ -7,9 +7,7 @@ package ingestor
 import (
 	"fmt"
 	"testing"
-	"time"
 
-	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -17,10 +15,6 @@ import (
 )
 
 func TestDBIngestorIngest(t *testing.T) {
-	type leaderInfo struct {
-		cluster, leader string
-		minT, maxT      time.Time
-	}
 	testCases := []struct {
 		name            string
 		metrics         []prompb.TimeSeries
@@ -30,8 +24,6 @@ func TestDBIngestorIngest(t *testing.T) {
 		insertDataErr   error
 		getSeriesErr    error
 		setSeriesErr    error
-		ha              bool
-		haSetLeader     *leaderInfo
 	}{
 		{
 			name:    "Zero metrics",
@@ -176,73 +168,6 @@ func TestDBIngestorIngest(t *testing.T) {
 			count:       0,
 			countSeries: 0,
 		},
-		{
-			name: "Insert data in HA for no leader prom",
-			metrics: []prompb.TimeSeries{
-				{
-					Labels: []prompb.Label{
-						{Name: model.MetricNameLabelName, Value: "test"},
-						{Name: "test", Value: "test"},
-						{Name: ha.ReplicaNameLabel, Value: "replica2"},
-						{Name: ha.ClusterNameLabel, Value: "cluster1"},
-					},
-					Samples: []prompb.Sample{
-						{Timestamp: 1, Value: 0.1},
-					},
-				},
-			},
-			count:       0,
-			countSeries: 0,
-			ha:          true,
-			haSetLeader: &leaderInfo{
-				cluster: "cluster1",
-				leader:  "replica1",
-				minT:    time.Unix(0, 0),
-				maxT:    time.Unix(2, 0),
-			},
-		}, {
-			name: "Insert data in HA for leader",
-			metrics: []prompb.TimeSeries{
-				{
-					Labels: []prompb.Label{
-						{Name: model.MetricNameLabelName, Value: "test"},
-						{Name: "test", Value: "test"},
-						{Name: ha.ReplicaNameLabel, Value: "replica1"},
-						{Name: ha.ClusterNameLabel, Value: "cluster1"},
-					},
-					Samples: []prompb.Sample{
-						{Timestamp: 1, Value: 0.1},
-					},
-				},
-			},
-			count:       1,
-			countSeries: 1,
-			ha:          true,
-			haSetLeader: &leaderInfo{
-				cluster: "cluster1",
-				leader:  "replica1",
-				minT:    time.Unix(0, 0),
-				maxT:    time.Unix(2, 0),
-			},
-		},
-		{
-			name: "Insert data in HA enable mode but __replica__ & __leader__ labels are empty",
-			metrics: []prompb.TimeSeries{
-				{
-					Labels: []prompb.Label{
-						{Name: model.MetricNameLabelName, Value: "test"},
-						{Name: "test", Value: "test"},
-					},
-					Samples: []prompb.Sample{
-						{Timestamp: 1, Value: 0.1},
-					},
-				},
-			},
-			count:         0,
-			countSeries:   0,
-			insertDataErr: fmt.Errorf("HA enabled, but both cluster and __replica__ labels are empty"),
-			ha:            true,
-		},
 	}
 
 	for _, c := range testCases {
@@ -256,16 +181,6 @@ func TestDBIngestorIngest(t *testing.T) {
 			i := DBIngestor{
 				dispatcher: &inserter,
 				sCache:     sCache,
-				parser:     Parser{sCache: sCache},
-			}
-
-			if c.ha {
-				mock := ha.MockNewHAService(nil)
-				if c.haSetLeader != nil {
-					info := c.haSetLeader
-					ha.SetLeaderInMockService(mock, info.cluster, info.leader, info.minT, info.maxT)
-				}
-				i.parser.SetFilter(ha.NewFilter(mock))
 			}
 
 			count, err := i.Ingest(c.metrics, NewWriteRequest())

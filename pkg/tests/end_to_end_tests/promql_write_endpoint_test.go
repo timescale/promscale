@@ -172,7 +172,7 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 					return
 				}
 				if *val != sample.Value {
-					t.Errorf("Unexpected value: got %v, unexpected %v", *val, sample.Value)
+					t.Errorf("Unexpected value: got %v, expected %v", *val, sample.Value)
 					return
 				}
 				count++

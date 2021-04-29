@@ -37,7 +37,6 @@ type Config struct {
 	InstallExtensions           bool
 	UpgradeExtensions           bool
 	UpgradePrereleaseExtensions bool
-	HAEnabled                   bool
 }
 
 func ParseFlags(cfg *Config, args []string) (*Config, error) {

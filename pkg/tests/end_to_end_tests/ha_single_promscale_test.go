@@ -7,11 +7,18 @@ package end_to_end_tests
 import (
 	"context"
 	"math/rand"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
+	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/util"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -59,20 +66,16 @@ type haTestCase struct {
 
 func runHATest(t *testing.T, testCase haTestCase) {
 	withDB(t, testCase.db, func(db *pgxpool.Pool, t testing.TB) {
-		ticker, ing, err := prepareIngestorWithHa(db, t)
+		ticker, writer, ing, err := prepareWriterWithHa(db, t)
 		if err != nil {
 			return
 		}
 		defer ing.Close()
 		for _, step := range testCase.steps {
 			t.Log(step.desc)
-			samples := generateHASamples(step.input)
-			rows, err := ing.Ingest(samples, ingestor.NewWriteRequest())
-			t.Logf("Num rows ingested: %d\n", rows)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-				return
-			}
+			req := generateHASamplesRequest(step.input)
+			w := httptest.NewRecorder()
+			writer.ServeHTTP(w, req)
 			if !checkDbState(t, db, step.output) {
 				return
 			}
@@ -97,7 +100,7 @@ func runHATest(t *testing.T, testCase haTestCase) {
 
 var tCount int32
 
-func prepareIngestorWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, *ingestor.DBIngestor, error) {
+func prepareWriterWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, http.Handler, *ingestor.DBIngestor, error) {
 	// function that returns time that is always in the future
 	// and at least one hour apart from each other so
 	// that calls to ha.Service.shouldTryToChangeLeader
@@ -115,15 +118,15 @@ func prepareIngestorWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, 
 	haService := ha.NewServiceWith(leaseClient, ticker, tooFarInTheFutureNowFn)
 	sigClose := make(chan struct{})
 	sCache := cache.NewSeriesCache(cache.DefaultConfig, sigClose)
-	parser := ingestor.DefaultParser(sCache)
-	parser.SetFilter(ha.NewFilter(haService))
+	dataParser := parser.NewParser()
+	dataParser.AddPreprocessor(ha.NewFilter(haService))
 	mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 
-	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), mCache, sCache, parser, &ingestor.Cfg{})
+	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), mCache, sCache, &ingestor.Cfg{})
 	if err != nil {
 		t.Fatalf("could not create ingestor: %v", err)
 	}
-	return ticker, ing, err
+	return ticker, api.Write(ing, dataParser, nil, api.InitMetrics(10)), ing, err
 }
 
 func TestHALeaderChangeDueToInactivity(t *testing.T) {
@@ -527,7 +530,8 @@ func checkLeaseInDb(t testing.TB, db *pgxpool.Pool, wantedLeaseState leaseState)
 	return true
 }
 
-func generateHASamples(input haTestInput) (output []prompb.TimeSeries) {
+func generateHASamplesRequest(input haTestInput) *http.Request {
+	output := prompb.WriteRequest{}
 	for now := input.minT; now.Before(input.maxT) || now.Equal(input.maxT); now = now.Add(time.Second) {
 		ts := int64(promModel.TimeFromUnixNano(now.UnixNano()))
 		sample := prompb.TimeSeries{
@@ -540,7 +544,14 @@ func generateHASamples(input haTestInput) (output []prompb.TimeSeries) {
 				Value: rand.Float64(), Timestamp: ts,
 			}},
 		}
-		output = append(output, sample)
+		output.Timeseries = append(output.Timeseries, sample)
 	}
-	return output
+	data, _ := proto.Marshal(&output)
+	body := strings.NewReader(string(snappy.Encode(nil, data)))
+	req, _ := http.NewRequest("POST", "", body)
+
+	req.Header.Add("Content-Encoding", "snappy")
+	req.Header.Add("Content-Type", "application/x-protobuf")
+	req.Header.Add("X-Prometheus-Remote-Write-Version", "0.1.0")
+	return req
 }
