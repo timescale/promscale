@@ -2,10 +2,12 @@ package parser
 
 import (
 	"fmt"
+	"mime"
 	"net/http"
 
 	"github.com/timescale/promscale/pkg/api/parser/json"
 	"github.com/timescale/promscale/pkg/api/parser/protobuf"
+	"github.com/timescale/promscale/pkg/api/parser/text"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -28,8 +30,10 @@ type DefaultParser struct {
 func NewParser() *DefaultParser {
 	return &DefaultParser{
 		formatParsers: map[string]formatParser{
-			"application/x-protobuf": protobuf.ParseRequest,
-			"application/json":       json.ParseRequest,
+			"application/x-protobuf":       protobuf.ParseRequest,
+			"application/json":             json.ParseRequest,
+			"text/plain":                   text.ParseRequest,
+			"application/openmetrics-text": text.ParseRequest,
 		},
 	}
 }
@@ -45,8 +49,11 @@ func (p *DefaultParser) AddPreprocessor(pre Preprocessor) {
 // ParseRequest runs the correct parser on the format of the request and runs the
 // preprocessors on the payload afterwards.
 func (d DefaultParser) ParseRequest(r *http.Request, req *prompb.WriteRequest) error {
-	format := r.Header.Get("Content-Type")
-	parser, ok := d.formatParsers[format]
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return fmt.Errorf("parser error: unable to parse format: %w", err)
+	}
+	parser, ok := d.formatParsers[mediaType]
 	if !ok {
 		return fmt.Errorf("parser error: unsupported format")
 	}
