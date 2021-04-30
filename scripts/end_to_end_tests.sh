@@ -127,6 +127,13 @@ curl -v \
     --data-binary "@${ROOT_DIR}/pkg/tests/testdata/import.json" \
     "${CONNECTOR_URL}/write"
 
+echo "sending text format write request"
+
+curl -v \
+    -H "Content-Type: text/plain" \
+    --data "custom_metric{custom_label=\"custom_value\"} 5" \
+    "${CONNECTOR_URL}/write"
+
 compare_connector_and_prom() {
     QUERY=${1}
     CONNECTOR_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/${QUERY}")
@@ -173,9 +180,10 @@ compare_connector_and_prom "query?query=up&time=$START_TIME"
 compare_connector_and_prom "series?match%5B%5D=ts_prom_sent_samples_total"
 
 # Labels endpoint cannot be compared to Prometheus becuase it will always differ due to direct backfilling of the real dataset.
-# We have to compare it to the correct expected output. Note that `namespace` and `node` labels are from JSON import payload.
-EXPECTED_OUTPUT1='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
-EXPECTED_OUTPUT2='{"status":"success","data":["__name__","code","handler","instance","job","le","method","mode","namespace","node","path","quantile","status"]}'
+# We have to compare it to the correct expected output. Note that `namespace` and `node` labels are from JSON import payload,
+# while `custom_label` label is from text format write request.
+EXPECTED_OUTPUT1='{"status":"success","data":["__name__","code","custom_label","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
+EXPECTED_OUTPUT2='{"status":"success","data":["__name__","code","custom_label","handler","instance","job","le","method","mode","namespace","node","path","quantile","status"]}'
 LABELS_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/labels")
 echo "  labels response: ${LABELS_OUTPUT}"
 echo "expected response: ${EXPECTED_OUTPUT1}"

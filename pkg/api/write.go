@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -212,7 +213,12 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request, m *Metrics) bo
 		return false
 	}
 
-	switch r.Header.Get("Content-Type") {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		validateError(w, "Error parsing media type from Content-Type header", m)
+		return false
+	}
+	switch mediaType {
 	case "application/x-protobuf":
 		if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
 			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), m)
@@ -231,8 +237,10 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request, m *Metrics) bo
 		}
 	case "application/json":
 		// Don't need any other header checks for JSON content type.
+	case "text/plain", "application/openmetrics":
+		// Don't need any other header checks for text content type.
 	default:
-		validateError(w, "unsupported data format (not protobuf or json)", m)
+		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", m)
 		return false
 	}
 
