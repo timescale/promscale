@@ -33,7 +33,7 @@
 
 7. What is the best way to set up HA (high availability) on Promscale?
 
-   You can find the documentation on Promscale HA setup [here](https://github.com/timescale/promscale/blob/master/docs/high-avaliability/prometheus-HA.md).
+   You can find the documentation on Promscale HA setup [here](https://github.com/timescale/promscale/blob/master/docs/high-availability/prometheus-HA.md).
 
 
 8. What is this Promscale extension for?

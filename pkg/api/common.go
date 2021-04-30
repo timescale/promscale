@@ -81,10 +81,11 @@ func (a *Auth) Validate() error {
 }
 
 type Config struct {
-	AllowedOrigin   *regexp.Regexp
-	ReadOnly        bool
-	AdminAPIEnabled bool
-	TelemetryPath   string
+	AllowedOrigin    *regexp.Regexp
+	ReadOnly         bool
+	HighAvailability bool
+	AdminAPIEnabled  bool
+	TelemetryPath    string
 
 	Auth *Auth
 
@@ -101,6 +102,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	cfg.Auth = &Auth{}
 
 	fs.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
+	fs.BoolVar(&cfg.HighAvailability, "high-availability", false, "Enable external_labels based HA.")
 	fs.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
 	fs.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 

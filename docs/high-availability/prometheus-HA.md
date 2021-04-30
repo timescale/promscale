@@ -26,7 +26,7 @@ Promscale instances. It will elect one leader per cluster.
 
 ## Prometheus leader-election via external labels
 
-![Promscale architecture for Prometheus in HA using external labels](https://raw.githubusercontent.com/timescale/promscale/master/docs/high-avaliability/new_ha_system.png)
+![Promscale architecture for Prometheus in HA using external labels](https://raw.githubusercontent.com/timescale/promscale/master/docs/high-availability/new_ha_system.png)
 
 To set up Promscale to process data from Prometheus running in HA mode,
 Prometheus must be configured to communicate which cluster it belongs to
@@ -46,7 +46,7 @@ with the following settings:
 ```
 
 After Prometheus instances are configured to send the correct labels,
-Promscale simply needs to be started with the `-enable-ha` CLI flag.
+Promscale simply needs to be started with the `-high-availability` CLI flag.
 Internally, Promscale will elect a single replica per cluster to be the
 current leader. Only data sent from that replica will be ingested. If that
 leader-replica stops sending data, then a new replica will be elected as the

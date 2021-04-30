@@ -6,6 +6,7 @@ package ha
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
@@ -31,15 +32,16 @@ func NewFilter(service *Service) *Filter {
 // FilterData validates and filters timeseries based on lease info from the service.
 // When Prometheus & Promscale are running HA mode the below FilterData is used
 // to validate leader replica samples & ha_locks in TimescaleDB.
-func (h *Filter) FilterData(tts []prompb.TimeSeries) (bool, error) {
+func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
+	tts := wr.Timeseries
 	if len(tts) == 0 {
-		return false, nil
+		return nil
 	}
 
 	clusterName, replicaName := haLabels(tts[0].Labels)
 
 	if err := validateClusterLabels(clusterName, replicaName); err != nil {
-		return false, err
+		return err
 	}
 
 	// find samples time range
@@ -49,11 +51,12 @@ func (h *Filter) FilterData(tts []prompb.TimeSeries) (bool, error) {
 	maxT := model.Time(maxTUnix).Time()
 	allowInsert, acceptedMinT, err := h.service.CheckLease(minT, maxT, clusterName, replicaName)
 	if err != nil {
-		return false, fmt.Errorf("could not check ha lease: %#v", err)
+		return fmt.Errorf("could not check ha lease: %#v", err)
 	}
 	if !allowInsert {
 		log.Debug("the samples aren't from the leader prom instance. skipping the insert")
-		return false, nil
+		wr.Timeseries = wr.Timeseries[:0]
+		return nil
 	}
 
 	// insert allowed -> parse samples
@@ -81,7 +84,7 @@ func (h *Filter) FilterData(tts []prompb.TimeSeries) (bool, error) {
 		}
 	}
 
-	return true, nil
+	return nil
 }
 
 // findDataTimeRange finds the minimum and maximum timestamps in a set of samples

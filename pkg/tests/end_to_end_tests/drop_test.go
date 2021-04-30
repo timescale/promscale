@@ -344,7 +344,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, ingstr.DefaultParser(scache), &ingstr.Cfg{DisableEpochSync: true})
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, &ingstr.Cfg{DisableEpochSync: true})
 		if err != nil {
 			t.Fatal(err)
 		}

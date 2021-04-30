@@ -5,9 +5,10 @@
 package pgclient
 
 import (
+	"math"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/util"
-	"math"
 )
 
 var (

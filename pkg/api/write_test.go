@@ -7,10 +7,8 @@ package api
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -23,301 +21,12 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
 
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/util"
 )
-
-func TestImportSampleUnmarshalJSON(t *testing.T) {
-	testCases := []struct {
-		name        string
-		input       string
-		timestamp   int64
-		value       float64
-		shouldError bool
-	}{
-		{
-			name:      "happy path",
-			input:     "[1000, 2.3]",
-			timestamp: 1000,
-			value:     2.3,
-		},
-		{
-			name:        "empty JSON",
-			input:       "",
-			shouldError: true,
-		},
-		{
-			name:        "empty array",
-			input:       "[]",
-			shouldError: true,
-		},
-		{
-			name:        "missing value",
-			input:       "[1000]",
-			shouldError: true,
-		},
-		{
-			name:        "more than two input values",
-			input:       "[1,2,3]",
-			shouldError: true,
-		},
-		{
-			name:        "invalid timestamp",
-			input:       `["1",2]`,
-			shouldError: true,
-		},
-		{
-			name:        "invalid value",
-			input:       `[1,"2"]`,
-			shouldError: true,
-		},
-		{
-			name:        "timestamp should not contain decimal place",
-			input:       `[10.1,10.2]`,
-			shouldError: true,
-		},
-	}
-
-	for _, c := range testCases {
-		t.Run(c.name, func(t *testing.T) {
-			i := &jsonSample{}
-
-			err := i.UnmarshalJSON([]byte(c.input))
-
-			if err != nil {
-				if !c.shouldError {
-					t.Errorf("unexpected error found: %s", err.Error())
-				}
-				return
-			} else {
-				if c.shouldError {
-					t.Errorf("expected error for test case, found nil")
-					return
-				}
-			}
-
-			if c.timestamp != i.Timestamp {
-				t.Errorf("invalid timestamp found, wanted %d, got %d", c.timestamp, i.Timestamp)
-			}
-
-			if c.value != i.Value {
-				t.Errorf("invalid value found, wanted %f, got %f", c.value, i.Value)
-			}
-		})
-
-	}
-}
-
-func TestMultipleJSONPayloads(t *testing.T) {
-	testCases := []struct {
-		name           string
-		jsonStringData string
-		result         *prompb.WriteRequest
-	}{
-		{
-			name:           "single payload",
-			jsonStringData: `{"labels":{"__name__":"foo"},"samples":[[1577836800000, 100]]}`,
-			result: &prompb.WriteRequest{
-				Timeseries: []prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{
-								Name:  "__name__",
-								Value: "foo",
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Timestamp: 1577836800000,
-								Value:     100,
-							},
-						},
-					},
-				},
-			},
-		}, {
-			name:           "two payloads",
-			jsonStringData: `{"labels":{"__name__":"foo"},"samples":[[1577836800000, 100]]}{"labels":{"__name__":"bar"},"samples":[[1577836800000, 1]]}`,
-			result: &prompb.WriteRequest{
-				Timeseries: []prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{
-								Name:  "__name__",
-								Value: "foo",
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Timestamp: 1577836800000,
-								Value:     100,
-							},
-						},
-					}, {
-						Labels: []prompb.Label{
-							{
-								Name:  "__name__",
-								Value: "bar",
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Timestamp: 1577836800000,
-								Value:     1,
-							},
-						},
-					},
-				},
-			},
-		}, {
-			name:           "three payloads",
-			jsonStringData: `{"labels":{"__name__":"foo"},"samples":[[1577836800000, 100]]}{"labels":{"__name__":"bar"},"samples":[[1577836800000, 1]]}{"labels":{"__name__":"third"},"samples":[[1599836800000, 100.04], [1599936800000, 100.05]]}`,
-			result: &prompb.WriteRequest{
-				Timeseries: []prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{
-								Name:  "__name__",
-								Value: "foo",
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Timestamp: 1577836800000,
-								Value:     100,
-							},
-						},
-					}, {
-						Labels: []prompb.Label{
-							{
-								Name:  "__name__",
-								Value: "bar",
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Timestamp: 1577836800000,
-								Value:     1,
-							},
-						},
-					}, {
-						Labels: []prompb.Label{
-							{
-								Name:  "__name__",
-								Value: "third",
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Timestamp: 1599836800000,
-								Value:     100.04,
-							},
-							{
-								Timestamp: 1599936800000,
-								Value:     100.05,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, c := range testCases {
-		req := &http.Request{
-			Header: map[string][]string{
-				"Content-Type": {"application/json"},
-			},
-			Body: ioutil.NopCloser(strings.NewReader(c.jsonStringData)),
-		}
-		resp, err, _ := loadWriteRequest(req)
-		require.NoError(t, err)
-		if !reflect.DeepEqual(resp, c.result) {
-			t.Fatalf("write request is not as expected: received %v, expected %v", resp, c.result)
-		}
-	}
-}
-
-func TestAppendJSONPayload(t *testing.T) {
-	testCases := []struct {
-		name   string
-		input  jsonPayload
-		result prompb.WriteRequest
-	}{
-		{
-			name:   "empty payload",
-			result: prompb.WriteRequest{},
-		},
-		{
-			name: "empty samples",
-			input: jsonPayload{
-				Labels: map[string]string{
-					"labelName": "labelValue",
-				},
-			},
-			result: prompb.WriteRequest{},
-		},
-		{
-			name: "empty labels",
-			input: jsonPayload{
-				Samples: []jsonSample{
-					{
-						Timestamp: 1,
-						Value:     2,
-					},
-				},
-			},
-			result: prompb.WriteRequest{},
-		},
-		{
-			name: "ensure backward compatibility",
-			input: jsonPayload{
-				Labels: map[string]string{
-					"labelName": "labelValue",
-				},
-				Samples: []jsonSample{
-					{
-						Timestamp: 1,
-						Value:     2.3,
-					},
-				},
-			},
-			result: prompb.WriteRequest{
-				Timeseries: []prompb.TimeSeries{
-					{
-						Labels: []prompb.Label{
-							{
-								Name:  "labelName",
-								Value: "labelValue",
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Timestamp: 1,
-								Value:     2.3,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, c := range testCases {
-		t.Run(c.name, func(t *testing.T) {
-			wr := &prompb.WriteRequest{}
-			got := appendJSONPayload(wr, c.input)
-
-			if !reflect.DeepEqual(c.result, *got) {
-				t.Errorf("unexpected result\ngot:\n%v\nwanted:\n%v\n", *got, c.result)
-
-			}
-		})
-	}
-
-}
 
 func TestDetectSnappyStreamFormat(t *testing.T) {
 	testCases := []struct {
@@ -423,7 +132,11 @@ func TestWrite(t *testing.T) {
 			requestBody: writeRequestToString(
 				&prompb.WriteRequest{
 					Timeseries: []prompb.TimeSeries{
-						{},
+						{
+							Samples: []prompb.Sample{
+								{},
+							},
+						},
 					},
 				},
 			),
@@ -476,7 +189,11 @@ func TestWrite(t *testing.T) {
 			requestBody: writeRequestToString(
 				&prompb.WriteRequest{
 					Timeseries: []prompb.TimeSeries{
-						{},
+						{
+							Samples: []prompb.Sample{
+								{},
+							},
+						},
 					},
 				},
 			),
@@ -536,8 +253,9 @@ func TestWrite(t *testing.T) {
 				result: c.inserterResponse,
 				err:    c.inserterErr,
 			}
+			dataParser := parser.NewParser()
 
-			handler := Write(mock, elector, &Metrics{
+			handler := Write(mock, dataParser, elector, &Metrics{
 				LeaderGauge:       leaderGauge,
 				ReceivedSamples:   receivedSamplesGauge,
 				FailedSamples:     failedSamplesGauge,
@@ -550,7 +268,6 @@ func TestWrite(t *testing.T) {
 			headers := protobufHeaders
 			if len(c.customHeaders) != 0 {
 				headers = c.customHeaders
-
 			}
 
 			test := GenerateWriteHandleTester(t, handler, headers)

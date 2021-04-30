@@ -14,6 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
+	"github.com/timescale/promscale/pkg/api/parser"
+	"github.com/timescale/promscale/pkg/ha"
+	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/query"
@@ -21,18 +24,29 @@ import (
 )
 
 func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
-	authWrapper := func(name string, h http.HandlerFunc) http.HandlerFunc {
-		return authHandler(apiConf, h)
+	writePreprocessors := []parser.Preprocessor{}
+	if apiConf.HighAvailability {
+		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
+		writePreprocessors = append(writePreprocessors, ha.NewFilter(service))
 	}
 
-	router := route.New().WithInstrumentation(authWrapper)
+	dataParser := parser.NewParser()
+	for _, preproc := range writePreprocessors {
+		dataParser.AddPreprocessor(preproc)
+	}
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, elector, metrics))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, dataParser, elector, metrics))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {
 		writeHandler = withWarnLog("trying to send metrics to write API while connector is in read-only mode", http.NotFoundHandler())
 	}
+
+	authWrapper := func(name string, h http.HandlerFunc) http.HandlerFunc {
+		return authHandler(apiConf, h)
+	}
+
+	router := route.New().WithInstrumentation(authWrapper)
 
 	router.Post("/write", writeHandler)
 

@@ -11,7 +11,6 @@ import (
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/ha"
-	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/health"
@@ -134,13 +133,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 		NumCopiers:     numCopiers,
 	}
 
-	parser := ingestor.DefaultParser(seriesCache)
-	if cfg.HAEnabled {
-		service := ha.NewService(haClient.NewLeaseClient(dbConn))
-		parser.SetFilter(ha.NewFilter(service))
-	}
-
-	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, parser, &c)
+	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, &c)
 
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)

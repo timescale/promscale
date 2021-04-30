@@ -6,7 +6,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,188 +14,187 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
+	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
-	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func Write(writer ingestor.DBInserter, elector *util.Elector, metrics *Metrics) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Request, *Metrics) bool {
+	if elector == nil {
+		return nil
+	}
 
-		// we treat invalid requests as the same as no request for
-		// leadership-timeout purposes
-		if !validateWriteHeaders(w, r) {
-			metrics.InvalidWriteReqs.Inc()
-			return
-		}
-
+	return func(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 		// We need to record this time even if we're not the leader as it's
 		// used to determine if we're eligible to become the leader.
-		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
+		atomic.StoreInt64(&m.LastRequestUnixNano, time.Now().UnixNano())
 
-		shouldWrite, err := isWriter(elector)
+		shouldWrite, err := elector.IsLeader()
 		if err != nil {
-			metrics.LeaderGauge.Set(0)
+			m.LeaderGauge.Set(0)
 			log.Error("msg", "IsLeader check failed", "err", err)
-			return
+			return false
 		}
 		if !shouldWrite {
-			metrics.LeaderGauge.Set(0)
+			m.LeaderGauge.Set(0)
 			log.DebugRateLimited("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
-			return
+			return false
 		}
 
-		metrics.LeaderGauge.Set(1)
+		m.LeaderGauge.Set(1)
+		return true
+	}
+}
 
-		req, err, logMsg := loadWriteRequest(r)
+type readCloser struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func (rc *readCloser) Read(p []byte) (n int, err error) {
+	return rc.reader.Read(p)
+}
+
+func (rc *readCloser) Close() error {
+	return rc.closer.Close()
+}
+
+func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
+	snappyEncoding := strings.Contains(r.Header.Get("Content-Encoding"), "snappy")
+	if !snappyEncoding {
+		return true
+	}
+	buf := make([]byte, 10)
+	size, err := r.Body.Read(buf)
+	if err != nil {
+		invalidRequestError(w, "snappy decode error", "payload too short or corrupt", m)
+		return false
+	}
+
+	//Setup multi-reader so we can read the complete contents.
+	mr := io.MultiReader(bytes.NewBuffer(buf[:size]), r.Body)
+
+	if detectSnappyStreamFormat(buf) {
+		r.Body = &readCloser{
+			reader: snappy.NewReader(mr),
+			closer: r.Body,
+		}
+		return true
+	}
+
+	compressed, err := ioutil.ReadAll(mr)
+	if err != nil {
+		invalidRequestError(w, "request body read error", err.Error(), m)
+		return false
+	}
+
+	// Snappy block format.
+	decoded, err := snappy.Decode(nil, compressed)
+	if err != nil {
+		invalidRequestError(w, "snappy decode error", err.Error(), m)
+		return false
+	}
+
+	body := bytes.NewBuffer(decoded)
+	r.Body = &readCloser{
+		reader: body,
+		closer: r.Body,
+	}
+	return true
+}
+
+func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func(http.ResponseWriter, *http.Request, *Metrics) bool {
+	return func(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
+		req := ingestor.NewWriteRequest()
+		err := dataParser.ParseRequest(r, req)
 		if err != nil {
-			metrics.InvalidWriteReqs.Inc()
-			log.Error("msg", logMsg, "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			ingestor.FinishWriteRequest(req)
+			invalidRequestError(w, "parser error", err.Error(), m)
+			return false
 		}
 
 		// if samples in write request are empty the we do not need to
 		// proceed further
-		timeseries := req.GetTimeseries()
-		if len(timeseries) == 0 {
-			return
+		if len(req.Timeseries) == 0 {
+			ingestor.FinishWriteRequest(req)
+			return false
 		}
 
 		var receivedBatchCount uint64
-		for _, t := range timeseries {
-			receivedBatchCount += uint64(len(t.Samples))
+
+		for _, ts := range req.Timeseries {
+			receivedBatchCount += uint64(len(ts.Samples))
 		}
 
-		metrics.ReceivedSamples.Add(float64(receivedBatchCount))
+		m.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		numSamples, err := writer.Ingest(timeseries, req)
+		numSamples, err := inserter.Ingest(req.Timeseries, req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			metrics.FailedSamples.Add(float64(receivedBatchCount - numSamples))
-			return
+			m.FailedSamples.Add(float64(receivedBatchCount - numSamples))
+			return false
 		}
 
 		duration := time.Since(begin).Seconds()
 
-		metrics.SentSamples.Add(float64(numSamples))
-		metrics.SentBatchDuration.Observe(duration)
+		m.SentSamples.Add(float64(numSamples))
+		m.SentBatchDuration.Observe(duration)
 
-		metrics.WriteThroughput.SetCurrent(getCounterValue(metrics.SentSamples))
+		m.WriteThroughput.SetCurrent(getCounterValue(m.SentSamples))
 
 		select {
-		case d := <-metrics.WriteThroughput.Values:
+		case d := <-m.WriteThroughput.Values:
 			log.Info("msg", "Samples write throughput", "samples/sec", d)
 		default:
 		}
 
+		return true
+	}
+}
+
+type writeStage func(http.ResponseWriter, *http.Request, *Metrics) bool
+
+type writeHandler struct {
+	stages  []writeStage
+	metrics *Metrics
+}
+
+func (wh *writeHandler) addStages(stages ...writeStage) {
+	for _, stage := range stages {
+		if stage == nil {
+			continue
+		}
+		wh.stages = append(wh.stages, stage)
+	}
+}
+
+func (wh *writeHandler) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, stage := range wh.stages {
+			if !stage(w, r, wh.metrics) {
+				return
+			}
+		}
 	})
 }
 
-func loadWriteRequest(r *http.Request) (*prompb.WriteRequest, error, string) {
-	var req *prompb.WriteRequest
+// Write returns an http.Handler that is responsible for data ingest.
+func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elector *util.Elector, metrics *Metrics) http.Handler {
+	wh := writeHandler{metrics: metrics}
+	wh.addStages(
+		validateWriteHeaders,
+		checkLegacyHA(elector),
+		decodeSnappy,
+		ingest(inserter, dataParser),
+	)
 
-	switch r.Header.Get("Content-Type") {
-	case "application/x-protobuf":
-		reqBuf, err, msg := decodeSnappyBody(r.Body)
-		if err != nil {
-			return nil, err, msg
-		}
-
-		req = ingestor.NewWriteRequest()
-		if err := proto.Unmarshal(reqBuf, req); err != nil {
-			ingestor.FinishWriteRequest(req)
-			return nil, err, "Protobuf unmarshal error"
-		}
-	case "application/json":
-		var (
-			i    jsonPayload
-			body io.Reader = r.Body
-			err  error
-			msg  string
-		)
-
-		snappyEncoding := strings.Contains(r.Header.Get("Content-Encoding"), "snappy")
-
-		if snappyEncoding {
-			body, err, msg = decodeSnappy(r.Body)
-
-			if err != nil {
-				return nil, err, msg
-			}
-		}
-
-		dec := json.NewDecoder(body)
-		req = ingestor.NewWriteRequest()
-
-		for {
-			if err := dec.Decode(&i); err == io.EOF {
-				break
-			} else if err != nil {
-				ingestor.FinishWriteRequest(req)
-				return nil, err, "JSON decode error"
-			}
-
-			req = appendJSONPayload(req, i)
-		}
-	default:
-		// Cannot get here because of header validation.
-		return nil, fmt.Errorf("unsupported data format (not protobuf or json)"), "Write header validation error"
-	}
-
-	return req, nil, ""
-}
-
-func isWriter(elector *util.Elector) (bool, error) {
-	if elector != nil {
-		shouldWrite, err := elector.IsLeader()
-		return shouldWrite, err
-	}
-	return true, nil
-}
-
-func decodeSnappy(r io.Reader) (io.Reader, error, string) {
-	buf := make([]byte, 10)
-	_, err := r.Read(buf)
-	if err != nil {
-		return nil, err, "snappy payload too short or corrupt"
-	}
-
-	//Setup multi-reader so we can read the complete contents.
-	mr := io.MultiReader(bytes.NewBuffer(buf), r)
-
-	if detectSnappyStreamFormat(buf) {
-		return snappy.NewReader(mr), nil, ""
-	}
-
-	// Snappy block format.
-	reqBuf, err, msg := decodeSnappyBody(mr)
-	if err != nil {
-		return nil, err, msg
-	}
-
-	return bytes.NewBuffer(reqBuf), nil, ""
-}
-
-func decodeSnappyBody(r io.Reader) ([]byte, error, string) {
-	compressed, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, err, "Read error"
-	}
-
-	buf, err := snappy.Decode(nil, compressed)
-	if err != nil {
-		return nil, err, "Snappy decode error"
-	}
-
-	return buf, nil, ""
+	return wh.handler()
 }
 
 func getCounterValue(counter prometheus.Counter) float64 {
@@ -207,114 +205,48 @@ func getCounterValue(counter prometheus.Counter) float64 {
 	return dtoMetric.GetCounter().GetValue()
 }
 
-func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
+func validateWriteHeaders(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
 	if r.Method != "POST" {
-		buildWriteError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method))
+		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), m)
 		return false
 	}
 
 	switch r.Header.Get("Content-Type") {
 	case "application/x-protobuf":
 		if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
-			buildWriteError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")))
+			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), m)
 			return false
 		}
 
 		remoteWriteVersion := r.Header.Get("X-Prometheus-Remote-Write-Version")
 		if remoteWriteVersion == "" {
-			buildWriteError(w, "Missing X-Prometheus-Remote-Write-Version header")
+			validateError(w, "Missing X-Prometheus-Remote-Write-Version header", m)
 			return false
 		}
 
 		if !strings.HasPrefix(remoteWriteVersion, "0.1.") {
-			buildWriteError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion))
+			validateError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion), m)
 			return false
 		}
 	case "application/json":
 		// Don't need any other header checks for JSON content type.
 	default:
-		buildWriteError(w, "unsupported data format (not protobuf or json)")
+		validateError(w, "unsupported data format (not protobuf or json)", m)
 		return false
 	}
 
 	return true
 }
 
-func buildWriteError(w http.ResponseWriter, err string) {
-	log.Error("msg", "Write header validation error", "err", err)
+func invalidRequestError(w http.ResponseWriter, msg, err string, m *Metrics) {
+	log.Error("msg", msg, "err", err)
 	http.Error(w, err, http.StatusBadRequest)
+	m.InvalidWriteReqs.Inc()
 }
 
-type jsonPayload struct {
-	Labels  map[string]string `json:"labels"`
-	Samples []jsonSample      `json:"samples"`
-}
-
-type jsonSample struct {
-	Timestamp int64
-	Value     float64
-}
-
-func (i *jsonSample) UnmarshalJSON(data []byte) error {
-	var (
-		s  string
-		v  []interface{}
-		ok bool
-	)
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-
-	if len(v) != 2 {
-		return fmt.Errorf("invalid sample, should contain timestamp and value: %v", v)
-	}
-
-	// Verify that timestamp doesn't contain fractions so we don't silently
-	// drop precision.
-	s = string(data)
-	idx := strings.IndexRune(s, '.')
-	if idx != -1 && idx < strings.IndexRune(s, ',') {
-		return fmt.Errorf("timestamp cannot contain decimal parts in sample: %s", data)
-	}
-
-	floatTimestamp, ok := v[0].(float64)
-	if !ok {
-		return fmt.Errorf("cannot convert timestamp to int64 type for sample: %s", data)
-	}
-	i.Timestamp = int64(floatTimestamp)
-
-	i.Value, ok = v[1].(float64)
-	if !ok {
-		return fmt.Errorf("cannot convert value to float64 type for sample: %v", v)
-	}
-
-	return nil
-}
-
-func appendJSONPayload(req *prompb.WriteRequest, i jsonPayload) *prompb.WriteRequest {
-	if len(i.Samples) == 0 || len(i.Labels) == 0 {
-		return req
-	}
-
-	ts := prompb.TimeSeries{}
-	ts.Labels = make([]prompb.Label, 0, len(i.Labels))
-	for name, value := range i.Labels {
-		ts.Labels = append(ts.Labels, prompb.Label{
-			Name:  name,
-			Value: value,
-		})
-	}
-
-	for _, sample := range i.Samples {
-		ts.Samples = append(ts.Samples, prompb.Sample{
-			Timestamp: sample.Timestamp,
-			Value:     sample.Value,
-		})
-	}
-
-	req.Timeseries = append(req.Timeseries, ts)
-	return req
+func validateError(w http.ResponseWriter, err string, metrics *Metrics) {
+	invalidRequestError(w, "Write header validation error", err, metrics)
 }
 
 func detectSnappyStreamFormat(input []byte) bool {
