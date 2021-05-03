@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -27,7 +28,10 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
 		metricName := "test_metric_1"
 		var metricID int
 		var tableName string
@@ -137,7 +141,10 @@ func TestSQLChunkInterval(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("chunk intervals meaningless without TimescaleDB")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+		defer db.Close()
+
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -415,7 +422,9 @@ func TestSQLIngest(t *testing.T) {
 		tcase := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
+			withDB(t, databaseName, func(dbOwner *pgxpool.Pool, t testing.TB) {
+				db := testhelpers.PgxPoolWithRole(t, databaseName, "prom_writer")
+				defer db.Close()
 				ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 				if err != nil {
 					t.Fatal(err)
@@ -497,7 +506,9 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -523,7 +534,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
+		_, err = dbOwner.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -554,7 +565,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
+		_, err = dbOwner.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -613,7 +624,9 @@ func TestMetricBatcherLabelsBatching(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
 		ts := []prompb.TimeSeries{}
 
 		for i := 0; i < 120; i++ {
@@ -681,7 +694,9 @@ func TestInsertCompressed(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -716,7 +731,7 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
+		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
@@ -780,7 +795,9 @@ func TestInsertMultinodeAddNodes(t *testing.T) {
 }
 
 func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
-	withDBAttachNode(t, *testDatabase, attachExisting, func(db *pgxpool.Pool, t testing.TB) {
+	withDBAttachNode(t, *testDatabase, attachExisting, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -809,7 +826,9 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 		}
 		verifyNumDataNodes(t, db, "created_before_add_node", 1)
 	},
-		func(db *pgxpool.Pool, t testing.TB) {
+		func(dbOwner *pgxpool.Pool, t testing.TB) {
+			db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+			defer db.Close()
 			ts := []prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
@@ -863,7 +882,9 @@ func TestCompressionSetting(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+		defer db.Close()
 		checkJobs := func(t testing.TB, jobs_expected int) {
 			countQuery := ""
 			jobs := make([]string, 0)
@@ -955,7 +976,7 @@ func TestCompressionSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
+		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
@@ -1008,7 +1029,8 @@ func TestCustomCompressionJob(t *testing.T) {
 		t.Skip("test meaningless without Timescale 2")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -1071,7 +1093,7 @@ func TestCustomCompressionJob(t *testing.T) {
 
 		runCompressionJob := func() {
 			//compress_metric_chunks and not execute_compression_policy since we don't want the decompression delay logic here.
-			_, err = db.Exec(context.Background(), `CALL _prom_catalog.compress_metric_chunks('Test1')`)
+			_, err = dbJob.Exec(context.Background(), `CALL _prom_catalog.compress_metric_chunks('Test1')`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1206,6 +1228,8 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		t.Skip("test meaningless without Timescale 2")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
 		// in early versions of Timescale multinode the compression catalog
 		// would not be updated for distributed hypertables so we detect
 		// compression using a probe INSERT
@@ -1267,7 +1291,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 
 		runMaintenanceJob := func() {
 			//execute_maintenance and not execute_compression_policy since we want to test end-to-end
-			_, err = db.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
+			_, err = dbJob.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1369,6 +1393,8 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 		t.Skip("test meaningless without Timescale 2")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
 		// in early versions of Timescale multinode the compression catalog
 		// would not be updated for distributed hypertables so we detect
 		// compression using a probe INSERT
@@ -1430,7 +1456,7 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 
 		runMaintenanceJob := func() {
 			//execute_maintenance and not execute_compression_policy since we want to test end-to-end
-			_, err = db.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
+			_, err = dbJob.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1497,7 +1523,9 @@ func TestConfigMaintenanceJobs(t *testing.T) {
 	if !*useTimescale2 {
 		t.Skip("test meaningless without Timescale 2")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+		defer db.Close()
 		cnt := 0
 		err := db.QueryRow(context.Background(),
 			"SELECT count(*) FROM timescaledb_information.jobs WHERE proc_schema = '_prom_catalog' AND proc_name = 'execute_maintenance_job'").

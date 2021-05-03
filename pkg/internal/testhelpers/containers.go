@@ -20,8 +20,10 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/stretchr/testify/require"
 	testcontainers "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 const (
@@ -34,6 +36,17 @@ const (
 
 	Superuser   = true
 	NoSuperuser = false
+)
+
+var (
+	users = []string{
+		promUser,
+		"prom_reader_user",
+		"prom_writer_user",
+		"prom_modifier_user",
+		"prom_admin_user",
+		"prom_maintenance_user",
+	}
 )
 
 type ExtensionState int
@@ -111,7 +124,25 @@ func PgConnectURL(dbName string, superuser SuperuserStatus) string {
 	if !superuser {
 		user = promUser
 	}
+	return PgConnectURLUser(dbName, user)
+}
+
+func PgConnectURLUser(dbName string, user string) string {
 	return fmt.Sprintf(connectTemplate, user, pgHost, pgPort.Int(), dbName)
+}
+
+func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
+	user := role + "_user"
+	dbOwner, err := pgx.Connect(context.Background(), PgConnectURL(dbName, NoSuperuser))
+	require.NoError(t, err)
+	defer dbOwner.Close(context.Background())
+
+	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL "+schema.Catalog+".execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
+	require.NoError(t, err)
+
+	pool, err := pgxpool.Connect(context.Background(), PgConnectURLUser(dbName, user))
+	require.NoError(t, err)
+	return pool
 }
 
 // WithDB establishes a database for testing and calls the callback
@@ -490,12 +521,14 @@ func startPGInstance(
 		return nil, closer, err
 	}
 
-	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE USER %s WITH NOSUPERUSER CREATEROLE PASSWORD 'password'", promUser))
-	if err != nil {
-		//ignore duplicate errors
-		pgErr, ok := err.(*pgconn.PgError)
-		if !ok || pgErr.Code != "42710" {
-			return nil, closer, err
+	for _, username := range users {
+		_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE USER %s WITH NOSUPERUSER CREATEROLE PASSWORD 'password'", username))
+		if err != nil {
+			//ignore duplicate errors
+			pgErr, ok := err.(*pgconn.PgError)
+			if !ok || pgErr.Code != "42710" {
+				return nil, closer, err
+			}
 		}
 	}
 
@@ -529,11 +562,12 @@ func addDataNode(db *pgx.Conn, database string, nodeName string, nodePort string
 		return err
 	}
 
-	_, err = db.Exec(context.Background(), "GRANT USAGE ON FOREIGN SERVER "+nodeName+" TO "+promUser)
-	if err != nil {
-		return err
+	for _, username := range users {
+		_, err = db.Exec(context.Background(), "GRANT USAGE ON FOREIGN SERVER "+nodeName+" TO "+username)
+		if err != nil {
+			return err
+		}
 	}
-
 	grantDistributed := "CALL distributed_exec($$ GRANT ALL ON DATABASE %s TO %s $$, transactional => false)"
 	_, err = db.Exec(context.Background(), fmt.Sprintf(grantDistributed, database, promUser))
 	if err != nil {

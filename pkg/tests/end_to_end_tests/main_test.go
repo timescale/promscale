@@ -194,13 +194,13 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer pool.Close()
 
 		if *useMultinode {
 			//add prom node using the prom user (not superuser)
 			addPromNode(t, pool, attachExisting)
 		}
 
-		defer pool.Close()
 		afterAddNode(pool, t)
 	})
 }

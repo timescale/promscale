@@ -16,6 +16,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -135,7 +136,11 @@ func TestSQLJsonLabelArray(t *testing.T) {
 		databaseName := fmt.Sprintf("%s_%d", *testDatabase, tcIndex)
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			withDB(t, databaseName, func(db *pgxpool.Pool, t testing.TB) {
+			withDB(t, databaseName, func(dbOwner *pgxpool.Pool, t testing.TB) {
+				db := testhelpers.PgxPoolWithRole(t, databaseName, "prom_reader")
+				defer db.Close()
+				dbWriter := testhelpers.PgxPoolWithRole(t, databaseName, "prom_writer")
+				defer dbWriter.Close()
 				for _, ts := range c.metrics {
 					labelSet := make(model.LabelSet, len(ts.Labels))
 					metricName := ""
@@ -157,7 +162,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 						t.Fatal(err)
 					}
 					var labelArray []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_label_array($1)", jsonOrig).Scan(&labelArray)
+					err = dbWriter.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_label_array($1)", jsonOrig).Scan(&labelArray)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -169,7 +174,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var labelArrayKV []int
-					err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
+					err = dbWriter.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArrayKV)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -217,20 +222,20 @@ func TestSQLJsonLabelArray(t *testing.T) {
 
 					// Check the series_id logic
 					var seriesID int
-					err = db.QueryRow(context.Background(), "SELECT _prom_catalog.get_or_create_series_id($1)", jsonOrig).Scan(&seriesID)
+					err = dbWriter.QueryRow(context.Background(), "SELECT _prom_catalog.get_or_create_series_id($1)", jsonOrig).Scan(&seriesID)
 					if err != nil {
 						t.Fatal(err)
 					}
 
 					var seriesIDKeyVal int
-					err = db.QueryRow(context.Background(), "SELECT series_id FROM get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					err = dbWriter.QueryRow(context.Background(), "SELECT series_id FROM get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
 						t.Fatal(err)
 					}
 					if seriesID != seriesIDKeyVal {
 						t.Fatalf("Expected the series ids to be equal: %v != %v", seriesID, seriesIDKeyVal)
 					}
-					_, err = db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
+					_, err = dbWriter.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -350,15 +355,14 @@ func TestExtensionGapfillDelta(t *testing.T) {
 	if !*useExtension || testing.Short() {
 		t.Skip("skipping extension test; testing without extension")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
+		defer db.Close()
 		_, err := db.Exec(context.Background(), "CREATE TABLE gfd_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if err != nil {
-			t.Fatal(err)
-		}
 		times := []string{
 			"2000-01-02 15:00:00 UTC",
 			"2000-01-02 15:05:00 UTC",
@@ -499,10 +503,11 @@ func TestExtensionGapfillIncrease(t *testing.T) {
 			result: "{7}",
 		},
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, tb testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, tb testing.TB) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-
+				db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
+				defer db.Close()
 				_, err := db.Exec(context.Background(), "CREATE TABLE gfi_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
 				if err != nil {
 					t.Fatal(err)

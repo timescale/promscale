@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
@@ -28,7 +29,9 @@ func TestTryChangeLeader(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	withDB(t, "ha_try_change_leader", func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, "ha_try_change_leader", func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, "ha_try_change_leader", "prom_writer")
+		defer db.Close()
 		cluster := "c"
 		originalWriter := "w1"
 		minT := time.Unix(1, 0)
@@ -86,8 +89,9 @@ func TestConcurrentTryChangeLeader(t *testing.T) {
 	numCallsToCheck := 10
 	timeBetweenCheck := 10 * time.Millisecond
 
-	withDB(t, "ha_try_change_leader_concurrent", func(db *pgxpool.Pool, t testing.TB) {
-
+	withDB(t, "ha_try_change_leader_concurrent", func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, "ha_try_change_leader_concurrent", "prom_writer")
+		defer db.Close()
 		wg := sync.WaitGroup{}
 		wg.Add(len(writers))
 		minT := time.Unix(0, 0)

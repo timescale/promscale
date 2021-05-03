@@ -18,7 +18,9 @@ import (
 var readRequest *prompb.ReadRequest
 
 func TestDBConnectionHandling(t *testing.T) {
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, tb testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, tb testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
 		_, pgClient, err := buildRouter(db)
 		if err != nil {
 			t.Fatalf("unexpected error while creating pgClient: %s", err)

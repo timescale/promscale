@@ -99,6 +99,7 @@ BEGIN
     RETURN lease_state;
 END;
 $func$ LANGUAGE plpgsql VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.update_lease(TEXT, TEXT, TIMESTAMPTZ, TIMESTAMPTZ) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.try_change_leader(cluster TEXT, new_leader TEXT,
                                                             max_time TIMESTAMPTZ) RETURNS ha_leases
@@ -129,3 +130,4 @@ BEGIN
 
 END;
 $func$ LANGUAGE plpgsql VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.try_change_leader(TEXT, TEXT, TIMESTAMPTZ) TO prom_writer;

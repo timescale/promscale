@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
@@ -62,7 +63,9 @@ func TestUpdateLease(t *testing.T) {
 
 	const leaseTime = time.Minute
 	const refreshTime = 10 * time.Second
-	withDB(t, "ha_check_insert", func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, "ha_check_insert", func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, "ha_check_insert", "prom_writer")
+		defer db.Close()
 		// first check
 		cluster := "c"
 		writer := "w1"
@@ -132,7 +135,9 @@ func TestCheckLeaseMultiCluster(t *testing.T) {
 	}
 
 	const leaseTime = time.Minute
-	withDB(t, "ha_check_insert_multicluster", func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, "ha_check_insert_multicluster", func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, "ha_check_insert_multicluster", "prom_writer")
+		defer db.Close()
 		// first check
 		cluster1 := "c1"
 		cluster2 := "c2"
@@ -169,8 +174,9 @@ func TestConcurrentUpdateLease(t *testing.T) {
 	numCallsToCheck := 10
 	timeBetweenCheck := 10 * time.Millisecond
 
-	withDB(t, "ha_check_insert_concurrent", func(db *pgxpool.Pool, t testing.TB) {
-
+	withDB(t, "ha_check_insert_concurrent", func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, "ha_check_insert_concurrent", "prom_writer")
+		defer db.Close()
 		wg := sync.WaitGroup{}
 		wg.Add(len(clusters) * len(writers))
 		firstLockCounters := make(map[string]*int32)
