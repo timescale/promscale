@@ -17,12 +17,12 @@ const TenantLabelKey = "__tenant__"
 
 // AuthConfig defines configuration type for tenancy.
 type AuthConfig interface {
-	// AllowNonTenants returns true if tenancy is asked to accept write-requests from non-multi-tenants.
+	// allowNonTenants returns true if tenancy is asked to accept write-requests from non-multi-tenants.
 	allowNonTenants() bool
-	// IsTenantAllowed returns true if the given tenantName is allowed to be ingested.
-	IsTenantAllowed(string) bool
 	// getTenantSafetyMatcher returns a safety matcher that ensures queries only have data of tenants that are authorized.
 	getTenantSafetyMatcher() (*labels.Matcher, error)
+	// IsTenantAllowed returns true if the given tenantName is allowed to be ingested.
+	IsTenantAllowed(string) bool
 }
 
 // selectiveConfig defines the configuration for tenancy where only valid tenants are allowed.

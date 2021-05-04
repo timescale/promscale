@@ -24,10 +24,13 @@ import (
 )
 
 func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
-	writePreprocessors := []parser.Preprocessor{}
+	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
 		writePreprocessors = append(writePreprocessors, ha.NewFilter(service))
+	}
+	if apiConf.MultiTenancy != nil {
+		writePreprocessors = append(writePreprocessors, apiConf.MultiTenancy.WriteAuthorizer())
 	}
 
 	dataParser := parser.NewParser()

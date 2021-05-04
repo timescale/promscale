@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
@@ -226,7 +227,7 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(ingstr.Request{Req: ingstr.NewWriteRequestWithTs(copyMetrics(metrics))})
+	_, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(metrics)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +287,7 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 	}
 
 	defer ingestor.Close()
-	_, err = ingestor.Ingest(ingstr.Request{Req: ingstr.NewWriteRequestWithTs(copyMetrics(metrics))})
+	_, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(metrics)))
 	if err != nil {
 		t.Fatal(err)
 	}

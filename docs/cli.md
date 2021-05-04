@@ -5,13 +5,13 @@ You can also find information on flags with `promscale_<version> -help`.
 
 ## Arguments
 | Argument | Description |
-|------|:-----|
+|:------:|:-----|
 | version | Prints the version information of Promscale. |
 | help | Prints the information related to flags supported by Promscale.
 
 ## General flags
 | Flag | Type | Default | Description |
-|------|:-----:|:-------:|:-----------|
+|:------:|:-----:|:-------:|:-----------|
 | config | string | config.yml | YAML configuration file path for Promscale. |
 | install-extensions | boolean | true | Install TimescaleDB & Promscale extensions. |
 | upgrade-extensions | boolean | true | Upgrades TimescaleDB & Promscale extensions. |
@@ -44,17 +44,25 @@ You can also find information on flags with `promscale_<version> -help`.
 ## Auth flags
 
 | Flag | Type | Default | Description |
-|------|:-----:|:-------:|:-----------|
+|:------:|:-----:|:-------:|:-----------|
 | auth-username | string | "" | Authentication username used for web endpoint authentication. Disabled by default. |
 | auth-password | string | "" | Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token methods. |
 | auth-password-file | string | "" | Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods. |
 | bearer-token | string | "" (disabled) | Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods. |
 | bearer-token-file | string | "" (disabled) | Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods. |
 
+## Multi-tenancy flags
+
+| Flag | Type | Default | Description |
+|:------:|:-----:|:-------:|:-----------|
+| multi-tenancy | boolean | false | Use multi-tenancy mode in Promscale. |
+| multi-tenancy-allow-non-tenants | boolean | false | Allow Promscale to ingest/query all tenants as well as non-tenants. By setting this to true, Promscale will ingest data from non multi-tenant Prometheus instances as well. If this is false, only multi-tenants (tenants listed in 'multi-tenancy-valid-tenants') are allowed for ingesting and querying data. |
+| multi-tenancy-valid-tenants | string | allow-all |  Sets valid tenants that are allowed to be ingested/queried from Promscale. This can be set as: 'allow-all' (default) or a comma separated tenant names. 'allow-all' makes Promscale ingest or query any tenant from itself. A comma separated list will indicate only those tenants that are authorized for operations from Promscale. |
+
 ## Database flags
 
 | Flag | Type | Default | Description |
-|------|:-----:|:-------:|:-----------|
+|:------:|:-----:|:-------:|:-----------|
 | app | string | promscale@{version} | 'app' sets application_name in database connection string. This is helpful during debugging when looking at pg_stat_activity. |
 | db-host | string | localhost | Host for TimescaleDB/Vanilla Postgres. |
 | db-port | int | 5432 | TimescaleDB/Vanilla Postgres connection password. |
@@ -73,7 +81,7 @@ You can also find information on flags with `promscale_<version> -help`.
 ## PromQL engine evaluation flags
 
 | Flag | Type | Default | Description |
-|------|:-----:|:-------:|:-----------|
+|:------:|:-----:|:-------:|:-----------|
 | promql-enable-feature | string | "" | [EXPERIMENTAL] Enable optional PromQL features, separated by commas. These are disabled by default in Promscale's PromQL engine. Currently, this includes 'promql-at-modifier' and 'promql-negative-offset'. For more information, see https://github.com/prometheus/prometheus/blob/master/docs/disabled_features.md |
 | promql-query-timeout | duration | 2 minutes | Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in '/api/v1/query.*' endpoints. |
 | promql-default-subquery-step-interval | duration | 1 minute | Default step interval to be used for PromQL subquery evaluation. This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option. |

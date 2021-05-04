@@ -137,11 +137,6 @@ func Validate(cfg *Config) error {
 	return cfg.Auth.Validate()
 }
 
-func getTenant(r *http.Request) string {
-	// We do not look for `X-` since it has been deprecated as mentioned in https://datatracker.ietf.org/doc/html/rfc6648.
-	return r.Header.Get("TENANT")
-}
-
 func readFromFile(path string, defaultValue string) (string, error) {
 	if path == "" {
 		return defaultValue, nil

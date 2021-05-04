@@ -14,13 +14,14 @@ func TestTenantAllowed(t *testing.T) {
 	incomingTenant := "tenant-a"
 	emptyTenant := ""
 	tcs := []struct {
-		name   string
-		c      AuthConfig
-		forbid bool
+		name  string
+		c     AuthConfig
+		allow bool
 	}{
 		{
-			name: "allow all tenants",
-			c:    &AllowAllTenantsConfig{nonTenants: true},
+			name:  "allow all tenants",
+			c:     &AllowAllTenantsConfig{nonTenants: true},
+			allow: true,
 		},
 		{
 			name: "allow valid tenants only",
@@ -30,6 +31,7 @@ func TestTenantAllowed(t *testing.T) {
 					"tenant-b": {},
 				},
 			},
+			allow: true,
 		},
 		{
 			name: "forbid tenants",
@@ -38,16 +40,11 @@ func TestTenantAllowed(t *testing.T) {
 					"tenant-b": {},
 				},
 			},
-			forbid: true,
 		},
 	}
 	for _, tc := range tcs {
 		c := tc.c
-		if tc.forbid {
-			require.False(t, c.IsTenantAllowed(incomingTenant), tc.name)
-		} else {
-			require.True(t, c.IsTenantAllowed(incomingTenant), tc.name)
-		}
+		require.Equal(t, c.IsTenantAllowed(incomingTenant), tc.allow)
 		if _, ok := c.(*AllowAllTenantsConfig); ok {
 			require.True(t, c.IsTenantAllowed(emptyTenant))
 		} else {

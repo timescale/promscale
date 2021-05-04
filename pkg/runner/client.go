@@ -159,16 +159,15 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 
 	multiTenancy := tenancy.NewNoopAuthorizer()
 	if cfg.TenancyCfg.EnableMultiTenancy {
-		var multiTenancyConfig tenancy.AuthConfig
-		if cfg.TenancyCfg.SkipTenantValidation {
-			multiTenancyConfig = tenancy.NewAllowAllTenantsConfig(cfg.TenancyCfg.AllowNonMTWrites)
-		} else {
+		multiTenancyConfig := tenancy.NewAllowAllTenantsConfig(cfg.TenancyCfg.AllowNonMTWrites)
+		if !cfg.TenancyCfg.SkipTenantValidation {
 			multiTenancyConfig = tenancy.NewSelectiveTenancyConfig(cfg.TenancyCfg.ValidTenantsList, cfg.TenancyCfg.AllowNonMTWrites)
 		}
 		multiTenancy, err = tenancy.NewAuthorizer(multiTenancyConfig)
 		if err != nil {
 			return nil, fmt.Errorf("new tenancy: %w", err)
 		}
+		cfg.APICfg.MultiTenancy = multiTenancy
 	}
 
 	// client has to be initiated after migrate since migrate

@@ -6,6 +6,7 @@ package tenancy
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -24,8 +25,6 @@ type ReadAuthorizer interface {
 
 // WriteAuthorizer tells if a write request is authorized to be written.
 type WriteAuthorizer interface {
-	// isAuthorized verifies if the tenant to be inserted is authorized. It returns a ErrUnauthorizedTenant if the tenant is not authorized.
-	isAuthorized(tenantName string) error
-	// VerifyAndApplyTenantLabel verifies and applies the __tenant__ label in the incoming labels.
-	VerifyAndApplyTenantLabel(tenantName string, labels []prompb.Label) ([]prompb.Label, error)
+	// Process processes the incoming write requests to be multi-tenancy compatible.
+	Process(*http.Request, *prompb.WriteRequest) error
 }

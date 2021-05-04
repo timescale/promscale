@@ -13,7 +13,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 type Cfg struct {
@@ -27,7 +26,6 @@ type Cfg struct {
 type DBIngestor struct {
 	dispatcher model.Dispatcher
 	sCache     cache.SeriesCache
-	wAuth      tenancy.WriteAuthorizer
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
@@ -49,46 +47,26 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 	return NewPgxIngestor(conn, c, s, &Cfg{})
 }
 
-// Request is a write request for timeseries into Promscale.
-type Request struct {
-	Tenant string
-	Req    *prompb.WriteRequest
-}
-
-// SetWriteAuthorizer sets the write authorizer for multi-tenancy.
-func (ingestor *DBIngestor) SetWriteAuthorizer(wAuth tenancy.WriteAuthorizer) {
-	ingestor.wAuth = wAuth
-}
-
 // Ingest transforms and ingests the timeseries data into Timescale database.
 // input:
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(r Request) (uint64, error) {
+func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, error) {
 	var (
 		err       error
-		labels    []prompb.Label
 		totalRows uint64
 
 		dataSamples = make(map[string][]model.Samples)
-		timeseries  = r.Req.Timeseries
 	)
-	for i := range timeseries {
-		ts := timeseries[i]
+	for i := range r.Timeseries {
+		ts := &r.Timeseries[i]
 		if len(ts.Samples) == 0 {
 			continue
 		}
-		labels = ts.Labels
-		if ingestor.wAuth != nil {
-			labels, err = ingestor.wAuth.VerifyAndApplyTenantLabel(r.Tenant, labels)
-			if err != nil {
-				return 0, fmt.Errorf("db-ingestor: %w", err)
-			}
-		}
 		// Normalize and canonicalize t.Labels.
 		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := ingestor.sCache.GetSeriesFromProtos(labels)
+		seriesLabels, metricName, err := ingestor.sCache.GetSeriesFromProtos(ts.Labels)
 		if err != nil {
 			return 0, err
 		}
@@ -109,7 +87,7 @@ func (ingestor *DBIngestor) Ingest(r Request) (uint64, error) {
 	// here, allowing it to be either garbage collected or reused for a new request.
 	// In order for this to work correctly, any data we wish to keep using (e.g.
 	// samples) must no longer be reachable from req.
-	FinishWriteRequest(r.Req)
+	FinishWriteRequest(r)
 
 	rowsInserted, err := ingestor.dispatcher.InsertData(dataSamples)
 	if err == nil && rowsInserted != totalRows {

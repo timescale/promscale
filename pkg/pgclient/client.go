@@ -139,7 +139,6 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt t
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
-	dbIngestor.SetWriteAuthorizer(mt.WriteAuthorizer()) // Save to set since if multi-tenancy is disabled, this will implement noop tenancy.
 
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
 	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader, mt.ReadAuthorizer())
@@ -180,7 +179,7 @@ func (c *Client) Ingestor() *ingestor.DBIngestor {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(r ingestor.Request) (uint64, error) {
+func (c *Client) Ingest(r *prompb.WriteRequest) (uint64, error) {
 	return c.ingestor.Ingest(r)
 }
 

@@ -21,7 +21,7 @@ func TestVerifyAndApplyTenantLabel(t *testing.T) {
 
 	// Test with tenant name from header.
 	lblsWithoutTenants := getlbls()
-	newLbls, err := authr.VerifyAndApplyTenantLabel(tenantName, lblsWithoutTenants[0])
+	newLbls, err := authr.verifyAndApplyTenantLabel(tenantName, lblsWithoutTenants[0])
 	require.NoError(t, err)
 
 	expectedLbls := [][]prompb.Label{
@@ -37,15 +37,15 @@ func TestVerifyAndApplyTenantLabel(t *testing.T) {
 
 	// Test with tenant name from labels.
 	lblsWithTenants := getlblsWithTenants()
-	_, err = authr.VerifyAndApplyTenantLabel("", lblsWithTenants[0])
+	_, err = authr.verifyAndApplyTenantLabel("", lblsWithTenants[0])
 	require.NoError(t, err)
 
 	// Test with tenant name from labels but with empty value, but having the __tenant__ key.
-	_, err = authr.VerifyAndApplyTenantLabel("", lblsWithTenants[2])
+	_, err = authr.verifyAndApplyTenantLabel("", lblsWithTenants[2])
 	require.Error(t, err)
 
 	// Test with no tenant names (non-MT write).
-	_, err = authr.VerifyAndApplyTenantLabel("", lblsWithoutTenants[0])
+	_, err = authr.verifyAndApplyTenantLabel("", lblsWithoutTenants[0])
 	require.Error(t, err)
 
 	// ----- Test with allow non-MT being true -----.
@@ -53,12 +53,12 @@ func TestVerifyAndApplyTenantLabel(t *testing.T) {
 	authr = NewWriteAuthorizer(conf)
 
 	// Test with tenant name from header.
-	newLbls, err = authr.VerifyAndApplyTenantLabel(tenantName, lblsWithoutTenants[0])
+	newLbls, err = authr.verifyAndApplyTenantLabel(tenantName, lblsWithoutTenants[0])
 	require.NoError(t, err)
 	require.Equal(t, expectedLbls[0], newLbls)
 
 	// Test with tenant name from labels.
-	_, err = authr.VerifyAndApplyTenantLabel("", lblsWithTenants[0])
+	_, err = authr.verifyAndApplyTenantLabel("", lblsWithTenants[0])
 	require.NoError(t, err)
 
 	// Test with no tenant names (non-MT write).
@@ -70,7 +70,7 @@ func TestVerifyAndApplyTenantLabel(t *testing.T) {
 			{Name: "empty", Value: ""},
 		},
 	}
-	newLbls, err = authr.VerifyAndApplyTenantLabel("", lblsWithoutTenants[0])
+	newLbls, err = authr.verifyAndApplyTenantLabel("", lblsWithoutTenants[0])
 	require.NoError(t, err)
 	require.Equal(t, expectedLbls[0], newLbls)
 }
@@ -87,7 +87,7 @@ func TestLabelsWithoutTenants(t *testing.T) {
 	require.NoError(t, authr.isAuthorized(tenantName))
 
 	for _, lbls := range lblsArr {
-		lb, err := authr.VerifyAndApplyTenantLabel(tenantName, lbls)
+		lb, err := authr.verifyAndApplyTenantLabel(tenantName, lbls)
 		require.NoError(t, err)
 		require.True(t, containsAppliedTenantLabel(lb))
 	}
@@ -106,7 +106,7 @@ func TestLabelsWithoutTenants(t *testing.T) {
 	require.NoError(t, authr.isAuthorized(tenantName))
 
 	for _, lbls := range lblsArr {
-		lb, err := authr.VerifyAndApplyTenantLabel(tenantName, lbls)
+		lb, err := authr.verifyAndApplyTenantLabel(tenantName, lbls)
 		require.NoError(t, err)
 		require.True(t, containsAppliedTenantLabel(lb))
 	}
@@ -116,7 +116,7 @@ func TestLabelsWithoutTenants(t *testing.T) {
 	require.NoError(t, authr.isAuthorized(""))
 
 	for _, lbls := range lblsArr {
-		lb, err := authr.VerifyAndApplyTenantLabel("", lbls)
+		lb, err := authr.verifyAndApplyTenantLabel("", lbls)
 		require.NoError(t, err)
 		require.True(t, !containsAppliedTenantLabel(lb))
 	}
@@ -132,12 +132,12 @@ func TestLabelsWithTenants(t *testing.T) {
 	)
 	require.NoError(t, authr.isAuthorized(tenantName))
 	// Tenant label value and tenant header value same.
-	lb, err := authr.VerifyAndApplyTenantLabel(tenantName, lblsArrWithTenants[0])
+	lb, err := authr.verifyAndApplyTenantLabel(tenantName, lblsArrWithTenants[0])
 	require.NoError(t, err)
 	require.True(t, containsAppliedTenantLabel(lb))
 
 	// Tenant label value and tenant header are different.
-	_, err = authr.VerifyAndApplyTenantLabel(tenantRandom, lblsArrWithTenants[0])
+	_, err = authr.verifyAndApplyTenantLabel(tenantRandom, lblsArrWithTenants[0])
 	if err.Error() != "authorization error for tenant tenant-random: unauthorized or invalid tenant" {
 		require.Fail(t, "error does not match", err)
 	}
@@ -149,7 +149,7 @@ func TestLabelsWithTenants(t *testing.T) {
 
 	for i, lbls := range lblsArrWithTenants {
 		if i < 2 {
-			lb, err := authr.VerifyAndApplyTenantLabel(tenantName, lbls)
+			lb, err := authr.verifyAndApplyTenantLabel(tenantName, lbls)
 			require.NoError(t, err)
 			require.True(t, containsAppliedTenantLabel(lb))
 		}
@@ -161,7 +161,7 @@ func TestLabelsWithTenants(t *testing.T) {
 
 	for i, lbls := range lblsArrWithTenants {
 		if i < 2 {
-			lb, err := authr.VerifyAndApplyTenantLabel(tenantName, lbls)
+			lb, err := authr.verifyAndApplyTenantLabel(tenantName, lbls)
 			require.NoError(t, err)
 			require.True(t, containsAppliedTenantLabel(lb))
 		}

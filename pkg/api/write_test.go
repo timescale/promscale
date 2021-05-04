@@ -24,7 +24,6 @@ import (
 
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -352,8 +351,8 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(r ingestor.Request) (uint64, error) {
-	m.ts = r.Req.Timeseries
+func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, error) {
+	m.ts = r.Timeseries
 	return m.result, m.err
 }
 

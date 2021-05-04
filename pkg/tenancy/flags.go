@@ -17,11 +17,10 @@ type Config struct {
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) {
-	// TODO(Harkishen): update the docs in docs/cli.md
-	fs.BoolVar(&cfg.EnableMultiTenancy, "multi-tenancy", false, "Use tenancy mode in Promscale.")
+	fs.BoolVar(&cfg.EnableMultiTenancy, "multi-tenancy", false, "Use multi-tenancy mode in Promscale.")
 	fs.BoolVar(&cfg.AllowNonMTWrites, "multi-tenancy-allow-non-tenants", false, "Allow Promscale to ingest/query all tenants as well as non-tenants. "+
-		"By setting this to true, Promscale will ingest data from non multi-tenant Prometheus instances as well."+
-		"If this is false, only multi-tenants (tenants listed in 'multi-tenancy-valid-tenants') are allowed for ingesting data as well as for querying.")
+		"By setting this to true, Promscale will ingest data from non multi-tenant Prometheus instances as well. "+
+		"If this is false, only multi-tenants (tenants listed in 'multi-tenancy-valid-tenants') are allowed for ingesting and querying data.")
 	fs.StringVar(&cfg.ValidTenantsStr, "multi-tenancy-valid-tenants", AllowAllTenants, "Sets valid tenants that are allowed to be ingested/queried from Promscale. "+
 		fmt.Sprintf("This can be set as: '%s' (default) or a comma separated tenant names. '%s' makes Promscale ingest or query any tenant from itself. ", AllowAllTenants, AllowAllTenants)+
 		"A comma separated list will indicate only those tenants that are authorized for operations from Promscale.")
