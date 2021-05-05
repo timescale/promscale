@@ -77,6 +77,7 @@ func TestRead(t *testing.T) {
 				response: c.readerResponse,
 				err:      c.readerErr,
 			}
+			config := &Config{}
 			receivedQueriesCounter := &mockMetric{}
 			queryDurationHist := &mockMetric{}
 			failedQueriesCounter := &mockMetric{}
@@ -87,7 +88,7 @@ func TestRead(t *testing.T) {
 				ReceivedQueries:    receivedQueriesCounter,
 				InvalidReadReqs:    invalidReadReqs,
 			}
-			handler := Read(mockReader, metrics)
+			handler := Read(config, mockReader, metrics)
 
 			test := GenerateReadHandleTester(t, handler, c.name == "bad header")
 

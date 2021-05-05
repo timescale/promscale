@@ -13,12 +13,13 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-func Read(reader querier.Reader, metrics *Metrics) http.Handler {
+func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !validateReadHeaders(w, r) {
 			metrics.InvalidReadReqs.Inc()
@@ -49,6 +50,19 @@ func Read(reader querier.Reader, metrics *Metrics) http.Handler {
 		queryCount := float64(len(req.Queries))
 		metrics.ReceivedQueries.Add(queryCount)
 		begin := time.Now()
+
+		// Drop __replica__ labelSet when
+		// Promscale is running is HA mode
+		// as the same lebelSet is dropped during ingestion.
+		if config.HighAvailability {
+			for _, q := range req.Queries {
+				for ind, l := range q.Matchers {
+					if l.Name == ha.ReplicaNameLabel {
+						q.Matchers = append(q.Matchers[:ind], q.Matchers[ind+1:]...)
+					}
+				}
+			}
+		}
 
 		var resp *prompb.ReadResponse
 		resp, err = reader.Read(&req)
