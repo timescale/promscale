@@ -280,6 +280,7 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 		SubQueryStepInterval: time.Minute,
 		EnabledFeaturesList:  []string{"promql-at-modifier", "promql-negative-offset"},
 		MaxSamples:           math.MaxInt32,
+		MaxPointsPerTs:       11000,
 	}
 
 	return buildRouterWithAPIConfig(pool, apiConfig)

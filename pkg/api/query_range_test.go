@@ -171,7 +171,7 @@ func TestRangedQuery(t *testing.T) {
 				InvalidQueryReqs: invalidQueryReqs,
 				QueryDuration:    queryDuration,
 			}
-			handler := queryRange(engine, query.NewQueryable(tc.querier, nil), metrics)
+			handler := queryRange(&Config{MaxPointsPerTs: 11000}, engine, query.NewQueryable(tc.querier, nil), metrics)
 			queryUrl := constructRangedQuery(tc.metric, tc.start, tc.end, tc.step, tc.timeout)
 			w := doRangedQuery(t, handler, queryUrl, tc.canceled)
 
