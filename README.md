@@ -56,6 +56,7 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Data Model](docs/sql_schema.md#data-model-schema)
   * [Filtering Series](docs/sql_schema.md#filtering-series)
   * [Data Retention](docs/sql_schema.md#data-retention)
+  * [Roles and Permissions](docs/sql_permissions.sql)
 * **[Writing Data to Promscale](docs/writing_to_promscale.md)**
 * **[Alerting & Recording Rules](docs/alerting-recording.md)**
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
