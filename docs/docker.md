@@ -38,8 +38,8 @@ This should make Promscale running along with TimescaleDB.
 
 **Example using docker-compose:**
 
-You can also run Promscale also by using docker-compose. The `docker-compose.yml` is available in the
-[build](https://github.com/timescale/promscale/blob/master/build/docker-compose.yml) directory of our repository.
+You can also run Promscale also by using docker-compose. The `docker-compose.yaml` is available in the
+[docker-compose](https://github.com/timescale/promscale/blob/master/docker-compose/docker-compose.yaml) directory of our repository.
 You can start Promscale and related services simply via `docker-compose up`.
 
 For updating Promscale in this method, you need to stop the Promscale that is currently running using

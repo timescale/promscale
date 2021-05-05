@@ -1,4 +1,5 @@
 version: '3.0'
+
 services:
   db:
     image: timescaledev/timescaledb-ha:pg12-latest
@@ -19,8 +20,6 @@ services:
     image: timescale/promscale:latest
     ports:
       - 9201:9201/tcp
-    build:
-      context: .
     restart: on-failure
     depends_on:
       - db
