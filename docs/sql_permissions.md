@@ -17,7 +17,7 @@ Promscale defines several roles:
   role is not allowed to modify or delete data. Includes all permissions of prom_reader.
 - **prom_modifier** is able to read, write, and modify all Promscale data. Includes all permissions of prom_writer.
 - **prom_admin** is allowed to change the configuration options associated with Promscale. This
-  includes data retention policies, chunk intervals, etc. Includes all permissions of prom_writer.
+  includes data retention policies, chunk intervals, etc. Includes all permissions of prom_modifier and prom_maintenance.
 - **prom_maintenance** is allowed to execute maintenance tasks such as compression and data retention jobs.
   mostly only used externally unless using a CRON job to execute_maintenance() instead of the jobs framework.
   Includes all permissions of prom_reader.

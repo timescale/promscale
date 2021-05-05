@@ -59,7 +59,8 @@ CALL SCHEMA_CATALOG.execute_everywhere('grant_prom_reader_prom_writer',$ee$
         GRANT prom_reader TO prom_writer;
         GRANT prom_reader TO prom_maintenance;
         GRANT prom_writer TO prom_modifier;
-        GRANT prom_writer TO prom_admin;
+        GRANT prom_modifier TO prom_admin;
+        GRANT prom_maintenance TO prom_admin;
     END
     $$;
 $ee$);

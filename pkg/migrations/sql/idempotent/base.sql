@@ -67,6 +67,7 @@ AS $func$
     SELECT chunk_interval * (1.0+((random()*0.01)-0.005));
 $func$
 LANGUAGE SQL VOLATILE;
+--only used for setting chunk interval, and admin function
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(INTERVAL) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id int, wait boolean = true)
