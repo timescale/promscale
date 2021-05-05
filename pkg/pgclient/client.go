@@ -168,7 +168,9 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt t
 // Close closes the client and performs cleanup
 func (c *Client) Close() {
 	log.Info("msg", "Shutting down Client")
-	c.ingestor.Close()
+	if c.ingestor != nil {
+		c.ingestor.Close()
+	}
 	close(c.sigClose)
 	if c.closePool {
 		c.Connection.Close()

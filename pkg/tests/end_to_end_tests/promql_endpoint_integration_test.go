@@ -271,9 +271,8 @@ func dateHeadersMatch(expected, actual []string) bool {
 	return expectedDate.Sub(actualDate) <= 10*time.Second
 }
 
-// buildRouter builds a testing router from a connection pool.
-func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
-	apiConfig := &api.Config{
+func defaultAPIConfig() *api.Config {
+	return &api.Config{
 		AllowedOrigin:        regexp.MustCompile(".*"),
 		TelemetryPath:        "/metrics",
 		MaxQueryTimeout:      time.Minute * 2,
@@ -282,7 +281,12 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 		MaxSamples:           math.MaxInt32,
 		MaxPointsPerTs:       11000,
 	}
+}
 
+// buildRouter builds a testing router from a connection pool.
+func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
+	apiConfig := defaultAPIConfig()
+	apiConfig.ReadOnly = true
 	return buildRouterWithAPIConfig(pool, apiConfig)
 }
 
@@ -298,7 +302,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		MaxConnections:          -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool), tenancy.NewNoopAuthorizer(), false)
+	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool), tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
 
 	if err != nil {
 		return nil, pgClient, fmt.Errorf("Cannot run test, cannot instantiate pgClient")

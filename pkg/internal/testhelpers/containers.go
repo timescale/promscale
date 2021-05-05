@@ -131,15 +131,22 @@ func PgConnectURLUser(dbName string, user string) string {
 	return fmt.Sprintf(connectTemplate, user, pgHost, pgPort.Int(), dbName)
 }
 
-func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
-	user := role + "_user"
+func getRoleUser(role string) string {
+	return role + "_user"
+}
+func setupRole(t testing.TB, dbName string, role string) {
+	user := getRoleUser(role)
 	dbOwner, err := pgx.Connect(context.Background(), PgConnectURL(dbName, NoSuperuser))
 	require.NoError(t, err)
 	defer dbOwner.Close(context.Background())
 
 	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL "+schema.Catalog+".execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
 	require.NoError(t, err)
+}
 
+func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
+	user := getRoleUser(role)
+	setupRole(t, dbName, role)
 	pool, err := pgxpool.Connect(context.Background(), PgConnectURLUser(dbName, user))
 	require.NoError(t, err)
 	return pool
@@ -157,12 +164,19 @@ func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Se
 }
 
 func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
-	dbPool, err := pgxpool.Connect(context.Background(), PgConnectURL(DBName, NoSuperuser))
-	if err != nil {
-		t.Fatal(err)
+	role := "prom_reader"
+	user := getRoleUser(role)
+	setupRole(t, DBName, role)
+
+	pgConfig, err := pgxpool.ParseConfig(PgConnectURLUser(DBName, user))
+	require.NoError(t, err)
+
+	pgConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		_, err = conn.Exec(context.Background(), "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+		return err
 	}
 
-	_, err = dbPool.Exec(context.Background(), "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+	dbPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
