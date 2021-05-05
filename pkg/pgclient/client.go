@@ -46,7 +46,7 @@ type Client struct {
 type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc) (*Client, error) {
+func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
 	pgConfig, numCopiers, err := getPgConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc) (*Clie
 	}
 
 	dbConn := pgxconn.NewPgxConn(connectionPool)
-	client, err := NewClientWithPool(cfg, numCopiers, dbConn, mt)
+	client, err := NewClientWithPool(cfg, numCopiers, dbConn, mt, readOnly)
 	if err != nil {
 		return client, err
 	}
@@ -123,7 +123,7 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt tenancy.Authorizer) (*Client, error) {
+func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -134,10 +134,14 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt t
 		NumCopiers:     numCopiers,
 	}
 
-	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, &c)
-	if err != nil {
-		log.Error("msg", "err starting ingestor", "err", err)
-		return nil, err
+	var dbIngestor *ingestor.DBIngestor
+	if !readOnly {
+		var err error
+		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, &c)
+		if err != nil {
+			log.Error("msg", "err starting ingestor", "err", err)
+			return nil, err
+		}
 	}
 
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)

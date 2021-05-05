@@ -298,7 +298,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		MaxConnections:          -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool), tenancy.NewNoopAuthorizer())
+	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool), tenancy.NewNoopAuthorizer(), false)
 
 	if err != nil {
 		return nil, pgClient, fmt.Errorf("Cannot run test, cannot instantiate pgClient")
