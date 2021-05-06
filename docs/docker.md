@@ -55,8 +55,12 @@ data retention policies according to the configured policy.
 
 **Example:**
 
-```postgresql
-CALL execute_maintenance();
+```bash
+docker exec \
+   --user postgres \
+   timescaledb \
+      psql \
+        -c "CALL execute_maintenance();"
 ```
 
 ## 🔥 Configuring Prometheus to use this remote storage connector
