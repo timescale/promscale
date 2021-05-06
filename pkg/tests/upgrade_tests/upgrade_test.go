@@ -666,7 +666,7 @@ func TestMigrationFailure(t *testing.T) {
 }
 
 func buildPromscaleImageFromRepo(t *testing.T) {
-	t.Logf("building promscle image from the codebase")
+	t.Logf("building promscale image from the codebase")
 	cmd := exec.Command("docker", "build", "-t", "timescale/promscale:latest", "./../../../", "--file", "./../../../build/Dockerfile")
 	err := cmd.Run()
 	if err != nil {

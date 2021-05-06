@@ -98,6 +98,7 @@ type Config struct {
 	SubQueryStepInterval time.Duration // Default step interval value if the user has not provided.
 	LookBackDelta        time.Duration
 	MaxSamples           int64
+	MaxPointsPerTs       int64
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
@@ -125,6 +126,8 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.Int64Var(&cfg.MaxSamples, "promql-max-samples", 50000000, "Maximum number of samples a single "+
 		"query can load into memory. Note that queries will fail if they try to load more samples than this into memory, "+
 		"so this also limits the number of samples a query can return.")
+	fs.Int64Var(&cfg.MaxPointsPerTs, "promql-max-points-per-ts", 11000, "Maximum number of points per time-series in a query-range request. "+
+		"This calculation is an estimation, that happens as (start - end)/step where start and end are the 'start' and 'end' timestamps of the query_range.")
 	return cfg
 }
 

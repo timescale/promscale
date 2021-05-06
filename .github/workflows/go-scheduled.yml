@@ -48,7 +48,7 @@ jobs:
     - name: Lint
       run: |
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.30.0
-        /home/runner/go/bin/golangci-lint run --skip-dirs=pkg/promql --skip-dirs=pkg/promb
+        /home/runner/go/bin/golangci-lint run --timeout=5m --skip-dirs=pkg/promql --skip-dirs=pkg/promb
 
     - name: Build
       run: go build -v ./...

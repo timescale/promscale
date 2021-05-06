@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -16,11 +17,11 @@ import (
 )
 
 func QueryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.Handler {
-	hf := corsWrapper(conf, queryRange(queryEngine, queryable, metrics))
+	hf := corsWrapper(conf, queryRange(conf, queryEngine, queryable, metrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryRange(queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
@@ -62,8 +63,9 @@ func queryRange(queryEngine *promql.Engine, queryable promql.Queryable, metrics 
 
 		// For safety, limit the number of returned points per timeseries.
 		// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-		if end.Sub(start)/step > 11000 {
-			err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+		if int64(end.Sub(start)/step) > conf.MaxPointsPerTs {
+			err := fmt.Errorf("exceeded maximum resolution of %d points per timeseries. Try decreasing the query resolution (?step=XX) or "+
+				"increasing the 'promql-max-points-per-ts' limit", conf.MaxPointsPerTs)
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			metrics.InvalidQueryReqs.Add(1)

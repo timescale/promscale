@@ -73,7 +73,7 @@ You can also find information on flags with `promscale_<version> -help`.
 | db-connection-timeout | duration | 60 seconds | Timeout for establishing the connection between Promscale and TimescaleDB. |
 | db-connections-max | integer | 80% of possible connections db | Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle. |
 | db-ssl-mode | string | require | TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass `allow` as value. |
-| db-writer-connection-concurrency | int | 4 | Maximum number of database connections for writing per go process. |
+| db-writer-connection-concurrency | integer | 4 | Maximum number of database connections for writing per go process. |
 | db-uri | string | | TimescaleDB/Vanilla PostgresSQL URI. Example:`postgres://postgres:password@localhost:5432/timescale?sslmode=require` |
 | async-acks | boolean | false | Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss. |
 | db-statements-cache | boolean | true | Whether database connection pool should use cached prepared statements. Disable if using PgBouncer. |
@@ -86,4 +86,5 @@ You can also find information on flags with `promscale_<version> -help`.
 | promql-query-timeout | duration | 2 minutes | Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in '/api/v1/query.*' endpoints. |
 | promql-default-subquery-step-interval | duration | 1 minute | Default step interval to be used for PromQL subquery evaluation. This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option. |
 | promql-lookback-delta | duration | 5 minute | The maximum look-back duration for retrieving metrics during expression evaluations and federation. |
-| promql-max-samples | integer | 50000000 | Maximum number of samples a single query can load into memory. Note that queries will fail if they try to load more samples than this into memory, so this also limits the number of samples a query can return. |
+| promql-max-samples | integer64 | 50000000 | Maximum number of samples a single query can load into memory. Note that queries will fail if they try to load more samples than this into memory, so this also limits the number of samples a query can return. |
+| promql-max-points-per-ts  | integer64 | 11000 | Maximum number of points per time-series in a query-range request. This calculation is an estimation, that happens as (start - end)/step where start and end are the 'start' and 'end' timestamps of the query_range. |
