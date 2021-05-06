@@ -54,7 +54,7 @@ func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
 		return fmt.Errorf("could not check ha lease: %#v", err)
 	}
 	if !allowInsert {
-		log.Debug("the samples aren't from the leader prom instance. skipping the insert")
+		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert")
 		wr.Timeseries = wr.Timeseries[:0]
 		return nil
 	}
