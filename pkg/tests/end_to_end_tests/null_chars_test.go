@@ -42,7 +42,7 @@ func TestOperationWithNullChars(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		_, err = ingestor.Ingest(copyMetrics(ts), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
 		require.NoError(t, err)
 
 		// Verify sanitization is ingested in the db.
@@ -63,7 +63,7 @@ func TestOperationWithNullChars(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
 		resp, err := r.Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{

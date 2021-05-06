@@ -16,7 +16,6 @@ package promql
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/prometheus/pkg/exemplar"
 	"io/ioutil"
 	"math"
 	"os"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"

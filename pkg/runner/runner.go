@@ -18,9 +18,7 @@ import (
 	"github.com/timescale/promscale/pkg/version"
 )
 
-const (
-	promLivenessCheck = time.Second
-)
+const promLivenessCheck = time.Second
 
 var (
 	elector      *util.Elector

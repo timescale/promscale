@@ -24,6 +24,85 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
+type writeStage func(http.ResponseWriter, *http.Request, *Metrics) bool
+
+type writeHandler struct {
+	stages  []writeStage
+	metrics *Metrics
+}
+
+func (wh *writeHandler) addStages(stages ...writeStage) {
+	for _, stage := range stages {
+		if stage == nil {
+			continue
+		}
+		wh.stages = append(wh.stages, stage)
+	}
+}
+
+func (wh *writeHandler) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, stage := range wh.stages {
+			if !stage(w, r, wh.metrics) {
+				return
+			}
+		}
+	})
+}
+
+// Write returns an http.Handler that is responsible for data ingest.
+func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elector *util.Elector, metrics *Metrics) http.Handler {
+	wh := writeHandler{metrics: metrics}
+	wh.addStages(
+		validateWriteHeaders,
+		checkLegacyHA(elector),
+		decodeSnappy,
+		ingest(inserter, dataParser),
+	)
+	return wh.handler()
+}
+
+func validateWriteHeaders(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
+	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
+	if r.Method != "POST" {
+		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), m)
+		return false
+	}
+
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		validateError(w, "Error parsing media type from Content-Type header", m)
+		return false
+	}
+	switch mediaType {
+	case "application/x-protobuf":
+		if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
+			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), m)
+			return false
+		}
+
+		remoteWriteVersion := r.Header.Get("X-Prometheus-Remote-Write-Version")
+		if remoteWriteVersion == "" {
+			validateError(w, "Missing X-Prometheus-Remote-Write-Version header", m)
+			return false
+		}
+
+		if !strings.HasPrefix(remoteWriteVersion, "0.1.") {
+			validateError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion), m)
+			return false
+		}
+	case "application/json":
+		// Don't need any other header checks for JSON content type.
+	case "text/plain", "application/openmetrics":
+		// Don't need any other header checks for text content type.
+	default:
+		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", m)
+		return false
+	}
+
+	return true
+}
+
 func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Request, *Metrics) bool {
 	if elector == nil {
 		return nil
@@ -134,7 +213,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		m.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		numSamples, err := inserter.Ingest(req.Timeseries, req)
+		numSamples, err := inserter.Ingest(req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -159,92 +238,12 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 	}
 }
 
-type writeStage func(http.ResponseWriter, *http.Request, *Metrics) bool
-
-type writeHandler struct {
-	stages  []writeStage
-	metrics *Metrics
-}
-
-func (wh *writeHandler) addStages(stages ...writeStage) {
-	for _, stage := range stages {
-		if stage == nil {
-			continue
-		}
-		wh.stages = append(wh.stages, stage)
-	}
-}
-
-func (wh *writeHandler) handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, stage := range wh.stages {
-			if !stage(w, r, wh.metrics) {
-				return
-			}
-		}
-	})
-}
-
-// Write returns an http.Handler that is responsible for data ingest.
-func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elector *util.Elector, metrics *Metrics) http.Handler {
-	wh := writeHandler{metrics: metrics}
-	wh.addStages(
-		validateWriteHeaders,
-		checkLegacyHA(elector),
-		decodeSnappy,
-		ingest(inserter, dataParser),
-	)
-
-	return wh.handler()
-}
-
 func getCounterValue(counter prometheus.Counter) float64 {
 	dtoMetric := &io_prometheus_client.Metric{}
 	if err := counter.Write(dtoMetric); err != nil {
 		log.Warn("msg", "Error reading counter value", "err", err, "counter", counter)
 	}
 	return dtoMetric.GetCounter().GetValue()
-}
-
-func validateWriteHeaders(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
-	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
-	if r.Method != "POST" {
-		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), m)
-		return false
-	}
-
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil {
-		validateError(w, "Error parsing media type from Content-Type header", m)
-		return false
-	}
-	switch mediaType {
-	case "application/x-protobuf":
-		if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
-			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), m)
-			return false
-		}
-
-		remoteWriteVersion := r.Header.Get("X-Prometheus-Remote-Write-Version")
-		if remoteWriteVersion == "" {
-			validateError(w, "Missing X-Prometheus-Remote-Write-Version header", m)
-			return false
-		}
-
-		if !strings.HasPrefix(remoteWriteVersion, "0.1.") {
-			validateError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion), m)
-			return false
-		}
-	case "application/json":
-		// Don't need any other header checks for JSON content type.
-	case "text/plain", "application/openmetrics":
-		// Don't need any other header checks for text content type.
-	default:
-		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", m)
-		return false
-	}
-
-	return true
 }
 
 func invalidRequestError(w http.ResponseWriter, msg, err string, m *Metrics) {

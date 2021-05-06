@@ -21,9 +21,9 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
-
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -351,8 +351,8 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(series []prompb.TimeSeries, request *prompb.WriteRequest) (uint64, error) {
-	m.ts = series
+func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, error) {
+	m.ts = r.Timeseries
 	return m.result, m.err
 }
 

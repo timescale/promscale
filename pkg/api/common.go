@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/util/httputil"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 var (
@@ -87,7 +88,8 @@ type Config struct {
 	AdminAPIEnabled  bool
 	TelemetryPath    string
 
-	Auth *Auth
+	Auth         *Auth
+	MultiTenancy tenancy.Authorizer
 
 	// PromQL configuration.
 	EnableFeatures       string

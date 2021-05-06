@@ -22,6 +22,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 // Reader reads the data based on the provided read request.
@@ -44,11 +45,12 @@ const (
 
 // NewQuerier returns a new pgxQuerier that reads from PostgreSQL using PGX
 // and caches metric table names and label sets using the supplied caches.
-func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader) Querier {
+func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader, rAuth tenancy.ReadAuthorizer) Querier {
 	return &pgxQuerier{
 		conn:             conn,
 		labelsReader:     labelsReader,
 		metricTableNames: metricCache,
+		rAuth:            rAuth,
 	}
 }
 
@@ -62,6 +64,7 @@ type pgxQuerier struct {
 	conn             pgxconn.PgxConn
 	metricTableNames cache.MetricCache
 	labelsReader     lreader.LabelsReader
+	rAuth            tenancy.ReadAuthorizer
 }
 
 var _ Querier = (*pgxQuerier)(nil)
@@ -86,13 +89,11 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	}
 
 	matchers, err := fromLabelMatchers(query.Matchers)
-
 	if err != nil {
 		return nil, err
 	}
 
 	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
-
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +138,9 @@ type timescaleRow struct {
 // getResultRows fetches the result row datasets from the database using the
 // supplied query parameters.
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
+	if q.rAuth != nil {
+		matchers = q.rAuth.AppendTenantMatcher(matchers)
+	}
 	// Build a subquery per metric matcher.
 	builder, err := BuildSubQueries(matchers)
 	if err != nil {

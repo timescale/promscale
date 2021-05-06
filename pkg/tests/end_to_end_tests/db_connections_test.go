@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
@@ -7,7 +11,6 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -44,7 +47,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		for _, m := range metrics[:3] {
 			count += len(m.Samples)
 		}
-		ingested, err := pgClient.Ingest(metrics[:3], ingstr.NewWriteRequest())
+		ingested, err := pgClient.Ingest(newWriteRequestWithTs(metrics[:3]))
 		if err != nil {
 			t.Fatalf("got an unexpected error %v", err)
 		}
@@ -74,7 +77,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		}
 
 		// Try ingesting and reading from DB, expect to error.
-		_, err = pgClient.Ingest(metrics[3:], ingstr.NewWriteRequest())
+		_, err = pgClient.Ingest(newWriteRequestWithTs(metrics[3:]))
 		if ignoreBlockedConnectionError(err) != nil {
 			t.Fatalf("got an unexpected error: %v", err)
 		}
@@ -94,7 +97,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		for _, m := range metrics[3:] {
 			count += len(m.Samples)
 		}
-		ingested, err = pgClient.Ingest(metrics[3:], ingstr.NewWriteRequest())
+		ingested, err = pgClient.Ingest(newWriteRequestWithTs(metrics[3:]))
 		if err != nil {
 			t.Fatalf("got an unexpected error: %v", err)
 		}

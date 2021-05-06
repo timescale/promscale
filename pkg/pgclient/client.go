@@ -21,6 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -45,7 +46,7 @@ type Client struct {
 type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
+func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc) (*Client, error) {
 	pgConfig, numCopiers, err := getPgConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -59,7 +60,7 @@ func NewClient(cfg *Config, schemaLocker LockFunc) (*Client, error) {
 	}
 
 	dbConn := pgxconn.NewPgxConn(connectionPool)
-	client, err := NewClientWithPool(cfg, numCopiers, dbConn)
+	client, err := NewClientWithPool(cfg, numCopiers, dbConn, mt)
 	if err != nil {
 		return client, err
 	}
@@ -122,7 +123,7 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Client, error) {
+func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt tenancy.Authorizer) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -134,13 +135,13 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn) (*Cl
 	}
 
 	dbIngestor, err := ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, &c)
-
 	if err != nil {
 		log.Error("msg", "err starting ingestor", "err", err)
 		return nil, err
 	}
+
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
-	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader)
+	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)
@@ -173,9 +174,13 @@ func (c *Client) Close() {
 	}
 }
 
+func (c *Client) Ingestor() *ingestor.DBIngestor {
+	return c.ingestor
+}
+
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	return c.ingestor.Ingest(tts, req)
+func (c *Client) Ingest(r *prompb.WriteRequest) (uint64, error) {
+	return c.ingestor.Ingest(r)
 }
 
 // Read returns the promQL query results

@@ -16,10 +16,12 @@ var wrPool = sync.Pool{
 	},
 }
 
+// NewWriteRequest returns a new *prompb.WriteRequest from the pool.
 func NewWriteRequest() *prompb.WriteRequest {
 	return wrPool.Get().(*prompb.WriteRequest)
 }
 
+// FinishWriteRequest adds the *prompb.WriteRequest back into the pool after setting parameters to default.
 func FinishWriteRequest(wr *prompb.WriteRequest) {
 	for i := range wr.Timeseries {
 		ts := &wr.Timeseries[i]

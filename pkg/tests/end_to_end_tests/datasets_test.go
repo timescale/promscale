@@ -187,3 +187,37 @@ func generateRealTimeseries() []prompb.TimeSeries {
 
 	return wr.Timeseries
 }
+
+func generateSmallMultiTenantTimeseries() ([]prompb.TimeSeries, []string) {
+	return []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "firstMetric"},
+				{Name: "foo", Value: "bar"},
+				{Name: "common", Value: "tag"},
+				{Name: "empty", Value: ""},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 0.1},
+				{Timestamp: 2, Value: 0.2},
+				{Timestamp: 3, Value: 0.3},
+				{Timestamp: 4, Value: 0.4},
+				{Timestamp: 5, Value: 0.5},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "secondMetric"},
+				{Name: "job", Value: "baz"},
+				{Name: "ins", Value: "tag"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 2.1},
+				{Timestamp: 2, Value: 2.2},
+				{Timestamp: 3, Value: 2.3},
+				{Timestamp: 4, Value: 2.4},
+				{Timestamp: 5, Value: 2.5},
+			},
+		},
+	}, []string{"tenant-a", "tenant-b", "tenant-c"}
+}

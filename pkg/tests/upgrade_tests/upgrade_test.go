@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package upgrade_tests
 
 import (
@@ -468,13 +469,15 @@ func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.Tim
 	}
 }
 
-func doIngest(t *testing.T, ingestor *ingestor.DBIngestor, data ...[]prompb.TimeSeries) {
+func doIngest(t *testing.T, ingstr *ingestor.DBIngestor, data ...[]prompb.TimeSeries) {
 	for _, data := range data {
-		_, err := ingestor.Ingest(copyMetrics(data), &prompb.WriteRequest{})
+		wr := ingestor.NewWriteRequest()
+		wr.Timeseries = copyMetrics(data)
+		_, err := ingstr.Ingest(wr)
 		if err != nil {
 			t.Fatalf("ingest error: %v", err)
 		}
-		_ = ingestor.CompleteMetricCreation()
+		_ = ingstr.CompleteMetricCreation()
 	}
 }
 

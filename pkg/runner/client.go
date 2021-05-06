@@ -18,6 +18,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/util"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -155,9 +156,23 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	if !cfg.UseVersionLease {
 		leasingFunction = nil
 	}
+
+	multiTenancy := tenancy.NewNoopAuthorizer()
+	if cfg.TenancyCfg.EnableMultiTenancy {
+		multiTenancyConfig := tenancy.NewAllowAllTenantsConfig(cfg.TenancyCfg.AllowNonMTWrites)
+		if !cfg.TenancyCfg.SkipTenantValidation {
+			multiTenancyConfig = tenancy.NewSelectiveTenancyConfig(cfg.TenancyCfg.ValidTenantsList, cfg.TenancyCfg.AllowNonMTWrites)
+		}
+		multiTenancy, err = tenancy.NewAuthorizer(multiTenancyConfig)
+		if err != nil {
+			return nil, fmt.Errorf("new tenancy: %w", err)
+		}
+		cfg.APICfg.MultiTenancy = multiTenancy
+	}
+
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.PgmodelCfg, leasingFunction)
+	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}

@@ -76,7 +76,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, err = ingestor.Ingest(copyMetrics(metrics), ingstr.NewWriteRequest())
+		_, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(metrics)))
 
 		if err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
@@ -125,7 +125,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			lCache := clockcache.WithMax(100)
 			dbConn := pgxconn.NewPgxConn(db)
 			labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-			r := querier.NewQuerier(dbConn, mCache, labelsReader)
+			r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
 			resp, err := r.Query(c.query)
 			if err != nil {
 				t.Fatalf("unexpected error while ingesting test dataset: %s", err)

@@ -52,11 +52,15 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteRequest) (uint64, error) {
-	var totalRows uint64
-	dataSamples := make(map[string][]model.Samples)
-	for i := range tts {
-		ts := &tts[i]
+func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, error) {
+	var (
+		err       error
+		totalRows uint64
+
+		dataSamples = make(map[string][]model.Samples)
+	)
+	for i := range r.Timeseries {
+		ts := &r.Timeseries[i]
 		if len(ts.Samples) == 0 {
 			continue
 		}
@@ -83,7 +87,7 @@ func (ingestor *DBIngestor) Ingest(tts []prompb.TimeSeries, req *prompb.WriteReq
 	// here, allowing it to be either garbage collected or reused for a new request.
 	// In order for this to work correctly, any data we wish to keep using (e.g.
 	// samples) must no longer be reachable from req.
-	FinishWriteRequest(req)
+	FinishWriteRequest(r)
 
 	rowsInserted, err := ingestor.dispatcher.InsertData(dataSamples)
 	if err == nil && rowsInserted != totalRows {

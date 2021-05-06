@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
@@ -19,6 +20,8 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
+	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/version"
 
@@ -281,4 +284,13 @@ func copyFile(src string, dest string) error {
 		return err
 	}
 	return nil
+}
+
+// newWriteRequestWithTs returns a new *prompb.WriteRequest from the pool and applies ts to it if ts is not nil.
+func newWriteRequestWithTs(ts []prompb.TimeSeries) *prompb.WriteRequest {
+	wr := ingstr.NewWriteRequest()
+	if ts != nil {
+		wr.Timeseries = ts
+	}
+	return wr
 }
