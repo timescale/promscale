@@ -374,14 +374,14 @@ func TestHALeaderChangeDueToDrift(t *testing.T) {
 				},
 				tickSyncRoutine: false,
 			}, {
-				desc: "sync routine didn't run, 1 sends data, rejected, no longer leader",
+				desc: "sync routine didn't run, 1 sends data, inserted as backfill, no longer leader",
 				input: haTestInput{
 					replica: "1",
 					minT:    time.Unix(106, 0),
 					maxT:    time.Unix(140, 0),
 				},
 				output: haTestOutput{
-					expectedNumRowsInDb: 186,
+					expectedNumRowsInDb: 221,
 					expectedMaxTimeInDb: time.Unix(240, 0),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
@@ -473,14 +473,14 @@ func TestHAMultipleChecksBetweenTicks(t *testing.T) {
 				},
 				tickSyncRoutine: false,
 			}, {
-				desc: "1 sends, accepted, rejected",
+				desc: "1 sends, accepted, inserted as backfill",
 				input: haTestInput{
 					replica: "1",
 					minT:    time.Unix(201, 0),
 					maxT:    time.Unix(300, 0),
 				},
 				output: haTestOutput{
-					expectedNumRowsInDb: 202,
+					expectedNumRowsInDb: 261,
 					expectedMaxTimeInDb: time.Unix(261, 0),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",

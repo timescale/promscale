@@ -10,19 +10,31 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const (
-	leasesTable          = schema.Catalog + ".ha_leases"
-	updateLeaseFn        = schema.Catalog + ".update_lease"
-	tryChangeLeaderFn    = schema.Catalog + ".try_change_leader"
-	updateLeaseSql       = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
-	tryChangeLeaderSql   = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
-	latestLeaseStateSql  = "SELECT leader_name, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
+	leasesTable         = schema.Catalog + ".ha_leases"
+	leaseLogsTable      = schema.Catalog + ".ha_leases_logs"
+	updateLeaseFn       = schema.Catalog + ".update_lease"
+	tryChangeLeaderFn   = schema.Catalog + ".try_change_leader"
+	updateLeaseSQL      = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
+	tryChangeLeaderSQL  = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
+	latestLeaseStateSQL = "SELECT leader_name, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"
+	getPastLeaseInfoSQL = "SELECT lease_start, lease_until FROM " + leaseLogsTable +
+		" WHERE cluster_name = $1" +
+		" AND leader_name = $2" +
+		" AND lease_until > $3" +
+		" AND lease_until <= $4" +
+		" ORDER BY lease_start" +
+		" LIMIT 1"
+
 	leaderChangedErrCode = "PS010"
 )
+
+var ErrNoPastLease = fmt.Errorf("no past leases found")
 
 // LeaseDBState represents the current lock holder
 // as reported from the DB.
@@ -49,6 +61,7 @@ type LeaseClient interface {
 	// *haLockState current state of the lock (if try was successful state.leader == newLeader)
 	// error signifying the call couldn't be made
 	TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (LeaseDBState, error)
+	GetPastLeaseInfo(ctx context.Context, cluster, replica string, start, end time.Time) (LeaseDBState, error)
 }
 
 type leaseClientDB struct {
@@ -61,7 +74,7 @@ func NewLeaseClient(dbConn pgxconn.PgxConn) LeaseClient {
 
 func (l *leaseClientDB) UpdateLease(ctx context.Context, cluster, leader string, minTime, maxTime time.Time) (LeaseDBState, error) {
 	dbState := LeaseDBState{}
-	row := l.dbConn.QueryRow(ctx, updateLeaseSql, cluster, leader, minTime, maxTime)
+	row := l.dbConn.QueryRow(ctx, updateLeaseSQL, cluster, leader, minTime, maxTime)
 	leaderHasChanged := false
 	err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil))
 	if err != nil {
@@ -86,8 +99,23 @@ func (l *leaseClientDB) UpdateLease(ctx context.Context, cluster, leader string,
 
 func (l *leaseClientDB) TryChangeLeader(ctx context.Context, cluster, newLeader string, maxTime time.Time) (LeaseDBState, error) {
 	dbState := LeaseDBState{}
-	row := l.dbConn.QueryRow(ctx, tryChangeLeaderSql, cluster, newLeader, maxTime)
+	row := l.dbConn.QueryRow(ctx, tryChangeLeaderSQL, cluster, newLeader, maxTime)
 	if err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil)); err != nil {
+		return dbState, err
+	}
+	return dbState, nil
+}
+
+func (l *leaseClientDB) GetPastLeaseInfo(ctx context.Context, cluster, replica string, start, end time.Time) (LeaseDBState, error) {
+	dbState := LeaseDBState{
+		Cluster: cluster,
+		Leader:  replica,
+	}
+	row := l.dbConn.QueryRow(ctx, getPastLeaseInfoSQL, cluster, replica, start, end)
+	if err := row.Scan(&(dbState.LeaseStart), &(dbState.LeaseUntil)); err != nil {
+		if err == pgx.ErrNoRows {
+			return dbState, ErrNoPastLease
+		}
 		return dbState, err
 	}
 	return dbState, nil
@@ -95,7 +123,7 @@ func (l *leaseClientDB) TryChangeLeader(ctx context.Context, cluster, newLeader 
 
 func (l *leaseClientDB) readLeaseState(ctx context.Context, cluster string) (LeaseDBState, error) {
 	dbState := LeaseDBState{Cluster: cluster}
-	row := l.dbConn.QueryRow(ctx, latestLeaseStateSql, cluster)
+	row := l.dbConn.QueryRow(ctx, latestLeaseStateSQL, cluster)
 	if err := row.Scan(&dbState.Leader, &dbState.LeaseStart, &dbState.LeaseUntil); err != nil {
 		return dbState, err
 	}

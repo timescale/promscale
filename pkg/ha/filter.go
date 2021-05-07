@@ -7,6 +7,7 @@ package ha
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
@@ -33,6 +34,7 @@ func NewFilter(service *Service) *Filter {
 // When Prometheus & Promscale are running HA mode the below FilterData is used
 // to validate leader replica samples & ha_locks in TimescaleDB.
 func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
+	defer finalFiltering(wr)
 	tts := wr.Timeseries
 	if len(tts) == 0 {
 		return nil
@@ -49,42 +51,136 @@ func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
 
 	minT := model.Time(minTUnix).Time()
 	maxT := model.Time(maxTUnix).Time()
-	allowInsert, acceptedMinT, err := h.service.CheckLease(minT, maxT, clusterName, replicaName)
+	allowInsert, leaseStart, err := h.service.CheckLease(minT, maxT, clusterName, replicaName)
 	if err != nil {
 		return fmt.Errorf("could not check ha lease: %#v", err)
 	}
-	if !allowInsert {
-		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert")
-		wr.Timeseries = wr.Timeseries[:0]
+
+	// Short-circuit for no possible backfill data.
+	if !minT.Before(leaseStart) {
+		if !allowInsert {
+			wr.Timeseries = wr.Timeseries[:0]
+			log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert", "replica", replicaName)
+		}
 		return nil
 	}
 
-	// insert allowed -> parse samples
-	acceptedMinTUnix := int64(model.TimeFromUnixNano(acceptedMinT.UnixNano()))
-	for i := range tts {
-		t := &tts[i]
+	hasBackfill, err := h.filterBackfill(wr, minT, leaseStart, clusterName, replicaName)
+	if err != nil {
+		return fmt.Errorf("could not check backfill ha lease: %#v", err)
+	}
 
-		if minTUnix < acceptedMinTUnix {
-			t.Samples = filterSamples(t.Samples, acceptedMinTUnix)
+	switch {
+	case !hasBackfill && allowInsert:
+		// Remove all backfill data.
+		filterOutSampleRange(wr, minTUnix, toPromModelTime(leaseStart))
+	case hasBackfill && !allowInsert:
+		// Remove all data in the current lease.
+		filterOutSampleRange(wr, toPromModelTime(leaseStart), maxTUnix+1) //maxTUnix+1 because filterSamples treats end as exclusive.
+	case !hasBackfill && !allowInsert:
+		// No data to insert.
+		wr.Timeseries = wr.Timeseries[:0]
+		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert", "replica", replicaName)
+	default:
+		// This case covers the instance when we have backfill and data in current lease to ingest.
+		// The data has already been filtered out so there is nothing to do.
+	}
+	return nil
+}
+
+func toPromModelTime(t time.Time) int64 {
+	return int64(model.TimeFromUnixNano(t.UnixNano()))
+}
+
+func (h *Filter) filterBackfill(wr *prompb.WriteRequest, minTIncl, maxTExcl time.Time, cluster, replica string) (bool, error) {
+	hasBackfill := false
+	backfillStart := minTIncl
+	for {
+		if !backfillStart.Before(maxTExcl) {
+			break
 		}
+
+		keepRangeStart, keepRangeEnd, err := h.service.GetBackfillLeaseRange(backfillStart, maxTExcl, cluster, replica)
+		if err != nil {
+			if err == ErrNoLeasesInRange {
+				// Nothing else to keep.
+				break
+			}
+			return false, fmt.Errorf("could not check backfill ha lease: %#v", err)
+		}
+
+		hasBackfill = true
+		// Filter out all samples before the keep range.
+		if !keepRangeStart.Before(backfillStart) {
+			filterOutSampleRange(
+				wr,
+				toPromModelTime(backfillStart),
+				toPromModelTime(keepRangeStart),
+			)
+		}
+
+		backfillStart = keepRangeEnd
+	}
+
+	// If we had backfill, we need to filter out the range after the keep range
+	// till the start of the lease (end of possible backfill).
+	if hasBackfill {
+		filterOutSampleRange(
+			wr,
+			toPromModelTime(backfillStart),
+			toPromModelTime(maxTExcl),
+		)
+	}
+
+	return hasBackfill, nil
+}
+
+func filterOutSampleRange(wr *prompb.WriteRequest, timeStartIncl, timeEndExcl int64) {
+	for i := range wr.Timeseries {
+		t := &wr.Timeseries[i]
+		numAccepted := 0
+		for j := range t.Samples {
+			sample := t.Samples[j]
+			if sample.Timestamp >= timeStartIncl && sample.Timestamp < timeEndExcl {
+				continue
+			}
+			t.Samples[numAccepted] = sample
+			numAccepted++
+		}
+		for j := numAccepted; j < len(t.Samples); j++ {
+			t.Samples[j] = prompb.Sample{}
+		}
+		t.Samples = t.Samples[:numAccepted]
+	}
+}
+
+// finalFiltering goes through all the `Timeseries` of a `WriteRequest` filtering
+// out any instances without any samples. If the timeseries does contain samples,
+// it filters out the HA replica labels so it won't create different series
+// based on that label value.
+func finalFiltering(wr *prompb.WriteRequest) {
+	numAccepted := 0
+	for i := range wr.Timeseries {
+		t := &wr.Timeseries[i]
 		if len(t.Samples) == 0 {
-			// Empty the labels for posterity.
-			t.Labels = make([]prompb.Label, 0)
 			continue
 		}
-
+		wr.Timeseries[numAccepted] = *t
+		numAccepted++
 		// Drop __replica__ labelSet from samples,
 		// we don't want samples from the same Prometheus
 		// HA set to become different series.
 		for ind, value := range t.Labels {
-			if value.Name == ReplicaNameLabel && value.Value == replicaName {
+			if value.Name == ReplicaNameLabel {
 				t.Labels = append(t.Labels[:ind], t.Labels[ind+1:]...)
 				break
 			}
 		}
 	}
-
-	return nil
+	for j := numAccepted; j < len(wr.Timeseries); j++ {
+		wr.Timeseries[j] = prompb.TimeSeries{}
+	}
+	wr.Timeseries = wr.Timeseries[:numAccepted]
 }
 
 // findDataTimeRange finds the minimum and maximum timestamps in a set of samples
@@ -124,21 +220,6 @@ func haLabels(labels []prompb.Label) (cluster, replica string) {
 		}
 	}
 	return cluster, replica
-}
-
-func filterSamples(samples []prompb.Sample, acceptedMinTUnix int64) []prompb.Sample {
-	numAccepted := 0
-	for _, sample := range samples {
-		if sample.Timestamp < acceptedMinTUnix {
-			continue
-		}
-		samples[numAccepted] = sample
-		numAccepted++
-	}
-	for i := numAccepted; i < len(samples); i++ {
-		samples[i] = prompb.Sample{}
-	}
-	return samples[:numAccepted]
 }
 
 func validateClusterLabels(cluster, replica string) error {

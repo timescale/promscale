@@ -45,6 +45,8 @@ func NewLease(c client.LeaseClient, cluster, potentialLeader string, minT, maxT,
 		return nil, fmt.Errorf("could not create new lease: %#v", err)
 	}
 
+	exposeHAStateToMetrics(cluster, "", stateFromDB.Leader)
+
 	return &Lease{
 		client:                c,
 		state:                 stateFromDB,
@@ -56,11 +58,12 @@ func NewLease(c client.LeaseClient, cluster, potentialLeader string, minT, maxT,
 }
 
 // ValidateSamplesInfo verifies if the replica and time range can insert the samples into
-// storage. It returns if it can insert, minimum time that can be inserted and error if any happens.
+// storage. It returns if it can insert, lease start time and error if any happens.
 func (l *Lease) ValidateSamplesInfo(replica string, minT, maxT, currT time.Time) (bool, time.Time, error) {
 	l._mu.RLock()
 	leader := l.state.Leader
 	leaseUntil := l.state.LeaseUntil
+	leaseStart := l.state.LeaseStart
 	l._mu.RUnlock()
 
 	if leader == replica {
@@ -72,8 +75,8 @@ func (l *Lease) ValidateSamplesInfo(replica string, minT, maxT, currT time.Time)
 		return l.confirmLeaseValidation(replica, minT)
 	}
 
-	if !maxT.After(leaseUntil) {
-		return false, time.Time{}, nil
+	if maxT.Before(leaseUntil) {
+		return false, leaseStart, nil
 	}
 
 	if err := l.TryChangeLeader(currT); err != nil {
@@ -84,18 +87,9 @@ func (l *Lease) ValidateSamplesInfo(replica string, minT, maxT, currT time.Time)
 
 func (l *Lease) confirmLeaseValidation(replica string, minT time.Time) (bool, time.Time, error) {
 	l._mu.RLock()
-	leader := l.state.Leader
-	leaseStart := l.state.LeaseStart
-	l._mu.RUnlock()
+	defer l._mu.RUnlock()
 
-	if leader != replica {
-		return false, time.Time{}, nil
-	}
-
-	if minT.Before(leaseStart) {
-		minT = leaseStart
-	}
-	return true, minT, nil
+	return l.state.Leader == replica, l.state.LeaseStart, nil
 }
 
 // RefreshLease tries to extend the current lease with the current leader.

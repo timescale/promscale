@@ -13,39 +13,56 @@ import (
 )
 
 type mockLockClient struct {
-	leadersPerCluster map[string]client.LeaseDBState
+	leadersPerCluster map[string][]client.LeaseDBState
+}
+
+func (m *mockLockClient) GetPastLeaseInfo(ctx context.Context, cluster string, replica string, start time.Time, end time.Time) (client.LeaseDBState, error) {
+	locks, exists := m.leadersPerCluster[cluster]
+	if !exists {
+		return client.LeaseDBState{}, client.ErrNoPastLease
+	}
+
+	for _, lock := range locks {
+		if lock.Cluster == cluster &&
+			lock.Leader == replica &&
+			lock.LeaseUntil.After(start) &&
+			!lock.LeaseUntil.After(end) {
+			return lock, nil
+		}
+	}
+	return client.LeaseDBState{}, client.ErrNoPastLease
 }
 
 func (m *mockLockClient) UpdateLease(_ context.Context, cluster, leader string, minTime, maxTime time.Time) (client.LeaseDBState, error) {
 	lock, exists := m.leadersPerCluster[cluster]
 	if !exists {
-		lock = client.LeaseDBState{
+		lock := client.LeaseDBState{
 			Cluster:    cluster,
 			Leader:     leader,
 			LeaseStart: minTime,
 			LeaseUntil: maxTime.Add(time.Second),
 		}
-		m.leadersPerCluster[cluster] = lock
+		m.leadersPerCluster[cluster] = []client.LeaseDBState{lock}
 	}
 
-	return lock, nil
+	return lock[len(lock)-1], nil
 }
 
 func (m *mockLockClient) TryChangeLeader(_ context.Context, cluster, newLeader string, maxTime time.Time) (client.LeaseDBState, error) {
-	lock, exists := m.leadersPerCluster[cluster]
+	locks, exists := m.leadersPerCluster[cluster]
 	if !exists {
-		return lock, fmt.Errorf("no leader for %s, UpdateLease never called before TryChangeLeader", cluster)
+		return client.LeaseDBState{}, fmt.Errorf("no leader for %s, UpdateLease never called before TryChangeLeader", cluster)
 	}
-	lock = client.LeaseDBState{
+	lock := client.LeaseDBState{
 		Cluster:    cluster,
 		Leader:     newLeader,
-		LeaseStart: lock.LeaseUntil,
+		LeaseStart: locks[0].LeaseUntil,
 		LeaseUntil: maxTime.Add(time.Second),
 	}
-	m.leadersPerCluster[cluster] = lock
+	m.leadersPerCluster[cluster] = append(locks, lock)
 	return lock, nil
 }
 
 func newMockLockClient() *mockLockClient {
-	return &mockLockClient{leadersPerCluster: make(map[string]client.LeaseDBState)}
+	return &mockLockClient{leadersPerCluster: make(map[string][]client.LeaseDBState)}
 }

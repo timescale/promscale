@@ -81,6 +81,161 @@ func TestHALeaseChangedFromOutside(t *testing.T) {
 	runHATest(t, testCase)
 }
 
+func TestHABackfillOldData(t *testing.T) {
+	testCase := haTestCase{
+		db: "ha_backfill_old_data",
+		steps: []haTestCaseStep{
+			{
+				desc: "1 becomes leader",
+				input: haTestInput{
+					replica: "1",
+					minT:    unixT(0),
+					maxT:    unixT(0),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 1,
+					expectedMaxTimeInDb: unixT(0),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "1",
+						leaseStart: unixT(0),
+						leaseUntil: unixT(60),
+					},
+				},
+			},
+			{
+				desc: "2 becomes leader",
+				input: haTestInput{
+					replica: "2",
+					minT:    unixT(100),
+					maxT:    unixT(100),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 2,
+					expectedMaxTimeInDb: unixT(100),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "2",
+						leaseStart: unixT(60),
+						leaseUntil: unixT(160),
+					},
+				},
+			},
+			{
+				desc: "1 sends backfill data",
+				input: haTestInput{
+					replica: "1",
+					minT:    unixT(50),
+					maxT:    unixT(50),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 3,
+					expectedMaxTimeInDb: unixT(100),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "2",
+						leaseStart: unixT(60),
+						leaseUntil: unixT(160),
+					},
+				},
+			},
+			{
+				desc: "1 becomes leader again and sends backfill data",
+				input: haTestInput{
+					replica: "1",
+					minT:    unixT(51),
+					maxT:    unixT(161),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 14, // 51-59, 160, 161 = 11, + 3 existing = 14
+					expectedMaxTimeInDb: unixT(161),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "1",
+						leaseStart: unixT(160),
+						leaseUntil: unixT(221),
+					},
+				},
+			},
+			{
+				desc: "2 sends data, backfill ingested, in lease data discarded",
+				input: haTestInput{
+					replica: "2",
+					minT:    unixT(150),
+					maxT:    unixT(220),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 24, // 10 backfill samples, 150 - 159
+					expectedMaxTimeInDb: unixT(161),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "1",
+						leaseStart: unixT(160),
+						leaseUntil: unixT(221),
+					},
+				},
+			},
+			{
+				desc: "2 becomes leader",
+				input: haTestInput{
+					replica: "2",
+					minT:    unixT(300),
+					maxT:    unixT(300),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 25,
+					expectedMaxTimeInDb: unixT(300),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "2",
+						leaseStart: unixT(221),
+						leaseUntil: unixT(360),
+					},
+				},
+			},
+			{
+				desc: "1 sends backfill data from two different past leases",
+				input: haTestInput{
+					replica: "1",
+					minT:    unixT(49),
+					maxT:    unixT(162),
+				},
+				output: haTestOutput{
+					expectedNumRowsInDb: 27, // 49 and 162 are in past leases for 1 and are not already ingested
+					expectedMaxTimeInDb: unixT(300),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "2",
+						leaseStart: unixT(221),
+						leaseUntil: unixT(360),
+					},
+				},
+			},
+			{
+				desc: "1 sends backfill data from two different past leases and becomes leader with new data",
+				input: haTestInput{
+					replica: "1",
+					minT:    unixT(48),
+					maxT:    unixT(360),
+				},
+				output: haTestOutput{
+					// 48, 163-220 are from past leases and not ingested,
+					// 360 is from new leader lease
+					// 59 + 27 = 86
+					expectedNumRowsInDb: 87,
+					expectedMaxTimeInDb: unixT(360),
+					expectedLeaseStateInDb: leaseState{
+						cluster:    "cluster",
+						leader:     "1",
+						leaseStart: unixT(360),
+						leaseUntil: unixT(420),
+					},
+				},
+			},
+		}}
+	runHATest(t, testCase)
+}
+
 func TestHALeaderChangedFromOutside(t *testing.T) {
 	testCase := haTestCase{
 		db: "ha_leader_change_from_outside",
@@ -128,15 +283,15 @@ func TestHALeaderChangedFromOutside(t *testing.T) {
 				},
 				tickSyncRoutine: true,
 			}, {
-				desc: "1 is no longer leader, can't send data",
+				desc: "1 is no longer leader, but is backfilling",
 				input: haTestInput{
 					replica: "1",
 					minT:    unixT(2),
 					maxT:    unixT(2),
 				},
 				output: haTestOutput{
-					expectedNumRowsInDb: 2,
-					expectedMaxTimeInDb: unixT(1),
+					expectedNumRowsInDb: 3,
+					expectedMaxTimeInDb: unixT(2),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "2",
@@ -179,15 +334,15 @@ func TestHALeaderChangedFromOutsideCacheNotAwareAtFirst(t *testing.T) {
 					leaseUntil: unixT(120),
 				},
 			}, {
-				desc: "2 tries to send data in lease, lease is cached from before-> rejected; sync",
+				desc: "2 tries to send data in lease, new lease is picked up because data falls on end of lease; sync",
 				input: haTestInput{
 					replica: "2",
 					minT:    unixT(60),
 					maxT:    unixT(60),
 				},
 				output: haTestOutput{
-					expectedNumRowsInDb: 1,
-					expectedMaxTimeInDb: unixT(0),
+					expectedNumRowsInDb: 2,
+					expectedMaxTimeInDb: unixT(60),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
 						leader:     "2",
@@ -204,7 +359,7 @@ func TestHALeaderChangedFromOutsideCacheNotAwareAtFirst(t *testing.T) {
 					maxT:    unixT(119),
 				},
 				output: haTestOutput{
-					expectedNumRowsInDb: 2,
+					expectedNumRowsInDb: 3,
 					expectedMaxTimeInDb: unixT(119),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",
@@ -222,7 +377,7 @@ func TestHALeaderChangedFromOutsideCacheNotAwareAtFirst(t *testing.T) {
 					maxT:    unixT(120),
 				},
 				output: haTestOutput{
-					expectedNumRowsInDb: 3,
+					expectedNumRowsInDb: 4,
 					expectedMaxTimeInDb: unixT(120),
 					expectedLeaseStateInDb: leaseState{
 						cluster:    "cluster",

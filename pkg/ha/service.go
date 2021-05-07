@@ -5,6 +5,7 @@
 package ha
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -20,6 +21,8 @@ const (
 	tryLeaderChangeErrFmt     = "failed to attempt leader change for cluster %s"
 	failedToUpdateLeaseErrFmt = "failed to update lease for cluster %s"
 )
+
+var ErrNoLeasesInRange = fmt.Errorf("no valid leases in range found")
 
 // Service contains the lease state for all prometheus clusters
 // and logic for determining if a specific sample should
@@ -127,4 +130,12 @@ func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, ma
 	l, _ = s.state.LoadOrStore(clusterName, newLease)
 	newLease = l.(*state.Lease)
 	return newLease, nil
+}
+
+func (s *Service) GetBackfillLeaseRange(start, end time.Time, cluster string, replica string) (time.Time, time.Time, error) {
+	state, err := s.leaseClient.GetPastLeaseInfo(context.Background(), cluster, replica, start, end)
+	if err == client.ErrNoPastLease {
+		err = ErrNoLeasesInRange
+	}
+	return state.LeaseStart, state.LeaseUntil, err
 }
