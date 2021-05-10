@@ -5,108 +5,96 @@
 package ingestor
 
 import (
-	"context"
-	"fmt"
-	"math"
-	"sort"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/jackc/pgconn"
-	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/pgmodel/metrics"
-	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const maxCopyRequestsPerTxn = 100
+const (
+	maxRequestsPerTxn = 100
+	defaultWait       = time.Millisecond * 20
+)
 
-type copyRequest struct {
-	data  *pendingBuffer
-	table string
-}
+var batchMux = new(sync.Mutex)
 
 var (
 	getBatchMutex       = &sync.Mutex{}
 	handleDecompression = retryAfterDecompression
 )
 
+func launchCopiers(conn pgxconn.PgxConn, numCopiers int) (chan<- samplesRequest, chan<- metadataRequest) {
+	if numCopiers < 2 {
+		// Set least possible copiers as 2 since we need to dedicate at least one for metadata and the other for samples.
+		log.Warn("msg", "num copiers less than 2, setting to 2")
+		numCopiers = 2
+	}
+
+	// We run inserters bus-style: all of them competing to grab requests off a
+	// single channel. This should offer a decent compromise between batching
+	// and balancing: if an inserter is awake and has little work, it'll be more
+	// likely to win the race, while one that's busy or asleep won't.
+	samplesCh := make(chan samplesRequest, numCopiers*maxRequestsPerTxn)
+	metadataCh := make(chan metadataRequest, numCopiers*maxRequestsPerTxn)
+	for i := 0; i < numCopiers; i++ {
+		go runCopier(conn, samplesCh, metadataCh)
+	}
+
+	setCopierChannelToMonitor(samplesCh, metadataCh)
+	return samplesCh, metadataCh
+}
+
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runCopier(conn pgxconn.PgxConn, in chan copyRequest) {
+func runCopier(conn pgxconn.PgxConn, samplesCh <-chan samplesRequest, metadataCh <-chan metadataRequest) {
 	// We grab copyRequests off the channel one at a time. This, and the name is
 	// a legacy from when we used CopyFrom to perform the insertions, and may
 	// change in the future.
-	insertBatch := make([]copyRequest, 0, maxCopyRequestsPerTxn)
+	var (
+		samplesBatch  = make([]samplesRequest, 0, maxRequestsPerTxn)
+		metadataBatch = make([]metadataRequest, 0, maxRequestsPerTxn/20) // A single metadataReq can contain metadata batch equal to number of series by a target.
+	)
 	for {
-		var ok bool
-		insertBatch, ok = copierGetBatch(insertBatch, in)
-		if !ok {
-			return
-		}
-
-		// sort to prevent deadlocks
-		sort.Slice(insertBatch, func(i, j int) bool {
-			return insertBatch[i].table < insertBatch[j].table
-		})
-
-		//merge tables to prevent deadlocks (on row order) and for efficiency
-
-		// invariant: there's a gap-free prefix containing data we want to insert
-		//            in table order, Following this is a gap which once contained
-		//            batches we compacted away, following this is the
-		//            uncompacted data.
-		dst := 0
-		for src := 1; src < len(insertBatch); src++ {
-			if insertBatch[dst].table == insertBatch[src].table {
-				insertBatch[dst].data.absorb(insertBatch[src].data)
-				insertBatch[src].data.release()
-				insertBatch[src] = copyRequest{}
-			} else {
-				dst++
-				if dst != src {
-					insertBatch[dst] = insertBatch[src]
-					insertBatch[src] = copyRequest{}
-				}
+		batchMux.Lock()
+		select {
+		case req, ok := <-samplesCh:
+			if !ok {
+				batchMux.Unlock()
+				return
 			}
+			samplesBatch = samplesBatch[:0]
+			samplesBatch = append(samplesBatch, req)
+			samplesBatch = listenSamplesBatch(samplesBatch, samplesCh)
+			batchMux.Unlock()
+			handleSamplesRequest(conn, samplesBatch)
+		case metadataReq, ok := <-metadataCh:
+			if !ok {
+				batchMux.Unlock()
+				return
+			}
+			metadataBatch = metadataBatch[:0]
+			metadataBatch = append(metadataBatch, metadataReq)
+			metadataBatch = listenMetadataBatch(metadataBatch, metadataCh)
+			batchMux.Unlock()
+			// We handle metadataReq as batched, similar to how each metric table request is batched before being batched
+			// for querying. This allows us to handle high throughput for concurrent incoming metadata batches.
+			handleMetadataRequest(conn, metadataBatch)
 		}
-		insertBatch = insertBatch[:dst+1]
-
-		doInsertOrFallback(conn, insertBatch...)
-		for i := range insertBatch {
-			insertBatch[i] = copyRequest{}
-		}
-		insertBatch = insertBatch[:0]
 	}
 }
 
-func copierGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, bool) {
-	//This mutex is not for safety, but rather for better batching.
-	//It guarantees that only one copier is reading from the channel at one time
-	//This ensures bigger batches as well as less spread of a
-	//single http request to multiple copiers, decreasing latency via less sync
-	//overhead especially on low-pressure systems.
-	getBatchMutex.Lock()
-	defer getBatchMutex.Unlock()
-	req, ok := <-in
-	if !ok {
-		return batch, false
-	}
-	batch = append(batch, req)
-
-	//we use a small timeout to prevent low-pressure systems from using up too many
-	//txns and putting pressure on system
-	timeout := time.After(20 * time.Millisecond)
-hot_gather:
+func listenSamplesBatch(batch []samplesRequest, in <-chan samplesRequest) []samplesRequest {
+send_batch:
 	for len(batch) < cap(batch) {
 		select {
-		case r2 := <-in:
-			batch = append(batch, r2)
-		case <-timeout:
-			break hot_gather
+		case req, ok := <-in:
+			if !ok {
+				break send_batch
+			}
+			batch = append(batch, req)
+		case <-time.After(defaultWait):
+			break send_batch
 		}
 	}
 	return batch, true
@@ -220,90 +208,18 @@ func debugInsert() {
 }
 */
 
-// Perform the actual insertion into the DB.
-func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
-	batch := conn.NewBatch()
-
-	numRowsPerInsert := make([]int, 0, len(reqs))
-	numRowsTotal := 0
-	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
-	for r := range reqs {
-		req := &reqs[r]
-		numRows := req.data.batch.CountSamples()
-		NumRowsPerInsert.Observe(float64(numRows))
-
-		// flatten the various series into arrays.
-		// there are four main bottlenecks for insertion:
-		//   1. The round trip time.
-		//   2. The number of requests sent.
-		//   3. The number of individual INSERT statements.
-		//   4. The amount of data sent.
-		// While the first two of these can be handled by batching, for the latter
-		// two we need to actually reduce the work done. It turns out that simply
-		// collecting all the data into a postgres array and performing a single
-		// INSERT using that overcomes most of the performance issues for sending
-		// multiple data, and brings INSERT nearly on par with CopyFrom. In the
-		// future we may wish to send compressed data instead.
-		times := make([]time.Time, 0, numRows)
-		vals := make([]float64, 0, numRows)
-		series := make([]int64, 0, numRows)
-		for req.data.batch.Next() {
-			timestamp, val, seriesID, seriesEpoch := req.data.batch.Values()
-			if seriesEpoch < lowestEpoch {
-				lowestEpoch = seriesEpoch
+func listenMetadataBatch(batch []metadataRequest, in <-chan metadataRequest) []metadataRequest {
+send_batch:
+	for len(batch) < cap(batch) {
+		select {
+		case req, ok := <-in:
+			if !ok {
+				break send_batch
 			}
-			times = append(times, timestamp)
-			vals = append(vals, val)
-			series = append(series, int64(seriesID))
-		}
-		if err = req.data.batch.Err(); err != nil {
-			return err
-		}
-		if len(times) != numRows {
-			panic("invalid insert request")
-		}
-		numRowsTotal += numRows
-		numRowsPerInsert = append(numRowsPerInsert, numRows)
-		batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, times, vals, series)
-	}
-
-	//note the epoch increment takes an access exclusive on the table before incrementing.
-	//thus we don't need row locking here. Note by doing this check at the end we can
-	//have some wasted work for the inserts before this fails but this is rare.
-	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
-	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", schema.Catalog, schema.Catalog)
-	batch.Queue(epochCheck, int64(lowestEpoch))
-
-	NumRowsPerBatch.Observe(float64(numRowsTotal))
-	NumInsertsPerBatch.Observe(float64(len(reqs)))
-	start := time.Now()
-	results, err := conn.SendBatch(context.Background(), batch)
-	if err != nil {
-		return err
-	}
-	defer results.Close()
-
-	var affectedMetrics uint64
-	for _, numRows := range numRowsPerInsert {
-		var insertedRows int64
-		err := results.QueryRow().Scan(&insertedRows)
-		if err != nil {
-			return err
-		}
-		numRowsExpected := int64(numRows)
-		if numRowsExpected != insertedRows {
-			affectedMetrics++
-			registerDuplicates(numRowsExpected - insertedRows)
+			batch = append(batch, req)
+		case <-time.After(defaultWait):
+			break send_batch
 		}
 	}
-
-	var val []byte
-	row := results.QueryRow()
-	err = row.Scan(&val)
-	if err != nil {
-		return err
-	}
-	reportDuplicates(affectedMetrics)
-	DbBatchInsertDuration.Observe(time.Since(start).Seconds())
-	return nil
+	return batch
 }

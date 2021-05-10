@@ -179,13 +179,13 @@ func TestDBIngestorIngest(t *testing.T) {
 				InsertedSeries:  make(map[string]model.SeriesID),
 			}
 			i := DBIngestor{
-				dispatcher: &inserter,
-				sCache:     sCache,
+				samplesDispatcher: &inserter,
+				sCache:            sCache,
 			}
 
 			wr := NewWriteRequest()
 			wr.Timeseries = c.metrics
-			count, err := i.Ingest(wr)
+			count, _, err := i.Ingest(wr)
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {

@@ -25,7 +25,7 @@ type metricBatcher struct {
 	input           chan *insertDataRequest
 	pending         *pendingBuffer
 	metricTableName string
-	toCopiers       chan copyRequest
+	toCopiers       chan<- samplesRequest
 	labelArrayOID   uint32
 }
 
@@ -62,7 +62,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
-	toCopiers chan copyRequest,
+	toCopiers chan<- samplesRequest,
 	labelArrayOID uint32) {
 
 	var tableName string
@@ -171,7 +171,7 @@ func (h *metricBatcher) flushPending() {
 	}
 
 	MetricBatcherFlushSeries.Observe(float64(h.pending.batch.CountSeries()))
-	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
+	h.toCopiers <- samplesRequest{h.pending, h.metricTableName}
 	h.pending = NewPendingBuffer()
 }
 

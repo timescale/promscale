@@ -45,6 +45,7 @@ var (
 			"base.sql",
 			"matcher-functions.sql",
 			"ha.sql",
+			"metric-metadata.sql",
 			"apply_permissions.sql", //should be last
 		},
 	}

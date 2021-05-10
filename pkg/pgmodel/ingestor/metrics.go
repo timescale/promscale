@@ -43,7 +43,7 @@ var (
 			Namespace: util.PromNamespace,
 			Name:      "copier_inserts_per_batch",
 			Help:      "number of INSERTs in a single transaction",
-			Buckets:   util.HistogramBucketsSaturating(1, 2, maxCopyRequestsPerTxn),
+			Buckets:   util.HistogramBucketsSaturating(1, 2, maxRequestsPerTxn),
 		},
 	)
 	NumRowsPerBatch = prometheus.NewHistogram(
@@ -71,31 +71,54 @@ var (
 		},
 	)
 
-	CopierChCap = prometheus.NewGauge(
+	SamplesCopierChCap = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
-			Name:      "copier_channel_cap",
-			Help:      "Capacity of copier channel",
+			Name:      "samples_copier_channel_cap",
+			Help:      "Capacity of samples copier channel",
 		},
 	)
 
-	CopierChannelToMonitor chan copyRequest
-	copierChannelMutex     sync.Mutex
-	CopierChLen            = prometheus.NewGaugeFunc(
+	copierChannelMutex sync.Mutex
+
+	SamplesCopierChannelToMonitor chan samplesRequest
+	SamplesCopierChLen            = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
-			Name:      "copier_channel_len",
-			Help:      "Len of copier channel",
+			Name:      "samples_copier_channel_len",
+			Help:      "Length of samples copier channel",
 		},
-		func() float64 { return float64(len(CopierChannelToMonitor)) },
+		func() float64 { return float64(len(SamplesCopierChannelToMonitor)) },
+	)
+
+	MetadataCopierChCap = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "metadata_copier_channel_cap",
+			Help:      "Capacity of metadata copier channels",
+		},
+	)
+
+	MetadataCopierChannelToMonitor chan metadataRequest
+	MetadataCopierChLen            = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "metadata_copier_channel_len",
+			Help:      "Length of metadata copier channel",
+		},
+		func() float64 { return float64(len(MetadataCopierChannelToMonitor)) },
 	)
 )
 
-func setCopierChannelToMonitor(toCopiers chan copyRequest) {
+func setCopierChannelToMonitor(toSamplesCopiers chan samplesRequest, toMetadataCopiers chan metadataRequest) {
 	copierChannelMutex.Lock()
 	defer copierChannelMutex.Unlock()
-	CopierChCap.Set(float64(cap(toCopiers)))
-	CopierChannelToMonitor = toCopiers
+
+	SamplesCopierChCap.Set(float64(cap(toSamplesCopiers)))
+	SamplesCopierChannelToMonitor = toSamplesCopiers
+
+	MetadataCopierChCap.Set(float64(cap(toMetadataCopiers)))
+	MetadataCopierChannelToMonitor = toMetadataCopiers
 }
 
 func init() {
@@ -107,8 +130,8 @@ func init() {
 		NumRowsPerBatch,
 		NumRowsPerInsert,
 		DbBatchInsertDuration,
-		CopierChCap,
-		CopierChLen,
+		SamplesCopierChCap,
+		SamplesCopierChLen,
 	)
 
 	MetricBatcherChCap.Set(MetricBatcherChannelCap)

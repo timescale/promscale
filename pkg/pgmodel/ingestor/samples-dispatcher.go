@@ -24,24 +24,24 @@ const (
 	getEpochSQL             = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
 )
 
-// pgxDispatcher redirects incoming samples to the appropriate metricBatcher
+// samplesDispatcher redirects incoming samples to the appropriate metricBatcher
 // corresponding to the metric in the sample.
-type pgxDispatcher struct {
+type samplesDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
-	inserters              sync.Map
+	batchers               sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
 	insertedDatapoints     *int64
-	toCopiers              chan copyRequest
+	toCopiers              chan<- samplesRequest
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
 	doneWG                 sync.WaitGroup
 	labelArrayOID          uint32
 }
 
-func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxDispatcher, error) {
+func newSamplesDispatcher(conn pgxconn.PgxConn, cfg *Cfg, cache cache.MetricCache, scache cache.SeriesCache, toCopiers chan<- samplesRequest) (*samplesDispatcher, error) {
 	cmc := make(chan struct{}, 1)
 
 	numCopiers := cfg.NumCopiers
@@ -67,11 +67,11 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		go runCopier(conn, toCopiers)
 	}
 
-	inserter := &pgxDispatcher{
+	inserter := &samplesDispatcher{
 		conn:                   conn,
 		metricTableNames:       cache,
 		scache:                 scache,
-		completeMetricCreation: cmc,
+		completeMetricCreation: make(chan struct{}, 1),
 		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
@@ -116,7 +116,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	return inserter, nil
 }
 
-func (p *pgxDispatcher) runCompleteMetricCreationWorker() {
+func (p *samplesDispatcher) runCompleteMetricCreationWorker() {
 	for range p.completeMetricCreation {
 		err := p.CompleteMetricCreation()
 		if err != nil {
@@ -125,7 +125,7 @@ func (p *pgxDispatcher) runCompleteMetricCreationWorker() {
 	}
 }
 
-func (p *pgxDispatcher) runSeriesEpochSync() {
+func (p *samplesDispatcher) runSeriesEpochSync() {
 	epoch, err := p.refreshSeriesEpoch(model.InvalidSeriesEpoch)
 	// we don't have any great place to report errors, and if the
 	// connection recovers we can still make progress, so we'll just log it
@@ -146,7 +146,7 @@ func (p *pgxDispatcher) runSeriesEpochSync() {
 	}
 }
 
-func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model.SeriesEpoch, error) {
+func (p *samplesDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model.SeriesEpoch, error) {
 	dbEpoch, err := p.getServerEpoch()
 	if err != nil {
 		// Trash the cache just in case an epoch change occurred, seems safer
@@ -159,7 +159,7 @@ func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (mod
 	return dbEpoch, nil
 }
 
-func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
+func (p *samplesDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
 	var newEpoch int64
 	row := p.conn.QueryRow(context.Background(), getEpochSQL)
 	err := row.Scan(&newEpoch)
@@ -170,7 +170,7 @@ func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
 	return model.SeriesEpoch(newEpoch), nil
 }
 
-func (p *pgxDispatcher) CompleteMetricCreation() error {
+func (p *samplesDispatcher) CompleteMetricCreation() error {
 	_, err := p.conn.Exec(
 		context.Background(),
 		finalizeMetricCreation,
@@ -178,9 +178,9 @@ func (p *pgxDispatcher) CompleteMetricCreation() error {
 	return err
 }
 
-func (p *pgxDispatcher) Close() {
+func (p *samplesDispatcher) Close() {
 	close(p.completeMetricCreation)
-	p.inserters.Range(func(key, value interface{}) bool {
+	p.batchers.Range(func(key, value interface{}) bool {
 		close(value.(chan *insertDataRequest))
 		return true
 	})
@@ -195,7 +195,7 @@ func (p *pgxDispatcher) Close() {
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
+func (p *samplesDispatcher) InsertData(dataTS model.Data) (uint64, error) {
 	var (
 		numRows      uint64
 		rows         = dataTS.Rows
@@ -249,8 +249,8 @@ func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
 }
 
 // Get the handler for a given metric name, creating a new one if none exists
-func (p *pgxDispatcher) getMetricBatcher(metric string) chan *insertDataRequest {
-	inserter, ok := p.inserters.Load(metric)
+func (p *samplesDispatcher) getMetricBatcher(metric string) chan<- *insertDataRequest {
+	batcher, ok := p.batchers.Load(metric)
 	if !ok {
 		// The ordering is important here: we need to ensure that every call
 		// to getMetricInserter() returns the same inserter. Therefore, we can
@@ -258,13 +258,13 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan *insertDataRequest 
 		// to create the inserter, anything else will leave a zombie inserter
 		// lying around.
 		c := make(chan *insertDataRequest, MetricBatcherChannelCap)
-		actual, old := p.inserters.LoadOrStore(metric, c)
-		inserter = actual
+		actual, old := p.batchers.LoadOrStore(metric, c)
+		batcher = actual
 		if !old {
 			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
 		}
 	}
-	ch := inserter.(chan *insertDataRequest)
+	ch := batcher.(chan *insertDataRequest)
 	MetricBatcherChLen.Observe(float64(len(ch)))
 	return ch
 }

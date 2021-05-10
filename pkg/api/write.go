@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -199,7 +200,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 
 		// if samples in write request are empty the we do not need to
 		// proceed further
-		if len(req.Timeseries) == 0 {
+		if len(req.Timeseries) == 0 && len(req.Metadata) == 0 {
 			ingestor.FinishWriteRequest(req)
 			return false
 		}
@@ -213,7 +214,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		m.ReceivedSamples.Add(float64(receivedBatchCount))
 		begin := time.Now()
 
-		numSamples, err := inserter.Ingest(req)
+		numSamples, numMetadata, err := inserter.Ingest(req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -224,13 +225,14 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		duration := time.Since(begin).Seconds()
 
 		m.SentSamples.Add(float64(numSamples))
+		m.SentMetadata.Add(float64(numMetadata))
 		m.SentBatchDuration.Observe(duration)
 
-		m.WriteThroughput.SetCurrent(getCounterValue(m.SentSamples))
+		m.WriteThroughput.SetCurrent(util.ThroughputValues{Samples: getCounterValue(m.SentSamples), Metadata: getCounterValue(m.SentMetadata)})
 
 		select {
 		case d := <-m.WriteThroughput.Values:
-			log.Info("msg", "Samples write throughput", "samples/sec", d)
+			log.Info("msg", "write-throughput", "samples/sec", d.Samples, "metadata/sec", d.Metadata)
 		default:
 		}
 
@@ -238,12 +240,16 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 	}
 }
 
+var promClientPool = sync.Pool{New: func() interface{} { return new(io_prometheus_client.Metric) }}
+
 func getCounterValue(counter prometheus.Counter) float64 {
-	dtoMetric := &io_prometheus_client.Metric{}
+	dtoMetric := promClientPool.Get().(*io_prometheus_client.Metric)
 	if err := counter.Write(dtoMetric); err != nil {
 		log.Warn("msg", "Error reading counter value", "err", err, "counter", counter)
 	}
-	return dtoMetric.GetCounter().GetValue()
+	val := dtoMetric.GetCounter().GetValue()
+	promClientPool.Put(dtoMetric)
+	return val
 }
 
 func invalidRequestError(w http.ResponseWriter, msg, err string, m *Metrics) {

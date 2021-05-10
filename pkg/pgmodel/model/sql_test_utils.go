@@ -448,9 +448,7 @@ type MockInserter struct {
 	InsertDataErr   error
 }
 
-func (m *MockInserter) Close() {
-
-}
+func (m *MockInserter) Close() {}
 
 func (m *MockInserter) InsertNewData(data Data) (uint64, error) {
 	return m.InsertData(data)

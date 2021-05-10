@@ -12,6 +12,10 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+type Metadata struct {
+	prompb.MetricMetadata
+}
+
 type Samples interface {
 	GetSeries() *Series
 	CountSamples() int
