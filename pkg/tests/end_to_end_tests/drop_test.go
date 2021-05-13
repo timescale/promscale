@@ -13,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
@@ -24,7 +25,10 @@ func TestSQLRetentionPeriod(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+		defer db.Close()
+
 		ts := []prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
@@ -125,6 +129,8 @@ func TestSQLDropChunk(t *testing.T) {
 		t.Skip("This test only runs on installs with TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
 		//a chunk way back in 2009
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 
@@ -174,7 +180,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected there to be a chunk")
 		}
 
-		_, err = db.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
+		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,7 +192,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected the chunk to be dropped")
 		}
 		//noop works fine
-		_, err = db.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
+		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -563,7 +569,11 @@ func TestSQLDropAllMetricData(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
+		defer db.Close()
+		dbMaint := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbMaint.Close()
 		//this is the range_end of a chunk boundary (exclusive)
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 
@@ -587,7 +597,8 @@ func TestSQLDropAllMetricData(t *testing.T) {
 		}
 
 		if *useTimescaleDB {
-			_, err = db.Exec(context.Background(), "SELECT set_chunk_time_interval('prom_data.test', interval '8 hour')")
+			//owner not admin since using timescale func to avoid randomness
+			_, err = dbOwner.Exec(context.Background(), "SELECT set_chunk_time_interval('prom_data.test', interval '8 hour')")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -607,7 +618,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			t.Error(err)
 		}
 
-		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5))
+		_, err = dbMaint.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5))
 		if err != nil {
 			t.Fatal(err)
 		}

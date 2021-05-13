@@ -186,7 +186,7 @@ func verifyTimeseries(t testing.TB, db *pgxpool.Pool, tsSlice []prompb.TimeSerie
 }
 
 func sendConcurrentWrites(t testing.TB, db *pgxpool.Pool, queues int, metricGroups int, totalRequests int, duplicates bool) {
-	router, pgClient, err := buildRouter(db)
+	router, pgClient, err := buildRouterWithAPIConfig(db, defaultAPIConfig())
 	if err != nil {
 		t.Fatalf("Unable to send concurrent writes, error building router: %s", err)
 	}

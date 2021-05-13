@@ -111,6 +111,7 @@ CREATE TABLE SCHEMA_CATALOG.default (
     value TEXT
 );
 GRANT SELECT ON TABLE SCHEMA_CATALOG.default TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.default TO prom_admin;
 
 INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
 ('chunk_interval', (INTERVAL '8 hours')::text),

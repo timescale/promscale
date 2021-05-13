@@ -19,6 +19,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/api/parser"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/util"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -65,7 +66,9 @@ type haTestCase struct {
 }
 
 func runHATest(t *testing.T, testCase haTestCase) {
-	withDB(t, testCase.db, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, testCase.db, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, testCase.db, "prom_writer")
+		defer db.Close()
 		ticker, writer, ing, err := prepareWriterWithHa(db, t)
 		if err != nil {
 			return

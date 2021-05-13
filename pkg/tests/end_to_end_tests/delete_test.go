@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	pgDel "github.com/timescale/promscale/pkg/pgmodel/delete"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -95,7 +96,10 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 		},
 	}
 
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
+		defer db.Close()
+
 		ts := generateLargeTimeseries()
 		if *extendedTest {
 			ts = generateRealTimeseries()
@@ -202,7 +206,10 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		},
 	}
 
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
+		defer db.Close()
+
 		ts := generateLargeTimeseries()
 		if *extendedTest {
 			ts = generateRealTimeseries()
@@ -224,9 +231,9 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		}
 		for _, m := range matchers {
 			var tableName string
-			err = db.QueryRow(context.Background(), "SELECT table_name from _prom_catalog.metric WHERE metric_name=$1", m.name).Scan(&tableName)
+			err = dbOwner.QueryRow(context.Background(), "SELECT table_name from _prom_catalog.metric WHERE metric_name=$1", m.name).Scan(&tableName)
 			require.NoError(t, err)
-			_, err = db.Exec(context.Background(), fmt.Sprintf("SELECT compress_chunk(i) from show_chunks('prom_data.\"%s\"') i;", tableName))
+			_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("SELECT compress_chunk(i) from show_chunks('prom_data.\"%s\"') i;", tableName))
 			if err != nil {
 				if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
 					// Already compressed (could happen if policy already ran). This is fine.
@@ -305,7 +312,10 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 		},
 	}
 
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
+		defer db.Close()
+
 		ts := generateLargeTimeseries()
 		if *extendedTest {
 			ts = generateRealTimeseries()
@@ -452,7 +462,10 @@ func TestDeleteMixins(t *testing.T) {
 		},
 	}
 
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
+		defer db.Close()
+
 		ts := generateLargeTimeseries()
 		if *extendedTest {
 			ts = generateRealTimeseries()

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
@@ -37,7 +38,9 @@ func TestOperationWithNullChars(t *testing.T) {
 		ts[i].Labels = applyNullCharsToFoo(t, ts[i].Labels) // Insert null char in label key.
 		ts[i].Labels = applyNullCharsToTag(t, ts[i].Labels) // insert null char in label value.
 	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
 		require.NoError(t, err)
 		defer ingestor.Close()

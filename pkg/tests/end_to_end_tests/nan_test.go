@@ -15,6 +15,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
@@ -52,7 +53,9 @@ func TestSQLStaleNaN(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
+		defer db.Close()
 		metricName := "StaleMetric"
 		metrics := []prompb.TimeSeries{
 			{
@@ -71,7 +74,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			},
 		}
 
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(dbOwner))
 		if err != nil {
 			t.Fatal(err)
 		}

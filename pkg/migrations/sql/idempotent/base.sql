@@ -67,6 +67,8 @@ AS $func$
     SELECT chunk_interval * (1.0+((random()*0.01)-0.005));
 $func$
 LANGUAGE SQL VOLATILE;
+--only used for setting chunk interval, and admin function
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(INTERVAL) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id int, wait boolean = true)
     RETURNS BOOLEAN
@@ -86,7 +88,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(int, boolean) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(int, boolean) TO prom_maintenance;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(metric_id int)
     RETURNS VOID
@@ -97,7 +99,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO prom_maintenance;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.attach_series_partition(metric_record SCHEMA_CATALOG.metric) RETURNS VOID
 AS $proc$
@@ -200,11 +202,13 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
     AS $func$
 DECLARE
   label_id INT;
+  compressed_hypertable_name text;
 BEGIN
    EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
                     NEW.table_name);
    EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA.%I TO prom_reader', NEW.table_name);
-   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA.%I TO prom_writer', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA.%I TO prom_writer', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA.%I TO prom_modifier', NEW.table_name);
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_name);
 
@@ -250,7 +254,8 @@ BEGIN
         ) WITH (autovacuum_vacuum_threshold = 100, autovacuum_analyze_threshold = 100)
     $$, NEW.table_name, label_id, NEW.id);
    EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_SERIES.%I TO prom_reader', NEW.table_name);
-   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_SERIES.%I TO prom_writer', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_SERIES.%I TO prom_writer', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_SERIES.%I TO prom_modifier', NEW.table_name);
    RETURN NEW;
 END
 $func$
@@ -482,7 +487,13 @@ BEGIN
     RETURN position;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL
+--security definer needed to lock the series table
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text) TO prom_writer;
 
 --should only be called after a check that that the label doesn't exist
@@ -570,6 +581,7 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_series_catalog_row(name, bigint[]) to prom_modifier;
 
 ---------------------------------------------------
 ------------------- Public APIs -------------------
@@ -899,6 +911,26 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, name, SCHEMA_PROM.label_array) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.resurrect_series_ids(metric_table name, series_id bigint)
+    RETURNS VOID
+AS $func$
+BEGIN
+    EXECUTE FORMAT($query$
+        UPDATE SCHEMA_DATA_SERIES.%1$I
+        SET delete_epoch = NULL
+        WHERE id = $1
+    $query$, metric_table) using series_id;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE
+--security definer to add jobs as the logged-in user
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.resurrect_series_ids(name, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.resurrect_series_ids(name, bigint) TO prom_writer;
+
 -- There shouldn't be a need to have a read only version of this as we'll use
 -- the eq or other matcher functions to find series ids like this. However,
 -- there are possible use cases that need the series id directly for performance
@@ -918,12 +950,18 @@ BEGIN
    LOCK TABLE ONLY SCHEMA_CATALOG.series in ACCESS SHARE mode;
 
    EXECUTE format($query$
-    WITH CTE AS (
+    WITH cte AS (
         SELECT SCHEMA_CATALOG.get_or_create_label_array($1)
+    ), existing AS (
+        SELECT
+            id,
+            CASE WHEN delete_epoch IS NOT NULL THEN
+                SCHEMA_CATALOG.resurrect_series_ids(%1$L, id)
+            END
+        FROM SCHEMA_DATA_SERIES.%1$I as series
+        WHERE labels = (SELECT * FROM cte)
     )
-    SELECT id
-    FROM SCHEMA_DATA_SERIES.%1$I as series
-    WHERE labels = (SELECT * FROM cte)
+    SELECT id FROM existing
     UNION ALL
     SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, (SELECT * FROM cte))
     LIMIT 1
@@ -958,12 +996,13 @@ BEGIN
     WITH cte AS (
         SELECT SCHEMA_CATALOG.get_or_create_label_array($1, $2, $3)
     ), existing AS (
-        SELECT id, delete_epoch
+        SELECT
+            id,
+            CASE WHEN delete_epoch IS NOT NULL THEN
+                SCHEMA_CATALOG.resurrect_series_ids(%1$L, id)
+            END
         FROM SCHEMA_DATA_SERIES.%1$I as series
         WHERE labels = (SELECT * FROM cte)
-    ), updates AS (
-        UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = NULL
-        WHERE id IN (SELECT id FROM existing WHERE delete_epoch IS NOT NULL)
     )
     SELECT id FROM existing
     UNION ALL
@@ -998,12 +1037,13 @@ BEGIN
 
    EXECUTE format($query$
     WITH existing AS (
-        SELECT id, delete_epoch
+        SELECT
+            id,
+            CASE WHEN delete_epoch IS NOT NULL THEN
+                SCHEMA_CATALOG.resurrect_series_ids(%1$L, id)
+            END
         FROM SCHEMA_DATA_SERIES.%1$I as series
         WHERE labels = $1
-    ), updates AS (
-        UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = NULL
-        WHERE id IN (SELECT id FROM existing WHERE delete_epoch IS NOT NULL)
     )
     SELECT id FROM existing
     UNION ALL
@@ -1032,12 +1072,18 @@ BEGIN
     END IF;
     --set interval while adding 1% of randomness to the interval so that chunks are not aligned so that
     --chunks are staggered for compression jobs.
-    EXECUTE set_chunk_time_interval(
+    EXECUTE SCHEMA_TIMESCALE.set_chunk_time_interval(
         format('SCHEMA_DATA.%I',(SELECT table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)))::regclass,
          SCHEMA_CATALOG.get_staggered_chunk_interval(new_interval));
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(TEXT, INTERVAL) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(TEXT, INTERVAL) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_chunk_interval(chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -1054,6 +1100,7 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL)
 IS 'set the chunk interval for any metrics (existing and new) without an explicit override';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
@@ -1072,6 +1119,7 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL)
 IS 'set a chunk interval for a specific metric (this overrides the default)';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name TEXT)
 RETURNS BOOLEAN
@@ -1087,6 +1135,7 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT)
 IS 'resets the chunk interval for a specific metric to using the default';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
 RETURNS INTERVAL
@@ -1111,6 +1160,7 @@ $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL)
 IS 'set the retention period for any metrics (existing and new) without an explicit override';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
@@ -1127,6 +1177,7 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)
 IS 'set a retention period for a specific metric (this overrides the default)';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name TEXT)
 RETURNS BOOLEAN
@@ -1138,6 +1189,7 @@ $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT)
 IS 'resets the retention period for a specific metric to using the default';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_compression_setting(metric_name TEXT)
 RETURNS BOOLEAN
@@ -1156,7 +1208,7 @@ BEGIN
 
     SELECT table_name
     INTO STRICT metric_table_name
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
 
     IF SCHEMA_CATALOG.get_timescale_major_version() >= 2  THEN
         SELECT compression_enabled
@@ -1207,6 +1259,7 @@ $$
 LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_default_compression_setting(BOOLEAN)
 IS 'set the compression setting for any metrics (existing and new) without an explicit override';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_compression_setting(BOOLEAN) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_compression_setting(metric_name TEXT, new_compression_setting BOOLEAN)
 RETURNS BOOLEAN
@@ -1246,6 +1299,7 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_compression_setting(TEXT, BOOLEAN)
 IS 'set a compression setting for a specific metric (this overrides the default)';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_compression_setting(TEXT, BOOLEAN) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN)
 RETURNS void
@@ -1292,9 +1346,15 @@ BEGIN
     END IF;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN) FROM PUBLIC;
 COMMENT ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN)
 IS 'set a compression for a specific metric table';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN) TO prom_admin;
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_compression_setting(metric_name TEXT)
@@ -1318,6 +1378,7 @@ $func$
 LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_compression_setting(TEXT)
 IS 'resets the compression setting for a specific metric to using the default';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_compression_setting(TEXT) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.epoch_abort(user_epoch BIGINT)
 RETURNS VOID AS $func$
@@ -1370,7 +1431,14 @@ BEGIN
     $query$, metric_table, older_than, check_time);
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+--security definer to add jobs as the logged-in user
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, timestamptz, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, timestamptz, timestamptz) TO prom_maintenance;
 
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_expired_series(
@@ -1447,8 +1515,53 @@ BEGIN
     RETURN;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+--security definer to add jobs as the logged-in user
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz) TO prom_maintenance;
 
+--drop chunks from metrics tables and delete the appropriate series.
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(
+    metric_name TEXT, older_than TIMESTAMPTZ
+) RETURNS VOID AS $func$
+DECLARE
+    metric_table NAME;
+BEGIN
+    SELECT table_name
+    INTO STRICT metric_table
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
+
+    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+            PERFORM SCHEMA_TIMESCALE.drop_chunks(
+                relation=>format('%I.%I', 'SCHEMA_DATA', metric_table),
+                older_than=>older_than
+            );
+        ELSE
+            PERFORM SCHEMA_TIMESCALE.drop_chunks(
+                table_name=>metric_table,
+                schema_name=> 'SCHEMA_DATA',
+                older_than=>older_than,
+                cascade_to_materializations=>FALSE
+            );
+        END IF;
+    ELSE
+        EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
+    END IF;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE
+--security definer to add jobs as the logged-in user
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(text, timestamptz) TO prom_maintenance;
 
 --drop chunks from metrics tables and delete the appropriate series.
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(
@@ -1462,7 +1575,7 @@ DECLARE
 BEGIN
     SELECT id, table_name
     INTO STRICT metric_id, metric_table
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
 
     SELECT older_than + INTERVAL '1 hour'
     INTO check_time;
@@ -1505,23 +1618,7 @@ BEGIN
     COMMIT;
 
     -- transaction 3
-        IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-            IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-                PERFORM drop_chunks(
-                    relation=>format('%I.%I', 'SCHEMA_DATA', metric_table),
-                    older_than=>older_than
-                );
-            ELSE
-                PERFORM drop_chunks(
-                    table_name=>metric_table,
-                    schema_name=> 'SCHEMA_DATA',
-                    older_than=>older_than,
-                    cascade_to_materializations=>FALSE
-                );
-            END IF;
-        ELSE
-            EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
-        END IF;
+        PERFORM SCHEMA_CATALOG.drop_metric_chunk_data(metric_name, older_than);
     COMMIT;
 
     -- transaction 4
@@ -1530,6 +1627,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL;
+GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(text, timestamptz, timestamptz) TO prom_maintenance;
 
 --Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
@@ -1595,6 +1693,7 @@ END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_CATALOG.execute_data_retention_policy()
 IS 'drops old data according to the data retention policy. This procedure should be run regularly in a cron job';
+GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.execute_data_retention_policy() TO prom_maintenance;
 
 --public procedure to be called by cron
 --right now just does data retention but name is generic so that
@@ -1612,6 +1711,7 @@ END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_PROM.execute_maintenance()
 IS 'Execute maintenance tasks like dropping data according to retention policy. This procedure should be run regularly in a cron job';
+GRANT EXECUTE ON PROCEDURE SCHEMA_PROM.execute_maintenance() TO prom_maintenance;
 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_maintenance_job(job_id int, config jsonb)
 AS $$
@@ -1626,7 +1726,7 @@ AS $func$
 DECLARE
   cnt int;
 BEGIN
-    PERFORM delete_job(job_id)
+    PERFORM SCHEMA_TIMESCALE.delete_job(job_id)
     FROM timescaledb_information.jobs
     WHERE proc_schema = 'SCHEMA_CATALOG' AND proc_name = 'execute_maintenance_job' AND schedule_interval != new_schedule_interval;
 
@@ -1636,12 +1736,12 @@ BEGIN
     WHERE proc_schema = 'SCHEMA_CATALOG' AND proc_name = 'execute_maintenance_job';
 
     IF cnt < number_jobs THEN
-        PERFORM add_job('SCHEMA_CATALOG.execute_maintenance_job', new_schedule_interval)
+        PERFORM SCHEMA_TIMESCALE.add_job('SCHEMA_CATALOG.execute_maintenance_job', new_schedule_interval)
         FROM generate_series(1, number_jobs-cnt);
     END IF;
 
     IF cnt > number_jobs THEN
-        PERFORM delete_job(job_id)
+        PERFORM SCHEMA_TIMESCALE.delete_job(job_id)
         FROM timescaledb_information.jobs
         WHERE proc_schema = 'SCHEMA_CATALOG' AND proc_name = 'execute_maintenance_job'
         LIMIT (cnt-number_jobs);
@@ -1650,7 +1750,14 @@ BEGIN
     RETURN TRUE;
 END
 $func$
-LANGUAGE PLPGSQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE
+--security definer to add jobs as the logged-in user
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_PROM.config_maintenance_jobs(int, interval) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.config_maintenance_jobs(int, interval) TO prom_admin;
 COMMENT ON FUNCTION SCHEMA_PROM.config_maintenance_jobs(int, interval)
 IS 'Configure the number of maintence jobs run by the job scheduler, as well as their scheduled interval';
 
@@ -1826,7 +1933,6 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(name text, series_ids bigint[])
 RETURNS BIGINT
-LANGUAGE PLPGSQL
 AS
 $$
 DECLARE
@@ -1845,7 +1951,7 @@ BEGIN
                     INNER JOIN pg_namespace n ON c.relnamespace = n.oid
                     INNER JOIN _timescaledb_catalog.chunk ch ON (ch.schema_name, ch.table_name) = (n.nspname, c.relname)
                     LEFT JOIN _timescaledb_catalog.chunk chc ON ch.compressed_chunk_id = chc.id
-                WHERE c.oid IN (SELECT show_chunks(format('%I.%I','SCHEMA_DATA', metric_table))::oid)
+                WHERE c.oid IN (SELECT SCHEMA_TIMESCALE.show_chunks(format('%I.%I','SCHEMA_DATA', metric_table))::oid)
                 ) a
         LOOP
             EXECUTE delete_stmt USING series_ids;
@@ -1860,7 +1966,14 @@ BEGIN
     PERFORM SCHEMA_CATALOG.delete_series_catalog_row(name, series_ids);
     RETURN num_rows_deleted;
 END;
-$$;
+$$
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_series_from_metric(text, bigint[])FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_series_from_metric(text, bigint[]) to prom_modifier;
 
 --------------------------------- Views --------------------------------
 
@@ -2093,6 +2206,57 @@ REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) F
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) TO prom_writer;
 
 CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
+DO $DO$
+BEGIN
+    --this function isolates the logic that needs to be security definer
+    --cannot fold it into do_decompress_chunks_after because cannot have security
+    --definer do txn-al stuff like commit
+    CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.decompress_chunk_for_metric(metric_table TEXT, chunk_schema_name name, chunk_table_name name) RETURNS VOID
+    AS $$
+    DECLARE
+        chunk_full_name text;
+    BEGIN
+
+       --double check chunk belongs to metric table
+       SELECT
+        format('%I.%I', c.schema_name, c.table_name)
+       INTO chunk_full_name
+       FROM _timescaledb_catalog.chunk c
+       INNER JOIN  _timescaledb_catalog.hypertable h ON (h.id = c.hypertable_id)
+       WHERE
+            c.schema_name = chunk_schema_name AND c.table_name = chunk_table_name AND
+            h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table AND
+            c.compressed_chunk_id IS NOT NULL;
+
+        IF NOT FOUND Then
+            RETURN;
+        END IF;
+
+       --lock the chunk exclusive.
+       EXECUTE format('LOCK %I.%I;', chunk_schema_name, chunk_table_name);
+
+       --double check it's still compressed.
+       PERFORM c.*
+       FROM _timescaledb_catalog.chunk c
+       WHERE schema_name = chunk_schema_name AND table_name = chunk_table_name AND
+       c.compressed_chunk_id IS NOT NULL;
+
+       IF NOT FOUND Then
+          RETURN;
+       END IF;
+
+       RAISE NOTICE 'Promscale is decompressing chunk: %.%', chunk_schema_name, chunk_table_name;
+       PERFORM SCHEMA_TIMESCALE.decompress_chunk(chunk_full_name);
+    END;
+    $$
+    LANGUAGE PLPGSQL
+    SECURITY DEFINER
+    --search path must be set for security definer
+    SET search_path = pg_temp;
+    REVOKE ALL ON FUNCTION SCHEMA_CATALOG.decompress_chunk_for_metric(TEXT, name, name) FROM PUBLIC;
+    GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.decompress_chunk_for_metric(TEXT, name, name) TO prom_writer;
+
+
     --Decompression should take place in a procedure because we don't want locks held across
     --decompress_chunk calls since that function takes some heavier locks at the end.
     --Thus, transactional parameter should usually be false
@@ -2126,25 +2290,16 @@ CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_afte
             AND c.compressed_chunk_id IS NOT NULL
             ORDER BY ds.range_start
         LOOP
-
-            --lock the chunk exclusive.
-            EXECUTE format('LOCK %I.%I;', chunk_row.schema_name, chunk_row.table_name);
-            --double check it's still compressed.
-            PERFORM c.*
-            FROM _timescaledb_catalog.chunk c
-            WHERE c.id = chunk_row.id AND c.compressed_chunk_id IS NOT NULL;
-
-            IF FOUND THEN
-                RAISE NOTICE 'Promscale is decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
-                PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
-            END IF;
-
+            PERFORM SCHEMA_CATALOG.decompress_chunk_for_metric(metric_table, chunk_row.schema_name, chunk_row.table_name);
             IF NOT transactional THEN
               COMMIT;
             END IF;
         END LOOP;
     END;
     $$ LANGUAGE PLPGSQL;
+    GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.do_decompress_chunks_after(NAME, TIMESTAMPTZ, BOOLEAN) TO prom_writer;
+END
+$DO$;
 $ee$);
 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ, transactional BOOLEAN = false)
@@ -2158,26 +2313,57 @@ BEGIN
     IF SCHEMA_CATALOG.is_multinode() THEN
         CALL SCHEMA_TIMESCALE.distributed_exec(
             format(
-                $dist$ CALL do_decompress_chunks_after(%L, %L, %L) $dist$,
+                $dist$ CALL SCHEMA_CATALOG.do_decompress_chunks_after(%L, %L, %L) $dist$,
                 metric_table, min_time, transactional),
             transactional => false);
     ELSE
-        CALL do_decompress_chunks_after(metric_table, min_time, transactional);
+        CALL SCHEMA_CATALOG.do_decompress_chunks_after(metric_table, min_time, transactional);
     END IF;
 END
 $proc$ LANGUAGE PLPGSQL;
 GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(name, TIMESTAMPTZ, boolean) TO prom_writer;
 
 CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
+DO $DO$
+BEGIN
+    --this function isolates the logic that needs to be security definer
+    --cannot fold it into compress_old_chunks because cannot have security
+    --definer do txn-all stuff like commit
+    CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.compress_chunk_for_metric(metric_table TEXT, chunk_schema_name name, chunk_table_name name) RETURNS VOID
+    AS $$
+    DECLARE
+        chunk_full_name text;
+    BEGIN
+        SELECT
+            format('%I.%I', chunk_schema, chunk_name)
+        INTO chunk_full_name
+        FROM timescaledb_information.chunks
+        WHERE hypertable_schema = 'SCHEMA_DATA'
+          AND hypertable_name = metric_table
+          AND chunk_schema = chunk_schema_name
+          AND chunk_name = chunk_table_name;
+
+        PERFORM SCHEMA_TIMESCALE.compress_chunk(chunk_full_name, if_not_compressed => true);
+    END;
+    $$
+    LANGUAGE PLPGSQL
+    SECURITY DEFINER
+    --search path must be set for security definer
+    SET search_path = pg_temp;
+    REVOKE ALL ON FUNCTION SCHEMA_CATALOG.compress_chunk_for_metric(TEXT, name, name) FROM PUBLIC;
+    GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.compress_chunk_for_metric(TEXT, name, name) TO prom_maintenance;
+
     CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
     AS $$
     DECLARE
-        chunk TEXT;
+        chunk_schema_name name;
+        chunk_table_name name;
         chunk_num INT;
     BEGIN
-        FOR chunk, chunk_num IN
+        FOR chunk_schema_name, chunk_table_name, chunk_num IN
             SELECT
-                format('%I.%I', chunk_schema, chunk_name),
+                chunk_schema,
+                chunk_name,
                 row_number() OVER (ORDER BY range_end DESC)
             FROM timescaledb_information.chunks
             WHERE hypertable_schema = 'SCHEMA_DATA'
@@ -2187,11 +2373,14 @@ CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee
             ORDER BY range_end ASC
         LOOP
             CONTINUE WHEN chunk_num <= 1;
-            PERFORM compress_chunk(chunk, if_not_compressed => true);
+            PERFORM SCHEMA_CATALOG.compress_chunk_for_metric(metric_table, chunk_schema_name, chunk_table_name);
             COMMIT;
         END LOOP;
     END;
     $$ LANGUAGE PLPGSQL;
+    GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.compress_old_chunks(TEXT, TIMESTAMPTZ) TO prom_maintenance;
+END
+$DO$;
 $ee$);
 
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_metric_chunks(metric_name TEXT)
@@ -2201,7 +2390,7 @@ DECLARE
 BEGIN
     SELECT table_name
     INTO STRICT metric_table
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name);
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
 
     -- as of timescaledb-2.0-rc4 the is_compressed column of the chunks view is
     -- not updated on the access node, therefore we need to one the compressor
@@ -2215,6 +2404,7 @@ BEGIN
     END IF;
 END
 $$ LANGUAGE PLPGSQL;
+GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.compress_metric_chunks(text) TO prom_maintenance;
 
 --Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
@@ -2233,6 +2423,7 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression() TO prom_maintenance;
 
 --only for timescaledb 2.0 in 1.x we use compression policies
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
@@ -2274,6 +2465,7 @@ END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_CATALOG.execute_compression_policy()
 IS 'compress data according to the policy. This procedure should be run regularly in a cron job';
+GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.execute_compression_policy() TO prom_maintenance;
 
 CREATE OR REPLACE PROCEDURE SCHEMA_PROM.add_prom_node(node_name TEXT, attach_to_existing_metrics BOOLEAN = true)
 AS $func$

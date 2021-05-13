@@ -172,7 +172,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction)
+	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}
