@@ -34,16 +34,14 @@ type samplesDispatcher struct {
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
 	insertedDatapoints     *int64
-	toCopiers              chan<- samplesRequest
+	toCopiers              chan<- copyRequest
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
 	doneWG                 sync.WaitGroup
 	labelArrayOID          uint32
 }
 
-func newSamplesDispatcher(conn pgxconn.PgxConn, cfg *Cfg, cache cache.MetricCache, scache cache.SeriesCache, toCopiers chan<- samplesRequest) (*samplesDispatcher, error) {
-	cmc := make(chan struct{}, 1)
-
+func newSamplesDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*samplesDispatcher, error) {
 	numCopiers := cfg.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")

@@ -34,12 +34,11 @@ type DBIngestor struct {
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
 func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, cfg *Cfg) (*DBIngestor, error) {
-	toSamplesCopiers, toMetadataCopiers := launchCopiers(conn, cfg.NumCopiers)
-	samplesDispatcher, err := newSamplesDispatcher(conn, cfg, cache, sCache, toSamplesCopiers)
+	samplesDispatcher, err := newSamplesDispatcher(conn, cache, sCache, cfg)
 	if err != nil {
 		return nil, err
 	}
-	metadataDispatcher := newMetadataDispatcher(toMetadataCopiers)
+	metadataDispatcher := newMetadataDispatcher(conn)
 	return &DBIngestor{
 		sCache:             sCache,
 		samplesDispatcher:  samplesDispatcher,
@@ -153,9 +152,28 @@ func (ingestor *DBIngestor) ingestSamples(r *prompb.WriteRequest) (uint64, error
 		ts.Samples = nil
 	}
 
-	rowsInserted, err := ingestor.samplesDispatcher.InsertData(model.Data{Rows: dataSamples, ReceivedTime: time.Now()})
-	if err == nil && rowsInserted != totalSamplesRows {
-		return rowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
+	samplesRowsInserted, errSamples := ingestor.samplesDispatcher.InsertData(model.Data{Rows: dataSamples, ReceivedTime: time.Now()})
+	if errSamples == nil && samplesRowsInserted != totalSamplesRows {
+		return samplesRowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalSamplesRows, samplesRowsInserted)
+	}
+	return samplesRowsInserted, errSamples
+}
+
+func (ingestor *DBIngestor) ingestMetadata(r *prompb.WriteRequest) (int, error) {
+	metadataRows := len(r.Metadata)
+	metadata := make([]model.Metadata, len(r.Metadata))
+	for i := 0; i < metadataRows; i++ {
+		tmp := r.Metadata[i]
+		metadata[i] = model.Metadata{
+			MetricFamily: tmp.MetricFamilyName,
+			Unit:         tmp.Unit,
+			Type:         tmp.Type.String(),
+			Help:         tmp.Help,
+		}
+	}
+	_, errMetadata := ingestor.metadataDispatcher.Insert(metadata)
+	if errMetadata != nil {
+		return 0, errMetadata
 	}
 	return metadataRows, nil
 }

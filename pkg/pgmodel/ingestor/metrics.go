@@ -43,7 +43,7 @@ var (
 			Namespace: util.PromNamespace,
 			Name:      "copier_inserts_per_batch",
 			Help:      "number of INSERTs in a single transaction",
-			Buckets:   util.HistogramBucketsSaturating(1, 2, maxRequestsPerTxn),
+			Buckets:   util.HistogramBucketsSaturating(1, 2, maxCopyRequestsPerTxn),
 		},
 	)
 	NumRowsPerBatch = prometheus.NewHistogram(
@@ -81,7 +81,7 @@ var (
 
 	copierChannelMutex sync.Mutex
 
-	SamplesCopierChannelToMonitor chan samplesRequest
+	SamplesCopierChannelToMonitor chan copyRequest
 	SamplesCopierChLen            = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
@@ -90,35 +90,14 @@ var (
 		},
 		func() float64 { return float64(len(SamplesCopierChannelToMonitor)) },
 	)
-
-	MetadataCopierChCap = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Name:      "metadata_copier_channel_cap",
-			Help:      "Capacity of metadata copier channels",
-		},
-	)
-
-	MetadataCopierChannelToMonitor chan metadataRequest
-	MetadataCopierChLen            = prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Name:      "metadata_copier_channel_len",
-			Help:      "Length of metadata copier channel",
-		},
-		func() float64 { return float64(len(MetadataCopierChannelToMonitor)) },
-	)
 )
 
-func setCopierChannelToMonitor(toSamplesCopiers chan samplesRequest, toMetadataCopiers chan metadataRequest) {
+func setCopierChannelToMonitor(toSamplesCopiers chan copyRequest) {
 	copierChannelMutex.Lock()
 	defer copierChannelMutex.Unlock()
 
 	SamplesCopierChCap.Set(float64(cap(toSamplesCopiers)))
 	SamplesCopierChannelToMonitor = toSamplesCopiers
-
-	MetadataCopierChCap.Set(float64(cap(toMetadataCopiers)))
-	MetadataCopierChannelToMonitor = toMetadataCopiers
 }
 
 func init() {

@@ -59,3 +59,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_multiple_metric_metadata(TEXT[]) TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_targets(metric_family_name TEXT, series_ids BIGINT[]) RETURNS TABLE (series_id BIGINT, target_keys TEXT[], target_values TEXT[])
+AS
+$$
+DECLARE
+    metric_table_name TEXT;
+    q TEXT;
+BEGIN
+    SELECT table_name INTO metric_table_name FROM SCHEMA_CATALOG.metric WHERE metric_name = metric_family_name;
+    q = FORMAT('select s.id series_id, array_agg(l.key) target_keys, array_agg(l.value) target_values from SCHEMA_CATALOG.label l inner join SCHEMA_DATA_SERIES.%I s on (true) where l.id = any(s.labels) and (key = ''job'' or key = ''instance'') and s.id = any(%L::bigint[]) group by series_id;', metric_table_name, series_ids);
+    RETURN QUERY EXECUTE q;
+END;
+$$ language plpgsql;
+
+
+

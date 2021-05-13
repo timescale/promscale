@@ -13,7 +13,10 @@ import (
 )
 
 type Metadata struct {
-	prompb.MetricMetadata
+	MetricFamily string `json:"metric,omitempty"`
+	Unit         string `json:"unit"`
+	Type         string `json:"type"`
+	Help         string `json:"help"`
 }
 
 type Samples interface {

@@ -30,7 +30,7 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 		err              error
 		metricsTouched   = make(map[string]struct{})
 	)
-	metricNames, seriesIDMatrix, err := pgDel.getMetricNameSeriesIDFromMatchers(matchers)
+	metricNames, seriesIDMatrix, err := querier.GetMetricNameSeriesIDFromMatchers(pgDel.Conn, matchers)
 	if err != nil {
 		return nil, nil, -1, fmt.Errorf("delete-series: %w", err)
 	}
@@ -52,29 +52,6 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 		totalRowsDeleted += rowsDeleted
 	}
 	return getKeys(metricsTouched), deletedSeriesIDs, totalRowsDeleted, nil
-}
-
-// getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
-// as a matrix.
-func (pgDel *PgDelete) getMetricNameSeriesIDFromMatchers(matchers []*labels.Matcher) ([]string, [][]model.SeriesID, error) {
-	cb, err := querier.BuildSubQueries(matchers)
-	if err != nil {
-		return nil, nil, fmt.Errorf("delete series build subqueries: %w", err)
-	}
-	clauses, values, err := cb.Build(true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("delete series build clauses: %w", err)
-	}
-	query := querier.BuildMetricNameSeriesIDQuery(clauses)
-	rows, err := pgDel.Conn.Query(context.Background(), query, values...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("build metric name series: %w", err)
-	}
-	metricNames, correspondingSeriesIDs, err := querier.GetSeriesPerMetric(rows)
-	if err != nil {
-		return nil, nil, fmt.Errorf("series per metric: %w", err)
-	}
-	return metricNames, correspondingSeriesIDs, nil
 }
 
 func convertSeriesIDsToInt64s(s []model.SeriesID) []int64 {

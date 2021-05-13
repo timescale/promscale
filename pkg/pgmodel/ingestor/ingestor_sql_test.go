@@ -761,8 +761,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				MetricCache:  metricCache,
 				GetMetricErr: c.metricsGetErr,
 			}
-			toSamplesCopiers, _ := launchCopiers(mock, 1)
-			inserter, err := newSamplesDispatcher(mock, &Cfg{DisableEpochSync: true}, mockMetrics, scache, toSamplesCopiers)
+			inserter, err := newSamplesDispatcher(mock, mockMetrics, scache, &Cfg{DisableEpochSync: true})
 			if err != nil {
 				t.Fatal(err)
 			}
