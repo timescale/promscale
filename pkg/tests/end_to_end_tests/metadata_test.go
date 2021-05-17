@@ -5,12 +5,11 @@
 package end_to_end_tests
 
 import (
-	"sort"
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	metadataAPI "github.com/timescale/promscale/pkg/pgmodel/metadata"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -21,8 +20,12 @@ import (
 func TestMetricMetadataIngestion(t *testing.T) {
 	ts := generateSmallTimeseries()
 	metadata := generateRandomMetricMetadata(20)
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
 
@@ -55,12 +58,15 @@ func TestMetricMetadataIngestion(t *testing.T) {
 	})
 }
 
-func TestFetchingMetricMetadataAPI(t *testing.T) {
+func TestFetchMetricMetadataAPI(t *testing.T) {
 	ts := generateSmallTimeseries()
 	metadata := generateRandomMetricMetadata(20)
 
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
 
@@ -76,7 +82,10 @@ func TestFetchingMetricMetadataAPI(t *testing.T) {
 
 		// Fetch metric metadata.
 		// -- fetch metadata without metric_name and limit --
-		result, err := metadataAPI.MetricMetadata(pgxconn.NewPgxConn(db), "", 0)
+		db = testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
+		defer db.Close()
+
+		result, err := metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), "", 0)
 		require.NoError(t, err)
 		expected := getExpectedMap(metadata)
 		for metric, md := range result {
@@ -86,7 +95,7 @@ func TestFetchingMetricMetadataAPI(t *testing.T) {
 		}
 
 		// -- fetch metadata with metric_name --
-		result, err = metadataAPI.MetricMetadata(pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 0)
+		result, err = metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 0)
 		require.NoError(t, err)
 		expected = getExpectedMap(metadata[:1])
 		for metric, md := range result {
@@ -96,96 +105,17 @@ func TestFetchingMetricMetadataAPI(t *testing.T) {
 		}
 
 		// -- fetch metadata with limit --
-		result, err = metadataAPI.MetricMetadata(pgxconn.NewPgxConn(db), "", 5)
+		result, err = metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), "", 5)
 		require.NoError(t, err)
 		require.Equal(t, 5, len(result))
 
 		// -- fetch metadata with both limit and metric_name --
-		result, err = metadataAPI.MetricMetadata(pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 1)
+		result, err = metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 1)
 		require.NoError(t, err)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(result))
 		require.Equal(t, 1, len(result[metadata[0].MetricFamilyName]))
-		require.Equal(t, getExpectedMap(metadata[:1])[metadata[0].MetricFamilyName], result[metadata[0].MetricFamilyName])
-	})
-}
-
-func TestFetchingTargetMetadataAPI(t *testing.T) {
-	ts, metadata := generateSeriesAndMetadataOnTarget()
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
-		require.NoError(t, err)
-		defer ingestor.Close()
-
-		// Ingest data.
-		wr := ingstr.NewWriteRequest()
-		wr.Timeseries = copyMetrics(ts)
-		wr.Metadata = copyMetadata(metadata)
-
-		numSamples, numMetadata, err := ingestor.Ingest(wr)
-		require.NoError(t, err)
-		require.Equal(t, 10, int(numSamples))
-		require.Equal(t, 2, int(numMetadata))
-
-		// Fetch without any target matchers.
-		matcher, err := labels.NewMatcher(labels.MatchRegexp, "job", ".*")
-		require.NoError(t, err)
-		result, err := metadataAPI.TargetMetadata(pgxconn.NewPgxConn(db), []*labels.Matcher{matcher}, "", 0)
-		require.NoError(t, err)
-		sort.Slice(result, func(i, j int) bool {
-			return result[i].Target.Job < result[j].Target.Job
-		})
-		expected := []metadataAPI.TargetMetadataType{
-			{
-				Target: metadataAPI.Target{
-					Instance: "localhost:9201",
-					Job:      "A",
-				},
-				Metadata: model.Metadata{
-					MetricFamily: "firstMetric",
-					Unit:         "",
-					Help:         "random help first metric",
-					Type:         prompb.MetricMetadata_COUNTER.String(),
-				},
-			},
-			{
-				Target: metadataAPI.Target{
-					Instance: "localhost:9202",
-					Job:      "B",
-				},
-				Metadata: model.Metadata{
-					MetricFamily: "secondMetric",
-					Unit:         "",
-					Help:         "random help second metric",
-					Type:         prompb.MetricMetadata_GAUGE.String(),
-				},
-			},
-		}
-		require.Equal(t, expected, result)
-
-		// Fetch with target matchers.
-		matcher, err = labels.NewMatcher(labels.MatchRegexp, "instance", "localhost:9202")
-		require.NoError(t, err)
-		result, err = metadataAPI.TargetMetadata(pgxconn.NewPgxConn(db), []*labels.Matcher{matcher}, "", 0)
-		require.NoError(t, err)
-		sort.Slice(result, func(i, j int) bool {
-			return result[i].Target.Job < result[j].Target.Job
-		})
-		expected = []metadataAPI.TargetMetadataType{
-			{
-				Target: metadataAPI.Target{
-					Instance: "localhost:9202",
-					Job:      "B",
-				},
-				Metadata: model.Metadata{
-					MetricFamily: "secondMetric",
-					Unit:         "",
-					Help:         "random help second metric",
-					Type:         prompb.MetricMetadata_GAUGE.String(),
-				},
-			},
-		}
-		require.Equal(t, expected, result)
+		require.Equal(t, expected[metadata[0].MetricFamilyName], result[metadata[0].MetricFamilyName])
 	})
 }
 

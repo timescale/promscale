@@ -62,10 +62,7 @@ func (d DefaultParser) ParseRequest(r *http.Request, req *prompb.WriteRequest) e
 		return fmt.Errorf("parser error: %w", err)
 	}
 
-	if len(req.Timeseries) == 0 && len(req.Metadata) == 0 {
-		return nil
-	} else if len(req.Timeseries) == 0 && len(req.Metadata) > 0 {
-		// Preprocessors not required as no timeseries exists.
+	if len(req.Timeseries) == 0 {
 		return nil
 	}
 

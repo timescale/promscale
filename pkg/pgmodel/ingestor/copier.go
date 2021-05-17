@@ -24,38 +24,15 @@ import (
 
 const maxCopyRequestsPerTxn = 100
 
-var (
-	getBatchMutex       = &sync.Mutex{}
-	handleDecompression = retryAfterDecompression
-)
-
-func launchCopiers(conn pgxconn.PgxConn, numCopiers int) (chan<- samplesRequest, chan<- metadataRequest) {
-	if numCopiers < 2 {
-		// Set least possible copiers as 2 since we need to dedicate at least one for metadata and the other for samples.
-		log.Warn("msg", "num copiers less than 2, setting to 2")
-		numCopiers = 2
-	}
-
-	// We run inserters bus-style: all of them competing to grab requests off a
-	// single channel. This should offer a decent compromise between batching
-	// and balancing: if an inserter is awake and has little work, it'll be more
-	// likely to win the race, while one that's busy or asleep won't.
-	samplesCh := make(chan samplesRequest, numCopiers*maxRequestsPerTxn)
-	metadataCh := make(chan metadataRequest, numCopiers*maxRequestsPerTxn)
-	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, samplesCh, metadataCh)
-	}
-
-	setCopierChannelToMonitor(samplesCh, metadataCh)
-	return samplesCh, metadataCh
-}
-
 type copyRequest struct {
 	data  *pendingBuffer
 	table string
 }
 
-var getBatchMutex = &sync.Mutex{}
+var (
+	getBatchMutex       = &sync.Mutex{}
+	handleDecompression = retryAfterDecompression
+)
 
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
@@ -136,7 +113,7 @@ hot_gather:
 }
 
 func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
-	err := doInsert(conn, reqs...)
+	err := insertSeries(conn, reqs...)
 	if err != nil {
 		insertBatchErrorFallback(conn, reqs...)
 		return
@@ -151,7 +128,7 @@ func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 func insertBatchErrorFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 	for i := range reqs {
 		reqs[i].data.batch.ResetPosition()
-		err := doInsert(conn, reqs[i])
+		err := insertSeries(conn, reqs[i])
 		if err != nil {
 			err = tryRecovery(conn, err, reqs[i])
 		}
@@ -224,7 +201,7 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest) error {
 	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
 
 	req.data.batch.ResetPosition()
-	return doInsert(conn, req) // Attempt an insert again.
+	return insertSeries(conn, req) // Attempt an insert again.
 }
 
 /*
@@ -243,69 +220,8 @@ func debugInsert() {
 }
 */
 
-// certain errors are recoverable, handle those we can
-//   1. if the table is compressed, decompress and retry the insertion
-func insertErrorFallback(conn pgxconn.PgxConn, err error, req copyRequest) error {
-	err = tryRecovery(conn, err, req)
-	if err != nil {
-		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
-		return err
-	}
-	return doInsert(conn, req)
-}
-
-// In the event we filling in old data and the chunk we want to INSERT into has
-// already been compressed, we decompress the chunk and try again. When we do
-// this we delay the recompression to give us time to insert additional data.
-func decompressChunks(conn pgxconn.PgxConn, pending *pendingBuffer, table string) error {
-	minTime := model.Time(pending.batch.MinSeen).Time()
-
-	//how much faster are we at ingestion than wall-clock time?
-	ingestSpeedup := 2
-	//delay the next compression job proportional to the duration between now and the data time + a constant safety
-	delayBy := (time.Since(minTime) / time.Duration(ingestSpeedup)) + 60*time.Minute
-	maxDelayBy := time.Hour * 24
-	if delayBy > maxDelayBy {
-		delayBy = maxDelayBy
-	}
-	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table, "min-time", minTime, "age", time.Since(minTime), "delay-job-by", delayBy)
-
-	_, rescheduleErr := conn.Exec(context.Background(), "SELECT "+schema.Catalog+".delay_compression_job($1, $2)",
-		table, time.Now().Add(delayBy))
-	if rescheduleErr != nil {
-		log.Error("msg", rescheduleErr, "context", "Rescheduling compression")
-		return rescheduleErr
-	}
-
-	_, decompressErr := conn.Exec(context.Background(), "CALL "+schema.Catalog+".decompress_chunks_after($1, $2);", table, minTime)
-	if decompressErr != nil {
-		log.Error("msg", decompressErr, "context", "Decompressing chunks")
-		return decompressErr
-	}
-
-	metrics.DecompressCalls.Inc()
-	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
-	return nil
-}
-
-/*
-Useful output for debugging batching issues
-func debugInsert() {
-	m := &dto.Metric{}
-	dbBatchInsertDuration.Write(m)
-	durs := time.Duration(*m.Histogram.SampleSum * float64(time.Second))
-	cnt := *m.Histogram.SampleCount
-	numRowsPerBatch.Write(m)
-	rows := *m.Histogram.SampleSum
-	numInsertsPerBatch.Write(m)
-	inserts := *m.Histogram.SampleSum
-
-	fmt.Println("avg:  duration/row", durs/time.Duration(rows), "rows/batch", uint64(rows)/cnt, "inserts/batch", uint64(inserts)/cnt, "rows/insert", rows/inserts)
-}
-*/
-
-// Perform the actual insertion into the DB.
-func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
+// insertSeries performs the insertion of time-series into the DB.
+func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	batch := conn.NewBatch()
 
 	numRowsPerInsert := make([]int, 0, len(reqs))
@@ -390,4 +306,29 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	reportDuplicates(affectedMetrics)
 	DbBatchInsertDuration.Observe(time.Since(start).Seconds())
 	return nil
+}
+
+func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows uint64, err error) {
+	numRows := len(reqs)
+	timeSlice := make([]time.Time, numRows)
+	metricFamilies := make([]string, numRows)
+	units := make([]string, numRows)
+	types := make([]string, numRows)
+	helps := make([]string, numRows)
+	n := time.Now()
+	for i := range reqs {
+		timeSlice[i] = n
+		metricFamilies[i] = reqs[i].MetricFamily
+		units[i] = reqs[i].Unit
+		types[i] = reqs[i].Type
+		helps[i] = reqs[i].Help
+	}
+	start := time.Now()
+	row := conn.QueryRow(context.Background(), "SELECT "+schema.Catalog+".insert_metric_metadatas($1::TIMESTAMPTZ[], $2::TEXT[], $3::TEXT[], $4::TEXT[], $5::TEXT[])",
+		timeSlice, metricFamilies, types, units, helps)
+	if err := row.Scan(&insertedRows); err != nil {
+		return 0, fmt.Errorf("send metadata batch: %w", err)
+	}
+	MetadataBatchInsertDuration.Observe(time.Since(start).Seconds())
+	return insertedRows, nil
 }

@@ -54,6 +54,7 @@ var (
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 15),
 		},
 	)
+
 	NumRowsPerInsert = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
@@ -62,14 +63,23 @@ var (
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 13),
 		},
 	)
+
 	DbBatchInsertDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
 			Name:      "copier_insert_duration_seconds",
 			Help:      "Duration of sample batch insert calls to the DB.",
-			Buckets:   prometheus.DefBuckets,
+			Buckets:   append(prometheus.DefBuckets, []float64{60, 120, 300}...),
 		},
 	)
+
+	MetadataBatchInsertDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Name:      "metadata_insert_duration_seconds",
+			Help:      "Duration of a single metadata batch to insert into the DB.",
+			Buckets:   append(prometheus.DefBuckets, []float64{60, 120, 300}...),
+		})
 
 	SamplesCopierChCap = prometheus.NewGauge(
 		prometheus.GaugeOpts{
@@ -109,6 +119,7 @@ func init() {
 		NumRowsPerBatch,
 		NumRowsPerInsert,
 		DbBatchInsertDuration,
+		MetadataBatchInsertDuration,
 		SamplesCopierChCap,
 		SamplesCopierChLen,
 	)

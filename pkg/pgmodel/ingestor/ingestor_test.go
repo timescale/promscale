@@ -258,9 +258,8 @@ func TestDBIngestorIngest(t *testing.T) {
 				InsertedSeries:  make(map[string]model.SeriesID),
 			}
 			i := DBIngestor{
-				samplesDispatcher:  &inserter,
-				metadataDispatcher: &inserter,
-				sCache:             sCache,
+				dispatcher: &inserter,
+				sCache:     sCache,
 			}
 
 			wr := NewWriteRequest()

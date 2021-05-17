@@ -1,77 +1,38 @@
-
--- TODO: mov this to update files script.
-CREATE TABLE IF NOT EXISTS SCHEMA_CATALOG.metadata
-(
-    id SERIAL NOT NULL PRIMARY KEY,
-    last_seen TIMESTAMPTZ NOT NULL,
-    metric_family TEXT NOT NULL,
-    type TEXT DEFAULT NULL,
-    unit TEXT DEFAULT NULL,
-    help TEXT DEFAULT NULL,
-    UNIQUE (metric_family, type, unit, help)
-);
-
--- TODO: mov this to update files script.
-CREATE UNIQUE INDEX IF NOT EXISTS metadata_index ON SCHEMA_CATALOG.metadata
-(
-    last_seen, metric_family
-);
-
-CREATE OR REPLACE FUNCTION prom_api.insert_metric_metadata(t TIMESTAMPTZ, metric_family_name TEXT, metric_type TEXT, metric_unit TEXT, metric_help TEXT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.insert_metric_metadatas(t TIMESTAMPTZ[], metric_family_name TEXT[], metric_type TEXT[], metric_unit TEXT[], metric_help TEXT[])
 RETURNS BIGINT
 AS
 $$
     DECLARE
         num_rows BIGINT;
     BEGIN
-        INSERT INTO _prom_catalog.metadata (last_seen, metric_family, type, unit, help)  VALUES (t, metric_family_name, metric_type, metric_unit, metric_help)
-            ON CONFLICT (metric_family, type, unit, help) DO
-                UPDATE SET last_seen = t;
+        INSERT INTO SCHEMA_CATALOG.metadata (last_seen, metric_family, type, unit, help)
+            SELECT * FROM UNNEST($1, $2, $3, $4, $5) res(last_seen, metric_family, type, unit, help)
+                ORDER BY res.metric_family, res.type, res.unit, res.help
+        ON CONFLICT (metric_family, type, unit, help) DO
+            UPDATE SET last_seen = EXCLUDED.last_seen;
         GET DIAGNOSTICS num_rows = ROW_COUNT;
         RETURN num_rows;
     END;
 $$ LANGUAGE plpgsql;
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.insert_metric_metadata(TIMESTAMPTZ, TEXT, TEXT, TEXT, TEXT) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.insert_metric_metadatas(TIMESTAMPTZ[], TEXT[], TEXT[], TEXT[], TEXT[]) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_metric_metadata(metric_family_name TEXT)
 RETURNS TABLE (metric_family TEXT, type TEXT, unit TEXT, help TEXT)
 AS
 $$
-    SELECT metric_family, type, unit, help FROM SCHEMA_CATALOG.metadata WHERE metric_family = metric_family_name ORDER BY last_seen LIMIT 1
+    SELECT metric_family, type, unit, help FROM SCHEMA_CATALOG.metadata WHERE metric_family = metric_family_name ORDER BY last_seen DESC
 $$ LANGUAGE SQL;
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_metric_metadata(TEXT) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_metric_metadata(TEXT) TO prom_reader;
 
 -- metric_families should have unique elements, otherwise there will be duplicate rows in the returned table.
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_multiple_metric_metadata(metric_families TEXT[])
 RETURNS TABLE (metric_family TEXT, type TEXT, unit TEXT, help TEXT)
 AS
 $$
-    DECLARE
-        m TEXT;
-BEGIN
-    create temporary table result (mf TEXT, t TEXT, u TEXT, h TEXT) ON COMMIT DROP;
-    FOREACH m IN ARRAY metric_families
-    LOOP
-        INSERT INTO result
-            SELECT d.metric_family, d.type, d.unit, d.help FROM SCHEMA_CATALOG.metadata d WHERE d.metric_family = m ORDER BY d.last_seen LIMIT 1;
-    END LOOP;
-    RETURN QUERY SELECT mf, t, u, h from result;
-END;
-$$ LANGUAGE plpgsql;
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_multiple_metric_metadata(TEXT[]) TO prom_writer;
-
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.get_targets(metric_family_name TEXT, series_ids BIGINT[]) RETURNS TABLE (series_id BIGINT, target_keys TEXT[], target_values TEXT[])
-AS
-$$
-DECLARE
-    metric_table_name TEXT;
-    q TEXT;
-BEGIN
-    SELECT table_name INTO metric_table_name FROM SCHEMA_CATALOG.metric WHERE metric_name = metric_family_name;
-    q = FORMAT('select s.id series_id, array_agg(l.key) target_keys, array_agg(l.value) target_values from SCHEMA_CATALOG.label l inner join SCHEMA_DATA_SERIES.%I s on (true) where l.id = any(s.labels) and (key = ''job'' or key = ''instance'') and s.id = any(%L::bigint[]) group by series_id;', metric_table_name, series_ids);
-    RETURN QUERY EXECUTE q;
-END;
-$$ language plpgsql;
-
-
-
+    SELECT info.*
+        FROM unnest(metric_families) AS family(name)
+    INNER JOIN LATERAL (
+        SELECT metric_family, type, unit, help FROM SCHEMA_CATALOG.metadata WHERE metric_family = family.name ORDER BY last_seen DESC LIMIT 1
+    ) AS info ON (true)
+$$ LANGUAGE SQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.get_multiple_metric_metadata(TEXT[]) TO prom_reader;

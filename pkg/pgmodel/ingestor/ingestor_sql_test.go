@@ -395,7 +395,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	handler := metricBatcher{
 		conn: mock,
 	}
-	inserter := samplesDispatcher{
+	inserter := pgxDispatcher{
 		conn:   mock,
 		scache: scache,
 	}
@@ -761,13 +761,13 @@ func TestPGXInserterInsertData(t *testing.T) {
 				MetricCache:  metricCache,
 				GetMetricErr: c.metricsGetErr,
 			}
-			inserter, err := newSamplesDispatcher(mock, mockMetrics, scache, &Cfg{DisableEpochSync: true})
+			inserter, err := newPgxDispatcher(mock, mockMetrics, scache, &Cfg{DisableEpochSync: true})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer inserter.Close()
 
-			_, err = inserter.InsertData(model.Data{Rows: c.rows})
+			_, err = inserter.InsertTs(model.Data{Rows: c.rows})
 
 			var expErr error
 
