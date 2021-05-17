@@ -3,6 +3,7 @@ module github.com/timescale/promscale
 go 1.15
 
 require (
+	github.com/Azure/azure-sdk-for-go v52.5.0+incompatible
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/armon/go-metrics v0.3.3 // indirect
 	github.com/blang/semver/v4 v4.0.0

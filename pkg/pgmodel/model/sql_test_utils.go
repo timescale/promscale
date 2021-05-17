@@ -458,31 +458,39 @@ func (m *MockInserter) CompleteMetricCreation() error {
 	return nil
 }
 
-func (m *MockInserter) InsertData(data Data) (uint64, error) {
+func (m *MockInserter) Insert(data Data) (uint64, error) {
 	rows := data.Rows
-	for _, v := range rows {
-		for i, si := range v {
-			seriesStr := si.GetSeries().String()
-			id, ok := m.InsertedSeries[seriesStr]
-			if !ok {
-				id = SeriesID(len(m.InsertedSeries))
-				m.InsertedSeries[seriesStr] = id
+	switch n := rows.(type) {
+	case map[string][]Samples:
+		rows := n
+		for _, v := range rows {
+			for i, si := range v {
+				seriesStr := si.GetSeries().String()
+				id, ok := m.InsertedSeries[seriesStr]
+				if !ok {
+					id = SeriesID(len(m.InsertedSeries))
+					m.InsertedSeries[seriesStr] = id
+				}
+				v[i].GetSeries().seriesID = id
 			}
-			v[i].GetSeries().seriesID = id
 		}
-	}
-	if m.InsertSeriesErr != nil {
-		return 0, m.InsertSeriesErr
-	}
-	m.InsertedData = append(m.InsertedData, rows)
-	ret := 0
-	for _, data := range rows {
-		for _, si := range data {
-			ret += si.CountSamples()
+		if m.InsertSeriesErr != nil {
+			return 0, m.InsertSeriesErr
 		}
+		m.InsertedData = append(m.InsertedData, rows)
+		ret := 0
+		for _, data := range rows {
+			for _, si := range data {
+				ret += si.CountSamples()
+			}
+		}
+		if m.InsertDataErr != nil {
+			ret = 0
+		}
+		return uint64(ret), m.InsertDataErr
+	case []Metadata:
+		return uint64(len(n)), nil
+	default:
+		panic("invalid data received")
 	}
-	if m.InsertDataErr != nil {
-		ret = 0
-	}
-	return uint64(ret), m.InsertDataErr
 }

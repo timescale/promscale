@@ -353,7 +353,7 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, int, error) {
+func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, uint64, error) {
 	m.ts = r.Timeseries
 	return m.result, 0, m.err
 }

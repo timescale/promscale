@@ -1587,3 +1587,9 @@ func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
 	}
 	return out
 }
+
+func copyMetadata(metadata []prompb.MetricMetadata) []prompb.MetricMetadata {
+	out := make([]prompb.MetricMetadata, len(metadata))
+	copy(out, metadata)
+	return out
+}

@@ -6,6 +6,7 @@ package end_to_end_tests
 
 import (
 	"io/ioutil"
+	"math/rand"
 	"os"
 
 	"github.com/golang/snappy"
@@ -220,4 +221,89 @@ func generateSmallMultiTenantTimeseries() ([]prompb.TimeSeries, []string) {
 			},
 		},
 	}, []string{"tenant-a", "tenant-b", "tenant-c"}
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func generateRandomMetricMetadata(num int) []prompb.MetricMetadata {
+	randomStr := func(n int) string {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = letterBytes[rand.Int63()%int64(len(letterBytes))]
+		}
+		return string(b)
+	}
+	randomMetricType := func() prompb.MetricMetadata_MetricType {
+		// Generate any metric type from COUNTER to STATESET.
+		return prompb.MetricMetadata_MetricType(rand.Intn(int(prompb.MetricMetadata_STATESET)-int(prompb.MetricMetadata_COUNTER)) + 1)
+	}
+
+	data := make([]prompb.MetricMetadata, num)
+	prefixMetric := "metric_name_"
+	prefixHelp := "help_"
+	prefixUnit := "unit_"
+
+	for i := 0; i < num; i++ {
+		metadata := prompb.MetricMetadata{
+			MetricFamilyName: prefixMetric + randomStr(10),
+			Type:             randomMetricType(),
+			Unit:             prefixUnit + randomStr(5),
+			Help:             prefixHelp + randomStr(50),
+		}
+		data[i] = metadata
+	}
+	return data
+}
+
+func generateSeriesAndMetadataOnTarget() ([]prompb.TimeSeries, []prompb.MetricMetadata) {
+	ts := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "firstMetric"},
+				{Name: "foo", Value: "bar"},
+				{Name: "common", Value: "tag"},
+				{Name: "empty", Value: ""},
+				{Name: "job", Value: "A"},
+				{Name: "instance", Value: "localhost:9201"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 0.1},
+				{Timestamp: 2, Value: 0.2},
+				{Timestamp: 3, Value: 0.3},
+				{Timestamp: 4, Value: 0.4},
+				{Timestamp: 5, Value: 0.5},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "secondMetric"},
+				{Name: "job", Value: "baz"},
+				{Name: "ins", Value: "tag"},
+				{Name: "job", Value: "B"},
+				{Name: "instance", Value: "localhost:9202"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 2.1},
+				{Timestamp: 2, Value: 2.2},
+				{Timestamp: 3, Value: 2.3},
+				{Timestamp: 4, Value: 2.4},
+				{Timestamp: 5, Value: 2.5},
+			},
+		},
+	}
+	metadata := []prompb.MetricMetadata{
+		{
+			MetricFamilyName: "firstMetric",
+			Unit:             "",
+			Help:             "random help first metric",
+			Type:             prompb.MetricMetadata_COUNTER,
+		},
+		{
+			MetricFamilyName: "secondMetric",
+			Unit:             "",
+			Help:             "random help second metric",
+			Type:             prompb.MetricMetadata_GAUGE,
+		},
+	}
+	return ts, metadata
 }

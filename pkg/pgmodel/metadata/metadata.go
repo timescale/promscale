@@ -50,18 +50,18 @@ func MetricMetadata(conn pgxconn.PgxConn, metric string, limit int) (map[string]
 	return metadata, nil
 }
 
-type target struct {
+type Target struct {
 	Instance string `json:"instance"`
 	Job      string `json:"job"`
 }
 
-type targetMetadata struct {
-	Target target `json:"target"`
+type TargetMetadataType struct {
+	Target Target `json:"target"`
 	model.Metadata
 }
 
-func TargetMetadata(conn pgxconn.PgxConn, matchers []*labels.Matcher, metric string, targetLimit int) ([]targetMetadata, error) {
-	var metadataSlice []targetMetadata
+func TargetMetadata(conn pgxconn.PgxConn, matchers []*labels.Matcher, metric string, targetLimit int) ([]TargetMetadataType, error) {
+	var metadataSlice []TargetMetadataType
 	metrics, seriesIds, err := querier.GetMetricNameSeriesIDFromMatchers(conn, matchers)
 	if err != nil {
 		return nil, fmt.Errorf("fetch metric-name series-ids: %w", err)
@@ -91,7 +91,7 @@ func TargetMetadata(conn pgxconn.PgxConn, matchers []*labels.Matcher, metric str
 				Help:         help,
 			})
 		}
-		var targetInfo map[string]map[target]struct{}
+		var targetInfo map[string]map[Target]struct{}
 		targetInfo, err = getTargetInfo(conn, metrics, seriesIds)
 		if err != nil {
 			return nil, fmt.Errorf("get target info: %w", err)
@@ -104,7 +104,7 @@ func TargetMetadata(conn pgxconn.PgxConn, matchers []*labels.Matcher, metric str
 				if targetLimit != 0 && len(metadataSlice) >= targetLimit {
 					break
 				}
-				metadataSlice = append(metadataSlice, targetMetadata{
+				metadataSlice = append(metadataSlice, TargetMetadataType{
 					Target:   j,
 					Metadata: meta,
 				})
@@ -127,7 +127,7 @@ func TargetMetadata(conn pgxconn.PgxConn, matchers []*labels.Matcher, metric str
 		if len(seriesIds) == 0 {
 			// No series exists, meaning we cannot send any target info.
 			// Hence, just send the metadata about the metric.
-			metadataSlice = append(metadataSlice, targetMetadata{
+			metadataSlice = append(metadataSlice, TargetMetadataType{
 				Metadata: meta,
 			})
 			return metadataSlice, nil
@@ -141,7 +141,7 @@ func TargetMetadata(conn pgxconn.PgxConn, matchers []*labels.Matcher, metric str
 			if targetLimit != 0 && len(metadataSlice) >= targetLimit {
 				break
 			}
-			metadataSlice = append(metadataSlice, targetMetadata{
+			metadataSlice = append(metadataSlice, TargetMetadataType{
 				Target:   j,
 				Metadata: meta,
 			})
@@ -160,8 +160,8 @@ func getSeriesIdsForMetric(metric string, metrics []string, seriesIds [][]model.
 	return []model.SeriesID{}
 }
 
-func getTargetInfo(conn pgxconn.PgxConn, metrics []string, seriesIds [][]model.SeriesID) (map[string]map[target]struct{}, error) {
-	metricTargets := make(map[string]map[target]struct{})
+func getTargetInfo(conn pgxconn.PgxConn, metrics []string, seriesIds [][]model.SeriesID) (map[string]map[Target]struct{}, error) {
+	metricTargets := make(map[string]map[Target]struct{})
 	batch := conn.NewBatch()
 	for i := range metrics {
 		batch.Queue("SELECT * from prom_api.get_targets($1, $2::BIGINT[])", metrics[i], convertSeriesIDsToInt64s(seriesIds[i]))
@@ -180,7 +180,7 @@ func getTargetInfo(conn pgxconn.PgxConn, metrics []string, seriesIds [][]model.S
 			}
 			return nil, fmt.Errorf("querying target data: %w", err)
 		}
-		metricTargets[metrics[i]] = make(map[target]struct{})
+		metricTargets[metrics[i]] = make(map[Target]struct{})
 		for rows.Next() {
 			var (
 				seriesId     model.SeriesID
@@ -191,7 +191,7 @@ func getTargetInfo(conn pgxconn.PgxConn, metrics []string, seriesIds [][]model.S
 			if err != nil {
 				return nil, fmt.Errorf("scanning target data: %w", err)
 			}
-			var t target
+			var t Target
 			for j, k := range targetKeys {
 				switch k {
 				case "job":

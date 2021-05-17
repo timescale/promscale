@@ -18,8 +18,10 @@ func TestDBIngestorIngest(t *testing.T) {
 	testCases := []struct {
 		name            string
 		metrics         []prompb.TimeSeries
-		count           uint64
+		metadata        []prompb.MetricMetadata
+		countSamples    uint64
 		countSeries     int
+		countMetadata   uint64
 		insertSeriesErr error
 		insertDataErr   error
 		getSeriesErr    error
@@ -41,8 +43,45 @@ func TestDBIngestorIngest(t *testing.T) {
 					},
 				},
 			},
-			count:       1,
-			countSeries: 1,
+			countSamples: 1,
+			countSeries:  1,
+		},
+		{
+			name:    "One metadata",
+			metrics: []prompb.TimeSeries{},
+			metadata: []prompb.MetricMetadata{
+				{
+					MetricFamilyName: "random_metric",
+					Unit:             "units",
+					Type:             1,
+					Help:             "random test metric",
+				},
+			},
+			countMetadata: 1,
+		},
+		{
+			name: "One metric & one metadata",
+			metrics: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			metadata: []prompb.MetricMetadata{
+				{
+					MetricFamilyName: "random_metric",
+					Unit:             "units",
+					Type:             1,
+					Help:             "random test metric",
+				},
+			},
+			countMetadata: 1,
+			countSamples:  1,
+			countSeries:   1,
 		},
 		{
 			name: "One metric, no sample",
@@ -77,8 +116,48 @@ func TestDBIngestorIngest(t *testing.T) {
 					},
 				},
 			},
-			count:       2,
-			countSeries: 2,
+			countSamples: 2,
+			countSeries:  2,
+		},
+		{
+			name: "Two metrics & two metadata",
+			metrics: []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: "test", Value: "test"},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: 1, Value: 0.1},
+					},
+				},
+			},
+			metadata: []prompb.MetricMetadata{
+				{
+					MetricFamilyName: "random_metric",
+					Unit:             "units",
+					Type:             1,
+					Help:             "random test metric",
+				},
+				{
+					MetricFamilyName: "random_metric_2",
+					Unit:             "units",
+					Type:             2,
+					Help:             "random test metric 2",
+				},
+			},
+			countMetadata: 2,
+			countSamples:  2,
+			countSeries:   2,
 		},
 		{
 			name: "Two samples",
@@ -94,8 +173,8 @@ func TestDBIngestorIngest(t *testing.T) {
 					},
 				},
 			},
-			count:       2,
-			countSeries: 1,
+			countSamples: 2,
+			countSeries:  1,
 		},
 		{
 			name: "Two metrics, one series",
@@ -119,8 +198,8 @@ func TestDBIngestorIngest(t *testing.T) {
 					},
 				},
 			},
-			count:       2,
-			countSeries: 1,
+			countSamples: 2,
+			countSeries:  1,
 		},
 		{
 			name: "Insert series error",
@@ -135,7 +214,7 @@ func TestDBIngestorIngest(t *testing.T) {
 					},
 				},
 			},
-			count:           0,
+			countSamples:    0,
 			countSeries:     1,
 			insertSeriesErr: fmt.Errorf("some error"),
 		},
@@ -152,7 +231,7 @@ func TestDBIngestorIngest(t *testing.T) {
 					},
 				},
 			},
-			count:         0,
+			countSamples:  0,
 			countSeries:   1,
 			insertDataErr: fmt.Errorf("some error"),
 		},
@@ -165,8 +244,8 @@ func TestDBIngestorIngest(t *testing.T) {
 					},
 				},
 			},
-			count:       0,
-			countSeries: 0,
+			countSamples: 0,
+			countSeries:  0,
 		},
 	}
 
@@ -179,13 +258,15 @@ func TestDBIngestorIngest(t *testing.T) {
 				InsertedSeries:  make(map[string]model.SeriesID),
 			}
 			i := DBIngestor{
-				samplesDispatcher: &inserter,
-				sCache:            sCache,
+				samplesDispatcher:  &inserter,
+				metadataDispatcher: &inserter,
+				sCache:             sCache,
 			}
 
 			wr := NewWriteRequest()
 			wr.Timeseries = c.metrics
-			count, _, err := i.Ingest(wr)
+			wr.Metadata = c.metadata
+			countSamples, countMetadata, err := i.Ingest(wr)
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {
@@ -211,8 +292,12 @@ func TestDBIngestorIngest(t *testing.T) {
 				}
 			}
 
-			if count != c.count {
-				t.Errorf("invalid number of metrics inserted: got %d, want %d\n", count, c.count)
+			if countSamples != c.countSamples {
+				t.Errorf("invalid number of metrics inserted: got %d, want %d\n", countSamples, c.countSamples)
+			}
+
+			if countMetadata != c.countMetadata {
+				t.Errorf("invalid number of metadata inserted: got %d, want %d\n", countMetadata, c.countMetadata)
 			}
 
 			if c.countSeries != len(inserter.InsertedSeries) {

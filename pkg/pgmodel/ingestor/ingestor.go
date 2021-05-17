@@ -62,7 +62,7 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, int, error) {
+func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, numMetadata uint64, err error) {
 	numTs := len(r.Timeseries)
 	numMeta := len(r.Metadata)
 	// WriteRequests can contain pointers into the original buffer we deserialized
@@ -72,6 +72,10 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, int, error) 
 	// In order for this to work correctly, any data we wish to keep using (e.g.
 	// samples) must no longer be reachable from req.
 	defer FinishWriteRequest(r)
+	// todo: replace with switch
+	if numTs == 0 && numMeta == 0 {
+		return 0, 0, nil
+	}
 	if numTs > 0 && numMeta == 0 {
 		// Write request contains only time-series.
 		n, err := ingestor.ingestSamples(r)
@@ -82,7 +86,6 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, int, error) 
 		n, err := ingestor.ingestMetadata(r)
 		return 0, n, err
 	}
-	fmt.Println("multi case")
 	// Write request contains both samples and metadata, hence we ingest concurrently.
 	type result struct {
 		id      int8
@@ -97,12 +100,11 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, int, error) 
 	}()
 	go func() {
 		n, err := ingestor.ingestMetadata(r)
-		res <- result{2, uint64(n), err}
+		res <- result{2, n, err}
 	}()
 	var (
-		err                  error
 		samplesRowsInserted  uint64
-		metadataRowsInserted int
+		metadataRowsInserted uint64
 	)
 	mergeErr := func(prevErr, err error, message string) error {
 		if prevErr != nil {
@@ -117,7 +119,7 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, int, error) 
 			samplesRowsInserted = response.numRows
 			err = mergeErr(err, response.err, "ingesting samples")
 		case 2:
-			metadataRowsInserted = int(response.numRows)
+			metadataRowsInserted = response.numRows
 			err = mergeErr(err, response.err, "ingesting metadata")
 		}
 	}
@@ -159,7 +161,7 @@ func (ingestor *DBIngestor) ingestSamples(r *prompb.WriteRequest) (uint64, error
 	return samplesRowsInserted, errSamples
 }
 
-func (ingestor *DBIngestor) ingestMetadata(r *prompb.WriteRequest) (int, error) {
+func (ingestor *DBIngestor) ingestMetadata(r *prompb.WriteRequest) (uint64, error) {
 	metadataRows := len(r.Metadata)
 	metadata := make([]model.Metadata, len(r.Metadata))
 	for i := 0; i < metadataRows; i++ {
@@ -171,11 +173,11 @@ func (ingestor *DBIngestor) ingestMetadata(r *prompb.WriteRequest) (int, error) 
 			Help:         tmp.Help,
 		}
 	}
-	_, errMetadata := ingestor.metadataDispatcher.Insert(metadata)
+	rowsInserted, errMetadata := ingestor.metadataDispatcher.Insert(metadata)
 	if errMetadata != nil {
 		return 0, errMetadata
 	}
-	return metadataRows, nil
+	return rowsInserted, nil
 }
 
 // Parts of metric creation not needed to insert data

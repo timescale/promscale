@@ -33,6 +33,7 @@ func FinishWriteRequest(wr *prompb.WriteRequest) {
 		ts.XXX_unrecognized = nil
 	}
 	wr.Timeseries = wr.Timeseries[:0]
+	wr.Metadata = wr.Metadata[:0]
 	wr.XXX_unrecognized = nil
 	wrPool.Put(wr)
 }
