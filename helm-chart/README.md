@@ -97,6 +97,7 @@ helm install --name my-release -f myvalues.yaml .
 |       Parameter                   |           Description                       |               Default              |
 |-----------------------------------|---------------------------------------------|------------------------------------|
 | `image`                           | The image (with tag) to pull                | `timescale/promscale`   |
+| `imagePullPolicy`                 | The image pull policy                       | `IfNotPresent`   |
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `upgradeStrategy`                 | Promscale deployment upgrade strategy, By default set to `Recreate` as during Promscale upgrade we expect no Promscale to be connected to TimescaleDB       | `Recreate`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |

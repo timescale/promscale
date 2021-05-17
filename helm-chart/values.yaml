@@ -1,4 +1,5 @@
 image: timescale/promscale
+imagePullPolicy: IfNotPresent
 # number of connector pods to spawn
 replicaCount: 1
 
