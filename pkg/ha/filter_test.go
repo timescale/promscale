@@ -16,33 +16,36 @@ import (
 )
 
 func TestHaParserParseData(t *testing.T) {
-	type fields struct {
-		service *Service
-	}
 
 	leaseStart := time.Unix(1, 0)
 	leaseUntil := leaseStart.Add(2 * time.Second)
+	behindLease := leaseStart.Add(-500 * time.Millisecond)
+	behindLease2 := leaseStart.Add(-250 * time.Millisecond)
 	// As Prometheus remote write sends sample timestamps
 	// in milli-seconds converting the test samples to milliseconds
 	inLeaseTimestamp := leaseStart.Add(time.Second).UnixNano() / 1000000
-	behindLeaseTimestamp := (leaseStart.UnixNano() / 1000000) - 1
+	behindLeaseTimestamp := (behindLease.UnixNano() / 1000000)
+	behindLeaseTimestamp2 := (behindLease2.UnixNano() / 1000000)
 	aheadLeaseTimestamp := leaseUntil.Add(time.Second).UnixNano() / 1000000
 
-	mockService := MockNewHAService(nil)
-
 	tests := []struct {
-		name            string
-		fields          fields
-		args            *prompb.WriteRequest
-		wanted          *prompb.WriteRequest
-		wantErr         bool
-		resultError     error
-		cluster         string
-		setClusterState *client.LeaseDBState
+		name             string
+		args             *prompb.WriteRequest
+		wanted           *prompb.WriteRequest
+		wantErr          bool
+		resultError      error
+		cluster          string
+		setClusterStates []client.LeaseDBState
 	}{
 		{
-			name:   "Test: HA enabled but __replica__ && cluster are empty.",
-			fields: fields{service: mockService},
+			name:    "No timeseries",
+			args:    &prompb.WriteRequest{},
+			wantErr: false,
+			wanted:  &prompb.WriteRequest{},
+			cluster: "",
+		},
+		{
+			name: "HA enabled but __replica__ && cluster are empty.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -60,8 +63,7 @@ func TestHaParserParseData(t *testing.T) {
 			cluster:     "",
 		},
 		{
-			name:   "Test: HA enabled but __replica__ is empty.",
-			fields: fields{service: mockService},
+			name: "HA enabled but __replica__ is empty.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -80,8 +82,7 @@ func TestHaParserParseData(t *testing.T) {
 			cluster:     "cluster1",
 		},
 		{
-			name:   "Test: HA enabled but cluster is empty.",
-			fields: fields{service: mockService},
+			name: "HA enabled but cluster is empty.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -99,8 +100,7 @@ func TestHaParserParseData(t *testing.T) {
 			resultError: fmt.Errorf("HA enabled, but cluster label is empty; __replica__ set to: replica1"),
 		},
 		{
-			name:   "Test: HA enabled parse samples from leader prom instance.",
-			fields: fields{service: mockService},
+			name: "HA enabled parse samples from leader prom instance.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -130,16 +130,17 @@ func TestHaParserParseData(t *testing.T) {
 				},
 			},
 			cluster: "cluster1",
-			setClusterState: &client.LeaseDBState{
-				Cluster:    "cluster1",
-				Leader:     "replica1",
-				LeaseStart: leaseStart,
-				LeaseUntil: leaseUntil,
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster1",
+					Leader:     "replica1",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
 			},
 		},
 		{
-			name:   "Test: HA enabled parse samples from standby prom instance.",
-			fields: fields{service: mockService},
+			name: "HA enabled parse samples from standby prom instance.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -159,16 +160,17 @@ func TestHaParserParseData(t *testing.T) {
 				Timeseries: []prompb.TimeSeries{},
 			},
 			cluster: "cluster2",
-			setClusterState: &client.LeaseDBState{
-				Cluster:    "cluster2",
-				Leader:     "replica1",
-				LeaseStart: leaseStart,
-				LeaseUntil: leaseUntil,
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster2",
+					Leader:     "replica1",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
 			},
 		},
 		{
-			name:   "Test: HA enabled parse samples from leader prom instance.",
-			fields: fields{service: mockService},
+			name: "HA enabled parse samples from leader prom instance.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -198,16 +200,17 @@ func TestHaParserParseData(t *testing.T) {
 				},
 			},
 			cluster: "cluster3",
-			setClusterState: &client.LeaseDBState{
-				Cluster:    "cluster3",
-				Leader:     "replica1",
-				LeaseStart: leaseStart,
-				LeaseUntil: leaseUntil,
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster3",
+					Leader:     "replica1",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
 			},
 		},
 		{
-			name:   "Test: HA enabled parse from leader & samples are in interval [leaseStart-X, leaseUntil)",
-			fields: fields{service: mockService},
+			name: "HA enabled parse from leader & samples are in interval [leaseStart-X, leaseUntil)",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -238,16 +241,17 @@ func TestHaParserParseData(t *testing.T) {
 				},
 			},
 			cluster: "cluster3",
-			setClusterState: &client.LeaseDBState{
-				Cluster:    "cluster3",
-				Leader:     "replica1",
-				LeaseStart: leaseStart,
-				LeaseUntil: leaseUntil,
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster3",
+					Leader:     "replica1",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
 			},
 		},
 		{
-			name:   "Test: HA enabled parse from leader & samples are in interval [leaseStart, leaseUntil+X].",
-			fields: fields{service: mockService},
+			name: "HA enabled parse from leader & samples are in interval [leaseStart, leaseUntil+X].",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -277,16 +281,17 @@ func TestHaParserParseData(t *testing.T) {
 				},
 			},
 			cluster: "cluster3",
-			setClusterState: &client.LeaseDBState{
-				Cluster:    "cluster3",
-				Leader:     "replica1",
-				LeaseStart: leaseStart,
-				LeaseUntil: leaseUntil,
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster3",
+					Leader:     "replica1",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
 			},
 		},
 		{
-			name:   "Test: HA enabled, parse samples from standby instance. ReadLeaseState returns the updated leader as standby prom instance.",
-			fields: fields{service: mockService},
+			name: "HA enabled, parse samples from standby instance. ReadLeaseState returns the updated leader as standby prom instance.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -316,16 +321,17 @@ func TestHaParserParseData(t *testing.T) {
 				},
 			},
 			cluster: "cluster4",
-			setClusterState: &client.LeaseDBState{
-				Cluster:    "cluster4",
-				Leader:     "replica2",
-				LeaseStart: leaseStart,
-				LeaseUntil: leaseUntil,
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster4",
+					Leader:     "replica2",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
 			},
 		},
 		{
-			name:   "Test: HA enabled parse from standby. ReadLeaseState returns the updated leader as standby prom instance but samples aren't part lease range.",
-			fields: fields{service: mockService},
+			name: "HA enabled parse from standby. ReadLeaseState returns the updated leader as standby prom instance but samples aren't part lease range.",
 			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
@@ -342,46 +348,120 @@ func TestHaParserParseData(t *testing.T) {
 			},
 			wantErr: false,
 			wanted: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{},
+			},
+			cluster: "cluster5",
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster5",
+					Leader:     "replica2",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
+			},
+		},
+		{
+			name: "HA backfilling from previous leases",
+			args: &prompb.WriteRequest{
 				Timeseries: []prompb.TimeSeries{
 					{
-						Samples: make([]prompb.Sample, 0),
-						Labels:  make([]prompb.Label, 0),
+						Labels: []prompb.Label{
+							{Name: model.MetricNameLabelName, Value: "test"},
+							{Name: ReplicaNameLabel, Value: "replica1"},
+							{Name: ClusterNameLabel, Value: "cluster5"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: behindLeaseTimestamp, Value: 0.1},
+							{Timestamp: behindLeaseTimestamp2, Value: 0.2},
+						},
+					},
+				},
+			},
+			wantErr: false,
+			wanted: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: model.MetricNameLabelName, Value: "test"},
+							{Name: ClusterNameLabel, Value: "cluster5"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: behindLeaseTimestamp, Value: 0.1},
+						},
 					},
 				},
 			},
 			cluster: "cluster5",
-			setClusterState: &client.LeaseDBState{
-				Cluster:    "cluster5",
-				Leader:     "replica2",
-				LeaseStart: leaseStart,
-				LeaseUntil: leaseUntil,
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster5",
+					Leader:     "replica1",
+					LeaseStart: behindLease,
+					LeaseUntil: behindLease2,
+				},
+				{
+					Cluster:    "cluster5",
+					Leader:     "replica2",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
+			},
+		},
+		{
+			name: "Not allowed to insert backfill or in lease",
+			args: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{
+							{Name: model.MetricNameLabelName, Value: "test"},
+							{Name: ReplicaNameLabel, Value: "replica1"},
+							{Name: ClusterNameLabel, Value: "cluster5"},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: inLeaseTimestamp, Value: 0.3},
+							{Timestamp: behindLeaseTimestamp, Value: 0.1},
+							{Timestamp: behindLeaseTimestamp2, Value: 0.2},
+						},
+					},
+				},
+			},
+			wantErr: false,
+			wanted: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{},
+			},
+			cluster: "cluster5",
+			setClusterStates: []client.LeaseDBState{
+				{
+					Cluster:    "cluster5",
+					Leader:     "replica2",
+					LeaseStart: leaseStart,
+					LeaseUntil: leaseUntil,
+				},
 			},
 		},
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if c.setClusterState != nil {
-				state := c.setClusterState
-				SetLeaderInMockService(c.fields.service, state.Cluster, state.Leader, state.LeaseStart, state.LeaseUntil)
+			service := MockNewHAService()
+			if c.setClusterStates != nil {
+				SetLeaderInMockService(service, c.setClusterStates)
 			}
-			h := &Filter{
-				service: c.fields.service,
-			}
+			h := NewFilter(service)
 			err := h.Process(nil, c.args)
 			if err != nil {
 				if !c.wantErr {
-					t.Fatalf("FilterData() returned unexpected error: %s", err.Error())
+					t.Fatalf("Process() returned unexpected error: %s", err.Error())
 				}
 				if err.Error() != c.resultError.Error() {
-					t.Fatalf("FilterData() error = %v, wantErr %v", err, c.resultError)
+					t.Fatalf("Process() error = %v, wantErr %v", err, c.resultError)
 				}
 				return
 			} else if c.wantErr {
-				t.Fatalf("wanted error from FilterData, got nil")
+				t.Fatalf("wanted error from Process, got nil")
 			}
 
 			if !reflect.DeepEqual(c.wanted, c.args) {
-				t.Fatalf("unexpected result from FilterData:\ngot\n%+v\nwant\n%+v\n", c.args, c.wanted)
+				t.Fatalf("unexpected result from Process:\ngot\n%+v\nwant\n%+v\n", c.args, c.wanted)
 			}
 		})
 	}
@@ -389,37 +469,95 @@ func TestHaParserParseData(t *testing.T) {
 
 func TestFilterSamples(t *testing.T) {
 	testCases := []struct {
-		samples      []prompb.Sample
-		acceptedMinT int64
-		expected     []prompb.Sample
+		wr        *prompb.WriteRequest
+		timeStart int64
+		timeEnd   int64
+		expected  *prompb.WriteRequest
 	}{
-		{samples: []prompb.Sample{}, acceptedMinT: 1, expected: []prompb.Sample{}},
 		{
-			samples:      []prompb.Sample{{Timestamp: 1}, {Timestamp: 2}, {Timestamp: 3}},
-			acceptedMinT: 2,
-			expected:     []prompb.Sample{{Timestamp: 2}, {Timestamp: 3}},
-		},
-		{
-			samples:      []prompb.Sample{{Timestamp: 3}, {Timestamp: 1}, {Timestamp: 2}},
-			acceptedMinT: 2,
-			expected:     []prompb.Sample{{Timestamp: 3}, {Timestamp: 2}},
+			wr: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Samples: []prompb.Sample{},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 1},
+							{Timestamp: 2},
+							{Timestamp: 3},
+						},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 5},
+							{Timestamp: 6},
+							{Timestamp: 7},
+							{Timestamp: 8},
+							{Timestamp: 9},
+							{Timestamp: 10},
+						},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 10},
+							{Timestamp: 11},
+							{Timestamp: 12},
+						},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 11},
+							{Timestamp: 6},
+							{Timestamp: 7},
+							{Timestamp: 1},
+							{Timestamp: 9},
+							{Timestamp: 10},
+						},
+					},
+				},
+			},
+			timeStart: 5,
+			timeEnd:   10,
+			expected: &prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Samples: []prompb.Sample{},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 1},
+							{Timestamp: 2},
+							{Timestamp: 3},
+						},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 10},
+						},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 10},
+							{Timestamp: 11},
+							{Timestamp: 12},
+						},
+					},
+					{
+						Samples: []prompb.Sample{
+							{Timestamp: 11},
+							{Timestamp: 1},
+							{Timestamp: 10},
+						},
+					},
+				},
+			},
 		},
 	}
 
 	for _, tc := range testCases {
-		out := filterSamples(tc.samples, tc.acceptedMinT)
-		pointerOut, _ := fmt.Printf("%p", out)
-		pointerSamples, _ := fmt.Printf("%p", tc.samples)
-		if pointerOut != pointerSamples {
-			t.Fatal("function returned new slice instead of modifying existing")
-		}
-		if !reflect.DeepEqual(tc.expected, out) {
-			t.Fatalf("unexpected output.\nexpected: %v\n got: %v", tc.expected, out)
-		}
-		for i := len(tc.expected); i < len(tc.samples); i++ {
-			if !reflect.DeepEqual(tc.samples[i], prompb.Sample{}) {
-				t.Fatalf("filtered out samples were not nulled out")
-			}
+		filterOutSampleRange(tc.wr, tc.timeStart, tc.timeEnd)
+		if !reflect.DeepEqual(*tc.expected, *tc.wr) {
+			t.Fatalf("unexpected output.\nexpected: %v\n got: %v", tc.expected, tc.wr)
 		}
 	}
 

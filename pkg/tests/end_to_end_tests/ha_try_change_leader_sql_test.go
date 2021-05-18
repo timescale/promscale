@@ -49,9 +49,9 @@ func TestTryChangeLeader(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		// try to change with invalid max time
+		// try to change with invalid max time (within previous lease, leaseUntil is exclusive)
 		falseNewWriter := "w2"
-		lock, err = callTryChangeLeader(db, cluster, falseNewWriter, lock.leaseUntil)
+		lock, err = callTryChangeLeader(db, cluster, falseNewWriter, lock.leaseUntil.Add(-1*time.Nanosecond))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

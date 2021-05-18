@@ -89,7 +89,7 @@ BEGIN
             INTO leader, lease_start, lease_until
             FROM SCHEMA_CATALOG.ha_leases as h
             WHERE cluster_name = cluster;
-            IF leader <> writer OR lease_until < max_time
+            IF leader <> writer OR lease_until <= max_time
             THEN
                 RAISE EXCEPTION 'LEADER_HAS_CHANGED' USING ERRCODE = 'PS010';
             END IF;
@@ -120,7 +120,7 @@ BEGIN
         lease_start = lease_until,
         lease_until = max_time + lease_timeout
     WHERE cluster_name = cluster
-      AND lease_until < max_time;
+      AND lease_until <= max_time;
 
     SELECT *
     INTO STRICT lease_state
