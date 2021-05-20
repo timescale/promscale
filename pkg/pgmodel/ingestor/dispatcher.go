@@ -58,6 +58,11 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	toCopiers := make(chan copyRequest, copierCap)
 	setCopierChannelToMonitor(toCopiers)
 
+	if cfg.IgnoreCompressedChunks {
+		// Handle decompression to not decompress anything.
+		handleDecompression = skipDecompression
+	}
+
 	for i := 0; i < numCopiers; i++ {
 		go runCopier(conn, toCopiers)
 	}

@@ -129,9 +129,10 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt t
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
 	seriesCache := cache.NewSeriesCache(cfg.CacheConfig, sigClose)
 	c := ingestor.Cfg{
-		AsyncAcks:      cfg.AsyncAcks,
-		ReportInterval: cfg.ReportInterval,
-		NumCopiers:     numCopiers,
+		NumCopiers:             numCopiers,
+		AsyncAcks:              cfg.AsyncAcks,
+		ReportInterval:         cfg.ReportInterval,
+		IgnoreCompressedChunks: cfg.IgnoreCompressedChunks,
 	}
 
 	var dbIngestor *ingestor.DBIngestor

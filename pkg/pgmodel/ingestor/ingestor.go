@@ -16,10 +16,11 @@ import (
 )
 
 type Cfg struct {
-	AsyncAcks        bool
-	ReportInterval   int
-	NumCopiers       int
-	DisableEpochSync bool
+	AsyncAcks              bool
+	ReportInterval         int
+	NumCopiers             int
+	DisableEpochSync       bool
+	IgnoreCompressedChunks bool
 }
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
@@ -41,10 +42,13 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 
 // NewPgxIngestorForTests returns a new Ingestor that write to PostgreSQL using PGX
 // with an empty config, a new default size metrics cache and a non-ha-aware data parser
-func NewPgxIngestorForTests(conn pgxconn.PgxConn) (*DBIngestor, error) {
+func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error) {
+	if cfg == nil {
+		cfg = &Cfg{}
+	}
 	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 	s := cache.NewSeriesCache(cache.DefaultConfig, nil)
-	return NewPgxIngestor(conn, c, s, &Cfg{})
+	return NewPgxIngestor(conn, c, s, cfg)
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.

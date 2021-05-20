@@ -29,7 +29,10 @@ type copyRequest struct {
 	table string
 }
 
-var getBatchMutex = &sync.Mutex{}
+var (
+	getBatchMutex       = &sync.Mutex{}
+	handleDecompression = retryAfterDecompression
+)
 
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
@@ -127,23 +130,12 @@ func insertBatchErrorFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 		reqs[i].data.batch.ResetPosition()
 		err := doInsert(conn, reqs[i])
 		if err != nil {
-			err = insertErrorFallback(conn, err, reqs[i])
+			err = tryRecovery(conn, err, reqs[i])
 		}
 
 		reqs[i].data.reportResults(err)
 		reqs[i].data.release()
 	}
-}
-
-// certain errors are recoverable, handle those we can
-//   1. if the table is compressed, decompress and retry the insertion
-func insertErrorFallback(conn pgxconn.PgxConn, err error, req copyRequest) error {
-	err = tryRecovery(conn, err, req)
-	if err != nil {
-		log.Warn("msg", fmt.Sprintf("time out while processing error for %s", req.table), "error", err.Error())
-		return err
-	}
-	return doInsert(conn, req)
 }
 
 // we can currently recover from one error:
@@ -159,27 +151,29 @@ func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest) error {
 		return err
 	}
 
-	// If the error was that the table is already compressed, decompress and try again.
 	if strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
-		decompressErr := decompressChunks(conn, req.data, req.table)
-		if decompressErr != nil {
-			return err
-		}
-
-		req.data.batch.ResetPosition()
-		return nil
+		// If the error was that the table is already compressed, decompress and try again.
+		return handleDecompression(conn, req)
 	}
 
 	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "err", pgErr.Error())
-	return err
+	return pgErr
+}
+
+func skipDecompression(_ pgxconn.PgxConn, _ copyRequest) error {
+	log.WarnRateLimited("msg", "Rejecting samples falling on compressed chunks as decompression is disabled")
+	return nil
 }
 
 // In the event we filling in old data and the chunk we want to INSERT into has
 // already been compressed, we decompress the chunk and try again. When we do
 // this we delay the recompression to give us time to insert additional data.
-func decompressChunks(conn pgxconn.PgxConn, pending *pendingBuffer, table string) error {
-	minTime := model.Time(pending.batch.MinSeen).Time()
-
+func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest) error {
+	var (
+		table   = req.table
+		pending = req.data
+		minTime = model.Time(pending.batch.MinSeen).Time()
+	)
 	//how much faster are we at ingestion than wall-clock time?
 	ingestSpeedup := 2
 	//delay the next compression job proportional to the duration between now and the data time + a constant safety
@@ -205,7 +199,9 @@ func decompressChunks(conn pgxconn.PgxConn, pending *pendingBuffer, table string
 
 	metrics.DecompressCalls.Inc()
 	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
-	return nil
+
+	req.data.batch.ResetPosition()
+	return doInsert(conn, req) // Attempt an insert again.
 }
 
 /*

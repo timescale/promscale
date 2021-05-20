@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
@@ -167,7 +168,7 @@ func TestSQLChunkInterval(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -425,7 +426,7 @@ func TestSQLIngest(t *testing.T) {
 			withDB(t, databaseName, func(dbOwner *pgxpool.Pool, t testing.TB) {
 				db := testhelpers.PgxPoolWithRole(t, databaseName, "prom_writer")
 				defer db.Close()
-				ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+				ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -520,7 +521,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -651,7 +652,7 @@ func TestMetricBatcherLabelsBatching(t *testing.T) {
 			ts = append(ts, t)
 		}
 
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -711,7 +712,7 @@ func TestInsertCompressed(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -811,7 +812,7 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -853,7 +854,7 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 					},
 				},
 			}
-			ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+			ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -940,7 +941,7 @@ func TestCompressionSetting(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1042,7 +1043,7 @@ func TestCustomCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1265,7 +1266,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1430,7 +1431,7 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 				},
 			},
 		}
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db))
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
