@@ -59,7 +59,7 @@ Note: This method is legacy and _not_ recommended for new deployments.
 
 PostgreSQL provides a [pg_advisory_lock](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that locks a application-defined resource based on an ID. Promscale makes use of this lock when running multiple Promescale instances in parallel in order to choose one leader.
 
-![Promscale architecture for Prometheus in HA using pg_advisory_locks](https://raw.githubusercontent.com/timescale/promscale/master/docs/high-avaliability/old_ha_system.png)
+![Promscale architecture for Prometheus in HA using pg_advisory_locks](https://raw.githubusercontent.com/timescale/promscale/master/docs/high-availability/old_ha_system.png)
 
 When you want to run Prometheus in HA mode, you need to run Promscale in parallel to the Prometheus instance as an one-to-one relation. This means that each Prometheus instance will have its own Promscale connector which will write into the database. Each cluster of Promscale instances should be identified by a unique advisory-lock-id. Given a set of Promscale instances with the same id, only one will be chosen  as a leader and will actually write data into TimescaleDB. The non-leaders will be on standby, waiting to take over in case the leader fails. The end result is that data from exactly one Prometheus instance ends up being written into the database.
 
