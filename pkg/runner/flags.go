@@ -22,6 +22,7 @@ import (
 
 type Config struct {
 	ListenAddr                  string
+	GrpcListenAddr              string
 	PgmodelCfg                  pgclient.Config
 	LogCfg                      log.Config
 	APICfg                      api.Config
@@ -56,6 +57,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
+	fs.StringVar(&cfg.GrpcListenAddr, "grpc-listen-address", ":9202", "Address to listen on for Thanos Store endpoints.")
 	fs.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	fs.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "(DEPRECATED) Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
 	fs.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "(DEPRECATED) Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not respond within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips.")

@@ -4,7 +4,6 @@ go 1.15
 
 require (
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/armon/go-metrics v0.3.3 // indirect
 	github.com/blang/semver/v4 v4.0.0
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68
@@ -15,7 +14,6 @@ require (
 	github.com/golang/snappy v0.0.3
 	github.com/hashicorp/go-hclog v0.12.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
-	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
 	github.com/jackc/pgconn v1.6.3
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
@@ -29,13 +27,17 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.21.0
-	github.com/prometheus/prometheus v1.8.2-0.20210426225522-e36e5fa83399
+	github.com/prometheus/common v0.23.0
+	github.com/prometheus/prometheus v1.8.2-0.20210518124745-db7f0bcec27b
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
-	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514
-	github.com/uber/jaeger-client-go v2.25.0+incompatible
+	github.com/thanos-io/thanos v0.20.1
+	github.com/uber/jaeger-client-go v2.28.0+incompatible
 	go.uber.org/goleak v1.1.10
+	google.golang.org/grpc v1.37.0
 )
+
+// Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20210518124745-db7f0bcec27b
