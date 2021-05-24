@@ -311,6 +311,12 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				continue
 			}
 			return fmt.Errorf("wrong value type []int64")
+		case []int32:
+			if d, ok := dest[i].(*[]int32); ok {
+				*d = s
+				continue
+			}
+			return fmt.Errorf("wrong value type []int32")
 		case []string:
 			if d, ok := dest[i].(*[]string); ok {
 				*d = s
@@ -392,6 +398,8 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				continue
 			}
 			return fmt.Errorf("wrong value type: neither 'string' or 'pgutf8str'")
+			//default:
+			//panic(fmt.Sprintf("unhandled %T", m.results[m.idx][i]))
 		}
 	}
 
