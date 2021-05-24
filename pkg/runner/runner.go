@@ -8,15 +8,19 @@ package runner
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/util"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
+	"google.golang.org/grpc"
 )
 
 const promLivenessCheck = time.Second
@@ -61,6 +65,27 @@ func Run(cfg *Config) error {
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
+
+	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
+		srv := thanos.NewStorage(client.Queryable())
+		grpcServer := grpc.NewServer()
+		storepb.RegisterStoreServer(grpcServer, srv)
+
+		go func() {
+			log.Info("msg", fmt.Sprintf("Start listening for Thanos StoreAPI on %s", cfg.ThanosStoreAPIListenAddr))
+			listener, err := net.Listen("tcp", cfg.ThanosStoreAPIListenAddr)
+			if err != nil {
+				log.Error("msg", "Listening for Thanos StoreAPI failed", "err", err)
+				return
+			}
+
+			log.Info("msg", "Start thanos-store")
+			if err := grpcServer.Serve(listener); err != nil {
+				log.Error("msg", "Starting the Thanos store failed", "err", err)
+				return
+			}
+		}()
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
