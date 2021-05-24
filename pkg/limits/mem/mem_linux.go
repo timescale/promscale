@@ -68,5 +68,8 @@ func getCGroupV1Memory() uint64 {
 	if err != nil {
 		return 0
 	}
+	if stats.Memory == nil {
+		return 0
+	}
 	return stats.Memory.HierarchicalMemoryLimit
 }
