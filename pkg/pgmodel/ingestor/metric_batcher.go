@@ -346,24 +346,24 @@ func (h *metricBatcher) fillLabelIDs(metricName string, labelList *model.LabelLi
 		}
 
 		err := func() error {
-			rows, err := br.Query()
+			var (
+				pos         []int32
+				labelIDs    []int32
+				labelNames  pgutf8str.TextArray
+				labelValues pgutf8str.TextArray
+				names       []string
+				values      []string
+			)
+			err := br.QueryRow().Scan(&pos, &labelIDs, &labelNames, &labelValues)
 			if err != nil {
 				return fmt.Errorf("Error filling labels: %w", err)
 			}
-			defer rows.Close()
+			names = labelNames.Get().([]string)
+			values = labelValues.Get().([]string)
 
-			var (
-				labelName  pgutf8str.Text
-				labelValue pgutf8str.Text
-			)
-
-			for rows.Next() {
-				res := labelInfo{}
-				err := rows.Scan(&res.Pos, &res.labelID, &labelName, &labelValue)
-				if err != nil {
-					return fmt.Errorf("Error filling labels in scan: %w", err)
-				}
-				key := labels.Label{Name: labelName.Get().(string), Value: labelValue.Get().(string)}
+			for i := range pos {
+				res := labelInfo{Pos: pos[i], labelID: labelIDs[i]}
+				key := labels.Label{Name: names[i], Value: values[i]}
 				_, ok := labelMap[key]
 				if !ok {
 					return fmt.Errorf("Error filling labels: getting a key never sent to the db")
@@ -373,9 +373,6 @@ func (h *metricBatcher) fillLabelIDs(metricName string, labelList *model.LabelLi
 					maxPos = int(res.Pos)
 				}
 				count++
-			}
-			if err := rows.Err(); err != nil {
-				return fmt.Errorf("Error filling labels: error reading label id rows: %w", err)
 			}
 			return nil
 		}()

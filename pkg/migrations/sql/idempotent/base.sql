@@ -427,9 +427,9 @@ BEGIN
     --use double check locking here
     --fist optimistic check:
     SELECT
-        array_agg(lkp.pos ORDER BY k.key)
+        array_agg(lkp.pos ORDER BY k.ord)
     FROM
-        unnest(key_name_array) as k(key)
+        unnest(key_name_array) WITH ORDINALITY as k(key, ord)
         INNER JOIN SCHEMA_CATALOG.label_key_position lkp ON
         (
             lkp.metric_name = get_new_pos_for_key.metric_name
@@ -504,7 +504,8 @@ BEGIN
     END LOOP;
 
     IF count_new  > 0 THEN
-        --note these functions are expensive in practice
+        --note these functions are expensive in practice so they
+        --must be run once across a collection of keys
         PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
         PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
     END IF;
@@ -818,20 +819,15 @@ IS 'converts a metric name, array of keys, and array of values to a label array'
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS TABLE(pos int, id int, label_key text, label_value text) AS $$
+RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
         WITH cte as (
-            SELECT
+        SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
-            CASE WHEN count(*) = count(lkp.pos) THEN
-                array_agg(lkp.pos ORDER BY kv.key, kv.value)
-            ELSE
-                SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(kv.key ORDER BY kv.key, kv.value))
-            END as pos,
-            array_agg(coalesce(l.id,
-              SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) ORDER BY kv.key, kv.value) label_ids,
-            array_agg(kv.key ORDER BY kv.key, kv.value) keys,
-            array_agg(kv.value ORDER BY kv.key, kv.value) vals
+            lkp.pos as known_pos,
+            coalesce(l.id, SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) label_id,
+            kv.key key_str,
+            kv.value val_str
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
             LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = kv.key AND l.value = kv.value)
@@ -840,14 +836,18 @@ RETURNS TABLE(pos int, id int, label_key text, label_value text) AS $$
                     lkp.metric_name = get_or_create_label_ids.metric_name AND
                     lkp.key = kv.key
             )
+        ORDER BY kv.key, kv.value
         )
         SELECT
-           unnest(pos),
-           unnest(label_ids),
-           unnest(keys),
-           unnest(vals)
-        FROM cte;
-
+           case when count(*) = count(known_pos) Then
+              array_agg(known_pos)
+           else
+              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(key_str))
+           end as poss,
+           array_agg(label_id) as label_ids,
+           array_agg(key_str) as keys,
+           array_agg(val_str) as vals
+        FROM cte
 $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, text[], text[])
