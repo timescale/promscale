@@ -18,12 +18,12 @@ const (
 	PromNamespace              = "promscale"
 	maskPasswordReplaceString1 = "password$1$2$3****$5"
 	/* #nosec */
-	maskPasswordReplaceString2 = "postgres:$1****@"
+	maskPasswordReplaceString2 = "postgres$1://$2****@"
 )
 
 var (
 	maskPasswordRegex1 = regexp.MustCompile(`[p|P]assword(:|=)(\s*)('?)(.*?)('|(&|\s*)\w+[:|=]{1}|$)`)
-	maskPasswordRegex2 = regexp.MustCompile(`postgres:(([^:]*\:){1})([^@]*)@`)
+	maskPasswordRegex2 = regexp.MustCompile(`postgres([^:]*)://(([^:]*\:){1})([^@]*)@`)
 )
 
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
