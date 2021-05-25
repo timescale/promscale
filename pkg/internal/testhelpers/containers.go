@@ -287,20 +287,21 @@ func StartPGContainer(
 	}
 	PGTag := "pg" + PGMajor
 
+	promscaleImageBase := "cevian/promscale-extension" //cevian is temporary until we update the timescaledev repo
 	switch extensionState &^ postgres12Bit {
 	case MultinodeAndPromscale:
-		image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
+		image = promscaleImageBase + ":latest-ts2-" + PGTag
 	case Multinode:
 		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale2AndPromscale:
-		image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
+		image = promscaleImageBase + ":latest-ts2-" + PGTag
 	case Timescale2:
 		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale1AndPromscale:
 		if PGMajor != "12" {
 			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")
 		}
-		image = "timescaledev/promscale-extension:latest-ts1-pg12"
+		image = promscaleImageBase + ":latest-ts1-pg12"
 	case Timescale1:
 		if PGMajor != "12" {
 			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")

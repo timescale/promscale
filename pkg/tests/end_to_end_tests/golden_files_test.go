@@ -17,9 +17,10 @@ import (
 )
 
 var outputDifferWithoutTimescale = map[string]bool{"info_view": true}
-var outputDifferWithMultinode = map[string]bool{"views": true, "info_view": true, "support": true}
+var outputDifferWithMultinode = map[string]bool{"views": true, "info_view": true}
 var outputDifferWithExtension = map[string]bool{"support": true}
 var requiresTimescaleDB = map[string]bool{"views": true, "info_view": true, "support": true}
+var requiresSingleNode = map[string]bool{"support": true}
 
 func TestSQLGoldenFiles(t *testing.T) {
 	if testing.Short() {
@@ -39,6 +40,9 @@ func TestSQLGoldenFiles(t *testing.T) {
 			base = strings.TrimSuffix(base, filepath.Ext(base))
 
 			if !*useTimescaleDB && requiresTimescaleDB[base] {
+				return
+			}
+			if *useMultinode && requiresSingleNode[base] {
 				return
 			}
 
