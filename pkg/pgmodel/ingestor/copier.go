@@ -151,7 +151,7 @@ func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest) error {
 		return err
 	}
 
-	if strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
+	if pgErr.Code == "0A000" || strings.Contains(pgErr.Message, "compressed") || strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
 		// If the error was that the table is already compressed, decompress and try again.
 		return handleDecompression(conn, req)
 	}
