@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package writer
 
 import (
@@ -8,7 +12,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/timescale/promscale/pkg/log"
@@ -28,7 +31,7 @@ type shardsSet struct {
 // newShardsSet creates a shards-set and initializes it. It creates independent clients for each shard,
 // contexts and starts the shards. The shards listens to the writer routine, which is responsible for
 // feeding the shards with data blocks for faster (due to sharded data) flushing.
-func newShardsSet(writerCtx context.Context, httpConfig config.HTTPClientConfig, writeURL string, numShards int) (*shardsSet, error) {
+func newShardsSet(writerCtx context.Context, httpConfig config.HTTPClientConfig, cRuntime utils.ClientRuntime, numShards int) (*shardsSet, error) {
 	var (
 		set         = make([]*shard, numShards)
 		cancelFuncs = make([]context.CancelFunc, numShards)
@@ -38,7 +41,7 @@ func newShardsSet(writerCtx context.Context, httpConfig config.HTTPClientConfig,
 		errChan: make(chan error, numShards),
 	}
 	for i := 0; i < numShards; i++ {
-		client, err := utils.NewClient(fmt.Sprintf("writer-shard-%d", i), writeURL, httpConfig, model.Duration(defaultWriteTimeout))
+		client, err := utils.NewClient(fmt.Sprintf("writer-shard-%d", i), cRuntime, httpConfig)
 		if err != nil {
 			return nil, fmt.Errorf("creating write-shard-client-%d: %w", i, err)
 		}
@@ -124,6 +127,8 @@ func (s *shard) run(shardIndex int) {
 	}
 }
 
+const backOffRetryDuration = time.Second * 1
+
 // sendSamples to the remote storage with backoff for recoverable errors.
 func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *[]prompb.TimeSeries) error {
 	buf := &[]byte{}
@@ -135,9 +140,11 @@ func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *
 	}
 
 	backoff := backOffRetryDuration
+	nonRecvRetries := 0
 	*buf = req
 
 	for {
+	retry:
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -146,6 +153,23 @@ func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *
 		if err := client.Store(ctx, *buf); err != nil {
 			// If the error is unrecoverable, we should not retry.
 			if _, ok := err.(remote.RecoverableError); !ok {
+				switch r := client.Runtime(); r.OnErr {
+				case utils.Retry:
+					if r.MaxRetry != 0 {
+						// If MaxRetry is 0, we are expected to retry forever.
+						if nonRecvRetries >= r.MaxRetry {
+							return fmt.Errorf("exceeded retrying limit in non-recoverable error. Aborting")
+						}
+						nonRecvRetries++
+					}
+					log.Info("msg", "received non-recoverable error, retrying again after delay", "delay", r.Delay)
+					time.Sleep(r.Delay)
+					goto retry
+				case utils.Skip:
+					log.Info("msg", "received non-recoverable error, skipping current slab")
+					return nil
+				case utils.Abort:
+				}
 				return err
 			}
 

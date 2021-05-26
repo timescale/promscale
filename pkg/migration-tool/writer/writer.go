@@ -7,25 +7,18 @@ package writer
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
-	"time"
-
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
-)
-
-const (
-	defaultWriteTimeout  = time.Minute * 5
-	backOffRetryDuration = time.Millisecond * 100
+	"sync/atomic"
 )
 
 // Config is config for writer.
 type Config struct {
 	Context          context.Context
-	Url              string
+	ClientRt         utils.ClientRuntime
 	MigrationJobName string // Label value to the progress metric.
 	ConcurrentPush   int
 	HTTPConfig       config.HTTPClientConfig
@@ -46,7 +39,7 @@ type Write struct {
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
 func New(config Config) (*Write, error) {
-	ss, err := newShardsSet(config.Context, config.HTTPConfig, config.Url, config.ConcurrentPush)
+	ss, err := newShardsSet(config.Context, config.HTTPConfig, config.ClientRt, config.ConcurrentPush)
 	if err != nil {
 		return nil, fmt.Errorf("creating shards: %w", err)
 	}

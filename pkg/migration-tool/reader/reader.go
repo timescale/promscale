@@ -7,8 +7,6 @@ package reader
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -17,12 +15,10 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-const defaultReadTimeout = time.Minute * 5
-
 // Config is config for reader.
 type Config struct {
 	Context    context.Context
-	Url        string
+	ClientRt   utils.ClientRuntime
 	Plan       *plan.Plan
 	HTTPConfig config.HTTPClientConfig
 
@@ -40,7 +36,7 @@ type Read struct {
 // New creates a new Read. It creates a ReadClient that is imported from Prometheus remote storage.
 // Read takes help of plan to understand how to create fetchers.
 func New(config Config) (*Read, error) {
-	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), config.Url, config.HTTPConfig, model.Duration(defaultReadTimeout))
+	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), config.ClientRt.URL, config.HTTPConfig, model.Duration(config.ClientRt.Timeout))
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
 	}

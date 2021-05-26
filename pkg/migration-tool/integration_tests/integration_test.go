@@ -31,7 +31,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		numShards          int
 		readURL            string
 		writeURL           string
-		concurrentPulls    int
+		concurrentPull     int
 		progressMetricURL  string
 		progressMetricName string
 		progressEnabled    bool
@@ -46,7 +46,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    false,
-		concurrentPulls:    20,
+		concurrentPull:     20,
 		maxSlabSizeBytes:   500 * utils.Megabyte,
 	}
 
@@ -56,7 +56,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		Maxt:               conf.maxt,
 		JobName:            conf.name,
 		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPulls,
+		NumStores:          conf.concurrentPull,
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
 		ProgressMetricURL:  conf.progressMetricURL,
@@ -82,7 +82,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		Url:             conf.readURL,
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
-		ConcurrentPulls: conf.concurrentPulls,
+		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigSlabRead,
 	}
 	read, err := reader.New(readerConfig)
@@ -159,7 +159,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		progressMetricName string
 		progressEnabled    bool
 		maxSlabSizeBytes   int64
-		concurrentPulls    int
+		concurrentPull     int
 	}{
 		name:               "ci-migration",
 		mint:               tsMint,
@@ -170,7 +170,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    true,
-		concurrentPulls:    2,
+		concurrentPull:     2,
 		maxSlabSizeBytes:   500 * utils.Megabyte,
 	}
 
@@ -180,7 +180,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		Maxt:               conf.maxt,
 		JobName:            conf.name,
 		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPulls,
+		NumStores:          conf.concurrentPull,
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
 		ProgressMetricURL:  conf.progressMetricURL,
@@ -205,7 +205,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		Url:             conf.readURL,
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
-		ConcurrentPulls: conf.concurrentPulls,
+		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigRead,
 	}
 	read, err := reader.New(readerConfig)
@@ -323,7 +323,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 		progressMetricName string
 		progressEnabled    bool
 		maxSlabSizeBytes   int64
-		concurrentPulls    int
+		concurrentPull     int
 	}{
 		name:               "ci-migration",
 		mint:               tsMint,
@@ -334,7 +334,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    true,
-		concurrentPulls:    1,
+		concurrentPull:     1,
 		maxSlabSizeBytes:   50 * 1024,
 	}
 
@@ -345,7 +345,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 		Maxt:               conf.maxt,
 		JobName:            conf.name,
 		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPulls,
+		NumStores:          conf.concurrentPull,
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
 		ProgressMetricURL:  conf.progressMetricURL,
@@ -376,7 +376,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 		Url:             conf.readURL,
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
-		ConcurrentPulls: conf.concurrentPulls,
+		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigRead,
 	}
 	read, err := reader.New(readerConfig)

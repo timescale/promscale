@@ -22,10 +22,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/config"
 	configutil "github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/schollz/progressbar/v3"
+	"github.com/timescale/promscale/pkg/log"
 )
 
 var userAgent = fmt.Sprintf("Prometheus/%s", version.Version)
@@ -36,19 +36,57 @@ const (
 	Read = iota
 	// Write defines the type of client. It is used to fetch the auth from authStore.
 	Write
+	// Retry makes the client to retry in case of a timeout or error.
+	Retry
+	// Skip makes the client to skip the current slab.
+	Skip
+	// Abort aborts the client from any further retries and exits the migration process.
+	// This can be applied after a timeout or error.
+	Abort
 )
+
+type ClientRuntime struct {
+	URL          string
+	Timeout      time.Duration
+	OnTimeout    uint8
+	OnTimeoutStr string
+	OnErr        uint8
+	OnErrStr     string
+	MaxRetry     int
+	// Delay defines the time we should wait before a retry. This can happen
+	// either in a timeout or after an error.
+	Delay time.Duration
+}
+
+func SlabEnums(typ string) (uint8, error) {
+	switch typ {
+	case "retry":
+		return Retry, nil
+	case "skip":
+		return Skip, nil
+	case "abort":
+		return Abort, nil
+	default:
+		return 0, fmt.Errorf("invalid slab enums: expected from ['retry', 'skip', 'abort']")
+	}
+}
 
 type Client struct {
 	remoteName string
 	url        *config.URL
-	Client     *http.Client
-	timeout    time.Duration
+	cHTTP      *http.Client
+	cRuntime   ClientRuntime
+}
+
+// Runtime returns the client runtime.
+func (c *Client) Runtime() ClientRuntime {
+	return c.cRuntime
 }
 
 // NewClient creates a new read or write client. The `clientType` should be either `read` or `write`. The client type
 // is used to get the auth from the auth store. If the `clientType` is other than the ones specified, then auth may not work.
-func NewClient(remoteName, urlString string, httpConfig configutil.HTTPClientConfig, timeout model.Duration) (*Client, error) {
-	parsedUrl, err := url.Parse(urlString)
+func NewClient(remoteName string, cRuntime ClientRuntime, httpConfig configutil.HTTPClientConfig) (*Client, error) {
+	parsedUrl, err := url.Parse(cRuntime.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parsing-%s-url: %w", remoteName, err)
 	}
@@ -65,9 +103,29 @@ func NewClient(remoteName, urlString string, httpConfig configutil.HTTPClientCon
 	return &Client{
 		remoteName: remoteName,
 		url:        &config.URL{URL: parsedUrl},
-		Client:     httpClient,
-		timeout:    time.Duration(timeout),
+		cHTTP:      httpClient,
+		cRuntime:   cRuntime,
 	}, nil
+}
+
+func shouldRetry(r uint8, cr ClientRuntime, retries int, message string) (retry bool, throwErr bool) {
+	switch r {
+	case Retry:
+		if cr.MaxRetry != 0 {
+			// If MaxRetry is 0, we are expected to retry forever.
+			if retries > cr.MaxRetry {
+				log.Info("msg", "exceeded retrying limit in "+message+". Erring out.")
+				return false, true
+			}
+		}
+		log.Info("msg", fmt.Sprintf("%s Retrying again after delay", message), "delay", cr.Delay)
+		return true, false
+	case Skip:
+		log.Info("msg", fmt.Sprintf("%s Skipping current slab", message))
+		return false, false
+	case Abort:
+	}
+	return false, true
 }
 
 func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (result *prompb.QueryResult, numBytesCompressed int, numBytesUncompressed int, err error) {
@@ -92,14 +150,37 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 	httpReq.Header.Set("User-Agent", userAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
 
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	var retries int
+retry:
+	ctx, cancel := context.WithTimeout(ctx, c.cRuntime.Timeout)
 	defer cancel()
 
 	httpReq = httpReq.WithContext(ctx)
 
-	httpResp, err := c.Client.Do(httpReq)
+	httpResp, err := c.cHTTP.Do(httpReq)
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, "error sending request")
+		if errors.Is(err, context.DeadlineExceeded) {
+			attemptRetry, throwErr := shouldRetry(c.cRuntime.OnTimeout, c.cRuntime, retries, "read request timeout.")
+			if attemptRetry {
+				time.Sleep(c.cRuntime.Delay)
+				retries++
+				goto retry
+			}
+			if throwErr {
+				return nil, 0, 0, fmt.Errorf("error sending request: %w", err)
+			}
+			return nil, 0, 0, nil
+		}
+		attemptRetry, throwErr := shouldRetry(c.cRuntime.OnErr, c.cRuntime, retries, fmt.Sprintf("error:\n%s\n", err.Error()))
+		if attemptRetry {
+			time.Sleep(c.cRuntime.Delay)
+			retries++
+			goto retry
+		}
+		if throwErr {
+			return nil, 0, 0, fmt.Errorf("error sending request: %w", err)
+		}
+		return nil, 0, 0, nil
 	}
 	defer func() {
 		_, _ = io.Copy(ioutil.Discard, httpResp.Body)
@@ -185,12 +266,12 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("User-Agent", userAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.cRuntime.Timeout)
 	defer cancel()
 
 	httpReq = httpReq.WithContext(ctx)
 
-	httpResp, err := c.Client.Do(httpReq)
+	httpResp, err := c.cHTTP.Do(httpReq)
 	if err != nil {
 		// Errors from Client.Do are from (for example) network errors, so are
 		// recoverable.
