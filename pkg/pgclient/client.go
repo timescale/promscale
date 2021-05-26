@@ -69,38 +69,26 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 }
 
 func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
-	connectionStr, err := cfg.GetConnectionStr()
-	if err != nil {
-		return nil, 0, err
-	}
-
 	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
 	if err != nil {
 		log.Error("msg", "configuring number of connections", "err", util.MaskPassword(err.Error()))
 		return nil, numCopiers, err
 	}
-
-	var (
-		pgConfig          *pgxpool.Config
-		connectionArgsFmt string
-	)
-	if cfg.DbUri == defaultDBUri {
-		connectionArgsFmt = "%s pool_max_conns=%d pool_min_conns=%d statement_cache_capacity=%d"
-	} else {
-		connectionArgsFmt = "%s&pool_max_conns=%d&pool_min_conns=%d&statement_cache_capacity=%d"
-	}
-
-	// Using the PGX default of 512 for statement cache capacity.
-	statementCacheCapacity := 512
-	connectionStringWithArgs := fmt.Sprintf(connectionArgsFmt, connectionStr, maxConnections, minConnections, statementCacheCapacity)
-	pgConfig, err = pgxpool.ParseConfig(connectionStringWithArgs)
+	connectionStr := cfg.GetConnectionStr()
+	pgConfig, err := pgxpool.ParseConfig(connectionStr)
 	if err != nil {
 		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
 		return nil, numCopiers, err
 	}
 
+	// Configure the number of connections and statement cache capacity.
+	pgConfig.MinConns = int32(minConnections)
+	pgConfig.MaxConns = int32(maxConnections)
+
 	var statementCacheLog string
 	if cfg.EnableStatementsCache {
+		// Using the PGX default of 512 for statement cache capacity.
+		statementCacheCapacity := 512
 		pgConfig.AfterRelease = observeStatementCacheState
 		statementCacheEnabled.Set(1)
 		statementCacheCap.Set(float64(statementCacheCapacity))
