@@ -287,7 +287,7 @@ func StartPGContainer(
 	}
 	PGTag := "pg" + PGMajor
 
-	promscaleImageBase := "cevian/promscale-extension" //cevian is temporary until we update the timescaledev repo
+	promscaleImageBase := "timescaledev/promscale-extension"
 	switch extensionState &^ postgres12Bit {
 	case MultinodeAndPromscale:
 		image = promscaleImageBase + ":latest-ts2-" + PGTag
