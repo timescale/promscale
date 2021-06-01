@@ -62,7 +62,7 @@ remote storage endpoints. For more information about prom-migrator, visit
 * **[Alerting & Recording Rules](docs/alerting-recording.md)**
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
 * **[Quick Tips](#-quick-tips)**
-* **[High Availability](docs/high-avaliability/prometheus-HA.md)**
+* **[High Availability](docs/high-availability/prometheus-HA.md)**
 * **[Multi-Node TimescaleDB](docs/multinode.md)**
 * **[FAQ](docs/faq.md)**
 * **[Contributing](#%EF%B8%8F-contributing)**
@@ -106,7 +106,7 @@ Click the video below for an overview of Promscale:
   SQL for deeper analytics and compatibility with a huge ecosystem of data visualization, analysis, and AI/ML tools.
 * **Rock-solid stability** due to being built on top of PostgreSQL, with 30+ years of development work.
 * **Support for backfilling** to ingest data from the past.
-* **High-Availability** support for [Prometheus HA deployments](docs/high-avaliability/prometheus-HA.md) as well as
+* **High-Availability** support for [Prometheus HA deployments](docs/high-availability/prometheus-HA.md) as well as
   high-availability deployments of [TimescaleDB itself](https://blog.timescale.com/blog/high-availability-timescaledb-postgresql-patroni-a4572264a831/).
 * **Simple architecture**. Unlike some other long-term stores, our architecture consists of only three components: Prometheus, Promscale, and TimescaleDB.
 * **ACID compliance** to ensure consistency of your data.
