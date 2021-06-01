@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
@@ -24,8 +25,8 @@ type remoteReadServer struct {
 // createRemoteReadServer creates a remote read server. It exposes a single /read endpoint and responds with the
 // passed series based on the request to the read endpoint. It returns a server which should be closed after
 // being used.
-func createRemoteReadServer(t *testing.T, seriesToBeSent []prompb.TimeSeries) (*remoteReadServer, string) {
-	s := httptest.NewServer(getReadHandler(t, seriesToBeSent))
+func createRemoteReadServer(t *testing.T, seriesToBeSent []prompb.TimeSeries, testRetry bool) (*remoteReadServer, string) {
+	s := httptest.NewServer(getReadHandler(t, seriesToBeSent, testRetry))
 	return &remoteReadServer{
 		server: s,
 		series: seriesToBeSent,
@@ -53,7 +54,9 @@ func (rrs *remoteReadServer) Close() {
 	rrs.server.Close()
 }
 
-func getReadHandler(t *testing.T, series []prompb.TimeSeries) http.Handler {
+var readRequestCount int32
+
+func getReadHandler(t *testing.T, series []prompb.TimeSeries, testRetry bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !validateReadHeaders(t, w, r) {
 			t.Fatal("invalid read headers")
@@ -67,6 +70,20 @@ func getReadHandler(t *testing.T, series []prompb.TimeSeries) http.Handler {
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
 			t.Fatal("msg", "snappy decode error", "err", err.Error())
+		}
+
+		if testRetry {
+			atomic.AddInt32(&readRequestCount, 1)
+			if atomic.LoadInt32(&readRequestCount) >= 50 {
+				if atomic.LoadInt32(&readRequestCount) >= 55 {
+					// Continue to fail for 5 more consecutive requests in order to test max-retries.
+					atomic.StoreInt32(&readRequestCount, 0)
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte("known interruption"))
+				t.Logf("reader: sending error to verify retrying behaviour")
+				return
+			}
 		}
 
 		var req prompb.ReadRequest
@@ -112,6 +129,7 @@ func getReadHandler(t *testing.T, series []prompb.TimeSeries) http.Handler {
 
 		w.Header().Set("Content-Type", "application/x-protobuf")
 		w.Header().Set("Content-Encoding", "snappy")
+		w.WriteHeader(http.StatusOK)
 
 		compressed = snappy.Encode(nil, data)
 		if _, err := w.Write(compressed); err != nil {

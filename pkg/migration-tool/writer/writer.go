@@ -7,12 +7,14 @@ package writer
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"sync/atomic"
+
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
-	"sync/atomic"
 )
 
 // Config is config for writer.
@@ -25,6 +27,10 @@ type Config struct {
 
 	ProgressEnabled    bool
 	ProgressMetricName string // Metric name to main the last pushed maxt to remote write storage.
+
+	GarbageCollectOnPush bool
+	//nolint
+	sigGC chan struct{}
 
 	SigSlabRead chan *planner.Slab
 	SigSlabStop chan struct{}
@@ -51,6 +57,9 @@ func New(config Config) (*Write, error) {
 		write.progressTimeSeries = &prompb.TimeSeries{
 			Labels: utils.LabelSet(config.ProgressMetricName, config.MigrationJobName),
 		}
+	}
+	if config.GarbageCollectOnPush {
+		write.sigGC = make(chan struct{})
 	}
 	return write, nil
 }
@@ -113,12 +122,48 @@ func (w *Write) Run(errChan chan<- error) {
 					errChan <- fmt.Errorf("remote-write run: %w", err)
 					return
 				}
+				planner.PutSlab(slabRef)
+				w.collectGarbage()
 			}
 		}
 	}()
 }
 
-// Blocks returns the total number of blocks pushed to the remote-write storage.
+func (w *Write) collectGarbage() {
+	if w.sigGC == nil {
+		// sigGC is nil if w.GarbageCollectOnPush is set to false.
+		return
+	}
+	if !gcRoutineActive.Load().(bool) {
+		gcRoutineActive.Store(true)
+		go gc(w.sigGC)
+	}
+	w.sigGC <- struct{}{}
+}
+
+var (
+	gcRoutineActive atomic.Value
+	isGCInProgress  atomic.Value
+)
+
+func init() {
+	gcRoutineActive.Store(false)
+	isGCInProgress.Store(false)
+}
+
+func gc(collect <-chan struct{}) {
+	for range collect {
+		if isGCInProgress.Load().(bool) {
+			// Ignore the signal to collect garbage as GC is already doing its job.
+			continue
+		}
+		isGCInProgress.Store(true)
+		runtime.GC() // This is blocking, hence we run asynchronously.
+		isGCInProgress.Store(false)
+	}
+}
+
+// Slabs returns the total number of slabs pushed to the remote-write storage.
 func (w *Write) Slabs() int64 {
 	return atomic.LoadInt64(&w.slabsPushed)
 }

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/schollz/progressbar/v3"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
@@ -23,26 +23,9 @@ import (
 const numStepsWriter = 5 // Number of progress steps for the progress-bar of the writer.
 
 var (
-	second                 = time.Second.Milliseconds()
-	minute                 = time.Minute.Milliseconds()
-	laIncrement            = minute
-	maxTimeRangeDeltaLimit = minute * 120
+	second = time.Second.Milliseconds()
+	minute = time.Minute.Milliseconds()
 )
-
-// Plan represents the plannings done by the planner.
-type Plan struct {
-	config *Config
-	// Slab configs.
-	slabCounts         int64 // Used in maintaining the ID of the in-memory slabs.
-	pbarMux            *sync.Mutex
-	nextMint           int64
-	lastNumBytes       int64
-	lastTimeRangeDelta int64
-	deltaIncRegion     int64 // Time region for which the time-range delta can continue to increase by laIncrement.
-	// Test configs.
-	Quiet         bool   // Avoid progress-bars during logs.
-	TestCheckFunc func() // Helps peek into planner during testing. It is called at createSlab() to check the stats of the last slab.
-}
 
 // Config represents configuration for the planner.
 type Config struct {
@@ -52,18 +35,37 @@ type Config struct {
 	NumStores          int
 	ProgressEnabled    bool
 	JobName            string
-	ProgressMetricURL  string
 	ProgressMetricName string // Name for progress metric.
-	Timeout            time.Duration
+	ProgressClientRt   utils.ClientRuntime
 	HTTPConfig         config.HTTPClientConfig
+	LaIncrement        time.Duration
+	MaxReadDuration    time.Duration
+	HumanReadableTime  bool
 }
 
-// InitPlan creates an in-memory planner and initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
+// Plan represents the plannings done by the planner.
+type Plan struct {
+	config *Config
+
+	// Slab configs.
+	slabCounts         int64 // Used in maintaining the ID of the in-memory slabs.
+	pbarMux            *sync.Mutex
+	nextMint           int64
+	lastNumBytes       int64
+	lastTimeRangeDelta int64
+	deltaIncRegion     int64 // Time region for which the time-range delta can continue to increase by laIncrement.
+
+	// Test configs.
+	Quiet         bool   // Avoid progress-bars during logs.
+	TestCheckFunc func() // Helps peek into planner during testing. It is called at createSlab() to check the stats of the last slab.
+}
+
+// Init creates an in-memory planner and initializes it. It is responsible for fetching the last pushed maxt and based on that, updates
 // the mint for the provided migration.
 func Init(config *Config) (*Plan, bool, error) {
 	var found bool
 	if config.ProgressEnabled {
-		if config.ProgressMetricURL == "" {
+		if config.ProgressClientRt.URL == "" {
 			return nil, false, fmt.Errorf("read url for remote-write storage should be provided when progress metric is enabled")
 		}
 
@@ -106,7 +108,7 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
-	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressMetricURL, c.HTTPConfig, model.Duration(c.Timeout))
+	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressClientRt, c.HTTPConfig)
 	if err != nil {
 		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
 	}
@@ -150,9 +152,9 @@ func (p *Plan) LastMemoryFootprint() int64 {
 	return atomic.LoadInt64(&p.lastNumBytes)
 }
 
-// NewSlab returns a new slab after allocating the time-range for fetch.
+// NextSlab returns a new slab after allocating the time-range for fetch.
 func (p *Plan) NextSlab() (reference *Slab, err error) {
-	timeDelta := determineTimeDelta(atomic.LoadInt64(&p.lastNumBytes), p.config.SlabSizeLimitBytes, p.lastTimeRangeDelta)
+	timeDelta := p.config.determineTimeDelta(atomic.LoadInt64(&p.lastNumBytes), p.config.SlabSizeLimitBytes, p.lastTimeRangeDelta)
 	mint := p.nextMint
 	maxt := mint + timeDelta
 	if maxt > p.config.Maxt {
@@ -168,7 +170,7 @@ func (p *Plan) NextSlab() (reference *Slab, err error) {
 }
 
 // createSlab creates a new slab and returns reference to the slab for faster write and read operations.
-func (p *Plan) createSlab(mint, maxt int64) (reference *Slab, err error) {
+func (p *Plan) createSlab(mint, maxt int64) (ref *Slab, err error) {
 	if err = p.validateT(mint, maxt); err != nil {
 		return nil, fmt.Errorf("create-slab: %w", err)
 	}
@@ -178,27 +180,34 @@ func (p *Plan) createSlab(mint, maxt int64) (reference *Slab, err error) {
 	if percent > 100 {
 		percent = 100
 	}
-	baseDescription := fmt.Sprintf("progress: %.3f%% | slab-%d time-range: %d mins | mint: %d | maxt: %d", percent, id, timeRangeInMinutes, mint/second, maxt/second)
-	reference = &Slab{
-		id:                    id,
-		pbarDescriptionPrefix: baseDescription,
-		pbar: progressbar.NewOptions(
-			numStepsWriter,
-			progressbar.OptionOnCompletion(func() {
-				_, _ = fmt.Fprint(os.Stdout, "\n")
-			}),
-		),
-		numStores: p.config.NumStores,
-		stores:    make([]store, p.config.NumStores),
-		mint:      mint,
-		maxt:      maxt,
-		pbarMux:   p.pbarMux,
-		plan:      p,
+	baseDescription := fmt.Sprintf("progress: %.2f%% | slab-%d time-range: %d mins | begin: %d | end: %d", percent, id, timeRangeInMinutes, mint/second, maxt/second)
+	if p.config.HumanReadableTime {
+		baseDescription = fmt.Sprintf("progress: %.2f%% | slab-%d time-range: %d mins | begin: %s | end: %s", percent, id, timeRangeInMinutes, timestamp.Time(mint), timestamp.Time(maxt))
 	}
-	reference.initStores()
+	ref = slabPool.Get().(*Slab)
+	ref.id = id
+	ref.pbar = progressbar.NewOptions(
+		numStepsWriter,
+		progressbar.OptionOnCompletion(func() {
+			_, _ = fmt.Fprint(os.Stdout, "\n")
+		}),
+	)
+	ref.pbarDescriptionPrefix = baseDescription
+	ref.numStores = p.config.NumStores
+	if len(ref.stores) != p.config.NumStores {
+		// This is expect to allocate only for the first slab, then the allocated space is reused.
+		// On the edge case, we allocate again, which was the previous behaviour.
+		ref.stores = make([]store, p.config.NumStores)
+	}
+	ref.mint = mint
+	ref.maxt = maxt
+	ref.pbarMux = p.pbarMux
+	ref.plan = p
+
+	ref.initStores()
 	if p.Quiet {
-		reference.pbar = nil
-		reference.pbarDescriptionPrefix = ""
+		ref.pbar = nil
+		ref.pbarDescriptionPrefix = ""
 	}
 	if p.TestCheckFunc != nil {
 		// This runs only during integration tests. It enables the tests to access and test the internal
@@ -220,13 +229,13 @@ func (p *Plan) validateT(mint, maxt int64) error {
 	return nil
 }
 
-func determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) int64 {
+func (c *Config) determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) int64 {
 	switch {
 	case numBytes <= limit/2:
 		// deltaIncreaseRegion.
 		// We increase the time-range linearly for the next fetch if the current time-range fetch resulted in size that is
 		// less than half the max read size. This continues till we reach the maximum time-range delta.
-		return clampTimeDelta(prevTimeDelta + laIncrement)
+		return c.clampTimeDelta(prevTimeDelta + c.LaIncrement.Milliseconds())
 	case numBytes > limit:
 		// Down size the time exponentially so that bytes size can be controlled (preventing OOM).
 		log.Info("msg", fmt.Sprintf("decreasing time-range delta to %d minute(s) since size beyond permittable limits", prevTimeDelta/(2*minute)))
@@ -243,9 +252,10 @@ func determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) int64 {
 	return prevTimeDelta
 }
 
-func clampTimeDelta(t int64) int64 {
-	if t > maxTimeRangeDeltaLimit {
-		return maxTimeRangeDeltaLimit
+func (c *Config) clampTimeDelta(t int64) int64 {
+	if t > c.MaxReadDuration.Milliseconds() {
+		log.Info("msg", "Exceeded 'max-read-duration', setting back to 'max-read-duration' value", "max-read-duration", c.MaxReadDuration.String())
+		return c.MaxReadDuration.Milliseconds()
 	}
 	return t
 }

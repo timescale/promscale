@@ -27,32 +27,38 @@ const (
 	migrationJobName     = "prom-migrator"
 	progressMetricName   = "prom_migrator_progress"
 	validMetricNameRegex = `^[a-zA-Z_:][a-zA-Z0-9_:]*$`
-	defaultTimeout       = time.Minute * 5
-	defaultRetryDelay    = time.Second
-	defaultStartTime     = "1970-01-01T00:00:00+00:00" // RFC3339 based time.Unix from 0 seconds.
+
+	defaultTimeout         = time.Minute * 5
+	defaultRetryDelay      = time.Second
+	defaultStartTime       = "1970-01-01T00:00:00+00:00" // RFC3339 based time.Unix from 0 seconds.
+	defaultMaxReadDuration = time.Hour * 2
+	defaultLaIncrement     = time.Minute
 )
 
 type config struct {
-	name               string
-	start              string
-	end                string
-	mint               int64
-	mintSec            int64
-	humanReadable      bool
-	maxt               int64
-	maxtSec            int64
-	maxSlabSizeBytes   int64
-	maxSlabSize        string
-	concurrentPull     int
-	concurrentPush     int
-	readerClient       utils.ClientRuntime
-	writerClient       utils.ClientRuntime
-	progressMetricName string
-	progressMetricURL  string
-	progressEnabled    bool
-	readerAuth         utils.Auth
-	writerAuth         utils.Auth
-	progressMetricAuth utils.Auth
+	name                 string
+	start                string
+	end                  string
+	mint                 int64
+	mintSec              int64
+	humanReadable        bool
+	maxt                 int64
+	maxtSec              int64
+	maxSlabSizeBytes     int64
+	maxSlabSize          string
+	concurrentPull       int
+	concurrentPush       int
+	readerClient         utils.ClientRuntime
+	maxReadDuration      time.Duration // Max range of slab in terms of time.
+	writerClient         utils.ClientRuntime
+	progressMetricName   string
+	progressMetricURL    string
+	progressEnabled      bool
+	garbageCollectOnPush bool
+	laIncrement          time.Duration
+	readerAuth           utils.Auth
+	writerAuth           utils.Auth
+	progressMetricAuth   utils.Auth
 }
 
 func main() {
@@ -81,11 +87,13 @@ func main() {
 		Maxt:               conf.maxt,
 		JobName:            conf.name,
 		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
+		MaxReadDuration:    conf.maxReadDuration,
+		LaIncrement:        conf.laIncrement,
+		HumanReadableTime:  conf.humanReadable,
 		NumStores:          conf.concurrentPull,
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
-		ProgressMetricURL:  conf.progressMetricURL,
-		Timeout:            conf.readerClient.Timeout,
+		ProgressClientRt:   getDefaultRtClient(conf.progressMetricURL),
 		HTTPConfig:         conf.progressMetricAuth.ToHTTPClientConfig(),
 	}
 	planner, proceed, err := plan.Init(planConfig)
@@ -118,14 +126,15 @@ func main() {
 	}
 
 	writerConfig := writer.Config{
-		Context:            cont,
-		ClientRt:           conf.writerClient,
-		HTTPConfig:         conf.writerAuth.ToHTTPClientConfig(),
-		ProgressEnabled:    conf.progressEnabled,
-		ProgressMetricName: conf.progressMetricName,
-		MigrationJobName:   conf.name,
-		ConcurrentPush:     conf.concurrentPush,
-		SigSlabRead:        sigSlabRead,
+		Context:              cont,
+		ClientRt:             conf.writerClient,
+		HTTPConfig:           conf.writerAuth.ToHTTPClientConfig(),
+		ProgressEnabled:      conf.progressEnabled,
+		ProgressMetricName:   conf.progressMetricName,
+		GarbageCollectOnPush: conf.garbageCollectOnPush,
+		MigrationJobName:     conf.name,
+		ConcurrentPush:       conf.concurrentPush,
+		SigSlabRead:          sigSlabRead,
 	}
 	write, err := writer.New(writerConfig)
 	if err != nil {
@@ -171,6 +180,8 @@ func parseFlags(conf *config, args []string) {
 		"Setting this to false will make migrator expect 'start' and 'end' time in terms of unix seconds.")
 	flag.StringVar(&conf.maxSlabSize, "max-read-size", "500MB", "(units: B, KB, MB, GB, TB, PB) the maximum size of data that should be read at a single time. "+
 		"More the read size, faster will be the migration but higher will be the memory usage. Example: 250MB.")
+	flag.BoolVar(&conf.garbageCollectOnPush, "gc-on-push", false, "Run garbage collector after every slab is pushed. "+
+		"This may lead to better memory management since GC is kick right after each slab to clean unused memory blocks.")
 
 	flag.IntVar(&conf.concurrentPush, "concurrent-push", 1, "Concurrent push enables pushing of slabs concurrently. "+
 		"Each slab is divided into 'concurrent-push' (value) parts and then pushed to the remote-write storage concurrently. This may lead to higher throughput on "+
@@ -183,6 +194,11 @@ func parseFlags(conf *config, args []string) {
 		"Also, setting this value too high may cause TLS handshake error on the read storage side or may lead to starvation of fetch requests, "+
 		"depending on your network bandwidth.")
 
+	flag.DurationVar(&conf.maxReadDuration, "max-read-duration", defaultMaxReadDuration, "Maximum range of slab that can be achieved through consecutive 'la-increment'. "+
+		"This defaults to '2 hours' since assuming the migration to be from Prometheus TSDB. Increase this duration if you are not fetching from Prometheus "+
+		"or if you are fine with slow read on Prometheus side post 2 hours slab time-range.")
+	flag.DurationVar(&conf.laIncrement, "la-increment", defaultLaIncrement, "Amount of time-range to be incremented in successive slab.")
+
 	flag.StringVar(&conf.readerClient.URL, "reader-url", "", "URL address for the storage where the data is to be read from.")
 	flag.DurationVar(&conf.readerClient.Timeout, "reader-timeout", defaultTimeout, "Timeout for fetching data from read storage. "+
 		"This timeout is also used to fetch the progress metric.")
@@ -192,12 +208,12 @@ func parseFlags(conf *config, args []string) {
 		"Setting this to 0 will make the retry process forever until the process is completed. Note: If you want not to retry, "+
 		"change the value of on-timeout or on-error to non-retry options.")
 	flag.StringVar(&conf.readerClient.OnTimeoutStr, "reader-on-timeout", "retry", "When a timeout happens during the read process, how should the reader behave. "+
-		"Valid options: ['retry', 'skip', 'abort']. "+
+		"Valid options: ['retry', 'abort']. "+
 		"If 'retry', the reader retries to fetch the current slab after the delay. "+
 		"If 'skip', the reader skips the current slab that is being read and moves on to the next slab. "+
 		"If 'abort', the migration process will be aborted.")
 	flag.StringVar(&conf.readerClient.OnErrStr, "reader-on-error", "abort", "When an error occurs during read process, how should the reader behave. "+
-		"Valid options: ['retry', 'skip', 'abort']. "+
+		"Valid options: ['retry', 'abort']. "+
 		"See 'reader-on-timeout' for more information on the above options. ")
 
 	flag.StringVar(&conf.writerClient.URL, "writer-url", "", "URL address for the storage where the data migration is to be written.")
@@ -276,6 +292,16 @@ func parseFlags(conf *config, args []string) {
 	_ = flag.CommandLine.Parse(args)
 }
 
+func getDefaultRtClient(url string) utils.ClientRuntime {
+	return utils.ClientRuntime{
+		URL:       url,
+		Timeout:   defaultTimeout,
+		Delay:     defaultRetryDelay,
+		OnTimeout: utils.Retry,
+		OnErr:     utils.Abort,
+	}
+}
+
 func parseArgs(args []string) (shouldProceed bool) {
 	shouldProceed = true // Some flags like 'version' are just to get information and not proceed the actual execution. We should stop in such cases.
 	for _, f := range args {
@@ -289,7 +315,7 @@ func parseArgs(args []string) (shouldProceed bool) {
 	return
 }
 
-// formatTimeInput removes the asterisks from the string input.
+// formatTimeInput removes single quotes from the string input.
 func formatTimeInput(s string) string {
 	if s[0] == '\'' {
 		s = s[1:]
@@ -305,26 +331,26 @@ func parseClientInfo(conf *config) error {
 		return fmt.Errorf("enum conversion '%s': %w", typ, err)
 	}
 	// Reader.
-	enum, err := utils.SlabEnums(conf.readerClient.OnTimeoutStr)
+	enum, err := utils.SlabEnums(conf.readerClient.OnTimeoutStr, false)
 	if err != nil {
 		return wrapErr("reader-on-timeout", err)
 	}
 	conf.readerClient.OnTimeout = enum
 
-	enum, err = utils.SlabEnums(conf.readerClient.OnErrStr)
+	enum, err = utils.SlabEnums(conf.readerClient.OnErrStr, false)
 	if err != nil {
 		return wrapErr("reader-on-error", err)
 	}
 	conf.readerClient.OnErr = enum
 
 	// Writer.
-	enum, err = utils.SlabEnums(conf.writerClient.OnTimeoutStr)
+	enum, err = utils.SlabEnums(conf.writerClient.OnTimeoutStr, true)
 	if err != nil {
 		return wrapErr("writer-on-timeout", err)
 	}
 	conf.writerClient.OnTimeout = enum
 
-	enum, err = utils.SlabEnums(conf.writerClient.OnErrStr)
+	enum, err = utils.SlabEnums(conf.writerClient.OnErrStr, true)
 	if err != nil {
 		return wrapErr("writer-on-error", err)
 	}
@@ -340,7 +366,7 @@ func timestampSec(s string) (int64, error) {
 	return t.Unix(), nil
 }
 
-func validateAndConvertStrFlagsToTs(conf *config) error {
+func convertTimeStrFlagsToTs(conf *config) error {
 	if conf.humanReadable {
 		t, err := timestampSec(conf.start)
 		if err != nil {
@@ -360,7 +386,7 @@ func validateAndConvertStrFlagsToTs(conf *config) error {
 		}
 		conf.mintSec = int64(v)
 		if conf.end == time.Now().Format(time.RFC3339) {
-			// If -human-readable-time & only -start is provided in unix time, then end needs to be in unix as well.
+			// The end needs to be in unix if the -start and -human-readable-time=false is applied.
 			conf.end = fmt.Sprintf("%d", time.Now().Unix())
 		}
 		v, err = strconv.Atoi(conf.end)
@@ -376,7 +402,7 @@ func validateAndConvertStrFlagsToTs(conf *config) error {
 }
 
 func validateConf(conf *config) error {
-	if err := validateAndConvertStrFlagsToTs(conf); err != nil {
+	if err := convertTimeStrFlagsToTs(conf); err != nil {
 		return fmt.Errorf("validate time flags: %w", err)
 	}
 	if err := parseClientInfo(conf); err != nil {
@@ -399,6 +425,10 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("remote write storage url needs to be specified. Without write storage url, data migration cannot begin")
 	case conf.progressEnabled && strings.TrimSpace(conf.progressMetricURL) == "":
 		return fmt.Errorf("invalid input: read url for remote-write storage should be provided when progress metric is enabled. To disable progress metric, use -progress-enabled=false")
+	case conf.laIncrement < time.Minute:
+		return fmt.Errorf("'la-increment' cannot be less than 1 minute")
+	case conf.maxReadDuration < time.Minute:
+		return fmt.Errorf("'max-read-duration' cannot be less than 1 minute")
 	}
 
 	// Validate auths.

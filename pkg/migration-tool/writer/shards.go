@@ -7,6 +7,7 @@ package writer
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -129,9 +130,15 @@ func (s *shard) run(shardIndex int) {
 
 const backOffRetryDuration = time.Second * 1
 
+var bytePool = sync.Pool{New: func() interface{} { return new([]byte) }}
+
 // sendSamples to the remote storage with backoff for recoverable errors.
 func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *[]prompb.TimeSeries) error {
-	buf := &[]byte{}
+	buf := bytePool.Get().(*[]byte)
+	defer func() {
+		*buf = (*buf)[:0]
+		bytePool.Put(buf)
+	}()
 	req, err := buildWriteRequest(*samples, *buf)
 	if err != nil {
 		// Failing to build the write request is non-recoverable, since it will

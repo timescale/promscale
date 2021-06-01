@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -58,11 +59,14 @@ type ClientRuntime struct {
 	Delay time.Duration
 }
 
-func SlabEnums(typ string) (uint8, error) {
+func SlabEnums(typ string, skipApplicable bool) (uint8, error) {
 	switch typ {
 	case "retry":
 		return Retry, nil
 	case "skip":
+		if !skipApplicable {
+			return 0, fmt.Errorf("invalid slab enums: 'skip' is not applicable")
+		}
 		return Skip, nil
 	case "abort":
 		return Abort, nil
@@ -108,24 +112,24 @@ func NewClient(remoteName string, cRuntime ClientRuntime, httpConfig configutil.
 	}, nil
 }
 
-func shouldRetry(r uint8, cr ClientRuntime, retries int, message string) (retry bool, throwErr bool) {
+func shouldRetry(r uint8, cr ClientRuntime, retries int, message string) (retry bool) {
+	// Skip is not applicable in read process, since it is meaningless and implementing it makes the code in Read() untidy.
 	switch r {
 	case Retry:
 		if cr.MaxRetry != 0 {
 			// If MaxRetry is 0, we are expected to retry forever.
 			if retries > cr.MaxRetry {
 				log.Info("msg", "exceeded retrying limit in "+message+". Erring out.")
-				return false, true
+				return false
 			}
 		}
+		message += "."
 		log.Info("msg", fmt.Sprintf("%s Retrying again after delay", message), "delay", cr.Delay)
-		return true, false
-	case Skip:
-		log.Info("msg", fmt.Sprintf("%s Skipping current slab", message))
-		return false, false
+		time.Sleep(cr.Delay)
+		return true
 	case Abort:
 	}
-	return false, true
+	return false
 }
 
 func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (result *prompb.QueryResult, numBytesCompressed int, numBytesUncompressed int, err error) {
@@ -150,8 +154,10 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 	httpReq.Header.Set("User-Agent", userAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
 
-	var retries int
+	numAttempts := -1
+
 retry:
+	numAttempts++
 	ctx, cancel := context.WithTimeout(ctx, c.cRuntime.Timeout)
 	defer cancel()
 
@@ -160,27 +166,16 @@ retry:
 	httpResp, err := c.cHTTP.Do(httpReq)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			attemptRetry, throwErr := shouldRetry(c.cRuntime.OnTimeout, c.cRuntime, retries, "read request timeout.")
-			if attemptRetry {
-				time.Sleep(c.cRuntime.Delay)
-				retries++
+			if shouldRetry(c.cRuntime.OnTimeout, c.cRuntime, numAttempts, "read request timeout") {
 				goto retry
 			}
-			if throwErr {
-				return nil, 0, 0, fmt.Errorf("error sending request: %w", err)
-			}
-			return nil, 0, 0, nil
-		}
-		attemptRetry, throwErr := shouldRetry(c.cRuntime.OnErr, c.cRuntime, retries, fmt.Sprintf("error:\n%s\n", err.Error()))
-		if attemptRetry {
-			time.Sleep(c.cRuntime.Delay)
-			retries++
-			goto retry
-		}
-		if throwErr {
 			return nil, 0, 0, fmt.Errorf("error sending request: %w", err)
 		}
-		return nil, 0, 0, nil
+		err = fmt.Errorf("error sending request: %w", err)
+		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+			goto retry
+		}
+		return nil, 0, 0, err
 	}
 	defer func() {
 		_, _ = io.Copy(ioutil.Discard, httpResp.Body)
@@ -200,26 +195,47 @@ retry:
 	}
 	compressed, err = ioutil.ReadAll(bytes.NewReader(reader.Bytes()))
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, fmt.Sprintf("error reading response. HTTP status code: %s", httpResp.Status))
+		err = errors.Wrap(err, fmt.Sprintf("error reading response. HTTP status code: %s", httpResp.Status))
+		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+			goto retry
+		}
+		return nil, -1, -1, err
 	}
 
 	if httpResp.StatusCode/100 != 2 {
+		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("received status code: %d", httpResp.StatusCode)) {
+			goto retry
+		}
 		return nil, -1, -1, errors.Errorf("remote server %s returned HTTP status %s: %s", c.url.String(), httpResp.Status, strings.TrimSpace(string(compressed)))
 	}
 
 	uncompressed, err := snappy.Decode(nil, compressed)
 	if err != nil {
+		// Snappy errors also happen in case of deadline or context cancel since the read was terminated in middle of the process.
+		// Lets treat them as timeout case.
+		if shouldRetry(c.cRuntime.OnTimeout, c.cRuntime, numAttempts, "invalid snappy: This can be either due to partial read or an actual context timeout. "+
+			"Treating this as read-request timeout") {
+			goto retry
+		}
 		return nil, -1, -1, errors.Wrap(err, "error reading response")
 	}
 
 	var resp prompb.ReadResponse
 	err = proto.Unmarshal(uncompressed, &resp)
 	if err != nil {
-		return nil, -1, -1, errors.Wrap(err, "unable to unmarshal response body")
+		err = errors.Wrap(err, "unable to unmarshal response body")
+		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+			goto retry
+		}
+		return nil, -1, -1, err
 	}
 
 	if len(resp.Results) != len(req.Queries) {
-		return nil, -1, -1, errors.Errorf("responses: want %d, got %d", len(req.Queries), len(resp.Results))
+		err = errors.Errorf("responses: want %d, got %d", len(req.Queries), len(resp.Results))
+		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+			goto retry
+		}
+		return nil, -1, -1, err
 	}
 
 	return resp.Results[0], len(compressed), len(uncompressed), nil
@@ -233,6 +249,16 @@ type PrompbResponse struct {
 	NumBytesUncompressed int
 }
 
+var prompbResponsePool = sync.Pool{New: func() interface{} { return new(PrompbResponse) }}
+
+func PutPrompbResponse(p *PrompbResponse) {
+	p.ID = 0
+	p.NumBytesUncompressed = 0
+	p.NumBytesCompressed = 0
+	p.Result.Timeseries = p.Result.Timeseries[:0]
+	prompbResponsePool.Put(p)
+}
+
 // ReadConcurrent calls the Read and responds on the channels.
 func (c *Client) ReadConcurrent(ctx context.Context, query *prompb.Query, shardID int, desc string, responseChan chan<- interface{}) {
 	result, numBytesCompressed, numBytesUncompressed, err := c.Read(ctx, query, desc)
@@ -240,12 +266,12 @@ func (c *Client) ReadConcurrent(ctx context.Context, query *prompb.Query, shardI
 		responseChan <- fmt.Errorf("read-channels: %w", err)
 		return
 	}
-	responseChan <- &PrompbResponse{
-		ID:                   shardID,
-		Result:               result,
-		NumBytesCompressed:   numBytesCompressed,
-		NumBytesUncompressed: numBytesUncompressed,
-	}
+	pr := prompbResponsePool.Get().(*PrompbResponse)
+	pr.ID = shardID
+	pr.Result = result
+	pr.NumBytesUncompressed = numBytesUncompressed
+	pr.NumBytesCompressed = numBytesCompressed
+	responseChan <- pr
 }
 
 // RecoverableError is an error for which the send samples can retry with a backoff.
