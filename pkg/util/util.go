@@ -8,22 +8,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	PromNamespace              = "promscale"
-	maskPasswordReplaceString1 = "password$1$2$3****$5"
-	/* #nosec */
-	maskPasswordReplaceString2 = "postgres$1://$2****@"
-)
-
-var (
-	maskPasswordRegex1 = regexp.MustCompile(`[p|P]assword(:|=)(\s*)('?)(.*?)('|(&|\s*)\w+[:|=]{1}|$)`)
-	maskPasswordRegex2 = regexp.MustCompile(`postgres([^:]*)://(([^:]*\:){1})([^@]*)@`)
+	PromNamespace = "promscale"
 )
 
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
@@ -76,12 +67,6 @@ func (dt *ThroughputCalc) Start() {
 			}
 		}()
 	}
-}
-
-// MaskPassword is used to mask sensitive password data before outputing to persistent stream like logs.
-func MaskPassword(s string) string {
-	s = maskPasswordRegex1.ReplaceAllString(s, maskPasswordReplaceString1)
-	return maskPasswordRegex2.ReplaceAllString(s, maskPasswordReplaceString2)
 }
 
 // ParseEnv takes a prefix string p and *flag.FlagSet. Each flag

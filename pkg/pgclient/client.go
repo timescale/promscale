@@ -7,6 +7,7 @@ package pgclient
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -22,7 +23,6 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/tenancy"
-	"github.com/timescale/promscale/pkg/util"
 )
 
 // Client sends Prometheus samples to TimescaleDB
@@ -55,7 +55,7 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 	pgConfig.AfterConnect = schemaLocker
 	connectionPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
 	if err != nil {
-		log.Error("msg", "err creating connection pool for new client", "err", util.MaskPassword(err.Error()))
+		log.Error("msg", "err creating connection pool for new client", "err", err.Error())
 		return nil, err
 	}
 
@@ -71,13 +71,13 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
 	if err != nil {
-		log.Error("msg", "configuring number of connections", "err", util.MaskPassword(err.Error()))
+		log.Error("msg", "configuring number of connections", "err", err.Error())
 		return nil, numCopiers, err
 	}
 	connectionStr := cfg.GetConnectionStr()
 	pgConfig, err := pgxpool.ParseConfig(connectionStr)
 	if err != nil {
-		log.Error("msg", "configuring connection", "err", util.MaskPassword(err.Error()))
+		log.Error("msg", "configuring connection", "err", err.Error())
 		return nil, numCopiers, err
 	}
 
@@ -101,13 +101,29 @@ func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
 		statementCacheLog = "disabled"
 
 	}
-	log.Info("msg", util.MaskPassword(connectionStr),
+	log.Info("msg", getRedactedConnStr(connectionStr),
 		"numCopiers", numCopiers,
 		"pool_max_conns", maxConnections,
 		"pool_min_conns", minConnections,
 		"statement_cache", statementCacheLog,
 	)
 	return pgConfig, numCopiers, nil
+}
+
+func getRedactedConnStr(s string) string {
+	connURL, err := url.Parse(s)
+
+	// Should never happen because we parsing the URL way before this
+	// and error out if this happened.
+	if err != nil {
+		return "****"
+	}
+
+	if _, pwSet := connURL.User.Password(); pwSet {
+		connURL.User = url.UserPassword(connURL.User.Username(), "****")
+	}
+
+	return connURL.String()
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
