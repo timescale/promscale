@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -132,7 +133,7 @@ func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Reques
 
 type readCloser struct {
 	reader io.Reader
-	closer io.Closer
+	closer func() error
 }
 
 func (rc *readCloser) Read(p []byte) (n int, err error) {
@@ -140,7 +141,7 @@ func (rc *readCloser) Read(p []byte) (n int, err error) {
 }
 
 func (rc *readCloser) Close() error {
-	return rc.closer.Close()
+	return rc.closer()
 }
 
 func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
@@ -149,6 +150,7 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 		return true
 	}
 	buf := make([]byte, 10)
+	originalBody := r.Body
 	size, err := r.Body.Read(buf)
 	if err != nil {
 		invalidRequestError(w, "snappy decode error", "payload too short or corrupt", m)
@@ -161,7 +163,7 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 	if detectSnappyStreamFormat(buf) {
 		r.Body = &readCloser{
 			reader: snappy.NewReader(mr),
-			closer: r.Body,
+			closer: func() error { return originalBody.Close() },
 		}
 		return true
 	}
@@ -173,18 +175,36 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request, m *Metrics) bool {
 	}
 
 	// Snappy block format.
-	decoded, err := snappy.Decode(nil, compressed)
+	b := decodedBufPool.Get().(*bytes.Buffer)
+	b.Reset()
+	n, err := snappy.DecodedLen(compressed)
+	if err != nil {
+		invalidRequestError(w, "snappy decode length error", err.Error(), m)
+		return false
+	}
+	b.Grow(n)
+
+	decoded, err := snappy.Decode(b.Bytes()[:n], compressed)
 	if err != nil {
 		invalidRequestError(w, "snappy decode error", err.Error(), m)
 		return false
 	}
 
-	body := bytes.NewBuffer(decoded)
+	newBuf := bytes.NewBuffer(decoded)
 	r.Body = &readCloser{
-		reader: body,
-		closer: r.Body,
+		reader: newBuf,
+		closer: func() error {
+			decodedBufPool.Put(newBuf)
+			return originalBody.Close()
+		},
 	}
 	return true
+}
+
+var decodedBufPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
 }
 
 func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func(http.ResponseWriter, *http.Request, *Metrics) bool {

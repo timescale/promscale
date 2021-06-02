@@ -5,11 +5,12 @@
 package cache
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
 	"sort"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -172,7 +173,8 @@ func generateKey(labels []prompb.Label) (key string, metricName string, error er
 	//   (<key-len>key <val-len> val)* (<key-len>key <val-len> val)?
 	// that is a series of the a sequence of key values pairs with each string
 	// prefixed with it's length as a little-endian uint16
-	builder := strings.Builder{}
+	builder := keyPool.Get().(*bytes.Buffer)
+	builder.Reset()
 	builder.Grow(expectedStrLen)
 
 	lengthBuf := make([]byte, 2)
@@ -200,7 +202,16 @@ func generateKey(labels []prompb.Label) (key string, metricName string, error er
 		builder.WriteString(val)
 	}
 
-	return builder.String(), metricName, nil
+	keyRes := builder.String()
+	keyPool.Put(builder)
+
+	return keyRes, metricName, nil
+}
+
+var keyPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
 }
 
 // GetSeriesFromLabels converts a labels.Labels to a canonical Labels object
