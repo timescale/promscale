@@ -183,7 +183,8 @@ func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFo
 	defer self.elementsLock.RUnlock()
 
 	for idx < n {
-		value, found := self.get(keys[idx])
+		elem, present := self.elements[keys[idx]]
+		value, found := self.get(elem, present)
 		if !found {
 			if n == 0 {
 				return 0
@@ -202,12 +203,22 @@ func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFo
 func (self *Cache) Get(key interface{}) (interface{}, bool) {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
-	return self.get(key)
+	elem, present := self.elements[key]
+	return self.get(elem, present)
 }
 
-func (self *Cache) get(key interface{}) (interface{}, bool) {
+func (self *Cache) GetByByteSlice(key []byte) (interface{}, bool) {
+	//this is purely an optimization for string-keyed caches
+	//allows use to re-use byte slices without creating copied-strings
+	self.elementsLock.RLock()
+	defer self.elementsLock.RUnlock()
+	//notice we stringify the key here. This takes advantage of
+	//https://github.com/golang/go/issues/3512 optimization
+	elem, present := self.elements[string(key)]
+	return self.get(elem, present)
+}
 
-	elem, present := self.elements[key]
+func (self *Cache) get(elem *element, present bool) (interface{}, bool) {
 	if !present {
 		return 0, false
 	}
