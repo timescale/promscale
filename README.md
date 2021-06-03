@@ -62,7 +62,7 @@ remote storage endpoints. For more information about prom-migrator, visit
 * **[Alerting & Recording Rules](docs/alerting-recording.md)**
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
 * **[Quick Tips](#-quick-tips)**
-* **[High Availability](docs/high-avaliability/prometheus-HA.md)**
+* **[High Availability](docs/high-availability/prometheus-HA.md)**
 * **[Multi-Node TimescaleDB](docs/multinode.md)**
 * **[FAQ](docs/faq.md)**
 * **[Contributing](#%EF%B8%8F-contributing)**
