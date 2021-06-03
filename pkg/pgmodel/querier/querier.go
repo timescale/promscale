@@ -77,7 +77,10 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 		return errorSeriesSet{err: err}, nil
 	}
 
-	ss := buildSeriesSet(rows, q.labelsReader)
+	ss, err := buildSeriesSet(rows, q.labelsReader)
+	if err != nil {
+		return errorSeriesSet{err: err}, nil
+	}
 	return ss, topNode
 }
 
@@ -353,5 +356,5 @@ func (e errorSeriesSet) Err() error                 { return e.err }
 func (e errorSeriesSet) Warnings() storage.Warnings { return nil }
 
 type labelQuerier interface {
-	LabelsForIds(ids []int64) (lls labels.Labels, err error)
+	LabelsForIdMap(idMap map[int64]*labels.Label) (err error)
 }

@@ -254,6 +254,20 @@ func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, 
 
 func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
+	labelIDMap := make(map[int64]*labels.Label)
+	for i := range rows {
+		for _, id := range rows[i].labelIds {
+			if id == 0 {
+				continue
+			}
+			labelIDMap[id] = nil
+		}
+	}
+
+	err := lr.LabelsForIdMap(labelIDMap)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, row := range rows {
 		if row.err != nil {
@@ -264,9 +278,20 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 			return nil, errors.ErrQueryMismatchTimestampValue
 		}
 
-		promLabels, err := lr.PrompbLabelsForIds(row.labelIds)
-		if err != nil {
-			return nil, err
+		promLabels := make([]prompb.Label, 0, len(row.labelIds))
+		for _, id := range row.labelIds {
+			if id == 0 {
+				continue
+			}
+			label, ok := labelIDMap[id]
+			if !ok {
+				return nil, fmt.Errorf("Missing label for id %v", id)
+			}
+			if label == nil {
+				return nil, fmt.Errorf("Missing label for id %v", id)
+			}
+			promLabels = append(promLabels, prompb.Label{Name: label.Name, Value: label.Value})
+
 		}
 
 		sort.Slice(promLabels, func(i, j int) bool {

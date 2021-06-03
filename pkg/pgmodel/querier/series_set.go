@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -25,21 +24,38 @@ const (
 
 // pgxSeriesSet implements storage.SeriesSet.
 type pgxSeriesSet struct {
-	rowIdx  int
-	rows    []timescaleRow
-	err     error
-	querier labelQuerier
+	rowIdx     int
+	rows       []timescaleRow
+	labelIDMap map[int64]*labels.Label
+	err        error
+	querier    labelQuerier
 }
 
 // pgxSeriesSet must implement storage.SeriesSet
 var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
-func buildSeriesSet(rows []timescaleRow, querier labelQuerier) storage.SeriesSet {
-	return &pgxSeriesSet{
-		rows:    rows,
-		querier: querier,
-		rowIdx:  -1,
+func buildSeriesSet(rows []timescaleRow, querier labelQuerier) (storage.SeriesSet, error) {
+	labelIDMap := make(map[int64]*labels.Label)
+	for i := range rows {
+		for _, id := range rows[i].labelIds {
+			if id == 0 {
+				continue
+			}
+			labelIDMap[id] = nil
+		}
 	}
+
+	err := querier.LabelsForIdMap(labelIDMap)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgxSeriesSet{
+		rows:       rows,
+		querier:    querier,
+		rowIdx:     -1,
+		labelIDMap: labelIDMap,
+	}, err
 }
 
 // Next forwards the internal cursor to next storage.Series
@@ -81,10 +97,21 @@ func (p *pgxSeriesSet) At() storage.Series {
 	// this should pretty much always be non-empty due to __name__, but it
 	// costs little to check here
 	if len(row.labelIds) != 0 {
-		lls, err := p.querier.LabelsForIds(row.labelIds)
-		if err != nil {
-			log.Error("err", err)
-			return nil
+		var lls labels.Labels
+		lls = make([]labels.Label, 0, len(row.labelIds))
+		for _, id := range row.labelIds {
+			if id != 0 {
+				label, ok := p.labelIDMap[id]
+				if !ok {
+					p.err = fmt.Errorf("Missing label for id %v", id)
+					return nil
+				}
+				if label == nil {
+					p.err = fmt.Errorf("Missing label for id %v", id)
+					return nil
+				}
+				lls = append(lls, *label)
+			}
 		}
 		sort.Sort(lls)
 		ps.labels = lls
