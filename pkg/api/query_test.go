@@ -67,20 +67,16 @@ type mockLabelsReader struct {
 	labelNamesErr error
 }
 
-func (m mockLabelsReader) PrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error) {
-	return nil, nil
-}
-
-func (m mockLabelsReader) LabelsForIds(ids []int64) (lls labels.Labels, err error) {
-	return nil, nil
-}
-
 func (m mockLabelsReader) LabelNames() ([]string, error) {
 	return m.labelNames, m.labelNamesErr
 }
 
 func (m mockLabelsReader) LabelValues(string) ([]string, error) {
 	return nil, nil
+}
+
+func (m mockLabelsReader) LabelsForIdMap(idMap map[int64]labels.Label) (err error) {
+	return nil
 }
 
 func TestParseDuration(t *testing.T) {

@@ -16,7 +16,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
@@ -31,11 +30,8 @@ type LabelsReader interface {
 	LabelNames() ([]string, error)
 	// LabelValues returns all the distinct values for a given label name.
 	LabelValues(labelName string) ([]string, error)
-	// PrompbLabelsForIds returns protobuf representation of the label names
-	// and values for supplied IDs.
-	PrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error)
-	// LabelsForIds returns label names and values for the supplied IDs.
-	LabelsForIds(ids []int64) (lls labels.Labels, err error)
+	//  LabelsForIdMap fills in the label.Label values in a map of label id => labels.Label.
+	LabelsForIdMap(idMap map[int64]labels.Label) (err error)
 }
 
 func NewLabelsReader(conn pgxconn.PgxConn, labels cache.LabelsCache) LabelsReader {
@@ -97,44 +93,49 @@ func (lr *labelsReader) LabelNames() ([]string, error) {
 	return labelNames, nil
 }
 
-// PrompbLabelsForIds returns protobuf representation of the label sets for
-// the provided label ids
-func (lr *labelsReader) PrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error) {
-	ll, err := lr.LabelsForIds(ids)
-	if err != nil {
-		return
-	}
-	lls = make([]prompb.Label, len(ll))
-	for i := range ll {
-		lls[i] = prompb.Label{Name: ll[i].Name, Value: ll[i].Value}
-	}
-	return
-}
+// LabelsForIdMap fills in the label.Label values in a map of label id => labels.Label.
+func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
+	numIds := len(idMap)
+	ids := make([]interface{}, numIds) //type int64
+	lbs := make([]interface{}, numIds) //type labels.Label
 
-// LabelsForIds returns label names and values for the supplied IDs.
-func (lr *labelsReader) LabelsForIds(ids []int64) (lls labels.Labels, err error) {
-	keys := make([]interface{}, len(ids))
-	values := make([]interface{}, len(ids))
-	for i := range ids {
-		keys[i] = ids[i]
+	//id=0 reserved for "no label for key" so this lookup would always fail. Should
+	//never have been passed in with the idMap to begin with.
+	_, present := idMap[0]
+	if present {
+		return fmt.Errorf("looking up a label for id 0")
 	}
-	numHits := lr.labels.GetValues(keys, values)
 
-	if numHits < len(ids) {
-		var numFetches int
-		numFetches, err = lr.fetchMissingLabels(keys[numHits:], ids[numHits:], values[numHits:])
+	i := 0
+	for id := range idMap {
+		ids[i] = id
+		i++
+	}
+	numHits := lr.labels.GetValues(ids, lbs)
+
+	if numHits < numIds {
+		var (
+			numFetches int
+			err        error
+		)
+
+		missingIds := make([]int64, numIds-numHits)
+		numFetches, err = lr.fetchMissingLabels(ids[numHits:], missingIds, lbs[numHits:])
 		if err != nil {
-			return
+			return err
 		}
-		values = values[:numHits+numFetches]
+		if numFetches+numHits != numIds {
+			return fmt.Errorf("missing labels: total %v, fetches %v hits %v", numIds, numFetches, numHits)
+		}
 	}
 
-	lls = make([]labels.Label, 0, len(values))
-	for i := range values {
-		lls = append(lls, values[i].(labels.Label))
+	for i := range ids {
+		label := lbs[i].(labels.Label)
+		id := ids[i].(int64)
+		idMap[id] = label
 	}
 
-	return
+	return nil
 }
 
 // fetchMissingLabels imports the missing label IDs from the database into the

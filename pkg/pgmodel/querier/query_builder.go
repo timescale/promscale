@@ -277,8 +277,27 @@ func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, 
 	return c.clauses, c.args, nil
 }
 
+func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []timescaleRow) {
+	for i := range rows {
+		for _, id := range rows[i].labelIds {
+			//id==0 means there is no label for the key, so nothing to look up
+			if id == 0 {
+				continue
+			}
+			labelIDMap[id] = labels.Label{}
+		}
+	}
+}
+
 func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
+	labelIDMap := make(map[int64]labels.Label)
+	initializeLabeIDMap(labelIDMap, rows)
+
+	err := lr.LabelsForIdMap(labelIDMap)
+	if err != nil {
+		return nil, fmt.Errorf("fetching labels to build timeseries: %w", err)
+	}
 
 	for _, row := range rows {
 		if row.err != nil {
@@ -289,9 +308,20 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 			return nil, errors.ErrQueryMismatchTimestampValue
 		}
 
-		promLabels, err := lr.PrompbLabelsForIds(row.labelIds)
-		if err != nil {
-			return nil, err
+		promLabels := make([]prompb.Label, 0, len(row.labelIds))
+		for _, id := range row.labelIds {
+			if id == 0 {
+				continue
+			}
+			label, ok := labelIDMap[id]
+			if !ok {
+				return nil, fmt.Errorf("missing label for id %v", id)
+			}
+			if label == (labels.Label{}) {
+				return nil, fmt.Errorf("label not found for id %v", id)
+			}
+			promLabels = append(promLabels, prompb.Label{Name: label.Name, Value: label.Value})
+
 		}
 
 		sort.Slice(promLabels, func(i, j int) bool {
