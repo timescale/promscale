@@ -254,8 +254,8 @@ var MigrationFiles = func() http.FileSystem {
 
 			compressedContent: []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff\x72\x09\xf2\x0f\x50\x70\x0b\xf5\x73\x0e\xf1\xf4\xf7\x53\xf0\x74\x53\x70\x8d\xf0\x0c\x0e\x09\x56\x88\x2f\x28\xca\xcf\x8d\x4f\x4e\x2c\x49\xcc\xc9\x4f\xd7\x4b\x4f\x2d\x89\xcf\x4b\x2d\x8f\x2f\xc8\x2f\x8e\x4f\xcb\x2f\x8a\xcf\x4e\xad\xd4\x28\x49\xad\x28\xd1\x51\x00\x91\x9a\xd6\x5c\xc4\x1b\x93\x5f\x14\x9f\x5c\x94\x9a\x58\x92\x1a\x9f\x93\x98\x94\x9a\x13\x9f\x99\x52\x8c\x64\x54\x74\x2c\x8c\xd6\xb4\x06\x04\x00\x00\xff\xff\x21\x14\x88\x08\x9b\x00\x00\x00"),
 		},
-		"/versions/dev/0.4.2-dev/1-metric_metadata.sql": &vfsgen۰CompressedFileInfo{
-			name:             "1-metric_metadata.sql",
+		"/versions/dev/0.4.2-dev/2-metric_metadata.sql": &vfsgen۰CompressedFileInfo{
+			name:             "2-metric_metadata.sql",
 			modTime:          time.Time{},
 			uncompressedSize: 511,
 
@@ -329,7 +329,7 @@ var MigrationFiles = func() http.FileSystem {
 	}
 	fs["/versions/dev/0.4.2-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.4.2-dev/1-drop_some_func.sql"].(os.FileInfo),
-		fs["/versions/dev/0.4.2-dev/1-metric_metadata.sql"].(os.FileInfo),
+		fs["/versions/dev/0.4.2-dev/2-metric_metadata.sql"].(os.FileInfo),
 	}
 
 	return fs

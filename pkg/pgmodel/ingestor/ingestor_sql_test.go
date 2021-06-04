@@ -503,7 +503,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 				{
@@ -539,7 +539,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -579,7 +579,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     fmt.Errorf("create table error"),
 				},
 			},
@@ -597,7 +597,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -658,7 +658,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -742,6 +742,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
+				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{
