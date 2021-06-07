@@ -69,7 +69,7 @@ func NewTestStorage(t testutil.T) *TestStorage {
 	opts := tsdb.DefaultOptions()
 	opts.MinBlockDuration = int64(24 * time.Hour / time.Millisecond)
 	opts.MaxBlockDuration = int64(24 * time.Hour / time.Millisecond)
-	db, err := tsdb.Open(dir, nil, nil, opts)
+	db, err := tsdb.Open(dir, nil, nil, opts, nil)
 	if err != nil {
 		t.Fatalf("Opening test storage failed: %s", err)
 	}
@@ -341,16 +341,18 @@ func (*evalCmd) testCmd()  {}
 // loadCmd is a command that loads sequences of sample values for specific
 // metrics into the storage.
 type loadCmd struct {
-	gap     time.Duration
-	metrics map[uint64]labels.Labels
-	defs    map[uint64][]Point
+	gap       time.Duration
+	metrics   map[uint64]labels.Labels
+	defs      map[uint64][]Point
+	exemplars map[uint64][]exemplar.Exemplar
 }
 
 func newLoadCmd(gap time.Duration) *loadCmd {
 	return &loadCmd{
-		gap:     gap,
-		metrics: map[uint64]labels.Labels{},
-		defs:    map[uint64][]Point{},
+		gap:       gap,
+		metrics:   map[uint64]labels.Labels{},
+		defs:      map[uint64][]Point{},
+		exemplars: map[uint64][]exemplar.Exemplar{},
 	}
 }
 

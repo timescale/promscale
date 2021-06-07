@@ -1013,7 +1013,7 @@ func generatePrometheusWALFile() (string, error) {
 	st, err := tsdb.Open(dbPath, nil, nil, &tsdb.Options{
 		RetentionDuration: 15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
 		NoLockfile:        true,
-	})
+	}, nil)
 	if err != nil {
 		return "", err
 	}
