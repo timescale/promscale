@@ -436,7 +436,7 @@ func TestParseFlags(t *testing.T) {
 				readerAuth:         utils.Auth{Password: "password", BearerToken: "token"},
 			},
 			failsValidation: true,
-			errMessage:      `reader auth validation: at most one of basic_auth, bearer_token & bearer_token_file must be configured`,
+			errMessage:      `reader auth validation: at most one of basic_auth, oauth2, bearer_token & bearer_token_file must be configured`,
 		},
 	}
 
