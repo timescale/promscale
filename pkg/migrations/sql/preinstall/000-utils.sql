@@ -12,7 +12,6 @@
 GRANT ALL ON TABLE SCHEMA_CATALOG.remote_commands to CURRENT_USER;
 GRANT ALL ON SEQUENCE SCHEMA_CATALOG.remote_commands_seq_seq to CURRENT_USER;
 
-
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN

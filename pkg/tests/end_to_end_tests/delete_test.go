@@ -149,6 +149,9 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("skipping delete tests with compression: compression tests cannot run if timescaledb is not installed.")
 	}
+	if *useTimescaleOSS {
+		t.Skip("compression not available in TimescaleDB-OSS")
+	}
 	matchers := []deleteStr{
 		// Normal matchers.
 		{

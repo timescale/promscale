@@ -133,6 +133,15 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		}
 	}
 
+	isLicenseOSS, err := isTimescaleDBOSS(conn)
+	if err != nil {
+		return nil, fmt.Errorf("fetching license information: %w", err)
+	}
+	if isLicenseOSS {
+		log.Warn("msg", "WARNING: Using the Apache2 version of TimescaleDB. This version does not include "+
+			"compression and thus performance and disk usage will be significantly negatively effected.")
+	}
+
 	// Election must be done after migration and version-checking: if we're on
 	// the wrong version we should not participate in leader-election.
 	elector, err = initElector(cfg, promMetrics)
@@ -175,6 +184,26 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	}
 
 	return client, nil
+}
+
+func isTimescaleDBOSS(conn *pgx.Conn) (bool, error) {
+	var (
+		isTimescaleDB bool
+		isLicenseOSS  bool
+	)
+	err := conn.QueryRow(context.Background(), "SELECT "+schema.Catalog+".is_timescaledb_installed()").Scan(&isTimescaleDB)
+	if err != nil {
+		return false, fmt.Errorf("error fetching whether TimescaleDB is installed: %w", err)
+	}
+	if !isTimescaleDB {
+		// Return false so that we don't warn for OSS TimescaleDB.
+		return false, nil
+	}
+	err = conn.QueryRow(context.Background(), "SELECT "+schema.Catalog+".is_timescaledb_oss()").Scan(&isLicenseOSS)
+	if err != nil {
+		return false, fmt.Errorf("error fetching TimescaleDB license: %w", err)
+	}
+	return isLicenseOSS, nil
 }
 
 // isBGWLessThanDBs checks if the background workers count is less than the database count. It should be
