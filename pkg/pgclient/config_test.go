@@ -58,7 +58,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "",
 			},
-			want:    fmt.Sprintf("application_name=%s host=localhost port=5433 user=postgres dbname=timescale1 password='Timescale123' sslmode=require connect_timeout=120", DefaultApp),
+			want:    fmt.Sprintf("postgresql://postgres:Timescale123@localhost:5433/timescale1?application_name=%s&sslmode=require&connect_timeout=120", DefaultApp),
 			wantErr: false,
 			err:     nil,
 		},
@@ -132,7 +132,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  false,
 				DbUri:                   "",
 			},
-			want:    fmt.Sprintf("application_name=%s host=localhost port=5432 user=postgres dbname=timescale password='' sslmode=require connect_timeout=3600", DefaultApp),
+			want:    fmt.Sprintf("postgresql://postgres:@localhost:5432/timescale?application_name=%s&sslmode=require&connect_timeout=3600", DefaultApp),
 			wantErr: false,
 			err:     nil,
 		},
@@ -162,6 +162,32 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 			wantErr: false,
 			err:     nil,
 		},
+		{
+			name: "Testcase with db-uri that has no question mark in it",
+			fields: fields{
+				App:                     DefaultApp,
+				Host:                    "localhost",
+				Port:                    5432,
+				User:                    "postgres",
+				Password:                "",
+				Database:                "timescale",
+				SslMode:                 "require",
+				DbConnectRetries:        0,
+				DbConnectionTimeout:     defaultConnectionTime,
+				AsyncAcks:               false,
+				ReportInterval:          0,
+				LabelsCacheSize:         0,
+				MetricsCacheSize:        0,
+				SeriesCacheSize:         0,
+				WriteConnectionsPerProc: 1,
+				MaxConnections:          0,
+				UsesHA:                  false,
+				DbUri:                   "postgres://postgres:password@localhost:5432/postgres",
+			},
+			want:    "postgres://postgres:password@localhost:5432/postgres",
+			wantErr: false,
+			err:     nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -187,13 +213,17 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				UsesHA:                  tt.fields.UsesHA,
 				DbUri:                   tt.fields.DbUri,
 			}
-			got, err := cfg.GetConnectionStr()
+			err := cfg.validateConnectionSettings()
 			if (err != nil) != tt.wantErr || err != tt.err {
-				t.Errorf("GetConnectionStr() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("validateConnectionSettings() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
 				return
 			}
+			got := cfg.GetConnectionStr()
 			if got != tt.want {
-				t.Errorf("GetConnectionStr() got = %v, want %v", got, tt.want)
+				t.Errorf("GetConnectionStr() \ngot  %v \nwant %v", got, tt.want)
 			}
 		})
 	}

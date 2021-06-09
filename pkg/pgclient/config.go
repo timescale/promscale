@@ -89,24 +89,50 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 }
 
 func Validate(cfg *Config, lcfg limits.Config) error {
+	if err := cfg.validateConnectionSettings(); err != nil {
+		return err
+	}
 	return cache.Validate(&cfg.CacheConfig, lcfg)
 }
 
-// GetConnectionStr returns a Postgres connection string
-func (cfg *Config) GetConnectionStr() (string, error) {
-	// if DBURI is default build the connStr with DB flags
-	// else as DBURI isn't default check if db flags are default if we notice DBURI + DB flags not default give an error
-	// Now as DBURI isn't default and DB flags are default build a connStr for DBURI.
+// validateConnectionSettings checks that we are not using both a DB URI and
+// DB configuration flags
+func (cfg Config) validateConnectionSettings() error {
+	// If we are using DB URI, nothing to check.
 	if cfg.DbUri == defaultDBUri {
-		return fmt.Sprintf("application_name=%s host=%v port=%v user=%v dbname=%v password='%v' sslmode=%v connect_timeout=%d",
-			cfg.AppName, cfg.Host, cfg.Port, cfg.User, cfg.Database, cfg.Password, cfg.SslMode, int(cfg.DbConnectionTimeout.Seconds())), nil
-	} else if cfg.AppName != DefaultApp || cfg.Database != defaultDBName || cfg.Host != defaultDBHost || cfg.Port != defaultDBPort ||
-		cfg.User != defaultDBUser || cfg.Password != defaultDBPassword || cfg.SslMode != defaultSSLMode ||
-		cfg.DbConnectionTimeout != defaultConnectionTime {
-		return "", excessDBFlagsError
+		return nil
 	}
 
-	return cfg.DbUri, nil
+	// If using DB URI, check if any DB flags are supplied.
+	if cfg.AppName != DefaultApp ||
+		cfg.Database != defaultDBName ||
+		cfg.Host != defaultDBHost ||
+		cfg.Port != defaultDBPort ||
+		cfg.User != defaultDBUser ||
+		cfg.Password != defaultDBPassword ||
+		cfg.SslMode != defaultSSLMode ||
+		cfg.DbConnectionTimeout != defaultConnectionTime {
+		return excessDBFlagsError
+	}
+
+	return nil
+}
+
+// GetConnectionStr returns a Postgres connection string
+func (cfg *Config) GetConnectionStr() string {
+	// If DB URI is not supplied, generate one from DB flags.
+	if cfg.DbUri == defaultDBUri {
+		return fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?application_name=%s&sslmode=%v&connect_timeout=%d",
+			cfg.User,
+			cfg.Password,
+			cfg.Host,
+			cfg.Port,
+			cfg.Database,
+			cfg.AppName,
+			cfg.SslMode,
+			int(cfg.DbConnectionTimeout.Seconds()))
+	}
+	return cfg.DbUri
 }
 
 func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err error) {
@@ -117,10 +143,7 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 	perProc := cfg.WriteConnectionsPerProc
 	max = cfg.MaxConnections
 	if max < 1 {
-		connStr, err := cfg.GetConnectionStr()
-		if err != nil {
-			return 0, 0, 0, err
-		}
+		connStr := cfg.GetConnectionStr()
 		conn, err := pgx.Connect(context.Background(), connStr)
 		if err != nil {
 			return 0, 0, 0, err

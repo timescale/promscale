@@ -63,47 +63,6 @@ func TestThroughputCalc(t *testing.T) {
 	}
 }
 
-func TestMaskPassword(t *testing.T) {
-	testData := map[string]string{
-		"password='foobar' host='localhost'":                                                   "password='****' host='localhost'",
-		"password='foobar&' host='localhost'":                                                  "password='****' host='localhost'",
-		"password='foo bar' host='localhost'":                                                  "password='****' host='localhost'",
-		"Password='foo bar' host='localhost'":                                                  "password='****' host='localhost'",
-		"password='foo'bar' host='localhost'":                                                  "password='****'bar' host='localhost'",
-		"password= 'foobar' host='localhost'":                                                  "password= '****' host='localhost'",
-		"password=  'foobar' host='localhost'":                                                 "password=  '****' host='localhost'",
-		"pass='foobar' host='localhost'":                                                       "pass='foobar' host='localhost'",
-		"host='localhost' password='foobar'":                                                   "host='localhost' password='****'",
-		"password:foobar  host: localhost":                                                     "password:****  host: localhost",
-		"password:foo bar  host: localhost":                                                    "password:****  host: localhost",
-		"password: foobar  host: localhost":                                                    "password: ****  host: localhost",
-		"password:  foobar  host: localhost":                                                   "password:  ****  host: localhost",
-		"password:  foobar&  host: localhost":                                                  "password:  ****  host: localhost",
-		"password:  foobar with spaces host: localhost":                                        "password:  **** host: localhost",
-		"password: foobar with spaces host: localhost":                                         "password: **** host: localhost",
-		"password:foobar with spaces host: localhost":                                          "password:**** host: localhost",
-		"password:\"foo bar\" host: localhost":                                                 "password:**** host: localhost",
-		"Password: \"foo bar\" host: localhost":                                                "password: **** host: localhost",
-		"pass:foobar host: localhost":                                                          "pass:foobar host: localhost",
-		"host: localhost password: foobar":                                                     "host: localhost password: ****",
-		"host: localhost Password: foobar":                                                     "host: localhost password: ****",
-		"postgres://localhost:5432/postgres?sslmode=allow&password=testpassword":               "postgres://localhost:5432/postgres?sslmode=allow&password=****",
-		"postgres://localhost:5432/postgres?sslmode=allow&password=testpassword&":              "postgres://localhost:5432/postgres?sslmode=allow&password=****",
-		"postgres://localhost:5432/postgres?password=testpassword&sslmode=allow":               "postgres://localhost:5432/postgres?password=****&sslmode=allow",
-		"postgres://localhost:5432/postgres?sslmode=allow&password=testpassword&user=postgres": "postgres://localhost:5432/postgres?sslmode=allow&password=****&user=postgres",
-		"postgres://postgres:password@localhost:5432/postgres?sslmode=allow":                   "postgres://postgres:****@localhost:5432/postgres?sslmode=allow",
-		"postgresql://admin:ohnomypassword@some.domain.name:5432/postgres?sslmode=allow":       "postgresql://admin:****@some.domain.name:5432/postgres?sslmode=allow",
-		"&{ListenAddr::9201 PgmodelCfg:{Host:localhost Port:5432 User:postgres password: password SslMode:require DbConnectRetries:0 AsyncAcks:false ReportInterval:0 LabelsCacheSize:10000 MetricsCacheSize:10000 SeriesCacheSize:0 WriteConnectionsPerProc:4 MaxConnections:-1 UsesHA:false DbUri:postgres://postgres:password@localhost:5432/postgres?sslmode=allow} LogCfg:{Level:debug Format:logfmt} APICfg:{AllowedOrigin:^(?:.*)$ ReadOnly:false AdminAPIEnabled:false TelemetryPath:/metrics Auth:0xc0000a6690} TLSCertFile: TLSKeyFile: HaGroupLockID:0 PrometheusTimeout:-1ns ElectionInterval:5s Migrate:true StopAfterMigrate:false UseVersionLease:true InstallTimescaleDB:true}": "&{ListenAddr::9201 PgmodelCfg:{Host:localhost Port:5432 User:postgres password: **** SslMode:require DbConnectRetries:0 AsyncAcks:false ReportInterval:0 LabelsCacheSize:10000 MetricsCacheSize:10000 SeriesCacheSize:0 WriteConnectionsPerProc:4 MaxConnections:-1 UsesHA:false DbUri:postgres://postgres:****@localhost:5432/postgres?sslmode=allow} LogCfg:{Level:debug Format:logfmt} APICfg:{AllowedOrigin:^(?:.*)$ ReadOnly:false AdminAPIEnabled:false TelemetryPath:/metrics Auth:0xc0000a6690} TLSCertFile: TLSKeyFile: HaGroupLockID:0 PrometheusTimeout:-1ns ElectionInterval:5s Migrate:true StopAfterMigrate:false UseVersionLease:true InstallTimescaleDB:true}",
-		"&{ListenAddr::9201 PgmodelCfg:{Host:localhost Port:5432 User:postgres password: pass SslMode:require DbConnectRetries:0 AsyncAcks:false ReportInterval:0 LabelsCacheSize:10000 MetricsCacheSize:10000 SeriesCacheSize:0 WriteConnectionsPerProc:4 MaxConnections:-1 UsesHA:false DbUri:} LogCfg:{Level:debug Format:logfmt} APICfg:{AllowedOrigin:^(?:.*)$ ReadOnly:false AdminAPIEnabled:false TelemetryPath:/metrics Auth:0xc0000a6690} TLSCertFile: TLSKeyFile: HaGroupLockID:0 PrometheusTimeout:-1ns ElectionInterval:5s Migrate:true StopAfterMigrate:false UseVersionLease:true InstallTimescaleDB:true}":                                                                       "&{ListenAddr::9201 PgmodelCfg:{Host:localhost Port:5432 User:postgres password: **** SslMode:require DbConnectRetries:0 AsyncAcks:false ReportInterval:0 LabelsCacheSize:10000 MetricsCacheSize:10000 SeriesCacheSize:0 WriteConnectionsPerProc:4 MaxConnections:-1 UsesHA:false DbUri:} LogCfg:{Level:debug Format:logfmt} APICfg:{AllowedOrigin:^(?:.*)$ ReadOnly:false AdminAPIEnabled:false TelemetryPath:/metrics Auth:0xc0000a6690} TLSCertFile: TLSKeyFile: HaGroupLockID:0 PrometheusTimeout:-1ns ElectionInterval:5s Migrate:true StopAfterMigrate:false UseVersionLease:true InstallTimescaleDB:true}",
-	}
-
-	for input, expected := range testData {
-		if output := MaskPassword(input); expected != output {
-			t.Errorf("Unexpected masking output for case \"%s\":\ngot    %s\nwanted %s\n", input, output, expected)
-		}
-	}
-}
-
 type flagValues struct {
 	First  string
 	Second string

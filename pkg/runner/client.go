@@ -35,10 +35,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// that upgrading TimescaleDB will not break existing connectors.
 	// (upgrading the DB will force-close all existing connections, so we may
 	// add a reconnect check that the DB has an appropriate version)
-	connStr, err := cfg.PgmodelCfg.GetConnectionStr()
-	if err != nil {
-		return nil, err
-	}
+	connStr := cfg.PgmodelCfg.GetConnectionStr()
 	extOptions := extension.ExtensionMigrateOptions{
 		Install:           cfg.InstallExtensions,
 		Upgrade:           cfg.UpgradeExtensions,
@@ -213,10 +210,7 @@ func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
 		return nil, fmt.Errorf("Prometheus timeout configuration must be set when using PG advisory lock")
 	}
 
-	connStr, err := cfg.PgmodelCfg.GetConnectionStr()
-	if err != nil {
-		return nil, err
-	}
+	connStr := cfg.PgmodelCfg.GetConnectionStr()
 	lock, err := util.NewPgLeaderLock(cfg.HaGroupLockID, connStr, getSchemaLease)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.HaGroupLockID, err)

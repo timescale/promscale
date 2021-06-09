@@ -27,7 +27,11 @@ var (
 
 func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Promscale+"; Commit Hash: "+version.CommitHash)
-	log.Info("config", util.MaskPassword(fmt.Sprintf("%+v", cfg)))
+
+	redacted := *cfg
+	redacted.PgmodelCfg.Password = "****"
+	redacted.PgmodelCfg.DbUri = "****"
+	log.Info("config", fmt.Sprintf("%+v", redacted))
 
 	if cfg.APICfg.ReadOnly {
 		log.Info("msg", "Migrations disabled for read-only mode")
@@ -37,7 +41,7 @@ func Run(cfg *Config) error {
 
 	client, err := CreateClient(cfg, promMetrics)
 	if err != nil {
-		log.Error("msg", "aborting startup due to error", "err", util.MaskPassword(err.Error()))
+		log.Error("msg", "aborting startup due to error", "err", err.Error())
 		return startupError
 	}
 
