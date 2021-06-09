@@ -56,8 +56,11 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Data Model](docs/sql_schema.md#data-model-schema)
   * [Filtering Series](docs/sql_schema.md#filtering-series)
   * [Data Retention](docs/sql_schema.md#data-retention)
-  * [Roles and Permissions](docs/sql_permissions.md)
+  * [Roles and Permissions](docs/sql_permissions.sql)
 * **[Tutorial: Getting Started with Promscale](https://docs.timescale.com/timescaledb/latest/tutorials/promscale/)** 
+* **[High Availability](docs/high-availability/prometheus-HA.md)**
+* **[Multi-tenancy](docs/multi_tenancy.md)**
+* **[Multi-Node TimescaleDB](docs/multinode.md)**
 * **[Writing Data to Promscale](docs/writing_to_promscale.md)**
 * **[Alerting & Recording Rules](docs/alerting-recording.md)**
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
@@ -106,11 +109,15 @@ Click the video below for an overview of Promscale:
   SQL for deeper analytics and compatibility with a huge ecosystem of data visualization, analysis, and AI/ML tools.
 * **Rock-solid stability** due to being built on top of PostgreSQL, with 30+ years of development work.
 * **Support for backfilling** to ingest data from the past.
+* **Native support for Multi-Tenancy**. Ingest data from multiple tenants and write queries across [more than one tenant](docs/multi_tenancy.md)
+  easily, using PromQL or SQL.
 * **High-Availability** support for [Prometheus HA deployments](docs/high-availability/prometheus-HA.md) as well as
   high-availability deployments of [TimescaleDB itself](https://blog.timescale.com/blog/high-availability-timescaledb-postgresql-patroni-a4572264a831/).
 * **Simple architecture**. Unlike some other long-term stores, our architecture consists of only three components: Prometheus, Promscale, and TimescaleDB.
 * **ACID compliance** to ensure consistency of your data.
 * **Horizontal scalability** using [multinode support](https://blog.timescale.com/blog/timescaledb-2-0-a-multi-node-petabyte-scale-completely-free-relational-database-for-time-series/) with TimescaleDB version 2.0.
+* **Operationally mature**. Built on top of Postgres, data written via Promscale is safe, reliable and offers
+  all of the advantages of an operationally mature platform.
 
 ## 🔧 Choose your own (installation) adventure
 
