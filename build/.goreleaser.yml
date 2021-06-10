@@ -4,22 +4,16 @@
 # 2) goreleaser          //--skip-publish for dry-run
 before:
   hooks:
-    # lock file that makes sure rpm is built only once
-    - rm -f .buildrpmstarted
     - go mod download
     #make sure generate up to date
     - go generate ./...
+
 
 builds:
 - env:
   - CGO_ENABLED=0
   main: ./cmd/promscale/
   id: promscale
-  hooks:
-    # build el8 rpm
-    # will be triggered multiple times but we need
-    # {{ .Tag }} to ensure same version is used
-    post: bash ./build/rpm/build_rpm.sh {{ .Tag }}
 - env:
   - CGO_ENABLED=0
   main: ./cmd/prom-migrator/
@@ -32,6 +26,58 @@ scoop:
   commit_author:
     name: Timescale
     email: support@timescale.com
+
+nfpms:
+  - builds: 
+    - promscale
+    formats:
+      - rpm
+      - deb
+
+    file_name_template: "{{ .Binary }}_{{ .RawVersion }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+    replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      386: i386
+      amd64: x86_64
+
+    description: |
+      Promscale is a horizontally scalable and operationally mature analytical
+      platform for Prometheus data that offers the combined power of PromQL
+      and SQL, enabling developers to ask any question, create any dashboard,
+      and achieve greater visibility into their systems.  Promscale is built
+      on top of TimescaleDB, the relational database for time-series built on
+      top of PostgreSQL.
+
+    license: Apache License 2.0
+    maintainer: Timescale <info@timescale.com>
+    contents:
+      - src: build/systemd/promscale.service
+        dst: /etc/systemd/system/promscale.service
+      - src: build/conf/promscale.conf
+        dst: /etc/sysconfig/promscale.conf
+        type: "config|noreplace"
+        packager: rpm
+      - src: build/conf/promscale.conf
+        dst: /etc/promscale.conf
+        type: "config|noreplace"
+        packager: deb
+
+    rpm:
+      summary: An analytical platform and long-term store for Prometheus
+      group: Network Servers
+
+    overrides:
+      rpm:
+        dependencies:
+          - shadow-utils
+
+    scripts:
+      preinstall: "build/scripts/preinstall.sh"
+      postinstall: "build/scripts/postinstall.sh"
+      postremove: "build/scripts/postremove.sh"
+        
 
 archives:
 - format: binary
@@ -98,8 +144,7 @@ dockers:
   extra_files: [.git, go.sum, go.mod, pkg, cmd]
   image_templates:
   - "timescale/promscale:{{ .Tag }}-arm64"
--
-  ids: []
+- ids: []
   skip_push: false
   dockerfile: ./build/prom-migrator/Dockerfile
   extra_files:

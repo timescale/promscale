@@ -1,0 +1,21 @@
+[Unit]
+Description=TimescaleDB Promscale Service
+Documentation=https://github.com/timescale/promscale
+After=syslog.target
+After=network.target
+
+[Service]
+Type=simple
+User=promscale
+Group=promscale
+EnvironmentFile=__ENV_FILE__
+ExecStart=/usr/local/bin/promscale $OPTIONS
+Restart=on-failure
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGINT
+ProtectSystem=strict
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
