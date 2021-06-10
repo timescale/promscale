@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -93,7 +94,7 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (uint64, error) {
 	// samples) must no longer be reachable from req.
 	FinishWriteRequest(r)
 
-	rowsInserted, err := ingestor.dispatcher.InsertData(dataSamples)
+	rowsInserted, err := ingestor.dispatcher.InsertData(model.Data{Rows: dataSamples, ReceivedTime: time.Now()})
 	if err == nil && rowsInserted != totalRows {
 		return rowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, rowsInserted)
 	}

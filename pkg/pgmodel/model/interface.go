@@ -27,7 +27,7 @@ var (
 
 // Dispatcher is responsible for inserting label, series and data into the storage.
 type Dispatcher interface {
-	InsertData(rows map[string][]Samples) (uint64, error)
+	InsertData(rows Data) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
 }

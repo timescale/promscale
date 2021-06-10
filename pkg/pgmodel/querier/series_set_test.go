@@ -30,26 +30,31 @@ type mockPgxRows struct {
 	err          error
 }
 
+//nolint
 // Close closes the rows, making the connection ready for use again. It is safe
 // to call Close after rows is already closed.
 func (m *mockPgxRows) Close() {
 	m.closeCalled = true
 }
 
+//nolint
 // Err returns any error that occurred while reading.
 func (m *mockPgxRows) Err() error {
 	return nil
 }
 
+//nolint
 // CommandTag returns the command tag from this query. It is only available after Rows is closed.
 func (m *mockPgxRows) CommandTag() pgconn.CommandTag {
 	panic("not implemented")
 }
 
+//nolint
 func (m *mockPgxRows) FieldDescriptions() []pgproto3.FieldDescription {
 	panic("not implemented")
 }
 
+//nolint
 // Next prepares the next row for reading. It returns true if there is another
 // row and false if no more rows are available. It automatically closes rows
 // when all rows are read.
@@ -62,6 +67,7 @@ func (m *mockPgxRows) Next() bool {
 	return m.idx < len(m.results)
 }
 
+//nolint
 // Scan reads the values from the current row into dest values positionally.
 // dest can include pointers to core types, values implementing the Scanner
 // interface, []byte, and nil. []byte will skip the decoding process and directly
@@ -95,11 +101,13 @@ func (m *mockPgxRows) Scan(dest ...interface{}) error {
 	return nil
 }
 
+//nolint
 // Values returns the decoded row values.
 func (m *mockPgxRows) Values() ([]interface{}, error) {
 	panic("not implemented")
 }
 
+//nolint
 // RawValues returns the unparsed bytes of the row values. The returned [][]byte is only valid until the next Next
 // call or the Rows is closed. However, the underlying byte data is safe to retain a reference to and mutate.
 func (m *mockPgxRows) RawValues() [][]byte {
