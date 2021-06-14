@@ -75,6 +75,7 @@ func (p *pendingBuffer) release() {
 	}
 	p.needsResponse = p.needsResponse[:0]
 	p.batch.Reset()
+	p.batch.Release()
 	pendingBuffers.Put(p)
 }
 

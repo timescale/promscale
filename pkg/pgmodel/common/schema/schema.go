@@ -8,6 +8,7 @@ const (
 	Prom      = "prom_api"
 	Data      = "prom_data"
 	Info      = "prom_info"
+	Exemplar  = "prom_data_exemplar"
 	Ext       = "_prom_ext"
 	Catalog   = "_prom_catalog"
 	Timescale = "public"
