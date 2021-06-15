@@ -66,6 +66,14 @@ type result struct {
 	err     error
 }
 
+func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewInsertable(l, ts.Samples), len(ts.Samples), nil
+}
+
+func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewInsertable(l, ts.Exemplars), len(ts.Exemplars), nil
+}
+
 // Ingest transforms and ingests the timeseries data into Timescale database.
 // input:
 //     tts the []Timeseries to insert
@@ -146,36 +154,56 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 
 func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
 	var (
-		totalSamplesRows uint64
-		dataSamples      = make(map[string][]model.Samples)
+		totalRows uint64
+		dataSamples = make(map[string][]model.Insertable)
 	)
-	for i := range timeseries {
-		ts := &timeseries[i]
-		if len(ts.Samples) == 0 {
-			continue
-		}
-		// Normalize and canonicalize t.Labels.
-		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := ingestor.sCache.GetSeriesFromProtos(ts.Labels)
-		if err != nil {
-			return 0, err
-		}
-		if metricName == "" {
-			return 0, errors.ErrNoMetricName
-		}
-		sample := model.NewPromSample(seriesLabels, ts.Samples)
-		totalSamplesRows += uint64(len(ts.Samples))
 
-		dataSamples[metricName] = append(dataSamples[metricName], sample)
+	for i := range timeseries {
+		var (
+			err        error
+			series     *model.Series
+			metricName string
+			
+			ts         = &timeseries[i]
+		)
+		if len(ts.Labels) > 0 {
+			// Normalize and canonicalize t.Labels.
+			// After this point t.Labels should never be used again.
+			series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
+			if err != nil {
+				return 0, err
+			}
+			if metricName == "" {
+				return 0, errors.ErrNoMetricName
+			}
+		}
+
+		if len(ts.Samples) > 0 {
+			samples, count, err := ingestor.samples(series, ts)
+			if err != nil {
+				return 0, fmt.Errorf("samples: %w", err)
+			}
+			totalRows += uint64(count)
+			dataSamples[metricName] = append(dataSamples[metricName], samples)
+		}
+		if len(ts.Exemplars) > 0 {
+			exemplars, count, err := ingestor.exemplars(series, ts)
+			if err != nil {
+				return 0, fmt.Errorf("exemplars: %w", err)
+			}
+			totalRows += uint64(count)
+			dataSamples[metricName] = append(dataSamples[metricName], exemplars)
+		}
 		// we're going to free req after this, but we still need the samples,
 		// so nil the field
 		ts.Samples = nil
+		ts.Exemplars = nil
 	}
 	releaseMem()
 
 	samplesRowsInserted, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: dataSamples, ReceivedTime: time.Now()})
-	if errSamples == nil && samplesRowsInserted != totalSamplesRows {
-		return samplesRowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalSamplesRows, samplesRowsInserted)
+	if errSamples == nil && samplesRowsInserted != totalRows {
+		return samplesRowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, samplesRowsInserted)
 	}
 	return samplesRowsInserted, errSamples
 }

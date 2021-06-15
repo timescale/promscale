@@ -260,13 +260,13 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			sw := NewSeriesWriter(mock, 0)
 
-			lsi := make([]model.Samples, 0)
+			lsi := make([]model.Insertable, 0)
 			for _, ser := range c.series {
 				ls, err := scache.GetSeriesFromLabels(ser)
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
-				lsi = append(lsi, model.NewPromSample(ls, nil))
+				lsi = append(lsi, model.NewInsertable(ls, nil))
 			}
 
 			err := sw.WriteSeries(sVisitor(lsi))
@@ -418,14 +418,14 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		scache: scache,
 	}
 
-	makeSamples := func(series []labels.Labels) []model.Samples {
-		lsi := make([]model.Samples, 0)
+	makeSamples := func(series []labels.Labels) []model.Insertable {
+		lsi := make([]model.Insertable, 0)
 		for _, ser := range series {
 			ls, err := scache.GetSeriesFromLabels(ser)
 			if err != nil {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
-			lsi = append(lsi, model.NewPromSample(ls, nil))
+			lsi = append(lsi, model.NewInsertable(ls, nil))
 		}
 		return lsi
 	}

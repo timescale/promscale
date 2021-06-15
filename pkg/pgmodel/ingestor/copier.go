@@ -261,7 +261,9 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	for r := range reqs {
 		req := &reqs[r]
-		numRows := req.data.batch.CountSamples()
+		numSamples, numExemplars := req.data.batch.Count()
+		numRows := numSamples + numExemplars
+		// todo: stats for num samples ingested and num exemplars ingested if required.
 		NumRowsPerInsert.Observe(float64(numRows))
 
 		// flatten the various series into arrays.
@@ -276,22 +278,37 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		// INSERT using that overcomes most of the performance issues for sending
 		// multiple data, and brings INSERT nearly on par with CopyFrom. In the
 		// future we may wish to send compressed data instead.
-		times := make([]time.Time, 0, numRows)
-		vals := make([]float64, 0, numRows)
-		series := make([]int64, 0, numRows)
+		timeSamples := make([]time.Time, numSamples)
+		valSamples := make([]float64, numSamples)
+		seriesSamples := make([]int64, numSamples)
+
+		timeExemplars := make([]time.Time, numExemplars)
+		valExemplars := make([]float64, numExemplars)
+		seriesExemplars := make([]int64, numExemplars)
+
+		samplesIndex := 0
+		exemplarsIndex := 0
 		for req.data.batch.Next() {
-			timestamp, val, seriesID, seriesEpoch := req.data.batch.Values()
+			timestamp, val, seriesID, seriesEpoch, typ := req.data.batch.Values()
 			if seriesEpoch < lowestEpoch {
 				lowestEpoch = seriesEpoch
 			}
-			times = append(times, timestamp)
-			vals = append(vals, val)
-			series = append(series, int64(seriesID))
+			switch typ {
+			case pgmodel.Sample:
+				timeSamples[samplesIndex] = timestamp
+				valSamples[samplesIndex] = val
+				seriesSamples[samplesIndex] = int64(seriesID)
+			case pgmodel.Exemplar:
+				timeExemplars[samplesIndex] = timestamp
+				valExemplars[samplesIndex] = val
+				seriesExemplars[samplesIndex] = int64(seriesID)
+				// note to self: here exemplar labels attahed or returned by a special call, after implementing the cache that will be applied just like label ids (while flushing maybe).
+			}
 		}
 		if err = req.data.batch.Err(); err != nil {
 			return err
 		}
-		if len(times) != numRows {
+		if len(timeSamples)+len(timeExemplars) != numRows {
 			panic("invalid insert request")
 		}
 		numRowsTotal += numRows

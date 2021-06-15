@@ -119,6 +119,22 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (cano
 	return key, value, true
 }
 
+func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}, inserted bool) {
+	existingElement, exists := self.elements[key]
+	if exists {
+		// Element exists, let's update its contents.
+		existingElement.key = key
+		existingElement.value = value
+		existingElement.size = size
+		if atomic.LoadUint32(&existingElement.used) == 0 {
+			atomic.StoreUint32(&existingElement.used, 1)
+		}
+		return value, false
+	}
+	_, v, b := self.insert(key, value, size)
+	return v, b
+}
+
 func (self *Cache) evict() (insertPtr *element) {
 	// this code goes around storage in a ring searching for the first element
 	// not marked as used, which it will evict. The code has two unusual

@@ -14,9 +14,13 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
+	seriesInsertSQL           = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
+	createExemplarTable       = "SELECT * FROM " + schema.Catalog + ".create_exemplar_table_if_not_exists($1)"
+	getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_exemplar_label_key_positions($1, $2)"
 	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
 )
 
@@ -24,8 +28,16 @@ type metricBatcher struct {
 	conn            pgxconn.PgxConn
 	input           chan *insertDataRequest
 	pending         *pendingBuffer
+	metricName      string
 	metricTableName string
 	toCopiers       chan<- copyRequest
+	labelArrayOID   uint32
+	exemplarCatalog *exemplarInfo
+}
+
+type exemplarInfo struct {
+	seenPreviuosly bool
+	exemplarCache  *cache.ExemplarLabelsPosCache
 }
 
 func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
@@ -131,6 +143,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		conn:            conn,
 		input:           input,
 		pending:         NewPendingBuffer(),
+		metricName:      metricName,
 		metricTableName: tableName,
 		toCopiers:       toCopiers,
 	}

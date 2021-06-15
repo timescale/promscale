@@ -481,7 +481,7 @@ func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo) error {
 
 type MockInserter struct {
 	InsertedSeries  map[string]SeriesID
-	InsertedData    []map[string][]Samples
+	InsertedData    []map[string][]Insertable
 	InsertSeriesErr error
 	InsertDataErr   error
 }
@@ -516,7 +516,7 @@ func (m *MockInserter) InsertTs(data Data) (uint64, error) {
 	ret := 0
 	for _, data := range rows {
 		for _, si := range data {
-			ret += si.CountSamples()
+			ret += si.Count()
 		}
 	}
 	if m.InsertDataErr != nil {

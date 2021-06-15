@@ -1,6 +1,8 @@
--- get_exemplar_label_positions returns the position of label_keys as a one-to-one mapping with label_keys.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_positions(metric_name_text TEXT, label_keys TEXT[])
-RETURNS INTEGER[] AS
+-- get_exemplar_label_positions returns the position of label_keys as a one-to-one mapping with label_keys. It returns
+-- the positions of all label keys corresponding to that metric, so that it remains easier to add null values to those indexes
+-- whose labels are not present in the exemplar being inserted at the golang level.
+CREATE OR REPLACE FUNCTION _prom_catalog.get_exemplar_label_key_positions(metric_name_text TEXT, label_keys TEXT[])
+RETURNS TABLE (metric_family_text TEXT, label_positions_map JSON) AS
 $$
 DECLARE
     existing_keys TEXT[];
@@ -10,26 +12,29 @@ DECLARE
     num_label_keys INTEGER;
 
     current_position INTEGER := 1; -- index in postgres starts from 1. Let's maintain the convention for less confusion.
-    new_key_positions INTEGER[];
 
     new_position INTEGER;
     found BOOLEAN := false;
     k TEXT;
 BEGIN
-    SELECT array_agg(key), array_agg(pos) INTO existing_keys, existing_key_positions FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text;
+    SELECT array_agg(key), array_agg(pos) INTO existing_keys, existing_key_positions FROM _prom_catalog.exemplar_label_key_position WHERE metric_name=metric_name_text;
 
     num_existing_keys := array_length(existing_keys, 1);
     num_label_keys := array_length(label_keys, 1);
 
-    LOCK TABLE SCHEMA_CATALOG.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
+    LOCK TABLE _prom_catalog.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
     -- If there isn't any data for the given metric_name_text.
     IF num_existing_keys IS NULL THEN
         FOREACH k in ARRAY label_keys LOOP
-            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name_text, k, current_position);
-            new_key_positions := ARRAY_APPEND(new_key_positions, current_position);
+            INSERT INTO _prom_catalog.exemplar_label_key_position VALUES (metric_name_text, k, current_position);
             current_position := current_position + 1;
         END LOOP;
-        RETURN new_key_positions;
+        RETURN QUERY (
+            SELECT row.metric_name, json_object_agg(row.key, row.position) FROM (
+                SELECT metric_name, key, pos as position FROM _prom_catalog.exemplar_label_key_position
+                    WHERE metric_name=metric_name_text GROUP BY metric_name, key, pos ORDER BY pos
+            ) AS row GROUP BY row.metric_name
+        );
     END IF;
 
     -- Positions already exists for some keys for the given metric.
@@ -37,22 +42,26 @@ BEGIN
     FOR i in 1..num_label_keys LOOP
         found := false;
         FOR j in 1..num_existing_keys LOOP
+            -- todo (harkishen): optimize below using a plain sql query
             IF label_keys[i] = existing_keys[j] THEN
                 -- key found.
                 found := true;
-                new_key_positions := ARRAY_APPEND(new_key_positions, existing_key_positions[j]);
                 EXIT;
             END IF;
         END LOOP;
         IF NOT found THEN
-            -- key not found. Hence, find the maximum position in for the metric and increment by 1 to assign a new position to the new label key.
+            -- key not found.
             -- todo: optimize the below query using the local var 'existing_key_postions'
-            SELECT max(pos) + 1 INTO new_position FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text;
-            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name_text, label_keys[i], new_position);
-            new_key_positions := ARRAY_APPEND(new_key_positions, new_position);
+            SELECT max(pos) + 1 INTO new_position FROM _prom_catalog.exemplar_label_key_position WHERE metric_name=metric_name_text;
+            INSERT INTO _prom_catalog.exemplar_label_key_position VALUES (metric_name_text, label_keys[i], new_position);
         END IF;
     END LOOP;
-    RETURN new_key_positions;
+    RETURN QUERY (
+        SELECT row.metric_name, json_object_agg(row.key, row.position) FROM (
+            SELECT metric_name, key, pos as position FROM _prom_catalog.exemplar_label_key_position
+                WHERE metric_name=metric_name_text GROUP BY metric_name, key, pos ORDER BY pos
+        ) AS row GROUP BY row.metric_name
+    );
 END;
 $$
 LANGUAGE PLPGSQL;

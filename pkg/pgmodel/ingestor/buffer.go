@@ -36,14 +36,14 @@ func (idt *insertDataTask) reportResult(err error) {
 
 type pendingBuffer struct {
 	needsResponse []insertDataTask
-	batch         model.SamplesBatch
+	batch         model.Batch
 }
 
 var pendingBuffers = sync.Pool{
 	New: func() interface{} {
 		pb := new(pendingBuffer)
 		pb.needsResponse = make([]insertDataTask, 0)
-		pb.batch = model.NewSamplesBatch()
+		pb.batch = model.NewBatch()
 		return pb
 	},
 }

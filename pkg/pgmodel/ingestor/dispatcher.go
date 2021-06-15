@@ -198,7 +198,7 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
 		for _, si := range data {
-			numRows += uint64(si.CountSamples())
+			numRows += uint64(si.Count())
 			ls := si.LastSample()
 			if maxt < ls.Timestamp {
 				// Since by default, samples are expected to arrive in sorted order with time,
@@ -292,7 +292,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 
 type insertDataRequest struct {
 	metric   string
-	data     []model.Samples
+	data     []model.Insertable
 	finished *sync.WaitGroup
 	errChan  chan error
 }

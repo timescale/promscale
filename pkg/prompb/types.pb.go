@@ -248,11 +248,19 @@ func (m *Sample) GetValue() float64 {
 	return 0
 }
 
+func (m Sample) GetVal() float64 {
+	return m.Value
+}
+
 func (m *Sample) GetTimestamp() int64 {
 	if m != nil {
 		return m.Timestamp
 	}
 	return 0
+}
+
+func (m Sample) GetTs() int64 {
+	return m.Timestamp
 }
 
 type Exemplar struct {
@@ -314,11 +322,19 @@ func (m *Exemplar) GetValue() float64 {
 	return 0
 }
 
+func (m Exemplar) GetVal() float64 {
+	return m.Value
+}
+
 func (m *Exemplar) GetTimestamp() int64 {
 	if m != nil {
 		return m.Timestamp
 	}
 	return 0
+}
+
+func (m Exemplar) GetTs() int64 {
+	return m.Timestamp
 }
 
 // TimeSeries represents samples and labels for a single time series.

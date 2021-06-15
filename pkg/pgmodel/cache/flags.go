@@ -27,8 +27,9 @@ type Config struct {
 	seriesCacheMemoryMaxFlag  limits.PercentageAbsoluteBytesFlag
 	SeriesCacheMemoryMaxBytes uint64
 
-	MetricsCacheSize uint64
-	LabelsCacheSize  uint64
+	MetricsCacheSize  uint64
+	LabelsCacheSize   uint64
+	ExemplarCacheSize uint64
 }
 
 var DefaultConfig = Config{
