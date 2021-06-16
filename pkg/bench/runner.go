@@ -1,7 +1,6 @@
 package bench
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -42,7 +41,7 @@ func getSeriesID(conf *BenchConfig, rawSeriesID uint64, seriesMultipliedIndex in
 func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *walSimulator, runNumber int) (time.Time, int, error) {
 	ss := q.Select(false, nil, labels.MustNewMatcher(labels.MatchRegexp, "", ".*"))
 
-	sth, err := NewSeriesTimeHeap(conf, ss, qmi, runNumber == 0)
+	sth, err := NewSeriesTimeHeap(conf, ss, qmi, seriesIndex)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
@@ -90,6 +89,8 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *wa
 	return start, count, err
 }
 
+var seriesIndex = 0
+
 func Run(conf *BenchConfig) (err error) {
 	db, err := tsdb.OpenDBReadOnly(conf.TSDBPath, nil)
 	if err != nil {
@@ -102,33 +103,59 @@ func Run(conf *BenchConfig) (err error) {
 		}
 	}()
 
+	blocks, err := db.Blocks()
+	if err != nil {
+		return err
+	}
+	fmt.Println("Number of Blocks", len(blocks))
+
 	qmi, err := getQM(conf)
 	if err != nil {
 		return err
 	}
 	qmi.qm.Start()
 
-	q, err := db.Querier(context.TODO(), conf.Mint, conf.Maxt)
-	if err != nil {
-		return err
-	}
-	defer q.Close()
-
 	ws := NewWalSimulator(qmi)
-	count := 0
+	totalCount := 0
 	start := time.Time{}
 	for i := 0; i < conf.RepeatedRuns; i++ {
-		runStart, runCount, err := RunFullSimulation(conf, qmi, q, ws, i)
-		if err != nil {
-			return err
+		var runDuration time.Duration
+		runCount := 0
+		for blockIdx := 0; blockIdx < len(blocks); blockIdx++ {
+			err := func() error {
+				block := blocks[blockIdx].(*tsdb.Block)
+				fmt.Println("Starting processing block", block.Meta().MinTime, block.Meta().MaxTime)
+				q, err := tsdb.NewBlockQuerier(block, conf.Mint, conf.Maxt)
+				if err != nil {
+					return err
+				}
+				defer q.Close()
+
+				blockStart, blockCount, err := RunFullSimulation(conf, qmi, q, ws, i)
+				if err != nil {
+					return err
+				}
+				if start.IsZero() {
+					start = blockStart
+				}
+				totalCount += blockCount
+				runCount += blockCount
+				ewmaRateSent := qmi.samplesIn.Rate()
+				blockDuration := time.Since(blockStart)
+				runDuration += blockDuration
+				fmt.Println("single block took", blockDuration, "count", blockCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(blockCount)/blockDuration.Seconds())
+
+				qmi.qm.SeriesReset(seriesIndex)
+				seriesIndex++
+				return nil
+			}()
+			if err != nil {
+				return err
+			}
+			//runtime.GC()
 		}
-		if start.IsZero() {
-			start = runStart
-		}
-		count += runCount
-		ewmaRateSent := qmi.samplesIn.Rate()
-		took := time.Since(runStart)
-		fmt.Println("single run took", took, "count", runCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(runCount)/took.Seconds())
+		fmt.Println("single run took", runDuration, "count", runCount, "metrics/s db", float64(runCount)/runDuration.Seconds())
+
 	}
 
 	qmi.markStoppedSend()
@@ -137,6 +164,6 @@ func Run(conf *BenchConfig) (err error) {
 	ws.Stop()
 	qmi.qm.Stop()
 	took := time.Since(start)
-	fmt.Println("took", took, "count", count, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(count)/took.Seconds())
+	fmt.Println("took", took, "count", totalCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(totalCount)/took.Seconds())
 	return nil
 }

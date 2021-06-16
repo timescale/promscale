@@ -2,6 +2,7 @@ package bench
 
 import (
 	"container/heap"
+	"fmt"
 	"strconv"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -21,9 +22,10 @@ type SeriesItem struct {
 
 type SeriesTimeHeap []*SeriesItem
 
-func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, addSeriesToQmi bool) (SeriesTimeHeap, error) {
+func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, seriesIndex int) (SeriesTimeHeap, error) {
 	sth := make(SeriesTimeHeap, 0, 100)
 	refSeries := make([]record.RefSeries, 10000)
+	fmt.Println("Starting to load series")
 	for ss.Next() {
 		series := ss.At()
 		it := series.Iterator()
@@ -32,29 +34,26 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, add
 		si := &SeriesItem{ts, val, series, uint64(len(sth)), it, len(sth)}
 		sth = append(sth, si)
 
-		if addSeriesToQmi {
-			if conf.SeriesMultiplier == 1 {
+		if conf.SeriesMultiplier == 1 {
+			rs := record.RefSeries{
+				Ref:    getSeriesID(conf, si.series_id, 0),
+				Labels: si.series.Labels(),
+			}
+			refSeries = append(refSeries, rs)
+		} else {
+			build := labels.NewBuilder(si.series.Labels())
+			for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
+				build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
 				rs := record.RefSeries{
-					Ref:    getSeriesID(conf, si.series_id, 0),
-					Labels: si.series.Labels(),
+					Ref:    getSeriesID(conf, si.series_id, seriesMultiplierIndex),
+					Labels: build.Labels(),
 				}
 				refSeries = append(refSeries, rs)
-			} else {
-				build := labels.NewBuilder(si.series.Labels())
-				for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
-					build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
-					rs := record.RefSeries{
-						Ref:    getSeriesID(conf, si.series_id, seriesMultiplierIndex),
-						Labels: build.Labels(),
-					}
-					refSeries = append(refSeries, rs)
-				}
 			}
 		}
 	}
-	if addSeriesToQmi {
-		qmi.qm.StoreSeries(refSeries, 0)
-	}
+	qmi.qm.StoreSeries(refSeries, seriesIndex)
+	fmt.Println("Done loading series")
 
 	if err := checkSeriesSet(ss); err != nil {
 		return nil, err
