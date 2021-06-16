@@ -18,7 +18,7 @@ func main() {
 		RateControl:             true,
 		RateMultiplier:          10000.0,
 		SeriesMultiplier:        1,
-		QueueConfig:             config.DefaultQueueConfig,
+		RemoteWriteConfig:       config.DefaultRemoteWriteConfig,
 		RepeatedRuns:            1,
 	}
 	if err := config.Validate(); err != nil {

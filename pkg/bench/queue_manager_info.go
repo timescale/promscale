@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	common_config "github.com/prometheus/common/config"
 	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/prometheus/config"
 	"github.com/timescale/promscale/pkg/remote"
 )
 
@@ -46,8 +45,7 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 		return nil, err
 	}
 
-	rwConf := config.DefaultRemoteWriteConfig
-	rwConf.QueueConfig = conf.QueueConfig
+	rwConf := conf.RemoteWriteConfig
 
 	rwConf.URL = &common_config.URL{
 		URL: url,

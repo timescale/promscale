@@ -10,7 +10,7 @@ type BenchConfig struct {
 	TSDBPath                string
 	Mint                    int64
 	Maxt                    int64
-	QueueConfig             config.QueueConfig
+	RemoteWriteConfig       config.RemoteWriteConfig
 	WriteEndpoint           string
 	UseWallClockForDataTime bool
 
@@ -23,7 +23,7 @@ type BenchConfig struct {
 }
 
 func (t *BenchConfig) Validate() error {
-	if !t.RateControl && t.QueueConfig.MinShards != t.QueueConfig.MaxShards {
+	if !t.RateControl && t.RemoteWriteConfig.QueueConfig.MinShards != t.RemoteWriteConfig.QueueConfig.MaxShards {
 		return fmt.Errorf("Rate control is off -- dynamic resharding will not work")
 	}
 	if !t.UseWallClockForDataTime && t.RepeatedRuns > 1 {
