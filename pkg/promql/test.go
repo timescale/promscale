@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/teststorage"
 	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 )
 
 var (
@@ -107,7 +108,7 @@ type QuerierWrapper struct {
 	storage.Querier
 }
 
-func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ *querier.QueryHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	ss := t.Querier.Select(b, sh, m...)
 	return ss, nil
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -366,8 +367,8 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmod
 }
 
 func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string, values []interface{},
-	hints *storage.SelectHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
-	qf, node, err := getAggregators(hints, path)
+	hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
+	qf, node, err := getAggregators(hints, qh, path)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -411,11 +412,51 @@ type aggregators struct {
 	valueParams []interface{}
 }
 
+/* vectorSelectors called by the timestamp function have special handling see engine.go */
+func calledByTimestamp(path []parser.Node) bool {
+	if path != nil && len(path) > 0 {
+		node := path[len(path)-1]
+		call, ok := node.(*parser.Call)
+		if ok && call.Func.Name == "timestamp" {
+			return true
+		}
+	}
+	return false
+}
+
+var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3")
+
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
-func getAggregators(hints *storage.SelectHints, path []parser.Node) (*aggregators, parser.Node, error) {
-	if extension.ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
+func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
+	if extension.ExtensionIsInstalled && qh != nil {
+		//switch on the current node being processed
+		switch n := qh.CurrentNode.(type) {
+		case *parser.VectorSelector:
+			//TODO: handle the instant query (hints.Step==0) case too.
+			if hints != nil &&
+				hints.Step > 0 &&
+				hints.Range == 0 &&
+				!calledByTimestamp(path) &&
+				n.OriginalOffset == time.Duration(0) &&
+				n.Offset == time.Duration(0) &&
+				!hasSubquery(path) &&
+				vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
+				qf := aggregators{
+					timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
+					timeParams:  []interface{}{qh.StartTime, qh.EndTime, time.Duration(hints.Step) * time.Millisecond},
+					valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
+					valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
+				}
+				return &qf, qh.CurrentNode, nil
+			}
+		default:
+			//No pushdown optimization by default
+		}
+	}
+	if extension.ExtensionIsInstalled && qh != nil && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
 		var topNode parser.Node
 
+		//switch on the 2nd-to-last last path node
 		node := path[len(path)-2]
 		switch n := node.(type) {
 		case *parser.Call:
@@ -450,6 +491,7 @@ func getAggregators(hints *storage.SelectHints, path []parser.Node) (*aggregator
 		timeClause:  "array_agg(time)",
 		valueClause: "array_agg(value)",
 	}
+
 	return &qf, nil, nil
 }
 

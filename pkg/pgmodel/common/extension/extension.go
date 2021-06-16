@@ -19,7 +19,8 @@ import (
 )
 
 var (
-	ExtensionIsInstalled = false
+	ExtensionIsInstalled      = false
+	PromscaleExtensionVersion semver.Version
 )
 
 type ExtensionMigrateOptions struct {
@@ -159,6 +160,7 @@ func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockErro
 	}
 	if version.ExtVersionRange(*currentVersion) {
 		ExtensionIsInstalled = true
+		PromscaleExtensionVersion = *currentVersion
 	} else {
 		ExtensionIsInstalled = false
 	}

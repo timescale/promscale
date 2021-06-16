@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
+	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
 	pgQuerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/promql"
 )
@@ -53,6 +54,6 @@ func (q querier) Close() error {
 	return nil
 }
 
-func (q querier) Select(sortSeries bool, hints *storage.SelectHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	return q.metricsReader.Select(q.mint, q.maxt, sortSeries, hints, path, matchers...)
+func (q querier) Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	return q.metricsReader.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
 }

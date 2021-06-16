@@ -167,6 +167,11 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 			tsReq := requestCases[perm[i]].tsReq
 			promReq := requestCases[perm[i]].promReq
 			log := requestCases[perm[i]].log
+
+			if t.Failed() {
+				break
+			}
+
 			wg.Add(1)
 			//nolint
 			go func() {
@@ -178,7 +183,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 					return
 				}
 				if failOnStatusErrors && tsResp.StatusCode != http.StatusOK {
-					t.Fatalf("promscale: expected status code %d, received %d", http.StatusOK, tsResp.StatusCode)
+					t.Fatalf("promscale: expected status code %d, received %d. Info: %v", http.StatusOK, tsResp.StatusCode, log)
 				}
 
 				promResp, promErr := client.Do(promReq)

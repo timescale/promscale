@@ -36,6 +36,8 @@ const (
 
 	Superuser   = true
 	NoSuperuser = false
+
+	LatestDBWithPromscaleImageBase = "cevian/promscale-extension"
 )
 
 var (
@@ -287,21 +289,20 @@ func StartPGContainer(
 	}
 	PGTag := "pg" + PGMajor
 
-	promscaleImageBase := "timescaledev/promscale-extension"
 	switch extensionState &^ postgres12Bit {
 	case MultinodeAndPromscale:
-		image = promscaleImageBase + ":latest-ts2-" + PGTag
+		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
 	case Multinode:
 		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale2AndPromscale:
-		image = promscaleImageBase + ":latest-ts2-" + PGTag
+		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
 	case Timescale2:
 		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale1AndPromscale:
 		if PGMajor != "12" {
 			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")
 		}
-		image = promscaleImageBase + ":latest-ts1-pg12"
+		image = LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
 	case Timescale1:
 		if PGMajor != "12" {
 			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")
@@ -440,6 +441,7 @@ func startPGInstance(
 		}).Timeout(120 * time.Second),
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
+			"PGDATA":            "/var/lib/postgresql/data",
 		},
 		Networks:       networks,
 		NetworkAliases: map[string][]string{"promscale-network": {"db" + containerPort.Port()}},
