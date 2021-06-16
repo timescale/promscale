@@ -7,6 +7,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
@@ -30,13 +31,20 @@ type Reader interface {
 	Read(*prompb.ReadRequest) (*prompb.ReadResponse, error)
 }
 
+type QueryHints struct {
+	StartTime   time.Time
+	EndTime     time.Time
+	CurrentNode parser.Node
+	Lookback    time.Duration
+}
+
 // Querier queries the data using the provided query data and returns the
 // matching timeseries.
 type Querier interface {
 	// Query returns resulting timeseries for a query.
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
 	// Select returns a series set that matches the supplied query parameters.
-	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node)
+	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node)
 }
 
 const (
@@ -71,8 +79,8 @@ var _ Querier = (*pgxQuerier)(nil)
 
 // Select implements the Querier interface. It is the entry point for our
 // own version of the Prometheus engine.
-func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	rows, topNode, err := q.getResultRows(mint, maxt, hints, path, ms)
+func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	rows, topNode, err := q.getResultRows(mint, maxt, hints, qh, path, ms)
 	if err != nil {
 		return errorSeriesSet{err: err}, nil
 	}
@@ -96,7 +104,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
+	rows, _, err := q.getResultRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +148,7 @@ type timescaleRow struct {
 
 // getResultRows fetches the result row datasets from the database using the
 // supplied query parameters.
-func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
+func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
 	if q.rAuth != nil {
 		matchers = q.rAuth.AppendTenantMatcher(matchers)
 	}
@@ -165,7 +173,7 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 		if err != nil {
 			return nil, nil, err
 		}
-		return q.querySingleMetric(metric, filter, clauses, values, hints, path)
+		return q.querySingleMetric(metric, filter, clauses, values, hints, qh, path)
 	}
 
 	clauses, values, err := builder.Build(true)
@@ -178,7 +186,7 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 // querySingleMetric returns all the result rows for a single metric using the
 // supplied query parameters. It uses the hints and node path to try to push
 // down query functions where possible.
-func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}, hints *storage.SelectHints, path []parser.Node) ([]timescaleRow, parser.Node, error) {
+func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}, hints *storage.SelectHints, qh *QueryHints, path []parser.Node) ([]timescaleRow, parser.Node, error) {
 	tableName, err := q.getMetricTableName(metric)
 	if err != nil {
 		// If the metric table is missing, there are no results for this query.
@@ -190,7 +198,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	}
 	filter.metric = tableName
 
-	sqlQuery, values, topNode, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, path)
+	sqlQuery, values, topNode, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, qh, path)
 	if err != nil {
 		return nil, nil, err
 	}
