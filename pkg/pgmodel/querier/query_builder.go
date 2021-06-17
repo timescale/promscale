@@ -98,8 +98,6 @@ const (
 			) as result  ON (result.time_array is not null)
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
-	Future optimizations:
-	  - different query if scanning entire metric (not labels matchers besides __name__)
 	*/
 	timeseriesByMetricSQLFormat = `SELECT series.labels,  result.time_array, result.value_array
 	FROM %[2]s series
@@ -112,11 +110,31 @@ const (
 			WHERE metric.series_id = series.id
 			AND time >= '%[4]s'
 			AND time <= '%[5]s'
-			ORDER BY time
+			%[8]s
 		) as time_ordered_rows
 	) as result ON (result.value_array is not null)
 	WHERE
 	     %[3]s`
+
+	/* optimized for no clauses besides __name__
+	   uses a inner join without a lateral to allow for better parallel execution
+	*/
+	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels,  result.time_array, result.value_array
+	FROM %[2]s series
+	INNER JOIN (
+		SELECT series_id, %[6]s as time_array, %[7]s as value_array
+		FROM
+		(
+			SELECT series_id, time, value
+			FROM %[1]s metric
+			WHERE
+			time >= '%[4]s'
+			AND time <= '%[5]s'
+			%[8]s
+		) as time_ordered_rows
+		GROUP BY series_id
+	) as result ON (result.value_array is not null AND result.series_id = series.id)
+	`
 )
 
 var (
@@ -352,7 +370,20 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		return "", nil, nil, err
 	}
 
-	finalSQL := fmt.Sprintf(timeseriesByMetricSQLFormat,
+	orderByClause := "ORDER BY time"
+	if qf.unOrdered {
+		orderByClause = ""
+	}
+
+	template := timeseriesByMetricSQLFormat
+	if len(cases) == 1 && cases[0] == "TRUE" {
+		template = timeseriesByMetricSQLFormatNoClauses
+		if !qf.unOrdered {
+			orderByClause = "ORDER BY series_id, time"
+		}
+	}
+
+	finalSQL := fmt.Sprintf(template,
 		pgx.Identifier{schema.Data, filter.metric}.Sanitize(),
 		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
 		strings.Join(cases, " AND "),
@@ -360,6 +391,7 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		filter.endTime,
 		timeClauseBound,
 		valueClauseBound,
+		orderByClause,
 	)
 
 	return finalSQL, values, node, nil
@@ -380,6 +412,7 @@ type aggregators struct {
 	timeParams  []interface{}
 	valueClause string
 	valueParams []interface{}
+	unOrdered   bool
 }
 
 /* vectorSelectors called by the timestamp function have special handling see engine.go */
@@ -416,6 +449,7 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 					timeParams:  []interface{}{qh.StartTime, qh.EndTime, time.Duration(hints.Step) * time.Millisecond},
 					valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
 					valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
+					unOrdered:   true,
 				}
 				return &qf, qh.CurrentNode, nil
 			}
@@ -449,6 +483,7 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 					timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
 					valueClause: "prom_delta($%d, $%d,$%d, $%d, time, value)",
 					valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
+					unOrdered:   false,
 				}
 				return &qf, topNode, nil
 			}
@@ -460,6 +495,7 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 	qf := aggregators{
 		timeClause:  "array_agg(time)",
 		valueClause: "array_agg(value)",
+		unOrdered:   false,
 	}
 
 	return &qf, nil, nil
