@@ -124,7 +124,7 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 		printOutputDiff(t, upgradedSchema.tables, pristineSchema.tables, "tables differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, upgradedSchema.functions, pristineSchema.functions, "functions differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, upgradedSchema.privileges, pristineSchema.privileges, "privileges differ for schema "+upgradedSchema.name)
-		printOutputDiff(t, upgradedSchema.indices, pristineSchema.indices, "indicies differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, upgradedSchema.indices, pristineSchema.indices, "indices differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, upgradedSchema.triggers, pristineSchema.triggers, "triggers differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, fmt.Sprintf("%+v", upgradedSchema.data), fmt.Sprintf("%+v", pristineSchema.data), "data differs for schema "+upgradedSchema.name)
 	}

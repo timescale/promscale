@@ -767,7 +767,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 			defer inserter.Close()
 
-			_, err = inserter.InsertData(model.Data{Rows: c.rows})
+			_, err = inserter.InsertTs(model.Data{Rows: c.rows})
 
 			var expErr error
 

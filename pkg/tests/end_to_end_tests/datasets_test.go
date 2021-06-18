@@ -6,6 +6,7 @@ package end_to_end_tests
 
 import (
 	"io/ioutil"
+	"math/rand"
 	"os"
 
 	"github.com/golang/snappy"
@@ -220,4 +221,36 @@ func generateSmallMultiTenantTimeseries() ([]prompb.TimeSeries, []string) {
 			},
 		},
 	}, []string{"tenant-a", "tenant-b", "tenant-c"}
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func generateRandomMetricMetadata(num int) []prompb.MetricMetadata {
+	randomStr := func(n int) string {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = letterBytes[rand.Int63()%int64(len(letterBytes))]
+		}
+		return string(b)
+	}
+	randomMetricType := func() prompb.MetricMetadata_MetricType {
+		// Generate any metric type from COUNTER to STATESET.
+		return prompb.MetricMetadata_MetricType(rand.Intn(int(prompb.MetricMetadata_STATESET)-int(prompb.MetricMetadata_COUNTER)) + 1)
+	}
+
+	data := make([]prompb.MetricMetadata, num)
+	prefixMetric := "metric_name_"
+	prefixHelp := "help_"
+	prefixUnit := "unit_"
+
+	for i := 0; i < num; i++ {
+		metadata := prompb.MetricMetadata{
+			MetricFamilyName: prefixMetric + randomStr(10),
+			Type:             randomMetricType(),
+			Unit:             prefixUnit + randomStr(5),
+			Help:             prefixHelp + randomStr(50),
+		}
+		data[i] = metadata
+	}
+	return data
 }

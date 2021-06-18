@@ -45,6 +45,7 @@ var (
 			"base.sql",
 			"matcher-functions.sql",
 			"ha.sql",
+			"metric-metadata.sql",
 			"apply_permissions.sql", //should be last
 		},
 	}
@@ -265,12 +266,12 @@ func (t *Migrator) execMigrationFile(tx pgx.Tx, fileName string) error {
 	if err != nil {
 		return fmt.Errorf("unable to read migration script: name %s, err %w", fileName, err)
 	}
-	_, err = tx.Exec(context.Background(), string(contents))
+	_, err = tx.Exec(context.Background(), contents)
 	if err != nil {
 		//special handling if we know the position of the error
 		pgErr, ok := err.(*pgconn.PgError)
 		if ok && pgErr.Position > 0 {
-			strC := string(contents)
+			strC := contents
 			code := strC[pgErr.Position-1:]
 			return fmt.Errorf("error executing migration script: name %s, err %w, code at error position:\n  %s", fileName, err, code)
 

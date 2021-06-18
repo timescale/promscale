@@ -42,7 +42,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 			wauth := mt.WriteAuthorizer()
 			err = wauth.Process(requestWithHeaderTenant(tenant), request)
 			require.NoError(t, err)
-			_, err = client.Ingest(request)
+			_, _, err = client.Ingest(request)
 			require.NoError(t, err)
 		}
 
@@ -222,14 +222,14 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		request := newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(requestWithHeaderTenant(tenants[0]), request)
 		require.NoError(t, err)
-		_, err = client.Ingest(request)
+		_, _, err = client.Ingest(request)
 		require.NoError(t, err)
 
 		// Ingest tenant-b.
 		request = newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(requestWithHeaderTenant(tenants[1]), request)
 		require.NoError(t, err)
-		_, err = client.Ingest(request)
+		_, _, err = client.Ingest(request)
 		require.NoError(t, err)
 		require.NoError(t, err)
 
@@ -407,14 +407,14 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		request := newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(requestWithHeaderTenant(tenants[0]), request)
 		require.NoError(t, err)
-		_, err = client.Ingest(request)
+		_, _, err = client.Ingest(request)
 		require.NoError(t, err)
 
 		// Ingest tenant-b.
 		request = newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(requestWithHeaderTenant(tenants[1]), request)
 		require.NoError(t, err)
-		_, err = client.Ingest(request)
+		_, _, err = client.Ingest(request)
 		require.NoError(t, err)
 
 		ts = []prompb.TimeSeries{
@@ -437,7 +437,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		request = newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(&http.Request{}, request) // Ingest without tenants.
 		require.NoError(t, err)
-		_, err = client.Ingest(request) // Non-MT write.
+		_, _, err = client.Ingest(request) // Non-MT write.
 		require.NoError(t, err)
 
 		// Querying.
@@ -616,14 +616,14 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		request := newWriteRequestWithTs(applyTenantInLabels(tenants[0], copyMetrics(ts)))
 		err = wauth.Process(&http.Request{}, request)
 		require.NoError(t, err)
-		_, err = client.Ingest(request)
+		_, _, err = client.Ingest(request)
 		require.NoError(t, err)
 
 		// Ingest tenant-b.
 		request = newWriteRequestWithTs(applyTenantInLabels(tenants[1], copyMetrics(ts)))
 		err = wauth.Process(&http.Request{}, request)
 		require.NoError(t, err)
-		_, err = client.Ingest(request)
+		_, _, err = client.Ingest(request)
 		require.NoError(t, err)
 		require.NoError(t, err)
 

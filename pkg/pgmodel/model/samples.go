@@ -12,6 +12,13 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+type Metadata struct {
+	MetricFamily string `json:"metric,omitempty"`
+	Unit         string `json:"unit"`
+	Type         string `json:"type"`
+	Help         string `json:"help"`
+}
+
 type Samples interface {
 	GetSeries() *Series
 	CountSamples() int

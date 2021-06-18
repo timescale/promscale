@@ -17,19 +17,24 @@ const (
 	PromNamespace = "promscale"
 )
 
+type ThroughputValues struct {
+	Samples  float64
+	Metadata float64
+}
+
 //ThroughputCalc runs on scheduled interval to calculate the throughput per second and sends results to a channel
 type ThroughputCalc struct {
 	tickInterval time.Duration
-	previous     float64
-	current      chan float64
-	Values       chan float64
+	previous     ThroughputValues
+	current      chan ThroughputValues
+	Values       chan ThroughputValues
 	running      bool
 	lock         sync.Mutex
 }
 
 // NewThroughputCalc returns a throughput calculator based on a duration
 func NewThroughputCalc(interval time.Duration) *ThroughputCalc {
-	return &ThroughputCalc{tickInterval: interval, current: make(chan float64, 1), Values: make(chan float64, 1)}
+	return &ThroughputCalc{tickInterval: interval, current: make(chan ThroughputValues, 1), Values: make(chan ThroughputValues, 1)}
 }
 
 // GetTickInterval returns the tick interval of the throughput calculator.
@@ -38,7 +43,7 @@ func (dt *ThroughputCalc) GetTickInterval() time.Duration {
 }
 
 // SetCurrent sets the value of the counter
-func (dt *ThroughputCalc) SetCurrent(value float64) {
+func (dt *ThroughputCalc) SetCurrent(value ThroughputValues) {
 	select {
 	case dt.current <- value:
 	default:
@@ -57,11 +62,17 @@ func (dt *ThroughputCalc) Start() {
 				if !dt.running {
 					return
 				}
-				current := <-dt.current
-				diff := current - dt.previous
+				var (
+					current      = <-dt.current
+					diffSamples  = current.Samples - dt.previous.Samples
+					diffMetadata = current.Metadata - dt.previous.Metadata
+				)
 				dt.previous = current
 				select {
-				case dt.Values <- diff / dt.tickInterval.Seconds():
+				case dt.Values <- ThroughputValues{
+					Samples:  diffSamples / dt.tickInterval.Seconds(),
+					Metadata: diffMetadata / dt.tickInterval.Seconds(),
+				}:
 				default:
 				}
 			}

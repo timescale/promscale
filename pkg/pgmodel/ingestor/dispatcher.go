@@ -30,11 +30,11 @@ type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
-	inserters              sync.Map
+	batchers               sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
 	insertedDatapoints     *int64
-	toCopiers              chan copyRequest
+	toCopiers              chan<- copyRequest
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
 	doneWG                 sync.WaitGroup
@@ -42,8 +42,6 @@ type pgxDispatcher struct {
 }
 
 func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxDispatcher, error) {
-	cmc := make(chan struct{}, 1)
-
 	numCopiers := cfg.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")
@@ -71,7 +69,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		conn:                   conn,
 		metricTableNames:       cache,
 		scache:                 scache,
-		completeMetricCreation: cmc,
+		completeMetricCreation: make(chan struct{}, 1),
 		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
@@ -180,7 +178,7 @@ func (p *pgxDispatcher) CompleteMetricCreation() error {
 
 func (p *pgxDispatcher) Close() {
 	close(p.completeMetricCreation)
-	p.inserters.Range(func(key, value interface{}) bool {
+	p.batchers.Range(func(key, value interface{}) bool {
 		close(value.(chan *insertDataRequest))
 		return true
 	})
@@ -195,7 +193,7 @@ func (p *pgxDispatcher) Close() {
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
+func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 	var (
 		numRows      uint64
 		rows         = dataTS.Rows
@@ -248,9 +246,21 @@ func (p *pgxDispatcher) InsertData(dataTS model.Data) (uint64, error) {
 	return numRows, err
 }
 
+func (p *pgxDispatcher) InsertMetadata(metadata []model.Metadata) (uint64, error) {
+	totalRows := uint64(len(metadata))
+	insertedRows, err := insertMetadata(p.conn, metadata)
+	if err != nil {
+		return insertedRows, err
+	}
+	if totalRows != insertedRows {
+		return insertedRows, fmt.Errorf("failed to insert all metadata: inserted %d rows out of %d rows in total", insertedRows, totalRows)
+	}
+	return insertedRows, nil
+}
+
 // Get the handler for a given metric name, creating a new one if none exists
-func (p *pgxDispatcher) getMetricBatcher(metric string) chan *insertDataRequest {
-	inserter, ok := p.inserters.Load(metric)
+func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataRequest {
+	batcher, ok := p.batchers.Load(metric)
 	if !ok {
 		// The ordering is important here: we need to ensure that every call
 		// to getMetricInserter() returns the same inserter. Therefore, we can
@@ -258,13 +268,13 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan *insertDataRequest 
 		// to create the inserter, anything else will leave a zombie inserter
 		// lying around.
 		c := make(chan *insertDataRequest, MetricBatcherChannelCap)
-		actual, old := p.inserters.LoadOrStore(metric, c)
-		inserter = actual
+		actual, old := p.batchers.LoadOrStore(metric, c)
+		batcher = actual
 		if !old {
 			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
 		}
 	}
-	ch := inserter.(chan *insertDataRequest)
+	ch := batcher.(chan *insertDataRequest)
 	MetricBatcherChLen.Observe(float64(len(ch)))
 	return ch
 }

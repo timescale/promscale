@@ -25,7 +25,7 @@ type metricBatcher struct {
 	input           chan *insertDataRequest
 	pending         *pendingBuffer
 	metricTableName string
-	toCopiers       chan copyRequest
+	toCopiers       chan<- copyRequest
 	labelArrayOID   uint32
 }
 
@@ -62,7 +62,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
-	toCopiers chan copyRequest,
+	toCopiers chan<- copyRequest,
 	labelArrayOID uint32) {
 
 	var tableName string

@@ -23,6 +23,7 @@ type Metrics struct {
 	ReceivedSamples     prometheus.Counter
 	FailedSamples       prometheus.Counter
 	SentSamples         prometheus.Counter
+	SentMetadata        prometheus.Counter
 	SentBatchDuration   prometheus.Histogram
 	WriteThroughput     *util.ThroughputCalc
 	ReceivedQueries     prometheus.Counter
@@ -48,6 +49,7 @@ func InitMetrics(writeMetricInterval int) *Metrics {
 		metrics.ReceivedSamples,
 		metrics.ReceivedQueries,
 		metrics.SentSamples,
+		metrics.SentMetadata,
 		metrics.FailedSamples,
 		metrics.FailedQueries,
 		metrics.InvalidReadReqs,
@@ -94,6 +96,13 @@ func createMetrics(writeMetricInterval int) *Metrics {
 				Namespace: util.PromNamespace,
 				Name:      "sent_samples_total",
 				Help:      "Total number of processed samples sent to remote storage.",
+			},
+		),
+		SentMetadata: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "sent_metadata_total",
+				Help:      "Total number of processed metadata sent to remote storage.",
 			},
 		),
 		SentBatchDuration: prometheus.NewHistogram(

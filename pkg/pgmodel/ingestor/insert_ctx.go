@@ -23,6 +23,9 @@ func NewWriteRequest() *prompb.WriteRequest {
 
 // FinishWriteRequest adds the *prompb.WriteRequest back into the pool after setting parameters to default.
 func FinishWriteRequest(wr *prompb.WriteRequest) {
+	if wr == nil {
+		return
+	}
 	for i := range wr.Timeseries {
 		ts := &wr.Timeseries[i]
 		for j := range ts.Labels {
@@ -33,6 +36,7 @@ func FinishWriteRequest(wr *prompb.WriteRequest) {
 		ts.XXX_unrecognized = nil
 	}
 	wr.Timeseries = wr.Timeseries[:0]
+	wr.Metadata = wr.Metadata[:0]
 	wr.XXX_unrecognized = nil
 	wrPool.Put(wr)
 }

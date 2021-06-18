@@ -54,6 +54,7 @@ var (
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 15),
 		},
 	)
+
 	NumRowsPerInsert = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
@@ -62,40 +63,51 @@ var (
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 13),
 		},
 	)
+
 	DbBatchInsertDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
 			Name:      "copier_insert_duration_seconds",
 			Help:      "Duration of sample batch insert calls to the DB.",
-			Buckets:   prometheus.DefBuckets,
+			Buckets:   append(prometheus.DefBuckets, []float64{60, 120, 300}...),
 		},
 	)
 
-	CopierChCap = prometheus.NewGauge(
+	MetadataBatchInsertDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Name:      "metadata_insert_duration_seconds",
+			Help:      "Duration of a single metadata batch to insert into the DB.",
+			Buckets:   append(prometheus.DefBuckets, []float64{60, 120, 300}...),
+		})
+
+	SamplesCopierChCap = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
-			Name:      "copier_channel_cap",
-			Help:      "Capacity of copier channel",
+			Name:      "samples_copier_channel_cap",
+			Help:      "Capacity of samples copier channel",
 		},
 	)
 
-	CopierChannelToMonitor chan copyRequest
-	copierChannelMutex     sync.Mutex
-	CopierChLen            = prometheus.NewGaugeFunc(
+	copierChannelMutex sync.Mutex
+
+	SamplesCopierChannelToMonitor chan copyRequest
+	SamplesCopierChLen            = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
-			Name:      "copier_channel_len",
-			Help:      "Len of copier channel",
+			Name:      "samples_copier_channel_len",
+			Help:      "Length of samples copier channel",
 		},
-		func() float64 { return float64(len(CopierChannelToMonitor)) },
+		func() float64 { return float64(len(SamplesCopierChannelToMonitor)) },
 	)
 )
 
-func setCopierChannelToMonitor(toCopiers chan copyRequest) {
+func setCopierChannelToMonitor(toSamplesCopiers chan copyRequest) {
 	copierChannelMutex.Lock()
 	defer copierChannelMutex.Unlock()
-	CopierChCap.Set(float64(cap(toCopiers)))
-	CopierChannelToMonitor = toCopiers
+
+	SamplesCopierChCap.Set(float64(cap(toSamplesCopiers)))
+	SamplesCopierChannelToMonitor = toSamplesCopiers
 }
 
 func init() {
@@ -107,8 +119,9 @@ func init() {
 		NumRowsPerBatch,
 		NumRowsPerInsert,
 		DbBatchInsertDuration,
-		CopierChCap,
-		CopierChLen,
+		MetadataBatchInsertDuration,
+		SamplesCopierChCap,
+		SamplesCopierChLen,
 	)
 
 	MetricBatcherChCap.Set(MetricBatcherChannelCap)

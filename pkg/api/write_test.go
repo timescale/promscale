@@ -247,6 +247,7 @@ func TestWrite(t *testing.T) {
 			receivedSamplesGauge := &mockMetric{}
 			failedSamplesGauge := &mockMetric{}
 			sentSamplesGauge := &mockMetric{}
+			sentMetadataGauge := &mockMetric{}
 			sendBatchHistogram := &mockMetric{}
 			invalidWriteReqs := &mockMetric{}
 			mock := &mockInserter{
@@ -260,6 +261,7 @@ func TestWrite(t *testing.T) {
 				ReceivedSamples:   receivedSamplesGauge,
 				FailedSamples:     failedSamplesGauge,
 				SentSamples:       sentSamplesGauge,
+				SentMetadata:      sentMetadataGauge,
 				SentBatchDuration: sendBatchHistogram,
 				InvalidWriteReqs:  invalidWriteReqs,
 				WriteThroughput:   util.NewThroughputCalc(time.Second),
@@ -351,9 +353,9 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, error) {
+func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, uint64, error) {
 	m.ts = r.Timeseries
-	return m.result, m.err
+	return m.result, 0, m.err
 }
 
 func getReader(s string) io.Reader {

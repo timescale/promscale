@@ -82,6 +82,10 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 	router.Get("/api/v1/labels", labelsHandler)
 	router.Post("/api/v1/labels", labelsHandler)
 
+	metadataHandler := timeHandler(metrics.HTTPRequestDuration, "metadata", MetricMetadata(apiConf, client))
+	router.Get("/api/v1/metadata", metadataHandler)
+	router.Post("/api/v1/metadata", metadataHandler)
+
 	labelValuesHandler := timeHandler(metrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
 	router.Get("/api/v1/label/:name/values", labelValuesHandler)
 

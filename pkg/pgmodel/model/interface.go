@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -27,7 +28,8 @@ var (
 
 // Dispatcher is responsible for inserting label, series and data into the storage.
 type Dispatcher interface {
-	InsertData(rows Data) (uint64, error)
+	InsertTs(rows Data) (uint64, error)
+	InsertMetadata([]Metadata) (uint64, error)
 	CompleteMetricCreation() error
 	Close()
 }

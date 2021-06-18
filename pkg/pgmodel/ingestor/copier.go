@@ -113,7 +113,7 @@ hot_gather:
 }
 
 func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
-	err := doInsert(conn, reqs...)
+	err := insertSeries(conn, reqs...)
 	if err != nil {
 		insertBatchErrorFallback(conn, reqs...)
 		return
@@ -128,7 +128,7 @@ func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 func insertBatchErrorFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 	for i := range reqs {
 		reqs[i].data.batch.ResetPosition()
-		err := doInsert(conn, reqs[i])
+		err := insertSeries(conn, reqs[i])
 		if err != nil {
 			err = tryRecovery(conn, err, reqs[i])
 		}
@@ -201,7 +201,7 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest) error {
 	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
 
 	req.data.batch.ResetPosition()
-	return doInsert(conn, req) // Attempt an insert again.
+	return insertSeries(conn, req) // Attempt an insert again.
 }
 
 /*
@@ -220,8 +220,8 @@ func debugInsert() {
 }
 */
 
-// Perform the actual insertion into the DB.
-func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
+// insertSeries performs the insertion of time-series into the DB.
+func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	batch := conn.NewBatch()
 
 	numRowsPerInsert := make([]int, 0, len(reqs))
@@ -306,4 +306,29 @@ func doInsert(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	reportDuplicates(affectedMetrics)
 	DbBatchInsertDuration.Observe(time.Since(start).Seconds())
 	return nil
+}
+
+func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows uint64, err error) {
+	numRows := len(reqs)
+	timeSlice := make([]time.Time, numRows)
+	metricFamilies := make([]string, numRows)
+	units := make([]string, numRows)
+	types := make([]string, numRows)
+	helps := make([]string, numRows)
+	n := time.Now()
+	for i := range reqs {
+		timeSlice[i] = n
+		metricFamilies[i] = reqs[i].MetricFamily
+		units[i] = reqs[i].Unit
+		types[i] = reqs[i].Type
+		helps[i] = reqs[i].Help
+	}
+	start := time.Now()
+	row := conn.QueryRow(context.Background(), "SELECT "+schema.Catalog+".insert_metric_metadatas($1::TIMESTAMPTZ[], $2::TEXT[], $3::TEXT[], $4::TEXT[], $5::TEXT[])",
+		timeSlice, metricFamilies, types, units, helps)
+	if err := row.Scan(&insertedRows); err != nil {
+		return 0, fmt.Errorf("send metadata batch: %w", err)
+	}
+	MetadataBatchInsertDuration.Observe(time.Since(start).Seconds())
+	return insertedRows, nil
 }

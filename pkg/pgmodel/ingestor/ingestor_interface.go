@@ -11,5 +11,5 @@ import "github.com/timescale/promscale/pkg/prompb"
 type DBInserter interface {
 	// Ingest takes an array of TimeSeries and attepts to store it into the database.
 	// Returns the number of metrics ingested and any error encountered before finishing.
-	Ingest(*prompb.WriteRequest) (uint64, error)
+	Ingest(*prompb.WriteRequest) (uint64, uint64, error)
 }

@@ -36,18 +36,18 @@ func TestThroughputCalc(t *testing.T) {
 	ticker := time.NewTicker(time.Second / frequency)
 	stop := time.NewTimer(time.Second / 2)
 	factor := 1.0
-	var value float64
+	var value ThroughputValues
 	current := step * factor
 
 	calc.Start()
 
 	for range ticker.C {
-		calc.SetCurrent(current)
+		calc.SetCurrent(ThroughputValues{current, current})
 		value = <-calc.Values
 		current = current + (step * factor)
 		select {
 		case <-stop.C:
-			if value != step*frequency*factor {
+			if value.Samples != step*frequency*factor && value.Metadata != step*frequency*factor {
 				t.Errorf("Value is not %f, its %f", step*frequency*factor, value)
 			}
 
