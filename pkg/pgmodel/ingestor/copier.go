@@ -285,24 +285,32 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		timeExemplars := make([]time.Time, numExemplars)
 		valExemplars := make([]float64, numExemplars)
 		seriesExemplars := make([]int64, numExemplars)
+		labelsExemplars := make([][]string, numExemplars)
 
 		samplesIndex := 0
 		exemplarsIndex := 0
+
+		hasSamples := false
+		hasExemplars := false
 		for req.data.batch.Next() {
+			// todo: implement iterator for easier reading.
 			timestamp, val, seriesID, seriesEpoch, typ := req.data.batch.Values()
 			if seriesEpoch < lowestEpoch {
 				lowestEpoch = seriesEpoch
 			}
 			switch typ {
 			case pgmodel.Sample:
+				hasSamples = true
 				timeSamples[samplesIndex] = timestamp
 				valSamples[samplesIndex] = val
 				seriesSamples[samplesIndex] = int64(seriesID)
 			case pgmodel.Exemplar:
-				timeExemplars[samplesIndex] = timestamp
-				valExemplars[samplesIndex] = val
-				seriesExemplars[samplesIndex] = int64(seriesID)
+				hasExemplars = true
+				timeExemplars[exemplarsIndex] = timestamp
+				valExemplars[exemplarsIndex] = val
+				seriesExemplars[exemplarsIndex] = int64(seriesID)
 				// note to self: here exemplar labels attahed or returned by a special call, after implementing the cache that will be applied just like label ids (while flushing maybe).
+				labelsExemplars[exemplarsIndex] = req.data.batch.GetCorrespondingLabelValues()
 			}
 		}
 		if err = req.data.batch.Err(); err != nil {
@@ -313,7 +321,13 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 		numRowsTotal += numRows
 		numRowsPerInsert = append(numRowsPerInsert, numRows)
-		batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, times, vals, series)
+		if hasSamples {
+			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesSamples)
+		}
+		if hasExemplars {
+			// continue from here: make function for insert_exemplar_row
+			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1, $2, $3, $4, $5)", req.table, timeExemplars, seriesExemplars, labelsExemplars, valExemplars)
+		}
 	}
 
 	//note the epoch increment takes an access exclusive on the table before incrementing.

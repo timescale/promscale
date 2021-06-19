@@ -39,7 +39,8 @@ type Insertable interface {
 	At(index int) sampleFields
 	Type() InsertableType
 	data() interface{}
-	ExemplarLabels(index int) []prompb.Label
+	AllExemplarLabelKeys() []string
+	OrderExemplarLabels(index map[string]int) (positionNotExists bool)
 }
 
 type sampleFields interface {
@@ -49,6 +50,8 @@ type sampleFields interface {
 	GetTs() int64
 	// GetVal similar to GetTs, but returns value.
 	GetVal() float64
+	// ExemplarLabels returns labels of exemplars.
+	ExemplarLabels() []prompb.Label
 }
 
 func NewInsertable(series *Series, data interface{}) Insertable {
@@ -81,7 +84,6 @@ func putSamples(s *promSamples) {
 	promSamplesPool.Put(s)
 }
 
-// todo: rename promSample to sample.
 type promSamples struct {
 	series  *Series
 	samples []prompb.Sample
@@ -116,9 +118,11 @@ func (t *promSamples) MaxTs() int64 {
 	return t.samples[numSamples-1].Timestamp
 }
 
-func (t *promSamples) ExemplarLabels(_ int) []prompb.Label {
+func (t *promSamples) AllExemplarLabelKeys() []string {
 	return nil
 }
+
+func (t *promSamples) OrderExemplarLabels(_ map[string]int) bool { return false }
 
 func (t *promSamples) Type() InsertableType {
 	return Sample
@@ -172,6 +176,64 @@ func (t *promExemplars) MaxTs() int64 {
 
 func (t *promExemplars) ExemplarLabels(index int) []prompb.Label {
 	return t.exemplars[index].Labels
+}
+
+// OrderExemplarLabels orders the existing labels in each exemplar, based on the index of the label key
+// in _prom_catalog.exemplar_label_key_position table. The index received is the positions for each
+// label key which is used to re-format the labels slice in exemplars.
+//
+// During ingestion, we need the label's value part only, as the label's key part is already handled
+// by the index received from the _prom_catalog.exemplar_label_key_position table.
+//
+// OrderExemplarLabels returns positionNotExists as true if the index does not contain the position of some key. This happens
+// when for same metric, two different series have exemplars with different labels_set, which will require the cache
+// to have positions as union of the different labels_set. For this to happen, we need to re-fetch the positions with
+// the missing keys and update the underlying cache (which happens in the calling function).
+func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionNotExists bool) {
+	for i := range t.exemplars {
+		orderedLabels := make([]prompb.Label, len(index))
+		fillEmptyValues(orderedLabels)
+		labels := t.exemplars[i].Labels
+		for labelIndex := range labels {
+			key := labels[labelIndex].Name
+			value := labels[labelIndex].Value
+			position, exists := index[key] // We always expect the position to be present. A fatal case for data loss would
+			if !exists {
+				return true
+			}
+			orderedLabels[position].Value = value
+		}
+		t.exemplars[i].Labels = orderedLabels
+	}
+	return false
+}
+
+const emptyExemplarValues = "__promscale_no_value__"
+
+func fillEmptyValues(s []prompb.Label) {
+	for i := range s {
+		s[i].Name = "" // Label keys are no more required during ingestion of exemplars.
+		s[i].Value = emptyExemplarValues
+	}
+}
+
+func (t *promExemplars) AllExemplarLabelKeys() []string {
+	uniqueKeys := make(map[string]struct{})
+	for i := range t.exemplars {
+		l := t.exemplars[i].Labels
+		for _, k := range l {
+			uniqueKeys[k.Name] = struct{}{}
+		}
+	}
+	return getSlice(uniqueKeys)
+}
+
+func getSlice(m map[string]struct{}) []string {
+	s := make([]string, 0, len(m))
+	for k, _ := range m {
+		s = append(s, k)
+	}
+	return s
 }
 
 func (t *promExemplars) Type() InsertableType {
@@ -262,43 +324,30 @@ func (t *Batch) dataType() InsertableType {
 	return t.data[t.seriesIndex].Type()
 }
 
-//func (t *Batch) Query(batch pgxconn.PgxBatch) (int, int64, error) {
-//	numSamples, numExemplars := t.CountSamples()
-//	times := make([]time.Time, numRows)
-//	vals := make([]float64, numRows)
-//	series := make([]int64, numRows)
-//	lowestEpoch := SeriesEpoch(math.MaxInt64)
-//
-//	i := 0
-//	for t.next() {
-//		ts, val, seriesId, epoch, typ := t.values()
-//		if epoch < lowestEpoch {
-//			lowestEpoch = epoch
-//		}
-//		times[i] = ts
-//		vals[i] = val
-//		series[i] = int64(seriesId)
-//		if t.dataType() == exemplar {
-//			// exemplar
-//		}
-//	}
-//	if t.Err() != nil {
-//		return 0, 0, t.Err()
-//	}
-//}
-
 // Values returns the values for the current row
 func (t *Batch) Values() (time.Time, float64, SeriesID, SeriesEpoch, InsertableType) {
-	sampleSet := t.data[t.seriesIndex]
-	sample := sampleSet.At(t.dataIndex)
+	set := t.data[t.seriesIndex]
+	sample := set.At(t.dataIndex)
 	if t.MinSeen > sample.GetTs() {
 		t.MinSeen = sample.GetTs()
 	}
-	sid, eid, err := sampleSet.GetSeries().GetSeriesID()
+	sid, eid, err := set.GetSeries().GetSeriesID()
 	if t.err == nil {
 		t.err = err
 	}
-	return model.Time(sample.GetTs()).Time(), sample.GetVal(), sid, eid, sampleSet.Type()
+	return model.Time(sample.GetTs()).Time(), sample.GetVal(), sid, eid, set.Type()
+}
+
+// GetCorrespondingLabelValues returns the label values of the underlying data (exemplar) in the iterator.
+func (t *Batch) GetCorrespondingLabelValues() []string {
+	set := t.data[t.seriesIndex]
+	exemplar := set.At(t.dataIndex)
+	lbls := exemplar.ExemplarLabels()
+	s := make([]string, len(lbls))
+	for i := range lbls {
+		s[i] = lbls[i].Value
+	}
+	return s
 }
 
 func (t *Batch) Absorb(other Batch) {
@@ -354,9 +403,11 @@ func (t *noopInsertable) Type() InsertableType {
 	return Invalid
 }
 
-func (t *noopInsertable) ExemplarLabels(_ int) []prompb.Label {
+func (t *noopInsertable) AllExemplarLabelKeys() []string {
 	return nil
 }
+
+func (t *noopInsertable) OrderExemplarLabels(_ map[string]int) bool { return false }
 
 func (t *noopInsertable) data() interface{} {
 	return nil

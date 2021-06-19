@@ -108,7 +108,7 @@ BEGIN
         RETURN FALSE;
     END IF;
     -- table does not exists. Let's create it.
-    EXECUTE FORMAT('CREATE TABLE SCHEMA_DATA_EXEMPLAR.%I (time TIMESTAMPTZ NOT NULL, series_id BIGINT NOT NULL, exemplar_labels TEXT[], value DOUBLE PRECISION NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
+    EXECUTE FORMAT('CREATE TABLE SCHEMA_DATA_EXEMPLAR.%I (time TIMESTAMPTZ NOT NULL, series_id BIGINT NOT NULL, exemplar_label_values TEXT[], value DOUBLE PRECISION NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
         table_name_text);
     EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_reader', table_name_text);
     EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_writer', table_name_text);
@@ -125,3 +125,26 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.insert_exemplar_row(
+    metric_table NAME,
+    time_array TIMESTAMPTZ[],
+    series_id_array BIGINT[],
+    exemplar_label_values_array TEXT[][],
+    value_array DOUBLE PRECISION[],
+) RETURNS BIGINT AS
+$$
+DECLARE
+    num_rows BIGINT;
+BEGIN
+    EXECUTE FORMAT(
+        'INSERT INTO  SCHEMA_DATA_EXEMPLAR.%1$I (time, series_id, exemplar_label_values, value)
+             SELECT * FROM unnest($1, $2, $3, $4) a(t,s,lv,v) ORDER BY s,t ON CONFLICT DO NOTHING',
+        metric_table
+    ) USING time_array, series_id_array, exemplar_label_values_array, value_array;
+    GET DIAGNOSTICS num_rows = ROW_COUNT;
+    RETURN num_rows;
+END;
+$$
+LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.insert_exemplar_row(NAME, TIMESTAMPTZ[], BIGINT[], TEXT[][], DOUBLE PRECISION[]) TO prom_writer;

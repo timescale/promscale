@@ -252,6 +252,10 @@ func (m Sample) GetVal() float64 {
 	return m.Value
 }
 
+func (m Sample) ExemplarLabels() []Label {
+	return nil
+}
+
 func (m *Sample) GetTimestamp() int64 {
 	if m != nil {
 		return m.Timestamp
@@ -324,6 +328,10 @@ func (m *Exemplar) GetValue() float64 {
 
 func (m Exemplar) GetVal() float64 {
 	return m.Value
+}
+
+func (m Exemplar) ExemplarLabels() []Label {
+	return m.Labels
 }
 
 func (m *Exemplar) GetTimestamp() int64 {

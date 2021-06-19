@@ -23,21 +23,6 @@ func (pos *ExemplarLabelsPosCache) GetLabelPositions(metricName string) (map[str
 	return labelPos.(map[string]int), true
 }
 
-// HasPositionsFor accepts keys. It checks if it has all the positions for the given keys. If position for any
-// key does not exist, it returns false. With false as return, the caller is expected to re-fetch the positions for the metricName
-// and update the existing entry for metricName.
-func (pos *ExemplarLabelsPosCache) HasPositionsFor(metricName string, keys []string) (map[string]int, bool) {
-	labelPos, exists := pos.GetLabelPositions(metricName)
-	if !exists {
-		return nil, exists
-	}
-	for i := range keys {
-		if _, present := labelPos[keys[i]]; present {
-
-		}
-	}
-}
-
 func (pos *ExemplarLabelsPosCache) SetorUpdateLabelPositions(metricName string, keyPos map[string]int) {
 	pos.cache.Update(metricName, keyPos, 0)
 }
