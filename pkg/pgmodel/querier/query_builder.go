@@ -456,7 +456,7 @@ func calledByTimestamp(path []parser.Node) bool {
 	return false
 }
 
-var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3")
+var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
 
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
 func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
@@ -465,6 +465,10 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 		switch n := qh.CurrentNode.(type) {
 		case *parser.VectorSelector:
 			//TODO: handle the instant query (hints.Step==0) case too.
+			/* vector selector pushdown improves performance by selecting from the database only the last point
+			* in a vector selector window(step) this decreases the amount of samples transferred from the DB to Promscale
+			* by orders of magnitude. A vector selector aggregate also does not require ordered inputs which saves
+			* a sort and allows for parallel evaluation. */
 			if hints != nil &&
 				hints.Step > 0 &&
 				hints.Range == 0 &&
