@@ -1,3 +1,5 @@
+CREATE DOMAIN SCHEMA_PROM.label_value_array AS TEXT[];
+
 CREATE SCHEMA IF NOT EXISTS SCHEMA_EXEMPLAR_DATA;
 GRANT USAGE TO SCHEMA SCHEMA_EXEMPLAR_DATA TO prom_reader;
 GRANT USAGE TO SCHEMA SCHEMA_EXEMPLAR_DATA TO prom_writer;
@@ -20,4 +22,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.ha_leases_logs TO p
 -- todo: create indexes
 
 -- todo: add indexes across all files related to this.
+
+
 

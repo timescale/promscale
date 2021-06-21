@@ -36,8 +36,9 @@ var DefaultConfig = Config{
 	SeriesCacheInitialSize:    DefaultSeriesCacheSize,
 	SeriesCacheMemoryMaxBytes: 1000000,
 
-	MetricsCacheSize: DefaultMetricCacheSize,
-	LabelsCacheSize:  1000,
+	MetricsCacheSize:  DefaultMetricCacheSize,
+	LabelsCacheSize:   1000,
+	ExemplarCacheSize: 5000,
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
@@ -47,6 +48,8 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", DefaultMetricCacheSize, "Maximum number of metric names to cache.")
 	fs.Uint64Var(&cfg.SeriesCacheInitialSize, "series-cache-initial-size", DefaultSeriesCacheSize, "Maximum number of series to cache.")
 	fs.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "Maximum number of labels to cache.")
+	fs.Uint64Var(&cfg.ExemplarCacheSize, "exemplar-cache-size", DefaultExemplarKeyPosCacheSize, "Maximum number of exemplar metrics key-position to cache. "+
+		"It has one-to-one mapping with number of metrics that have exemplar, as key positions are saved per metric basis.")
 	fs.Var(&cfg.seriesCacheMemoryMaxFlag, "series-cache-max-bytes", "Initial number of elements in the series cache. "+
 		"Specified in bytes or as a percentage of the memory-target (e.g. 50%).")
 	return cfg

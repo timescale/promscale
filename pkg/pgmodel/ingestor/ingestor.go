@@ -32,8 +32,8 @@ type DBIngestor struct {
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, cfg *Cfg) (*DBIngestor, error) {
-	dispatcher, err := newPgxDispatcher(conn, cache, sCache, cfg)
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache *cache.ExemplarLabelsPosCache, cfg *Cfg) (*DBIngestor, error) {
+	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,8 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	}
 	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 	s := cache.NewSeriesCache(cache.DefaultConfig, nil)
-	return NewPgxIngestor(conn, c, s, cfg)
+	e := cache.NewExemplarLabelsPosCache(cache.DefaultConfig)
+	return NewPgxIngestor(conn, c, s, e, cfg)
 }
 
 const (
@@ -71,7 +72,21 @@ func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (mod
 }
 
 func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	return model.NewInsertable(l, ts.Exemplars), len(ts.Exemplars), nil
+	trimmedExemplar := trimEmptyExemplar(ts.Exemplars)
+	return model.NewInsertable(l, trimmedExemplar), len(trimmedExemplar), nil
+}
+
+// We are getting 2 exemplar per actual exemplar, the first being empty. This can be due to some bug on our side in promb,
+// as prometheus is sending only one. This is hence a todo befre merging.
+func trimEmptyExemplar(e []prompb.Exemplar) []prompb.Exemplar {
+	var tmp []prompb.Exemplar
+	for i := range e {
+		if e[i].Timestamp == 0 && e[i].Value == 0 {
+			continue
+		}
+		tmp = append(tmp, e[i])
+	}
+	return tmp
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.

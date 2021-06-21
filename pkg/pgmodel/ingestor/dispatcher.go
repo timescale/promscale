@@ -32,7 +32,8 @@ type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
-	batchers               sync.Map
+	exemplarKeyPosCache    *cache.ExemplarLabelsPosCache // todo: convert to interface.
+	inserters              sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
 	toCopiers              chan<- copyRequest
@@ -42,7 +43,9 @@ type pgxDispatcher struct {
 	labelArrayOID          uint32
 }
 
-func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxDispatcher, error) {
+func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, eCache *cache.ExemplarLabelsPosCache, cfg *Cfg) (*pgxDispatcher, error) {
+	cmc := make(chan struct{}, 1)
+
 	numCopiers := cfg.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")
@@ -78,13 +81,24 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		conn:                   conn,
 		metricTableNames:       cache,
 		scache:                 scache,
-		completeMetricCreation: make(chan struct{}, 1),
+		exemplarKeyPosCache:    eCache,
+		completeMetricCreation: cmc,
+		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
 		doneChannel:        make(chan struct{}),
 	}
 	runBatchWatcher(inserter.doneChannel)
+
+	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&inserter.labelArrayOID)
+	if err != nil {
+		return nil, err
+	}
+	err = registerLabelValueArrayOID(conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering prom_api.label_value_array[] oid: %w", err)
+	}
 
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
@@ -282,7 +296,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
-			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
+			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.exemplarKeyPosCache, p.toCopiers, p.labelArrayOID)
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)

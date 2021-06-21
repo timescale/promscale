@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgtype"
 	"math"
 	"sort"
 	"strings"
@@ -30,6 +31,7 @@ type copyRequest struct {
 }
 
 var (
+	labelValueArrayOID  uint32
 	getBatchMutex       = &sync.Mutex{}
 	handleDecompression = retryAfterDecompression
 )
@@ -256,15 +258,14 @@ func debugInsert() {
 func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	batch := conn.NewBatch()
 
-	numRowsPerInsert := make([]int, 0, len(reqs))
+	numRowsPerInsert := []int{}
 	numRowsTotal := 0
 	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	for r := range reqs {
 		req := &reqs[r]
 		numSamples, numExemplars := req.data.batch.Count()
-		numRows := numSamples + numExemplars
 		// todo: stats for num samples ingested and num exemplars ingested if required.
-		NumRowsPerInsert.Observe(float64(numRows))
+		NumRowsPerInsert.Observe(float64(numSamples + numExemplars))
 
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
@@ -278,17 +279,14 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		// INSERT using that overcomes most of the performance issues for sending
 		// multiple data, and brings INSERT nearly on par with CopyFrom. In the
 		// future we may wish to send compressed data instead.
-		timeSamples := make([]time.Time, numSamples)
-		valSamples := make([]float64, numSamples)
-		seriesSamples := make([]int64, numSamples)
+		timeSamples := make([]time.Time, 0, numSamples)
+		valSamples := make([]float64, 0, numSamples)
+		seriesSamples := make([]int64, 0, numSamples)
 
-		timeExemplars := make([]time.Time, numExemplars)
-		valExemplars := make([]float64, numExemplars)
-		seriesExemplars := make([]int64, numExemplars)
-		labelsExemplars := make([][]string, numExemplars)
-
-		samplesIndex := 0
-		exemplarsIndex := 0
+		timeE := make([]time.Time, 0, numExemplars)
+		valE := make([]float64, 0, numExemplars)
+		seriesE := make([]int64, 0, numExemplars)
+		exemplarLbls := make([][]string, 0, numExemplars)
 
 		hasSamples := false
 		hasExemplars := false
@@ -301,32 +299,36 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 			switch typ {
 			case pgmodel.Sample:
 				hasSamples = true
-				timeSamples[samplesIndex] = timestamp
-				valSamples[samplesIndex] = val
-				seriesSamples[samplesIndex] = int64(seriesID)
+				timeSamples = append(timeSamples, timestamp)
+				valSamples = append(valSamples, val)
+				seriesSamples = append(seriesSamples, int64(seriesID))
 			case pgmodel.Exemplar:
 				hasExemplars = true
-				timeExemplars[exemplarsIndex] = timestamp
-				valExemplars[exemplarsIndex] = val
-				seriesExemplars[exemplarsIndex] = int64(seriesID)
-				// note to self: here exemplar labels attahed or returned by a special call, after implementing the cache that will be applied just like label ids (while flushing maybe).
-				labelsExemplars[exemplarsIndex] = req.data.batch.GetCorrespondingLabelValues()
+				timeE = append(timeE, timestamp)
+				valE = append(valE, val)
+				seriesE = append(seriesE, int64(seriesID))
+				exemplarLbls = append(exemplarLbls, req.data.batch.GetCorrespondingLabelValues())
 			}
 		}
 		if err = req.data.batch.Err(); err != nil {
 			return err
 		}
-		if len(timeSamples)+len(timeExemplars) != numRows {
-			panic("invalid insert request")
-		}
-		numRowsTotal += numRows
-		numRowsPerInsert = append(numRowsPerInsert, numRows)
+		numRowsTotal += numSamples + numExemplars
 		if hasSamples {
-			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesSamples)
+			numRowsPerInsert = append(numRowsPerInsert, numSamples)
+			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1::NAME, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesSamples)
 		}
 		if hasExemplars {
-			// continue from here: make function for insert_exemplar_row
-			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1, $2, $3, $4, $5)", req.table, timeExemplars, seriesExemplars, labelsExemplars, valExemplars)
+			// We cannot send 2-D [][]TEXT to postgres via the pgx.encoder. For this and easier querying reasons, we create a
+			// new type in postgres by the name SCHEMA_PROM.label_value_array and use that type as array (which forms a 2D array of TEXT)
+			// which is then used to push using the unnest method apprach.
+			labelValues := pgtype.NewArrayType("prom_api.label_value_array[]", labelValueArrayOID, labelValueArrayTranscoder)
+			err := labelValues.Set(exemplarLbls)
+			if err != nil {
+				return fmt.Errorf("setting prom_api.label_value_array[] value: %w", err)
+			}
+			numRowsPerInsert = append(numRowsPerInsert, numExemplars)
+			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1::NAME, $2::TIMESTAMPTZ[], $3::BIGINT[], $4::"+schema.Prom+".label_value_array[], $5::DOUBLE PRECISION[])", req.table, timeE, seriesE, labelValues, valE)
 		}
 	}
 

@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS SCHEMA_CATALOG.exemplar_label_key_position (
     metric_name TEXT NOT NULL,
     key         TEXT NOT NULL,
-    pos         INTEGER NOT NULL
+    pos         INTEGER NOT NULL,
     PRIMARY KEY (metric_name, key)
 );
 -- todo: create indexes.

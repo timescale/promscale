@@ -21,6 +21,7 @@ import (
 
 //this seems like a good initial size for /active/ series. Takes about 32MB
 const DefaultSeriesCacheSize = 250000
+const DefaultExemplarKeyPosCacheSize = 5000
 
 const GrowCheckDuration = time.Minute //check whether to grow the series cache this often
 const GrowEvictionThreshold = 0.2     // grow when evictions more than 20% of cache size

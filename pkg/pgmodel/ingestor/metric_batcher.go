@@ -20,7 +20,7 @@ import (
 const (
 	seriesInsertSQL           = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
 	createExemplarTable       = "SELECT * FROM " + schema.Catalog + ".create_exemplar_table_if_not_exists($1)"
-	getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_exemplar_label_key_positions($1, $2)"
+	getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_exemplar_label_key_positions($1::TEXT, $2::TEXT[])"
 	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
 )
 
@@ -115,7 +115,8 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
-	toCopiers chan<- copyRequest,
+	exemplarKeyPos *cache.ExemplarLabelsPosCache, // todo: convert to interface.
+	toCopiers chan copyRequest,
 	labelArrayOID uint32) {
 
 	var tableName string
@@ -146,6 +147,10 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		metricName:      metricName,
 		metricTableName: tableName,
 		toCopiers:       toCopiers,
+		labelArrayOID:   labelArrayOID,
+		exemplarCatalog: &exemplarInfo{
+			exemplarCache: exemplarKeyPos,
+		},
 	}
 
 	handler.handleReq(firstReq)

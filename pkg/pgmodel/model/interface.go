@@ -40,3 +40,5 @@ func TimestamptzToMs(t pgtype.Timestamptz) int64 {
 		return t.Time.UnixNano() / 1e6
 	}
 }
+
+// scratch

@@ -146,9 +146,9 @@ type promExemplars struct {
 }
 
 func newExemplarSamples(series *Series, exemplarSet []prompb.Exemplar) Insertable {
-	s := promSamplesPool.Get().(*promExemplars)
+	s := promExemplarsPool.Get().(*promExemplars)
 	s.series = series
-	s.exemplars = exemplarSet[:0]
+	s.exemplars = exemplarSet
 	return s
 }
 
@@ -192,7 +192,7 @@ func (t *promExemplars) ExemplarLabels(index int) []prompb.Label {
 func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionNotExists bool) {
 	for i := range t.exemplars {
 		orderedLabels := make([]prompb.Label, len(index))
-		fillEmptyValues(orderedLabels)
+		orderedLabels = fillEmptyValues(orderedLabels)
 		labels := t.exemplars[i].Labels
 		for labelIndex := range labels {
 			key := labels[labelIndex].Name
@@ -201,7 +201,12 @@ func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionNotEx
 			if !exists {
 				return true
 			}
-			orderedLabels[position].Value = value
+			orderedLabels[position-1].Value = value
+		}
+		for j := range orderedLabels {
+			if orderedLabels[j].Value == emptyExemplarValues {
+				panic(orderedLabels)
+			}
 		}
 		t.exemplars[i].Labels = orderedLabels
 	}
@@ -210,11 +215,12 @@ func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionNotEx
 
 const emptyExemplarValues = "__promscale_no_value__"
 
-func fillEmptyValues(s []prompb.Label) {
+func fillEmptyValues(s []prompb.Label) []prompb.Label {
 	for i := range s {
 		s[i].Name = "" // Label keys are no more required during ingestion of exemplars.
 		s[i].Value = emptyExemplarValues
 	}
+	return s
 }
 
 func (t *promExemplars) AllExemplarLabelKeys() []string {
@@ -282,9 +288,9 @@ func (t *Batch) Count() (numSamples, numExemplars int) {
 	for i := range t.data {
 		switch t.data[i].Type() {
 		case Sample:
-			numSamples++
+			numSamples += t.data[i].Count()
 		case Exemplar:
-			numExemplars++
+			numExemplars += t.data[i].Count()
 		default:
 			panic(fmt.Sprintf("invalid type %d", t.data[i].Type()))
 		}
