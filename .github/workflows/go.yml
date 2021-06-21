@@ -84,7 +84,7 @@ jobs:
         fi
 
     - name: Test
-      run: go test -v -race ./... -timeout 30m > complete-test-run.log  2>&1
+      run: go test -v -race ./... -timeout 40m > complete-test-run.log  2>&1
 
     - name: 'Print failure logs'
       if: ${{ failure() }}

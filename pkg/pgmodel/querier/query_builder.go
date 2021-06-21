@@ -133,8 +133,7 @@ const (
 			%[8]s
 		) as time_ordered_rows
 		GROUP BY series_id
-	) as result ON (result.value_array is not null AND result.series_id = series.id)
-	`
+	) as result ON (result.value_array is not null AND result.series_id = series.id)`
 )
 
 var (
@@ -417,7 +416,7 @@ type aggregators struct {
 
 /* vectorSelectors called by the timestamp function have special handling see engine.go */
 func calledByTimestamp(path []parser.Node) bool {
-	if path != nil && len(path) > 0 {
+	if len(path) > 0 {
 		node := path[len(path)-1]
 		call, ok := node.(*parser.Call)
 		if ok && call.Func.Name == "timestamp" {
