@@ -426,7 +426,7 @@ func calledByTimestamp(path []parser.Node) bool {
 	return false
 }
 
-var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3")
+var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
 
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
 func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
