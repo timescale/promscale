@@ -418,7 +418,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 }
 
 func migrateToVersion(t testing.TB, connectURL string, version string, commitHash string) {
-	err := extension.InstallUpgradeTimescaleDBExtensions(connectURL, extension.ExtensionMigrateOptions{Install: true, Upgrade: true})
+	err := extension.InstallUpgradeTimescaleDBExtensions(connectURL, extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 		t.Fatal(err)
 	}
 	defer func() { _ = migratePool.Close(context.Background()) }()
-	err = runner.SetupDBState(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, nil, extension.ExtensionMigrateOptions{Install: true, Upgrade: true})
+	err = runner.SetupDBState(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, nil, extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true})
 	if err != nil {
 		t.Fatal(err)
 	}
