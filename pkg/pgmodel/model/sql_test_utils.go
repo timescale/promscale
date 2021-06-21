@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -124,7 +125,9 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	row.Sql = space.ReplaceAllString(row.Sql, " ")
 
 	if sql != row.Sql {
-		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s", idx, sql, row.Sql)
+		dmp := diffmatchpatch.New()
+		diffs := dmp.DiffMain(sql, row.Sql, false)
+		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s\ndiff:\n\t%v", idx, sql, row.Sql, dmp.DiffPrettyText(diffs))
 	}
 
 	require.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
