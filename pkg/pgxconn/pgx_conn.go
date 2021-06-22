@@ -6,10 +6,13 @@ package pgxconn
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/timescale/promscale/pkg/log"
 )
 
 type PgxBatch interface {
@@ -19,12 +22,19 @@ type PgxBatch interface {
 type PgxConn interface {
 	Close()
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error)
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
 	CopyFromRows(rows [][]interface{}) pgx.CopyFromSource
 	NewBatch() PgxBatch
 	SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error)
+}
+
+type PgxRows interface {
+	Next() bool
+	Scan(...interface{}) error
+	Err() error
+	Close()
 }
 
 func NewPgxConn(pool *pgxpool.Pool) PgxConn {
@@ -37,21 +47,63 @@ type connImpl struct {
 	Conn *pgxpool.Pool
 }
 
+type pgxRows struct {
+	pgx.Rows
+	sqlQuery  string
+	args      []interface{}
+	startTime time.Time
+	loggged   bool
+}
+
 func (p *connImpl) Close() {
 	conn := p.Conn
 	p.Conn = nil
 	conn.Close()
 }
 
-func (p *connImpl) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	return p.Conn.Exec(ctx, sql, arguments...)
+func (p *pgxRows) Next() bool {
+	if !p.loggged {
+		p.loggged = true
+		LogQueryStats(p.sqlQuery, p.startTime, p.args)()
+	}
+	return p.Rows.Next()
 }
 
-func (p *connImpl) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	return p.Conn.Query(ctx, sql, args...)
+func (p *pgxRows) Scan(dest ...interface{}) error {
+	return p.Rows.Scan(dest...)
+}
+
+func (p *pgxRows) Err() error {
+	return p.Rows.Err()
+}
+
+func (p *pgxRows) Close() {
+	p.Rows.Close()
+}
+
+// calc SQL query execution time
+func LogQueryStats(sql string, startTime time.Time, args ...interface{}) func() {
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	return func() {
+		log.Debug("msg", fmt.Sprintf("time taken by SQL query: %s with args: %v is %v", sql, args, time.Since(startTime)))
+	}
+}
+
+func (p *connImpl) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	defer LogQueryStats(sql, time.Time{}, args...)()
+	return p.Conn.Exec(ctx, sql, args...)
+}
+
+func (p *connImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
+	startTime := time.Now()
+	rows, err := p.Conn.Query(ctx, sql, args...)
+	return &pgxRows{Rows: rows, sqlQuery: sql, args: args, startTime: startTime}, err
 }
 
 func (p *connImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	defer LogQueryStats(sql, time.Time{}, args...)()
 	return p.Conn.QueryRow(ctx, sql, args...)
 }
 

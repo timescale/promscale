@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -17,7 +16,7 @@ import (
 // MetricQuery returns metadata corresponding to metric or metric_family.
 func MetricQuery(conn pgxconn.PgxConn, metric string, limit int) (map[string][]model.Metadata, error) {
 	var (
-		rows pgx.Rows
+		rows pgxconn.PgxRows
 		err  error
 	)
 	if metric != "" {

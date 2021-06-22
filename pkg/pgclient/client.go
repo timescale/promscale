@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/url"
 
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"

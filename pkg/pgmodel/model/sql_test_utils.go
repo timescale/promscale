@@ -70,7 +70,7 @@ func (r *SqlRecorder) Exec(ctx context.Context, sql string, arguments ...interfa
 	return results[0][0].(pgconn.CommandTag), err
 }
 
-func (r *SqlRecorder) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (r *SqlRecorder) Query(ctx context.Context, sql string, args ...interface{}) (pgxconn.PgxRows, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	rows, err := r.checkQuery(sql, args...)

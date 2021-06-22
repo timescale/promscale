@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
@@ -254,7 +253,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 	defer batchResults.Close()
 
 	for i := 0; i < numQueries; i++ {
-		rows, err = batchResults.Query()
+		rows, err := batchResults.Query()
 		if err != nil {
 			rows.Close()
 			return nil, nil, err
@@ -325,7 +324,7 @@ func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
 
 // appendTsRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendTsRows(out []timescaleRow, in pgx.Rows) ([]timescaleRow, error) {
+func appendTsRows(out []timescaleRow, in pgxconn.PgxRows) ([]timescaleRow, error) {
 	if in.Err() != nil {
 		return out, in.Err()
 	}

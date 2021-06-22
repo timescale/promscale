@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -60,7 +59,6 @@ func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
 	if !minT.Before(leaseStart) {
 		if !allowInsert {
 			wr.Timeseries = wr.Timeseries[:0]
-			log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert", "replica", replicaName)
 		}
 		return nil
 	}
@@ -80,7 +78,6 @@ func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
 	case !hasBackfill && !allowInsert:
 		// No data to insert.
 		wr.Timeseries = wr.Timeseries[:0]
-		log.Debug("msg", "the samples aren't from the leader prom instance. skipping the insert", "replica", replicaName)
 	default:
 		// This case covers the instance when we have backfill and data in current lease to ingest.
 		// The data has already been filtered out so there is nothing to do.
