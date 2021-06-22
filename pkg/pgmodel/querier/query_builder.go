@@ -457,6 +457,30 @@ func calledByTimestamp(path []parser.Node) bool {
 }
 
 var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
+var rateIncreaseExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
+
+func callAggregator(hints *storage.SelectHints, funcName string) *aggregators {
+	queryStart := hints.Start + hints.Range
+	queryEnd := hints.End
+	stepDuration := time.Second
+	rangeDuration := time.Duration(hints.Range) * time.Millisecond
+
+	if hints.Step > 0 {
+		stepDuration = time.Duration(hints.Step) * time.Millisecond
+	} else {
+		if queryStart != queryEnd {
+			panic("query start should equal query end")
+		}
+	}
+	qf := aggregators{
+		timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
+		timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
+		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
+		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
+		unOrdered:   false,
+	}
+	return &qf
+}
 
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
 func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
@@ -491,34 +515,15 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 		}
 	}
 	if extension.ExtensionIsInstalled && qh != nil && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
-		var topNode parser.Node
-
 		//switch on the 2nd-to-last last path node
 		node := path[len(path)-2]
 		switch n := node.(type) {
 		case *parser.Call:
 			if n.Func.Name == "delta" {
-				topNode = node
-				queryStart := hints.Start + hints.Range
-				queryEnd := hints.End
-				stepDuration := time.Second
-				rangeDuration := time.Duration(hints.Range) * time.Millisecond
-
-				if hints.Step > 0 {
-					stepDuration = time.Duration(hints.Step) * time.Millisecond
-				} else {
-					if queryStart != queryEnd {
-						panic("query start should equal query end")
-					}
-				}
-				qf := aggregators{
-					timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
-					timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
-					valueClause: "prom_delta($%d, $%d,$%d, $%d, time, value)",
-					valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
-					unOrdered:   false,
-				}
-				return &qf, topNode, nil
+				return callAggregator(hints, n.Func.Name), node, nil
+			}
+			if (n.Func.Name == "rate" || n.Func.Name == "increase") && rateIncreaseExtensionRange(extension.PromscaleExtensionVersion) {
+				return callAggregator(hints, n.Func.Name), node, nil
 			}
 		default:
 			//No pushdown optimization by default
