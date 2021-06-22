@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sync"
 	"sync/atomic"
 
 	"github.com/prometheus/common/config"
@@ -20,9 +21,9 @@ import (
 // Config is config for writer.
 type Config struct {
 	Context          context.Context
-	ClientRt         utils.ClientRuntime
 	MigrationJobName string // Label value to the progress metric.
 	ConcurrentPush   int
+	ClientConfig     utils.ClientConfig
 	HTTPConfig       config.HTTPClientConfig
 
 	ProgressEnabled    bool
@@ -45,7 +46,7 @@ type Write struct {
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
 func New(config Config) (*Write, error) {
-	ss, err := newShardsSet(config.Context, config.HTTPConfig, config.ClientRt, config.ConcurrentPush)
+	ss, err := newShardsSet(config.Context, config.HTTPConfig, config.ClientConfig, config.ConcurrentPush)
 	if err != nil {
 		return nil, fmt.Errorf("creating shards: %w", err)
 	}
@@ -59,7 +60,7 @@ func New(config Config) (*Write, error) {
 		}
 	}
 	if config.GarbageCollectOnPush {
-		write.sigGC = make(chan struct{})
+		write.sigGC = make(chan struct{}, 1)
 	}
 	return write, nil
 }
@@ -129,37 +130,26 @@ func (w *Write) Run(errChan chan<- error) {
 	}()
 }
 
+var gcRunner sync.Once
+
 func (w *Write) collectGarbage() {
 	if w.sigGC == nil {
 		// sigGC is nil if w.GarbageCollectOnPush is set to false.
 		return
 	}
-	if !gcRoutineActive.Load().(bool) {
-		gcRoutineActive.Store(true)
+	gcRunner.Do(func() {
 		go gc(w.sigGC)
+	})
+	select {
+	case w.sigGC <- struct{}{}:
+	default:
+		// Skip GC as its already running.
 	}
-	w.sigGC <- struct{}{}
-}
-
-var (
-	gcRoutineActive atomic.Value
-	isGCInProgress  atomic.Value
-)
-
-func init() {
-	gcRoutineActive.Store(false)
-	isGCInProgress.Store(false)
 }
 
 func gc(collect <-chan struct{}) {
 	for range collect {
-		if isGCInProgress.Load().(bool) {
-			// Ignore the signal to collect garbage as GC is already doing its job.
-			continue
-		}
-		isGCInProgress.Store(true)
 		runtime.GC() // This is blocking, hence we run asynchronously.
-		isGCInProgress.Store(false)
 	}
 }
 
@@ -170,6 +160,6 @@ func (w *Write) Slabs() int64 {
 
 // pushProgressMetric pushes the progress-metric to the remote storage system.
 func (w *Write) pushProgressMetric(series *prompb.TimeSeries) int {
-	var shards = w.shardsSet
+	shards := w.shardsSet
 	return shards.scheduleTS([]prompb.TimeSeries{*series})
 }

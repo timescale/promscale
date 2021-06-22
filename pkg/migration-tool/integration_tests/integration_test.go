@@ -18,7 +18,7 @@ import (
 
 var (
 	largeTimeSeries, tsMint, tsMaxt = generateLargeTimeseries()
-	defaultRuntime                  = utils.ClientRuntime{
+	defaultRuntime                  = utils.ClientConfig{
 		Timeout:   time.Minute * 5,
 		OnTimeout: utils.Retry,
 		OnErr:     utils.Retry,
@@ -27,7 +27,7 @@ var (
 	}
 )
 
-func GetRuntime(url string) utils.ClientRuntime {
+func getConfig(url string) utils.ClientConfig {
 	r := defaultRuntime
 	r.URL = url
 	return r
@@ -71,16 +71,16 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 
 	// Replicate main.
 	planConfig := &plan.Config{
-		Mint:               conf.mint,
-		Maxt:               conf.maxt,
-		JobName:            conf.name,
-		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPull,
-		ProgressEnabled:    conf.progressEnabled,
-		ProgressMetricName: conf.progressMetricName,
-		ProgressClientRt:   GetRuntime(conf.progressMetricURL),
-		LaIncrement:        conf.laIncrement,
-		MaxReadDuration:    conf.maxReadDuration,
+		Mint:                 conf.mint,
+		Maxt:                 conf.maxt,
+		JobName:              conf.name,
+		SlabSizeLimitBytes:   conf.maxSlabSizeBytes,
+		NumStores:            conf.concurrentPull,
+		ProgressEnabled:      conf.progressEnabled,
+		ProgressMetricName:   conf.progressMetricName,
+		ProgressClientConfig: getConfig(conf.progressMetricURL),
+		LaIncrement:          conf.laIncrement,
+		MaxReadDuration:      conf.maxReadDuration,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 
 	readerConfig := reader.Config{
 		Context:         cont,
-		ClientRt:        GetRuntime(conf.readURL),
+		ClientConfig:    getConfig(conf.readURL),
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
 		ConcurrentPulls: conf.concurrentPull,
@@ -112,7 +112,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 
 	writerConfig := writer.Config{
 		Context:            cont,
-		ClientRt:           GetRuntime(conf.writeURL),
+		ClientConfig:       getConfig(conf.writeURL),
 		HTTPConfig:         config.HTTPClientConfig{},
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
@@ -200,16 +200,16 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 
 	// Replicate main.
 	planConfig := &plan.Config{
-		Mint:               conf.mint,
-		Maxt:               conf.maxt,
-		JobName:            conf.name,
-		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPull,
-		ProgressEnabled:    conf.progressEnabled,
-		ProgressMetricName: conf.progressMetricName,
-		ProgressClientRt:   GetRuntime(conf.progressMetricURL),
-		LaIncrement:        conf.laIncrement,
-		MaxReadDuration:    conf.maxReadDuration,
+		Mint:                 conf.mint,
+		Maxt:                 conf.maxt,
+		JobName:              conf.name,
+		SlabSizeLimitBytes:   conf.maxSlabSizeBytes,
+		NumStores:            conf.concurrentPull,
+		ProgressEnabled:      conf.progressEnabled,
+		ProgressMetricName:   conf.progressMetricName,
+		ProgressClientConfig: getConfig(conf.progressMetricURL),
+		LaIncrement:          conf.laIncrement,
+		MaxReadDuration:      conf.maxReadDuration,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	if err != nil {
@@ -228,7 +228,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	cont, cancelFunc := context.WithCancel(context.Background())
 	readerConfig := reader.Config{
 		Context:         cont,
-		ClientRt:        GetRuntime(conf.readURL),
+		ClientConfig:    getConfig(conf.readURL),
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
 		ConcurrentPulls: conf.concurrentPull,
@@ -242,7 +242,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 
 	writerConfig := writer.Config{
 		Context:            cont,
-		ClientRt:           GetRuntime(conf.writeURL),
+		ClientConfig:       getConfig(conf.writeURL),
 		HTTPConfig:         config.HTTPClientConfig{},
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
@@ -371,16 +371,16 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 	// Replicate main.
 	// Replicate main.
 	planConfig := &plan.Config{
-		Mint:               conf.mint,
-		Maxt:               conf.maxt,
-		JobName:            conf.name,
-		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPull,
-		ProgressEnabled:    conf.progressEnabled,
-		ProgressMetricName: conf.progressMetricName,
-		ProgressClientRt:   GetRuntime(conf.progressMetricURL),
-		LaIncrement:        conf.laIncrement,
-		MaxReadDuration:    conf.maxReadDuration,
+		Mint:                 conf.mint,
+		Maxt:                 conf.maxt,
+		JobName:              conf.name,
+		SlabSizeLimitBytes:   conf.maxSlabSizeBytes,
+		NumStores:            conf.concurrentPull,
+		ProgressEnabled:      conf.progressEnabled,
+		ProgressMetricName:   conf.progressMetricName,
+		ProgressClientConfig: getConfig(conf.progressMetricURL),
+		LaIncrement:          conf.laIncrement,
+		MaxReadDuration:      conf.maxReadDuration,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	planner.TestCheckFunc = func() {
@@ -405,7 +405,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 
 	readerConfig := reader.Config{
 		Context:         cont,
-		ClientRt:        GetRuntime(conf.readURL),
+		ClientConfig:    getConfig(conf.readURL),
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
 		ConcurrentPulls: conf.concurrentPull,
@@ -419,7 +419,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 
 	writerConfig := writer.Config{
 		Context:            cont,
-		ClientRt:           GetRuntime(conf.writeURL),
+		ClientConfig:       getConfig(conf.writeURL),
 		HTTPConfig:         config.HTTPClientConfig{},
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,

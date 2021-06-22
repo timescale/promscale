@@ -16,7 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-var slabPool = sync.Pool{New: func() interface{} { return &Slab{} }}
+var slabPool = sync.Pool{New: func() interface{} { return new(Slab) }}
 
 func PutSlab(s *Slab) {
 	s.stores = s.stores[:0]
@@ -177,7 +177,6 @@ func (s *Slab) mergeSubSlabsToSlab(subSlabs []*utils.PrompbResponse) ([]*prompb.
 				timeseries[labelsStr] = series
 			}
 		}
-		utils.PutPrompbResponse(subSlabs[i])
 	}
 	// Form series slice after combining the concurrent responses.
 	series := make([]*prompb.TimeSeries, len(timeseries))

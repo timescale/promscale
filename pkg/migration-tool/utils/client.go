@@ -14,15 +14,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/config"
-	configutil "github.com/prometheus/common/config"
+	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/schollz/progressbar/v3"
@@ -37,8 +35,16 @@ const (
 	Read = iota
 	// Write defines the type of client. It is used to fetch the auth from authStore.
 	Write
+)
+
+type (
+	RecoveryAction uint8
+	eventType      uint8
+)
+
+const (
 	// Retry makes the client to retry in case of a timeout or error.
-	Retry
+	Retry RecoveryAction = iota
 	// Skip makes the client to skip the current slab.
 	Skip
 	// Abort aborts the client from any further retries and exits the migration process.
@@ -46,12 +52,17 @@ const (
 	Abort
 )
 
-type ClientRuntime struct {
+const (
+	onTimeout eventType = iota
+	onError
+)
+
+type ClientConfig struct {
 	URL          string
 	Timeout      time.Duration
-	OnTimeout    uint8
+	OnTimeout    RecoveryAction
 	OnTimeoutStr string
-	OnErr        uint8
+	OnErr        RecoveryAction
 	OnErrStr     string
 	MaxRetry     int
 	// Delay defines the time we should wait before a retry. This can happen
@@ -59,14 +70,41 @@ type ClientRuntime struct {
 	Delay time.Duration
 }
 
-func SlabEnums(typ string, skipApplicable bool) (uint8, error) {
+func (c ClientConfig) shouldRetry(on eventType, retries int, message string) (retry bool) {
+	// Skip is not applicable in read process, since it is meaningless and implementing it makes the code in Read() untidy.
+	makeDecision := func(r RecoveryAction) bool {
+		switch r {
+		case Retry:
+			if c.MaxRetry != 0 {
+				// If MaxRetry is 0, we are expected to retry forever.
+				if retries > c.MaxRetry {
+					log.Info("msg", "exceeded retrying limit in "+message+". Erring out.")
+					return false
+				}
+			}
+			message += "."
+			log.Info("msg", fmt.Sprintf("%s Retrying again after delay", message), "delay", c.Delay)
+			time.Sleep(c.Delay)
+			return true
+		case Abort:
+		}
+		return false
+	}
+	switch on {
+	case onTimeout:
+		return makeDecision(RecoveryAction(c.OnTimeout))
+	case onError:
+		return makeDecision(RecoveryAction(c.OnErr))
+	default:
+		panic("invalid 'on'. Should be 'error' or 'timeout'")
+	}
+}
+
+func RecoveryActionEnum(typ string) (RecoveryAction, error) {
 	switch typ {
 	case "retry":
 		return Retry, nil
 	case "skip":
-		if !skipApplicable {
-			return 0, fmt.Errorf("invalid slab enums: 'skip' is not applicable")
-		}
 		return Skip, nil
 	case "abort":
 		return Abort, nil
@@ -75,26 +113,44 @@ func SlabEnums(typ string, skipApplicable bool) (uint8, error) {
 	}
 }
 
-type Client struct {
-	remoteName string
-	url        *config.URL
-	cHTTP      *http.Client
-	cRuntime   ClientRuntime
+func ParseClientInfo(conf *ClientConfig) error {
+	wrapErr := func(typ string, err error) error {
+		return fmt.Errorf("enum conversion '%s': %w", typ, err)
+	}
+	enum, err := RecoveryActionEnum(conf.OnTimeoutStr)
+	if err != nil {
+		return wrapErr("on-timeout", err)
+	}
+	conf.OnTimeout = enum
+
+	enum, err = RecoveryActionEnum(conf.OnErrStr)
+	if err != nil {
+		return wrapErr("on-error", err)
+	}
+	conf.OnErr = enum
+	return nil
 }
 
-// Runtime returns the client runtime.
-func (c *Client) Runtime() ClientRuntime {
-	return c.cRuntime
+type Client struct {
+	remoteName   string
+	url          *promConfig.URL
+	cHTTP        *http.Client
+	clientConfig ClientConfig
+}
+
+// Config returns the client runtime.
+func (c *Client) Config() ClientConfig {
+	return c.clientConfig
 }
 
 // NewClient creates a new read or write client. The `clientType` should be either `read` or `write`. The client type
 // is used to get the auth from the auth store. If the `clientType` is other than the ones specified, then auth may not work.
-func NewClient(remoteName string, cRuntime ClientRuntime, httpConfig configutil.HTTPClientConfig) (*Client, error) {
-	parsedUrl, err := url.Parse(cRuntime.URL)
+func NewClient(remoteName string, clientConfig ClientConfig, httpConfig promConfig.HTTPClientConfig) (*Client, error) {
+	parsedUrl, err := url.Parse(clientConfig.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parsing-%s-url: %w", remoteName, err)
 	}
-	httpClient, err := configutil.NewClientFromConfig(httpConfig, fmt.Sprintf("%s_client", remoteName), configutil.WithHTTP2Disabled())
+	httpClient, err := promConfig.NewClientFromConfig(httpConfig, fmt.Sprintf("%s_client", remoteName), promConfig.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
 	}
@@ -105,31 +161,11 @@ func NewClient(remoteName string, cRuntime ClientRuntime, httpConfig configutil.
 	}
 
 	return &Client{
-		remoteName: remoteName,
-		url:        &config.URL{URL: parsedUrl},
-		cHTTP:      httpClient,
-		cRuntime:   cRuntime,
+		remoteName:   remoteName,
+		url:          &promConfig.URL{URL: parsedUrl},
+		cHTTP:        httpClient,
+		clientConfig: clientConfig,
 	}, nil
-}
-
-func shouldRetry(r uint8, cr ClientRuntime, retries int, message string) (retry bool) {
-	// Skip is not applicable in read process, since it is meaningless and implementing it makes the code in Read() untidy.
-	switch r {
-	case Retry:
-		if cr.MaxRetry != 0 {
-			// If MaxRetry is 0, we are expected to retry forever.
-			if retries > cr.MaxRetry {
-				log.Info("msg", "exceeded retrying limit in "+message+". Erring out.")
-				return false
-			}
-		}
-		message += "."
-		log.Info("msg", fmt.Sprintf("%s Retrying again after delay", message), "delay", cr.Delay)
-		time.Sleep(cr.Delay)
-		return true
-	case Abort:
-	}
-	return false
 }
 
 func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (result *prompb.QueryResult, numBytesCompressed int, numBytesUncompressed int, err error) {
@@ -143,7 +179,26 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 		return nil, -1, -1, errors.Wrapf(err, "unable to marshal read request")
 	}
 
+	numAttempts := -1
+retry:
+	numAttempts++
+	if numAttempts > 1 {
+		// Retrying case. Reset the context so that timeout context works.
+		// If we do not reset the context, retrying with the timeout will not work
+		// since the context parent has already been cancelled.
+		ctx.Done()
+		//
+		// Note: We use httpReq.WithContext(ctx) which means if a timeout occurs and we are asked
+		// to retry, the context in the httpReq has already been cancelled. Hence, we should create
+		// the new context for retry with a new httpReq otherwise we are reusing the already cancelled
+		// httpReq.
+		ctx = context.Background()
+	}
+
+	// Recompress the data on retry, otherwise the bytes.NewReader will make it invalid,
+	// leading to corrupt snappy data output on remote-read server.
 	compressed := snappy.Encode(nil, data)
+
 	httpReq, err := http.NewRequest("POST", c.url.String(), bytes.NewReader(compressed))
 	if err != nil {
 		return nil, -1, -1, errors.Wrap(err, "unable to create request")
@@ -154,11 +209,7 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query, desc string) (re
 	httpReq.Header.Set("User-Agent", userAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
 
-	numAttempts := -1
-
-retry:
-	numAttempts++
-	ctx, cancel := context.WithTimeout(ctx, c.cRuntime.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.clientConfig.Timeout)
 	defer cancel()
 
 	httpReq = httpReq.WithContext(ctx)
@@ -166,13 +217,13 @@ retry:
 	httpResp, err := c.cHTTP.Do(httpReq)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			if shouldRetry(c.cRuntime.OnTimeout, c.cRuntime, numAttempts, "read request timeout") {
+			if c.clientConfig.shouldRetry(onTimeout, numAttempts, "read request timeout") {
 				goto retry
 			}
 			return nil, 0, 0, fmt.Errorf("error sending request: %w", err)
 		}
 		err = fmt.Errorf("error sending request: %w", err)
-		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+		if c.clientConfig.shouldRetry(onError, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
 			goto retry
 		}
 		return nil, 0, 0, err
@@ -196,14 +247,14 @@ retry:
 	compressed, err = ioutil.ReadAll(bytes.NewReader(reader.Bytes()))
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error reading response. HTTP status code: %s", httpResp.Status))
-		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+		if c.clientConfig.shouldRetry(onError, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
 			goto retry
 		}
 		return nil, -1, -1, err
 	}
 
 	if httpResp.StatusCode/100 != 2 {
-		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("received status code: %d", httpResp.StatusCode)) {
+		if c.clientConfig.shouldRetry(onError, numAttempts, fmt.Sprintf("received status code: %d", httpResp.StatusCode)) {
 			goto retry
 		}
 		return nil, -1, -1, errors.Errorf("remote server %s returned HTTP status %s: %s", c.url.String(), httpResp.Status, strings.TrimSpace(string(compressed)))
@@ -211,10 +262,7 @@ retry:
 
 	uncompressed, err := snappy.Decode(nil, compressed)
 	if err != nil {
-		// Snappy errors also happen in case of deadline or context cancel since the read was terminated in middle of the process.
-		// Lets treat them as timeout case.
-		if shouldRetry(c.cRuntime.OnTimeout, c.cRuntime, numAttempts, "invalid snappy: This can be either due to partial read or an actual context timeout. "+
-			"Treating this as read-request timeout") {
+		if c.clientConfig.shouldRetry(onError, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
 			goto retry
 		}
 		return nil, -1, -1, errors.Wrap(err, "error reading response")
@@ -224,7 +272,7 @@ retry:
 	err = proto.Unmarshal(uncompressed, &resp)
 	if err != nil {
 		err = errors.Wrap(err, "unable to unmarshal response body")
-		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+		if c.clientConfig.shouldRetry(onError, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
 			goto retry
 		}
 		return nil, -1, -1, err
@@ -232,7 +280,7 @@ retry:
 
 	if len(resp.Results) != len(req.Queries) {
 		err = errors.Errorf("responses: want %d, got %d", len(req.Queries), len(resp.Results))
-		if shouldRetry(c.cRuntime.OnErr, c.cRuntime, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
+		if c.clientConfig.shouldRetry(onError, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
 			goto retry
 		}
 		return nil, -1, -1, err
@@ -249,16 +297,6 @@ type PrompbResponse struct {
 	NumBytesUncompressed int
 }
 
-var prompbResponsePool = sync.Pool{New: func() interface{} { return new(PrompbResponse) }}
-
-func PutPrompbResponse(p *PrompbResponse) {
-	p.ID = 0
-	p.NumBytesUncompressed = 0
-	p.NumBytesCompressed = 0
-	p.Result.Timeseries = p.Result.Timeseries[:0]
-	prompbResponsePool.Put(p)
-}
-
 // ReadConcurrent calls the Read and responds on the channels.
 func (c *Client) ReadConcurrent(ctx context.Context, query *prompb.Query, shardID int, desc string, responseChan chan<- interface{}) {
 	result, numBytesCompressed, numBytesUncompressed, err := c.Read(ctx, query, desc)
@@ -266,12 +304,12 @@ func (c *Client) ReadConcurrent(ctx context.Context, query *prompb.Query, shardI
 		responseChan <- fmt.Errorf("read-channels: %w", err)
 		return
 	}
-	pr := prompbResponsePool.Get().(*PrompbResponse)
-	pr.ID = shardID
-	pr.Result = result
-	pr.NumBytesUncompressed = numBytesUncompressed
-	pr.NumBytesCompressed = numBytesCompressed
-	responseChan <- pr
+	responseChan <- &PrompbResponse{
+		ID:                   shardID,
+		Result:               result,
+		NumBytesCompressed:   numBytesCompressed,
+		NumBytesUncompressed: numBytesUncompressed,
+	}
 }
 
 // RecoverableError is an error for which the send samples can retry with a backoff.
@@ -292,7 +330,7 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("User-Agent", userAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-	ctx, cancel := context.WithTimeout(ctx, c.cRuntime.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.clientConfig.Timeout)
 	defer cancel()
 
 	httpReq = httpReq.WithContext(ctx)

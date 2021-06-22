@@ -27,23 +27,23 @@ func TestParseFlags(t *testing.T) {
 			name:  "pass_normal",
 			input: []string{"-start=1970-01-01T00:16:40+00:00", "-end=1970-01-01T00:16:41+00:00", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false"},
 			expectedConf: &config{
-				name:             "prom-migrator",
-				start:            "1970-01-01T00:16:40+00:00",
-				end:              "1970-01-01T00:16:41+00:00",
-				mint:             1000000,
-				mintSec:          1000,
-				maxt:             1001000,
-				maxtSec:          1001,
-				humanReadable:    true,
-				maxSlabSizeBytes: 524288000,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "1970-01-01T00:16:40+00:00",
+				end:               "1970-01-01T00:16:41+00:00",
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				humanReadableTime: true,
+				maxSlabSizeBytes:  524288000,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -66,16 +66,16 @@ func TestParseFlags(t *testing.T) {
 				"-reader-timeout=50m", "-reader-retry-delay=1m", "-reader-max-retries=10", "-reader-on-timeout=skip", "-reader-on-error=retry",
 				"-writer-timeout=50m", "-writer-retry-delay=1m", "-writer-max-retries=15", "-writer-on-timeout=abort", "-writer-on-error=retry"},
 			expectedConf: &config{
-				name:             "prom-migrator",
-				start:            "1970-01-01T00:16:40+00:00",
-				end:              "1970-01-01T00:16:41+00:00",
-				mint:             1000000,
-				mintSec:          1000,
-				maxt:             1001000,
-				maxtSec:          1001,
-				humanReadable:    true,
-				maxSlabSizeBytes: 524288000,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "1970-01-01T00:16:40+00:00",
+				end:               "1970-01-01T00:16:41+00:00",
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				humanReadableTime: true,
+				maxSlabSizeBytes:  524288000,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout * 10,
 					Delay:        time.Minute,
@@ -83,7 +83,7 @@ func TestParseFlags(t *testing.T) {
 					OnErrStr:     "retry",
 					MaxRetry:     10,
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout * 10,
 					Delay:        time.Minute,
@@ -106,23 +106,23 @@ func TestParseFlags(t *testing.T) {
 			name:  "pass_normal with inverted commas",
 			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false"},
 			expectedConf: &config{
-				name:             "prom-migrator",
-				start:            "'1970-01-01T00:16:40+00:00'",
-				end:              "'1970-01-01T00:16:41+00:00'",
-				mint:             1000000,
-				mintSec:          1000,
-				maxt:             1001000,
-				maxtSec:          1001,
-				humanReadable:    true,
-				maxSlabSizeBytes: 524288000,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				humanReadableTime: true,
+				maxSlabSizeBytes:  524288000,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -151,14 +151,14 @@ func TestParseFlags(t *testing.T) {
 				mintSec: 1000,
 				maxt:    1001000,
 				maxtSec: 1001,
-				readerClient: utils.ClientRuntime{
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -171,7 +171,7 @@ func TestParseFlags(t *testing.T) {
 				laIncrement:        defaultLaIncrement,
 				concurrentPull:     1,
 				maxSlabSizeBytes:   104857600,
-				humanReadable:      true,
+				humanReadableTime:  true,
 				maxSlabSize:        "100MB",
 				concurrentPush:     1,
 				progressEnabled:    false,
@@ -182,22 +182,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "pass_normal_size_with_space",
 			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-max-read-size=100 MB"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -218,24 +218,24 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "pass_normal_size_with_concurrent_implements",
-			input: []string{"-start=1000", "-end=1001", "-human-readable-time=false", "-progress-enabled=false", "-concurrent-pull=16", "-concurrent-push=8", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write"},
+			input: []string{"-start=1000", "-end=1001", "-progress-enabled=false", "-concurrent-pull=16", "-concurrent-push=8", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "1000",
-				end:           "1001",
-				humanReadable: false,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "1000",
+				end:               "1001",
+				humanReadableTime: false,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -258,22 +258,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_normal_size",
 			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-max-read-size=100MBB"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -294,24 +294,24 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "fail_invalid_suffix",
-			input: []string{"-start=1000", "-end=1001", "-human-readable-time=false", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-max-read-size=100PP"},
+			input: []string{"-start=1000", "-end=1001", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-max-read-size=100PP"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "1000",
-				end:           "1001",
-				humanReadable: false,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "1000",
+				end:               "1001",
+				humanReadableTime: false,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -334,22 +334,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "pass_normal_regex",
 			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-progress-metric-name=progress_migration_up"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -372,22 +372,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_invalid_regex",
 			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-progress-metric-name=_progress_migration-_up"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -410,22 +410,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_invalid_regex_2",
 			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-progress-metric-name=0_progress_migration_up"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -445,23 +445,23 @@ func TestParseFlags(t *testing.T) {
 			errMessage:      `invalid metric-name regex match: prom metric must match ^[a-zA-Z_:][a-zA-Z0-9_:]*$: recieved: 0_progress_migration_up`,
 		},
 		{
-			name:  "fail_no_mint",
+			name:  "fail_no_start",
 			input: []string{},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         defaultStartTime,
-				end:           time.Now().Format(time.RFC3339),
-				humanReadable: true,
-				maxt:          time.Now().Unix() * 1000,
-				maxtSec:       time.Now().Unix(),
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             defaultStartTime,
+				end:               fmt.Sprintf("%d", time.Now().Unix()),
+				humanReadableTime: true,
+				maxt:              time.Now().Unix() * 1000,
+				maxtSec:           time.Now().Unix(),
+				readerClientConfig: utils.ClientConfig{
 					URL:          "",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -478,11 +478,11 @@ func TestParseFlags(t *testing.T) {
 				concurrentPush:     1,
 			},
 			failsValidation: true,
-			errMessage:      `mint should be provided for the migration to begin`,
+			errMessage:      `'start' should be provided for the migration to begin`,
 		},
 		{
 			name:  "fail_all_default",
-			input: []string{"-start=1", "-human-readable-time=false"},
+			input: []string{"-start=1"},
 			expectedConf: &config{
 				name:    "prom-migrator",
 				start:   "1",
@@ -491,14 +491,14 @@ func TestParseFlags(t *testing.T) {
 				mintSec: 1,
 				maxt:    time.Now().Unix() * 1000,
 				maxtSec: time.Now().Unix(),
-				readerClient: utils.ClientRuntime{
+				readerClientConfig: utils.ClientConfig{
 					URL:          "",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -521,22 +521,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_all_default_space",
 			input: []string{"-start='1970-01-01T00:00:01+00:00'", "-reader-url=  ", "-writer-url= "},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:00:01+00:00'",
-				end:           time.Now().Format(time.RFC3339),
-				humanReadable: true,
-				mint:          1000,
-				mintSec:       1,
-				maxt:          time.Now().Unix() * 1000,
-				maxtSec:       time.Now().Unix(),
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:00:01+00:00'",
+				end:               fmt.Sprintf("%d", time.Now().Unix()),
+				humanReadableTime: true,
+				mint:              1000,
+				mintSec:           1,
+				maxt:              time.Now().Unix() * 1000,
+				maxtSec:           time.Now().Unix(),
+				readerClientConfig: utils.ClientConfig{
 					URL:          "  ",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          " ",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -559,22 +559,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_empty_read_url",
 			input: []string{"-start='1970-01-01T00:00:01+00:00'", "-writer-url=http://localhost:9201/write"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:00:01+00:00'",
-				end:           time.Now().Format(time.RFC3339),
-				humanReadable: true,
-				mint:          1000,
-				mintSec:       1,
-				maxt:          time.Now().Unix() * 1000,
-				maxtSec:       time.Now().Unix(),
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:00:01+00:00'",
+				end:               fmt.Sprintf("%d", time.Now().Unix()),
+				humanReadableTime: true,
+				mint:              1000,
+				mintSec:           1,
+				maxt:              time.Now().Unix() * 1000,
+				maxtSec:           time.Now().Unix(),
+				readerClientConfig: utils.ClientConfig{
 					URL:          "",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -597,22 +597,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_empty_write_url",
 			input: []string{"-start='1970-01-01T00:00:01+00:00'", "-reader-url=http://localhost:9090/api/v1/read"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:00:01+00:00'",
-				end:           time.Now().Format(time.RFC3339),
-				humanReadable: true,
-				mint:          1000,
-				mintSec:       1,
-				maxt:          time.Now().Unix() * 1000,
-				maxtSec:       time.Now().Unix(),
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:00:01+00:00'",
+				end:               fmt.Sprintf("%d", time.Now().Unix()),
+				humanReadableTime: true,
+				mint:              1000,
+				mintSec:           1,
+				maxt:              time.Now().Unix() * 1000,
+				maxtSec:           time.Now().Unix(),
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -635,22 +635,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_mint_greater_than_maxt",
 			input: []string{"-start='2001-09-09T01:46:41+00:00'", "-end='2001-09-09T01:46:40+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'2001-09-09T01:46:41+00:00'",
-				end:           "'2001-09-09T01:46:40+00:00'",
-				humanReadable: true,
-				mint:          1000000001000,
-				mintSec:       1000000001,
-				maxt:          1000000000000,
-				maxtSec:       1000000000,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'2001-09-09T01:46:41+00:00'",
+				end:               "'2001-09-09T01:46:40+00:00'",
+				humanReadableTime: true,
+				mint:              1000000001000,
+				mintSec:           1000000001,
+				maxt:              1000000000000,
+				maxtSec:           1000000000,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -673,22 +673,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "fail_progress_enabled_but_no_read_write_storage_url_provided",
 			input: []string{"-start='2001-09-09T01:46:41+00:00'", "-end='2001-09-09T01:46:40+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'2001-09-09T01:46:41+00:00'",
-				end:           "'2001-09-09T01:46:40+00:00'",
-				humanReadable: true,
-				mint:          1000000001000,
-				mintSec:       1000000001,
-				maxt:          1000000000000,
-				maxtSec:       1000000000,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'2001-09-09T01:46:41+00:00'",
+				end:               "'2001-09-09T01:46:40+00:00'",
+				humanReadableTime: true,
+				mint:              1000000001000,
+				mintSec:           1000000001,
+				maxt:              1000000000000,
+				maxtSec:           1000000000,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -711,22 +711,22 @@ func TestParseFlags(t *testing.T) {
 			name:  "pass_progress_enabled_and_read_write_storage_url_provided",
 			input: []string{"-start='2001-09-09T01:46:41+00:00'", "-end='2001-09-09T01:46:42+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-metric-url=http://localhost:9201/read"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'2001-09-09T01:46:41+00:00'",
-				end:           "'2001-09-09T01:46:42+00:00'",
-				humanReadable: true,
-				mint:          1000000001000,
-				mintSec:       1000000001,
-				maxt:          1000000002000,
-				maxtSec:       1000000002,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'2001-09-09T01:46:41+00:00'",
+				end:               "'2001-09-09T01:46:42+00:00'",
+				humanReadableTime: true,
+				mint:              1000000001000,
+				mintSec:           1000000001,
+				maxt:              1000000002000,
+				maxtSec:           1000000002,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -749,25 +749,25 @@ func TestParseFlags(t *testing.T) {
 		// Mutual exclusive tests.
 		{
 			name: "pass_normal_exclusive_password",
-			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-read-auth-password=password",
-				"-la-increment=7m", "-max-read-duration=7h"},
+			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-reader-auth-password=password",
+				"-slab-range-increment=7m", "-max-read-duration=7h"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -789,24 +789,24 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "pass_normal_exclusive_bearer_token",
-			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-read-auth-bearer-token=token"},
+			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-reader-auth-bearer-token=token"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -828,24 +828,24 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:  "fail_non_exclusive_bearer_token_and_password",
-			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-read-auth-password=password", "-read-auth-bearer-token=token"},
+			input: []string{"-start='1970-01-01T00:16:40+00:00'", "-end='1970-01-01T00:16:41+00:00'", "-reader-url=http://localhost:9090/api/v1/read", "-writer-url=http://localhost:9201/write", "-progress-enabled=false", "-reader-auth-password=password", "-reader-auth-bearer-token=token"},
 			expectedConf: &config{
-				name:          "prom-migrator",
-				start:         "'1970-01-01T00:16:40+00:00'",
-				end:           "'1970-01-01T00:16:41+00:00'",
-				humanReadable: true,
-				mint:          1000000,
-				mintSec:       1000,
-				maxt:          1001000,
-				maxtSec:       1001,
-				readerClient: utils.ClientRuntime{
+				name:              "prom-migrator",
+				start:             "'1970-01-01T00:16:40+00:00'",
+				end:               "'1970-01-01T00:16:41+00:00'",
+				humanReadableTime: true,
+				mint:              1000000,
+				mintSec:           1000,
+				maxt:              1001000,
+				maxtSec:           1001,
+				readerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9090/api/v1/read",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
 					OnTimeoutStr: "retry",
 					OnErrStr:     "abort",
 				},
-				writerClient: utils.ClientRuntime{
+				writerClientConfig: utils.ClientConfig{
 					URL:          "http://localhost:9201/write",
 					Timeout:      defaultTimeout,
 					Delay:        defaultRetryDelay,
@@ -872,7 +872,13 @@ func TestParseFlags(t *testing.T) {
 		config := new(config)
 		parseFlags(config, c.input)
 
-		err := validateConf(config)
+		err := utils.ParseClientInfo(&c.expectedConf.readerClientConfig)
+		assert.NoError(t, err, fmt.Sprintf("parsing expected flags: %s", c.name))
+
+		err = utils.ParseClientInfo(&c.expectedConf.writerClientConfig)
+		assert.NoError(t, err, fmt.Sprintf("parsing expected flags: %s", c.name))
+
+		err = validateConf(config)
 		if c.failsValidation {
 			if err == nil {
 				t.Fatalf(fmt.Sprintf("%s should have failed", c.name))
@@ -881,9 +887,6 @@ func TestParseFlags(t *testing.T) {
 		} else {
 			assert.NoError(t, err, fmt.Sprintf("parsing input into config: %s", c.name))
 		}
-
-		err = parseClientInfo(c.expectedConf)
-		assert.NoError(t, err, fmt.Sprintf("parsing expected flags: %s", c.name))
 
 		assert.Equal(t, c.expectedConf, config, fmt.Sprintf("parse-flags: %s", c.name))
 		if err != nil && !c.failsValidation {

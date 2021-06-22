@@ -29,18 +29,18 @@ var (
 
 // Config represents configuration for the planner.
 type Config struct {
-	Mint               int64
-	Maxt               int64
-	SlabSizeLimitBytes int64
-	NumStores          int
-	ProgressEnabled    bool
-	JobName            string
-	ProgressMetricName string // Name for progress metric.
-	ProgressClientRt   utils.ClientRuntime
-	HTTPConfig         config.HTTPClientConfig
-	LaIncrement        time.Duration
-	MaxReadDuration    time.Duration
-	HumanReadableTime  bool
+	Mint                 int64
+	Maxt                 int64
+	SlabSizeLimitBytes   int64
+	NumStores            int
+	ProgressEnabled      bool
+	JobName              string
+	ProgressMetricName   string // Name for progress metric.
+	ProgressClientConfig utils.ClientConfig
+	HTTPConfig           config.HTTPClientConfig
+	LaIncrement          time.Duration
+	MaxReadDuration      time.Duration
+	HumanReadableTime    bool
 }
 
 // Plan represents the plannings done by the planner.
@@ -65,7 +65,7 @@ type Plan struct {
 func Init(config *Config) (*Plan, bool, error) {
 	var found bool
 	if config.ProgressEnabled {
-		if config.ProgressClientRt.URL == "" {
+		if config.ProgressClientConfig.URL == "" {
 			return nil, false, fmt.Errorf("read url for remote-write storage should be provided when progress metric is enabled")
 		}
 
@@ -108,7 +108,7 @@ func (c *Config) fetchLastPushedMaxt() (lastPushedMaxt int64, found bool, err er
 	if err != nil {
 		return -1, false, fmt.Errorf("fetch-last-pushed-maxt create promb query: %w", err)
 	}
-	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressClientRt, c.HTTPConfig)
+	readClient, err := utils.NewClient("reader-last-maxt-pushed", c.ProgressClientConfig, c.HTTPConfig)
 	if err != nil {
 		return -1, false, fmt.Errorf("create fetch-last-pushed-maxt reader: %w", err)
 	}
@@ -180,9 +180,9 @@ func (p *Plan) createSlab(mint, maxt int64) (ref *Slab, err error) {
 	if percent > 100 {
 		percent = 100
 	}
-	baseDescription := fmt.Sprintf("progress: %.2f%% | slab-%d time-range: %d mins | begin: %d | end: %d", percent, id, timeRangeInMinutes, mint/second, maxt/second)
+	baseDescription := fmt.Sprintf("progress: %.2f%% | slab-%d time-range: %d mins | start: %d | end: %d", percent, id, timeRangeInMinutes, mint/second, maxt/second)
 	if p.config.HumanReadableTime {
-		baseDescription = fmt.Sprintf("progress: %.2f%% | slab-%d time-range: %d mins | begin: %s | end: %s", percent, id, timeRangeInMinutes, timestamp.Time(mint), timestamp.Time(maxt))
+		baseDescription = fmt.Sprintf("progress: %.2f%% | slab-%d time-range: %d mins | start: %s | end: %s", percent, id, timeRangeInMinutes, timestamp.Time(mint), timestamp.Time(maxt))
 	}
 	ref = slabPool.Get().(*Slab)
 	ref.id = id
@@ -194,10 +194,12 @@ func (p *Plan) createSlab(mint, maxt int64) (ref *Slab, err error) {
 	)
 	ref.pbarDescriptionPrefix = baseDescription
 	ref.numStores = p.config.NumStores
-	if len(ref.stores) != p.config.NumStores {
+	if cap(ref.stores) < p.config.NumStores {
 		// This is expect to allocate only for the first slab, then the allocated space is reused.
 		// On the edge case, we allocate again, which was the previous behaviour.
 		ref.stores = make([]store, p.config.NumStores)
+	} else {
+		ref.stores = ref.stores[:p.config.NumStores]
 	}
 	ref.mint = mint
 	ref.maxt = maxt

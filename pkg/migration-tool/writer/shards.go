@@ -32,7 +32,7 @@ type shardsSet struct {
 // newShardsSet creates a shards-set and initializes it. It creates independent clients for each shard,
 // contexts and starts the shards. The shards listens to the writer routine, which is responsible for
 // feeding the shards with data blocks for faster (due to sharded data) flushing.
-func newShardsSet(writerCtx context.Context, httpConfig config.HTTPClientConfig, cRuntime utils.ClientRuntime, numShards int) (*shardsSet, error) {
+func newShardsSet(writerCtx context.Context, httpConfig config.HTTPClientConfig, clientConfig utils.ClientConfig, numShards int) (*shardsSet, error) {
 	var (
 		set         = make([]*shard, numShards)
 		cancelFuncs = make([]context.CancelFunc, numShards)
@@ -42,7 +42,7 @@ func newShardsSet(writerCtx context.Context, httpConfig config.HTTPClientConfig,
 		errChan: make(chan error, numShards),
 	}
 	for i := 0; i < numShards; i++ {
-		client, err := utils.NewClient(fmt.Sprintf("writer-shard-%d", i), cRuntime, httpConfig)
+		client, err := utils.NewClient(fmt.Sprintf("writer-shard-%d", i), clientConfig, httpConfig)
 		if err != nil {
 			return nil, fmt.Errorf("creating write-shard-client-%d: %w", i, err)
 		}
@@ -160,7 +160,7 @@ func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *
 		if err := client.Store(ctx, *buf); err != nil {
 			// If the error is unrecoverable, we should not retry.
 			if _, ok := err.(remote.RecoverableError); !ok {
-				switch r := client.Runtime(); r.OnErr {
+				switch r := client.Config(); r.OnErr {
 				case utils.Retry:
 					if r.MaxRetry != 0 {
 						// If MaxRetry is 0, we are expected to retry forever.

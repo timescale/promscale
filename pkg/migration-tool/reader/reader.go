@@ -7,6 +7,7 @@ package reader
 import (
 	"context"
 	"fmt"
+
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
@@ -16,10 +17,10 @@ import (
 
 // Config is config for reader.
 type Config struct {
-	Context    context.Context
-	ClientRt   utils.ClientRuntime
-	Plan       *plan.Plan
-	HTTPConfig config.HTTPClientConfig
+	Context      context.Context
+	ClientConfig utils.ClientConfig
+	Plan         *plan.Plan
+	HTTPConfig   config.HTTPClientConfig
 
 	ConcurrentPulls int
 
@@ -35,7 +36,7 @@ type Read struct {
 // New creates a new Read. It creates a ReadClient that is imported from Prometheus remote storage.
 // Read takes help of plan to understand how to create fetchers.
 func New(config Config) (*Read, error) {
-	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), config.ClientRt, config.HTTPConfig)
+	rc, err := utils.NewClient(fmt.Sprintf("reader-%d", 1), config.ClientConfig, config.HTTPConfig)
 	if err != nil {
 		return nil, fmt.Errorf("creating read-client: %w", err)
 	}
