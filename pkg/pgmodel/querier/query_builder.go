@@ -486,6 +486,29 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 				}
 				return &qf, topNode, nil
 			}
+			if n.Func.Name == "rate" {
+				topNode = node
+				queryStart := hints.Start + hints.Range
+				queryEnd := hints.End
+				stepDuration := time.Second
+				rangeDuration := time.Duration(hints.Range) * time.Millisecond
+
+				if hints.Step > 0 {
+					stepDuration = time.Duration(hints.Step) * time.Millisecond
+				} else {
+					if queryStart != queryEnd {
+						panic("query start should equal query end")
+					}
+				}
+				qf := aggregators{
+					timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
+					timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
+					valueClause: "prom_rate($%d, $%d,$%d, $%d, time, value)",
+					valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
+					unOrdered:   false,
+				}
+				return &qf, topNode, nil
+			}
 		default:
 			//No pushdown optimization by default
 		}
