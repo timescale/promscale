@@ -7,7 +7,6 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgtype"
 	"math"
 	"sort"
 	"strings"
@@ -31,7 +30,6 @@ type copyRequest struct {
 }
 
 var (
-	labelValueArrayOID  uint32
 	getBatchMutex       = &sync.Mutex{}
 	handleDecompression = retryAfterDecompression
 )
@@ -322,7 +320,7 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 			// We cannot send 2-D [][]TEXT to postgres via the pgx.encoder. For this and easier querying reasons, we create a
 			// new type in postgres by the name SCHEMA_PROM.label_value_array and use that type as array (which forms a 2D array of TEXT)
 			// which is then used to push using the unnest method apprach.
-			labelValues := pgtype.NewArrayType("prom_api.label_value_array[]", labelValueArrayOID, labelValueArrayTranscoder)
+			labelValues := pgmodel.GetCustomType(pgmodel.LabelValueArray)
 			err := labelValues.Set(exemplarLbls)
 			if err != nil {
 				return fmt.Errorf("setting prom_api.label_value_array[] value: %w", err)

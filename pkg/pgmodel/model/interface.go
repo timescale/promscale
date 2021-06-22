@@ -22,6 +22,13 @@ var (
 	MaxTime = time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()
 )
 
+type Metadata struct {
+	MetricFamily string `json:"metric,omitempty"`
+	Unit         string `json:"unit"`
+	Type         string `json:"type"`
+	Help         string `json:"help"`
+}
+
 // Dispatcher is responsible for inserting label, series and data into the storage.
 type Dispatcher interface {
 	InsertTs(rows Data) (uint64, error)
@@ -40,5 +47,3 @@ func TimestamptzToMs(t pgtype.Timestamptz) int64 {
 		return t.Time.UnixNano() / 1e6
 	}
 }
-
-// scratch

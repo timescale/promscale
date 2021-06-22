@@ -7,6 +7,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"sort"
 	"strings"

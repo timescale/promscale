@@ -13,8 +13,8 @@ BEGIN
     -- If there isn't any data for the given metric_name_text.
     IF ( SELECT count(key) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text ) THEN
         FOREACH k in ARRAY label_keys LOOP
-         INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name_text, k, current_position);
-        current_position := current_position + 1;
+            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name_text, k, current_position);
+            current_position := current_position + 1;
         END LOOP;
         RETURN QUERY (
             SELECT row.metric_name, json_object_agg(row.key, row.position) FROM (
@@ -45,8 +45,8 @@ LANGUAGE PLPGSQL;
 -- todo: set security_definer
 
 -- creates exemplar table in prom_data_exemplar schema if the table does not exists. This function
--- must be called after the metric is created in _prom_catalog.metric sa it utilies the table_name
--- from that table. It returns true if the table was created.
+-- must be called after the metric is created in _prom_catalog.metric as it utilizes the table_name
+-- from the metric table. It returns true if the table was created.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_exemplar_table_if_not_exists(metric_name_text TEXT)
 RETURNS BOOLEAN
 AS
@@ -103,11 +103,6 @@ BEGIN
              SELECT * FROM unnest($1, $2::BIGINT[], $3::SCHEMA_PROM.label_value_array[], $4::DOUBLE PRECISION[]) a(t,s,lv,v) ORDER BY s,t ON CONFLICT DO NOTHING',
         metric_table
     ) USING time_array, series_id_array, exemplar_label_values_array, value_array;
---     EXECUTE FORMAT(
---         'INSERT INTO SCHEMA_DATA_EXEMPLAR.%1$I (time, series_id, exemplar_label_values, value)
---              VALUES ($1::TIMESTAMPTZ, $2::BIGINT, $3::TEXT[], $4::DOUBLE PRECISION) ON CONFLICT DO NOTHING',
---         metric_table
---     ) USING times, series_id, exemplar_label_values_array, value;
     GET DIAGNOSTICS num_rows = ROW_COUNT;
     RETURN num_rows;
 END;

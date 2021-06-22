@@ -32,7 +32,7 @@ type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
-	exemplarKeyPosCache    *cache.ExemplarLabelsPosCache // todo: convert to interface.
+	exemplarKeyPosCache    cache.PositionCache
 	inserters              sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
@@ -43,7 +43,7 @@ type pgxDispatcher struct {
 	labelArrayOID          uint32
 }
 
-func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, eCache *cache.ExemplarLabelsPosCache, cfg *Cfg) (*pgxDispatcher, error) {
+func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
 	cmc := make(chan struct{}, 1)
 
 	numCopiers := cfg.NumCopiers
@@ -91,18 +91,17 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	}
 	runBatchWatcher(inserter.doneChannel)
 
-	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&inserter.labelArrayOID)
-	if err != nil {
-		return nil, err
+	if err := model.RegisterLabelArrayOID(conn); err != nil {
+		return nil, fmt.Errorf("register LabelArrayOID: %w", err)
 	}
-	err = registerLabelValueArrayOID(conn)
-	if err != nil {
-		return nil, fmt.Errorf("registering prom_api.label_value_array[] oid: %w", err)
+
+	if err := model.RegisterLabelValueArrayOID(conn); err != nil {
+		return nil, fmt.Errorf("register LabelValueArrayOID: %w", err)
 	}
 
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
-	err = inserter.CompleteMetricCreation()
+	err := inserter.CompleteMetricCreation()
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +191,7 @@ func (p *pgxDispatcher) Close() {
 	p.doneWG.Wait()
 }
 
-// Insert a batch of data into the DB.
+// InsertData inserts a batch of data into the database.
 // The data should be grouped by metric name.
 // returns the number of rows we intended to insert (_not_ how many were
 // actually inserted) and any error.

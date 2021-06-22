@@ -8,13 +8,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
@@ -37,7 +37,7 @@ type metricBatcher struct {
 
 type exemplarInfo struct {
 	seenPreviuosly bool
-	exemplarCache  *cache.ExemplarLabelsPosCache
+	exemplarCache  cache.PositionCache
 }
 
 func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
@@ -115,7 +115,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
-	exemplarKeyPos *cache.ExemplarLabelsPosCache, // todo: convert to interface.
+	exemplarKeyPos cache.PositionCache,
 	toCopiers chan copyRequest,
 	labelArrayOID uint32) {
 

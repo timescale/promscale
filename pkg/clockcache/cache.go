@@ -60,7 +60,7 @@ func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) 
 	return
 }
 
-// Insert a batch of keys with their corresponding values.
+// InsertBatch inserts a batch of keys with their corresponding values.
 // This function will _overwrite_ the keys and values slices with their
 // canonical versions.
 // sizesBytes is the in-memory size of the key+value of each element.
@@ -119,6 +119,8 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (cano
 	return key, value, true
 }
 
+// Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
+// returns the 'inserted' as true.
 func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}, inserted bool) {
 	existingElement, exists := self.elements[key]
 	if exists {
@@ -131,6 +133,7 @@ func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue i
 		}
 		return value, false
 	}
+	// Element does not exists. Let's insert one.
 	_, v, b := self.insert(key, value, size)
 	return v, b
 }

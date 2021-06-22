@@ -22,6 +22,3 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.ha_leases_logs TO p
 -- todo: create indexes
 
 -- todo: add indexes across all files related to this.
-
-
-

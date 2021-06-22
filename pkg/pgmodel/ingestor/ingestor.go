@@ -32,7 +32,7 @@ type DBIngestor struct {
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache *cache.ExemplarLabelsPosCache, cfg *Cfg) (*DBIngestor, error) {
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
 	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
 	if err != nil {
 		return nil, err
