@@ -23,11 +23,11 @@ import (
 func testConcurrentMetricTable(t testing.TB, db *pgxpool.Pool, metricName string) int64 {
 	var id *int64
 	var name *string
-	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.create_metric_table($1)", metricName).Scan(&id, &name)
+	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&id, &name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id == nil || name == nil {
+	if id == nil || name == nil || *name == "" {
 		t.Fatalf("NULL found")
 	}
 	return *id

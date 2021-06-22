@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
@@ -18,7 +19,10 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const seriesInsertSQL = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
+const (
+	seriesInsertSQL                 = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
+	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
+)
 
 type metricBatcher struct {
 	conn            pgxconn.PgxConn
@@ -29,15 +33,51 @@ type metricBatcher struct {
 	labelArrayOID   uint32
 }
 
+func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
+	res, err := conn.Query(
+		context.Background(),
+		getCreateMetricsTableWithNewSQL,
+		metric,
+	)
+
+	if err != nil {
+		return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+	}
+
+	var tableName string
+	var possiblyNew bool
+	defer res.Close()
+	if !res.Next() {
+		if err := res.Err(); err != nil {
+			return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+		}
+		return "", true, errors.ErrMissingTableName
+	}
+
+	if err := res.Scan(&tableName, &possiblyNew); err != nil {
+		return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+	}
+
+	if err := res.Err(); err != nil {
+		return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+	}
+
+	if tableName == "" {
+		return "", true, fmt.Errorf("failed to get the table name for metric %s: empty table name returned", metric)
+	}
+
+	return tableName, possiblyNew, nil
+}
+
 // Create the metric table for the metric we handle, if it does not already
 // exist. This only does the most critical part of metric table creation, the
 // rest is handled by completeMetricTableCreation().
 func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
 	tableName, err = metricTableNames.Get(metricName)
-	if err == errors.ErrEntryNotFound {
+	if err != nil || tableName == "" {
 		var possiblyNew bool
-		tableName, possiblyNew, err = model.MetricTableName(conn, metricName)
-		if err != nil {
+		tableName, possiblyNew, err = metricTableName(conn, metricName)
+		if err != nil || tableName == "" {
 			return "", err
 		}
 
@@ -51,8 +91,6 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 			default:
 			}
 		}
-	} else if err != nil {
-		return "", err
 	}
 	return tableName, err
 }
@@ -72,7 +110,9 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		var err error
 		tableName, err = initializeMetricBatcher(conn, metricName, completeMetricCreationSignal, metricTableNames)
 		if err != nil {
-			firstReq.reportResult(fmt.Errorf("initializing the insert routine has failed with %w", err))
+			err := fmt.Errorf("initializing the insert routine for metric %v has failed with %w", metricName, err)
+			log.Error("msg", err)
+			firstReq.reportResult(err)
 		} else {
 			firstReqSet = true
 			break
