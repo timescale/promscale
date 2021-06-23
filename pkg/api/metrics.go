@@ -28,6 +28,7 @@ type Metrics struct {
 	ReceivedQueries     prometheus.Counter
 	FailedQueries       prometheus.Counter
 	QueryBatchDuration  prometheus.Histogram
+	ExemplarQueryDuration prometheus.Histogram
 	QueryDuration       prometheus.Histogram
 	InvalidReadReqs     prometheus.Counter
 	InvalidWriteReqs    prometheus.Counter
@@ -57,6 +58,7 @@ func InitMetrics() *Metrics {
 		metrics.SentBatchDuration,
 		metrics.QueryBatchDuration,
 		metrics.QueryDuration,
+		metrics.ExemplarQueryDuration,
 		metrics.HTTPRequestDuration,
 	)
 
@@ -136,6 +138,14 @@ func createMetrics() *Metrics {
 				Namespace: util.PromNamespace,
 				Name:      "query_duration_seconds",
 				Help:      "Duration of query batch read calls to the PromQL engine.",
+				Buckets:   prometheus.DefBuckets,
+			},
+		),
+		ExemplarQueryDuration: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Namespace: util.PromNamespace,
+				Name:      "exemplar_query_duration_seconds",
+				Help:      "Duration of exemplar query read calls to the database.",
 				Buckets:   prometheus.DefBuckets,
 			},
 		),

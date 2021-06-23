@@ -30,6 +30,8 @@ import (
 )
 
 const (
+	seriesSchema = schema.DataSeries
+
 	subQueryEQ            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value = $%d)"
 	subQueryEQMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
 	subQueryNEQ           = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value != $%d)"
@@ -102,7 +104,7 @@ const (
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
 	*/
-	timeseriesByMetricSQLFormat = `SELECT series.labels,  %[7]s
+	timeseriesByMetricSQLFormat = `SELECT series.labels, result.time_array, result.value_array %[9]s
 	FROM %[2]s series
 	INNER JOIN LATERAL (
 		SELECT %[6]s
@@ -139,6 +141,7 @@ const (
 	) as result ON (result.value_array is not null AND result.series_id = series.id)`
 
 	defaultColumnName = "value"
+	exemplarFormat = "result.exemplar_label_values"
 )
 
 var (
@@ -439,7 +442,7 @@ func BuildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
 }
 
-func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmodel.SeriesID) string {
+func buildTimeseriesBySeriesIDQuery(tableSchema string, filter metricTimeRangeFilter, series []pgmodel.SeriesID) string {
 	s := make([]string, 0, len(series))
 	for _, sID := range series {
 		s = append(s, fmt.Sprintf("%d", sID))
@@ -454,7 +457,7 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmod
 	)
 }
 
-func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string, values []interface{},
+func buildTimeseriesByLabelClausesQuery(tableSchema string, filter metricTimeRangeFilter, cases []string, values []interface{},
 	hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (string, []interface{}, parser.Node, TimestampSeries, error) {
 	qf, node, err := getAggregators(hints, qh, path)
 	if err != nil {
@@ -484,7 +487,6 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 	if qf.unOrdered {
 		orderByClause = ""
 	}
-
 	template := timeseriesByMetricSQLFormat
 	if len(cases) == 1 && cases[0] == "TRUE" {
 		template = timeseriesByMetricSQLFormatNoClauses
@@ -493,6 +495,11 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		}
 	}
 
+	var exemplarInnerField, exemplarOuterField string
+	if tableSchema == schema.Exemplar {
+		exemplarInnerField = ", exemplar_label_values"
+		exemplarOuterField = ", result.exemplar_label_values"
+	}
 	finalSQL := fmt.Sprintf(template,
 		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
 		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),

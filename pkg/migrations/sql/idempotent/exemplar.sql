@@ -52,36 +52,31 @@ RETURNS BOOLEAN
 AS
 $$
 DECLARE
-    table_name_text TEXT;
+    table_name_fetched TEXT;
+    metric_name_fetched TEXT;
 BEGIN
-    SELECT table_name INTO table_name_text FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_text;
-    IF table_name_text IS NULL THEN
+    SELECT metric_name, table_name INTO metric_name_fetched, table_name_fetched FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_text;
+    IF table_name_fetched IS NULL THEN
         -- metric table entry does not exists in SCHEMA_CATALOG.metric, hence we cannot create. Error out.
         -- Note: even though we can create an entry from here, we should not as it keeps the approach systematic.
         RAISE EXCEPTION 'SCHEMA_CATALOG.metric does not contain the table entry for % metric', metric_name_text;
     END IF;
     -- check if table is already created.
     IF (
-        SELECT count(table_name) > 0 FROM SCHEMA_CATALOG.exemplar WHERE metric_id=(
-            SELECT id FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_text
-        )
+        SELECT count(table_name) > 0 FROM SCHEMA_CATALOG.exemplar WHERE metric_name=metric_name_text
     ) THEN
         RETURN FALSE;
     END IF;
     -- table does not exists. Let's create it.
     EXECUTE FORMAT('CREATE TABLE SCHEMA_DATA_EXEMPLAR.%I (time TIMESTAMPTZ NOT NULL, series_id BIGINT NOT NULL, exemplar_label_values TEXT[], value DOUBLE PRECISION NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
-        table_name_text);
-    EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_reader', table_name_text);
-    EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_writer', table_name_text);
-    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_modifier', table_name_text);
+        table_name_fetched);
+    EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_reader', table_name_fetched);
+    EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_writer', table_name_fetched);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_modifier', table_name_fetched);
     EXECUTE format('CREATE UNIQUE INDEX exemplar_index%s ON SCHEMA_DATA_EXEMPLAR.%I (series_id, time) INCLUDE (value)',
-                        table_name_text, table_name_text);
-    INSERT INTO SCHEMA_CATALOG.exemplar (metric_id, table_name) VALUES (
-        (
-            SELECT id FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_text
-        ),
-        table_name_text
-    );
+                        table_name_fetched, table_name_fetched);
+    INSERT INTO SCHEMA_CATALOG.exemplar (metric_name, table_name)
+        VALUES (metric_name_fetched, table_name_fetched);
     RETURN TRUE;
 END;
 $$

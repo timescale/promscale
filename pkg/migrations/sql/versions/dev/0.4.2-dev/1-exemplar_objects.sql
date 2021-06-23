@@ -14,7 +14,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.exemplar_label_key_
 
 CREATE TABLE IF NOT EXISTS SCHEMA_CATALOG.exemplar (
     id          SERIAL,
-    metric_id   BIGINT NOT NULL,
+    metric_name TEXT NOT NULL,
     table_name  TEXT NOT NULL
 );
 GRANT SELECT ON TABLE SCHEMA_CATALOG.ha_leases_logs TO prom_reader;
