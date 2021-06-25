@@ -7,13 +7,14 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/blang/semver/v4"
+	"github.com/timescale/promscale/pkg/pgxconn"
+
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -104,10 +105,10 @@ const (
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
 	*/
-	timeseriesByMetricSQLFormat = `SELECT series.labels, result.time_array, result.value_array %[9]s
+	timeseriesByMetricSQLFormat = `SELECT series.labels, result.time_array, result.value_array%[10]s
 	FROM %[2]s series
 	INNER JOIN LATERAL (
-		SELECT %[6]s
+		SELECT %[6]s as time_array, %[7]s as value_array%[9]s
 		FROM
 		(
 			SELECT time, %[9]s as value
@@ -366,7 +367,7 @@ func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []timescaleRow)
 	}
 }
 
-func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 	labelIDMap := make(map[int64]labels.Label)
 	initializeLabeIDMap(labelIDMap, rows)
@@ -495,10 +496,11 @@ func buildTimeseriesByLabelClausesQuery(tableSchema string, filter metricTimeRan
 		}
 	}
 
-	var exemplarInnerField, exemplarOuterField string
+	var exemplarInnerField, exemplarMiddleField, exemplarOuterField string
 	if tableSchema == schema.Exemplar {
 		exemplarInnerField = ", exemplar_label_values"
-		exemplarOuterField = ", result.exemplar_label_values"
+		exemplarMiddleField = ", array_agg(exemplar_label_values) as exemplar_label_value_array"
+		exemplarOuterField = ", result.exemplar_label_value_array"
 	}
 	finalSQL := fmt.Sprintf(template,
 		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),

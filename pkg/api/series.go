@@ -68,7 +68,7 @@ func series(queryable promql.Queryable) http.HandlerFunc {
 		}
 		ctx := r.Context()
 
-		q, err := queryable.Querier(ctx, timestamp.FromTime(start), timestamp.FromTime(end))
+		q, err := queryable.Samples(ctx, timestamp.FromTime(start), timestamp.FromTime(end))
 		if err != nil {
 			respondError(w, http.StatusUnprocessableEntity, err, "execution")
 			return

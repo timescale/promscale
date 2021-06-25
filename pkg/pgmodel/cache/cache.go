@@ -49,12 +49,31 @@ type LabelsCache interface {
 
 type key struct {
 	schema, metric string
+	shouldBeExemplar bool
 }
 
 func (k key) len() int {
 	return len(k.schema) + len(k.metric)
 }
 
+// MetricCache provides a caching mechanism for metric table names.
+type MetricCache interface {
+	// Get returns the TableInfo if the given metric is present, otherwise
+	// returns an errors.ErrEntryNotFound.
+	Get(metric string, shouldBeExemplar bool) (string, error)
+	// Set sets the table name corresponding to the given metric. It also
+	// saves whether the incoming entry is for exemplar or not, as
+	// ingested exemplars have a different table than ingested samples,
+	// since ingestion of exemplars is independent of samples.
+	Set(metric, tableName string, isExemplar bool) error
+	// Len returns the number of metrics cached in the system.
+	Len() int
+	// Cap returns the capacity of the metrics cache.
+	Cap() int
+	Evictions() uint64
+}
+
+// todo: make this struct private only
 // MetricNameCache stores and retrieves metric table names in a in-memory cache.
 type MetricNameCache struct {
 	Metrics *clockcache.Cache
@@ -65,10 +84,10 @@ func NewMetricCache(config Config) *MetricNameCache {
 }
 
 // Get fetches the table name for specified metric.
-func (m *MetricNameCache) Get(schema, metric string) (model.MetricInfo, error) {
+func (m *MetricNameCache) Get(schema, metric string, shouldBeExemplar bool) (model.MetricInfo, error) {
 	var (
 		mInfo = model.MetricInfo{}
-		key   = key{schema, metric}
+		key   = key{schema, metric, shouldBeExemplar}
 	)
 	result, ok := m.Metrics.Get(key)
 	if !ok {
@@ -83,17 +102,24 @@ func (m *MetricNameCache) Get(schema, metric string) (model.MetricInfo, error) {
 	return mInfo, nil
 }
 
+// metricInfo contains the metric name along with whether the (metric) entry is
+// for exemplar or not.
+type metricInfo struct {
+	MetricName string
+	IsExemplar bool
+}
+
 // Set stores metric info for specified metric with schema.
-func (m *MetricNameCache) Set(schema, metric string, val model.MetricInfo) error {
-	k := key{schema, metric}
+func (m *MetricNameCache) Set(schema, metric string, val model.MetricInfo, isExemplar bool) error {
+	k := key{schema, metric, isExemplar}
 	//size includes an 8-byte overhead for each string
-	m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+16))
+	m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 
 	// If the schema inserted above was empty, also populate the cache with the real schema.
 	if schema == "" {
-		k = key{val.TableSchema, metric}
+		k = key{val.TableSchema, metric, isExemplar}
 		//size includes an 8-byte overhead for each string
-		m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+16))
+		m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 	}
 
 	return nil

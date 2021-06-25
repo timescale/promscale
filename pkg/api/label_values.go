@@ -29,7 +29,7 @@ func labelValues(queryable promql.Queryable) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, fmt.Errorf("invalid label name: %s", name), "bad_data")
 			return
 		}
-		querier, err := queryable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+		querier, err := queryable.Samples(context.Background(), math.MinInt64, math.MaxInt64)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return

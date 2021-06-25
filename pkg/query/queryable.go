@@ -25,12 +25,21 @@ type queryable struct {
 	labelsReader lreader.LabelsReader
 }
 
-func (q queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querier, error) {
+func (q queryable) newQuerier(ctx context.Context, mint, maxt int64) *querier {
 	return &querier{
 		ctx: ctx, mint: mint, maxt: maxt,
 		metricsReader: q.querier,
 		labelsReader:  q.labelsReader,
-	}, nil
+	}
+}
+
+func (q queryable) Samples(ctx context.Context, mint, maxt int64) (promql.SamplesQuerier, error) {
+	return q.newQuerier(ctx, mint, maxt), nil
+}
+
+// todo: optimize this (remove need for querier)
+func (q queryable) Exemplar(ctx context.Context) promql.ExemplarQuerier {
+	return q.newQuerier(nil, 0, 0).metricsReader.Exemplar(ctx)
 }
 
 type querier struct {

@@ -49,12 +49,19 @@ import (
 // A Queryable handles queries against a storage.
 // Use it when you need to have access to all samples without chunk encoding abstraction e.g promQL.
 type Queryable interface {
-	// Querier returns a new Querier on the storage.
-	Querier(ctx context.Context, mint, maxt int64) (Querier, error)
+	// SamplesQuerier returns a new promql.Querier on the storage. It helps querying over samples
+	// in the database.
+	Samples(ctx context.Context, mint, maxt int64) (SamplesQuerier, error)
+	// ExemplarQuerier returns a new Querier that helps querying exemplars in the database.
+	Exemplar(ctx context.Context) ExemplarQuerier
 }
 
-// Querier provides querying access over time series data of a fixed time range.
-type Querier interface {
+type ExemplarQuerier interface {
+	Select(start, end time.Time, matchers ...[]*labels.Matcher) storage.SeriesSet
+}
+
+// SamplesQuerier provides querying access over time series data of a fixed time range.
+type SamplesQuerier interface {
 	// LabelValues returns all potential values for a label name.
 	// It is not safe to use the strings beyond the lifefime of the querier.
 	LabelValues(name string) ([]string, storage.Warnings, error)
@@ -579,7 +586,7 @@ func durationMilliseconds(d time.Duration) int64 {
 func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.EvalStmt) (parser.Value, storage.Warnings, error) {
 	prepareSpanTimer, ctxPrepare := query.stats.GetSpanTimer(ctx, stats.QueryPreparationTime, ng.metrics.queryPrepareTime)
 	mint, maxt := ng.findMinMaxTime(s)
-	querier, err := query.queryable.Querier(ctxPrepare, mint, maxt)
+	querier, err := query.queryable.Samples(ctxPrepare, mint, maxt)
 	if err != nil {
 		prepareSpanTimer.Finish()
 		return nil, nil, err
@@ -780,7 +787,7 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 	return start, end
 }
 
-func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) map[parser.Node]struct{} {
+func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map[parser.Node]struct{} {
 	var (
 		// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 		// The evaluation of the VectorSelector inside then evaluates the given range and unsets

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -49,7 +48,7 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	if cfg == nil {
 		cfg = &Cfg{}
 	}
-	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+	c := cache.NewMetricCache(cache.DefaultConfig)
 	s := cache.NewSeriesCache(cache.DefaultConfig, nil)
 	e := cache.NewExemplarLabelsPosCache(cache.DefaultConfig)
 	return NewPgxIngestor(conn, c, s, e, cfg)

@@ -24,17 +24,17 @@ const (
 
 // pgxSeriesSet implements storage.SeriesSet.
 type pgxSeriesSet struct {
-	rowIdx     int
-	rows       []timescaleRow
+	rowIdx  int
+	rows    []sampleRow
 	labelIDMap map[int64]labels.Label
-	err        error
-	querier    labelQuerier
+	err     error
+	querier labelQuerier
 }
 
 // pgxSeriesSet must implement storage.SeriesSet
 var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
-func buildSeriesSet(rows []timescaleRow, querier labelQuerier) SeriesSet {
+func buildSeriesSet(rows []sampleRow, querier labelQuerier) SeriesSet {
 	labelIDMap := make(map[int64]labels.Label)
 	initializeLabeIDMap(labelIDMap, rows)
 
@@ -130,7 +130,7 @@ func (p *pgxSeriesSet) At() storage.Series {
 // Err implements storage.SeriesSet.
 func (p *pgxSeriesSet) Err() error {
 	if p.err != nil {
-		return fmt.Errorf("Error retrieving series set: %w", p.err)
+		return fmt.Errorf("error retrieving series set: %w", p.err)
 	}
 	return nil
 }

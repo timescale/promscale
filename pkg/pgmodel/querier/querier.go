@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -54,17 +55,34 @@ type Querier interface {
 
 const (
 	getMetricsTableSQL = "SELECT table_schema, table_name, series_table FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1, $2)"
+	getExemplarMetricTableSQL = "SELECT COALESCE(table_name, '') FROM " + schema.Catalog + ".exemplar WHERE metric_name=$1"
 )
+
+type pgxQuerier struct {
+	conn             pgxconn.PgxConn
+	metricTableNames cache.MetricCache
+	exemplarPosCache cache.PositionCache
+	labelsReader     lreader.LabelsReader
+	rAuth            tenancy.ReadAuthorizer
+}
 
 // NewQuerier returns a new pgxQuerier that reads from PostgreSQL using PGX
 // and caches metric table names and label sets using the supplied caches.
-func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReader lreader.LabelsReader, rAuth tenancy.ReadAuthorizer) Querier {
-	return &pgxQuerier{
+func NewQuerier(
+	conn pgxconn.PgxConn,
+	metricCache cache.MetricCache,
+	labelsReader lreader.LabelsReader,
+	exemplarCache cache.PositionCache,
+	rAuth tenancy.ReadAuthorizer,
+) Querier {
+	querier := &pgxQuerier{
 		conn:             conn,
 		labelsReader:     labelsReader,
 		metricTableNames: metricCache,
+		exemplarPosCache: exemplarCache,
 		rAuth:            rAuth,
 	}
+	return querier
 }
 
 type metricTimeRangeFilter struct {
@@ -74,13 +92,6 @@ type metricTimeRangeFilter struct {
 	seriesTable string
 	startTime   string
 	endTime     string
-}
-
-type pgxQuerier struct {
-	conn             pgxconn.PgxConn
-	metricTableNames cache.MetricCache
-	labelsReader     lreader.LabelsReader
-	rAuth            tenancy.ReadAuthorizer
 }
 
 var _ Querier = (*pgxQuerier)(nil)
@@ -97,14 +108,46 @@ func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *stor
 	return ss, topNode
 }
 
-func (q *pgxQuerier) SelectExemplars(mint, maxt int64, ms ...*labels.Matcher) error {
-	rows, topNode, err := q.getResultRows(schema.Data, mint, maxt, nil, path, ms)
+func (q *pgxQuerier) Exemplar(ctx context.Context) ExemplarQuerier {
+	return newExemplarQuerier(ctx, q.conn, q, q.metricTableNames, q.exemplarPosCache, q.rAuth)
+}
+
+type pgxExemplarQuerier struct {
+	conn                pgxconn.PgxConn
+	ctx                 context.Context
+	metricTableCache    cache.MetricCache
+	exemplarKeyPosCache cache.PositionCache
+	rAuth               tenancy.ReadAuthorizer
+	pgx                 *pgxQuerier // We need a reference to pgxQuerier to reuse the existing functions.
+}
+
+// newExemplarQuerier returns a querier that can query over exemplars.
+func newExemplarQuerier(
+	ctx context.Context,
+	conn pgxconn.PgxConn,
+	pgx *pgxQuerier,
+	metricCache cache.MetricCache,
+	exemplarCache cache.PositionCache,
+	rAuth tenancy.ReadAuthorizer,
+) ExemplarQuerier {
+	return &pgxExemplarQuerier{
+		ctx:                 ctx,
+		conn:                conn,
+		pgx:                 pgx,
+		metricTableCache:    metricCache,
+		exemplarKeyPosCache: exemplarCache,
+		rAuth:               rAuth,
+	}
+}
+
+func (eq *pgxExemplarQuerier) Select(start, end time.Time, ms ...[]*labels.Matcher) storage.SeriesSet {
+	rows, _, err := eq.pgx.getResultRows(schema.Exemplar, timestamp.FromTime(start), timestamp.FromTime(end), nil, nil, ms[0])
 	if err != nil {
-		return errorSeriesSet{err: err}, nil
+		return errorSeriesSet{err: err}
 	}
 
-	ss := buildSeriesSet(rows, q.labelsReader)
-	return ss, topNode
+	ss := buildSeriesSet(rows, eq.pgx.labelsReader)
+	return ss
 }
 
 // Query implements the Querier interface. It is the entry point for
@@ -154,9 +197,21 @@ func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 	return result, nil
 }
 
+type sampleRow struct {
+	labelIds []int64
+	times    pgtype.TimestamptzArray
+	values   pgtype.Float8Array
+	err      error
+}
+
+type exemplarRow struct {
+	sampleRow
+	LabelValues []string // Exemplar label values.
+}
+
 // getResultRows fetches the result row datasets from the database using the
 // supplied query parameters.
-func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
+func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) ([]sampleRow, parser.Node, error) {
 	if q.rAuth != nil {
 		matchers = q.rAuth.AppendTenantMatcher(matchers)
 	}
@@ -167,7 +222,6 @@ func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp int64, end
 	}
 
 	metric := builder.GetMetricName()
-
 	filter := metricTimeRangeFilter{
 		metric:    metric,
 		schema:    builder.GetSchemaName(),
@@ -251,7 +305,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 
 // queryMultipleMetrics returns all the result rows for across multiple metrics
 // using the supplied query parameters.
-func (q *pgxQuerier) queryMultipleMetrics(tableSchema string, filter metricTimeRangeFilter, cases []string, values []interface{}) ([]timescaleRow, parser.Node, error) {
+func (q *pgxQuerier) queryMultipleMetrics(tableSchema string, filter metricTimeRangeFilter, cases []string, values []interface{}) ([]sampleRow, parser.Node, error) {
 	// First fetch series IDs per metric.
 	sqlQuery := BuildMetricNameSeriesIDQuery(cases)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
@@ -266,7 +320,7 @@ func (q *pgxQuerier) queryMultipleMetrics(tableSchema string, filter metricTimeR
 	}
 
 	// TODO this assume on average on row per-metric. Is this right?
-	results := make([]timescaleRow, 0, len(metrics))
+	results := make([]sampleRow, 0, len(metrics))
 
 	numQueries := 0
 	batch := q.conn.NewBatch()
@@ -313,7 +367,7 @@ func (q *pgxQuerier) queryMultipleMetrics(tableSchema string, filter metricTimeR
 		}
 		// Append all rows into results. Metric name and additional labels are
 		// ignored for multi-metric queries
-		results, err = appendTsRows(results, rows, nil, "", "", "")
+		results, err = appendSampleRows(results, rows, nil, "", "", "")
 		// Can't defer because we need to Close before the next loop iteration.
 		rows.Close()
 		if err != nil {
@@ -341,7 +395,7 @@ func (q *pgxQuerier) getMetricTableName(schema, metric string) (model.MetricInfo
 		return mInfo, err
 	}
 
-	err = q.metricTableNames.Set(schema, metric, mInfo)
+	err = q.metricTableNames.Set(schema, metric, mInfo, isExemplar)
 
 	return mInfo, err
 }
@@ -362,6 +416,42 @@ func (q *pgxQuerier) queryMetricTableName(schema, metric string) (mInfo model.Me
 	}
 
 	return mInfo, nil
+}
+
+// appendTsRows adds new results rows to already existing result rows and
+// returns the as a result.
+func appendSampleRows(out []sampleRow, in pgx.Rows) ([]sampleRow, error) {
+	if in.Err() != nil {
+		return out, in.Err()
+	}
+	for in.Next() {
+		var row sampleRow
+		row.err = in.Scan(&row.labelIds, &row.times, &row.values)
+		out = append(out, row)
+		if row.err != nil {
+			return out, row.err
+		}
+	}
+	return out, in.Err()
+}
+
+// appendExemplarRows adds new results rows to already existing result rows and
+// returns the as a result.
+func appendExemplarRows(out []exemplarRow, in pgx.Rows) ([]exemplarRow, error) {
+	if in.Err() != nil {
+		return out, in.Err()
+	}
+	// valueArray := model.GetCustomType(model.LabelValueArray)
+	for in.Next() {
+		var row exemplarRow
+		row.err = in.Scan(&row.labelIds, &row.times, &row.values)
+		out = append(out, row)
+		if row.err != nil {
+			log.Error("err", row.err)
+			return out, row.err
+		}
+	}
+	return out, in.Err()
 }
 
 // errorSeriesSet represents an error result in a form of a series set.

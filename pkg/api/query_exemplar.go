@@ -12,12 +12,12 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func QueryExemplar(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.Handler {
-	hf := corsWrapper(conf, queryRange(conf, queryEngine, queryable, metrics))
+func QueryExemplar(conf *Config, queryable promql.Queryable, metrics *Metrics) http.Handler {
+	hf := corsWrapper(conf, queryExemplar(queryable, metrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryExemplar(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
@@ -59,33 +59,14 @@ func queryExemplar(conf *Config, queryEngine *promql.Engine, queryable promql.Qu
 		}
 
 		begin := time.Now()
-		expr, err := parser.ParseExpr(r.FormValue("timeout"))
+		expr, err := parser.ParseExpr(r.FormValue("query"))
 		if err != nil {
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 		}
 		selectors := parser.ExtractSelectors(expr)
-
-		res := qry.Exec(ctx)
+		querier := queryable.Exemplar(ctx)
+		querier.Select(start, end, selectors...)
 		metrics.QueryDuration.Observe(time.Since(begin).Seconds())
-
-		if res.Err != nil {
-			log.Error("msg", res.Err, "endpoint", "query_range")
-			switch res.Err.(type) {
-			case promql.ErrQueryCanceled:
-				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
-				return
-			case promql.ErrQueryTimeout:
-				respondError(w, http.StatusServiceUnavailable, res.Err, "timeout")
-				return
-			case promql.ErrStorage:
-				respondError(w, http.StatusInternalServerError, res.Err, "internal")
-				return
-			}
-			respondError(w, http.StatusUnprocessableEntity, res.Err, "execution")
-			metrics.FailedQueries.Add(1)
-			return
-		}
-
-		respondQuery(w, res, res.Warnings)
+		respond(w, http.StatusOK, "works!")
 	}
 }
