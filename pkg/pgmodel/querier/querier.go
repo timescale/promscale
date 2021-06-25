@@ -189,7 +189,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	}
 	filter.metric = tableName
 
-	sqlQuery, values, topNode, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, qh, path)
+	sqlQuery, values, topNode, tsSeries, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, qh, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,7 +206,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	defer rows.Close()
 
 	// TODO this allocation assumes we usually have 1 row, if not, refactor
-	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows)
+	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows, tsSeries)
 	return tsRows, topNode, err
 }
 
@@ -262,7 +262,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 			return nil, nil, err
 		}
 		// Append all rows into results.
-		results, err = appendTsRows(results, rows)
+		results, err = appendTsRows(results, rows, nil)
 		// Can't defer because we need to Close before the next loop iteration.
 		rows.Close()
 		if err != nil {

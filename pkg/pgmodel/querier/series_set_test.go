@@ -413,7 +413,7 @@ func genPgxRows(m [][]seriesSetRow, err error) []timescaleRow {
 		for _, r := range mm {
 			result = append(result, timescaleRow{
 				labelIds: r.labels,
-				times:    toTimestampTzArray(r.timestamps),
+				times:    NewRowTimestampSeries(toTimestampTzArray(r.timestamps)),
 				values:   toFloat8Array(r.values),
 				err:      err,
 			})

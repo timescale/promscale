@@ -131,34 +131,45 @@ func (dstwrapper *float8ArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src []by
 
 type timescaleRow struct {
 	labelIds []int64
-	times    *pgtype.TimestamptzArray
+	times    TimestampSeries
 	values   *pgtype.Float8Array
 	err      error
+
+	//only used to hold ownership for releasing to pool
+	timeArrayOwnership *pgtype.TimestamptzArray
 }
 
 func (r *timescaleRow) Close() {
-	tPool.Put(r.times)
+	if r.timeArrayOwnership != nil {
+		tPool.Put(r.timeArrayOwnership)
+	}
 	fPool.Put(r.values)
 }
 
 // appendTsRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendTsRows(out []timescaleRow, in pgx.Rows) ([]timescaleRow, error) {
+func appendTsRows(out []timescaleRow, in pgx.Rows, tsSeries TimestampSeries) ([]timescaleRow, error) {
 	if in.Err() != nil {
 		return out, in.Err()
 	}
 	for in.Next() {
 		var row timescaleRow
 		values := fPool.Get().(*pgtype.Float8Array)
-		times := tPool.Get().(*pgtype.TimestamptzArray)
 		values.Elements = values.Elements[:0]
-		times.Elements = times.Elements[:0]
-
 		valuesWrapper := float8ArrayWrapper{values}
-		timesWrapper := timestamptzArrayWrapper{times}
-		row.err = in.Scan(&row.labelIds, &timesWrapper, &valuesWrapper)
 
-		row.times = times
+		if tsSeries == nil {
+			times := tPool.Get().(*pgtype.TimestamptzArray)
+			times.Elements = times.Elements[:0]
+			timesWrapper := timestamptzArrayWrapper{times}
+			row.err = in.Scan(&row.labelIds, &timesWrapper, &valuesWrapper)
+			row.timeArrayOwnership = times
+			row.times = NewRowTimestampSeries(times)
+		} else {
+			row.err = in.Scan(&row.labelIds, &valuesWrapper)
+			row.times = tsSeries
+		}
+
 		row.values = values
 
 		out = append(out, row)
