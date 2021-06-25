@@ -736,7 +736,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 		},
 		{
-			name: "Metrics get error",
+			//cache errors get recovered from and the insert succeeds
+			name: "Metrics cache get error",
 			rows: map[string][]model.Samples{
 				"metric_0": {
 					model.NewPromSample(makeLabel(), make([]prompb.Sample, 1)),
@@ -746,6 +747,29 @@ func TestPGXInserterInsertData(t *testing.T) {
 			sqlQueries: []model.SqlQuery{
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Args:    []interface{}{"metric_0"},
+					Results: model.RowResults{{"metric_0", true}},
+					Err:     error(nil),
+				},
+				{
+					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
+					Args: []interface{}{
+						"metric_0",
+						[]time.Time{time.Unix(0, 0)},
+						[]float64{0},
+						[]int64{1},
+					},
+					Results: model.RowResults{{int64(1)}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
+					Err:     error(nil),
+				},
 			},
 		},
 	}
@@ -773,7 +797,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 
 			switch {
 			case c.metricsGetErr != nil:
-				expErr = c.metricsGetErr
+				//cache errors recover
+				expErr = nil
 			case c.name == "Can't find/create table in DB":
 				expErr = pgmodelErrs.ErrMissingTableName
 			default:
