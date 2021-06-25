@@ -46,6 +46,10 @@ func (m mockSeriesSet) Warnings() storage.Warnings {
 	return nil
 }
 
+func (m mockSeriesSet) Close() {
+	return
+}
+
 type mockQuerier struct {
 	timeToSleepOnSelect time.Duration
 	selectErr           error
@@ -57,7 +61,7 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
 }
 
-func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
 	time.Sleep(m.timeToSleepOnSelect)
 	return &mockSeriesSet{err: m.selectErr}, nil
 }

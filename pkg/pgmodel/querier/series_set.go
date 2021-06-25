@@ -34,7 +34,7 @@ type pgxSeriesSet struct {
 // pgxSeriesSet must implement storage.SeriesSet
 var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
-func buildSeriesSet(rows []timescaleRow, querier labelQuerier) storage.SeriesSet {
+func buildSeriesSet(rows []timescaleRow, querier labelQuerier) SeriesSet {
 	labelIDMap := make(map[int64]labels.Label)
 	initializeLabeIDMap(labelIDMap, rows)
 
@@ -127,11 +127,18 @@ func (p *pgxSeriesSet) Err() error {
 
 func (p *pgxSeriesSet) Warnings() storage.Warnings { return nil }
 
+func (p *pgxSeriesSet) Close() {
+	for _, row := range p.rows {
+		row.Close()
+	}
+	return
+}
+
 // pgxSeries implements storage.Series.
 type pgxSeries struct {
 	labels labels.Labels
-	times  pgtype.TimestamptzArray
-	values pgtype.Float8Array
+	times  *pgtype.TimestamptzArray
+	values *pgtype.Float8Array
 }
 
 // Labels returns the label names and values for the series.
@@ -148,12 +155,12 @@ func (p *pgxSeries) Iterator() chunkenc.Iterator {
 type pgxSeriesIterator struct {
 	cur          int
 	totalSamples int
-	times        pgtype.TimestamptzArray
-	values       pgtype.Float8Array
+	times        *pgtype.TimestamptzArray
+	values       *pgtype.Float8Array
 }
 
 // newIterator returns an iterator over the samples. It expects times and values to be the same length.
-func newIterator(times pgtype.TimestamptzArray, values pgtype.Float8Array) *pgxSeriesIterator {
+func newIterator(times *pgtype.TimestamptzArray, values *pgtype.Float8Array) *pgxSeriesIterator {
 	return &pgxSeriesIterator{
 		cur:          -1,
 		totalSamples: len(times.Elements),
