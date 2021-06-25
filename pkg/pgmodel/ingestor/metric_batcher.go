@@ -80,6 +80,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) 
 // exist. This only does the most critical part of metric table creation, the
 // rest is handled by completeMetricTableCreation().
 func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
+	// Metric batchers are always initialized with metric names of samples and not of exemplars.	
 	mInfo, err := metricTableNames.Get(schema.Data, metricName, false)
 	if err == nil && mInfo.TableName != "" {
 		return mInfo.TableName, nil

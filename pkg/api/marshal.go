@@ -23,6 +23,12 @@ func marshalVectorResponse(writer io.Writer, data promql.Vector, warnings []stri
 	return out.err
 }
 
+//func marshalExemplarResponse(writer io.Writer, data []model.ExemplarQueryResult) error {
+//	out := &errorWrapper{writer: writer}
+//	marshalCommonHeader(out)
+//
+//}
+
 func marshalCommonHeader(out *errorWrapper) {
 	out.WriteStrings(`{"status":"success","data":`)
 }
@@ -73,6 +79,15 @@ func marshalMatrixData(out *errorWrapper, data promql.Matrix) {
 	}
 	out.WriteStrings(`]}`)
 }
+
+//todo: last
+//func marshalExemplarData(out *errorWrapper, data []model.ExemplarQueryResult) {
+//	out.WriteStrings(`[`)
+//	for _, r := range data {
+//
+//	}
+//	out.WriteStrings(`]`)
+//}
 
 func marshalVectorData(out *errorWrapper, data promql.Vector) {
 	out.WriteStrings(`{"resultType":"`, string(parser.ValueTypeVector), `","result":[`)

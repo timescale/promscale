@@ -61,6 +61,14 @@ const (
 	AND time >= '%[4]s'
 	AND time <= '%[5]s'
 	GROUP BY s.id`
+	exemplarsBySeriesIDsSQLFormat = `SELECT s.labels, m.time, m.value, m.exemplar_label_values
+	FROM %[1]s m
+	INNER JOIN %[2]s s
+	ON m.series_id = s.id
+	WHERE m.series_id IN (%[3]s)
+	AND time >= '%[4]s'
+	AND time <= '%[5]s'
+	GROUP BY s.id, m.time, m.value, m.exemplar_label_values ORDER BY m.time`
 
 	/* SINGLE METRIC PATH (common, performance critical case) */
 	/* The simpler query (which isn't used):
@@ -105,10 +113,10 @@ const (
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
 	*/
-	timeseriesByMetricSQLFormat = `SELECT series.labels, result.time_array, result.value_array%[10]s
+	timeseriesByMetricSQLFormat = `SELECT series.labels, result.time_array, result.value_array
 	FROM %[2]s series
 	INNER JOIN LATERAL (
-		SELECT %[6]s as time_array, %[7]s as value_array%[9]s
+		SELECT %[6]s as time_array, %[7]s as value_array
 		FROM
 		(
 			SELECT time, %[9]s as value
@@ -143,6 +151,18 @@ const (
 
 	defaultColumnName = "value"
 	exemplarFormat = "result.exemplar_label_values"
+	exemplarByMetricSQLFormat = `SELECT series.labels, result.time, result.value, result.exemplar_label_values
+	FROM %[2]s series
+	INNER JOIN LATERAL (
+			SELECT time, value, exemplar_label_values
+			FROM %[1]s metric
+			WHERE metric.series_id = series.id
+			AND time >= '%[4]s'
+			AND time <= '%[5]s'
+			ORDER BY time
+	) as result ON (result.value is not null)
+	WHERE
+	     %[3]s`
 )
 
 var (
@@ -443,7 +463,7 @@ func BuildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
 }
 
-func buildTimeseriesBySeriesIDQuery(tableSchema string, filter metricTimeRangeFilter, series []pgmodel.SeriesID) string {
+func buildTimeseriesBySeriesIDQuery(tableSchema string, filter metricTimeRangeFilter, series []pgmodel.SeriesID) (string, error) {
 	s := make([]string, 0, len(series))
 	for _, sID := range series {
 		s = append(s, fmt.Sprintf("%d", sID))
@@ -667,10 +687,6 @@ func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, []string, [][]pgmodel.S
 func anchorValue(str string) string {
 	//Reference:  NewFastRegexMatcher in Prometheus source code
 	return "^(?:" + str + ")$"
-}
-
-func toMilis(t time.Time) int64 {
-	return t.UnixNano() / 1e6
 }
 
 func toRFC3339Nano(milliseconds int64) string {

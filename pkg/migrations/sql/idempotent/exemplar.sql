@@ -44,6 +44,16 @@ $$
 LANGUAGE PLPGSQL;
 -- todo: set security_definer
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(metric_name_text TEXT)
+RETURNS JSON AS
+$$
+    SELECT json_object_agg(row.key, row.position) FROM (
+        SELECT key, pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position
+            WHERE metric_name=metric_name_text GROUP BY metric_name, key, pos ORDER BY pos
+        ) AS row
+$$
+LANGUAGE SQL;
+
 -- creates exemplar table in prom_data_exemplar schema if the table does not exists. This function
 -- must be called after the metric is created in _prom_catalog.metric as it utilizes the table_name
 -- from the metric table. It returns true if the table was created.
@@ -68,7 +78,7 @@ BEGIN
         RETURN FALSE;
     END IF;
     -- table does not exists. Let's create it.
-    EXECUTE FORMAT('CREATE TABLE SCHEMA_DATA_EXEMPLAR.%I (time TIMESTAMPTZ NOT NULL, series_id BIGINT NOT NULL, exemplar_label_values TEXT[], value DOUBLE PRECISION NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
+    EXECUTE FORMAT('CREATE TABLE SCHEMA_DATA_EXEMPLAR.%I (time TIMESTAMPTZ NOT NULL, series_id BIGINT NOT NULL, exemplar_label_values SCHEMA_PROM.label_value_array, value DOUBLE PRECISION NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
         table_name_fetched);
     EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_reader', table_name_fetched);
     EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_writer', table_name_fetched);

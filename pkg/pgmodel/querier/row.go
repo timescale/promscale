@@ -132,11 +132,11 @@ func (dstwrapper *float8ArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src []by
 	return nil
 }
 
-type timescaleRow struct {
-	labelIds       []int64
-	times          TimestampSeries
-	values         *pgtype.Float8Array
-	err            error
+type sampleRow struct {
+	labelIds []int64
+	times    TimestampSeries
+	values   *pgtype.Float8Array
+	err      error
 	metricOverride string
 	schema         string
 	column         string
@@ -145,14 +145,14 @@ type timescaleRow struct {
 	timeArrayOwnership *pgtype.TimestamptzArray
 }
 
-func (r *timescaleRow) Close() {
+func (r *sampleRow) Close() {
 	if r.timeArrayOwnership != nil {
 		tPool.Put(r.timeArrayOwnership)
 	}
 	fPool.Put(r.values)
 }
 
-func (r *timescaleRow) GetAdditionalLabels() (ll labels.Labels) {
+func (r *sampleRow) GetAdditionalLabels() (ll labels.Labels) {
 	if r.schema != "" && r.schema != schema.Data {
 		ll = append(ll, labels.Label{Name: model.SchemaNameLabelName, Value: r.schema})
 	}
@@ -164,12 +164,12 @@ func (r *timescaleRow) GetAdditionalLabels() (ll labels.Labels) {
 
 // appendTsRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendTsRows(out []timescaleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metric, schema, column string) ([]timescaleRow, error) {
+func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metric, schema, column string) ([]sampleRow, error) {
 	if in.Err() != nil {
 		return out, in.Err()
 	}
 	for in.Next() {
-		var row timescaleRow
+		var row sampleRow
 		values := fPool.Get().(*pgtype.Float8Array)
 		values.Elements = values.Elements[:0]
 		valuesWrapper := float8ArrayWrapper{values}

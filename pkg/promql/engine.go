@@ -43,6 +43,7 @@ import (
 	"github.com/prometheus/prometheus/util/stats"
 
 	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -57,7 +58,7 @@ type Queryable interface {
 }
 
 type ExemplarQuerier interface {
-	Select(start, end time.Time, matchers ...[]*labels.Matcher) storage.SeriesSet
+	Select(start, end time.Time, matchers ...[]*labels.Matcher) ([]pgmodel.ExemplarQueryResult, error)
 }
 
 // SamplesQuerier provides querying access over time series data of a fixed time range.

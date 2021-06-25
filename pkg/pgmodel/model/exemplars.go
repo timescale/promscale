@@ -3,6 +3,7 @@ package model
 import (
 	"sync"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -68,12 +69,12 @@ func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionExist
 	return true
 }
 
-const emptyExemplarValues = "__promscale_no_value__"
+const EmptyExemplarValues = "__promscale_no_value__"
 
 func fillEmptyValues(s []prompb.Label) []prompb.Label {
 	for i := range s {
 		s[i].Name = "" // Label keys are no more required during ingestion of exemplars.
-		s[i].Value = emptyExemplarValues
+		s[i].Value = EmptyExemplarValues
 	}
 	return s
 }
@@ -103,4 +104,16 @@ func (t *promExemplars) Type() InsertableType {
 
 func (t *promExemplars) data() interface{} {
 	return t
+}
+
+// ExemplarData is additional information associated with a time series.
+type ExemplarData struct {
+	Labels labels.Labels `json:"labels"`
+	Value  float64       `json:"value"`
+	Ts     float64       `json:"timestamp"` // This is int64 in Prometheus, but we do this to avoid later conversions to decimal.
+}
+
+type ExemplarQueryResult struct {
+	SeriesLabels labels.Labels  `json:"seriesLabels"`
+	Exemplars    []ExemplarData `json:"exemplars"`
 }

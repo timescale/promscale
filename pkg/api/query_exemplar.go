@@ -50,7 +50,7 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 			if err != nil {
 				log.Info("msg", "Query bad request"+err.Error())
 				respondError(w, http.StatusBadRequest, err, "bad_data")
-				metrics.InvalidQueryReqs.Add(1)
+				metrics.InvalidQueryReqs.Inc()
 				return
 			}
 
@@ -65,8 +65,13 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 		}
 		selectors := parser.ExtractSelectors(expr)
 		querier := queryable.Exemplar(ctx)
-		querier.Select(start, end, selectors...)
+		results, err := querier.Select(start, end, selectors...)
+		if err != nil {
+			log.Error("msg", err, "endpoint", "query_range")
+			respondError(w, http.StatusInternalServerError, err, "execution_error")
+			return
+		}
 		metrics.QueryDuration.Observe(time.Since(begin).Seconds())
-		respond(w, http.StatusOK, "works!")
+		respondExemplar(w, results)
 	}
 }
