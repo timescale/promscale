@@ -62,8 +62,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 						[]string{"metric_1", "value_1"},
 					},
 					Results: model.RowResults{
-						{int32(1), int32(1), "__name__", "metric_1"},
-						{int32(2), int32(2), "name_1", "value_1"},
+						{[]int32{1, 2}, []int32{1, 2}, []string{"__name__", "name_1"}, []string{"metric_1", "value_1"}},
 					},
 					Err: error(nil),
 				},
@@ -109,10 +108,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
 					Results: model.RowResults{
-						{int32(1), int32(1), "__name__", "metric_1"},
-						{int32(1), int32(2), "__name__", "metric_2"},
-						{int32(2), int32(3), "name_1", "value_1"},
-						{int32(3), int32(4), "name_2", "value_2"},
+						{[]int32{1, 1, 2, 3}, []int32{1, 2, 3, 4}, []string{"__name__", "__name__", "name_1", "name_2"}, []string{"metric_1", "metric_2", "value_1", "value_2"}},
 					},
 					Err: error(nil),
 				},
@@ -160,10 +156,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 						[]string{"metric_1", "value_1", "metric_2", "value_2"},
 					},
 					Results: model.RowResults{
-						{int32(1), int32(1), "__name__", "metric_1"},
-						{int32(1), int32(2), "__name__", "metric_2"},
-						{int32(2), int32(3), "name_1", "value_1"},
-						{int32(3), int32(4), "name_2", "value_2"},
+						{[]int32{1, 1, 2, 3}, []int32{1, 2, 3, 4}, []string{"__name__", "__name__", "name_1", "name_2"}, []string{"metric_1", "metric_2", "value_1", "value_2"}},
 					},
 					Err: error(nil),
 				},
@@ -309,9 +302,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 				[]string{"metric_1", "value_1", "value_2"},
 			},
 			Results: model.RowResults{
-				{int32(1), int32(1), "__name__", "metric_1"},
-				{int32(2), int32(2), "name_1", "value_1"},
-				{int32(2), int32(3), "name_1", "value_2"},
+				{[]int32{1, 2, 2}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_1"}, []string{"metric_1", "value_1", "value_2"}},
 			},
 			Err: error(nil),
 		},
@@ -360,9 +351,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 				[]string{"metric_1", "value_1", "value_2"},
 			},
 			Results: model.RowResults{
-				{int32(1), int32(1), "__name__", "metric_1"},
-				{int32(2), int32(2), "name_1", "value_1"},
-				{int32(2), int32(3), "name_1", "value_2"},
+				{[]int32{1, 2, 2}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_1"}, []string{"metric_1", "value_1", "value_2"}},
 			},
 			Err: error(nil),
 		},
@@ -514,7 +503,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 				{
@@ -550,7 +539,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -590,7 +579,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     fmt.Errorf("create table error"),
 				},
 			},
@@ -608,7 +597,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -669,7 +658,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{"metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -753,6 +742,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{"metric_0", true}},
 					Err:     error(nil),
 				},
+				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
 					Args: []interface{}{

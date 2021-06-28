@@ -311,6 +311,18 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				continue
 			}
 			return fmt.Errorf("wrong value type []int64")
+		case []int32:
+			if d, ok := dest[i].(*[]int32); ok {
+				*d = s
+				continue
+			}
+			return fmt.Errorf("wrong value type []int32")
+		case []uint8:
+			if d, ok := dest[i].(*[]uint8); ok {
+				*d = s
+				continue
+			}
+			return fmt.Errorf("wrong value type []int8")
 		case []string:
 			if d, ok := dest[i].(*[]string); ok {
 				*d = s
@@ -352,6 +364,13 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
 			dvp.SetInt(int64(m.results[m.idx][i].(int)))
+		case bool:
+			if _, ok := dest[i].(*bool); !ok {
+				return fmt.Errorf("wrong value type int for scan of %T", dest[i])
+			}
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetBool(m.results[m.idx][i].(bool))
 		case int32:
 			if _, ok := dest[i].(*int32); !ok {
 				return fmt.Errorf("wrong value type int32")
@@ -359,6 +378,20 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dv := reflect.ValueOf(dest[i])
 			dvp := reflect.Indirect(dv)
 			dvp.SetInt(int64(m.results[m.idx][i].(int32)))
+		case uint32:
+			if _, ok := dest[i].(*uint32); !ok {
+				return fmt.Errorf("wrong value type uint32")
+			}
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetUint(uint64(m.results[m.idx][i].(uint32)))
+		case uint8:
+			if _, ok := dest[i].(*uint8); !ok {
+				return fmt.Errorf("wrong value type uint32")
+			}
+			dv := reflect.ValueOf(dest[i])
+			dvp := reflect.Indirect(dv)
+			dvp.SetUint(uint64(m.results[m.idx][i].(uint8)))
 		case uint64:
 			if _, ok := dest[i].(uint64); !ok {
 				return fmt.Errorf("wrong value type uint64")
@@ -392,6 +425,8 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				continue
 			}
 			return fmt.Errorf("wrong value type: neither 'string' or 'pgutf8str'")
+		default:
+			panic(fmt.Sprintf("unhandled %T", m.results[m.idx][i]))
 		}
 	}
 

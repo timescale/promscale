@@ -411,27 +411,34 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key(TEXT) to prom_w
 -- This uses some pretty heavy locks so use sparingly.
 -- locks: label_key_position, data table, series partition (in view creation),
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(
-        metric_name text, key_name text)
-    RETURNS int
+        metric_name text, key_name_array text[])
+    RETURNS int[]
 AS $func$
 DECLARE
     position int;
+    position_array int[];
+    position_array_idx int;
+    count_new int;
+    key_name text;
     next_position int;
+    max_position int;
     metric_table NAME;
 BEGIN
     --use double check locking here
     --fist optimistic check:
     SELECT
-        pos
+        array_agg(lkp.pos ORDER BY k.ord)
     FROM
-        SCHEMA_CATALOG.label_key_position lkp
-    WHERE
-        lkp.metric_name = get_new_pos_for_key.metric_name
-        AND lkp.key = get_new_pos_for_key.key_name
-    INTO position;
+        unnest(key_name_array) WITH ORDINALITY as k(key, ord)
+        INNER JOIN SCHEMA_CATALOG.label_key_position lkp ON
+        (
+            lkp.metric_name = get_new_pos_for_key.metric_name
+            AND lkp.key = k.key
+        )
+    INTO position_array;
 
-    IF FOUND THEN
-        RETURN position;
+    IF array_length(key_name_array, 1) = array_length(position_array, 1) THEN
+        RETURN position_array;
     END IF;
 
     SELECT table_name
@@ -440,51 +447,70 @@ BEGIN
     --lock as for ALTER TABLE because we are in effect changing the schema here
     --also makes sure the next_position below is correct in terms of concurrency
     EXECUTE format('LOCK TABLE SCHEMA_DATA_SERIES.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
-    --second check after lock
+
     SELECT
-        pos
+        max(pos) + 1
     FROM
         SCHEMA_CATALOG.label_key_position lkp
     WHERE
         lkp.metric_name = get_new_pos_for_key.metric_name
-        AND lkp.key =  get_new_pos_for_key.key_name INTO position;
+    INTO max_position;
 
-    IF FOUND THEN
-        RETURN position;
+    IF max_position IS NULL THEN
+        max_position := 2; -- element 1 reserved for __name__
     END IF;
 
-    IF key_name = '__name__' THEN
-       next_position := 1; -- 1-indexed arrays, __name__ as first element
-    ELSE
+    position_array := array[]::int[];
+    position_array_idx := 1;
+    count_new := 0;
+    FOREACH key_name IN ARRAY key_name_array LOOP
+        --second check after lock
         SELECT
-            max(pos) + 1
+            pos
         FROM
             SCHEMA_CATALOG.label_key_position lkp
         WHERE
-            lkp.metric_name = get_new_pos_for_key.metric_name INTO next_position;
+            lkp.metric_name = get_new_pos_for_key.metric_name
+            AND lkp.key =  key_name
+        INTO position;
 
-        IF next_position IS NULL THEN
-            next_position := 2; -- element 1 reserved for __name__
+        IF FOUND THEN
+            position_array[position_array_idx] := position;
+            position_array_idx := position_array_idx + 1;
+            CONTINUE;
         END IF;
+
+        count_new := count_new + 1;
+        IF key_name = '__name__' THEN
+            next_position := 1; -- 1-indexed arrays, __name__ as first element
+        ELSE
+            next_position := max_position;
+            max_position := max_position + 1;
+        END IF;
+
+        PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
+
+        INSERT INTO SCHEMA_CATALOG.label_key_position
+            VALUES (metric_name, key_name, next_position)
+        ON CONFLICT
+            DO NOTHING
+        RETURNING
+            pos INTO position;
+        IF NOT FOUND THEN
+            RAISE 'Could not find a new position';
+        END IF;
+        position_array[position_array_idx] := position;
+        position_array_idx := position_array_idx + 1;
+    END LOOP;
+
+    IF count_new  > 0 THEN
+        --note these functions are expensive in practice so they
+        --must be run once across a collection of keys
+        PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
+        PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
     END IF;
 
-    PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
-
-    INSERT INTO SCHEMA_CATALOG.label_key_position
-        VALUES (metric_name, key_name, next_position)
-    ON CONFLICT
-        DO NOTHING
-    RETURNING
-        pos INTO position;
-
-    IF NOT FOUND THEN
-        RAISE 'Could not find a new position';
-    END IF;
-
-    PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
-    PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
-
-    RETURN position;
+    RETURN position_array;
 END
 $func$
 LANGUAGE PLPGSQL
@@ -493,8 +519,8 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text) TO prom_writer;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[]) TO prom_writer;
 
 --should only be called after a check that that the label doesn't exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
@@ -629,7 +655,7 @@ AS $$
         AND lkp.key = get_or_create_label_key_pos.key
     UNION ALL
     SELECT
-        SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, get_or_create_label_key_pos.key)
+        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, array[get_or_create_label_key_pos.key]))[1]
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
@@ -793,27 +819,35 @@ IS 'converts a metric name, array of keys, and array of values to a label array'
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS TABLE(pos int, id int, label_key text, label_value text) AS $$
+RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
+        WITH cte as (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
-            coalesce(lkp.pos,
-              SCHEMA_CATALOG.get_or_create_label_key_pos(get_or_create_label_ids.metric_name, kv.key)) idx,
-            coalesce(l.id,
-              SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) val,
-              kv.key,
-              kv.value
+            lkp.pos as known_pos,
+            coalesce(l.id, SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) label_id,
+            kv.key key_str,
+            kv.value val_str
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
             LEFT JOIN SCHEMA_CATALOG.label l
                ON (l.key = kv.key AND l.value = kv.value)
-            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
-               ON
-               (
-                  lkp.metric_name = get_or_create_label_ids.metric_name AND
-                  lkp.key = kv.key
-               )
-        --have to order by in SQL to control the order of label creation no matter the join
+            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp ON
+            (
+                    lkp.metric_name = get_or_create_label_ids.metric_name AND
+                    lkp.key = kv.key
+            )
         ORDER BY kv.key, kv.value
+        )
+        SELECT
+           case when count(*) = count(known_pos) Then
+              array_agg(known_pos)
+           else
+              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(key_str))
+           end as poss,
+           array_agg(label_id) as label_ids,
+           array_agg(key_str) as keys,
+           array_agg(val_str) as vals
+        FROM cte
 $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, text[], text[])
