@@ -172,6 +172,7 @@ AS $proc$
 DECLARE
     r SCHEMA_CATALOG.metric;
     created boolean;
+    is_view boolean;
 BEGIN
     FOR r IN
         SELECT *
@@ -179,8 +180,8 @@ BEGIN
         WHERE NOT creation_completed
         ORDER BY random()
     LOOP
-        SELECT creation_completed
-        INTO created
+        SELECT m.creation_completed, m.is_view
+        INTO created, is_view
         FROM SCHEMA_CATALOG.metric m
         WHERE m.id = r.id
         FOR UPDATE;
@@ -193,6 +194,13 @@ BEGIN
 
         --do this before taking exclusive lock to minimize work after taking lock
         UPDATE SCHEMA_CATALOG.metric SET creation_completed = TRUE WHERE id = r.id;
+
+        -- in case of a view, no need to attach the partition
+        IF is_view THEN
+            --release row lock
+            COMMIT;
+            CONTINUE;
+        END IF;
 
         --we will need this lock for attaching the partition so take it now
         --This may not be strictly necessary but good
@@ -226,13 +234,21 @@ DECLARE
   label_id INT;
   compressed_hypertable_name text;
 BEGIN
-   EXECUTE format('CREATE TABLE SCHEMA_DATA.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
-                    NEW.table_name);
-   EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA.%I TO prom_reader', NEW.table_name);
-   EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA.%I TO prom_writer', NEW.table_name);
-   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA.%I TO prom_modifier', NEW.table_name);
-   EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON SCHEMA_DATA.%I (series_id, time) INCLUDE (value)',
-                    NEW.id, NEW.table_name);
+
+   -- Note: if the inserted metric is a view, handle the necessary permissions and exit.
+   IF NEW.is_view THEN
+        EXECUTE format('GRANT USAGE ON SCHEMA %I TO prom_reader', NEW.table_schema);
+        EXECUTE format('GRANT SELECT ON TABLE %I.%I TO prom_reader', NEW.table_schema, NEW.table_name);
+        RETURN NEW; 
+   END IF;
+
+   EXECUTE format('CREATE TABLE %I.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
+                    NEW.table_schema, NEW.table_name);
+   EXECUTE format('GRANT SELECT ON TABLE %I.%I TO prom_reader', NEW.table_schema, NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT ON TABLE %I.%I TO prom_writer', NEW.table_schema, NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I.%I TO prom_modifier', NEW.table_schema, NEW.table_name);
+   EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON %I.%I (series_id, time) INCLUDE (value)',
+                    NEW.id, NEW.table_schema, NEW.table_name);
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
         IF SCHEMA_CATALOG.is_multinode() THEN
@@ -240,13 +256,13 @@ BEGIN
             --that we'll have more "heavy metrics" than nodes and thus partitioning /individual/
             --metrics won't gain us much for inserts and would be detrimental for many queries.
             PERFORM SCHEMA_TIMESCALE.create_distributed_hypertable(
-                format('SCHEMA_DATA.%I', NEW.table_name),
+                format('%I.%I', NEW.table_schema, NEW.table_name),
                 'time',
                 chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                 create_default_indexes=>false
             );
         ELSE
-            PERFORM SCHEMA_TIMESCALE.create_hypertable(format('SCHEMA_DATA.%I', NEW.table_name), 'time',
+            PERFORM SCHEMA_TIMESCALE.create_hypertable(format('%I.%I', NEW.table_schema, NEW.table_name), 'time',
             chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
                              create_default_indexes=>false);
         END IF;
@@ -351,13 +367,17 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_table(
 AS $func$
 DECLARE
   new_id int;
+  new_table_name name;
 BEGIN
 new_id = nextval(pg_get_serial_sequence('SCHEMA_CATALOG.metric','id'))::int;
+new_table_name = SCHEMA_CATALOG.pg_name_unique(metric_name_arg, new_id::text);
 LOOP
-    INSERT INTO SCHEMA_CATALOG.metric (id, metric_name, table_name)
+    INSERT INTO SCHEMA_CATALOG.metric (id, metric_name, table_schema, table_name, series_table)
         SELECT  new_id,
                 metric_name_arg,
-                SCHEMA_CATALOG.pg_name_unique(metric_name_arg, new_id::text)
+                'SCHEMA_DATA',
+                new_table_name,
+                new_table_name
     ON CONFLICT DO NOTHING
     RETURNING SCHEMA_CATALOG.metric.id, SCHEMA_CATALOG.metric.table_name
     INTO id, table_name;
@@ -636,15 +656,46 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_series_catalog_row(name, bigint[
 ---------------------------------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_table_name_if_exists(
-        metric_name text)
-    RETURNS TABLE (id int, table_name name)
+        schema text, metric_name text)
+    RETURNS TABLE (id int, table_name name, table_schema name, series_table name, is_view boolean)
 AS $func$
-   SELECT id, table_name::name
-   FROM SCHEMA_CATALOG.metric m
-   WHERE m.metric_name = get_metric_table_name_if_exists.metric_name
+DECLARE
+    rows_found bigint;
+BEGIN
+    IF get_metric_table_name_if_exists.schema != '' AND get_metric_table_name_if_exists.schema IS NOT NULL THEN
+        RETURN QUERY SELECT m.id, m.table_name::name, m.table_schema::name, m.series_table::name, m.is_view
+        FROM SCHEMA_CATALOG.metric m
+        WHERE m.table_schema = get_metric_table_name_if_exists.schema
+        AND m.metric_name = get_metric_table_name_if_exists.metric_name;
+        RETURN;
+    END IF;
+
+    RETURN QUERY SELECT m.id, m.table_name::name, m.table_schema::name, m.series_table::name, m.is_view
+    FROM SCHEMA_CATALOG.metric m
+    WHERE m.table_schema = 'SCHEMA_DATA'
+    AND m.metric_name = get_metric_table_name_if_exists.metric_name;
+        
+    IF FOUND THEN
+        RETURN;
+    END IF;
+    
+    SELECT count(*) 
+    INTO rows_found
+    FROM SCHEMA_CATALOG.metric m
+    WHERE m.metric_name = get_metric_table_name_if_exists.metric_name;
+
+    IF rows_found <= 1 THEN
+        RETURN QUERY SELECT m.id, m.table_name::name, m.table_schema::name, m.series_table::name, m.is_view
+        FROM SCHEMA_CATALOG.metric m
+        WHERE m.metric_name = get_metric_table_name_if_exists.metric_name;
+        RETURN;
+    END IF;
+
+    RAISE EXCEPTION 'found multiple metrics with same name in different schemas, please specify exact schema name';
+END
 $func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_table_name_if_exists(text) to prom_reader;
+LANGUAGE PLPGSQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_table_name_if_exists(text, text) to prom_reader;
 
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
@@ -654,6 +705,7 @@ AS $func$
    SELECT id, table_name::name, false
    FROM SCHEMA_CATALOG.metric m
    WHERE m.metric_name = get_or_create_metric_table_name.metric_name
+   AND m.table_schema = 'SCHEMA_DATA'
    UNION ALL
    SELECT *, true
    FROM SCHEMA_CATALOG.create_metric_table(get_or_create_metric_table_name.metric_name)
@@ -1166,7 +1218,7 @@ AS $func$
     SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name);
 
     UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = false
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(set_metric_chunk_interval.metric_name));
+    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', set_metric_chunk_interval.metric_name));
 
     SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name, chunk_interval);
 
@@ -1181,7 +1233,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name T
 RETURNS BOOLEAN
 AS $func$
     UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = true
-    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name));
+    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name));
 
     SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name,
         SCHEMA_CATALOG.get_default_chunk_interval());
@@ -1198,7 +1250,7 @@ RETURNS INTERVAL
 AS $$
     SELECT COALESCE(m.retention_period, SCHEMA_CATALOG.get_default_retention_period())
     FROM SCHEMA_CATALOG.metric m
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(get_metric_retention_period.metric_name))
+    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', get_metric_retention_period.metric_name))
     UNION ALL
     SELECT SCHEMA_CATALOG.get_default_retention_period()
     LIMIT 1
@@ -1226,7 +1278,7 @@ AS $func$
     SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_retention_period.metric_name);
 
     UPDATE SCHEMA_CATALOG.metric SET retention_period = new_retention_period
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(set_metric_retention_period.metric_name));
+    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', set_metric_retention_period.metric_name));
 
     SELECT true;
 $func$
@@ -1239,7 +1291,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name
 RETURNS BOOLEAN
 AS $func$
     UPDATE SCHEMA_CATALOG.metric SET retention_period = NULL
-    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(reset_metric_retention_period.metric_name));
+    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', reset_metric_retention_period.metric_name));
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
@@ -1264,7 +1316,7 @@ BEGIN
 
     SELECT table_name
     INTO STRICT metric_table_name
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
 
     IF SCHEMA_CATALOG.get_timescale_major_version() >= 2  THEN
         SELECT compression_enabled
@@ -1455,9 +1507,56 @@ COMMENT ON FUNCTION SCHEMA_CATALOG.epoch_abort(BIGINT)
 IS 'ABORT an INSERT transaction due to the ID epoch being out of date';
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.epoch_abort TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_confirmed_unused_series(
+    series_table TEXT, potential_series_ids BIGINT[], check_time TIMESTAMPTZ
+) RETURNS BIGINT[]
+AS $func$
+DECLARE
+    r RECORD;
+    check_time_condition TEXT;
+BEGIN
+    FOR r IN
+        SELECT *
+        FROM SCHEMA_CATALOG.metric m
+        WHERE m.series_table = get_confirmed_unused_series.series_table
+    LOOP
+
+    check_time_condition := '';
+    IF NOT r.is_view THEN
+        check_time_condition := FORMAT('AND time >= %L', check_time);
+    END IF;
+
+    --at each iteration of the loop filter potential_series_ids to only
+    --have those series ids that don't exist in the metric tables.
+    EXECUTE format(
+    $query$
+        SELECT array_agg(potential_series.series_id)
+        FROM unnest($1) as potential_series(series_id)
+        LEFT JOIN LATERAL(
+            SELECT 1
+            FROM  %1$I.%2$I data_exists
+            WHERE data_exists.series_id = potential_series.series_id
+            %3$s
+            --use chunk append + more likely to find something starting at earliest time
+            ORDER BY time ASC
+            LIMIT 1
+        ) as lateral_exists(indicator) ON (true)
+        WHERE lateral_exists.indicator IS NULL
+    $query$, r.table_schema, r.table_name, check_time_condition)
+		USING potential_series_ids
+    INTO potential_series_ids;
+
+    END LOOP;
+    RETURN potential_series_ids;
+END
+$func$
+LANGUAGE PLPGSQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_confirmed_unused_series(TEXT, BIGINT[], TIMESTAMPTZ) TO prom_maintenance;
+
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.mark_unused_series(
     metric_table TEXT, older_than TIMESTAMPTZ, check_time TIMESTAMPTZ
 ) RETURNS VOID AS $func$
+DECLARE
 BEGIN
     --chances are that the hour after the drop point will have the most similar
     --series to what is dropped, so first filter by all series that have been dropped
@@ -1469,26 +1568,17 @@ BEGIN
             FROM SCHEMA_DATA.%1$I
             WHERE time < %2$L
             EXCEPT
-            SELECT distinct series_id
+            SELECT distinct series_id 
             FROM SCHEMA_DATA.%1$I
             WHERE time >= %2$L AND time < %3$L
         ), confirmed_drop_series AS (
-            SELECT series_id
+            SELECT SCHEMA_CATALOG.get_confirmed_unused_series('%1$s', array_agg(series_id), %3$L) as ids
             FROM potentially_drop_series
-            LEFT JOIN LATERAL (
-                SELECT 1
-                FROM  SCHEMA_DATA.%1$I  data_exists
-                WHERE data_exists.series_id = potentially_drop_series.series_id AND time >= %3$L
-                --use chunk append + more likely to find something starting at earliest time
-                ORDER BY time ASC
-                LIMIT 1
-            ) lateral_exists(indicator) ON (TRUE)
-            WHERE lateral_exists.indicator IS NULL
         ) -- we want this next statement to be the last one in the txn since it could block series fetch (both of them update delete_epoch)
         UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = current_epoch+1
         FROM SCHEMA_CATALOG.ids_epoch
         WHERE delete_epoch IS NULL
-            AND id IN (SELECT * FROM confirmed_drop_series)
+            AND id IN (SELECT unnest(ids) FROM confirmed_drop_series)
     $query$, metric_table, older_than, check_time);
 END
 $func$
@@ -1613,7 +1703,7 @@ DECLARE
 BEGIN
     SELECT table_name
     INTO STRICT metric_table
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
@@ -1659,7 +1749,7 @@ DECLARE
 BEGIN
     SELECT id, table_name
     INTO STRICT metric_id, metric_table
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
 
     SELECT older_than + INTERVAL '1 hour'
     INTO check_time;
@@ -1733,6 +1823,7 @@ BEGIN
             SCHEMA_CATALOG.ids_epoch LIMIT 1;
     COMMIT;
 
+
     -- transaction 4
         lastT := clock_timestamp();
         PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: delete expired series', metric_name), false);
@@ -1765,7 +1856,8 @@ BEGIN
         RETURN QUERY
         SELECT m.*
         FROM SCHEMA_CATALOG.metric m
-        WHERE EXISTS (
+        WHERE is_view = FALSE
+        AND EXISTS (
             SELECT 1 FROM
             show_chunks(format('%I.%I', 'SCHEMA_DATA', m.table_name),
                          older_than=>NOW() - SCHEMA_CATALOG.get_metric_retention_period(m.metric_name)))
@@ -2020,7 +2112,8 @@ BEGIN
     SELECT m.table_name, m.id
     INTO STRICT view_name, metric_id
     FROM SCHEMA_CATALOG.metric m
-    WHERE m.metric_name = create_series_view.metric_name;
+    WHERE m.metric_name = create_series_view.metric_name
+    AND m.table_schema = 'SCHEMA_DATA';
 
     SELECT COUNT(*) > 0 into view_exists
     FROM pg_class
@@ -2074,7 +2167,8 @@ BEGIN
     SELECT m.table_name, m.id
     INTO STRICT table_name, metric_id
     FROM SCHEMA_CATALOG.metric m
-    WHERE m.metric_name = create_metric_view.metric_name;
+    WHERE m.metric_name = create_metric_view.metric_name
+    AND m.table_schema = 'SCHEMA_DATA';
 
     SELECT COUNT(*) > 0 into view_exists
     FROM pg_class
@@ -2110,6 +2204,108 @@ SET search_path = pg_temp;
 REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.register_metric_view(schema_name name, view_name name, if_not_exists BOOLEAN = false)
+    RETURNS BOOLEAN
+AS $func$
+DECLARE
+   metric_table_name name;
+   column_count int;
+BEGIN
+    -- check if table/view exists
+    PERFORM * FROM information_schema.tables 
+    WHERE  table_schema = register_metric_view.schema_name
+    AND    table_name   = register_metric_view.view_name;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'cannot register non-existant metric view in specified schema';
+    END IF;
+
+    -- cannot register view in data schema
+    IF schema_name = 'SCHEMA_DATA' THEN
+        RAISE EXCEPTION 'cannot register metric view in SCHEMA_DATA schema';
+    END IF; 
+
+    -- check if view is based on a metric from prom_data
+    SELECT table_name FROM information_schema.view_table_usage
+    INTO metric_table_name
+    WHERE view_schema = register_metric_view.schema_name
+    AND view_table_usage.view_name = register_metric_view.view_name
+    AND table_schema = 'SCHEMA_DATA';
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'view not based on a metric table from SCHEMA_DATA schema';
+    END IF;
+
+    -- check if the view contains necessary columns with the correct types
+    SELECT count(*) FROM information_schema.columns
+    INTO column_count
+    WHERE table_schema = register_metric_view.schema_name
+    AND table_name   = register_metric_view.view_name
+    AND ((column_name = 'time' AND data_type = 'timestamp with time zone')
+    OR (column_name = 'series_id' AND data_type = 'bigint')
+    OR (column_name = 'value' AND data_type = 'double precision'));
+
+    IF column_count <> 3 THEN
+        RAISE EXCEPTION 'view must contain time, series_id, and value columns with appropriate types';
+    END IF;
+
+    -- insert into metric table
+    INSERT INTO SCHEMA_CATALOG.metric (metric_name, table_name, table_schema, series_table, is_view, creation_completed)
+    VALUES (register_metric_view.view_name, register_metric_view.view_name, register_metric_view.schema_name, metric_table_name, true, true)
+    ON CONFLICT DO NOTHING;
+
+    IF NOT FOUND THEN 
+        IF register_metric_view.if_not_exists THEN
+            RAISE NOTICE 'metric with same name and schema already exists';
+            RETURN FALSE;
+        ELSE
+            RAISE EXCEPTION 'metric with the same name and schema already exists, could not register';
+        END IF;
+    END IF;
+
+    RETURN true;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.register_metric_view(name, name, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.register_metric_view(name, name, boolean) TO prom_admin;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.unregister_metric_view(schema_name name, view_name name, if_exists BOOLEAN = false)
+    RETURNS BOOLEAN
+AS $func$
+DECLARE
+   metric_table_name name;
+   column_count int;
+BEGIN
+    DELETE FROM SCHEMA_CATALOG.metric 
+    WHERE unregister_metric_view.schema_name = table_schema
+    AND unregister_metric_view.view_name = table_name
+    AND is_view = TRUE;
+
+    IF NOT FOUND THEN 
+        IF unregister_metric_view.if_exists THEN
+            RAISE NOTICE 'metric with specified name and schema does not exist';
+            RETURN FALSE;
+        ELSE
+            RAISE EXCEPTION 'metric with specified name and schema does not exist, could not unregister';
+        END IF;
+    END IF;
+
+    RETURN TRUE;
+END
+$func$
+LANGUAGE PLPGSQL VOLATILE
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.unregister_metric_view(name, name, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unregister_metric_view(name, name, boolean) TO prom_admin;
+
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(name text, series_ids bigint[])
 RETURNS BIGINT
 AS
@@ -2121,7 +2317,7 @@ DECLARE
     rows_affected bigint;
     num_rows_deleted bigint := 0;
 BEGIN
-    SELECT table_name INTO metric_table FROM SCHEMA_CATALOG.metric m WHERE m.metric_name=name;
+    SELECT table_name INTO metric_table FROM SCHEMA_CATALOG.metric m WHERE m.metric_name=name AND m.is_view = false;
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
         FOR delete_stmt IN
             SELECT FORMAT('DELETE FROM %1$I.%2$I WHERE series_id = ANY($1)', schema_name, table_name)
@@ -2569,7 +2765,7 @@ DECLARE
 BEGIN
     SELECT table_name
     INTO STRICT metric_table
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(metric_name);
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
 
     -- as of timescaledb-2.0-rc4 the is_compressed column of the chunks view is
     -- not updated on the access node, therefore we need to one the compressor
@@ -2597,7 +2793,8 @@ BEGIN
         FROM SCHEMA_CATALOG.metric m
         WHERE
           SCHEMA_CATALOG.get_metric_compression_setting(m.metric_name) AND
-          delay_compression_until IS NULL OR delay_compression_until < now()
+          delay_compression_until IS NULL OR delay_compression_until < now() AND
+          is_view = FALSE
         ORDER BY random();
 END
 $$

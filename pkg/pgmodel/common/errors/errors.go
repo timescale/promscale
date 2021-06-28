@@ -16,4 +16,7 @@ var (
 	ErrTimeBasedDeletion           = fmt.Errorf("time based series deletion is unsupported")
 	ErrInvalidSemverFormat         = fmt.Errorf("app version is not semver format, aborting migration")
 	ErrQueryMismatchTimestampValue = fmt.Errorf("query returned a mismatch in timestamps and values")
+
+	ErrTmplMissingUnderlyingRelation = `the underlying table ("%s"."%s") which is used to store the metric` +
+		"values has been moved/removed thus the data cannot be retrieved"
 )

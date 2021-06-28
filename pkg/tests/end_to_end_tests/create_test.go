@@ -466,7 +466,7 @@ func TestSQLIngest(t *testing.T) {
 						tableName   string
 						rowsInTable int
 					)
-					err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('%s');", metricName)).Scan(&tableName)
+					err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('', '%s');", metricName)).Scan(&tableName)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -736,7 +736,7 @@ func TestInsertCompressed(t *testing.T) {
 		}
 
 		var tableName string
-		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('Test');").Scan(&tableName)
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('', 'Test');").Scan(&tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -987,7 +987,7 @@ func TestCompressionSetting(t *testing.T) {
 		}
 
 		var tableName string
-		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('Test');").Scan(&tableName)
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('', 'Test');").Scan(&tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1077,7 +1077,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		var tableName string
-		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('Test1');").Scan(&tableName)
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('', 'Test1');").Scan(&tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1677,6 +1677,136 @@ func TestExecuteMaintJob(t *testing.T) {
 		execJob(dbOwner, &config, false)
 		//the superuser should be able to use auto_explain
 		execJob(dbSuper, &config, false)
+	})
+}
+
+func TestRegisterMetricView(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		// Cannot register non-existant schema.
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('nonexistant', 'missing')"); err == nil {
+			t.Fatal("Should not be able to register a metric view from a non-existant schema")
+		}
+
+		if _, err := db.Exec(context.Background(), "CREATE SCHEMA prom_view"); err != nil {
+			t.Fatalf("unexpected error while creating view schema: %s", err)
+		}
+
+		// Cannot register non-existant view.
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_view', 'missing')"); err == nil {
+			t.Fatal("Should not be able to register a metric view from a non-existant metric view")
+		}
+
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: model.MetricNameLabelName, Value: "rawMetric"},
+					{Name: "test", Value: "test"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: 1, Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+
+		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ingestor.CompleteMetricCreation()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Cannot register view from data schema.
+		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_data.metric_view_in_data_schema AS SELECT * FROM prom_data."rawMetric"`); err != nil {
+			t.Fatalf("unexpected error while creating view in data schema: %s", err)
+		}
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_data', 'metric_view_in_data_schema')"); err == nil {
+			t.Fatal("Should not be able to register a metric view in data schema")
+		}
+
+		// Cannot register view with different columns than raw metric.
+		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_bad_columns AS SELECT time, series_id, true as bad_column FROM prom_data."rawMetric"`); err != nil {
+			t.Fatalf("unexpected error while creating view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_view', 'metric_view_bad_columns')"); err == nil {
+			t.Fatal("Should not be able to register a metric view with different columns than raw metric")
+		}
+
+		// Cannot register view with different column types than raw metric.
+		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_bad_column_types AS SELECT time, series_id, true as value FROM prom_data."rawMetric"`); err != nil {
+			t.Fatalf("unexpected error while creating view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_view', 'metric_view_bad_column_types')"); err == nil {
+			t.Fatal("Should not be able to register a metric view with column types different than raw metric")
+		}
+
+		// Cannot register view not based on raw metric.
+		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_not_based AS SELECT time, series_id, 1.0 as value FROM prom_view."metric_view_bad_columns"`); err != nil {
+			t.Fatalf("unexpected error while creating view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_view', 'metric_view_not_based')"); err == nil {
+			t.Fatal("Should not be able to register a metric view with column types different than raw metric")
+		}
+
+		// Happy path.
+		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view AS SELECT * FROM prom_data."rawMetric"`); err != nil {
+			t.Fatalf("unexpected error while creating view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_view', 'metric_view')"); err != nil {
+			t.Fatalf("Error creating valid metric view: %v", err)
+		}
+
+		var (
+			tableName, tableSchema, seriesTable string
+			isView                              bool
+		)
+		if err = db.QueryRow(context.Background(), "SELECT table_name, table_schema, series_table, is_view FROM _prom_catalog.get_metric_table_name_if_exists('prom_view', 'metric_view');").Scan(
+			&tableName,
+			&tableSchema,
+			&seriesTable,
+			&isView,
+		); err != nil {
+			t.Fatal(err)
+		}
+
+		if tableName != "metric_view" || tableSchema != "prom_view" || seriesTable != "rawMetric" || !isView {
+			t.Fatalf("invalid values found for created metric view: tableName: %s, table_schema: %s, series_table: %s, is_view: %v", tableName, tableSchema, seriesTable, isView)
+		}
+
+		// Cannot register the same view twice.
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_view', 'metric_view')"); err == nil {
+			t.Fatal("Should not be able to register the same view twice")
+		}
+
+		// Should succeed if we register same view twice but also use `if_not_exists`
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('prom_view', 'metric_view', true)"); err != nil {
+			t.Fatalf("Should be able to register the same view twice when using `if_not_exists`: %v", err)
+		}
+
+		// Unregister metric view.
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.unregister_metric_view('prom_view', 'metric_view')"); err != nil {
+			t.Fatalf("Should be able to unregister the view, got error: %s", err)
+		}
+
+		// Cannot unregister metric view twice.
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.unregister_metric_view('prom_view', 'metric_view')"); err == nil {
+			t.Fatal("Should not be able to unregister a view twice")
+		}
+
+		// Should succeed unregister metric view twice but using `if_exists`.
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.unregister_metric_view('prom_view', 'metric_view', true)"); err != nil {
+			t.Fatalf("Should be able to unregister a view twice with if_exists, got error: %s", err)
+		}
 	})
 }
 

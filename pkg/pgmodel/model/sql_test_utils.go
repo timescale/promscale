@@ -444,7 +444,7 @@ func (m *MockRows) RawValues() [][]byte {
 }
 
 type MockMetricCache struct {
-	MetricCache  map[string]string
+	MetricCache  map[string]MetricInfo
 	GetMetricErr error
 	SetMetricErr error
 }
@@ -461,21 +461,21 @@ func (m *MockMetricCache) Evictions() uint64 {
 	return 0
 }
 
-func (m *MockMetricCache) Get(metric string) (string, error) {
+func (m *MockMetricCache) Get(schema, metric string) (MetricInfo, error) {
 	if m.GetMetricErr != nil {
-		return "", m.GetMetricErr
+		return MetricInfo{}, m.GetMetricErr
 	}
 
-	val, ok := m.MetricCache[metric]
+	val, ok := m.MetricCache[schema+"*"+metric]
 	if !ok {
-		return "", errors.ErrEntryNotFound
+		return val, errors.ErrEntryNotFound
 	}
 
 	return val, nil
 }
 
-func (m *MockMetricCache) Set(metric string, tableName string) error {
-	m.MetricCache[metric] = tableName
+func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo) error {
+	m.MetricCache[schema+"*"+metric] = mInfo
 	return m.SetMetricErr
 }
 

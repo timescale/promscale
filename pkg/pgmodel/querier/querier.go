@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
@@ -18,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tenancy"
@@ -51,7 +53,7 @@ type Querier interface {
 }
 
 const (
-	getMetricsTableSQL = "SELECT table_name FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1)"
+	getMetricsTableSQL = "SELECT table_schema, table_name, series_table FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1, $2)"
 )
 
 // NewQuerier returns a new pgxQuerier that reads from PostgreSQL using PGX
@@ -66,9 +68,11 @@ func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReade
 }
 
 type metricTimeRangeFilter struct {
-	metric    string
-	startTime string
-	endTime   string
+	metric      string
+	schema      string
+	seriesTable string
+	startTime   string
+	endTime     string
 }
 
 type pgxQuerier struct {
@@ -155,6 +159,7 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 
 	filter := metricTimeRangeFilter{
 		metric:    metric,
+		schema:    builder.GetSchemaName(),
 		startTime: toRFC3339Nano(startTimestamp),
 		endTime:   toRFC3339Nano(endTimestamp),
 	}
@@ -180,7 +185,7 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 // supplied query parameters. It uses the hints and node path to try to push
 // down query functions where possible.
 func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilter, cases []string, values []interface{}, hints *storage.SelectHints, qh *QueryHints, path []parser.Node) ([]timescaleRow, parser.Node, error) {
-	tableName, err := q.getMetricTableName(metric)
+	mInfo, err := q.getMetricTableName(filter.schema, metric)
 	if err != nil {
 		// If the metric table is missing, there are no results for this query.
 		if err == errors.ErrMissingTableName {
@@ -189,7 +194,9 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 
 		return nil, nil, err
 	}
-	filter.metric = tableName
+	filter.metric = mInfo.TableName
+	filter.schema = mInfo.TableSchema
+	filter.seriesTable = mInfo.SeriesTable
 
 	sqlQuery, values, topNode, tsSeries, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, qh, path)
 	if err != nil {
@@ -198,17 +205,21 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 	if err != nil {
-		// If we are getting undefined table error, it means the query
-		// is looking for a metric which doesn't exist in the system.
-		if e, ok := err.(*pgconn.PgError); !ok || e.Code != pgerrcode.UndefinedTable {
-			return nil, nil, err
+		if e, ok := err.(*pgconn.PgError); ok {
+			// If we are getting undefined table error, it means the metric we are trying to query
+			// existed at some point but the underlying relation was removed from outside of the system.
+			if e.Code == pgerrcode.UndefinedTable {
+				return nil, nil, fmt.Errorf(errors.ErrTmplMissingUnderlyingRelation, mInfo.TableSchema, mInfo.TableName)
+			}
 		}
+
+		return nil, nil, err
 	}
 
 	defer rows.Close()
 
 	// TODO this allocation assumes we usually have 1 row, if not, refactor
-	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows, tsSeries)
+	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows, tsSeries, mInfo.TableSchema, metric)
 	return tsRows, topNode, err
 }
 
@@ -223,7 +234,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 	}
 	defer rows.Close()
 
-	metrics, series, err := GetSeriesPerMetric(rows)
+	metrics, schemas, series, err := GetSeriesPerMetric(rows)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -237,7 +248,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 	// Generate queries for each metric and send them in a single batch.
 	for i, metric := range metrics {
 		//TODO batch getMetricTableName
-		tableName, err := q.getMetricTableName(metric)
+		mInfo, err := q.getMetricTableName(schemas[i], metric)
 		if err != nil {
 			// If the metric table is missing, there are no results for this query.
 			if err == errors.ErrMissingTableName {
@@ -245,7 +256,18 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 			}
 			return nil, nil, err
 		}
-		filter.metric = tableName
+
+		// We only support default data schema for multi-metric queries
+		// NOTE: this needs to be updated once we add support for storing
+		// non-view metrics into multiple schemas
+		if mInfo.TableSchema != schema.Data {
+			return nil, nil, fmt.Errorf("found unsupported metric schema in multi-metric matching query")
+		}
+
+		filter.metric = mInfo.TableName
+		filter.schema = mInfo.TableSchema
+		filter.seriesTable = mInfo.SeriesTable
+
 		sqlQuery = buildTimeseriesBySeriesIDQuery(filter, series[i])
 		batch.Queue(sqlQuery)
 		numQueries += 1
@@ -263,8 +285,9 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 			rows.Close()
 			return nil, nil, err
 		}
-		// Append all rows into results.
-		results, err = appendTsRows(results, rows, nil)
+		// Append all rows into results. Schema is ignored since we only return
+		// default schema for multi-metric queries.
+		results, err = appendTsRows(results, rows, nil, "", "")
 		// Can't defer because we need to Close before the next loop iteration.
 		rows.Close()
 		if err != nil {
@@ -278,53 +301,41 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 
 // getMetricTableName gets the table name for a specific metric from internal
 // cache. If not found, fetches it from the database and updates the cache.
-func (q *pgxQuerier) getMetricTableName(metric string) (string, error) {
-	var err error
-	var tableName string
+func (q *pgxQuerier) getMetricTableName(schema, metric string) (model.MetricInfo, error) {
 
-	tableName, err = q.metricTableNames.Get(metric)
+	mInfo, err := q.metricTableNames.Get(schema, metric)
 
-	if err == nil {
-		return tableName, nil
+	if err == nil || err != errors.ErrEntryNotFound {
+		return mInfo, err
 	}
 
-	if err != errors.ErrEntryNotFound {
-		return "", err
-	}
-
-	tableName, err = q.queryMetricTableName(metric)
+	mInfo, err = q.queryMetricTableName(schema, metric)
 
 	if err != nil {
-		return "", err
+		return mInfo, err
 	}
 
-	err = q.metricTableNames.Set(metric, tableName)
+	err = q.metricTableNames.Set(schema, metric, mInfo)
 
-	return tableName, err
+	return mInfo, err
 }
 
-func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
-	res, err := q.conn.Query(
+func (q *pgxQuerier) queryMetricTableName(schema, metric string) (mInfo model.MetricInfo, err error) {
+	row := q.conn.QueryRow(
 		context.Background(),
 		getMetricsTableSQL,
+		schema,
 		metric,
 	)
 
-	if err != nil {
-		return "", err
+	if err = row.Scan(&mInfo.TableSchema, &mInfo.TableName, &mInfo.SeriesTable); err != nil {
+		if err == pgx.ErrNoRows {
+			err = errors.ErrMissingTableName
+		}
+		return mInfo, err
 	}
 
-	var tableName string
-	defer res.Close()
-	if !res.Next() {
-		return "", errors.ErrMissingTableName
-	}
-
-	if err := res.Scan(&tableName); err != nil {
-		return "", err
-	}
-
-	return tableName, nil
+	return mInfo, nil
 }
 
 // errorSeriesSet represents an error result in a form of a series set.

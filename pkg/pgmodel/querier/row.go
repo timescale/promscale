@@ -134,6 +134,8 @@ type timescaleRow struct {
 	times    TimestampSeries
 	values   *pgtype.Float8Array
 	err      error
+	metric   string
+	schema   string
 
 	//only used to hold ownership for releasing to pool
 	timeArrayOwnership *pgtype.TimestamptzArray
@@ -148,7 +150,7 @@ func (r *timescaleRow) Close() {
 
 // appendTsRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendTsRows(out []timescaleRow, in pgxconn.PgxRows, tsSeries TimestampSeries) ([]timescaleRow, error) {
+func appendTsRows(out []timescaleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, schema, metric string) ([]timescaleRow, error) {
 	if in.Err() != nil {
 		return out, in.Err()
 	}
@@ -172,6 +174,8 @@ func appendTsRows(out []timescaleRow, in pgxconn.PgxRows, tsSeries TimestampSeri
 		}
 
 		row.values = values
+		row.schema = schema
+		row.metric = metric
 
 		out = append(out, row)
 		if row.err != nil {
