@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"reflect"
 	"testing"
 	"time"
 
@@ -257,6 +256,9 @@ func TestPgxSeriesSet(t *testing.T) {
 					genSeries(labels, c.ts, c.vs)}}
 			}
 			p := buildSeriesSet(genPgxRows(c.input, c.rowErr), mapQuerier{labelMapping})
+			if p.Err() != nil {
+				t.Fatal(p.Err())
+			}
 
 			for c.rowCount > 0 {
 				c.rowCount--
@@ -279,12 +281,6 @@ func TestPgxSeriesSet(t *testing.T) {
 
 				if ss, ok = s.(*pgxSeries); !ok {
 					t.Fatal("unexpected type for storage.Series")
-				}
-
-				expectedLabels, _ := mapQuerier{labelMapping}.LabelsForIds(c.labels)
-				expectedMap := expectedLabels.Map()
-				if !reflect.DeepEqual(ss.Labels().Map(), expectedMap) {
-					t.Fatalf("unexpected labels values: got %+v, wanted %+v\n", ss.Labels().Map(), expectedMap)
 				}
 
 				iter := ss.Iterator()
@@ -384,16 +380,15 @@ type mapQuerier struct {
 	}
 }
 
-func (m mapQuerier) LabelsForIds(ids []int64) (labels.Labels, error) {
-	lls := make([]labels.Label, len(ids))
-	for i, id := range ids {
+func (m mapQuerier) LabelsForIdMap(idMap map[int64]labels.Label) (err error) {
+	for id := range idMap {
 		kv, ok := m.mapping[id]
 		if !ok {
-			return nil, pgmodelErrs.ErrInvalidRowData
+			return pgmodelErrs.ErrInvalidRowData
 		}
-		lls[i] = labels.Label{Name: kv.k, Value: kv.v}
+		idMap[id] = labels.Label{Name: kv.k, Value: kv.v}
 	}
-	return lls, nil
+	return nil
 }
 
 //nolint

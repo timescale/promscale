@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -25,20 +24,30 @@ const (
 
 // pgxSeriesSet implements storage.SeriesSet.
 type pgxSeriesSet struct {
-	rowIdx  int
-	rows    []timescaleRow
-	err     error
-	querier labelQuerier
+	rowIdx     int
+	rows       []timescaleRow
+	labelIDMap map[int64]labels.Label
+	err        error
+	querier    labelQuerier
 }
 
 // pgxSeriesSet must implement storage.SeriesSet
 var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
 func buildSeriesSet(rows []timescaleRow, querier labelQuerier) storage.SeriesSet {
+	labelIDMap := make(map[int64]labels.Label)
+	initializeLabeIDMap(labelIDMap, rows)
+
+	err := querier.LabelsForIdMap(labelIDMap)
+	if err != nil {
+		return &errorSeriesSet{err}
+	}
+
 	return &pgxSeriesSet{
-		rows:    rows,
-		querier: querier,
-		rowIdx:  -1,
+		rows:       rows,
+		querier:    querier,
+		rowIdx:     -1,
+		labelIDMap: labelIDMap,
 	}
 }
 
@@ -80,15 +89,30 @@ func (p *pgxSeriesSet) At() storage.Series {
 
 	// this should pretty much always be non-empty due to __name__, but it
 	// costs little to check here
-	if len(row.labelIds) != 0 {
-		lls, err := p.querier.LabelsForIds(row.labelIds)
-		if err != nil {
-			log.Error("err", err)
+	if len(row.labelIds) == 0 {
+		return ps
+	}
+
+	var lls labels.Labels
+	lls = make([]labels.Label, 0, len(row.labelIds))
+	for _, id := range row.labelIds {
+		if id == 0 {
+			continue
+		}
+		label, ok := p.labelIDMap[id]
+		if !ok {
+			p.err = fmt.Errorf("Missing label for id %v", id)
 			return nil
 		}
-		sort.Sort(lls)
-		ps.labels = lls
+		if label == (labels.Label{}) {
+			p.err = fmt.Errorf("Missing label for id %v", id)
+			return nil
+		}
+		lls = append(lls, label)
+
 	}
+	sort.Sort(lls)
+	ps.labels = lls
 
 	return ps
 }

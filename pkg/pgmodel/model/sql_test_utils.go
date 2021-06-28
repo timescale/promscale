@@ -31,10 +31,11 @@ type SqlRecorder struct {
 }
 
 type SqlQuery struct {
-	Sql     string
-	Args    []interface{}
-	Results RowResults
-	Err     error
+	Sql           string
+	Args          []interface{}
+	ArgsUnordered bool
+	Results       RowResults
+	Err           error
 }
 
 // RowResults represents a collection of a multi-column row result
@@ -137,8 +138,11 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 			require.NoError(r.t, err)
 			require.Equal(r.t, expected, got, "sql args aren't equal for query # %v: %v", idx, sql)
 		default:
-			require.Equal(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
-
+			if !row.ArgsUnordered {
+				require.Equal(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
+			} else {
+				require.ElementsMatch(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
+			}
 		}
 	}
 	return row.Results, row.Err
