@@ -253,7 +253,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 	defer batchResults.Close()
 
 	for i := 0; i < numQueries; i++ {
-		rows, err := batchResults.Query()
+		rows, err = batchResults.Query()
 		if err != nil {
 			rows.Close()
 			return nil, nil, err

@@ -37,10 +37,24 @@ type PgxRows interface {
 	Close()
 }
 
+// This is only used by querier to log the time consumed
+// by SQL queries executed using Query(), QueryRow()
+func NewQuerierPgxConn(pool *pgxpool.Pool) PgxConn {
+	return &querierConnImpl{
+		connImpl: connImpl{Conn: pool},
+		Conn:     pool,
+	}
+}
+
 func NewPgxConn(pool *pgxpool.Pool) PgxConn {
 	return &connImpl{
 		Conn: pool,
 	}
+}
+
+type querierConnImpl struct {
+	connImpl
+	Conn *pgxpool.Pool
 }
 
 type connImpl struct {
@@ -52,7 +66,18 @@ type pgxRows struct {
 	sqlQuery  string
 	args      []interface{}
 	startTime time.Time
-	loggged   bool
+	logged    bool
+}
+
+func (p *querierConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
+	startTime := time.Now()
+	rows, err := p.Conn.Query(ctx, sql, args...)
+	return &pgxRows{Rows: rows, sqlQuery: sql, args: args, startTime: startTime}, err
+}
+
+func (p *querierConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	defer LogQueryStats(sql, time.Time{}, args...)()
+	return p.Conn.QueryRow(ctx, sql, args...)
 }
 
 func (p *connImpl) Close() {
@@ -62,23 +87,15 @@ func (p *connImpl) Close() {
 }
 
 func (p *pgxRows) Next() bool {
-	if !p.loggged {
-		p.loggged = true
+	// The query fetch is async and happens on the first call to next.
+	// so to get timing right, we log timing after first Next() call.
+	if !p.logged {
+		p.logged = true
+		res := p.Rows.Next()
 		LogQueryStats(p.sqlQuery, p.startTime, p.args)()
+		return res
 	}
 	return p.Rows.Next()
-}
-
-func (p *pgxRows) Scan(dest ...interface{}) error {
-	return p.Rows.Scan(dest...)
-}
-
-func (p *pgxRows) Err() error {
-	return p.Rows.Err()
-}
-
-func (p *pgxRows) Close() {
-	p.Rows.Close()
 }
 
 // calc SQL query execution time
@@ -87,23 +104,19 @@ func LogQueryStats(sql string, startTime time.Time, args ...interface{}) func() 
 		startTime = time.Now()
 	}
 	return func() {
-		log.Debug("msg", fmt.Sprintf("time taken by SQL query: %s with args: %v is %v", sql, args, time.Since(startTime)))
+		log.Debug("msg", "SQL query timing", "query", sql, "args", fmt.Sprintf("%v", args...), "time", time.Since(startTime))
 	}
 }
 
 func (p *connImpl) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
-	defer LogQueryStats(sql, time.Time{}, args...)()
 	return p.Conn.Exec(ctx, sql, args...)
 }
 
 func (p *connImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
-	startTime := time.Now()
-	rows, err := p.Conn.Query(ctx, sql, args...)
-	return &pgxRows{Rows: rows, sqlQuery: sql, args: args, startTime: startTime}, err
+	return p.Conn.Query(ctx, sql, args...)
 }
 
 func (p *connImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	defer LogQueryStats(sql, time.Time{}, args...)()
 	return p.Conn.QueryRow(ctx, sql, args...)
 }
 

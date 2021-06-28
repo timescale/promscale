@@ -22,7 +22,6 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -302,7 +301,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		MaxConnections:          -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(conf, 1, pgxconn.NewPgxConn(pool), tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
+	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
 
 	if err != nil {
 		return nil, pgClient, fmt.Errorf("Cannot run test, cannot instantiate pgClient")
