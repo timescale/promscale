@@ -34,6 +34,8 @@ type QueryHints struct {
 	CurrentNode parser.Node
 	Lookback    time.Duration
 }
+
+//SerieSet adds a Close method to storage.SeriesSet to provide a way to free memory
 type SeriesSet interface {
 	storage.SeriesSet
 	Close()
@@ -335,7 +337,7 @@ func (errorSeriesSet) Next() bool                   { return false }
 func (errorSeriesSet) At() storage.Series           { return nil }
 func (e errorSeriesSet) Err() error                 { return e.err }
 func (e errorSeriesSet) Warnings() storage.Warnings { return nil }
-func (e errorSeriesSet) Close()                     { return }
+func (e errorSeriesSet) Close()                     {}
 
 type labelQuerier interface {
 	LabelsForIdMap(idMap map[int64]labels.Label) (err error)

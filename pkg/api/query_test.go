@@ -46,9 +46,7 @@ func (m mockSeriesSet) Warnings() storage.Warnings {
 	return nil
 }
 
-func (m mockSeriesSet) Close() {
-	return
-}
+func (m mockSeriesSet) Close() {}
 
 type mockQuerier struct {
 	timeToSleepOnSelect time.Duration

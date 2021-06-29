@@ -130,7 +130,6 @@ func (p *pgxSeriesSet) Close() {
 	for _, row := range p.rows {
 		row.Close()
 	}
-	return
 }
 
 // pgxSeries implements storage.Series.
@@ -183,7 +182,8 @@ func (p *pgxSeriesIterator) Seek(t int64) bool {
 
 // getTs returns a Unix timestamp in milliseconds.
 func (p *pgxSeriesIterator) getTs() int64 {
-	return p.times.At(p.cur)
+	ts, _ := p.times.At(p.cur)
+	return ts
 }
 
 func (p *pgxSeriesIterator) getVal() float64 {
@@ -205,7 +205,8 @@ func (p *pgxSeriesIterator) Next() bool {
 		if p.cur >= p.totalSamples {
 			return false
 		}
-		if p.values.Elements[p.cur].Status == pgtype.Present {
+		_, ok := p.times.At(p.cur)
+		if ok && p.values.Elements[p.cur].Status == pgtype.Present {
 			return true
 		}
 	}

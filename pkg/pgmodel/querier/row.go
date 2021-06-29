@@ -21,7 +21,7 @@ var tPool = sync.Pool{
 	},
 }
 
-//wrapper to have code to reuse existing array so that a pool is effective
+//wrapper to allow DecodeBinary to reuse the existing array so that a pool is effective
 type timestamptzArrayWrapper struct {
 	*pgtype.TimestamptzArray
 }
@@ -75,7 +75,7 @@ func (dstwrapper *timestamptzArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src
 	return nil
 }
 
-//wrapper to have code to reuse existing array so that a pool is effective
+//wrapper to to allow DecodeBinary to reuse existing array so that a pool is effective
 type float8ArrayWrapper struct {
 	*pgtype.Float8Array
 }
@@ -158,6 +158,7 @@ func appendTsRows(out []timescaleRow, in pgx.Rows, tsSeries TimestampSeries) ([]
 		values.Elements = values.Elements[:0]
 		valuesWrapper := float8ArrayWrapper{values}
 
+		//if a timeseries isn't provided it will be fetched from the database
 		if tsSeries == nil {
 			times := tPool.Get().(*pgtype.TimestamptzArray)
 			times.Elements = times.Elements[:0]
