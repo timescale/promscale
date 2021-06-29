@@ -352,8 +352,12 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 		}
 
 		for i := 0; i < row.times.Len(); i++ {
+			ts, ok := row.times.At(i)
+			if !ok {
+				return nil, fmt.Errorf("invalid timestamp found")
+			}
 			result.Samples = append(result.Samples, prompb.Sample{
-				Timestamp: row.times.At(i),
+				Timestamp: ts,
 				Value:     row.values.Elements[i].Float,
 			})
 		}
@@ -428,8 +432,8 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
-		strings.Join(selectorClauses, ","),
-		strings.Join(selectors, ","),
+		strings.Join(selectorClauses, ", "),
+		strings.Join(selectors, ", "),
 		orderByClause,
 	)
 
@@ -487,7 +491,7 @@ func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, 
 		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
 		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
 		unOrdered:   false,
-		tsSeries:    NewRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
+		tsSeries:    newRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
 	}
 	return &qf, nil
 }
@@ -543,7 +547,7 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 				valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
 				valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
 				unOrdered:   true,
-				tsSeries:    NewRegularTimestampSeries(qh.StartTime, qh.EndTime, time.Duration(hints.Step)*time.Millisecond),
+				tsSeries:    newRegularTimestampSeries(qh.StartTime, qh.EndTime, time.Duration(hints.Step)*time.Millisecond),
 			}
 			return &qf, qh.CurrentNode, nil
 		}

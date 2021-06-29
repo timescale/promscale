@@ -636,7 +636,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					}
 				}
 			} else if !reflect.DeepEqual(result, c.result) {
-				t.Errorf("unexpected result:\ngot\n%#v\nwanted\n%+v", result, c.result)
+				t.Errorf("unexpected result:\ngot\n%+v\nwanted\n%+v", result, c.result)
 			}
 		})
 	}
