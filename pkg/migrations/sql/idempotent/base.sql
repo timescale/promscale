@@ -1474,24 +1474,21 @@ SET search_path = pg_temp;
 REVOKE ALL ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, timestamptz, timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, timestamptz, timestamptz) TO prom_maintenance;
 
-
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_expired_series(
-    metric_table TEXT, ran_at TIMESTAMPTZ
+    metric_table TEXT, ran_at TIMESTAMPTZ, present_epoch BIGINT, last_updated_epoch TIMESTAMPTZ
 ) RETURNS VOID AS $func$
 DECLARE
-    last_epoch_time TIMESTAMPTZ;
-    deletion_epoch BIGINT;
-    next_epoch BIGINT;
     label_array int[];
+    next_epoch BIGINT;
+    deletion_epoch BIGINT;
 BEGIN
+    next_epoch := present_epoch + 1;
     -- technically we can delete any ID <= current_epoch - 1
     -- but it's always safe to leave them around for a bit longer
-    SELECT last_update_time, current_epoch-4, current_epoch+1
-        FROM SCHEMA_CATALOG.ids_epoch LIMIT 1
-        INTO last_epoch_time, deletion_epoch, next_epoch;
+    deletion_epoch := present_epoch - 4;
 
     -- we don't want to delete too soon
-    IF ran_at < last_epoch_time + '1 hour' THEN
+    IF ran_at < last_updated_epoch + '1 hour' THEN
         RETURN;
     END IF;
 
@@ -1539,10 +1536,6 @@ BEGIN
         WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
     $query$, metric_table) USING label_array;
 
-    -- wait for current insertions to be done, and ensure that all future
-    -- insertions will see the epoch change
-    LOCK TABLE SCHEMA_CATALOG.ids_epoch IN ACCESS EXCLUSIVE MODE;
-
     UPDATE SCHEMA_CATALOG.ids_epoch
         SET (current_epoch, last_update_time) = (next_epoch, now())
         WHERE current_epoch < next_epoch;
@@ -1555,8 +1548,8 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz) TO prom_maintenance;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz, BIGINT, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz, BIGINT, timestamptz) TO prom_maintenance;
 
 --drop chunks from metrics tables and delete the appropriate series.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(
@@ -1606,6 +1599,8 @@ DECLARE
     metric_table NAME;
     check_time TIMESTAMPTZ;
     time_dimension_id INT;
+    last_updated TIMESTAMPTZ;
+    present_epoch BIGINT;
 BEGIN
     SELECT id, table_name
     INTO STRICT metric_id, metric_table
@@ -1638,12 +1633,15 @@ BEGIN
             LIMIT 1;
         END IF;
         -- end this txn so we're not holding any locks on the catalog
+
+        SELECT current_epoch, last_update_time INTO present_epoch, last_updated FROM
+            SCHEMA_CATALOG.ids_epoch LIMIT 1;
     COMMIT;
 
     IF older_than IS NULL THEN
         -- even though there are no new Ids in need of deletion,
         -- we may still have old ones to delete
-        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at);
+        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at, present_epoch, last_updated);
         RETURN;
     END IF;
 
@@ -1653,10 +1651,12 @@ BEGIN
 
     -- transaction 3
         PERFORM SCHEMA_CATALOG.drop_metric_chunk_data(metric_name, older_than);
+        SELECT current_epoch, last_update_time INTO present_epoch, last_updated FROM
+            SCHEMA_CATALOG.ids_epoch LIMIT 1;
     COMMIT;
 
     -- transaction 4
-        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at);
+        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at, present_epoch, last_updated);
     RETURN;
 END
 $func$
