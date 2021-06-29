@@ -2212,6 +2212,10 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 			name:  "real query 526",
 			query: `demo_disk_usage_bytes{instance=~"demo|"}`, // Not from promlabs
 		},
+		{
+			name:  "rollup",
+			query: "count by (env)(up)",
+		},
 	}
 	start := time.Unix(samplesStartTime/1000, 0)
 	end := time.Unix(samplesEndTime/1000, 0)
@@ -2463,6 +2467,10 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 		{
 			name:  "anchored-regex 7",
 			query: `{__name__="metric_2", foo=~"^$"}`,
+		},
+		{
+			name:  "rollup",
+			query: "count by (env)(up)",
 		},
 	}
 	start := time.Unix(startTime/1000, 0)

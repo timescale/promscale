@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -99,8 +100,6 @@ const (
 			) as result  ON (result.time_array is not null)
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
-	Future optimizations:
-	  - different query if scanning entire metric (not labels matchers besides __name__)
 	*/
 	timeseriesByMetricSQLFormat = `SELECT series.labels,  result.time_array, result.value_array
 	FROM %[2]s series
@@ -113,11 +112,30 @@ const (
 			WHERE metric.series_id = series.id
 			AND time >= '%[4]s'
 			AND time <= '%[5]s'
-			ORDER BY time
+			%[8]s
 		) as time_ordered_rows
 	) as result ON (result.value_array is not null)
 	WHERE
 	     %[3]s`
+
+	/* optimized for no clauses besides __name__
+	   uses a inner join without a lateral to allow for better parallel execution
+	*/
+	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels,  result.time_array, result.value_array
+	FROM %[2]s series
+	INNER JOIN (
+		SELECT series_id, %[6]s as time_array, %[7]s as value_array
+		FROM
+		(
+			SELECT series_id, time, value
+			FROM %[1]s metric
+			WHERE
+			time >= '%[4]s'
+			AND time <= '%[5]s'
+			%[8]s
+		) as time_ordered_rows
+		GROUP BY series_id
+	) as result ON (result.value_array is not null AND result.series_id = series.id)`
 )
 
 var (
@@ -366,8 +384,8 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmod
 }
 
 func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string, values []interface{},
-	hints *storage.SelectHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
-	qf, node, err := getAggregators(hints, path)
+	hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
+	qf, node, err := getAggregators(hints, qh, path)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -381,7 +399,20 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		return "", nil, nil, err
 	}
 
-	finalSQL := fmt.Sprintf(timeseriesByMetricSQLFormat,
+	orderByClause := "ORDER BY time"
+	if qf.unOrdered {
+		orderByClause = ""
+	}
+
+	template := timeseriesByMetricSQLFormat
+	if len(cases) == 1 && cases[0] == "TRUE" {
+		template = timeseriesByMetricSQLFormatNoClauses
+		if !qf.unOrdered {
+			orderByClause = "ORDER BY series_id, time"
+		}
+	}
+
+	finalSQL := fmt.Sprintf(template,
 		pgx.Identifier{schema.Data, filter.metric}.Sanitize(),
 		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
 		strings.Join(cases, " AND "),
@@ -389,6 +420,7 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		filter.endTime,
 		timeClauseBound,
 		valueClauseBound,
+		orderByClause,
 	)
 
 	return finalSQL, values, node, nil
@@ -409,13 +441,59 @@ type aggregators struct {
 	timeParams  []interface{}
 	valueClause string
 	valueParams []interface{}
+	unOrdered   bool
 }
 
+/* vectorSelectors called by the timestamp function have special handling see engine.go */
+func calledByTimestamp(path []parser.Node) bool {
+	if len(path) > 0 {
+		node := path[len(path)-1]
+		call, ok := node.(*parser.Call)
+		if ok && call.Func.Name == "timestamp" {
+			return true
+		}
+	}
+	return false
+}
+
+var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
+
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
-func getAggregators(hints *storage.SelectHints, path []parser.Node) (*aggregators, parser.Node, error) {
-	if extension.ExtensionIsInstalled && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
+func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
+	if extension.ExtensionIsInstalled && qh != nil {
+		//switch on the current node being processed
+		switch n := qh.CurrentNode.(type) {
+		case *parser.VectorSelector:
+			//TODO: handle the instant query (hints.Step==0) case too.
+			/* vector selector pushdown improves performance by selecting from the database only the last point
+			* in a vector selector window(step) this decreases the amount of samples transferred from the DB to Promscale
+			* by orders of magnitude. A vector selector aggregate also does not require ordered inputs which saves
+			* a sort and allows for parallel evaluation. */
+			if hints != nil &&
+				hints.Step > 0 &&
+				hints.Range == 0 &&
+				!calledByTimestamp(path) &&
+				n.OriginalOffset == time.Duration(0) &&
+				n.Offset == time.Duration(0) &&
+				!hasSubquery(path) &&
+				vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
+				qf := aggregators{
+					timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
+					timeParams:  []interface{}{qh.StartTime, qh.EndTime, time.Duration(hints.Step) * time.Millisecond},
+					valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
+					valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
+					unOrdered:   true,
+				}
+				return &qf, qh.CurrentNode, nil
+			}
+		default:
+			//No pushdown optimization by default
+		}
+	}
+	if extension.ExtensionIsInstalled && qh != nil && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
 		var topNode parser.Node
 
+		//switch on the 2nd-to-last last path node
 		node := path[len(path)-2]
 		switch n := node.(type) {
 		case *parser.Call:
@@ -438,6 +516,7 @@ func getAggregators(hints *storage.SelectHints, path []parser.Node) (*aggregator
 					timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
 					valueClause: "prom_delta($%d, $%d,$%d, $%d, time, value)",
 					valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
+					unOrdered:   false,
 				}
 				return &qf, topNode, nil
 			}
@@ -449,7 +528,9 @@ func getAggregators(hints *storage.SelectHints, path []parser.Node) (*aggregator
 	qf := aggregators{
 		timeClause:  "array_agg(time)",
 		valueClause: "array_agg(value)",
+		unOrdered:   false,
 	}
+
 	return &qf, nil, nil
 }
 

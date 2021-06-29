@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"go.uber.org/goleak"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -188,7 +189,7 @@ type errQuerier struct {
 	err error
 }
 
-func (q *errQuerier) Select(bool, *storage.SelectHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (q *errQuerier) Select(bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	return errSeriesSet{err: q.err}, nil
 }
 func (*errQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
@@ -251,9 +252,9 @@ type hintRecordingQuerier struct {
 	h *noopHintRecordingQueryable
 }
 
-func (h *hintRecordingQuerier) Select(sortSeries bool, hints *storage.SelectHints, p []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (h *hintRecordingQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *querier.QueryHints, p []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	h.h.hints = append(h.h.hints, hints)
-	return h.Querier.Select(sortSeries, hints, nil, matchers...)
+	return h.Querier.Select(sortSeries, hints, qh, nil, matchers...)
 }
 
 func TestSelectHintsSetCorrectly(t *testing.T) {

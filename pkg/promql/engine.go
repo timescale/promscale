@@ -42,6 +42,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
 
+	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -67,7 +68,7 @@ type Querier interface {
 	// Select returns a set of series that matches the given label matchers.
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
-	Select(sortSeries bool, hints *storage.SelectHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
+	Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
 }
 
 const (
@@ -792,6 +793,7 @@ func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) parser.Nod
 	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
 		case *parser.VectorSelector:
+			var qh *mq.QueryHints
 			start, end := ng.getTimeRangesForSelector(s, n, path, evalRange)
 			hints := &storage.SelectHints{
 				Start: start,
@@ -801,13 +803,19 @@ func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) parser.Nod
 				Func:  extractFuncFromPath(path),
 			}
 
+			/* Only do pushdowns if we don't already have a pushdown. We can't do multiple pushdowns in a single query yet */
+			if topNode == nil {
+				qh = &mq.QueryHints{
+					StartTime:   s.Start,
+					EndTime:     s.End,
+					CurrentNode: n,
+					Lookback:    ng.lookbackDelta,
+				}
+			}
 			evalRange = 0
 			hints.By, hints.Grouping = extractGroupsFromPath(path)
 
-			if topNode != nil {
-				return fmt.Errorf("assigning topNode twice")
-			}
-			set, topNode = querier.Select(false, hints, path, n.LabelMatchers...)
+			set, topNode = querier.Select(false, hints, qh, path, n.LabelMatchers...)
 			n.UnexpandedSeriesSet = set
 
 		case *parser.MatrixSelector:
@@ -1197,12 +1205,16 @@ func (ev *evaluator) evalSubquery(subq *parser.SubqueryExpr) (*parser.MatrixSele
 	return ms, totalSamples, ws
 }
 
-func (ev *evaluator) getPushdownResult(vs *parser.VectorSelector, numSteps int) Matrix {
+func (ev *evaluator) getPushdownResult(vs *parser.VectorSelector, numSteps int, dropName bool) Matrix {
 	mat := make(Matrix, 0, len(vs.Series))
 	for i, s := range vs.Series {
 		ss := Series{
-			Metric: dropMetricName(vs.Series[i].Labels()),
 			Points: getPointSlice(numSteps),
+		}
+		if dropName {
+			ss.Metric = dropMetricName(vs.Series[i].Labels())
+		} else {
+			ss.Metric = vs.Series[i].Labels()
 		}
 
 		it := s.Iterator()
@@ -1253,7 +1265,10 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 					err = fmt.Errorf("Matrix is already filled in")
 					return err
 				}
-				mat = ev.getPushdownResult(n, numSteps)
+				//all range-vector function calls have their metric name dropped
+				//see eval() function
+				_, isCall := expr.(*parser.Call)
+				mat = ev.getPushdownResult(n, numSteps, isCall)
 			}
 			return nil
 		})

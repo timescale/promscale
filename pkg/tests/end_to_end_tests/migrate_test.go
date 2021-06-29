@@ -28,7 +28,7 @@ func TestMigrate(t *testing.T) {
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		var dbVersion string
-		extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true}
+		extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true}
 		err := db.QueryRow(context.Background(), "SELECT version FROM prom_schema_migrations").Scan(&dbVersion)
 		if err != nil {
 			t.Fatal(err)

@@ -385,7 +385,7 @@ func TestExtensionGapfillDelta(t *testing.T) {
 		var res string
 		err = db.QueryRow(context.Background(),
 			"SELECT prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, NULL, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
-		if err.Error() != "ERROR: NULL value for non-nullable argument \"time\" (SQLSTATE XX000)" {
+		if err.Error() != "ERROR: time is null (SQLSTATE XX000)" {
 			t.Error(err)
 		}
 		err = db.QueryRow(context.Background(),

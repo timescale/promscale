@@ -206,7 +206,7 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 }
 
 func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
-	extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true}
+	extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true}
 	if *useTimescaleDB {
 		migrateURL := connectURL
 		if !*useExtension {

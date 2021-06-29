@@ -69,13 +69,13 @@ func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean 
 	}
 	switch {
 	case extensionState.UsesMultinode():
-		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
+		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
 	case !extensionState.UsesTimescaleDB():
 		return "timescale/timescaledb:latest-pg12", "timescale/timescaledb:latest-pg12"
 	case extensionState.UsesTimescale2():
-		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", "timescaledev/promscale-extension:latest-ts2-pg12"
+		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
 	default:
-		return "timescaledev/promscale-extension:0.1.1-ts1-pg12", "timescaledev/promscale-extension:latest-ts1-pg12"
+		return "timescaledev/promscale-extension:0.1.1-ts1-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
 	}
 }
 
@@ -418,7 +418,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 }
 
 func migrateToVersion(t testing.TB, connectURL string, version string, commitHash string) {
-	err := extension.InstallUpgradeTimescaleDBExtensions(connectURL, extension.ExtensionMigrateOptions{Install: true, Upgrade: true})
+	err := extension.InstallUpgradeTimescaleDBExtensions(connectURL, extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 		t.Fatal(err)
 	}
 	defer func() { _ = migratePool.Close(context.Background()) }()
-	err = runner.SetupDBState(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, nil, extension.ExtensionMigrateOptions{Install: true, Upgrade: true})
+	err = runner.SetupDBState(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, nil, extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true})
 	if err != nil {
 		t.Fatal(err)
 	}
