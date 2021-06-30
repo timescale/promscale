@@ -586,7 +586,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	}
 	defer querier.Close()
 
-	topNode := ng.populateSeries(querier, s)
+	topNodes := ng.populateSeries(querier, s)
 	prepareSpanTimer.Finish()
 
 	// Modify the offset of vector and matrix selectors for the @ modifier
@@ -604,7 +604,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			maxSamples:               ng.maxSamplesPerQuery,
 			logger:                   ng.logger,
 			lookbackDelta:            ng.lookbackDelta,
-			topNode:                  topNode,
+			topNodes:                 topNodes,
 			noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
 		}
 
@@ -656,7 +656,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		logger:                   ng.logger,
 		lookbackDelta:            ng.lookbackDelta,
 		noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
-		topNode:                  topNode,
+		topNodes:                 topNodes,
 	}
 	val, warnings, err := evaluator.Eval(s.Expr)
 	if err != nil {
@@ -780,14 +780,13 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 	return start, end
 }
 
-func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) parser.Node {
+func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) map[parser.Node]bool {
 	var (
 		// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 		// The evaluation of the VectorSelector inside then evaluates the given range and unsets
 		// the variable.
-		set       storage.SeriesSet
 		evalRange time.Duration
-		topNode   parser.Node
+		topNodes  map[parser.Node]bool = make(map[parser.Node]bool)
 	)
 
 	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
@@ -803,19 +802,17 @@ func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) parser.Nod
 				Func:  extractFuncFromPath(path),
 			}
 
-			/* Only do pushdowns if we don't already have a pushdown. We can't do multiple pushdowns in a single query yet */
-			if topNode == nil {
-				qh = &mq.QueryHints{
-					StartTime:   s.Start,
-					EndTime:     s.End,
-					CurrentNode: n,
-					Lookback:    ng.lookbackDelta,
-				}
+			qh = &mq.QueryHints{
+				StartTime:   s.Start,
+				EndTime:     s.End,
+				CurrentNode: n,
+				Lookback:    ng.lookbackDelta,
 			}
 			evalRange = 0
 			hints.By, hints.Grouping = extractGroupsFromPath(path)
 
-			set, topNode = querier.Select(false, hints, qh, path, n.LabelMatchers...)
+			set, topNode := querier.Select(false, hints, qh, path, n.LabelMatchers...)
+			topNodes[topNode] = true
 			n.UnexpandedSeriesSet = set
 
 		case *parser.MatrixSelector:
@@ -823,7 +820,7 @@ func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) parser.Nod
 		}
 		return nil
 	})
-	return topNode
+	return topNodes
 }
 
 // extractFuncFromPath walks up the path and searches for the first instance of
@@ -905,7 +902,7 @@ type evaluator struct {
 	currentSamples           int64
 	logger                   log.Logger
 	lookbackDelta            time.Duration
-	topNode                  parser.Node
+	topNodes                 map[parser.Node]bool
 	noStepSubqueryIntervalFn func(rangeMillis int64) int64
 }
 
@@ -1244,7 +1241,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	span, _ := opentracing.StartSpanFromContext(ev.ctx, stats.InnerEvalTime.SpanOperation()+" eval "+reflect.TypeOf(expr).String())
 	defer span.Finish()
 
-	if expr == ev.topNode {
+	if ev.topNodes[expr] {
 		/* the storage layer has already processed this node. Just return
 		the result. */
 		var (

@@ -2472,6 +2472,18 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			name:  "rollup",
 			query: "count by (env)(up)",
 		},
+		{
+			name:  "two pushdowns",
+			query: "rate(metric_2[5m])/rate(metric_3[5m])",
+		},
+		{
+			name:  "two pushdowns with sum",
+			query: "sum(rate(metric_2[5m]))/sum(rate(metric_3[5m]))",
+		},
+		{
+			name:  "two pushdowns, same metric different matchers",
+			query: `sum(rate(metric_2{foo = "bar"}[5m]))/sum(rate(metric_2[5m]))`,
+		},
 	}
 	start := time.Unix(startTime/1000, 0)
 	end := time.Unix(endTime/1000, 0)
