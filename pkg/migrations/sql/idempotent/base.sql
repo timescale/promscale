@@ -1517,24 +1517,42 @@ BEGIN
             FROM deleted_series)
     $query$, metric_table, deletion_epoch) INTO label_array;
 
+
+
+    --jit interacts poorly why the multi-partition query below
+    SET LOCAL jit = 'off';
     --needs to be a separate query and not a CTE since this needs to "see"
     --the series rows deleted above as deleted.
     --Note: we never delete metric name keys since there are check constraints that
     --rely on those ids not changing.
     EXECUTE format($query$
-    WITH confirmed_drop_labels AS (
+    WITH check_local_series AS (
+            --the series table from which we just deleted is much more likely to have the label, so check that first to exclude most labels.
             SELECT label_id
             FROM unnest($1) as labels(label_id)
             WHERE NOT EXISTS (
                 SELECT 1
+                FROM  SCHEMA_DATA_SERIES.%1$I series_exists_local
+                WHERE series_exists_local.labels && ARRAY[labels.label_id]
+                LIMIT 1
+            )
+        ),
+        confirmed_drop_labels AS (
+            --do the global check to confirm
+            SELECT label_id
+            FROM check_local_series
+            WHERE NOT EXISTS (
+                SELECT 1
                 FROM  SCHEMA_CATALOG.series series_exists
-                WHERE series_exists.labels && ARRAY[labels.label_id]
+                WHERE series_exists.labels && ARRAY[label_id]
                 LIMIT 1
             )
         )
         DELETE FROM SCHEMA_CATALOG.label
         WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
     $query$, metric_table) USING label_array;
+
+    SET LOCAL jit = DEFAULT;
 
     UPDATE SCHEMA_CATALOG.ids_epoch
         SET (current_epoch, last_update_time) = (next_epoch, now())
