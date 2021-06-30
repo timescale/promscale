@@ -43,7 +43,6 @@ type PgxRows interface {
 func NewQueryLoggingPgxConn(pool *pgxpool.Pool) PgxConn {
 	return &loggingConnImpl{
 		connImpl: connImpl{Conn: pool},
-		Conn:     pool,
 	}
 }
 
@@ -55,14 +54,13 @@ func NewPgxConn(pool *pgxpool.Pool) PgxConn {
 
 type loggingConnImpl struct {
 	connImpl
-	Conn *pgxpool.Pool
 }
 
 type connImpl struct {
 	Conn *pgxpool.Pool
 }
 
-type pgxRows struct {
+type loggingPgxRows struct {
 	pgx.Rows
 	sqlQuery  string
 	args      []interface{}
@@ -70,24 +68,7 @@ type pgxRows struct {
 	logged    bool
 }
 
-func (p *loggingConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
-	startTime := time.Now()
-	rows, err := p.Conn.Query(ctx, sql, args...)
-	return &pgxRows{Rows: rows, sqlQuery: sql, args: args, startTime: startTime}, err
-}
-
-func (p *loggingConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	defer logQueryStats(sql, time.Time{}, args...)()
-	return p.Conn.QueryRow(ctx, sql, args...)
-}
-
-func (p *connImpl) Close() {
-	conn := p.Conn
-	p.Conn = nil
-	conn.Close()
-}
-
-func (p *pgxRows) Next() bool {
+func (p *loggingPgxRows) Next() bool {
 	// The query fetch is async and happens on the first call to next.
 	// so to get timing right, we log timing after first Next() call.
 	if !p.logged {
@@ -99,7 +80,18 @@ func (p *pgxRows) Next() bool {
 	return p.Rows.Next()
 }
 
-// calc SQL query execution time
+func (p *loggingConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
+	startTime := time.Now()
+	rows, err := p.Conn.Query(ctx, sql, args...)
+	return &loggingPgxRows{Rows: rows, sqlQuery: sql, args: args, startTime: startTime}, err
+}
+
+func (p *loggingConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	defer logQueryStats(sql, time.Time{}, args...)()
+	return p.Conn.QueryRow(ctx, sql, args...)
+}
+
+// log the SQL query, args and time consumed by the query in execution
 func logQueryStats(sql string, startTime time.Time, args ...interface{}) func() {
 	if startTime.IsZero() {
 		startTime = time.Now()
@@ -107,6 +99,12 @@ func logQueryStats(sql string, startTime time.Time, args ...interface{}) func() 
 	return func() {
 		log.Debug("msg", "SQL query timing", "query", filterIndentChars(sql), "args", fmt.Sprintf("%v", args...), "time", time.Since(startTime))
 	}
+}
+
+func (p *connImpl) Close() {
+	conn := p.Conn
+	p.Conn = nil
+	conn.Close()
 }
 
 func (p *connImpl) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
@@ -140,11 +138,7 @@ func (p *connImpl) SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults,
 // filters out indentation characters from the
 // SQL query for better query logging
 func filterIndentChars(query string) string {
-	dropChars := []string{"\n", "\t", "\""}
-	query = strings.ReplaceAll(query, "\n\t", " ")
-	for _, c := range dropChars {
-		query = strings.ReplaceAll(query, c, "")
-	}
-
+	dropChars := strings.NewReplacer("\n\t", " ", "\n", "", "\t", "", "\"", "")
+	query = dropChars.Replace(query)
 	return query
 }
