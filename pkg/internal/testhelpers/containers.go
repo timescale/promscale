@@ -54,11 +54,12 @@ var (
 type ExtensionState int
 
 const (
-	timescaleBit  = 1 << iota
-	promscaleBit  = 1 << iota
-	timescale2Bit = 1 << iota
-	multinodeBit  = 1 << iota
-	postgres12Bit = 1 << iota
+	timescaleBit        = 1 << iota
+	promscaleBit        = 1 << iota
+	timescale2Bit       = 1 << iota
+	multinodeBit        = 1 << iota
+	postgres12Bit       = 1 << iota
+	timescaleNightlyBit = 1 << iota
 )
 
 const (
@@ -69,18 +70,29 @@ const (
 	Timescale2AndPromscale ExtensionState = timescaleBit | timescale2Bit | promscaleBit
 	Multinode              ExtensionState = timescaleBit | timescale2Bit | multinodeBit
 	MultinodeAndPromscale  ExtensionState = timescaleBit | timescale2Bit | multinodeBit | promscaleBit
-)
 
-func (e *ExtensionState) UseTimescaleDB() {
-	*e |= timescaleBit
-}
+	TimescaleNightly          ExtensionState = timescaleBit | timescale2Bit | timescaleNightlyBit
+	TimescaleNightlyMultinode ExtensionState = timescaleBit | timescale2Bit | multinodeBit | timescaleNightlyBit
+)
 
 func (e *ExtensionState) UsePromscale() {
 	*e |= timescaleBit | promscaleBit
 }
 
-func (e *ExtensionState) UseTimescale2() {
+func (e *ExtensionState) UseTimescaleDB() {
+	*e |= timescaleBit
+}
+
+func (e *ExtensionState) UseTimescaleDB2() {
 	*e |= timescaleBit | timescale2Bit
+}
+
+func (e *ExtensionState) UseTimescaleNightly() {
+	*e |= timescaleBit | timescale2Bit | timescaleNightlyBit
+}
+
+func (e *ExtensionState) UseTimescaleNightlyMultinode() {
+	*e |= timescaleBit | timescale2Bit | multinodeBit | timescaleNightlyBit
 }
 
 func (e *ExtensionState) UseMultinode() {
@@ -97,6 +109,10 @@ func (e ExtensionState) UsesTimescaleDB() bool {
 
 func (e ExtensionState) UsesTimescale2() bool {
 	return (e & timescale2Bit) != 0
+}
+
+func (e ExtensionState) UsesTimescaleNightly() bool {
+	return (e & timescaleNightlyBit) != 0
 }
 
 func (e ExtensionState) UsesMultinode() bool {
@@ -290,26 +306,24 @@ func StartPGContainer(
 	PGTag := "pg" + PGMajor
 
 	switch extensionState &^ postgres12Bit {
-	case MultinodeAndPromscale:
-		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
-	case Multinode:
-		image = "timescale/timescaledb:latest-" + PGTag
-	case Timescale2AndPromscale:
-		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
-	case Timescale2:
-		image = "timescale/timescaledb:latest-" + PGTag
-	case Timescale1AndPromscale:
-		if PGMajor != "12" {
-			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")
-		}
-		image = LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
 	case Timescale1:
 		if PGMajor != "12" {
-			return nil, nil, fmt.Errorf("Timescaledb 1.x requires pg12")
+			return nil, nil, fmt.Errorf("timescaledb 1.x requires pg12")
 		}
 		image = "timescale/timescaledb:1.7.4-pg12"
+	case Timescale1AndPromscale:
+		if PGMajor != "12" {
+			return nil, nil, fmt.Errorf("timescaledb 1.x requires pg12")
+		}
+		image = LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
+	case Timescale2, Multinode:
+		image = "timescale/timescaledb:latest-" + PGTag
+	case Timescale2AndPromscale, MultinodeAndPromscale:
+		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
 	case VanillaPostgres:
 		image = "postgres:" + PGMajor
+	case TimescaleNightly, TimescaleNightlyMultinode:
+		image = "timescaledev/timescaledb:nightly-" + PGTag
 	}
 
 	return StartDatabaseImage(ctx, image, testDataDir, "", printLogs, extensionState)
@@ -386,7 +400,7 @@ func StartDatabaseImage(ctx context.Context,
 		}
 		if err != nil {
 			_ = c.Close()
-			return nil, nil, fmt.Errorf("Error adding nodes: %w", err)
+			return nil, nil, fmt.Errorf("error adding nodes: %w", err)
 		}
 
 		err = db.Close(context.Background())
