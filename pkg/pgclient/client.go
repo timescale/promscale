@@ -151,7 +151,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
 
-	dbQuerierConn := pgxconn.NewQuerierPgxConn(connPool)
+	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)
 	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 

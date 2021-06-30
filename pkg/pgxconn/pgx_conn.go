@@ -7,6 +7,7 @@ package pgxconn
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgconn"
@@ -39,8 +40,8 @@ type PgxRows interface {
 
 // This is only used by querier to log the time consumed
 // by SQL queries executed using Query(), QueryRow()
-func NewQuerierPgxConn(pool *pgxpool.Pool) PgxConn {
-	return &querierConnImpl{
+func NewQueryLoggingPgxConn(pool *pgxpool.Pool) PgxConn {
+	return &loggingConnImpl{
 		connImpl: connImpl{Conn: pool},
 		Conn:     pool,
 	}
@@ -52,7 +53,7 @@ func NewPgxConn(pool *pgxpool.Pool) PgxConn {
 	}
 }
 
-type querierConnImpl struct {
+type loggingConnImpl struct {
 	connImpl
 	Conn *pgxpool.Pool
 }
@@ -69,14 +70,14 @@ type pgxRows struct {
 	logged    bool
 }
 
-func (p *querierConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
+func (p *loggingConnImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
 	startTime := time.Now()
 	rows, err := p.Conn.Query(ctx, sql, args...)
 	return &pgxRows{Rows: rows, sqlQuery: sql, args: args, startTime: startTime}, err
 }
 
-func (p *querierConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	defer LogQueryStats(sql, time.Time{}, args...)()
+func (p *loggingConnImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	defer logQueryStats(sql, time.Time{}, args...)()
 	return p.Conn.QueryRow(ctx, sql, args...)
 }
 
@@ -92,19 +93,19 @@ func (p *pgxRows) Next() bool {
 	if !p.logged {
 		p.logged = true
 		res := p.Rows.Next()
-		LogQueryStats(p.sqlQuery, p.startTime, p.args)()
+		logQueryStats(p.sqlQuery, p.startTime, p.args)()
 		return res
 	}
 	return p.Rows.Next()
 }
 
 // calc SQL query execution time
-func LogQueryStats(sql string, startTime time.Time, args ...interface{}) func() {
+func logQueryStats(sql string, startTime time.Time, args ...interface{}) func() {
 	if startTime.IsZero() {
 		startTime = time.Now()
 	}
 	return func() {
-		log.Debug("msg", "SQL query timing", "query", sql, "args", fmt.Sprintf("%v", args...), "time", time.Since(startTime))
+		log.Debug("msg", "SQL query timing", "query", filterIndentChars(sql), "args", fmt.Sprintf("%v", args...), "time", time.Since(startTime))
 	}
 }
 
@@ -134,4 +135,16 @@ func (p *connImpl) NewBatch() PgxBatch {
 
 func (p *connImpl) SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error) {
 	return p.Conn.SendBatch(ctx, b.(*pgx.Batch)), nil
+}
+
+// filters out indentation characters from the
+// SQL query for better query logging
+func filterIndentChars(query string) string {
+	dropChars := []string{"\n", "\t", "\""}
+	query = strings.ReplaceAll(query, "\n\t", " ")
+	for _, c := range dropChars {
+		query = strings.ReplaceAll(query, c, "")
+	}
+
+	return query
 }
