@@ -83,7 +83,7 @@ func TestMigrateLock(t *testing.T) {
 			},
 		}
 		conn.Release()
-		metrics := api.InitMetrics(0)
+		metrics := api.InitMetrics()
 		reader, err := runner.CreateClient(&cfg, metrics)
 		// reader on its own should start
 		if err != nil {
@@ -183,7 +183,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 		}
 		verifyExtensionExists(t, db, "promscale", false)
 
-		metrics := api.InitMetrics(0)
+		metrics := api.InitMetrics()
 		cfg.InstallExtensions = false
 		migrator, err := runner.CreateClient(&cfg, metrics)
 		if err != nil {

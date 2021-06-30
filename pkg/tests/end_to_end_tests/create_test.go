@@ -241,7 +241,7 @@ func TestSQLIngest(t *testing.T) {
 	testCases := []struct {
 		name        string
 		metrics     []prompb.TimeSeries
-		count       uint64
+		count       int64
 		countSeries int
 		expectErr   error
 	}{
@@ -441,7 +441,7 @@ func TestSQLIngest(t *testing.T) {
 				// duplicates being dropped we report the number of samples the
 				// ingestor handled, not necissarily how many were inserted
 				// into the DB
-				if cnt < tcase.count {
+				if cnt < uint64(tcase.count) {
 					t.Fatalf("incorrect counts: got %v expected %v\n", cnt, tcase.count)
 				}
 

@@ -12,11 +12,9 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
-	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
@@ -92,7 +90,7 @@ func TestWrite(t *testing.T) {
 		name             string
 		responseCode     int
 		requestBody      string
-		inserterResponse uint64
+		inserterResponse int64
 		inserterErr      error
 		isLeader         bool
 		electionErr      error
@@ -244,10 +242,12 @@ func TestWrite(t *testing.T) {
 				},
 			)
 			leaderGauge := &mockMetric{}
-			receivedSamplesGauge := &mockMetric{}
-			failedSamplesGauge := &mockMetric{}
-			sentSamplesGauge := &mockMetric{}
-			sentMetadataGauge := &mockMetric{}
+			receivedSamplesCounter := &mockMetric{}
+			receivedMetadataCounter := &mockMetric{}
+			failedSamplesCounter := &mockMetric{}
+			failedMetadataCounter := &mockMetric{}
+			sentSamplesCounter := &mockMetric{}
+			sentMetadataCounter := &mockMetric{}
 			sendBatchHistogram := &mockMetric{}
 			invalidWriteReqs := &mockMetric{}
 			mock := &mockInserter{
@@ -255,17 +255,19 @@ func TestWrite(t *testing.T) {
 				err:    c.inserterErr,
 			}
 			dataParser := parser.NewParser()
-
-			handler := Write(mock, dataParser, elector, &Metrics{
+			metrics = &Metrics{
 				LeaderGauge:       leaderGauge,
-				ReceivedSamples:   receivedSamplesGauge,
-				FailedSamples:     failedSamplesGauge,
-				SentSamples:       sentSamplesGauge,
-				SentMetadata:      sentMetadataGauge,
+				ReceivedSamples:   receivedSamplesCounter,
+				ReceivedMetadata:  receivedMetadataCounter,
+				FailedSamples:     failedSamplesCounter,
+				FailedMetadata:    failedMetadataCounter,
+				SentSamples:       sentSamplesCounter,
+				SentMetadata:      sentMetadataCounter,
 				SentBatchDuration: sendBatchHistogram,
 				InvalidWriteReqs:  invalidWriteReqs,
-				WriteThroughput:   util.NewThroughputCalc(time.Second),
-			})
+			}
+
+			handler := Write(mock, dataParser, elector)
 
 			headers := protobufHeaders
 			if len(c.customHeaders) != 0 {
@@ -291,10 +293,10 @@ func TestWrite(t *testing.T) {
 				t.Errorf("leader gauge metric not set correctly: got %f when is not leader", leaderGauge.value)
 			}
 
-			if sentSamplesGauge.value != float64(c.inserterResponse) {
+			if sentSamplesCounter.value != float64(c.inserterResponse) {
 				t.Errorf(
 					"num sent samples gauge not set correctly: got %f, expected %d",
-					receivedSamplesGauge.value,
+					receivedSamplesCounter.value,
 					c.inserterResponse,
 				)
 			}
@@ -349,13 +351,13 @@ func (m *mockElection) Resign() error {
 
 type mockInserter struct {
 	ts     []prompb.TimeSeries
-	result uint64
+	result int64
 	err    error
 }
 
 func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, uint64, error) {
 	m.ts = r.Timeseries
-	return m.result, 0, m.err
+	return uint64(m.result), 0, m.err
 }
 
 func getReader(s string) io.Reader {

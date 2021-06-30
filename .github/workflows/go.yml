@@ -149,7 +149,7 @@ jobs:
         MULTI: ${{ matrix.test-setups.multi }}
         PG: ${{ matrix.test-setups.pg }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
-      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI -postgres-version-major=$PG > $SHORTNAME-test-run.log  2>&1
+      run: go test -race ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI -postgres-version-major=$PG > $SHORTNAME-test-run.log  2>&1
 
     - name: 'Print failure logs'
       if: ${{ failure() }}

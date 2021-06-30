@@ -20,6 +20,7 @@ func TestDBIngestorIngest(t *testing.T) {
 		metrics         []prompb.TimeSeries
 		metadata        []prompb.MetricMetadata
 		countSamples    uint64
+		count           int64
 		countSeries     int
 		countMetadata   uint64
 		insertSeriesErr error

@@ -22,6 +22,7 @@ type Metadata struct {
 type Samples interface {
 	GetSeries() *Series
 	CountSamples() int
+	LastSample() prompb.Sample
 	getSample(int) *prompb.Sample
 }
 
@@ -47,6 +48,10 @@ func (t *promSample) GetSeries() *Series {
 
 func (t *promSample) CountSamples() int {
 	return len(t.samples)
+}
+
+func (t *promSample) LastSample() prompb.Sample {
+	return t.samples[len(t.samples)-1]
 }
 
 func (t *promSample) getSample(index int) *prompb.Sample {

@@ -23,7 +23,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
+func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -38,7 +38,7 @@ func GenerateRouter(apiConf *Config, metrics *Metrics, client *pgclient.Client, 
 		dataParser.AddPreprocessor(preproc)
 	}
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, dataParser, elector, metrics))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, dataParser, elector))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {

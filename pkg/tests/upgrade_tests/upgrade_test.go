@@ -35,6 +35,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/runner"
+	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -44,6 +45,10 @@ var (
 	printLogs          = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	baseExtensionState testhelpers.ExtensionState
 )
+
+func init() {
+	tput.InitWatcher(0)
+}
 
 func TestMain(m *testing.M) {
 	var code int

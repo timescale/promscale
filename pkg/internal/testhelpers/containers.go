@@ -174,7 +174,7 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	require.NoError(t, err)
 
 	pgConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		_, err = conn.Exec(context.Background(), "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+		_, err := conn.Exec(context.Background(), "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
 		return err
 	}
 

@@ -12,6 +12,8 @@ import (
 )
 
 var (
+	// MaxSentTimestamp is the max timestamp sent to the database.
+	MaxSentTimestamp   = int64(0)
 	MetricBatcherChCap = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
@@ -19,7 +21,6 @@ var (
 			Help:      "Capacity of metric batcher channel",
 		},
 	)
-
 	MetricBatcherChLen = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
@@ -28,7 +29,6 @@ var (
 			Buckets:   util.HistogramBucketsSaturating(0, 2, MetricBatcherChannelCap),
 		},
 	)
-
 	MetricBatcherFlushSeries = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
@@ -37,7 +37,6 @@ var (
 			Buckets:   util.HistogramBucketsSaturating(1, 2, flushSize),
 		},
 	)
-
 	NumInsertsPerBatch = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
@@ -100,6 +99,13 @@ var (
 		},
 		func() float64 { return float64(len(SamplesCopierChannelToMonitor)) },
 	)
+	activeWriteRequests = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Name:      "write_requests_processing",
+			Help:      "Number of active ingestion occurring in Promscale at the moment.",
+		},
+	)
 )
 
 func setCopierChannelToMonitor(toSamplesCopiers chan copyRequest) {
@@ -122,6 +128,7 @@ func init() {
 		MetadataBatchInsertDuration,
 		SamplesCopierChCap,
 		SamplesCopierChLen,
+		activeWriteRequests,
 	)
 
 	MetricBatcherChCap.Set(MetricBatcherChannelCap)

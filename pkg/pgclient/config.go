@@ -75,9 +75,6 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.BoolVar(&cfg.IgnoreCompressedChunks, "ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
 		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
 		"However, setting this to true will save your resources that may be required during decompression. ")
-	fs.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge asynchronous inserts. "+
-		"If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
-	fs.IntVar(&cfg.ReportInterval, "tput-report", 0, "Interval in seconds at which throughput should be reported.")
 	fs.IntVar(&cfg.WriteConnectionsPerProc, "db-writer-connection-concurrency", 4, "Maximum number of database connections for writing per go process.")
 	fs.IntVar(&cfg.MaxConnections, "db-connections-max", -1, "Maximum number of connections to the database that should be opened at once. "+
 		"It defaults to 80% of the maximum connections that the database can handle.")
