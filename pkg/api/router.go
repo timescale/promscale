@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/felixge/fgprof"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
@@ -104,6 +105,8 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	router.Get("/debug/pprof/block", pprof.Handler("block").ServeHTTP)
 	router.Get("/debug/pprof/allocs", pprof.Handler("allocs").ServeHTTP)
 	router.Get("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
+
+	router.Get("/debug/fgprof", fgprof.Handler().ServeHTTP)
 
 	return router, nil
 }

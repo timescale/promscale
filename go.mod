@@ -10,6 +10,7 @@ require (
 	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.0.0
+	github.com/felixge/fgprof v0.9.1
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.3
