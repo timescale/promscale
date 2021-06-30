@@ -457,81 +457,90 @@ func calledByTimestamp(path []parser.Node) bool {
 }
 
 var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
+var rateIncreaseExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
 
-/* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
-func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
-	if extension.ExtensionIsInstalled && qh != nil {
-		//switch on the current node being processed
-		switch n := qh.CurrentNode.(type) {
-		case *parser.VectorSelector:
-			//TODO: handle the instant query (hints.Step==0) case too.
-			/* vector selector pushdown improves performance by selecting from the database only the last point
-			* in a vector selector window(step) this decreases the amount of samples transferred from the DB to Promscale
-			* by orders of magnitude. A vector selector aggregate also does not require ordered inputs which saves
-			* a sort and allows for parallel evaluation. */
-			if hints != nil &&
-				hints.Step > 0 &&
-				hints.Range == 0 &&
-				!calledByTimestamp(path) &&
-				n.OriginalOffset == time.Duration(0) &&
-				n.Offset == time.Duration(0) &&
-				!hasSubquery(path) &&
-				vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
-				qf := aggregators{
-					timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
-					timeParams:  []interface{}{qh.StartTime, qh.EndTime, time.Duration(hints.Step) * time.Millisecond},
-					valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
-					valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
-					unOrdered:   true,
-				}
-				return &qf, qh.CurrentNode, nil
-			}
-		default:
-			//No pushdown optimization by default
+func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, error) {
+	queryStart := hints.Start + hints.Range
+	queryEnd := hints.End
+	stepDuration := time.Second
+	rangeDuration := time.Duration(hints.Range) * time.Millisecond
+
+	if hints.Step > 0 {
+		stepDuration = time.Duration(hints.Step) * time.Millisecond
+	} else {
+		if queryStart != queryEnd {
+			return nil, fmt.Errorf("query start should equal query end")
 		}
 	}
-	if extension.ExtensionIsInstalled && qh != nil && path != nil && hints != nil && len(path) >= 2 && !hasSubquery(path) {
-		var topNode parser.Node
-
-		//switch on the 2nd-to-last last path node
-		node := path[len(path)-2]
-		switch n := node.(type) {
-		case *parser.Call:
-			if n.Func.Name == "delta" {
-				topNode = node
-				queryStart := hints.Start + hints.Range
-				queryEnd := hints.End
-				stepDuration := time.Second
-				rangeDuration := time.Duration(hints.Range) * time.Millisecond
-
-				if hints.Step > 0 {
-					stepDuration = time.Duration(hints.Step) * time.Millisecond
-				} else {
-					if queryStart != queryEnd {
-						panic("query start should equal query end")
-					}
-				}
-				qf := aggregators{
-					timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
-					timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
-					valueClause: "prom_delta($%d, $%d,$%d, $%d, time, value)",
-					valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
-					unOrdered:   false,
-				}
-				return &qf, topNode, nil
-			}
-		default:
-			//No pushdown optimization by default
-		}
-	}
-
 	qf := aggregators{
+		timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
+		timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
+		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
+		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
+		unOrdered:   false,
+	}
+	return &qf, nil
+}
+
+func getDefaultAggregators() *aggregators {
+	return &aggregators{
 		timeClause:  "array_agg(time)",
 		valueClause: "array_agg(value)",
 		unOrdered:   false,
 	}
+}
 
-	return &qf, nil, nil
+/* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
+func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
+	if !extension.ExtensionIsInstalled || qh == nil || hasSubquery(path) || hints == nil {
+		return getDefaultAggregators(), nil, nil
+	}
+
+	//switch on the current node being processed
+	vs, isVectorSelector := qh.CurrentNode.(*parser.VectorSelector)
+	if isVectorSelector {
+		/* Try to optimize the aggregation first since that would return less data than a plain vector selector */
+		if len(path) >= 2 {
+			//switch on the 2nd-to-last last path node
+			node := path[len(path)-2]
+			callNode, isCall := node.(*parser.Call)
+			if isCall {
+				switch callNode.Func.Name {
+				case "delta":
+					agg, err := callAggregator(hints, callNode.Func.Name)
+					return agg, node, err
+				case "rate", "increase":
+					if rateIncreaseExtensionRange(extension.PromscaleExtensionVersion) {
+						agg, err := callAggregator(hints, callNode.Func.Name)
+						return agg, node, err
+					}
+				}
+			}
+		}
+
+		//TODO: handle the instant query (hints.Step==0) case too.
+		/* vector selector pushdown improves performance by selecting from the database only the last point
+		* in a vector selector window(step) this decreases the amount of samples transferred from the DB to Promscale
+		* by orders of magnitude. A vector selector aggregate also does not require ordered inputs which saves
+		* a sort and allows for parallel evaluation. */
+		if hints.Step > 0 &&
+			hints.Range == 0 && /* So this is not an aggregate. That's optimized above */
+			!calledByTimestamp(path) &&
+			vs.OriginalOffset == time.Duration(0) &&
+			vs.Offset == time.Duration(0) &&
+			vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
+			qf := aggregators{
+				timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
+				timeParams:  []interface{}{qh.StartTime, qh.EndTime, time.Duration(hints.Step) * time.Millisecond},
+				valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
+				valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
+				unOrdered:   true,
+			}
+			return &qf, qh.CurrentNode, nil
+		}
+	}
+
+	return getDefaultAggregators(), nil, nil
 }
 
 func GetSeriesPerMetric(rows pgx.Rows) ([]string, [][]pgmodel.SeriesID, error) {
