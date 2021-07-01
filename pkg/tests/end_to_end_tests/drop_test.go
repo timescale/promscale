@@ -180,7 +180,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Errorf("Expected there to be a chunk")
 		}
 
-		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
+		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance(log_verbose=>true)")
 		if err != nil {
 			t.Fatal(err)
 		}
