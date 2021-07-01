@@ -31,17 +31,18 @@ import (
 )
 
 var (
-	testDatabase      = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	updateGoldenFiles = flag.Bool("update", false, "update the golden files of this test")
-	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
-	useExtension      = flag.Bool("use-extension", true, "use the promscale extension")
-	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
-	useTimescale2     = flag.Bool("use-timescale2", true, "use TimescaleDB 2.0")
-	postgresVersion   = flag.Int("postgres-version-major", 13, "Major version of Postgres")
-	useMultinode      = flag.Bool("use-multinode", false, "use TimescaleDB 2.0 Multinode")
-	printLogs         = flag.Bool("print-logs", false, "print TimescaleDB logs")
-	extendedTest      = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
-	logLevel          = flag.String("log-level", "debug", "Logging level")
+	testDatabase          = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	updateGoldenFiles     = flag.Bool("update", false, "update the golden files of this test")
+	useDocker             = flag.Bool("use-docker", true, "start database using a docker container")
+	useExtension          = flag.Bool("use-extension", true, "use the promscale extension")
+	useTimescaleDB        = flag.Bool("use-timescaledb", true, "use TimescaleDB")
+	useTimescale2         = flag.Bool("use-timescale2", true, "use TimescaleDB 2.0")
+	postgresVersion       = flag.Int("postgres-version-major", 13, "Major version of Postgres")
+	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB 2.0 Multinode")
+	useTimescaleDBNightly = flag.Bool("use-timescaledb-nightly", false, "use TimescaleDB nightly images")
+	printLogs             = flag.Bool("print-logs", false, "print TimescaleDB logs")
+	extendedTest          = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
+	logLevel              = flag.String("log-level", "debug", "Logging level")
 
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
@@ -74,7 +75,11 @@ func setExtensionState() {
 
 	if *useTimescale2 {
 		*useTimescaleDB = true
-		extensionState.UseTimescale2()
+		extensionState.UseTimescaleDB2()
+	}
+
+	if *useTimescaleDBNightly {
+		extensionState.UseTimescaleNightly()
 	}
 
 	if *useMultinode {

@@ -143,11 +143,11 @@ jobs:
 
     - name: Test ${{ matrix.test-setups.name }}
       env:
+        PG: ${{ matrix.test-setups.pg }}
         EXT: ${{ matrix.test-setups.ext }}
         TSDB: ${{ matrix.test-setups.tsdb }}
         TSDB2: ${{ matrix.test-setups.tsdb2 }}
         MULTI: ${{ matrix.test-setups.multi }}
-        PG: ${{ matrix.test-setups.pg }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
       run: go test -race ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI -postgres-version-major=$PG > $SHORTNAME-test-run.log  2>&1
 

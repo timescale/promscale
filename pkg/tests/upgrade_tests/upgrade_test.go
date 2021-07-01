@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 	var code int
 	flag.Parse()
 	baseExtensionState.UseTimescaleDB()
-	baseExtensionState.UseTimescale2()
+	baseExtensionState.UseTimescaleDB2()
 	baseExtensionState.UsePG12()
 	if *useExtension {
 		baseExtensionState.UsePromscale()
