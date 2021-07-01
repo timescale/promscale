@@ -11,11 +11,9 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
@@ -37,13 +35,19 @@ type QueryHints struct {
 	Lookback    time.Duration
 }
 
+// SerieSet adds a Close method to storage.SeriesSet to provide a way to free memory
+type SeriesSet interface {
+	storage.SeriesSet
+	Close()
+}
+
 // Querier queries the data using the provided query data and returns the
 // matching timeseries.
 type Querier interface {
 	// Query returns resulting timeseries for a query.
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
 	// Select returns a series set that matches the supplied query parameters.
-	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node)
+	Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node)
 }
 
 const (
@@ -78,7 +82,7 @@ var _ Querier = (*pgxQuerier)(nil)
 
 // Select implements the Querier interface. It is the entry point for our
 // own version of the Prometheus engine.
-func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node) {
 	rows, topNode, err := q.getResultRows(mint, maxt, hints, qh, path, ms)
 	if err != nil {
 		return errorSeriesSet{err: err}, nil
@@ -135,13 +139,6 @@ func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 	return result, nil
 }
 
-type timescaleRow struct {
-	labelIds []int64
-	times    pgtype.TimestamptzArray
-	values   pgtype.Float8Array
-	err      error
-}
-
 // getResultRows fetches the result row datasets from the database using the
 // supplied query parameters.
 func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) ([]timescaleRow, parser.Node, error) {
@@ -194,7 +191,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	}
 	filter.metric = tableName
 
-	sqlQuery, values, topNode, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, qh, path)
+	sqlQuery, values, topNode, tsSeries, err := buildTimeseriesByLabelClausesQuery(filter, cases, values, hints, qh, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -211,7 +208,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	defer rows.Close()
 
 	// TODO this allocation assumes we usually have 1 row, if not, refactor
-	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows)
+	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows, tsSeries)
 	return tsRows, topNode, err
 }
 
@@ -267,7 +264,7 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 			return nil, nil, err
 		}
 		// Append all rows into results.
-		results, err = appendTsRows(results, rows)
+		results, err = appendTsRows(results, rows, nil)
 		// Can't defer because we need to Close before the next loop iteration.
 		rows.Close()
 		if err != nil {
@@ -330,24 +327,6 @@ func (q *pgxQuerier) queryMetricTableName(metric string) (string, error) {
 	return tableName, nil
 }
 
-// appendTsRows adds new results rows to already existing result rows and
-// returns the as a result.
-func appendTsRows(out []timescaleRow, in pgxconn.PgxRows) ([]timescaleRow, error) {
-	if in.Err() != nil {
-		return out, in.Err()
-	}
-	for in.Next() {
-		var row timescaleRow
-		row.err = in.Scan(&row.labelIds, &row.times, &row.values)
-		out = append(out, row)
-		if row.err != nil {
-			log.Error("err", row.err)
-			return out, row.err
-		}
-	}
-	return out, in.Err()
-}
-
 // errorSeriesSet represents an error result in a form of a series set.
 // This behavior is inherited from Prometheus codebase.
 type errorSeriesSet struct {
@@ -358,6 +337,7 @@ func (errorSeriesSet) Next() bool                   { return false }
 func (errorSeriesSet) At() storage.Series           { return nil }
 func (e errorSeriesSet) Err() error                 { return e.err }
 func (e errorSeriesSet) Warnings() storage.Warnings { return nil }
+func (e errorSeriesSet) Close()                     {}
 
 type labelQuerier interface {
 	LabelsForIdMap(idMap map[int64]labels.Label) (err error)

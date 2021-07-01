@@ -413,7 +413,7 @@ func genPgxRows(m [][]seriesSetRow, err error) []timescaleRow {
 		for _, r := range mm {
 			result = append(result, timescaleRow{
 				labelIds: r.labels,
-				times:    toTimestampTzArray(r.timestamps),
+				times:    newRowTimestampSeries(toTimestampTzArray(r.timestamps)),
 				values:   toFloat8Array(r.values),
 				err:      err,
 			})
@@ -423,16 +423,16 @@ func genPgxRows(m [][]seriesSetRow, err error) []timescaleRow {
 	return result
 }
 
-func toTimestampTzArray(times []pgtype.Timestamptz) pgtype.TimestamptzArray {
-	return pgtype.TimestamptzArray{
+func toTimestampTzArray(times []pgtype.Timestamptz) *pgtype.TimestamptzArray {
+	return &pgtype.TimestamptzArray{
 		Elements:   times,
 		Dimensions: nil,
 		Status:     pgtype.Present,
 	}
 }
 
-func toFloat8Array(values []pgtype.Float8) pgtype.Float8Array {
-	return pgtype.Float8Array{
+func toFloat8Array(values []pgtype.Float8) *pgtype.Float8Array {
+	return &pgtype.Float8Array{
 		Elements:   values,
 		Dimensions: nil,
 		Status:     pgtype.Present,

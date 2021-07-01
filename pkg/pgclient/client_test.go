@@ -25,7 +25,7 @@ type mockQuerier struct {
 
 var _ querier.Querier = (*mockQuerier)(nil)
 
-func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *querier.QueryHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *querier.QueryHints, path []parser.Node, ms ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
 	return nil, nil
 }
 

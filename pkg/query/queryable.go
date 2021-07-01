@@ -38,6 +38,7 @@ type querier struct {
 	mint, maxt    int64
 	metricsReader pgQuerier.Querier
 	labelsReader  lreader.LabelsReader
+	seriesSets    []pgQuerier.SeriesSet
 }
 
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
@@ -50,10 +51,15 @@ func (q querier) LabelNames() ([]string, storage.Warnings, error) {
 	return lNames, nil, err
 }
 
-func (q querier) Close() error {
+func (q *querier) Close() error {
+	for _, ss := range q.seriesSets {
+		ss.Close()
+	}
 	return nil
 }
 
-func (q querier) Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	return q.metricsReader.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
+func (q *querier) Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	ss, n := q.metricsReader.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
+	q.seriesSets = append(q.seriesSets, ss)
+	return ss, n
 }

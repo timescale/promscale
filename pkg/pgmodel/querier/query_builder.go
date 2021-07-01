@@ -101,10 +101,10 @@ const (
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
 	*/
-	timeseriesByMetricSQLFormat = `SELECT series.labels,  result.time_array, result.value_array
+	timeseriesByMetricSQLFormat = `SELECT series.labels,  %[7]s
 	FROM %[2]s series
 	INNER JOIN LATERAL (
-		SELECT %[6]s as time_array, %[7]s as value_array
+		SELECT %[6]s
 		FROM
 		(
 			SELECT time, value
@@ -121,10 +121,10 @@ const (
 	/* optimized for no clauses besides __name__
 	   uses a inner join without a lateral to allow for better parallel execution
 	*/
-	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels,  result.time_array, result.value_array
+	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels,  %[7]s
 	FROM %[2]s series
 	INNER JOIN (
-		SELECT series_id, %[6]s as time_array, %[7]s as value_array
+		SELECT series_id, %[6]s
 		FROM
 		(
 			SELECT series_id, time, value
@@ -322,7 +322,7 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 			return nil, row.err
 		}
 
-		if len(row.times.Elements) != len(row.values.Elements) {
+		if row.times.Len() != len(row.values.Elements) {
 			return nil, errors.ErrQueryMismatchTimestampValue
 		}
 
@@ -348,12 +348,16 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 
 		result := &prompb.TimeSeries{
 			Labels:  promLabels,
-			Samples: make([]prompb.Sample, 0, len(row.times.Elements)),
+			Samples: make([]prompb.Sample, 0, row.times.Len()),
 		}
 
-		for i := range row.times.Elements {
+		for i := 0; i < row.times.Len(); i++ {
+			ts, ok := row.times.At(i)
+			if !ok {
+				return nil, fmt.Errorf("invalid timestamp found")
+			}
 			result.Samples = append(result.Samples, prompb.Sample{
-				Timestamp: pgmodel.TimestamptzToMs(row.times.Elements[i]),
+				Timestamp: ts,
 				Value:     row.values.Elements[i].Float,
 			})
 		}
@@ -384,20 +388,30 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmod
 }
 
 func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string, values []interface{},
-	hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (string, []interface{}, parser.Node, error) {
+	hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (string, []interface{}, parser.Node, TimestampSeries, error) {
 	qf, node, err := getAggregators(hints, qh, path)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
-	timeClauseBound, values, err := setParameterNumbers(qf.timeClause, values, qf.timeParams...)
-	if err != nil {
-		return "", nil, nil, err
+	selectors := []string{}
+	selectorClauses := []string{}
+
+	if qf.timeClause != "" {
+		var timeClauseBound string
+		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+		selectors = append(selectors, "result.time_array")
+		selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
 	}
 	valueClauseBound, values, err := setParameterNumbers(qf.valueClause, values, qf.valueParams...)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, err
 	}
+	selectors = append(selectors, "result.value_array")
+	selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
 
 	orderByClause := "ORDER BY time"
 	if qf.unOrdered {
@@ -418,12 +432,12 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
-		timeClauseBound,
-		valueClauseBound,
+		strings.Join(selectorClauses, ", "),
+		strings.Join(selectors, ", "),
 		orderByClause,
 	)
 
-	return finalSQL, values, node, nil
+	return finalSQL, values, node, qf.tsSeries, nil
 }
 
 func hasSubquery(path []parser.Node) bool {
@@ -442,6 +456,7 @@ type aggregators struct {
 	valueClause string
 	valueParams []interface{}
 	unOrdered   bool
+	tsSeries    TimestampSeries //can be NULL and only present if timeClause == ""
 }
 
 /* vectorSelectors called by the timestamp function have special handling see engine.go */
@@ -473,11 +488,10 @@ func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, 
 		}
 	}
 	qf := aggregators{
-		timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
-		timeParams:  []interface{}{model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration},
 		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
 		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
 		unOrdered:   false,
+		tsSeries:    newRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
 	}
 	return &qf, nil
 }
@@ -530,11 +544,10 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 			vs.Offset == time.Duration(0) &&
 			vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
 			qf := aggregators{
-				timeClause:  "ARRAY(SELECT generate_series($%d::timestamptz, $%d::timestamptz, $%d))",
-				timeParams:  []interface{}{qh.StartTime, qh.EndTime, time.Duration(hints.Step) * time.Millisecond},
 				valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
 				valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
 				unOrdered:   true,
+				tsSeries:    newRegularTimestampSeries(qh.StartTime, qh.EndTime, time.Duration(hints.Step)*time.Millisecond),
 			}
 			return &qf, qh.CurrentNode, nil
 		}

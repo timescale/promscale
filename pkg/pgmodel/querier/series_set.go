@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 const (
@@ -34,7 +33,7 @@ type pgxSeriesSet struct {
 // pgxSeriesSet must implement storage.SeriesSet
 var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
 
-func buildSeriesSet(rows []timescaleRow, querier labelQuerier) storage.SeriesSet {
+func buildSeriesSet(rows []timescaleRow, querier labelQuerier) SeriesSet {
 	labelIDMap := make(map[int64]labels.Label)
 	initializeLabeIDMap(labelIDMap, rows)
 
@@ -77,7 +76,7 @@ func (p *pgxSeriesSet) At() storage.Series {
 	if row.err != nil {
 		return nil
 	}
-	if len(row.times.Elements) != len(row.values.Elements) {
+	if row.times.Len() != len(row.values.Elements) {
 		p.err = errors.ErrInvalidRowData
 		return nil
 	}
@@ -127,11 +126,17 @@ func (p *pgxSeriesSet) Err() error {
 
 func (p *pgxSeriesSet) Warnings() storage.Warnings { return nil }
 
+func (p *pgxSeriesSet) Close() {
+	for _, row := range p.rows {
+		row.Close()
+	}
+}
+
 // pgxSeries implements storage.Series.
 type pgxSeries struct {
 	labels labels.Labels
-	times  pgtype.TimestamptzArray
-	values pgtype.Float8Array
+	times  TimestampSeries
+	values *pgtype.Float8Array
 }
 
 // Labels returns the label names and values for the series.
@@ -148,15 +153,15 @@ func (p *pgxSeries) Iterator() chunkenc.Iterator {
 type pgxSeriesIterator struct {
 	cur          int
 	totalSamples int
-	times        pgtype.TimestamptzArray
-	values       pgtype.Float8Array
+	times        TimestampSeries
+	values       *pgtype.Float8Array
 }
 
 // newIterator returns an iterator over the samples. It expects times and values to be the same length.
-func newIterator(times pgtype.TimestamptzArray, values pgtype.Float8Array) *pgxSeriesIterator {
+func newIterator(times TimestampSeries, values *pgtype.Float8Array) *pgxSeriesIterator {
 	return &pgxSeriesIterator{
 		cur:          -1,
-		totalSamples: len(times.Elements),
+		totalSamples: times.Len(),
 		times:        times,
 		values:       values,
 	}
@@ -177,7 +182,8 @@ func (p *pgxSeriesIterator) Seek(t int64) bool {
 
 // getTs returns a Unix timestamp in milliseconds.
 func (p *pgxSeriesIterator) getTs() int64 {
-	return model.TimestamptzToMs(p.times.Elements[p.cur])
+	ts, _ := p.times.At(p.cur)
+	return ts
 }
 
 func (p *pgxSeriesIterator) getVal() float64 {
@@ -199,8 +205,8 @@ func (p *pgxSeriesIterator) Next() bool {
 		if p.cur >= p.totalSamples {
 			return false
 		}
-		if p.times.Elements[p.cur].Status == pgtype.Present &&
-			p.values.Elements[p.cur].Status == pgtype.Present {
+		_, ok := p.times.At(p.cur)
+		if ok && p.values.Elements[p.cur].Status == pgtype.Present {
 			return true
 		}
 	}

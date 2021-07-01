@@ -127,7 +127,7 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	if sql != row.Sql {
 		dmp := diffmatchpatch.New()
 		diffs := dmp.DiffMain(sql, row.Sql, false)
-		r.t.Errorf("@ %d unexpected query:\ngot:\n\t%s\nexpected:\n\t%s\ndiff:\n\t%v", idx, sql, row.Sql, dmp.DiffPrettyText(diffs))
+		r.t.Errorf("@ %d unexpected query:\ngot:\n\t'%s'\nexpected:\n\t'%s'\ndiff:\n\t%v", idx, sql, row.Sql, dmp.DiffPrettyText(diffs))
 	}
 
 	require.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
@@ -279,28 +279,24 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 		case []time.Time:
 			if d, ok := dest[i].(*[]time.Time); ok {
 				*d = s
-			} else if d, ok := dest[i].(*pgtype.TimestamptzArray); ok {
-				*d = pgtype.TimestamptzArray{
-					Elements: make([]pgtype.Timestamptz, len(s)),
+			} else if d, ok := dest[i].(pgtype.Value); ok {
+				err := d.Set(s)
+				if err != nil {
+					return err
 				}
-				for i := range s {
-					d.Elements[i] = pgtype.Timestamptz{
-						Time: s[i],
-					}
-				}
+			} else {
+				return fmt.Errorf("wrong value type []time.Time")
 			}
 		case []float64:
 			if d, ok := dest[i].(*[]float64); ok {
 				*d = s
-			} else if d, ok := dest[i].(*pgtype.Float8Array); ok {
-				*d = pgtype.Float8Array{
-					Elements: make([]pgtype.Float8, len(s)),
+			} else if d, ok := dest[i].(pgtype.Value); ok {
+				err := d.Set(s)
+				if err != nil {
+					return err
 				}
-				for i := range s {
-					d.Elements[i] = pgtype.Float8{
-						Float: s[i],
-					}
-				}
+			} else {
+				return fmt.Errorf("wrong value type []float64")
 			}
 		case []int64:
 			if d, ok := dest[i].(*[]int64); ok {
