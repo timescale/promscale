@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/url"
 
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
@@ -59,8 +59,7 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 		return nil, err
 	}
 
-	dbConn := pgxconn.NewPgxConn(connectionPool)
-	client, err := NewClientWithPool(cfg, numCopiers, dbConn, mt, readOnly)
+	client, err := NewClientWithPool(cfg, numCopiers, connectionPool, mt, readOnly)
 	if err != nil {
 		return client, err
 	}
@@ -127,7 +126,8 @@ func getRedactedConnStr(s string) string {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
+func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
+	dbConn := pgxconn.NewPgxConn(connPool)
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -148,7 +148,9 @@ func NewClientWithPool(cfg *Config, numCopiers int, dbConn pgxconn.PgxConn, mt t
 	}
 
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
-	dbQuerier := querier.NewQuerier(dbConn, metricsCache, labelsReader, mt.ReadAuthorizer())
+
+	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)
+	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)

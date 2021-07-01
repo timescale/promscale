@@ -543,7 +543,7 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 	return getDefaultAggregators(), nil, nil
 }
 
-func GetSeriesPerMetric(rows pgx.Rows) ([]string, [][]pgmodel.SeriesID, error) {
+func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, [][]pgmodel.SeriesID, error) {
 	metrics := make([]string, 0)
 	series := make([][]pgmodel.SeriesID, 0)
 
