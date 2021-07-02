@@ -16,6 +16,13 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
+var slabPool = sync.Pool{New: func() interface{} { return new(Slab) }}
+
+func PutSlab(s *Slab) {
+	s.stores = s.stores[:0]
+	slabPool.Put(s)
+}
+
 // Slab represents an in-memory storage for data that is fetched by the reader.
 type Slab struct {
 	id                    int64
@@ -120,6 +127,8 @@ func (s *Slab) Fetch(ctx context.Context, client *utils.Client, mint, maxt int64
 				cancelFnc()
 			}
 			return fmt.Errorf("executing client-read: %w", response)
+		default:
+			panic("invalid response type")
 		}
 	}
 	close(responseChan)
@@ -194,7 +203,7 @@ func (s *Slab) Series() []*prompb.TimeSeries {
 	return s.timeseries
 }
 
-// GetProgressSeries returns a time-series after appending a sample to the progress-metric.
+// UpdateProgressSeries returns a time-series after appending a sample to the progress-metric.
 func (s *Slab) UpdateProgressSeries(ts *prompb.TimeSeries) *prompb.TimeSeries {
 	ts.Samples = []prompb.Sample{{Timestamp: s.Maxt(), Value: 1}} // One sample per slab.
 	return ts

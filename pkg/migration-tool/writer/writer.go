@@ -7,8 +7,9 @@ package writer
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/prompb"
@@ -17,21 +18,20 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-const (
-	defaultWriteTimeout  = time.Minute * 5
-	backOffRetryDuration = time.Millisecond * 100
-)
-
 // Config is config for writer.
 type Config struct {
 	Context          context.Context
-	Url              string
 	MigrationJobName string // Label value to the progress metric.
 	ConcurrentPush   int
+	ClientConfig     utils.ClientConfig
 	HTTPConfig       config.HTTPClientConfig
 
 	ProgressEnabled    bool
 	ProgressMetricName string // Metric name to main the last pushed maxt to remote write storage.
+
+	GarbageCollectOnPush bool
+	//nolint
+	sigGC chan struct{}
 
 	SigSlabRead chan *planner.Slab
 	SigSlabStop chan struct{}
@@ -46,7 +46,7 @@ type Write struct {
 
 // New returns a new remote write. It is responsible for writing to the remote write storage.
 func New(config Config) (*Write, error) {
-	ss, err := newShardsSet(config.Context, config.HTTPConfig, config.Url, config.ConcurrentPush)
+	ss, err := newShardsSet(config.Context, config.HTTPConfig, config.ClientConfig, config.ConcurrentPush)
 	if err != nil {
 		return nil, fmt.Errorf("creating shards: %w", err)
 	}
@@ -58,6 +58,9 @@ func New(config Config) (*Write, error) {
 		write.progressTimeSeries = &prompb.TimeSeries{
 			Labels: utils.LabelSet(config.ProgressMetricName, config.MigrationJobName),
 		}
+	}
+	if config.GarbageCollectOnPush {
+		write.sigGC = make(chan struct{}, 1)
 	}
 	return write, nil
 }
@@ -120,18 +123,43 @@ func (w *Write) Run(errChan chan<- error) {
 					errChan <- fmt.Errorf("remote-write run: %w", err)
 					return
 				}
+				planner.PutSlab(slabRef)
+				w.collectGarbage()
 			}
 		}
 	}()
 }
 
-// Blocks returns the total number of blocks pushed to the remote-write storage.
+var gcRunner sync.Once
+
+func (w *Write) collectGarbage() {
+	if w.sigGC == nil {
+		// sigGC is nil if w.GarbageCollectOnPush is set to false.
+		return
+	}
+	gcRunner.Do(func() {
+		go gc(w.sigGC)
+	})
+	select {
+	case w.sigGC <- struct{}{}:
+	default:
+		// Skip GC as its already running.
+	}
+}
+
+func gc(collect <-chan struct{}) {
+	for range collect {
+		runtime.GC() // This is blocking, hence we run asynchronously.
+	}
+}
+
+// Slabs returns the total number of slabs pushed to the remote-write storage.
 func (w *Write) Slabs() int64 {
 	return atomic.LoadInt64(&w.slabsPushed)
 }
 
 // pushProgressMetric pushes the progress-metric to the remote storage system.
 func (w *Write) pushProgressMetric(series *prompb.TimeSeries) int {
-	var shards = w.shardsSet
+	shards := w.shardsSet
 	return shards.scheduleTS([]prompb.TimeSeries{*series})
 }

@@ -16,12 +16,27 @@ import (
 	"github.com/timescale/promscale/pkg/migration-tool/writer"
 )
 
-var largeTimeSeries, tsMint, tsMaxt = generateLargeTimeseries()
+var (
+	largeTimeSeries, tsMint, tsMaxt = generateLargeTimeseries()
+	defaultRuntime                  = utils.ClientConfig{
+		Timeout:   time.Minute * 5,
+		OnTimeout: utils.Retry,
+		OnErr:     utils.Retry,
+		Delay:     time.Millisecond * 10,
+		MaxRetry:  6,
+	}
+)
+
+func getConfig(url string) utils.ClientConfig {
+	r := defaultRuntime
+	r.URL = url
+	return r
+}
 
 func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
-	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries)
+	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries, true)
 	defer remoteReadStorage.Close()
-	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true)
+	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true, true)
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
@@ -31,10 +46,12 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		numShards          int
 		readURL            string
 		writeURL           string
-		concurrentPulls    int
+		concurrentPull     int
 		progressMetricURL  string
 		progressMetricName string
 		progressEnabled    bool
+		laIncrement        time.Duration
+		maxReadDuration    time.Duration
 		maxSlabSizeBytes   int64
 	}{
 		name:               "ci-migration",
@@ -46,20 +63,24 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    false,
-		concurrentPulls:    20,
+		laIncrement:        time.Minute * 7,
+		maxReadDuration:    time.Hour * 3,
+		concurrentPull:     2,
 		maxSlabSizeBytes:   500 * utils.Megabyte,
 	}
 
 	// Replicate main.
 	planConfig := &plan.Config{
-		Mint:               conf.mint,
-		Maxt:               conf.maxt,
-		JobName:            conf.name,
-		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPulls,
-		ProgressEnabled:    conf.progressEnabled,
-		ProgressMetricName: conf.progressMetricName,
-		ProgressMetricURL:  conf.progressMetricURL,
+		Mint:                 conf.mint,
+		Maxt:                 conf.maxt,
+		JobName:              conf.name,
+		SlabSizeLimitBytes:   conf.maxSlabSizeBytes,
+		NumStores:            conf.concurrentPull,
+		ProgressEnabled:      conf.progressEnabled,
+		ProgressMetricName:   conf.progressMetricName,
+		ProgressClientConfig: getConfig(conf.progressMetricURL),
+		LaIncrement:          conf.laIncrement,
+		MaxReadDuration:      conf.maxReadDuration,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	if err != nil {
@@ -68,7 +89,6 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 	if !proceed {
 		t.Fatal("could not proceed")
 	}
-	planner.Quiet = true
 
 	var (
 		readErrChan  = make(chan error)
@@ -79,10 +99,10 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 
 	readerConfig := reader.Config{
 		Context:         cont,
-		Url:             conf.readURL,
+		ClientConfig:    getConfig(conf.readURL),
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
-		ConcurrentPulls: conf.concurrentPulls,
+		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigSlabRead,
 	}
 	read, err := reader.New(readerConfig)
@@ -92,7 +112,7 @@ func TestReaderWriterPlannerIntegrationWithoutHalts(t *testing.T) {
 
 	writerConfig := writer.Config{
 		Context:            cont,
-		Url:                conf.writeURL,
+		ClientConfig:       getConfig(conf.writeURL),
 		HTTPConfig:         config.HTTPClientConfig{},
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
@@ -143,9 +163,9 @@ loop:
 }
 
 func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
-	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries)
+	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries, true)
 	defer remoteReadStorage.Close()
-	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true)
+	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true, true)
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
@@ -158,8 +178,10 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		progressMetricURL  string
 		progressMetricName string
 		progressEnabled    bool
+		laIncrement        time.Duration
+		maxReadDuration    time.Duration
 		maxSlabSizeBytes   int64
-		concurrentPulls    int
+		concurrentPull     int
 	}{
 		name:               "ci-migration",
 		mint:               tsMint,
@@ -170,20 +192,24 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    true,
-		concurrentPulls:    2,
+		laIncrement:        time.Minute,
+		maxReadDuration:    time.Hour,
+		concurrentPull:     2,
 		maxSlabSizeBytes:   500 * utils.Megabyte,
 	}
 
 	// Replicate main.
 	planConfig := &plan.Config{
-		Mint:               conf.mint,
-		Maxt:               conf.maxt,
-		JobName:            conf.name,
-		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPulls,
-		ProgressEnabled:    conf.progressEnabled,
-		ProgressMetricName: conf.progressMetricName,
-		ProgressMetricURL:  conf.progressMetricURL,
+		Mint:                 conf.mint,
+		Maxt:                 conf.maxt,
+		JobName:              conf.name,
+		SlabSizeLimitBytes:   conf.maxSlabSizeBytes,
+		NumStores:            conf.concurrentPull,
+		ProgressEnabled:      conf.progressEnabled,
+		ProgressMetricName:   conf.progressMetricName,
+		ProgressClientConfig: getConfig(conf.progressMetricURL),
+		LaIncrement:          conf.laIncrement,
+		MaxReadDuration:      conf.maxReadDuration,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	if err != nil {
@@ -202,10 +228,10 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 	cont, cancelFunc := context.WithCancel(context.Background())
 	readerConfig := reader.Config{
 		Context:         cont,
-		Url:             conf.readURL,
+		ClientConfig:    getConfig(conf.readURL),
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
-		ConcurrentPulls: conf.concurrentPulls,
+		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigRead,
 	}
 	read, err := reader.New(readerConfig)
@@ -216,7 +242,7 @@ func TestReaderWriterPlannerIntegrationWithHalt(t *testing.T) {
 
 	writerConfig := writer.Config{
 		Context:            cont,
-		Url:                conf.writeURL,
+		ClientConfig:       getConfig(conf.writeURL),
 		HTTPConfig:         config.HTTPClientConfig{},
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,
@@ -307,9 +333,9 @@ loop:
 
 func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T) {
 	var largeTimeSeries, tsMint, tsMaxt = generateVeryLargeTimeseries()
-	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries)
+	remoteReadStorage, readURL := createRemoteReadServer(t, largeTimeSeries, false)
 	defer remoteReadStorage.Close()
-	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true)
+	remoteWriteStorage, writeURL, progressURL := createRemoteWriteServer(t, true, false)
 	defer remoteWriteStorage.Close()
 
 	conf := struct {
@@ -322,8 +348,10 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 		progressMetricURL  string
 		progressMetricName string
 		progressEnabled    bool
+		laIncrement        time.Duration
+		maxReadDuration    time.Duration
 		maxSlabSizeBytes   int64
-		concurrentPulls    int
+		concurrentPull     int
 	}{
 		name:               "ci-migration",
 		mint:               tsMint,
@@ -334,21 +362,25 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 		progressMetricURL:  progressURL,
 		progressMetricName: "progress_metric",
 		progressEnabled:    true,
-		concurrentPulls:    1,
+		laIncrement:        time.Minute * 3,
+		maxReadDuration:    time.Hour,
+		concurrentPull:     1,
 		maxSlabSizeBytes:   50 * 1024,
 	}
 
 	// Replicate main.
 	// Replicate main.
 	planConfig := &plan.Config{
-		Mint:               conf.mint,
-		Maxt:               conf.maxt,
-		JobName:            conf.name,
-		SlabSizeLimitBytes: conf.maxSlabSizeBytes,
-		NumStores:          conf.concurrentPulls,
-		ProgressEnabled:    conf.progressEnabled,
-		ProgressMetricName: conf.progressMetricName,
-		ProgressMetricURL:  conf.progressMetricURL,
+		Mint:                 conf.mint,
+		Maxt:                 conf.maxt,
+		JobName:              conf.name,
+		SlabSizeLimitBytes:   conf.maxSlabSizeBytes,
+		NumStores:            conf.concurrentPull,
+		ProgressEnabled:      conf.progressEnabled,
+		ProgressMetricName:   conf.progressMetricName,
+		ProgressClientConfig: getConfig(conf.progressMetricURL),
+		LaIncrement:          conf.laIncrement,
+		MaxReadDuration:      conf.maxReadDuration,
 	}
 	planner, proceed, err := plan.Init(planConfig)
 	planner.TestCheckFunc = func() {
@@ -373,10 +405,10 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 
 	readerConfig := reader.Config{
 		Context:         cont,
-		Url:             conf.readURL,
+		ClientConfig:    getConfig(conf.readURL),
 		Plan:            planner,
 		HTTPConfig:      config.HTTPClientConfig{},
-		ConcurrentPulls: conf.concurrentPulls,
+		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigRead,
 	}
 	read, err := reader.New(readerConfig)
@@ -387,7 +419,7 @@ func TestReaderWriterPlannerIntegrationWithHaltWithSlabSizeOverflow(t *testing.T
 
 	writerConfig := writer.Config{
 		Context:            cont,
-		Url:                conf.writeURL,
+		ClientConfig:       getConfig(conf.writeURL),
 		HTTPConfig:         config.HTTPClientConfig{},
 		ProgressEnabled:    conf.progressEnabled,
 		ProgressMetricName: conf.progressMetricName,

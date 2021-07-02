@@ -28,7 +28,7 @@ func init() {
 	labelsCache = clockcache.WithMax(maxLabelsCacheSize)
 }
 
-// CreatePrombRequest creates a new promb query based on the matchers.
+// CreatePrombQuery creates a new promb query based on the matchers.
 func CreatePrombQuery(mint, maxt int64, matchers []*labels.Matcher) (*prompb.Query, error) {
 	ms, err := toLabelMatchers(matchers)
 	if err != nil {

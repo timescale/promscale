@@ -6,14 +6,13 @@ package planner
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
-var (
-	slabSizeLimit int64 = utils.Megabyte * 500
-)
+var slabSizeLimit int64 = utils.Megabyte * 500
 
 func TestTimeDeltaDetermination(t *testing.T) {
 	cases := []struct {
@@ -119,9 +118,11 @@ func TestTimeDeltaDetermination(t *testing.T) {
 			expOutputTimeDelta: 100 * minute,
 		},
 	}
-
+	cfg := new(Config)
+	cfg.LaIncrement = time.Minute
+	cfg.MaxReadDuration = time.Hour * 2
 	for _, c := range cases {
-		outTimeDelta := determineTimeDelta(int64(c.numBytes), slabSizeLimit, c.prevTimeDelta)
+		outTimeDelta := cfg.determineTimeDelta(int64(c.numBytes), slabSizeLimit, c.prevTimeDelta)
 		assert.Equal(t, c.expOutputTimeDelta, outTimeDelta, c.name)
 	}
 }
@@ -253,7 +254,15 @@ func TestNumSlabCreation(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		planConfig := &Config{Mint: c.startT, Maxt: c.endT, ProgressEnabled: false, SlabSizeLimitBytes: slabSizeLimit, NumStores: 2}
+		planConfig := &Config{
+			Mint:               c.startT,
+			Maxt:               c.endT,
+			ProgressEnabled:    false,
+			SlabSizeLimitBytes: slabSizeLimit,
+			NumStores:          2,
+			LaIncrement:        time.Minute,
+			MaxReadDuration:    time.Hour * 2,
+		}
 		plan, _, err := Init(planConfig)
 		if c.fails {
 			assert.Error(t, err, c.name)

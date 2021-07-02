@@ -35,7 +35,7 @@ var serverMintReceived, serverMaxtReceived int64
 
 // createRemoteWriteServer creates a write server that exposes a /write endpoint for ingesting samples. It returns a server
 // which is expected to be closed by the caller.
-func createRemoteWriteServer(t *testing.T, respectTimeOrder bool) (*remoteWriteServer, string, string) {
+func createRemoteWriteServer(t *testing.T, respectTimeOrder bool, testRetry bool) (*remoteWriteServer, string, string) {
 	if respectTimeOrder {
 		atomic.StoreInt64(&serverMintReceived, math.MaxInt64)
 		atomic.StoreInt64(&serverMaxtReceived, math.MinInt64)
@@ -43,7 +43,7 @@ func createRemoteWriteServer(t *testing.T, respectTimeOrder bool) (*remoteWriteS
 	rws := &remoteWriteServer{
 		writeStorageTimeSeries: make(map[string]prompb.TimeSeries),
 	}
-	s := httptest.NewServer(getWriteHandler(t, rws, respectTimeOrder))
+	s := httptest.NewServer(getWriteHandler(t, rws, respectTimeOrder, testRetry))
 	spg := httptest.NewServer(getProgressHandler(t, rws, matcherProgress))
 	rws.writeServer = s
 	rws.progressServer = spg
@@ -98,7 +98,9 @@ func (rwss *remoteWriteServer) Close() {
 	rwss.progressServer.Close()
 }
 
-func getWriteHandler(t *testing.T, rws *remoteWriteServer, respectTimeOrder bool) http.Handler {
+var writeRequestCount int32
+
+func getWriteHandler(t *testing.T, rws *remoteWriteServer, respectTimeOrder bool, testRetry bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// we treat invalid requests as the same as no request for
@@ -111,6 +113,21 @@ func getWriteHandler(t *testing.T, rws *remoteWriteServer, respectTimeOrder bool
 		if err != nil {
 			t.Fatal("msg", msg, "err", err.Error())
 		}
+
+		if testRetry {
+			atomic.AddInt32(&writeRequestCount, 1)
+			if atomic.LoadInt32(&writeRequestCount) >= 50 {
+				if atomic.LoadInt32(&writeRequestCount) >= 55 {
+					// Continue to fail for 5 more consecutive requests in order to test max-retries.
+					atomic.StoreInt32(&writeRequestCount, 0)
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte("known interruption"))
+				t.Logf("writer: sending error to verify retrying behaviour")
+				return
+			}
+		}
+
 		req := NewWriteRequest()
 		err = proto.Unmarshal(reqBuf, req)
 		assert.NoError(t, err)
