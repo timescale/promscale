@@ -1631,6 +1631,7 @@ BEGIN
 
     startT := clock_timestamp();
 
+    PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s', metric_name), false);
     IF log_verbose THEN
         RAISE LOG 'promscale maintenance: data retention: metric %: starting', metric_name;
     END IF;
@@ -1668,6 +1669,7 @@ BEGIN
         -- even though there are no new Ids in need of deletion,
         -- we may still have old ones to delete
         lastT := clock_timestamp();
+        PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: delete expired series', metric_name), false);
         PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at, present_epoch, last_updated);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done deleting expired series as only action in %', metric_name, clock_timestamp-lastT;
@@ -1678,6 +1680,7 @@ BEGIN
 
     -- transaction 2
         lastT := clock_timestamp();
+        PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: mark unused series', metric_name), false);
         PERFORM SCHEMA_CATALOG.mark_unused_series(metric_table, older_than, check_time);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done marking unused series in %', metric_name, clock_timestamp()-lastT;
@@ -1686,6 +1689,7 @@ BEGIN
 
     -- transaction 3
         lastT := clock_timestamp();
+        PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: drop chunks', metric_name), false);
         PERFORM SCHEMA_CATALOG.drop_metric_chunk_data(metric_name, older_than);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done dropping chunks in %', metric_name, clock_timestamp()-lastT;
@@ -1696,6 +1700,7 @@ BEGIN
 
     -- transaction 4
         lastT := clock_timestamp();
+        PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: delete expired series', metric_name), false);
         PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at, present_epoch, last_updated);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done deleting expired series in %', metric_name, clock_timestamp()-lastT;
@@ -1769,6 +1774,7 @@ BEGIN
         SELECT *
         FROM unnest(remaining_metrics)
     LOOP
+        PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: wait for lock', r.metric_name), false);
         PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name), log_verbose=>log_verbose);
         PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
@@ -1795,11 +1801,13 @@ BEGIN
     IF log_verbose THEN
         RAISE LOG 'promscale maintenance: data retention: starting';
     END IF;
+    PERFORM set_config('application_name', format('promscale maintenance: data retention'), false);
     CALL SCHEMA_CATALOG.execute_data_retention_policy(log_verbose=>log_verbose);
     IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: compression: starting';
         END IF;
+        PERFORM set_config('application_name', format('promscale maintenance: compression'), false);
         CALL SCHEMA_CATALOG.execute_compression_policy(log_verbose=>log_verbose);
     END IF;
     IF log_verbose THEN
@@ -2578,6 +2586,7 @@ BEGIN
             startT := clock_timestamp();
             RAISE LOG 'promscale maintenance: compression: metric %: starting, without lock wait', r.metric_name;
         END IF;
+        PERFORM set_config('application_name', format('promscale maintenance: compression: metric %s', r.metric_name), false);
         CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: compression: metric %: finished in %', r.metric_name, clock_timestamp()-startT;
@@ -2595,11 +2604,13 @@ BEGIN
             lockStartT := clock_timestamp();
             RAISE LOG 'promscale maintenance: compression: metric %: waiting for lock', r.metric_name;
         END IF;
+        PERFORM set_config('application_name', format('promscale maintenance: compression: metric %s: waiting on lock', r.metric_name), false);
         PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
         IF log_verbose THEN
             startT := clock_timestamp();
             RAISE LOG 'promscale maintenance: compression: metric %: starting', r.metric_name;
         END IF;
+        PERFORM set_config('application_name', format('promscale maintenance: compression: metric %s', r.metric_name), false);
         CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: compression: metric %: finished in % (lock took %; compression took %)', r.metric_name, clock_timestamp()-lockStartT, startT-lockStartT, clock_timestamp()-startT;
