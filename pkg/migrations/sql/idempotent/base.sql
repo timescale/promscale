@@ -1815,8 +1815,30 @@ CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_maintenance_job(job_id int, c
 AS $$
 DECLARE
    log_verbose boolean;
+   ae_key text;
+   ae_value text;
+   ae_load boolean := FALSE;
 BEGIN
     log_verbose := coalesce(config->>'log_verbose', 'false')::boolean;
+
+    --if auto_explain enabled in config, turn it on in a best-effort way
+    --i.e. if it fails (most likely due to lack of superuser priviliges) move on anyway.
+    BEGIN
+        FOR ae_key, ae_value IN
+           SELECT * FROM jsonb_each_text(config->'auto_explain')
+        LOOP
+            IF NOT ae_load THEN
+                ae_load := true;
+                LOAD 'auto_explain';
+            END IF;
+
+            PERFORM set_config('auto_explain.'|| ae_key, ae_value, FALSE);
+        END LOOP;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'could not set auto_explain options';
+    END;
+
+
     CALL SCHEMA_PROM.execute_maintenance(log_verbose=>log_verbose);
 END
 $$ LANGUAGE PLPGSQL;

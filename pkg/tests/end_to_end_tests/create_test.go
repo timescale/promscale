@@ -1618,9 +1618,13 @@ func TestExecuteMaintJob(t *testing.T) {
 		t.Skip("test meaningless without Timescale 2")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
-		db := dbOwner
+		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer dbSuper.Close()
 
-		execJob := func(config *string, configErr bool) {
+		execJob := func(db *pgxpool.Pool, config *string, configErr bool) {
 			_, err := db.Exec(context.Background(), "CALL _prom_catalog.execute_maintenance_job(2, $1)", config)
 			if err != nil {
 				if !configErr {
@@ -1634,13 +1638,18 @@ func TestExecuteMaintJob(t *testing.T) {
 
 		}
 
-		execJob(nil, false)
+		execJob(dbOwner, nil, false)
 		config := `{"log_verbose": true}`
-		execJob(&config, false)
+		execJob(dbOwner, &config, false)
 		config = `{"log_verbose": false}`
-		execJob(&config, false)
+		execJob(dbOwner, &config, false)
 		config = `{"log_verbose": "rr"}`
-		execJob(&config, true)
+		execJob(dbOwner, &config, true)
+		config = `{"auto_explain": {"log_min_duration": 0, "log_nested_statements": "true"}}`
+		//dbOwner will not have enough permissions for auto_explain but this should still succeed
+		execJob(dbOwner, &config, false)
+		//the superuser should be able to use auto_explain
+		execJob(dbSuper, &config, false)
 	})
 }
 
