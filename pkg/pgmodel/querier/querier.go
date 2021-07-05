@@ -7,6 +7,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgconn"
@@ -107,45 +108,36 @@ var _ Querier = (*pgxQuerier)(nil)
 
 // SelectSamples implements the Querier interface. It is the entry point for our
 // own version of the Prometheus engine.
-func (q *pgxQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node) {
+func (q *pgxQuerier) Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node) {
 	rows, topNode, err := q.getResultRows(schema.Data, mint, maxt, hints, qh, path, ms)
 	if err != nil {
 		return errorSeriesSet{err: err}, nil
 	}
 
-	ss := buildSeriesSet(rows.([]sampleRow), q.labelsReader)
+	ss := buildSeriesSet(rows.([]seriesRow), q.labelsReader)
 	return ss, topNode
 }
 
 func (q *pgxQuerier) Exemplar(ctx context.Context) ExemplarQuerier {
-	return newExemplarQuerier(ctx, q.conn, q, q.metricTableNames, q.exemplarPosCache, q.rAuth)
+	return newExemplarQuerier(ctx, q, q.exemplarPosCache)
 }
 
 type pgxExemplarQuerier struct {
-	conn                pgxconn.PgxConn
+	pgxRef              *pgxQuerier // We need a reference to pgxQuerier to reuse the existing values and functions.
 	ctx                 context.Context
-	metricTableCache    cache.MetricCache
 	exemplarKeyPosCache cache.PositionCache
-	rAuth               tenancy.ReadAuthorizer
-	pgx                 *pgxQuerier // We need a reference to pgxQuerier to reuse the existing functions.
 }
 
 // newExemplarQuerier returns a querier that can query over exemplars.
 func newExemplarQuerier(
 	ctx context.Context,
-	conn pgxconn.PgxConn,
-	pgx *pgxQuerier,
-	metricCache cache.MetricCache,
+	pgxRef *pgxQuerier,
 	exemplarCache cache.PositionCache,
-	rAuth tenancy.ReadAuthorizer,
 ) ExemplarQuerier {
 	return &pgxExemplarQuerier{
 		ctx:                 ctx,
-		conn:                conn,
-		pgx:                 pgx,
-		metricTableCache:    metricCache,
+		pgxRef:              pgxRef,
 		exemplarKeyPosCache: exemplarCache,
-		rAuth:               rAuth,
 	}
 }
 
@@ -153,48 +145,71 @@ func (eq *pgxExemplarQuerier) Select(start, end time.Time, matchersList ...[]*la
 	var (
 		numMatchers = len(matchersList)
 		results     = make([]model.ExemplarQueryResult, 0, numMatchers)
-		res         = make(chan interface{}, numMatchers)
+		rowsCh      = make(chan interface{}, numMatchers)
 	)
 	for _, matchers := range matchersList {
-		go func(m []*labels.Matcher) {
-			fmt.Println("m", m)
-			rows, _, err := eq.pgx.getResultRows(schema.Exemplar, timestamp.FromTime(start), timestamp.FromTime(end), nil, nil, m)
+		go func(matchers []*labels.Matcher) {
+			rows, _, err := eq.pgxRef.getResultRows(seriesExemplars, timestamp.FromTime(start), timestamp.FromTime(end), nil, nil, matchers)
 			if rows == nil {
 				// Result does not exists.
-				res <- nil
+				rowsCh <- nil
 				return
 			}
 			if err != nil {
-				res <- err
+				rowsCh <- err
 				return
 			}
-			res <- rows.(*exemplarResult)
+			rowsCh <- rows
 		}(matchers)
 	}
 
 	// Listen to responses.
 	var err error
+	shouldProceed := func() bool {
+		// Append rows as long as the error is nil. Once we have an error,
+		// appending response is just wasting memory as there is no use of it.
+		return err == nil
+	}
 	for i := 0; i < numMatchers; i++ {
-		resp := <-res
+		resp := <-rowsCh
 		switch out := resp.(type) {
-		case *exemplarResult:
-			// Keep appending as long as error is nil. Once we have an error, appending response is of no use.
-			result, prepareErr := prepareExemplarQueryResult(eq.conn, eq.pgx.labelsReader, eq.exemplarKeyPosCache, out)
+		case exemplarSeriesRow:
+			if !shouldProceed() {
+				continue
+			}
+			exemplars, prepareErr := prepareExemplarQueryResult(eq.pgxRef.conn, eq.pgxRef.labelsReader, eq.exemplarKeyPosCache, out)
 			if prepareErr != nil {
 				err = prepareErr
 				continue
 			}
-			results = append(results, result)
-		case error:
-			if err == nil {
-				err = out
+			results = append(results, exemplars)
+		case []exemplarSeriesRow:
+			if !shouldProceed() {
+				continue
 			}
+			for _, seriesRow := range out {
+				exemplars, prepareErr := prepareExemplarQueryResult(eq.pgxRef.conn, eq.pgxRef.labelsReader, eq.exemplarKeyPosCache, seriesRow)
+				if prepareErr != nil {
+					err = prepareErr
+					continue
+				}
+				results = append(results, exemplars)
+			}
+		case error:
+			if !shouldProceed() {
+				continue
+			}
+			err = out // Only capture the first error.
 		case nil:
+			// No result.
 		}
 	}
 	if err != nil {
-		return results, fmt.Errorf("selecting exemplars: %w", err)
+		return nil, fmt.Errorf("selecting exemplars: %w", err)
 	}
+	sort.Slice(results, func(i, j int) bool {
+		return labels.Compare(results[i].SeriesLabels, results[j].SeriesLabels) < 0
+	})
 	return results, nil
 }
 
@@ -210,12 +225,12 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	rows, _, err := q.getResultRows(schema.Data, query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
+	rows, _, err := q.getResultRows(seriesSamples, query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := buildTimeSeries(rows.([]sampleRow), q.labelsReader)
+	results, err := buildTimeSeries(rows.([]seriesRow), q.labelsReader)
 	return results, err
 }
 
@@ -245,28 +260,9 @@ func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 	return result, nil
 }
 
-type sampleRow struct {
-	labelIds []int64
-	times    pgtype.TimestamptzArray
-	values   pgtype.Float8Array
-	err      error
-}
-
-type exemplarResult struct {
-	metricName string
-	labelIds   []int64
-	data       []exemplarRow
-}
-
-type exemplarRow struct {
-	time        time.Time
-	value       float64
-	labelValues []string // Exemplar label values.
-}
-
 // getResultRows fetches the result row datasets from the database using the
 // supplied query parameters.
-func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp int64, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) (interface{}, parser.Node, error) {
+func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) (interface{}, parser.Node, error) {
 	if q.rAuth != nil {
 		matchers = q.rAuth.AppendTenantMatcher(matchers)
 	}
@@ -299,7 +295,7 @@ func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp int64, end
 	if err != nil {
 		return nil, nil, err
 	}
-	return q.queryMultipleMetrics(tableSchema, filter, clauses, values)
+	return q.queryMultipleMetrics(qt, filter, clauses, values)
 }
 
 // querySingleMetric returns all the result rows for a single metric using the
@@ -325,6 +321,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 		return nil, nil, err
 	}
 
+	fmt.Println("sqlQuery", sqlQuery, values)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 	if err != nil {
 		if e, ok := err.(*pgconn.PgError); ok {
@@ -360,7 +357,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 
 // queryMultipleMetrics returns all the result rows for across multiple metrics
 // using the supplied query parameters.
-func (q *pgxQuerier) queryMultipleMetrics(tableSchema string, filter metricTimeRangeFilter, cases []string, values []interface{}) ([]sampleRow, parser.Node, error) {
+func (q *pgxQuerier) queryMultipleMetrics(qt queryType, filter metricTimeRangeFilter, cases []string, values []interface{}) (interface{}, parser.Node, error) {
 	// First fetch series IDs per metric.
 	sqlQuery := BuildMetricNameSeriesIDQuery(cases)
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
@@ -375,8 +372,18 @@ func (q *pgxQuerier) queryMultipleMetrics(tableSchema string, filter metricTimeR
 	}
 
 	// TODO this assume on average on row per-metric. Is this right?
-	results := make([]sampleRow, 0, len(metrics))
-	//results := make([]exemplarRow, 0, len(metrics))
+	var (
+		results          interface{}
+		metricTableNames = make([]string, 0, len(metrics)) // This will be required to fill the `metricName` field of exemplarResult.
+	)
+	switch qt {
+	case seriesSamples:
+		results = make([]seriesRow, 0, len(metrics))
+	case seriesExemplars:
+		results = make([]exemplarSeriesRow, 0, len(metrics))
+	default:
+		panic("invalid type")
+	}
 
 	numQueries := 0
 	batch := q.conn.NewBatch()
@@ -427,7 +434,6 @@ func (q *pgxQuerier) queryMultipleMetrics(tableSchema string, filter metricTimeR
 		// Can't defer because we need to Close before the next loop iteration.
 		rows.Close()
 		if err != nil {
-			rows.Close()
 			return nil, nil, err
 		}
 	}
@@ -472,57 +478,6 @@ func (q *pgxQuerier) queryMetricTableName(schema, metric string) (mInfo model.Me
 	}
 
 	return mInfo, nil
-}
-
-// appendTsRows adds new results rows to already existing result rows and
-// returns the as a result.
-func appendSampleRows(out []sampleRow, in pgx.Rows) ([]sampleRow, error) {
-	if in.Err() != nil {
-		return out, in.Err()
-	}
-	for in.Next() {
-		var row sampleRow
-		row.err = in.Scan(&row.labelIds, &row.times, &row.values)
-		out = append(out, row)
-		if row.err != nil {
-			return out, row.err
-		}
-	}
-	return out, in.Err()
-}
-
-// appendExemplarRows adds new results rows to already existing result rows and
-// returns the as a result.
-func appendExemplarRows(out []exemplarRow, in pgx.Rows) (rows []exemplarRow, labelIds []int64, err error) {
-	if in.Err() != nil {
-		return out, nil, in.Err()
-	}
-	var firstRowScanned bool
-	for in.Next() {
-		var (
-			err error
-			row exemplarRow
-			ids []int64
-		)
-		if !firstRowScanned {
-			firstRowScanned = true
-			// Only scan labelIds for first row since all other rows will be the same.
-			err = in.Scan(&ids, &row.time, &row.value, &row.labelValues)
-			if err != nil {
-				return out, labelIds, fmt.Errorf("scan first exemplar row: %w", err)
-			}
-			out = append(out, row)
-			labelIds = ids
-			continue
-		}
-		err = in.Scan(&labelIds, &row.time, &row.value, &row.labelValues)
-		if err != nil {
-			log.Error("err", err)
-			return out, labelIds, err
-		}
-		out = append(out, row)
-	}
-	return out, labelIds, in.Err()
 }
 
 // errorSeriesSet represents an error result in a form of a series set.

@@ -5,9 +5,12 @@ package querier
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
@@ -18,13 +21,73 @@ import (
 
 const getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_exemplar_label_key_positions($1::TEXT)"
 
+type exemplarSeriesRow struct {
+	metricName string
+	labelIds   []int64
+	data       []exemplarRow
+}
+
+type exemplarRow struct {
+	time        time.Time
+	value       float64
+	labelValues []string // Exemplar label values.
+}
+
+// appendExemplarRows adds new results rows to already existing result rows and
+// returns the as a result.
+func appendExemplarRows(metricName string, in pgx.Rows) (rows []exemplarSeriesRow, err error) {
+	if in.Err() != nil {
+		return rows, in.Err()
+	}
+	seriesRowMap := make(map[string]*exemplarSeriesRow)
+	// Note: The rows of multiple exemplar query, are such that `rows` here contains different series, represented by
+	// different label_ids array, that satisfy the given labels.
+	for in.Next() {
+		var (
+			err      error
+			row      exemplarRow
+			labelIds []int64
+		)
+		err = in.Scan(&labelIds, &row.time, &row.value, &row.labelValues)
+		if err != nil {
+			log.Error("err", err)
+			return rows, err
+		}
+
+		key := fmt.Sprintf("%v", labelIds)
+		if existingSeriesRow, exists := seriesRowMap[key]; exists {
+			existingSeriesRow.data = append(existingSeriesRow.data, row)
+			continue
+		}
+		// New exemplar series.
+		seriesRow := &exemplarSeriesRow{
+			metricName: metricName,
+			labelIds:   labelIds,
+			data:       make([]exemplarRow, 0, 1),
+		}
+		seriesRow.data = append(seriesRow.data, row)
+		seriesRowMap[key] = seriesRow
+	}
+	return getExemplarSeriesRows(seriesRowMap), in.Err()
+}
+
+func getExemplarSeriesRows(m map[string]*exemplarSeriesRow) []exemplarSeriesRow {
+	s := make([]exemplarSeriesRow, len(m))
+	i := 0
+	for _, v := range m {
+		s[i] = *v
+		i++
+	}
+	return s
+}
+
 // prepareExemplarQueryResult extracts the data from fetched pgx.Rows (or set of pgx.Rows
 // in case returned selectors are multiple)
 // Its more efficient to directly prepare results from rows than making an iterator
 // since if you want to make iterator, then you first need to scan and keep all results
 // in array of type A, and then use the cache (exemplar label values cache and labels cache)
 // to convert it to type B.
-func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, exemplarKeyPos cache.PositionCache, queryResult *exemplarResult) (model.ExemplarQueryResult, error) {
+func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, exemplarKeyPos cache.PositionCache, queryResult exemplarSeriesRow) (model.ExemplarQueryResult, error) {
 	var (
 		result   model.ExemplarQueryResult
 		metric   = queryResult.metricName

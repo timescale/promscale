@@ -62,6 +62,7 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 		expr, err := parser.ParseExpr(r.FormValue("query"))
 		if err != nil {
 			respondError(w, http.StatusBadRequest, err, "bad_data")
+			return
 		}
 		selectors := parser.ExtractSelectors(expr)
 		querier := queryable.Exemplar(ctx)

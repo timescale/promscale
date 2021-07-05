@@ -68,7 +68,7 @@ const (
 	WHERE m.series_id IN (%[3]s)
 	AND time >= '%[4]s'
 	AND time <= '%[5]s'
-	GROUP BY s.id, m.time, m.value, m.exemplar_label_values ORDER BY m.time`
+	GROUP BY s.id, m.time, m.value, m.exemplar_label_values`
 
 	/* SINGLE METRIC PATH (common, performance critical case) */
 	/* The simpler query (which isn't used):
@@ -198,6 +198,10 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 	cb := &clauseBuilder{}
 
 	for _, m := range matchers {
+		if m == nil {
+			// When selectors supplied to PromQL parser does not parse due to errors in parser, it gives
+			// a nil matcher instead of an error. We catch this and complain for invalid matcher.
+		}
 		// From the PromQL docs: "Label matchers that match
 		// empty label values also select all time series that
 		// do not have the specific label set at all."
@@ -375,7 +379,7 @@ func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, 
 	return c.clauses, c.args, nil
 }
 
-func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []timescaleRow) {
+func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []sampleRow) {
 	for i := range rows {
 		for _, id := range rows[i].labelIds {
 			//id==0 means there is no label for the key, so nothing to look up
@@ -387,7 +391,7 @@ func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []timescaleRow)
 	}
 }
 
-func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []seriesRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 	labelIDMap := make(map[int64]labels.Label)
 	initializeLabeIDMap(labelIDMap, rows)
@@ -463,7 +467,25 @@ func BuildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
 }
 
-func buildTimeseriesBySeriesIDQuery(tableSchema string, filter metricTimeRangeFilter, series []pgmodel.SeriesID) (string, error) {
+type queryType uint8
+
+const (
+	seriesSamples queryType = iota
+	seriesExemplars
+)
+
+func getSchema(qt queryType) string {
+	switch qt {
+	case seriesSamples:
+		return schema.Data
+	case seriesExemplars:
+		return schema.Exemplar
+	default:
+		panic("invalid type")
+	}
+}
+
+func buildTimeseriesBySeriesIDQuery(qt queryType, filter metricTimeRangeFilter, series []pgmodel.SeriesID) (string, error) {
 	s := make([]string, 0, len(series))
 	for _, sID := range series {
 		s = append(s, fmt.Sprintf("%d", sID))

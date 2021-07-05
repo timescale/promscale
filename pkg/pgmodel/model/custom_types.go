@@ -56,12 +56,12 @@ func GetCustomType(t uint8) *pgtype.ArrayType {
 		if !isLabelArrayOIDSet {
 			panic("label_array oid is not set. This needs to be set first before calling the type.")
 		}
-		return pgtype.NewArrayType("prom_api.label_array[]", labelArrayOID, labelArrayTranscoder)
+		return pgtype.NewArrayType("prom_api.label_array", labelArrayOID, labelArrayTranscoder)
 	case LabelValueArray:
 		if !isLabelValueArrayOIDSet {
 			panic("label_value_array oid is not set.  This needs to be set first before calling the type.")
 		}
-		return pgtype.NewArrayType("prom_api.label_value_array[]", labelValueArrayOID, labelValueArrayTranscoder)
+		return pgtype.NewArrayType("prom_api.label_value_array", labelValueArrayOID, labelValueArrayTranscoder)
 	default:
 		panic("invalid type")
 	}
