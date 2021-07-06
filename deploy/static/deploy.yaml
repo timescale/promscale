@@ -6,7 +6,7 @@ metadata:
   name: promscale-connector
   labels:
     app: promscale
-    chart: promscale-0.4.1
+    chart: promscale-0.5.0
     release: promscale
     heritage: Helm
   annotations:
@@ -27,7 +27,7 @@ metadata:
   name: promscale
   labels:
     app: promscale
-    chart: promscale-0.4.1
+    chart: promscale-0.5.0
     release: promscale
     heritage: Helm
 spec:

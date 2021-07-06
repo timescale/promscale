@@ -37,7 +37,7 @@ const (
 	Superuser   = true
 	NoSuperuser = false
 
-	LatestDBWithPromscaleImageBase = "cevian/promscale-extension"
+	LatestDBWithPromscaleImageBase = "timescaledev/promscale-extension"
 )
 
 var (
