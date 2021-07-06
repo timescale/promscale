@@ -1,0 +1,73 @@
+---
+# Source: promscale/templates/svc-connector.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: promscale-connector
+  labels:
+    app: promscale
+    chart: promscale-0.4.1
+    release: promscale
+    heritage: Helm
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"
+spec:
+  selector:
+    app: promscale
+  type: LoadBalancer
+  ports:
+  - name: connector-port
+    port: 9201
+    protocol: TCP
+---
+# Source: promscale/templates/deployment-connector.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promscale
+  labels:
+    app: promscale
+    chart: promscale-0.4.1
+    release: promscale
+    heritage: Helm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: promscale
+  template:
+    metadata:
+      labels:
+        app: promscale
+      
+      annotations: 
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9201"
+        prometheus.io/scrape: "true"
+      
+    spec:
+      containers:
+        - image: timescale/promscale
+          imagePullPolicy: IfNotPresent
+          name: promscale-connector
+          ports:
+            - containerPort: 9201
+              name: connector-port
+          env:
+            - name: PROMSCALE_DB_PORT
+              value: "5432"
+            - name: PROMSCALE_DB_USER
+              value: postgres
+            - name: PROMSCALE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: promscale-credentials
+                  key: PATRONI_SUPERUSER_PASSWORD
+            - name: PROMSCALE_DB_HOST
+              value: promscale.default.svc.cluster.local
+            - name: PROMSCALE_DB_NAME
+              value: timescale
+            - name: PROMSCALE_DB_SSL_MODE
+              value: require
