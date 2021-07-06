@@ -471,8 +471,8 @@ func calledByTimestamp(path []parser.Node) bool {
 	return false
 }
 
-var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
-var rateIncreaseExtensionRange = semver.MustParseRange(">= 0.1.3-beta")
+var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.2.0")
+var rateIncreaseExtensionRange = semver.MustParseRange(">= 0.2.0")
 
 func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, error) {
 	queryStart := hints.Start + hints.Range
