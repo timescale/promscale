@@ -1292,7 +1292,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 
 		runMaintenanceJob := func() {
 			//execute_maintenance and not execute_compression_policy since we want to test end-to-end
-			_, err = dbJob.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
+			_, err = dbJob.Exec(context.Background(), `CALL prom_api.execute_maintenance(log_verbose=>true)`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1539,10 +1539,16 @@ func TestConfigMaintenanceJobs(t *testing.T) {
 			t.Fatal("Incorrect number of jobs at startup")
 		}
 
-		changeJobs := func(numJobs int, scheduleInterval time.Duration) {
-			_, err = db.Exec(context.Background(), "SELECT config_maintenance_jobs($1, $2)", numJobs, scheduleInterval)
+		changeJobs := func(numJobs int, scheduleInterval time.Duration, config *string, configErr bool) {
+			_, err = db.Exec(context.Background(), "SELECT config_maintenance_jobs($1, $2, $3)", numJobs, scheduleInterval, config)
 			if err != nil {
-				t.Fatal(err)
+				if !configErr {
+					t.Fatal(err)
+				}
+				return
+			}
+			if configErr {
+				t.Fatal("Expect config error")
 			}
 			err = db.QueryRow(context.Background(),
 				"SELECT count(*) FROM timescaledb_information.jobs WHERE proc_schema = '_prom_catalog' AND proc_name = 'execute_maintenance_job' AND schedule_interval = $1", scheduleInterval).
@@ -1562,14 +1568,88 @@ func TestConfigMaintenanceJobs(t *testing.T) {
 			if cnt != 0 {
 				t.Fatalf("found %v jobs with wrong schedule interval", cnt)
 			}
+			if config == nil {
+				err = db.QueryRow(context.Background(),
+					"SELECT count(*) FROM timescaledb_information.jobs WHERE proc_schema = '_prom_catalog' AND proc_name = 'execute_maintenance_job' AND config IS NOT NULL").
+					Scan(&cnt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cnt != 0 {
+					t.Fatalf("found %v jobs with wrong NULL config", cnt)
+				}
+			} else {
+				err = db.QueryRow(context.Background(),
+					"SELECT count(*) FROM timescaledb_information.jobs WHERE proc_schema = '_prom_catalog' AND proc_name = 'execute_maintenance_job' AND config != $1::jsonb", config).
+					Scan(&cnt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cnt != 0 {
+					t.Fatalf("found %v jobs with wrong config", cnt)
+				}
+			}
 		}
 
-		changeJobs(4, time.Minute*30)
-		changeJobs(4, time.Minute*45)
-		changeJobs(5, time.Minute*45)
-		changeJobs(2, time.Minute*45)
-		changeJobs(1, time.Minute*30)
-		changeJobs(0, time.Minute*30)
+		changeJobs(4, time.Minute*30, nil, false)
+		changeJobs(4, time.Minute*45, nil, false)
+		changeJobs(5, time.Minute*45, nil, false)
+		changeJobs(2, time.Minute*45, nil, false)
+		changeJobs(1, time.Minute*30, nil, false)
+		changeJobs(0, time.Minute*30, nil, false)
+		config := `{"log_verbose": true}`
+		changeJobs(2, time.Minute*45, &config, false)
+		changeJobs(3, time.Minute*45, &config, false)
+		config = `{"log_verbose": false}`
+		changeJobs(1, time.Minute*45, &config, false)
+		config = `{"log_verbose": "rand"}`
+		changeJobs(1, time.Minute*45, &config, true)
+	})
+}
+
+func TestExecuteMaintJob(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("jobs meaningless without TimescaleDB")
+	}
+	if !*useTimescale2 {
+		t.Skip("test meaningless without Timescale 2")
+	}
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer dbSuper.Close()
+
+		execJob := func(db *pgxpool.Pool, config *string, configErr bool) {
+			_, err := db.Exec(context.Background(), "CALL _prom_catalog.execute_maintenance_job(2, $1)", config)
+			if err != nil {
+				if !configErr {
+					t.Fatal(err)
+				}
+				return
+			}
+			if configErr {
+				t.Fatal("Expect config error")
+			}
+
+		}
+
+		execJob(dbOwner, nil, false)
+		config := `{"log_verbose": true}`
+		execJob(dbOwner, &config, false)
+		config = `{"log_verbose": false}`
+		execJob(dbOwner, &config, false)
+		config = `{"log_verbose": "rr"}`
+		execJob(dbOwner, &config, true)
+		config = `{"auto_explain": {"log_min_duration": 0, "log_nested_statements": "true"}}`
+		//dbOwner will not have enough permissions for auto_explain but this should still succeed
+		execJob(dbOwner, &config, false)
+		//the superuser should be able to use auto_explain
+		execJob(dbSuper, &config, false)
 	})
 }
 
