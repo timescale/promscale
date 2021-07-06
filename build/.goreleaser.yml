@@ -28,7 +28,7 @@ scoop:
     email: support@timescale.com
 
 nfpms:
-  - builds: 
+  - builds:
     - promscale
     formats:
       - rpm
@@ -77,7 +77,7 @@ nfpms:
       preinstall: "build/scripts/preinstall.sh"
       postinstall: "build/scripts/postinstall.sh"
       postremove: "build/scripts/postremove.sh"
-        
+
 
 archives:
 - format: binary
@@ -93,7 +93,7 @@ archives:
   format: binary
   builds:
   - prom-migrator
-  name_template: "{{ .Binary }}_0.0.1_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+  name_template: "{{ .Binary }}_0.0.2_beta_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
   replacements:
     darwin: Darwin
     linux: Linux
@@ -154,7 +154,7 @@ dockers:
   - pkg
   - cmd
   image_templates:
-  - "timescale/prom-migrator:0.0.1"
+  - "timescale/prom-migrator:0.0.2-beta"
   - "timescale/prom-migrator:latest"
 
 docker_manifests:

@@ -37,8 +37,8 @@ var (
 	// since an app version must uniquely determine the state of the schema.
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
-	Promscale                           = "0.4.2-dev.4"
-	PromMigrator                        = "0.0.2-beta.0"
+	Promscale                           = "0.5.0"
+	PromMigrator                        = "0.0.2-beta"
 	CommitHash                          = ""
 	EarliestUpgradeTestVersion          = "0.1.0"
 	EarliestUpgradeTestVersionMultinode = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0
