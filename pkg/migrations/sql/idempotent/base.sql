@@ -1813,6 +1813,10 @@ BEGIN
     IF log_verbose THEN
         RAISE LOG 'promscale maintenance: finished in %', clock_timestamp()-startT;
     END IF;
+    IF clock_timestamp()-startT > INTERVAL '12 hours' THEN
+        RAISE WARNING 'promscale maintenance jobs are taking too long (one run took %)', clock_timestamp()-startT
+              USING HINT = 'Please consider increasing the number of maintenance jobs using config_maintenance_jobs()';
+    END IF;
 END;
 $$ LANGUAGE PLPGSQL;
 COMMENT ON PROCEDURE SCHEMA_PROM.execute_maintenance(boolean)
