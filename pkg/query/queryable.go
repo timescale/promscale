@@ -28,8 +28,8 @@ type queryable struct {
 func (q queryable) newQuerier(ctx context.Context, mint, maxt int64) *querier {
 	return &querier{
 		ctx: ctx, mint: mint, maxt: maxt,
-		metricsReader: q.querier,
-		labelsReader:  q.labelsReader,
+		metrics:      q.querier,
+		labelsReader: q.labelsReader,
 	}
 }
 
@@ -37,15 +37,14 @@ func (q queryable) Samples(ctx context.Context, mint, maxt int64) (promql.Sample
 	return q.newQuerier(ctx, mint, maxt), nil
 }
 
-// todo: optimize this (remove need for querier)
 func (q queryable) Exemplar(ctx context.Context) promql.ExemplarQuerier {
-	return q.newQuerier(nil, 0, 0).metricsReader.Exemplar(ctx)
+	return q.newQuerier(ctx, 0, 0).Exemplar(ctx)
 }
 
 type querier struct {
 	ctx           context.Context
 	mint, maxt    int64
-	metricsReader pgQuerier.Querier
+	metrics pgQuerier.Querier
 	labelsReader  lreader.LabelsReader
 	seriesSets    []pgQuerier.SeriesSet
 }
@@ -68,7 +67,11 @@ func (q *querier) Close() error {
 }
 
 func (q *querier) Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	ss, n := q.metricsReader.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
+	ss, n := q.metrics.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
 	q.seriesSets = append(q.seriesSets, ss)
 	return ss, n
+}
+
+func (q querier) Exemplar(ctx context.Context) promql.ExemplarQuerier {
+	return q.metrics.Exemplar(ctx)
 }

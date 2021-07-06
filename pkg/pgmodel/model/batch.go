@@ -1,4 +1,7 @@
-//todo: header files.
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package model
 
 import (
@@ -49,7 +52,7 @@ func NewInsertable(series *Series, data interface{}) Insertable {
 	case []prompb.Exemplar:
 		return newExemplarSamples(series, n)
 	default:
-		panic("invalid insertableType")
+		panic(fmt.Sprintf("invalid insertableType: %T", data))
 	}
 }
 

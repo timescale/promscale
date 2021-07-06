@@ -2,12 +2,12 @@ package api
 
 import (
 	"context"
+	"github.com/timescale/promscale/pkg/pgmodel/exemplar"
 	"net/http"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/promql"
 )
@@ -59,16 +59,9 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 		}
 
 		begin := time.Now()
-		expr, err := parser.ParseExpr(r.FormValue("query"))
+		results, err := exemplar.QueryExemplar(ctx, r.FormValue("query"), queryable, start, end)
 		if err != nil {
-			respondError(w, http.StatusBadRequest, err, "bad_data")
-			return
-		}
-		selectors := parser.ExtractSelectors(expr)
-		querier := queryable.Exemplar(ctx)
-		results, err := querier.Select(start, end, selectors...)
-		if err != nil {
-			log.Error("msg", err, "endpoint", "query_range")
+			log.Error("msg", err, "endpoint", "query_exemplars")
 			respondError(w, http.StatusInternalServerError, err, "execution_error")
 			return
 		}

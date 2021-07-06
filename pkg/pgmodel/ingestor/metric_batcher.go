@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
@@ -255,21 +256,26 @@ func (h *metricBatcher) tryFlushOrBatchMore() {
 		// There are positions that require to be fetched. Let's fetch them and fill our indexes.
 		// pendingIndexes contain the exact array index for rows, where the cache miss were found. Let's
 		// use the pendingIndexes to go to those rows and order the labels in exemplars quickly.
-		results, err := h.conn.SendBatch(context.Background(), batch)
+		results, err := conn.SendBatch(context.Background(), batch)
 		if err != nil {
 			return fmt.Errorf("sending fetch label key positions batch: %w", err)
 		}
 		defer results.Close()
-		for _, index := range pendingIndexes {
+		for i, index := range pendingIndexes {
 			var (
-				metricName    string
-				labelKeyIndex map[string]int
+				metricName      string
+				labelKeyIndex   map[string]int
+				isEmptyLabelSet = emptyLabelSetIndexes[i]
 			)
 			err := results.QueryRow().Scan(&metricName, &labelKeyIndex)
 			if err != nil {
+				if isEmptyLabelSet && strings.Contains(err.Error(), "no rows in result set") {
+					// Labels set of exemplar empty. Hence, we do not expect any rows while scanning the output.
+					continue
+				}
 				return fmt.Errorf("fetching label key positions: %w", err)
 			}
-			h.exemplarCatalog.exemplarCache.SetorUpdateLabelPositions(metricName, labelKeyIndex)
+			info.exemplarCache.SetorUpdateLabelPositions(metricName, labelKeyIndex)
 			row := data[index]
 			row.OrderExemplarLabels(labelKeyIndex) // We just filled the position, so no need to check if it exists or not.
 		}

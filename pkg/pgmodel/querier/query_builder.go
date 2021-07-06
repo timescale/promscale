@@ -198,10 +198,6 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 	cb := &clauseBuilder{}
 
 	for _, m := range matchers {
-		if m == nil {
-			// When selectors supplied to PromQL parser does not parse due to errors in parser, it gives
-			// a nil matcher instead of an error. We catch this and complain for invalid matcher.
-		}
 		// From the PromQL docs: "Label matchers that match
 		// empty label values also select all time series that
 		// do not have the specific label set at all."

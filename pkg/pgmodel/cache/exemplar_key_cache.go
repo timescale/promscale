@@ -1,4 +1,6 @@
-// todo (harkishen): file headers
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
 
 package cache
 
@@ -32,5 +34,5 @@ func (pos *ExemplarLabelsPosCache) GetLabelPositions(metric string) (map[string]
 }
 
 func (pos *ExemplarLabelsPosCache) SetorUpdateLabelPositions(metric string, index map[string]int) {
-	pos.cache.Update(metric, index, 0)
+	pos.cache.Update(metric, index)
 }

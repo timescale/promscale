@@ -1,8 +1,8 @@
 CREATE DOMAIN SCHEMA_PROM.label_value_array AS TEXT[];
 
-CREATE SCHEMA IF NOT EXISTS SCHEMA_EXEMPLAR_DATA;
-GRANT USAGE TO SCHEMA SCHEMA_EXEMPLAR_DATA TO prom_reader;
-GRANT USAGE TO SCHEMA SCHEMA_EXEMPLAR_DATA TO prom_writer;
+CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
+GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
+GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
 
 CREATE IF NOT EXISTS SCHEMA_CATALOG.exemplar_label_key_position (
     metric_name TEXT
@@ -12,13 +12,24 @@ CREATE IF NOT EXISTS SCHEMA_CATALOG.exemplar_label_key_position (
 GRANT SELECT ON TABLE SCHEMA_CATALOG.exemplar_label_key_position TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.exemplar_label_key_position TO prom_writer;
 
+CREATE INDEX IF NOT EXISTS SCHEMA_CATALOG.exemplar_label_key_position_index ON SCHEMA_CATALOG.exemplar_label_key_position
+(
+    metric_name, key
+);
+GRANT SELECT ON TABLE SCHEMA_CATALOG.exemplar_label_key_position_index TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.exemplar_label_key_position_index TO prom_writer;
+
 CREATE TABLE IF NOT EXISTS SCHEMA_CATALOG.exemplar (
     id          SERIAL,
     metric_name TEXT NOT NULL,
     table_name  TEXT NOT NULL
 );
-GRANT SELECT ON TABLE SCHEMA_CATALOG.ha_leases_logs TO prom_reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.ha_leases_logs TO prom_writer;
--- todo: create indexes
+GRANT SELECT ON TABLE SCHEMA_CATALOG.exemplar TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.exemplar TO prom_writer;
 
--- todo: add indexes across all files related to this.
+CREATE INDEX IF NOT EXISTS SCHEMA_CATALOG.exemplar_index ON SCHEMA_CATALOG.exemplar
+(
+    metric_name, table_name
+);
+GRANT SELECT ON TABLE SCHEMA_CATALOG.exemplar_index TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.exemplar_index TO prom_writer;

@@ -258,11 +258,12 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 
 	numRowsPerInsert := []int{}
 	numRowsTotal := 0
+	totalSamples := 0
+	totalExemplars := 0
 	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	for r := range reqs {
 		req := &reqs[r]
 		numSamples, numExemplars := req.data.batch.Count()
-		// todo: stats for num samples ingested and num exemplars ingested if required.
 		NumRowsPerInsert.Observe(float64(numSamples + numExemplars))
 
 		// flatten the various series into arrays.
@@ -289,7 +290,6 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		hasSamples := false
 		hasExemplars := false
 		for req.data.batch.Next() {
-			// todo: implement iterator for easier reading.
 			timestamp, val, seriesID, seriesEpoch, typ := req.data.batch.Values()
 			if seriesEpoch < lowestEpoch {
 				lowestEpoch = seriesEpoch
@@ -312,6 +312,8 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 			return err
 		}
 		numRowsTotal += numSamples + numExemplars
+		totalSamples += numSamples
+		totalExemplars += numExemplars
 		if hasSamples {
 			numRowsPerInsert = append(numRowsPerInsert, numSamples)
 			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1::NAME, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesSamples)
@@ -321,8 +323,7 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 			// new type in postgres by the name SCHEMA_PROM.label_value_array and use that type as array (which forms a 2D array of TEXT)
 			// which is then used to push using the unnest method apprach.
 			labelValues := pgmodel.GetCustomType(pgmodel.LabelValueArray)
-			err := labelValues.Set(exemplarLbls)
-			if err != nil {
+			if err := labelValues.Set(exemplarLbls); err != nil {
 				return fmt.Errorf("setting prom_api.label_value_array[] value: %w", err)
 			}
 			numRowsPerInsert = append(numRowsPerInsert, numExemplars)
@@ -359,6 +360,8 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 			registerDuplicates(numRowsExpected - insertedRows)
 		}
 	}
+	numSamplesInserted.Add(float64(totalSamples))
+	numExemplarsInserted.Add(float64(totalExemplars))
 
 	var val []byte
 	row := results.QueryRow()

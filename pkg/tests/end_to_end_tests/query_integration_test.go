@@ -694,7 +694,7 @@ func TestSQLQuery(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Query(c.query)
@@ -1068,7 +1068,7 @@ func TestPromQL(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Query(c.query)
@@ -1350,7 +1350,7 @@ func TestPushdownDelta(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, []string{})
 		if err != nil {

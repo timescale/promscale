@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgtype"
-
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -65,4 +64,12 @@ func GetCustomType(t uint8) *pgtype.ArrayType {
 	default:
 		panic("invalid type")
 	}
+}
+
+func SetLabelArrayOIDForTest(oid uint32) {
+	labelArrayOID = oid
+	isLabelArrayOIDSet = true
+
+	labelValueArrayOID = oid
+	isLabelValueArrayOIDSet = true
 }

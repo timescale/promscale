@@ -1,3 +1,5 @@
+GRANT USAGE, SELECT ON SEQUENCE exemplar_id_seq TO prom_writer;
+
 -- get_exemplar_label_positions returns the position of label_keys as a one-to-one mapping with label_keys. It returns
 -- the positions of all label keys corresponding to that metric, so that it remains easier to add null values to those indexes
 -- whose labels are not present in the exemplar being inserted at the golang level.
@@ -27,8 +29,9 @@ BEGIN
 
     -- Position already exists for some keys. Let's add for the new keys only.
     FOREACH k in ARRAY label_keys LOOP
-        IF (SELECT key IS NULL FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text AND key=k) THEN
+        IF (SELECT count(key) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text AND key=k) THEN
             SELECT max(pos) + 1 INTO new_position FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text;
+            RAISE NOTICE 'inserting key % at pos %', k, new_position;
             INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name_text, k, new_position);
             new_position := -1;
         END IF;
@@ -42,7 +45,8 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
--- todo: set security_definer
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(metric_name_text TEXT)
 RETURNS JSON AS
@@ -53,6 +57,8 @@ $$
         ) AS row
 $$
 LANGUAGE SQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_reader;
 
 -- creates exemplar table in prom_data_exemplar schema if the table does not exists. This function
 -- must be called after the metric is created in _prom_catalog.metric as it utilizes the table_name
@@ -91,6 +97,7 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_exemplar_table_if_not_exists(TEXT) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.insert_exemplar_row(
     metric_table NAME,

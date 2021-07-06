@@ -48,9 +48,10 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	if cfg == nil {
 		cfg = &Cfg{}
 	}
-	c := cache.NewMetricCache(cache.DefaultConfig)
-	s := cache.NewSeriesCache(cache.DefaultConfig, nil)
-	e := cache.NewExemplarLabelsPosCache(cache.DefaultConfig)
+	cacheConfig := cache.DefaultConfig
+	c := cache.NewMetricCache(cacheConfig)
+	s := cache.NewSeriesCache(cacheConfig, nil)
+	e := cache.NewExemplarLabelsPosCache(cacheConfig)
 	return NewPgxIngestor(conn, c, s, e, cfg)
 }
 

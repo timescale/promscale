@@ -44,6 +44,32 @@ func TestEntryNotFound(t *testing.T) {
 	}
 }
 
+func TestUpdate(t *testing.T) {
+	t.Parallel()
+
+	cache := WithMax(100)
+
+	val, found := cache.Get("nonExistingKey")
+	if found {
+		t.Errorf("found %d for noexistent key", val)
+	}
+
+	cache.Insert("key", 1, 8+1+8)
+	val, found = cache.Get("key")
+	if !found {
+		t.Errorf("not found for 'key'")
+	}
+
+	cache.Update("key", 2, 8+1+8)
+	val, found = cache.Get("key")
+	if !found {
+		t.Errorf("not found for 'key'")
+	}
+	if val != 2 {
+		t.Errorf("updated value does not match for 'key'")
+	}
+}
+
 func TestEviction(t *testing.T) {
 	t.Parallel()
 

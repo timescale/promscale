@@ -125,7 +125,6 @@ func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
 func (l *Series) SetSeriesID(sid SeriesID, eid SeriesEpoch) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	//TODO: Unset l.Names and l.Values, no longer used
 	l.seriesID = sid
 	l.epoch = eid
 	l.names = nil

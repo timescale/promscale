@@ -461,12 +461,12 @@ func (m *MockMetricCache) Evictions() uint64 {
 	return 0
 }
 
-func (m *MockMetricCache) Get(schema, metric string) (MetricInfo, error) {
+func (m *MockMetricCache) Get(schema, metric string, isExemplar bool) (MetricInfo, error) {
 	if m.GetMetricErr != nil {
 		return MetricInfo{}, m.GetMetricErr
 	}
 
-	val, ok := m.MetricCache[schema+"*"+metric]
+	val, ok := m.MetricCache[fmt.Sprintf("%s_%s_%t", schema, metric, isExemplar)]
 	if !ok {
 		return val, errors.ErrEntryNotFound
 	}
@@ -474,7 +474,7 @@ func (m *MockMetricCache) Get(schema, metric string) (MetricInfo, error) {
 	return val, nil
 }
 
-func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo) error {
+func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo, isExemplar bool) error {
 	m.MetricCache[schema+"*"+metric] = mInfo
 	return m.SetMetricErr
 }
