@@ -13,7 +13,7 @@ http://localhost:9201/write
 This endpoint only supports the HTTP POST method.
 
 
-The default format for this endpoint are protocol buffers but Promscale also supports a JSON streaming format which is detailed in the next sections.
+The default format for this endpoint are protocol buffers but Promscale also supports a JSON streaming format and a text format which is detailed in the next sections.
 
 
 If you are using Prometheus, simply configure `remote_write` to point to this endpoint and you are done. If, however, you are writing a custom application to push data to Promscale, keep reading.
@@ -180,3 +180,63 @@ func main() {
 ```
 
 As you can see, once the Go code is generated from the protobuf files, you have everything you need to start putting your data into the generated structures and start sending requests to Promscale for ingestion.
+
+## Prometheus/OpenMetric text format
+
+This format was introduced in Promscale to enable easier ingestion of samples data using a push model. Metrics exposed in this format can be directly forwarded to Promscale which would parse and store the data in the database.
+Advanced details on the format can be found here:
+* [Prometheus text based format docs](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format).
+* [OpenMetrics format spec] (https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md)
+
+
+Here is a short example of what a simple payload would look like:
+
+```
+# HELP http_requests_total The total number of HTTP requests.
+# TYPE http_requests_total counter
+http_requests_total{method="post",code="200"} 1027 1395066363000
+http_requests_total{method="post",code="400"}    3 1395066363000
+
+# A histogram, which has a pretty complex representation in the text format:
+# HELP http_request_duration_seconds A histogram of the request duration.
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.05"} 24054
+http_request_duration_seconds_bucket{le="0.1"} 33444
+http_request_duration_seconds_bucket{le="0.2"} 100392
+http_request_duration_seconds_bucket{le="0.5"} 129389
+http_request_duration_seconds_bucket{le="1"} 133988
+http_request_duration_seconds_bucket{le="+Inf"} 144320
+http_request_duration_seconds_sum 53423
+http_request_duration_seconds_count 144320
+...
+```
+
+Basic line format for non-metadata is as follows (in this order):
+* Metric name which is (optionally) followed by a collection label name and values in curly braces.
+* Floating point number that represents the actual measured value.
+* (Optional) An integer timestamp in milliseconds since epoch, i.e. 1970-01-01 00:00:00 UTC, excluding leap second, represented as required by Go's [ParseInt](https://golang.org/pkg/strconv/#ParseInt) function. 
+
+If the timestamp is omitted, request time is used in its place.
+
+In order to send a request to Promscale, you would need to send an HTTP POST request with the request body set to the plain-text payload and set the required header values:
+* `Content-Type` header should be set to `text/plain` or `application/openmetrics-text` (depending on the actual format).
+* If using Snappy compression set `Content-Encoding` header to `snappy`, otherwise leave unset
+
+
+Here is an example of a request sent using `curl` tool:
+
+```
+curl --header "Content-Type: text/plain" \
+--request POST \
+--data 'test_metric 1\nanother_metric 2' \
+"http://localhost:9201/write"
+```
+Another example using snappy encoding:
+
+```
+curl --header "Content-Type: application/openmetrics-text" \
+--header "Content-Encoding: snappy" \
+--request POST \
+--data-binary "@snappy-payload.sz" \
+"http://localhost:9201/write"
+```
