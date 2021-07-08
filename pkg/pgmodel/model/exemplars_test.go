@@ -37,6 +37,7 @@ func TestOrderExemplarLabelsPositionExists(t *testing.T) {
 		Value:     10,
 		Timestamp: 10,
 	})
+	insertable = newExemplarSamples(nil, rawExemplars)
 	// Index invalid now. Should return positionExists as false, indicating that index needs an update.
 	require.False(t, insertable.OrderExemplarLabels(index))
 }

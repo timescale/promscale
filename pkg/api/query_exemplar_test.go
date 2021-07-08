@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package api
 
 import (
@@ -82,9 +86,9 @@ func TestQueryExemplar(t *testing.T) {
 			start:      "1617694947",
 			end:        "1625557347",
 			query:      `metric_name{job~="some_value.*"}`,
-			statusCode: http.StatusBadRequest,
+			statusCode: http.StatusInternalServerError,
 			shouldErr:  true,
-			err:        `{"status":"error","errorType":"bad_data","error":"1:16: parse error: unexpected character inside braces: '~'"}`,
+			err:        `{"status":"error","errorType":"execution_error","error":"PromQL parse: 1:16: parse error: unexpected character inside braces: '~'"}`,
 		},
 	}
 

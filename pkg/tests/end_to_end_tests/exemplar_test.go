@@ -25,22 +25,13 @@ import (
 	"github.com/timescale/promscale/pkg/query"
 )
 
-var rawExemplar_1 = []prompb.Exemplar{
+var rawExemplar = []prompb.Exemplar{
 	{Timestamp: 1, Value: 0, Labels: []prompb.Label{{Name: "TraceID", Value: "abcde"}}},
 	{Timestamp: 2, Value: 1, Labels: []prompb.Label{{Name: "TraceID", Value: "abcdef"}, {Name: "component", Value: "E2E"}}},
 	{Timestamp: 3, Value: 2, Labels: []prompb.Label{}}, // Empty labels valid according to Open Metrics.
 	{Timestamp: 4, Value: 3, Labels: []prompb.Label{{Name: "component", Value: "tests"}, {Name: "instance", Value: "localhost:9100"}}},
 	{Timestamp: 5, Value: 4, Labels: []prompb.Label{{Name: "job", Value: "generator"}}},
 	{Timestamp: 6, Value: 5, Labels: []prompb.Label{}},
-}
-
-var rawExmplar_2 = []prompb.Exemplar{
-	{Timestamp: 0, Value: 0, Labels: []prompb.Label{}},
-	{Timestamp: 1, Value: 1, Labels: []prompb.Label{{Name: "id", Value: "xyz"}}},
-	{Timestamp: 2, Value: 2, Labels: []prompb.Label{}}, // Empty labels valid according to Open Metrics.
-	{Timestamp: 3, Value: 3, Labels: []prompb.Label{}},
-	{Timestamp: 4, Value: 4, Labels: []prompb.Label{{Name: "id", Value: "id-abc"}, {Name: "severity", Value: "high"}}},
-	{Timestamp: 5, Value: 5, Labels: []prompb.Label{}},
 }
 
 var (
@@ -55,7 +46,7 @@ var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
 	},
 	{
 		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_1}, {Name: "job", Value: "generator"}},
-		Exemplars: []prompb.Exemplar{rawExemplar_1[0]},
+		Exemplars: []prompb.Exemplar{rawExemplar[0]},
 	},
 	{
 		Labels:  []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "1"}},
@@ -63,7 +54,7 @@ var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
 	},
 	{
 		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "1"}},
-		Exemplars: []prompb.Exemplar{rawExemplar_1[1]},
+		Exemplars: []prompb.Exemplar{rawExemplar[1]},
 	},
 	{
 		Labels:  []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "10"}},
@@ -71,7 +62,7 @@ var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
 	},
 	{
 		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "10"}},
-		Exemplars: []prompb.Exemplar{rawExemplar_1[2]},
+		Exemplars: []prompb.Exemplar{rawExemplar[2]},
 	},
 	{
 		Labels:  []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "100"}},
@@ -79,31 +70,19 @@ var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
 	},
 	{
 		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "100"}},
-		Exemplars: []prompb.Exemplar{rawExemplar_1[3]},
-	},
-}
-
-var exemplarTS_2 = []prompb.TimeSeries{
-	{
-		Labels:  []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_1}, {Name: "job", Value: "generator"}},
-		Samples: generateSamples(100),
-	},
-	{
-		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_1}, {Name: "job", Value: "generator"}},
-		Exemplars: rawExmplar_2,
+		Exemplars: []prompb.Exemplar{rawExemplar[3]},
 	},
 }
 
 type exemplarTableRow struct {
 	ts                  float64 // Epoch in postgres is decimal.
-	seriesId            int64
 	exemplarLabelValues []string
 	val                 float64
 }
 
 func TestExemplarIngestion(t *testing.T) {
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		db = testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+	withDB(t, *testDatabase, func(_ *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
 
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
@@ -132,13 +111,13 @@ func TestExemplarIngestion(t *testing.T) {
 		err = db.QueryRow(context.Background(), "SELECT count(pos) FROM _prom_catalog.exemplar_label_key_position").
 			Scan(&count)
 		require.NoError(t, err)
-		require.Equal(t, 3, count)
+		require.Equal(t, 4, count)
 
 		// Check inserted exemplars.
 		expectedRows := []exemplarTableRow{
-			{0.004, 4, []string{"tests", "localhost:9100"}, 3},
-			{0.003, 3, []string{model.EmptyExemplarValues, model.EmptyExemplarValues}, 2},
-			{0.002, 2, []string{"E2E", "abcdef"}, 1},
+			{0.004, []string{model.EmptyExemplarValues, "tests", "localhost:9100"}, 3},
+			{0.003, []string{model.EmptyExemplarValues, model.EmptyExemplarValues}, 2},
+			{0.002, []string{"E2E", "abcdef"}, 1},
 		}
 		rows, err = db.Query(context.Background(), "SELECT extract(epoch FROM time), exemplar_label_values, value FROM prom_data_exemplar."+metric_2+" ORDER BY time DESC")
 		require.NoError(t, err)
@@ -165,8 +144,8 @@ func TestExemplarIngestion(t *testing.T) {
 }
 
 func TestExemplarQueryingAPI(t *testing.T) {
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		db = testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+	withDB(t, *testDatabase, func(_ *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
 
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
@@ -191,6 +170,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 
 		bSlice, err := json.Marshal(results)
 		require.NoError(t, err)
+		// Below check flaky in terms of order. TODO.
 		require.Equal(t,
 			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":0.003}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":0.004}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":0.002}]}]`,
 			string(bSlice))

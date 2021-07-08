@@ -1,14 +1,18 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package api
 
 import (
 	"context"
-	"github.com/timescale/promscale/pkg/pgmodel/exemplar"
 	"net/http"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/exemplar"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -42,11 +46,11 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 		}
 
 		ctx := r.Context()
-		if to := r.FormValue("timeout"); to != "" {
+		if timeout := r.FormValue("timeout"); timeout != "" {
 			// Note: Prometheus does not implement timeout for querying exemplars.
-			// But I think we should keep this as optional.
+			// But we should keep this as optional.
 			var cancel context.CancelFunc
-			timeout, err := parseDuration(to)
+			timeout, err := parseDuration(timeout)
 			if err != nil {
 				log.Info("msg", "Query bad request"+err.Error())
 				respondError(w, http.StatusBadRequest, err, "bad_data")

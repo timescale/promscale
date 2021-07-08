@@ -41,16 +41,16 @@ var (
 	numSamplesInserted = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
-			Name:      "sent_samples_total",
-			Help:      "Total samples sent by copiers to the database.",
+			Name:      "inserted_samples_total",
+			Help:      "Total samples inserted by copiers into the database.",
 		},
 	)
 
 	numExemplarsInserted = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
-			Name:      "sent_exemplars_total",
-			Help:      "Total exemplars sent by copiers to the database.",
+			Name:      "inserted_exemplars_total",
+			Help:      "Total exemplars inserted by copiers into the database.",
 		},
 	)
 

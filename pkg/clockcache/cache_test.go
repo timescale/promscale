@@ -59,6 +59,9 @@ func TestUpdate(t *testing.T) {
 	if !found {
 		t.Errorf("not found for 'key'")
 	}
+	if val.(int) != 1 {
+		t.Fatal("wrong value received")
+	}
 
 	cache.Update("key", 2, 8+1+8)
 	val, found = cache.Get("key")

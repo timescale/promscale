@@ -33,6 +33,7 @@ func FinishWriteRequest(wr *prompb.WriteRequest) {
 		}
 		ts.Labels = ts.Labels[:0]
 		ts.Samples = ts.Samples[:0]
+		ts.Exemplars = ts.Exemplars[:0]
 		ts.XXX_unrecognized = nil
 	}
 	wr.Timeseries = wr.Timeseries[:0]

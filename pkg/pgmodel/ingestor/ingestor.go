@@ -72,21 +72,7 @@ func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (mod
 }
 
 func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	trimmedExemplar := trimEmptyExemplar(ts.Exemplars)
-	return model.NewInsertable(l, trimmedExemplar), len(trimmedExemplar), nil
-}
-
-// We are getting 2 exemplar per actual exemplar, the first being empty. This can be due to some bug on our side in promb,
-// as prometheus is sending only one. This is hence a todo befre merging.
-func trimEmptyExemplar(e []prompb.Exemplar) []prompb.Exemplar {
-	var tmp []prompb.Exemplar
-	for i := range e {
-		if e[i].Timestamp == 0 && e[i].Value == 0 {
-			continue
-		}
-		tmp = append(tmp, e[i])
-	}
-	return tmp
+	return model.NewInsertable(l, ts.Exemplars), len(ts.Exemplars), nil
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.

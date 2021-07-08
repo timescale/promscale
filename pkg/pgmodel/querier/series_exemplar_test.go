@@ -80,7 +80,7 @@ func (m mockLabelsReader) LabelNames() ([]string, error) {
 }
 
 // LabelValues returns all the distinct values for a given label name.
-func (m mockLabelsReader) LabelValues(labelName string) ([]string, error) {
+func (m mockLabelsReader) LabelValues(_ string) ([]string, error) {
 	return nil, nil
 }
 

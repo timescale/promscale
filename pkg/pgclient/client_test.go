@@ -5,6 +5,7 @@
 package pgclient
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -31,6 +32,10 @@ func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *sto
 
 func (q *mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	return q.tts, q.err
+}
+
+func (q *mockQuerier) Exemplar(_ context.Context) querier.ExemplarQuerier {
+	return nil
 }
 
 func (q *mockQuerier) LabelNames() ([]string, error) {

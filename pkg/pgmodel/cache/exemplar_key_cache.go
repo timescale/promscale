@@ -4,7 +4,12 @@
 
 package cache
 
-import "github.com/timescale/promscale/pkg/clockcache"
+import (
+	"bytes"
+	"encoding/gob"
+
+	"github.com/timescale/promscale/pkg/clockcache"
+)
 
 type PositionCache interface {
 	// GetLabelPositions fetches the position of label keys (as index) that must be respected
@@ -34,5 +39,8 @@ func (pos *ExemplarLabelsPosCache) GetLabelPositions(metric string) (map[string]
 }
 
 func (pos *ExemplarLabelsPosCache) SetorUpdateLabelPositions(metric string, index map[string]int) {
-	pos.cache.Update(metric, index)
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	_ = enc.Encode(index)
+	pos.cache.Update(metric, index, uint64(len([]byte(metric))+buf.Len()))
 }

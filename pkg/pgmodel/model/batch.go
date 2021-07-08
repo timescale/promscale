@@ -139,10 +139,6 @@ func (t *Batch) Next() bool {
 	return t.seriesIndex < len(t.data)
 }
 
-func (t *Batch) dataType() InsertableType {
-	return t.data[t.seriesIndex].Type()
-}
-
 // Values returns the values for the current row
 func (t *Batch) Values() (time.Time, float64, SeriesID, SeriesEpoch, InsertableType) {
 	set := t.data[t.seriesIndex]
