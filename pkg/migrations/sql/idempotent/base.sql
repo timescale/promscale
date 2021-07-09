@@ -2102,7 +2102,7 @@ BEGIN
         GET DIAGNOSTICS rows_affected = ROW_COUNT;
         num_rows_deleted = num_rows_deleted + rows_affected;
     END IF;
-    PERFORM SCHEMA_CATALOG.delete_series_catalog_row(name, series_ids);
+    PERFORM SCHEMA_CATALOG.delete_series_catalog_row(metric_table, series_ids);
     RETURN num_rows_deleted;
 END;
 $$
