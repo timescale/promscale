@@ -3,6 +3,8 @@
 This document gives you information about the configuration flags and arguments supported by Promscale.
 You can also find information on flags with `promscale_<version> -help`.
 
+**Note:** Flags can be set as environment variables by converting `-` to `_` (if any), and prefixing with `PROMSCALE_`. For example, `db-host` can be set as an environment variable as `PROMSCALE_DB_HOST`.
+
 ## Arguments
 | Argument | Description |
 |:------:|:-----|
