@@ -12,6 +12,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -23,11 +24,13 @@ func marshalVectorResponse(writer io.Writer, data promql.Vector, warnings []stri
 	return out.err
 }
 
-//func marshalExemplarResponse(writer io.Writer, data []model.ExemplarQueryResult) error {
-//	out := &errorWrapper{writer: writer}
-//	marshalCommonHeader(out)
-//
-//}
+func marshalExemplarResponse(writer io.Writer, data []model.ExemplarQueryResult) error {
+	out := &errorWrapper{writer: writer}
+	marshalCommonHeader(out)
+	marshalExemplarData(out, data)
+	marshalCommonFooter(out, nil)
+	return out.err
+}
 
 func marshalCommonHeader(out *errorWrapper) {
 	out.WriteStrings(`{"status":"success","data":`)
@@ -80,14 +83,44 @@ func marshalMatrixData(out *errorWrapper, data promql.Matrix) {
 	out.WriteStrings(`]}`)
 }
 
-//todo: last
-//func marshalExemplarData(out *errorWrapper, data []model.ExemplarQueryResult) {
-//	out.WriteStrings(`[`)
-//	for _, r := range data {
-//
-//	}
-//	out.WriteStrings(`]`)
-//}
+func marshalExemplarData(out *errorWrapper, data []model.ExemplarQueryResult) {
+	out.WriteStrings(`[`)
+	for i := range data {
+		resultRow := data[i]
+		out.WriteStrings(`{`)
+		writeExemplarSeriesLabels(out, resultRow.SeriesLabels)
+		writeExemplarData(out, resultRow.Exemplars)
+		out.WriteStrings(`}`)
+		if i != len(data)-1 {
+			out.WriteStrings(`,`)
+		}
+	}
+	out.WriteStrings(`]`)
+}
+
+func writeExemplarData(out *errorWrapper, data []model.ExemplarData) {
+	out.WriteStrings(`"exemplars":[`)
+	for i := range data {
+		d := data[i]
+		out.WriteStrings(`{"labels":{`)
+		marshalLabels(out, d.Labels)
+		out.WriteStrings(`},"value":"`)
+		out.writeFloat(d.Value)
+		out.WriteStrings(`","timestamp":`)
+		out.writeJsonFloat(float64(d.Ts) / 1000)
+		out.WriteStrings(`}`)
+		if i != len(data)-1 {
+			out.WriteStrings(`,`)
+		}
+	}
+	out.WriteStrings(`]`)
+}
+
+func writeExemplarSeriesLabels(out *errorWrapper, seriesLbls labels.Labels) {
+	out.WriteStrings(`"seriesLabels":{`)
+	marshalLabels(out, seriesLbls)
+	out.WriteStrings(`},`)
+}
 
 func marshalVectorData(out *errorWrapper, data promql.Vector) {
 	out.WriteStrings(`{"resultType":"`, string(parser.ValueTypeVector), `","result":[`)
@@ -118,6 +151,9 @@ func marshalVectorData(out *errorWrapper, data promql.Vector) {
 }
 
 func marshalLabels(out *errorWrapper, labels labels.Labels) {
+	if labels.Len() == 0 {
+		return
+	}
 	for i, label := range labels {
 		open := `,"`
 		if i == 0 {

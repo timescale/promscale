@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package clockcache
 
 import (
@@ -56,8 +60,8 @@ func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) 
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
-	_, canonicalValue, in_cache = self.insert(key, value, sizeBytes)
-	return
+	elem, exists := self.insert(key, value, sizeBytes)
+	return elem.value, exists
 }
 
 // InsertBatch inserts a batch of keys with their corresponding values.
@@ -75,8 +79,8 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBy
 	defer self.insertLock.Unlock()
 
 	for idx := range keys {
-		var inserted bool
-		keys[idx], values[idx], inserted = self.insert(keys[idx], values[idx], sizesBytes[idx])
+		elem, inserted := self.insert(keys[idx], values[idx], sizesBytes[idx])
+		keys[idx], values[idx] = elem.key, elem.value
 		if !inserted {
 			return idx
 		}
@@ -84,21 +88,23 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBy
 	return len(keys)
 }
 
-func (self *Cache) insert(key interface{}, value interface{}, size uint64) (canonicalKey interface{}, canonicalValue interface{}, inserted bool) {
+func (self *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool) {
 	elem, present := self.elements[key]
 	if present {
 		// we'll count a double-insert as a hit. See the comment in get
 		if atomic.LoadUint32(&elem.used) != 0 {
 			atomic.StoreUint32(&elem.used, 1)
 		}
-		return elem.key, elem.value, true
+		return elem, true
 	}
 
 	var insertLocation *element
 	if len(self.storage) >= cap(self.storage) {
 		insertLocation = self.evict()
 		if insertLocation == nil {
-			return key, value, false
+			// Do not return nil in the first position, otherwise the callers will panic
+			// if there happens to be an edge case in self.evict().
+			return &element{}, false
 		}
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
@@ -116,26 +122,23 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (cano
 	}
 
 	self.elements[key] = insertLocation
-	return key, value, true
+	return self.elements[key], true
 }
 
 // Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
 // returns the 'inserted' as true.
 func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}, inserted bool) {
-	existingElement, exists := self.elements[key]
-	if exists {
-		// Element exists, let's update its contents.
-		existingElement.key = key
-		existingElement.value = value
-		existingElement.size = size
-		if atomic.LoadUint32(&existingElement.used) == 0 {
-			atomic.StoreUint32(&existingElement.used, 1)
-		}
-		return value, false
+	existingElement, inserted := self.insert(key, value, size)
+	self.elementsLock.Lock()
+	defer self.elementsLock.Unlock()
+	if !inserted {
+		// Element already exists, let's update the "used" mark as this element is in active demand.
+		atomic.StoreUint32(&existingElement.used, 1)
 	}
-	// Element does not exists. Let's insert one.
-	_, v, b := self.insert(key, value, size)
-	return v, b
+	existingElement.key = key
+	existingElement.value = value
+	existingElement.size = size
+	return existingElement.value, inserted
 }
 
 func (self *Cache) evict() (insertPtr *element) {

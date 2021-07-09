@@ -16,7 +16,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 func TestCORSWrapper(t *testing.T) {
@@ -252,5 +255,87 @@ func TestValidateConfig(t *testing.T) {
 				t.Errorf("unexpected bearer token set: got %s wanted %s", c.cfg.BearerToken, c.tokenSet)
 			}
 		})
+	}
+}
+
+func TestMarshalExemplar(t *testing.T) {
+	tcs := []struct {
+		name        string
+		result      []model.ExemplarQueryResult
+		expectedStr string
+	}{
+		{
+			name:        "empty result",
+			result:      []model.ExemplarQueryResult{},
+			expectedStr: `{"status":"success","data":[]}`,
+		},
+		{
+			name: "2 series, 2 exemplars",
+			result: []model.ExemplarQueryResult{
+				{
+					SeriesLabels: labels.Labels{labels.Label{Name: "__name__", Value: "test"}},
+					Exemplars: []model.ExemplarData{
+						{
+							Labels: labels.Labels{},
+							Value:  0.06,
+							Ts:     1600096945479,
+						},
+						{
+							Labels: labels.Labels{labels.Label{Name: "TraceID", Value: "abcde"}},
+							Value:  0.08,
+							Ts:     1600096965489,
+						},
+					},
+				},
+			},
+			expectedStr: `{"status":"success","data":[{"seriesLabels":{"__name__":"test"},"exemplars":[{"labels":{},"value":"0.06","timestamp":1600096945.479},{"labels":{"TraceID":"abcde"},"value":"0.08","timestamp":1600096965.489}]}]}`,
+		}, {
+			name: "2 series, 3 exemplars",
+			result: []model.ExemplarQueryResult{
+				{
+					SeriesLabels: labels.Labels{labels.Label{Name: "__name__", Value: "test"}},
+					Exemplars: []model.ExemplarData{
+						{
+							Labels: labels.Labels{},
+							Value:  0.06,
+							Ts:     1600096945479,
+						},
+						{
+							Labels: labels.Labels{labels.Label{Name: "TraceID", Value: "abcde"}},
+							Value:  0.08,
+							Ts:     1600096965489,
+						},
+					},
+				},
+				{
+					SeriesLabels: labels.Labels{labels.Label{Name: "__name__", Value: "test_2"}},
+					Exemplars: []model.ExemplarData{
+						{
+							Labels: labels.Labels{},
+							Value:  0.06,
+							Ts:     1600096945479,
+						},
+						{
+							Labels: labels.Labels{labels.Label{Name: "TraceID", Value: "abcde"}},
+							Value:  0.08,
+							Ts:     1600096965489,
+						},
+						{
+							Labels: labels.Labels{labels.Label{Name: "TraceID", Value: "abcdef"}, {Name: "component", Value: "tester"}, {Name: "kind", Value: "prod"}},
+							Value:  0.1,
+							Ts:     1600996985489,
+						},
+					},
+				},
+			},
+			expectedStr: `{"status":"success","data":[{"seriesLabels":{"__name__":"test"},"exemplars":[{"labels":{},"value":"0.06","timestamp":1600096945.479},{"labels":{"TraceID":"abcde"},"value":"0.08","timestamp":1600096965.489}]},{"seriesLabels":{"__name__":"test_2"},"exemplars":[{"labels":{},"value":"0.06","timestamp":1600096945.479},{"labels":{"TraceID":"abcde"},"value":"0.08","timestamp":1600096965.489},{"labels":{"TraceID":"abcdef","component":"tester","kind":"prod"},"value":"0.1","timestamp":1600996985.489}]}]}`,
+		},
+	}
+	for _, tc := range tcs {
+		var s strings.Builder
+		err := marshalExemplarResponse(&s, tc.result)
+		require.NoError(t, err, tc.name)
+		response := s.String()
+		require.Equal(t, tc.expectedStr, response[:len(response)-1], tc.name) // Avoid the ending '\n' in str. This is due to the default behaviour of marshalCommonFooter.
 	}
 }

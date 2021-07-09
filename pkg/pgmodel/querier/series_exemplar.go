@@ -7,6 +7,8 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v4"
@@ -21,7 +23,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-const getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_exemplar_label_key_positions($1::TEXT)"
+const getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_or_create_exemplar_label_key_positions($1::TEXT)"
 
 type exemplarSeriesRow struct {
 	metricName string
@@ -99,7 +101,11 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 	if err != nil {
 		return model.ExemplarQueryResult{}, fmt.Errorf("fetching promLabels for label-ids: %w", err)
 	}
-	result.SeriesLabels = getLabels(promLabels)
+	seriesLabels := getLabels(promLabels)
+	sort.Slice(seriesLabels, func(i, j int) bool {
+		return strings.Compare(seriesLabels[i].Name, seriesLabels[j].Value) > 0 // > 0 keeps __name__ label pair towards the first.
+	})
+	result.SeriesLabels = seriesLabels
 	result.Exemplars = make([]model.ExemplarData, 0)
 
 	keyPosIndex, exists := exemplarKeyPos.GetLabelPositions(metric)
@@ -120,11 +126,13 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 		row := queryResult.data[i]
 
 		exemplarLabels := createPromLabels(keyIndex, row.labelValues)
+		sort.Slice(exemplarLabels, func(i, j int) bool {
+			return strings.Compare(exemplarLabels[i].Name, exemplarLabels[j].Name) < 0 // < 0 keeps the TraceID label pair towards the first.
+		})
 		exemplarValue := row.value
-		exemplarTs := float64(timestamp.FromTime(row.time)) / 1000 // Divide by 1000 to get in seconds. Keep the millisecond part after the decimal to be in compliant with Prometheus behaviour.
 		result.Exemplars = append(result.Exemplars, model.ExemplarData{
 			Labels: exemplarLabels,
-			Ts:     exemplarTs,
+			Ts:     timestamp.FromTime(row.time),
 			Value:  exemplarValue,
 		})
 	}

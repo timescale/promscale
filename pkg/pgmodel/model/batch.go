@@ -13,24 +13,6 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-type InsertableType uint8
-
-const (
-	Invalid InsertableType = iota
-	Sample
-	Exemplar
-)
-
-type Insertable interface {
-	GetSeries() *Series
-	Count() int
-	At(index int) sampleFields
-	Type() InsertableType
-	data() interface{}
-	AllExemplarLabelKeys() []string
-	OrderExemplarLabels(index map[string]int) (positionExists bool)
-}
-
 type sampleFields interface {
 	// GetTs returns timestamp of the field (sample or exemplar).
 	// It is based on non-pointer declaration to save allocs (see types.pb.go)
@@ -42,20 +24,6 @@ type sampleFields interface {
 	ExemplarLabels() []prompb.Label
 }
 
-func NewInsertable(series *Series, data interface{}) Insertable {
-	if data == nil {
-		return newNoopInsertable(series)
-	}
-	switch n := data.(type) {
-	case []prompb.Sample:
-		return newPromSamples(series, n)
-	case []prompb.Exemplar:
-		return newExemplarSamples(series, n)
-	default:
-		panic(fmt.Sprintf("invalid insertableType: %T", data))
-	}
-}
-
 // Data wraps incoming data with its in-timestamp. It is used to warn if the rate
 // of incoming samples vs outgoing samples is too low, based on time.
 type Data struct {
@@ -63,7 +31,7 @@ type Data struct {
 	ReceivedTime time.Time
 }
 
-// Batch is an iterator over a collection of sampleInfos that returns
+// Batch is an iterator over a collection of Insertables that returns
 // data in the format expected for the data table row.
 type Batch struct {
 	data        []Insertable
@@ -186,40 +154,4 @@ func (t *Batch) Release() {
 			putExemplars(n)
 		}
 	}
-}
-
-type noopInsertable struct {
-	series *Series
-}
-
-func newNoopInsertable(s *Series) Insertable {
-	return &noopInsertable{
-		series: s,
-	}
-}
-
-func (t *noopInsertable) GetSeries() *Series {
-	return t.series
-}
-
-func (t *noopInsertable) Count() int {
-	return 0
-}
-
-func (t *noopInsertable) At(_ int) sampleFields {
-	return nil
-}
-
-func (t *noopInsertable) Type() InsertableType {
-	return Invalid
-}
-
-func (t *noopInsertable) AllExemplarLabelKeys() []string {
-	return nil
-}
-
-func (t *noopInsertable) OrderExemplarLabels(_ map[string]int) bool { return false }
-
-func (t *noopInsertable) data() interface{} {
-	return nil
 }

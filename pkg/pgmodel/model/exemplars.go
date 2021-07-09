@@ -114,7 +114,7 @@ func (t *promExemplars) data() interface{} {
 type ExemplarData struct {
 	Labels labels.Labels `json:"labels"`
 	Value  float64       `json:"value"`
-	Ts     float64       `json:"timestamp"` // This is int64 in Prometheus, but we do this to avoid later conversions to decimal.
+	Ts     int64         `json:"timestamp"` // This is int64 in Prometheus, but we do this to avoid later conversions to decimal.
 }
 
 type ExemplarQueryResult struct {

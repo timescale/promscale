@@ -172,7 +172,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		require.NoError(t, err)
 		// Below check flaky in terms of order. TODO.
 		require.Equal(t,
-			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":0.003}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":0.004}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":0.002}]}]`,
+			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":4}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
 			string(bSlice))
 
 		// Query all exemplars of all metrics that we inserted.
@@ -182,7 +182,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		bSlice, err = json.Marshal(results)
 		require.NoError(t, err)
 		require.Equal(t,
-			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":0.002}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":0.003}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":0.004}]},{"seriesLabels":{"__name__":"test_metric_1","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":0.001}]}]`,
+			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":4}]},{"seriesLabels":{"__name__":"test_metric_1","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]}]`,
 			string(bSlice))
 	})
 }

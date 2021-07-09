@@ -25,21 +25,21 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 	return func(w http.ResponseWriter, r *http.Request) {
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
-			log.Info("msg", "Query bad request:"+err.Error())
+			log.Info("msg", "Exemplar query bad request:", "error", err)
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			metrics.InvalidQueryReqs.Add(1)
 			return
 		}
 		end, err := parseTime(r.FormValue("end"))
 		if err != nil {
-			log.Info("msg", "Query bad request:"+err.Error())
+			log.Info("msg", "Exemplar query bad request:", "error", err)
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			metrics.InvalidQueryReqs.Add(1)
 			return
 		}
 		if end.Before(start) {
 			err := errors.New("end timestamp must not be before start time")
-			log.Info("msg", "Query bad request:"+err.Error())
+			log.Info("msg", "Exemplar query bad request:", "error", err)
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			metrics.InvalidQueryReqs.Add(1)
 			return
@@ -52,7 +52,7 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 			var cancel context.CancelFunc
 			timeout, err := parseDuration(timeout)
 			if err != nil {
-				log.Info("msg", "Query bad request"+err.Error())
+				log.Info("msg", "Exemplar query bad request:", "error", err)
 				respondError(w, http.StatusBadRequest, err, "bad_data")
 				metrics.InvalidQueryReqs.Inc()
 				return

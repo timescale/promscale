@@ -156,7 +156,7 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
 	var (
 		totalRows uint64
-		dataSamples = make(map[string][]model.Insertable)
+		insertables = make(map[string][]model.Insertable)
 	)
 
 	for i := range timeseries {
@@ -185,7 +185,7 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 				return 0, fmt.Errorf("samples: %w", err)
 			}
 			totalRows += uint64(count)
-			dataSamples[metricName] = append(dataSamples[metricName], samples)
+			insertables[metricName] = append(insertables[metricName], samples)
 		}
 		if len(ts.Exemplars) > 0 {
 			exemplars, count, err := ingestor.exemplars(series, ts)
@@ -193,7 +193,7 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 				return 0, fmt.Errorf("exemplars: %w", err)
 			}
 			totalRows += uint64(count)
-			dataSamples[metricName] = append(dataSamples[metricName], exemplars)
+			insertables[metricName] = append(insertables[metricName], exemplars)
 		}
 		// we're going to free req after this, but we still need the samples,
 		// so nil the field
@@ -202,7 +202,7 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 	}
 	releaseMem()
 
-	samplesRowsInserted, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: dataSamples, ReceivedTime: time.Now()})
+	samplesRowsInserted, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: insertables, ReceivedTime: time.Now()})
 	if errSamples == nil && samplesRowsInserted != totalRows {
 		return samplesRowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, samplesRowsInserted)
 	}

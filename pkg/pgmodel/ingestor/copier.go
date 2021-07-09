@@ -256,7 +256,7 @@ func debugInsert() {
 func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 	batch := conn.NewBatch()
 
-	numRowsPerInsert := []int{}
+	numRowsPerInsert := make([]int, 0, len(reqs))
 	numRowsTotal := 0
 	totalSamples := 0
 	totalExemplars := 0

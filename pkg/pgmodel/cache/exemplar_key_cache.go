@@ -5,8 +5,7 @@
 package cache
 
 import (
-	"bytes"
-	"encoding/gob"
+	"unsafe"
 
 	"github.com/timescale/promscale/pkg/clockcache"
 )
@@ -39,8 +38,5 @@ func (pos *ExemplarLabelsPosCache) GetLabelPositions(metric string) (map[string]
 }
 
 func (pos *ExemplarLabelsPosCache) SetorUpdateLabelPositions(metric string, index map[string]int) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	_ = enc.Encode(index)
-	pos.cache.Update(metric, index, uint64(len([]byte(metric))+buf.Len()))
+	pos.cache.Update(metric, index, uint64(unsafe.Sizeof(index)))
 }

@@ -1,9 +1,7 @@
-GRANT USAGE, SELECT ON SEQUENCE exemplar_id_seq TO prom_writer;
-
 -- get_exemplar_label_positions returns the position of label_keys as a one-to-one mapping with label_keys. It returns
 -- the positions of all label keys corresponding to that metric, so that it remains easier to add null values to those indexes
 -- whose labels are not present in the exemplar being inserted at the golang level.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(metric_name_text TEXT, label_keys TEXT[])
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(metric_name_text TEXT, label_keys TEXT[])
 RETURNS TABLE (metric_family_text TEXT, label_positions_map JSON) AS
 $$
 DECLARE
@@ -45,10 +43,10 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_writer;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(metric_name_text TEXT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(metric_name_text TEXT)
 RETURNS JSON AS
 $$
     SELECT json_object_agg(row.key, row.position) FROM (
@@ -56,9 +54,10 @@ $$
             WHERE metric_name=metric_name_text GROUP BY metric_name, key, pos ORDER BY pos
         ) AS row
 $$
-LANGUAGE SQL;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_writer;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_reader;
+LANGUAGE SQL
+STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT) TO prom_reader;
 
 -- creates exemplar table in prom_data_exemplar schema if the table does not exists. This function
 -- must be called after the metric is created in _prom_catalog.metric as it utilizes the table_name
@@ -89,8 +88,8 @@ BEGIN
     EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_reader', table_name_fetched);
     EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_writer', table_name_fetched);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_modifier', table_name_fetched);
-    EXECUTE format('CREATE UNIQUE INDEX exemplar_index%s ON SCHEMA_DATA_EXEMPLAR.%I (series_id, time) INCLUDE (value)',
-                        table_name_fetched, table_name_fetched);
+    EXECUTE format('CREATE UNIQUE INDEX exemplar_index_%s ON SCHEMA_DATA_EXEMPLAR.%I (series_id, time) INCLUDE (value)',
+                   table_name_fetched, table_name_fetched);
     INSERT INTO SCHEMA_CATALOG.exemplar (metric_name, table_name)
         VALUES (metric_name_fetched, table_name_fetched);
     RETURN TRUE;
