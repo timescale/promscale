@@ -1,10 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ template "connector.fullname" . }}
+  name: {{ template "promscale.fullname" . }}
+  namespace: {{ template "promscale.namespace" . }}
   labels:
-    app: {{ template "connector.fullname" . }}
-    chart: {{ template "connector.chart" . }}
+    app: {{ template "promscale.fullname" . }}
+    chart: {{ template "promscale.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 spec:
@@ -13,11 +14,11 @@ spec:
     type: {{ .Values.upgradeStrategy }}
   selector:
     matchLabels:
-      app: {{ template "connector.fullname" . }}
+      app: {{ template "promscale.fullname" . }}
   template:
     metadata:
       labels:
-        app: {{ template "connector.fullname" . }}
+        app: {{ template "promscale.fullname" . }}
       {{ if .Values.prometheus.enabled }}
       annotations: {{ .Values.prometheus.annotations | toYaml | nindent 8 }}
       {{ end }}

@@ -2,10 +2,11 @@
 apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
-  name: {{ include "connector.fullname" . | trunc 51 }}-maintenance
+  name: {{ include "promscale.fullname" . | trunc 51 }}-maintenance
+  namespace: {{ template "promscale.namespace" . }}
   labels:
-    app: {{ template "connector.fullname" . }}
-    chart: {{ template "connector.chart" . }}
+    app: {{ template "promscale.fullname" . }}
+    chart: {{ template "promscale.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 spec:
@@ -56,7 +57,7 @@ spec:
           volumes:
             - name: script-volume
               configMap:
-                name: {{ include "connector.fullname" . | trunc 51 }}-maintenance
+                name: {{ include "promscal.fullname" . | trunc 51 }}-maintenance
           restartPolicy: OnFailure
           {{- with .Values.maintenance.nodeSelector }}
           nodeSelector:
