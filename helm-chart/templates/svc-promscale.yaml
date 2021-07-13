@@ -1,17 +1,18 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "connector.fullname" . | trunc 53 }}-connector
+  name: {{ include "promscale.fullname" . | trunc 53 }}-connector
+  namespace: {{ template "promscale.namespace" . }}
   labels:
-    app: {{ template "connector.fullname" . }}
-    chart: {{ template "connector.chart" . }}
+    app: {{ template "promscale.fullname" . }}
+    chart: {{ template "promscale.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
   annotations:
 {{ .Values.service.loadBalancer.annotations | toYaml | indent 4 }}
 spec:
   selector:
-    app: {{ template "connector.fullname" . }}
+    app: {{ template "promscale.fullname" . }}
 {{- if .Values.service.loadBalancer.enabled }}
   type: LoadBalancer
 {{- else }}

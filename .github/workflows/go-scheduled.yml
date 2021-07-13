@@ -143,3 +143,14 @@ jobs:
         MULTI: ${{ matrix.test-setups.multi }}
         NIGHTLY: ${{ matrix.test-setups.nightly }}
       run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI -use-timescaledb-nightly=$NIGHTLY -postgres-version-major=$PG
+
+  test-helm-chart:
+    name: Test helm-chart template generation
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Test helm chart static generation
+      run: ./scripts/generate-deploy-script.sh

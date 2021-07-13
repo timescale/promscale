@@ -3,6 +3,9 @@ imagePullPolicy: IfNotPresent
 # number of connector pods to spawn
 replicaCount: 1
 
+# Override the deployment namespace
+namespaceOverride: ""
+
 # Promscale deployment upgrade strategy
 # as Promscale upgrade requires no existing Promscale
 # connected with TimescaleDB. Recreate strategy helps
