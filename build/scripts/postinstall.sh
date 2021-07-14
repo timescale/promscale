@@ -8,4 +8,4 @@ echo "Modify configuration by editing $CONF_FILE config file"
 echo "And then restart the service with: systemctl restart promscale"
 
 
-sed -i "s|__ENV_FILE__|$CONF_FILE|g" /etc/systemd/system/promscale.service
+sed -i "s|__ENV_FILE__|$CONF_FILE|g" /usr/lib/systemd/system/promscale.service

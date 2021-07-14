@@ -34,6 +34,8 @@ nfpms:
       - rpm
       - deb
 
+    bindir: /usr/bin
+
     file_name_template: "{{ .Binary }}_{{ .RawVersion }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
     replacements:
       darwin: Darwin
@@ -54,7 +56,7 @@ nfpms:
     maintainer: Timescale <info@timescale.com>
     contents:
       - src: build/systemd/promscale.service
-        dst: /etc/systemd/system/promscale.service
+        dst: /usr/lib/systemd/system/promscale.service
       - src: build/conf/promscale.conf
         dst: /etc/sysconfig/promscale.conf
         type: "config|noreplace"
