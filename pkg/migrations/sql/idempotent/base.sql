@@ -1449,14 +1449,15 @@ BEGIN
         ), confirmed_drop_series AS (
             SELECT series_id
             FROM potentially_drop_series
-            WHERE NOT EXISTS (
+            LEFT JOIN LATERAL (
                 SELECT 1
                 FROM  SCHEMA_DATA.%1$I  data_exists
                 WHERE data_exists.series_id = potentially_drop_series.series_id AND time >= %3$L
                 --use chunk append + more likely to find something starting at earliest time
                 ORDER BY time ASC
                 LIMIT 1
-            )
+            ) lateral_exists(indicator) ON (TRUE)
+            WHERE lateral_exists.indicator IS NULL
         ) -- we want this next statement to be the last one in the txn since it could block series fetch (both of them update delete_epoch)
         UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = current_epoch+1
         FROM SCHEMA_CATALOG.ids_epoch
@@ -1495,13 +1496,20 @@ BEGIN
     EXECUTE format($query$
         -- recheck that the series IDs we might delete are actually dead
         WITH dead_series AS (
-            SELECT id FROM SCHEMA_DATA_SERIES.%1$I
+            SELECT potential.id
+            FROM
+            (
+                SELECT id
+                FROM SCHEMA_DATA_SERIES.%1$I
                 WHERE delete_epoch <= %2$L
-                    AND NOT EXISTS (
-                        SELECT 1 FROM SCHEMA_DATA.%1$I
-                        WHERE id = series_id
-                        LIMIT 1
-                    )
+            ) as potential
+            LEFT JOIN LATERAL (
+                SELECT 1
+                FROM SCHEMA_DATA.%1$I metric_data
+                WHERE metric_data.series_id = potential.id
+                LIMIT 1
+            ) as lateral_exists(indicator) ON (TRUE)
+            WHERE indicator IS NULL
         ), deleted_series AS (
             DELETE FROM SCHEMA_DATA_SERIES.%1$I
             WHERE delete_epoch <= %2$L
@@ -1518,41 +1526,42 @@ BEGIN
     $query$, metric_table, deletion_epoch) INTO label_array;
 
 
-
-    --jit interacts poorly why the multi-partition query below
-    SET LOCAL jit = 'off';
-    --needs to be a separate query and not a CTE since this needs to "see"
-    --the series rows deleted above as deleted.
-    --Note: we never delete metric name keys since there are check constraints that
-    --rely on those ids not changing.
-    EXECUTE format($query$
-    WITH check_local_series AS (
-            --the series table from which we just deleted is much more likely to have the label, so check that first to exclude most labels.
-            SELECT label_id
-            FROM unnest($1) as labels(label_id)
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM  SCHEMA_DATA_SERIES.%1$I series_exists_local
-                WHERE series_exists_local.labels && ARRAY[labels.label_id]
-                LIMIT 1
+    IF array_length(label_array, 1) > 0 THEN
+        --jit interacts poorly why the multi-partition query below
+        SET LOCAL jit = 'off';
+        --needs to be a separate query and not a CTE since this needs to "see"
+        --the series rows deleted above as deleted.
+        --Note: we never delete metric name keys since there are check constraints that
+        --rely on those ids not changing.
+        EXECUTE format($query$
+        WITH check_local_series AS (
+                --the series table from which we just deleted is much more likely to have the label, so check that first to exclude most labels.
+                SELECT label_id
+                FROM unnest($1) as labels(label_id)
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM  SCHEMA_DATA_SERIES.%1$I series_exists_local
+                    WHERE series_exists_local.labels && ARRAY[labels.label_id]
+                    LIMIT 1
+                )
+            ),
+            confirmed_drop_labels AS (
+                --do the global check to confirm
+                SELECT label_id
+                FROM check_local_series
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM  SCHEMA_CATALOG.series series_exists
+                    WHERE series_exists.labels && ARRAY[label_id]
+                    LIMIT 1
+                )
             )
-        ),
-        confirmed_drop_labels AS (
-            --do the global check to confirm
-            SELECT label_id
-            FROM check_local_series
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM  SCHEMA_CATALOG.series series_exists
-                WHERE series_exists.labels && ARRAY[label_id]
-                LIMIT 1
-            )
-        )
-        DELETE FROM SCHEMA_CATALOG.label
-        WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
-    $query$, metric_table) USING label_array;
+            DELETE FROM SCHEMA_CATALOG.label
+            WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
+        $query$, metric_table) USING label_array;
 
-    SET LOCAL jit = DEFAULT;
+        SET LOCAL jit = DEFAULT;
+    END IF;
 
     UPDATE SCHEMA_CATALOG.ids_epoch
         SET (current_epoch, last_update_time) = (next_epoch, now())
