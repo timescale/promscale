@@ -30,9 +30,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Build extension image
-      run: git clone https://github.com/timescale/promscale_extension && cd promscale_extension && make -f DockerMakefile docker-image
-
     - name: Get dependencies
       run: |
         go get -v -t -d ./...
