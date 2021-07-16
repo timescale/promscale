@@ -6,12 +6,15 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -204,6 +207,114 @@ func TestSQLDropChunk(t *testing.T) {
 		if cnt != 1 {
 			t.Errorf("Expected the chunk to be dropped")
 		}
+	})
+}
+
+// TestSQLDropChunkWithLocked tests the case where some metrics are locked in the
+// first loop of execute_data_retention_policy
+func TestSQLDropChunkWithLocked(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("This test only runs on installs with TimescaleDB")
+	}
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
+		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		require.NoError(t, err)
+		defer dbSuper.Close()
+		//a chunk way back in 2009
+		oldChunk1 := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
+
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: int64(model.TimeFromUnixNano(oldChunk1.UnixNano()) - 1), Value: 0.1},
+					{Timestamp: int64(model.TimeFromUnixNano(time.Now().UnixNano()) - 1), Value: 0.1},
+				},
+			},
+			{
+				Labels: []prompb.Label{
+					{Name: pgmodel.MetricNameLabelName, Value: "test2"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: int64(model.TimeFromUnixNano(time.Now().UnixNano()) - 1), Value: 0.1},
+				},
+			},
+		}
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		require.NoError(t, err)
+		defer ingestor.Close()
+		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		require.NoError(t, err)
+
+		var tableName string
+		var metricId int
+		err = db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_metric_table_name_if_exists('test')").Scan(&metricId, &tableName)
+		require.NoError(t, err)
+
+		cnt := 0
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 2, int(cnt))
+
+		//take the lock before executing execute_maintenance
+		tx, err := db.Begin(context.Background())
+		require.NoError(t, err)
+		defer func() {
+			_ = tx.Rollback(context.Background())
+		}()
+		_, err = tx.Exec(context.Background(), "SELECT _prom_catalog.lock_metric_for_maintenance($1)", metricId)
+		require.NoError(t, err)
+
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+
+		maintenanceQuery := "CALL prom_api.execute_maintenance(log_verbose=>true)"
+		go func() {
+			defer wg.Done()
+			//this will block until the lock is released
+			_, err := dbJob.Exec(context.Background(), maintenanceQuery)
+			require.NoError(t, err)
+		}()
+
+		//wait for the execute_maintenance to be in the second loop where it's waiting on the lock
+		found_wait := false
+		for i := 0; i < 5; i++ {
+			waiting := false
+			err = dbSuper.QueryRow(context.Background(),
+				"SELECT wait_event IS NOT NULL FROM pg_stat_activity WHERE query = $1", maintenanceQuery).
+				Scan(&waiting)
+			if err != pgx.ErrNoRows {
+				require.NoError(t, err)
+			}
+			if waiting {
+				found_wait = true
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		require.True(t, found_wait, "failed to find the exec_maintenance query waiting on lock")
+
+		//release the lock to allow execute maintenance to complete
+		_, err = tx.Exec(context.Background(), "SELECT _prom_catalog.unlock_metric_for_maintenance($1)", metricId)
+		require.NoError(t, err)
+		err = tx.Commit(context.Background())
+		require.NoError(t, err)
+
+		//make sure the exec_maintenance completes
+		wg.Wait()
+
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 1, int(cnt), "Expected the chunk to be dropped")
 	})
 }
 
