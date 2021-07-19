@@ -1,12 +1,13 @@
 ---
-# Source: promscale/templates/svc-connector.yaml
+# Source: promscale/templates/svc-promscale.yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: promscale-connector
+  namespace: default
   labels:
     app: promscale
-    chart: promscale-0.5.0
+    chart: promscale-0.5.1
     release: promscale
     heritage: Helm
   annotations:
@@ -20,14 +21,15 @@ spec:
     port: 9201
     protocol: TCP
 ---
-# Source: promscale/templates/deployment-connector.yaml
+# Source: promscale/templates/deployment-promscale.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: promscale
+  namespace: default
   labels:
     app: promscale
-    chart: promscale-0.5.0
+    chart: promscale-0.5.1
     release: promscale
     heritage: Helm
 spec:
