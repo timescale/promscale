@@ -1779,7 +1779,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_drop_chunk() TO p
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_data_retention_policy(log_verbose boolean)
 AS $$
 DECLARE
-    r RECORD;
+    r SCHEMA_CATALOG.metric;
     remaining_metrics SCHEMA_CATALOG.metric[] DEFAULT '{}';
 BEGIN
      --Do one loop with metric that could be locked without waiting.
