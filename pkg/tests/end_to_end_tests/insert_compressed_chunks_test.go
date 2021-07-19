@@ -17,6 +17,9 @@ import (
 )
 
 func TestInsertInCompressedChunks(t *testing.T) {
+	if *useTimescaleOSS {
+		t.Skip("compression not applicable in TimescaleDB-OSS")
+	}
 	ts := generateSmallTimeseries()
 	if !*useTimescaleDB {
 		// Ingest in plain postgres to ensure everything works well even if TimescaleDB is not installed.

@@ -59,6 +59,7 @@ const (
 	timescale2Bit       = 1 << iota
 	multinodeBit        = 1 << iota
 	postgres12Bit       = 1 << iota
+	timescaleOSSBit     = 1 << iota
 	timescaleNightlyBit = 1 << iota
 )
 
@@ -70,6 +71,7 @@ const (
 	Timescale2AndPromscale ExtensionState = timescaleBit | timescale2Bit | promscaleBit
 	Multinode              ExtensionState = timescaleBit | timescale2Bit | multinodeBit
 	MultinodeAndPromscale  ExtensionState = timescaleBit | timescale2Bit | multinodeBit | promscaleBit
+	TimescaleOSS           ExtensionState = timescaleBit | timescale2Bit | timescaleOSSBit
 
 	TimescaleNightly          ExtensionState = timescaleBit | timescale2Bit | timescaleNightlyBit
 	TimescaleNightlyMultinode ExtensionState = timescaleBit | timescale2Bit | multinodeBit | timescaleNightlyBit
@@ -103,6 +105,10 @@ func (e *ExtensionState) UsePG12() {
 	*e |= postgres12Bit
 }
 
+func (e *ExtensionState) UseTimescaleDBOSS() {
+	*e |= timescaleBit | timescale2Bit | timescaleOSSBit
+}
+
 func (e ExtensionState) UsesTimescaleDB() bool {
 	return (e & timescaleBit) != 0
 }
@@ -125,6 +131,10 @@ func (e ExtensionState) usesPromscale() bool {
 
 func (e ExtensionState) UsesPG12() bool {
 	return (e & postgres12Bit) != 0
+}
+
+func (e ExtensionState) UsesTimescaleDBOSS() bool {
+	return (e & timescaleOSSBit) != 0
 }
 
 var (
@@ -322,6 +332,8 @@ func StartPGContainer(
 		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
 	case VanillaPostgres:
 		image = "postgres:" + PGMajor
+	case TimescaleOSS:
+		image = "timescale/timescaledb:latest-" + PGTag + "-oss"
 	case TimescaleNightly, TimescaleNightlyMultinode:
 		image = "timescaledev/timescaledb:nightly-" + PGTag
 	}
