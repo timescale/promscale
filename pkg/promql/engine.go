@@ -42,8 +42,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
 
-	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
+	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/util"
 )
 

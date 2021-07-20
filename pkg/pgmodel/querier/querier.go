@@ -27,10 +27,10 @@ import (
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
-// Reader reads the data based on the provided read request.
-type Reader interface {
-	Read(*prompb.ReadRequest) (*prompb.ReadResponse, error)
-}
+const (
+	getSampleMetricTableSQL   = "SELECT table_name FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1)"
+	getExemplarMetricTableSQL = "SELECT COALESCE(table_name, '') FROM " + schema.Catalog + ".exemplar WHERE metric_name=$1"
+)
 
 type QueryHints struct {
 	StartTime   time.Time
@@ -44,29 +44,6 @@ type SeriesSet interface {
 	storage.SeriesSet
 	Close()
 }
-
-// Querier queries the data using the provided query data and returns the
-// matching timeseries.
-type Querier interface {
-	// Query returns resulting timeseries for a query.
-	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
-	// Select returns a series set containing the samples that matches the supplied query parameters.
-	Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node)
-	// Exemplar returns a exemplar querier.
-	Exemplar(ctx context.Context) ExemplarQuerier
-}
-
-// ExemplarQuerier queries data using the provided query data and returns the
-// matching exemplars.
-type ExemplarQuerier interface {
-	// Select returns a series set containing the exemplar that matches the supplied query parameters.
-	Select(start, end time.Time, ms ...[]*labels.Matcher) ([]model.ExemplarQueryResult, error)
-}
-
-const (
-	getMetricsTableSQL = "SELECT table_schema, table_name, series_table FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1, $2)"
-	getExemplarMetricTableSQL = "SELECT COALESCE(table_name, '') FROM " + schema.Catalog + ".exemplar WHERE metric_name=$1"
-)
 
 type pgxQuerier struct {
 	conn             pgxconn.PgxConn
@@ -109,12 +86,17 @@ var _ Querier = (*pgxQuerier)(nil)
 // SelectSamples implements the Querier interface. It is the entry point for our
 // own version of the Prometheus engine.
 func (q *pgxQuerier) Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node) {
-	rows, topNode, err := q.getResultRows(schema.Data, mint, maxt, hints, qh, path, ms)
+	rows, topNode, err := q.getResultRows(seriesSamples, mint, maxt, hints, qh, path, ms)
 	if err != nil {
 		return errorSeriesSet{err: err}, nil
 	}
 
-	ss := buildSeriesSet(rows.([]seriesRow), q.labelsReader)
+	var ss SeriesSet
+	if rows != nil {
+		ss = buildSeriesSet(rows.([]sampleRow), q.labelsReader)
+	} else {
+		ss = buildSeriesSet(nil, q.labelsReader)
+	}
 	return ss, topNode
 }
 
@@ -149,7 +131,7 @@ func (eq *pgxExemplarQuerier) Select(start, end time.Time, matchersList ...[]*la
 	)
 	for _, matchers := range matchersList {
 		go func(matchers []*labels.Matcher) {
-			rows, _, err := eq.pgxRef.getResultRows(seriesExemplars, timestamp.FromTime(start), timestamp.FromTime(end), nil, nil, matchers)
+			rows, _, err := eq.pgxRef.getResultRows(seriesExemplars, timestamp.FromTime(start), timestamp.FromTime(end), nil, nil, nil, matchers)
 			if rows == nil {
 				// Result does not exists.
 				rowsCh <- nil
@@ -225,12 +207,12 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 		return nil, err
 	}
 
-	rows, _, err := q.getResultRows(seriesSamples, query.StartTimestampMs, query.EndTimestampMs, nil, nil, matchers)
+	rows, _, err := q.getResultRows(seriesSamples, query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := buildTimeSeries(rows.([]seriesRow), q.labelsReader)
+	results, err := buildTimeSeries(rows.([]sampleRow), q.labelsReader)
 	return results, err
 }
 
@@ -262,7 +244,7 @@ func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 
 // getResultRows fetches the result row datasets from the database using the
 // supplied query parameters.
-func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) (interface{}, parser.Node, error) {
+func (q *pgxQuerier) getResultRows(qt queryType, startTimestamp, endTimestamp int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, matchers []*labels.Matcher) (interface{}, parser.Node, error) {
 	if q.rAuth != nil {
 		matchers = q.rAuth.AppendTenantMatcher(matchers)
 	}
@@ -288,7 +270,7 @@ func (q *pgxQuerier) getResultRows(tableSchema string, startTimestamp, endTimest
 		if err != nil {
 			return nil, nil, err
 		}
-		return q.querySingleMetric(tableSchema, metric, filter, clauses, values, hints, qh, path)
+		return q.querySingleMetric(qt, metric, filter, clauses, values, hints, qh, path)
 	}
 
 	clauses, values, err := builder.Build(true)
@@ -316,7 +298,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	filter.schema = mInfo.TableSchema
 	filter.seriesTable = mInfo.SeriesTable
 
-	sqlQuery, values, topNode, tsSeries, err := buildTimeseriesByLabelClausesQuery(tableSchema, filter, cases, values, hints, qh, path)
+	sqlQuery, values, topNode, tsSeries, err := buildTimeseriesByLabelClausesQuery(qt, filter, cases, values, hints, qh, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -377,7 +359,7 @@ func (q *pgxQuerier) queryMultipleMetrics(qt queryType, filter metricTimeRangeFi
 	)
 	switch qt {
 	case seriesSamples:
-		results = make([]seriesRow, 0, len(metrics))
+		results = make([]sampleRow, 0, len(metrics))
 	case seriesExemplars:
 		results = make([]exemplarSeriesRow, 0, len(metrics))
 	default:

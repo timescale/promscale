@@ -477,12 +477,12 @@ func genRows(count int) [][][]byte {
 	return result
 }
 
-func genPgxRows(m [][]seriesSetRow, err error) []seriesRow {
-	var result []seriesRow
+func genPgxRows(m [][]seriesSetRow, err error) []sampleRow {
+	var result []sampleRow
 
 	for _, mm := range m {
 		for _, r := range mm {
-			result = append(result, seriesRow{
+			result = append(result, sampleRow{
 				labelIds: r.labels,
 				times:    newRowTimestampSeries(toTimestampTzArray(r.timestamps)),
 				values:   toFloat8Array(r.values),

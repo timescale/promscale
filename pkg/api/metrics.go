@@ -16,24 +16,24 @@ var metrics *Metrics
 type Metrics struct {
 	// Using the first word in struct to ensure proper alignment in 32-bit systems.
 	// Reference: https://golang.org/pkg/sync/atomic/#pkg-note-BUG
-	LastRequestUnixNano int64
-	LeaderGauge         prometheus.Gauge
-	ReceivedSamples     prometheus.Counter
-	ReceivedMetadata    prometheus.Counter
-	FailedSamples       prometheus.Counter
-	FailedMetadata      prometheus.Counter
-	SentSamples         prometheus.Counter
-	SentMetadata        prometheus.Counter
-	SentBatchDuration   prometheus.Histogram
-	ReceivedQueries     prometheus.Counter
-	FailedQueries       prometheus.Counter
-	QueryBatchDuration  prometheus.Histogram
+	LastRequestUnixNano   int64
+	LeaderGauge           prometheus.Gauge
+	ReceivedSamples       prometheus.Counter
+	ReceivedMetadata      prometheus.Counter
+	FailedSamples         prometheus.Counter
+	FailedMetadata        prometheus.Counter
+	SentSamples           prometheus.Counter
+	SentMetadata          prometheus.Counter
+	SentBatchDuration     prometheus.Histogram
+	ReceivedQueries       prometheus.Counter
+	FailedQueries         prometheus.Counter
+	QueryBatchDuration    prometheus.Histogram
 	ExemplarQueryDuration prometheus.Histogram
-	QueryDuration       prometheus.Histogram
-	InvalidReadReqs     prometheus.Counter
-	InvalidWriteReqs    prometheus.Counter
-	InvalidQueryReqs    prometheus.Counter
-	HTTPRequestDuration *prometheus.HistogramVec
+	QueryDuration         prometheus.Histogram
+	InvalidReadReqs       prometheus.Counter
+	InvalidWriteReqs      prometheus.Counter
+	InvalidQueryReqs      prometheus.Counter
+	HTTPRequestDuration   *prometheus.HistogramVec
 }
 
 // InitMetrics sets up and returns the Prometheus metrics which Promscale exposes.

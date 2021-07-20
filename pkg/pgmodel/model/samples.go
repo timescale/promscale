@@ -27,11 +27,14 @@ type promSamples struct {
 func newPromSamples(series *Series, sampleSet []prompb.Sample) Insertable {
 	s := promSamplesPool.Get().(*promSamples)
 	s.series = series
-	s.samples = sampleSet
+	if cap(s.samples) < len(sampleSet) {
+		s.samples = make([]prompb.Sample, len(sampleSet))
+	}
+	s.samples = sampleSet[:]
 	return s
 }
 
-func (t *promSamples) GetSeries() *Series {
+func (t *promSamples) Series() *Series {
 	return t.series
 }
 
@@ -39,8 +42,11 @@ func (t *promSamples) Count() int {
 	return len(t.samples)
 }
 
-func (t *promSamples) At(index int) sampleFields {
-	return t.samples[index]
+// todo: pool
+type samplesIterator struct {
+	curr  int
+	total int
+	data  []prompb.Sample
 }
 
 func (t *promSamples) MaxTs() int64 {
@@ -48,7 +54,7 @@ func (t *promSamples) MaxTs() int64 {
 	if numSamples == 0 {
 		// If no samples exist, return a -ve int, so that the stats
 		// caller does not capture this value.
-		return math.MinInt64
+		return -1
 	}
 	return t.samples[numSamples-1].Timestamp
 }
@@ -57,12 +63,38 @@ func (t *promSamples) AllExemplarLabelKeys() []string {
 	return nil
 }
 
-func (t *promSamples) OrderExemplarLabels(_ map[string]int) bool { return false }
+var samplesIteratorPool = sync.Pool{New: func() interface{} { return new(samplesIterator) }}
+
+func (i *samplesIterator) HasNext() bool {
+	return i.curr < i.total
+}
+
+// Value in samplesIterator does not return labels, since samples do not have labels.
+// Its the series that have th labels in samples.
+func (i *samplesIterator) Value() (labels []prompb.Label, timestamp int64, value float64) {
+	timestamp, value = i.data[i.curr].Timestamp, i.data[i.curr].Value
+	i.curr++
+	return
+}
+
+func (i *samplesIterator) Close() {
+	i.data = i.data[:0]
+	i.curr = 0
+	samplesIteratorPool.Put(i)
+}
+
+func (t *promSamples) Iterator() Iterator {
+	return &samplesIterator{data: t.samples, total: len(t.samples)}
+}
 
 func (t *promSamples) Type() InsertableType {
 	return Sample
 }
 
-func (t *promSamples) data() interface{} {
-	return t
+func (t *promSamples) IsOfType(typ InsertableType) bool {
+	return Sample == typ
+}
+
+func (t *promSamples) Close() {
+	putSamples(t)
 }

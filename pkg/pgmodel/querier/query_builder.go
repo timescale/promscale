@@ -26,7 +26,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -113,10 +112,10 @@ const (
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
 	*/
-	timeseriesByMetricSQLFormat = `SELECT series.labels, result.time_array, result.value_array
+	timeseriesByMetricSQLFormat = `SELECT series.labels,  %[7]s
 	FROM %[2]s series
 	INNER JOIN LATERAL (
-		SELECT %[6]s as time_array, %[7]s as value_array
+		SELECT %[6]s
 		FROM
 		(
 			SELECT time, %[9]s as value
@@ -186,7 +185,7 @@ func GetMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.
 	if err != nil {
 		return nil, nil, fmt.Errorf("build metric name series: %w", err)
 	}
-	metricNames, _, correspondingSeriesIDs, err := GetSeriesPerMetric(rows)
+	metricNames, correspondingSeriesIDs, err := GetSeriesPerMetric(rows)
 	if err != nil {
 		return nil, nil, fmt.Errorf("series per metric: %w", err)
 	}
@@ -375,22 +374,23 @@ func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, 
 	return c.clauses, c.args, nil
 }
 
-func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []sampleRow) {
+// todo: continue from here harkishen
+func initLabelIdIndexForSamples(index map[int64]labels.Label, rows []sampleRow) {
 	for i := range rows {
 		for _, id := range rows[i].labelIds {
 			//id==0 means there is no label for the key, so nothing to look up
 			if id == 0 {
 				continue
 			}
-			labelIDMap[id] = labels.Label{}
+			index[id] = labels.Label{}
 		}
 	}
 }
 
-func buildTimeSeries(rows []seriesRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 	labelIDMap := make(map[int64]labels.Label)
-	initializeLabeIDMap(labelIDMap, rows)
+	initLabelIdIndexForSamples(labelIDMap, rows)
 
 	err := lr.LabelsForIdMap(labelIDMap)
 	if err != nil {
@@ -496,41 +496,39 @@ func buildTimeseriesBySeriesIDQuery(qt queryType, filter metricTimeRangeFilter, 
 	)
 }
 
-func buildTimeseriesByLabelClausesQuery(tableSchema string, filter metricTimeRangeFilter, cases []string, values []interface{},
+func buildTimeseriesByLabelClausesQuery(qt queryType, filter metricTimeRangeFilter, cases []string, values []interface{},
 	hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (string, []interface{}, parser.Node, TimestampSeries, error) {
-	qf, node, err := getAggregators(hints, qh, path)
-	if err != nil {
-		return "", nil, nil, nil, err
-	}
-
-	selectors := []string{}
-	selectorClauses := []string{}
-
-	if qf.timeClause != "" {
-		var timeClauseBound string
-		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
+	switch qt {
+	case seriesSamples:
+		// Aggregators are not in exemplar queries. In sample query, we have aggregations since they are
+		// to serve promql evaluations. But, exemplar queries are fetch-only queries. Their responses are not meant to be
+		// evaluated by any PromQL function.
+		qf, node, err := getAggregators(hints, qh, path)
 		if err != nil {
 			return "", nil, nil, nil, err
 		}
-		selectors = append(selectors, "result.time_array")
-		selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
-	}
-	valueClauseBound, values, err := setParameterNumbers(qf.valueClause, values, qf.valueParams...)
-	if err != nil {
-		return "", nil, nil, nil, err
-	}
-	selectors = append(selectors, "result.value_array")
-	selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
 
-	orderByClause := "ORDER BY time"
-	if qf.unOrdered {
-		orderByClause = ""
-	}
-	template := timeseriesByMetricSQLFormat
-	if len(cases) == 1 && cases[0] == "TRUE" {
-		template = timeseriesByMetricSQLFormatNoClauses
-		if !qf.unOrdered {
-			orderByClause = "ORDER BY series_id, time"
+		var selectors, selectorClauses []string
+
+		if qf.timeClause != "" && qt != seriesExemplars {
+			var timeClauseBound string
+			timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
+			if err != nil {
+				return "", nil, nil, nil, err
+			}
+			selectors = append(selectors, "result.time_array")
+			selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
+		}
+		valueClauseBound, values, err := setParameterNumbers(qf.valueClause, values, qf.valueParams...)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+		selectors = append(selectors, "result.value_array")
+		selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
+
+		orderByClause := "ORDER BY time"
+		if qf.unOrdered {
+			orderByClause = ""
 		}
 	}
 

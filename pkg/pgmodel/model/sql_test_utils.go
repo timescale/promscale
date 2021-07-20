@@ -500,13 +500,13 @@ func (m *MockInserter) InsertTs(data Data) (uint64, error) {
 	rows := data.Rows
 	for _, v := range rows {
 		for i, si := range v {
-			seriesStr := si.GetSeries().String()
+			seriesStr := si.Series().String()
 			id, ok := m.InsertedSeries[seriesStr]
 			if !ok {
 				id = SeriesID(len(m.InsertedSeries))
 				m.InsertedSeries[seriesStr] = id
 			}
-			v[i].GetSeries().seriesID = id
+			v[i].Series().seriesID = id
 		}
 	}
 	if m.InsertSeriesErr != nil {

@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/prompb"
 	"math"
 	"sort"
 	"strings"
@@ -206,6 +207,7 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest) error {
 		pending = req.data
 		minTime = model.Time(pending.batch.MinSeen).Time()
 	)
+	fmt.Println("minTime is", minTime)
 	//how much faster are we at ingestion than wall-clock time?
 	ingestSpeedup := 2
 	//delay the next compression job proportional to the duration between now and the data time + a constant safety
@@ -289,8 +291,12 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 
 		hasSamples := false
 		hasExemplars := false
-		for req.data.batch.Next() {
-			timestamp, val, seriesID, seriesEpoch, typ := req.data.batch.Values()
+		batchIterator := req.data.batch.Iterator()
+
+		for batchIterator.HasNext() {
+			labels, timestamp, val, seriesID, seriesEpoch, typ := batchIterator.Value()
+			// Note: `labels` received above are labels of exemplars since samples do not have labels.
+			// Hence, in case of samples. the `labels` will actually be nil.
 			if seriesEpoch < lowestEpoch {
 				lowestEpoch = seriesEpoch
 			}
@@ -305,9 +311,11 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 				timeE = append(timeE, timestamp)
 				valE = append(valE, val)
 				seriesE = append(seriesE, int64(seriesID))
-				exemplarLbls = append(exemplarLbls, req.data.batch.GetCorrespondingLabelValues())
+				exemplarLbls = append(exemplarLbls, labelsToStringSlice(labels))
 			}
 		}
+		batchIterator.Close()
+
 		if err = req.data.batch.Err(); err != nil {
 			return err
 		}
@@ -397,4 +405,12 @@ func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows
 	}
 	MetadataBatchInsertDuration.Observe(time.Since(start).Seconds())
 	return insertedRows, nil
+}
+
+func labelsToStringSlice(lbls []prompb.Label) []string {
+	s := make([]string, len(lbls))
+	for i := range lbls {
+		s[i] = lbls[i].Value
+	}
+	return s
 }

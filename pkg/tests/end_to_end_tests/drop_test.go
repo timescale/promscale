@@ -15,7 +15,6 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"

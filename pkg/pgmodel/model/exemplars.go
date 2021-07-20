@@ -11,6 +11,12 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+type InsertableExemplar interface {
+	Insertable
+	AllExemplarLabelKeys() []string
+	OrderExemplarLabels(index map[string]int) (positionExists bool)
+}
+
 var promExemplarsPool = sync.Pool{New: func() interface{} { return new(promExemplars) }}
 
 func putExemplars(s *promExemplars) {
@@ -24,14 +30,17 @@ type promExemplars struct {
 	exemplars []prompb.Exemplar
 }
 
-func newExemplarSamples(series *Series, exemplarSet []prompb.Exemplar) Insertable {
+func newPromExemplars(series *Series, exemplarSet []prompb.Exemplar) InsertableExemplar {
 	s := promExemplarsPool.Get().(*promExemplars)
 	s.series = series
-	s.exemplars = exemplarSet
+	if cap(s.exemplars) < len(exemplarSet) {
+		s.exemplars = make([]prompb.Exemplar, len(exemplarSet))
+	}
+	s.exemplars = exemplarSet[:]
 	return s
 }
 
-func (t *promExemplars) GetSeries() *Series {
+func (t *promExemplars) Series() *Series {
 	return t.series
 }
 
@@ -39,8 +48,48 @@ func (t *promExemplars) Count() int {
 	return len(t.exemplars)
 }
 
+func (t *promExemplars) MaxTs() int64 {
+	numSamples := len(t.exemplars)
+	if numSamples == 0 {
+		// If no samples exist, return a -ve int, so that the stats
+		// caller does not capture this value.
+		return -1
+	}
+	return t.exemplars[numSamples-1].Timestamp
+}
+
 func (t *promExemplars) At(index int) sampleFields {
 	return t.exemplars[index]
+}
+
+// todo: pool
+type exemplarsIterator struct {
+	curr  int
+	total int
+	data  []prompb.Exemplar
+}
+
+var exemplarsIteratorPool = sync.Pool{New: func() interface{} { return new(exemplarsIterator) }}
+
+func (i *exemplarsIterator) HasNext() bool {
+	return i.curr < i.total
+}
+
+func (i *exemplarsIterator) Value() (labels []prompb.Label, timestamp int64, value float64) {
+	datapoint := i.data[i.curr]
+	labels, timestamp, value = datapoint.Labels, datapoint.Timestamp, datapoint.Value
+	i.curr++
+	return
+}
+
+func (i *exemplarsIterator) Close() {
+	i.data = i.data[:0]
+	i.curr = 0
+	exemplarsIteratorPool.Put(i)
+}
+
+func (t *promExemplars) Iterator() Iterator {
+	return &exemplarsIterator{data: t.exemplars, total: len(t.exemplars)}
 }
 
 // OrderExemplarLabels orders the existing labels in each exemplar, based on the index of the label key
@@ -106,8 +155,12 @@ func (t *promExemplars) Type() InsertableType {
 	return Exemplar
 }
 
-func (t *promExemplars) data() interface{} {
-	return t
+func (t *promExemplars) IsOfType(typ InsertableType) bool {
+	return typ == Exemplar
+}
+
+func (t *promExemplars) Close() {
+	putExemplars(t)
 }
 
 // ExemplarData is additional information associated with a time series.

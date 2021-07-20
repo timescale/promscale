@@ -37,6 +37,7 @@ var rawExemplar = []prompb.Exemplar{
 var (
 	metric_1 = "test_metric_1"
 	metric_2 = "test_metric_2_histogram"
+	metric_3 = "test_metric_3_total"
 )
 
 var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
@@ -74,6 +75,29 @@ var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
 	},
 }
 
+var exemplarTS_2 = []prompb.TimeSeries{ // If timeseries are sent with exemplars in same alloc.
+	{
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_3}, {Name: "job", Value: "generator"}},
+		Samples:   []prompb.Sample{{Timestamp: 0, Value: 0}},
+		Exemplars: []prompb.Exemplar{rawExemplar[0]},
+	},
+	{
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_3}, {Name: "job", Value: "generator"}, {Name: "le", Value: "1"}},
+		Samples:   []prompb.Sample{{Timestamp: 1, Value: 1}},
+		Exemplars: []prompb.Exemplar{rawExemplar[1]},
+	},
+	{
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "10"}},
+		Samples:   []prompb.Sample{{Timestamp: 2, Value: 2}},
+		Exemplars: []prompb.Exemplar{rawExemplar[2]},
+	},
+	{
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_1}, {Name: "job", Value: "generator"}, {Name: "le", Value: "100"}},
+		Samples:   []prompb.Sample{{Timestamp: 3, Value: 3}},
+		Exemplars: []prompb.Exemplar{rawExemplar[3]},
+	},
+}
+
 type exemplarTableRow struct {
 	ts                  float64 // Epoch in postgres is decimal.
 	exemplarLabelValues []string
@@ -89,9 +113,10 @@ func TestExemplarIngestion(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		rowsInserted, err := ingestor.Ingest(newWriteRequestWithTs(exemplarTS_1))
+		insertablesIngested, metadataIngested, err := ingestor.Ingest(newWriteRequestWithTs(exemplarTS_1))
 		require.NoError(t, err)
-		require.Equal(t, 8, int(rowsInserted))
+		require.Equal(t, 8, int(insertablesIngested))
+		require.Equal(t, 0, int(metadataIngested))
 
 		// Check inserted samples tables.
 		rows, err := db.Query(context.Background(), "SELECT metric_name FROM _prom_catalog.exemplar")
@@ -152,9 +177,10 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		rowsInserted, err := ingestor.Ingest(newWriteRequestWithTs(exemplarTS_1))
+		insertablesIngested, metadataIngested, err := ingestor.Ingest(newWriteRequestWithTs(exemplarTS_2))
 		require.NoError(t, err)
-		require.Equal(t, 8, int(rowsInserted))
+		require.Equal(t, 8, int(insertablesIngested))
+		require.Equal(t, 0, int(metadataIngested))
 
 		labelsReader := lreader.NewLabelsReader(pgxconn.NewPgxConn(db), cache.NewLabelsCache(cache.DefaultConfig))
 		r := querier.NewQuerier(
@@ -165,14 +191,14 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		queryable := query.NewQueryable(r, labelsReader)
 
 		// Just query all exemplars corresponding to metric_2 histogram.
-		results, err := exemplar.QueryExemplar(context.Background(), metric_2, queryable, time.Unix(0, 0), time.Unix(1, 0))
+		results, err := exemplar.QueryExemplar(context.Background(), metric_3, queryable, time.Unix(0, 0), time.Unix(1, 0))
 		require.NoError(t, err)
 
 		bSlice, err := json.Marshal(results)
 		require.NoError(t, err)
 		// Below check flaky in terms of order. TODO.
 		require.Equal(t,
-			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":4}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
+			`[{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
 			string(bSlice))
 
 		// Query all exemplars of all metrics that we inserted.
@@ -182,7 +208,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		bSlice, err = json.Marshal(results)
 		require.NoError(t, err)
 		require.Equal(t,
-			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":4}]},{"seriesLabels":{"__name__":"test_metric_1","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]}]`,
+			`[{"seriesLabels":{"__name__":"test_metric_1","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":4}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
 			string(bSlice))
 	})
 }

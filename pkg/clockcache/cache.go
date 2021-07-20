@@ -102,9 +102,7 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 	if len(self.storage) >= cap(self.storage) {
 		insertLocation = self.evict()
 		if insertLocation == nil {
-			// Do not return nil in the first position, otherwise the callers will panic
-			// if there happens to be an edge case in self.evict().
-			return &element{}, false
+			return &element{key: key, value: value, size: size}, false
 		}
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()

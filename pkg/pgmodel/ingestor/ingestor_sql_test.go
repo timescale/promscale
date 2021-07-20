@@ -288,7 +288,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if err == nil {
 				for _, si := range lsi {
-					si, se, err := si.GetSeries().GetSeriesID()
+					si, se, err := si.Series().GetSeriesID()
 					require.NoError(t, err)
 					require.True(t, si > 0, "series id not set")
 					require.True(t, se > 0, "epoch not set")
@@ -443,10 +443,10 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for index, si := range samples {
-		_, _, ok := si.GetSeries().NameValues()
+		_, _, ok := si.Series().NameValues()
 		require.False(t, ok)
 		expectedId := expectedIds[index]
-		gotId, _, err := si.GetSeries().GetSeriesID()
+		gotId, _, err := si.Series().GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)

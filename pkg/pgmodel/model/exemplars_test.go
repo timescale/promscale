@@ -29,7 +29,7 @@ func TestOrderExemplarLabelsPositionExists(t *testing.T) {
 			Timestamp: 5,
 		},
 	}
-	insertable := newExemplarSamples(nil, rawExemplars)
+	insertable := newPromExemplars(nil, rawExemplars)
 	index := prepareIndex(rawExemplars)
 	require.True(t, insertable.OrderExemplarLabels(index))
 	rawExemplars = append(rawExemplars, prompb.Exemplar{
@@ -37,7 +37,7 @@ func TestOrderExemplarLabelsPositionExists(t *testing.T) {
 		Value:     10,
 		Timestamp: 10,
 	})
-	insertable = newExemplarSamples(nil, rawExemplars)
+	insertable = newPromExemplars(nil, rawExemplars)
 	// Index invalid now. Should return positionExists as false, indicating that index needs an update.
 	require.False(t, insertable.OrderExemplarLabels(index))
 }

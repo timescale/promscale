@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/timescale/promscale/pkg/log"
@@ -39,7 +38,7 @@ type exemplarRow struct {
 
 // appendExemplarRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendExemplarRows(metricName string, in pgx.Rows) (rows []exemplarSeriesRow, err error) {
+func appendExemplarRows(metricName string, in pgxconn.PgxRows) (rows []exemplarSeriesRow, err error) {
 	if in.Err() != nil {
 		return rows, in.Err()
 	}
@@ -97,15 +96,19 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 		metric   = queryResult.metricName
 		labelIds = queryResult.labelIds
 	)
-	promLabels, err := lr.PrompbLabelsForIds(labelIds)
+	index := make(map[int64]labels.Label)
+	initLabelIdIndexForExemplars(index, queryResult.labelIds)
+	err := lr.LabelsForIdMap(index)
+	if err != nil {
+		return result, fmt.Errorf("fill labelIds map: %w", err)
+	}
+	lbls, err := getLabelsFromLabelIds(labelIds, index)
 	if err != nil {
 		return model.ExemplarQueryResult{}, fmt.Errorf("fetching promLabels for label-ids: %w", err)
 	}
-	seriesLabels := getLabels(promLabels)
-	sort.Slice(seriesLabels, func(i, j int) bool {
-		return strings.Compare(seriesLabels[i].Name, seriesLabels[j].Value) > 0 // > 0 keeps __name__ label pair towards the first.
-	})
-	result.SeriesLabels = seriesLabels
+	sortedLabels := lbls
+	sort.Sort(sortedLabels) // labels.Labels implements Less() function, that has < 0 comparison. This keeps __name__ label pair towards the first, providing better visibility.
+	result.SeriesLabels = sortedLabels
 	result.Exemplars = make([]model.ExemplarData, 0)
 
 	keyPosIndex, exists := exemplarKeyPos.GetLabelPositions(metric)
@@ -137,6 +140,16 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 		})
 	}
 	return result, nil
+}
+
+func initLabelIdIndexForExemplars(index map[int64]labels.Label, labelIds []int64) {
+	for _, labelId := range labelIds {
+		if labelId == 0 {
+			// no label to look-up for.
+			continue
+		}
+		index[labelId] = labels.Label{}
+	}
 }
 
 func createPromLabels(index map[int]string, values []string) []labels.Label {

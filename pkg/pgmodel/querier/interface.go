@@ -22,7 +22,7 @@ type Querier interface {
 	// Query returns resulting timeseries for a query.
 	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
 	// Select returns a series set containing the samples that matches the supplied query parameters.
-	Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, path []parser.Node, ms ...*labels.Matcher) (storage.SeriesSet, parser.Node)
+	Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node)
 	// Exemplar returns a exemplar querier.
 	Exemplar(ctx context.Context) ExemplarQuerier
 }

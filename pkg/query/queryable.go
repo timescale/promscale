@@ -42,11 +42,11 @@ func (q queryable) Exemplar(ctx context.Context) promql.ExemplarQuerier {
 }
 
 type querier struct {
-	ctx           context.Context
-	mint, maxt    int64
-	metrics pgQuerier.Querier
-	labelsReader  lreader.LabelsReader
-	seriesSets    []pgQuerier.SeriesSet
+	ctx          context.Context
+	mint, maxt   int64
+	metrics      pgQuerier.Querier
+	labelsReader lreader.LabelsReader
+	seriesSets   []pgQuerier.SeriesSet
 }
 
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {

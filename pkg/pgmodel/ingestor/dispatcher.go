@@ -33,7 +33,7 @@ type pgxDispatcher struct {
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
 	exemplarKeyPosCache    cache.PositionCache
-	inserters              sync.Map
+	batchers               sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
 	toCopiers              chan<- copyRequest
@@ -191,7 +191,7 @@ func (p *pgxDispatcher) Close() {
 	p.doneWG.Wait()
 }
 
-// InsertData inserts a batch of data into the database.
+// InsertTs inserts a batch of data into the database.
 // The data should be grouped by metric name.
 // returns the number of rows we intended to insert (_not_ how many were
 // actually inserted) and any error.
@@ -210,13 +210,11 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 	// channel, but only insert if it's empty, anything else can deadlock.
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
-		for _, si := range data {
-			numRows += uint64(si.Count())
-			ls := si.LastSample()
-			if maxt < ls.Timestamp {
-				// Since by default, samples are expected to arrive in sorted order with time,
-				// the last sample should be the maxt of that series. This assumption helps avoid costly inner loops.
-				maxt = ls.Timestamp
+		for _, insertable := range data {
+			numRows += uint64(insertable.Count())
+			ts := insertable.MaxTs()
+			if maxt < ts {
+				maxt = ts
 			}
 		}
 		// the following is usually non-blocking, just a channel insert

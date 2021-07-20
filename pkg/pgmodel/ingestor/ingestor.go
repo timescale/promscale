@@ -80,7 +80,7 @@ func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (m
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, numMetadata uint64, err error) {
+func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
 	activeWriteRequests.Inc()
 	defer activeWriteRequests.Dec() // Dec() is defered otherwise it will lead to loosing a decrement if some error occurs.
 	var (
@@ -120,11 +120,6 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 		res <- result{meta, n, err}
 	}()
 
-	var (
-		samplesRowsInserted  uint64
-		metadataRowsInserted uint64
-	)
-
 	mergeErr := func(prevErr, err error, message string) error {
 		if prevErr != nil {
 			err = fmt.Errorf("%s: %s: %w", prevErr.Error(), message, err)
@@ -136,10 +131,10 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 		response := <-res
 		switch response.id {
 		case series:
-			samplesRowsInserted = response.numRows
+			numInsertablesIngested = response.numRows
 			err = mergeErr(err, response.err, "ingesting timeseries")
 		case meta:
-			metadataRowsInserted = response.numRows
+			numMetadataIngested = response.numRows
 			err = mergeErr(err, response.err, "ingesting metadata")
 		}
 	}
@@ -150,12 +145,12 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 	// In order for this to work correctly, any data we wish to keep using (e.g.
 	// samples) must no longer be reachable from req.
 	FinishWriteRequest(r)
-	return samplesRowsInserted, metadataRowsInserted, err
+	return numInsertablesIngested, numMetadataIngested, err
 }
 
 func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
 	var (
-		totalRows uint64
+		totalRows   uint64
 		insertables = make(map[string][]model.Insertable)
 	)
 
@@ -164,19 +159,20 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 			err        error
 			series     *model.Series
 			metricName string
-			
-			ts         = &timeseries[i]
+
+			ts = &timeseries[i]
 		)
-		if len(ts.Labels) > 0 {
-			// Normalize and canonicalize t.Labels.
-			// After this point t.Labels should never be used again.
-			series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
-			if err != nil {
-				return 0, err
-			}
-			if metricName == "" {
-				return 0, errors.ErrNoMetricName
-			}
+		if len(ts.Labels) == 0 {
+			continue
+		}
+		// Normalize and canonicalize t.Labels.
+		// After this point t.Labels should never be used again.
+		series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
+		if err != nil {
+			return 0, err
+		}
+		if metricName == "" {
+			return 0, errors.ErrNoMetricName
 		}
 
 		if len(ts.Samples) > 0 {
@@ -202,11 +198,11 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 	}
 	releaseMem()
 
-	samplesRowsInserted, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: insertables, ReceivedTime: time.Now()})
-	if errSamples == nil && samplesRowsInserted != totalRows {
-		return samplesRowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, samplesRowsInserted)
+	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: insertables, ReceivedTime: time.Now()})
+	if errSamples == nil && numInsertablesIngested != totalRows {
+		return numInsertablesIngested, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, numInsertablesIngested)
 	}
-	return samplesRowsInserted, errSamples
+	return numInsertablesIngested, errSamples
 }
 
 // ingestMetadata ingests metric metadata received from Prometheus. It runs as a secondary routine, independent from
@@ -224,11 +220,11 @@ func (ingestor *DBIngestor) ingestMetadata(metadata []prompb.MetricMetadata, rel
 		}
 	}
 	releaseMem()
-	rowsInserted, errMetadata := ingestor.dispatcher.InsertMetadata(data)
+	numMetadataIngested, errMetadata := ingestor.dispatcher.InsertMetadata(data)
 	if errMetadata != nil {
 		return 0, errMetadata
 	}
-	return rowsInserted, nil
+	return numMetadataIngested, nil
 }
 
 // Parts of metric creation not needed to insert data

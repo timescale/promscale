@@ -1425,7 +1425,7 @@ func TestPushdownVecSel(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, []string{})
 		if err != nil {
