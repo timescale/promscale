@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/inhies/go-bytesize"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
@@ -60,6 +61,7 @@ type config struct {
 	readerAuth           utils.Auth
 	writerAuth           utils.Auth
 	progressMetricAuth   utils.Auth
+	readerMetricsMatcher string
 }
 
 func main() {
@@ -106,6 +108,18 @@ func main() {
 		os.Exit(0)
 	}
 
+	ms, err := parser.ParseExpr(conf.readerMetricsMatcher)
+	if err != nil {
+		log.Error("msg", "could not parse reader metrics matcher", "error", err)
+		os.Exit(2)
+	}
+
+	vs, ok := ms.(*parser.VectorSelector)
+	if !ok {
+		log.Error("msg", "invalid metrics matcher", "error", "only vector selector can be used")
+		os.Exit(2)
+	}
+
 	var (
 		readErrChan  = make(chan error)
 		writeErrChan = make(chan error)
@@ -119,6 +133,7 @@ func main() {
 		HTTPConfig:      conf.readerAuth.ToHTTPClientConfig(),
 		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigSlabRead,
+		MetricsMatchers: vs.LabelMatchers,
 	}
 	read, err := reader.New(readerConfig)
 	if err != nil {
@@ -213,6 +228,7 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.readerClientConfig.OnErrStr, "reader-on-error", "abort", "When an error occurs during read process, how should the reader behave. "+
 		"Valid options: ['retry', 'skip', 'abort']. "+
 		"See 'reader-on-timeout' for more information on the above options. ")
+	flag.StringVar(&conf.readerMetricsMatcher, "reader-metrics-matcher", `{__name__=".*"}`, "Metrics vector selector to read data for migration.")
 
 	flag.StringVar(&conf.writerClientConfig.URL, "writer-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.DurationVar(&conf.writerClientConfig.Timeout, "writer-timeout", defaultTimeout, "Timeout for pushing data to write storage.")

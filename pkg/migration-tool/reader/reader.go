@@ -26,6 +26,8 @@ type Config struct {
 
 	SigSlabRead chan *plan.Slab // To the writer.
 	SigSlabStop chan struct{}
+
+	MetricsMatchers []*labels.Matcher
 }
 
 type Read struct {
@@ -78,7 +80,10 @@ func (r *Read) Run(errChan chan<- error) {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
 				return
 			}
-			ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")}
+			ms := r.Config.MetricsMatchers
+			if len(ms) == 0 {
+				ms = []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")}
+			}
 			err = slabRef.Fetch(r.Context, r.client, slabRef.Mint(), slabRef.Maxt(), ms)
 			if err != nil {
 				errChan <- fmt.Errorf("remote-run run: %w", err)
