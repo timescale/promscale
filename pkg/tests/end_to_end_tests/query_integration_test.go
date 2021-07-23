@@ -152,7 +152,7 @@ func TestSQLQuery(t *testing.T) {
 		{
 			name:      "empty request",
 			query:     &prompb.Query{},
-			expectErr: fmt.Errorf("no clauses generated"),
+			expectErr: fmt.Errorf("fetching sample rows: get evaluation metadata: building multiple metric clauses: no clauses generated"),
 		},
 		{
 			name: "empty response",
@@ -704,7 +704,7 @@ func TestSQLQuery(t *testing.T) {
 				}
 
 				if !reflect.DeepEqual(resp, c.expectResponse) {
-					t.Fatalf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, &c.expectResponse)
+					t.Fatalf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, c.expectResponse)
 				}
 
 			})

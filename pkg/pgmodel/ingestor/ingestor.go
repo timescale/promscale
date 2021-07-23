@@ -68,11 +68,11 @@ type result struct {
 }
 
 func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	return model.NewInsertable(l, ts.Samples), len(ts.Samples), nil
+	return model.NewPromSamples(l, ts.Samples), len(ts.Samples), nil
 }
 
 func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	return model.NewInsertable(l, ts.Exemplars), len(ts.Exemplars), nil
+	return model.NewPromExemplars(l, ts.Exemplars), len(ts.Exemplars), nil
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
@@ -150,7 +150,9 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngest
 
 func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
 	var (
-		totalRows   uint64
+		totalRows         uint64
+		containsExemplars bool
+
 		insertables = make(map[string][]model.Insertable)
 	)
 
@@ -184,6 +186,7 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 			insertables[metricName] = append(insertables[metricName], samples)
 		}
 		if len(ts.Exemplars) > 0 {
+			containsExemplars = true
 			exemplars, count, err := ingestor.exemplars(series, ts)
 			if err != nil {
 				return 0, fmt.Errorf("exemplars: %w", err)
@@ -198,7 +201,9 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 	}
 	releaseMem()
 
-	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: insertables, ReceivedTime: time.Now()})
+	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(model.Data{
+		Rows: insertables, ReceivedTime: time.Now(), ContainsExemplars: containsExemplars},
+	)
 	if errSamples == nil && numInsertablesIngested != totalRows {
 		return numInsertablesIngested, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, numInsertablesIngested)
 	}

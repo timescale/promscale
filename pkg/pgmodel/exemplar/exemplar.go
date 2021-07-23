@@ -21,7 +21,7 @@ func QueryExemplar(ctx context.Context, query string, queryable promql.Queryable
 		return nil, fmt.Errorf("PromQL parse: %w", err)
 	}
 	selectors := parser.ExtractSelectors(expr)
-	querier := queryable.Exemplar(ctx)
+	querier := queryable.ExemplarsQuerier(ctx)
 	results, err := querier.Select(start, end, selectors...)
 	if err != nil {
 		return nil, fmt.Errorf("selecting exemplars: %w", err)

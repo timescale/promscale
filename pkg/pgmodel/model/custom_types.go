@@ -21,7 +21,7 @@ var (
 
 func labelArrayTranscoder() pgtype.ValueTranscoder { return new(pgtype.Int4Array) }
 
-func RegisterLabelArrayOID(conn pgxconn.PgxConn) error {
+func registerLabelArrayOID(conn pgxconn.PgxConn) error {
 	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&labelArrayOID)
 	if err != nil {
 		return fmt.Errorf("registering prom_api.label_array oid: %w", err)
@@ -38,7 +38,7 @@ var (
 
 func labelValueArrayTranscoder() pgtype.ValueTranscoder { return new(pgtype.TextArray) }
 
-func RegisterLabelValueArrayOID(conn pgxconn.PgxConn) error {
+func registerLabelValueArrayOID(conn pgxconn.PgxConn) error {
 	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_value_array'::regtype::oid`).Scan(&labelValueArrayOID)
 	if err != nil {
 		return fmt.Errorf("registering prom_api.label_value_array oid: %w", err)
@@ -47,13 +47,26 @@ func RegisterLabelValueArrayOID(conn pgxconn.PgxConn) error {
 	return nil
 }
 
+func RegisterCustomPgTypes(conn pgxconn.PgxConn) error {
+	var err error
+	if err = registerLabelArrayOID(conn); err != nil {
+		return fmt.Errorf("register label array oid: %w", err)
+	}
+	if err = registerLabelValueArrayOID(conn); err != nil {
+		return fmt.Errorf("register label value array oid: %w", err)
+	}
+	return nil
+}
+
+type PgCustomType uint8
+
 const (
-	LabelArray = iota
+	LabelArray PgCustomType = iota
 	LabelValueArray
 )
 
 // GetCustomType returns a custom pgtype.
-func GetCustomType(t uint8) *pgtype.ArrayType {
+func GetCustomType(t PgCustomType) *pgtype.ArrayType {
 	switch t {
 	case LabelArray:
 		if !isLabelArrayOIDSet {

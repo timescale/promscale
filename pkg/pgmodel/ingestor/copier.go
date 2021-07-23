@@ -207,7 +207,6 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest) error {
 		pending = req.data
 		minTime = model.Time(pending.batch.MinSeen).Time()
 	)
-	fmt.Println("minTime is", minTime)
 	//how much faster are we at ingestion than wall-clock time?
 	ingestSpeedup := 2
 	//delay the next compression job proportional to the duration between now and the data time + a constant safety

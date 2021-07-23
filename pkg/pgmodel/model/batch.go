@@ -28,8 +28,9 @@ type sampleFields interface {
 // Data wraps incoming data with its in-timestamp. It is used to warn if the rate
 // of incoming samples vs outgoing samples is too low, based on time.
 type Data struct {
-	Rows         map[string][]Insertable
-	ReceivedTime time.Time
+	Rows              map[string][]Insertable
+	ReceivedTime      time.Time
+	ContainsExemplars bool
 }
 
 // Batch is an iterator over a collection of Insertables that returns
@@ -38,8 +39,10 @@ type Batch struct {
 	data        []Insertable
 	seriesIndex int
 	dataIndex   int
-	MinSeen     int64
 	err         error
+
+	MinSeen           int64
+	ContainsExemplars bool
 }
 
 // NewBatch returns a new batch that can hold samples and exemplars.
@@ -77,11 +80,6 @@ func (t *Batch) Count() (numSamples, numExemplars int) {
 		}
 	}
 	return
-}
-
-// Append adds a sample info to the back of the iterator
-func (t *Batch) Append(s Insertable) {
-	t.data = append(t.data, s)
 }
 
 func (t *Batch) AppendSlice(s []Insertable) {

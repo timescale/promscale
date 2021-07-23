@@ -4,17 +4,12 @@
 
 package model
 
-import (
-	"fmt"
-
-	"github.com/timescale/promscale/pkg/prompb"
-)
+import "github.com/timescale/promscale/pkg/prompb"
 
 type InsertableType uint8
 
 const (
-	Noop InsertableType = iota
-	Sample
+	Sample InsertableType = iota
 	Exemplar
 )
 
@@ -48,60 +43,3 @@ type Iterator interface {
 	// Close puts the iterator alloc back into the pool, allowing it to be reused.
 	Close()
 }
-
-func NewInsertable(series *Series, data interface{}) Insertable {
-	if data == nil {
-		// Used during tests.
-		return newNoopInsertable(series)
-	}
-	switch n := data.(type) {
-	case []prompb.Sample:
-		return newPromSamples(series, n)
-	case []prompb.Exemplar:
-		return newPromExemplars(series, n)
-	default:
-		panic(fmt.Sprintf("invalid insertableType: %T", data))
-	}
-}
-
-type noopInsertable struct {
-	series *Series
-}
-
-func newNoopInsertable(s *Series) Insertable {
-	return &noopInsertable{
-		series: s,
-	}
-}
-
-func (t *noopInsertable) Series() *Series {
-	return t.series
-}
-
-func (t *noopInsertable) Count() int {
-	return 0
-}
-
-func (t *noopInsertable) MaxTs() int64 {
-	return -1
-}
-
-func (t *noopInsertable) Iterator() Iterator {
-	return nil
-}
-
-func (t *noopInsertable) Type() InsertableType {
-	return Noop
-}
-
-func (t *noopInsertable) IsOfType(typ InsertableType) bool {
-	return typ == Noop
-}
-
-func (t *noopInsertable) AllExemplarLabelKeys() []string {
-	return nil
-}
-
-func (t *noopInsertable) OrderExemplarLabels(_ map[string]int) bool { return false }
-
-func (t *noopInsertable) Close() {}

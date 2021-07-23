@@ -267,7 +267,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				if err != nil {
 					t.Errorf("invalid labels %+v, %v", ls, err)
 				}
-				lsi = append(lsi, model.NewInsertable(ls, nil))
+				lsi = append(lsi, model.NewPromExemplars(ls, nil))
 			}
 
 			err := sw.WriteSeries(sVisitor(lsi))
@@ -426,7 +426,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			if err != nil {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
-			lsi = append(lsi, model.NewInsertable(ls, nil))
+			lsi = append(lsi, model.NewPromSamples(ls, nil))
 		}
 		return lsi
 	}
@@ -464,10 +464,10 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for index, si := range samples {
-		_, _, ok := si.GetSeries().NameValues()
+		_, _, ok := si.Series().NameValues()
 		require.False(t, ok)
 		expectedId := expectedIds[index]
-		gotId, _, err := si.GetSeries().GetSeriesID()
+		gotId, _, err := si.Series().GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -491,10 +491,10 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for index, si := range samples {
-		_, _, ok := si.GetSeries().NameValues()
+		_, _, ok := si.Series().NameValues()
 		require.False(t, ok)
 		expectedId := expectedIds[index]
-		gotId, _, err := si.GetSeries().GetSeriesID()
+		gotId, _, err := si.Series().GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -525,7 +525,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "One data",
 			rows: map[string][]model.Insertable{
-				"metric_0": {model.NewInsertable(makeLabel(), make([]prompb.Sample, 1))},
+				"metric_0": {model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1))},
 			},
 			sqlQueries: []model.SqlQuery{
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
@@ -559,8 +559,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Two data",
 			rows: map[string][]model.Insertable{
 				"metric_0": {
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -596,11 +596,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Create table error",
 			rows: map[string][]model.Insertable{
 				"metric_0": {
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -618,7 +618,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Epoch Error",
 			rows: map[string][]model.Insertable{
 				"metric_0": {
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -674,11 +674,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Copy from error",
 			rows: map[string][]model.Insertable{
 				"metric_0": {
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 
@@ -735,11 +735,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Can't find/create table in DB",
 			rows: map[string][]model.Insertable{
 				"metric_0": {
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -759,7 +759,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			name: "Metrics cache get error",
 			rows: map[string][]model.Insertable{
 				"metric_0": {
-					model.NewInsertable(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
 			metricsGetErr: fmt.Errorf("some metrics error"),

@@ -141,7 +141,7 @@ func TestExemplarIngestion(t *testing.T) {
 		// Check inserted exemplars.
 		expectedRows := []exemplarTableRow{
 			{0.004, []string{model.EmptyExemplarValues, "tests", "localhost:9100"}, 3},
-			{0.003, []string{model.EmptyExemplarValues, model.EmptyExemplarValues}, 2},
+			{0.003, []string{}, 2},
 			{0.002, []string{"E2E", "abcdef"}, 1},
 		}
 		rows, err = db.Query(context.Background(), "SELECT extract(epoch FROM time), exemplar_label_values, value FROM prom_data_exemplar."+metric_2+" ORDER BY time DESC")
@@ -190,13 +190,22 @@ func TestExemplarQueryingAPI(t *testing.T) {
 			cache.NewExemplarLabelsPosCache(cache.DefaultConfig), nil)
 		queryable := query.NewQueryable(r, labelsReader)
 
-		// Just query all exemplars corresponding to metric_2 histogram.
-		results, err := exemplar.QueryExemplar(context.Background(), metric_3, queryable, time.Unix(0, 0), time.Unix(1, 0))
+		// Query all exemplars corresponding to metric_2 histogram.
+		results, err := exemplar.QueryExemplar(context.Background(), metric_2, queryable, time.Unix(0, 0), time.Unix(1, 0))
 		require.NoError(t, err)
 
 		bSlice, err := json.Marshal(results)
 		require.NoError(t, err)
-		// Below check flaky in terms of order. TODO.
+		require.Equal(t,
+			`[{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]}]`,
+			string(bSlice))
+
+		// Query all exemplars corresponding to metric_3 histogram.
+		results, err = exemplar.QueryExemplar(context.Background(), metric_3, queryable, time.Unix(0, 0), time.Unix(1, 0))
+		require.NoError(t, err)
+
+		bSlice, err = json.Marshal(results)
+		require.NoError(t, err)
 		require.Equal(t,
 			`[{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
 			string(bSlice))

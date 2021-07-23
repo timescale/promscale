@@ -7,12 +7,10 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/log"
-	"strings"
-
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgErrors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -37,7 +35,7 @@ type metricBatcher struct {
 }
 
 type exemplarInfo struct {
-	seenPreviuosly bool
+	seenPreviously bool
 	exemplarCache  cache.PositionCache
 }
 
@@ -59,7 +57,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) 
 		if err := res.Err(); err != nil {
 			return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 		}
-		return "", true, errors.ErrMissingTableName
+		return "", true, pgErrors.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName, &possiblyNew); err != nil {

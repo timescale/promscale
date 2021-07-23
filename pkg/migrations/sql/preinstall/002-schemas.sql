@@ -25,6 +25,7 @@ CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
 
     CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
     GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
+    GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
 END $$ $ee$);
 
 -- the promscale extension contains optimized version of some

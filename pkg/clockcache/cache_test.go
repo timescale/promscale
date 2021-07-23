@@ -67,7 +67,10 @@ func TestUpdate(t *testing.T) {
 		t.Fatal("wrong value received")
 	}
 
-	cache.Update("key", 2, 8+1+8)
+	canonicalVal := cache.Update("key", 2, 8+1+8)
+	if !reflect.DeepEqual(canonicalVal, 2) {
+		t.Errorf("canonical value returned was not updated")
+	}
 	val, found = cache.Get("key")
 	if !found {
 		t.Errorf("not found for 'key'")

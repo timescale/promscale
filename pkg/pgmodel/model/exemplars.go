@@ -30,7 +30,7 @@ type promExemplars struct {
 	exemplars []prompb.Exemplar
 }
 
-func newPromExemplars(series *Series, exemplarSet []prompb.Exemplar) InsertableExemplar {
+func NewPromExemplars(series *Series, exemplarSet []prompb.Exemplar) InsertableExemplar {
 	s := promExemplarsPool.Get().(*promExemplars)
 	s.series = series
 	if cap(s.exemplars) < len(exemplarSet) {
@@ -122,7 +122,7 @@ func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionExist
 	return true
 }
 
-const EmptyExemplarValues = "__promscale_no_value__"
+const EmptyExemplarValues = ""
 
 func fillEmptyValues(s []prompb.Label) []prompb.Label {
 	for i := range s {

@@ -91,12 +91,8 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	}
 	runBatchWatcher(inserter.doneChannel)
 
-	if err := model.RegisterLabelArrayOID(conn); err != nil {
-		return nil, fmt.Errorf("register LabelArrayOID: %w", err)
-	}
-
-	if err := model.RegisterLabelValueArrayOID(conn); err != nil {
-		return nil, fmt.Errorf("register LabelValueArrayOID: %w", err)
+	if err := model.RegisterCustomPgTypes(conn); err != nil {
+		return nil, fmt.Errorf("registering custom pg types: %w", err)
 	}
 
 	//on startup run a completeMetricCreation to recover any potentially
@@ -218,7 +214,7 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 			}
 		}
 		// the following is usually non-blocking, just a channel insert
-		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, containsExemplars: dataTS.ContainsExemplars, finished: workFinished, errChan: errChan}
 	}
 	reportIncomingBatch(numRows)
 	reportOutgoing := func() {
@@ -302,10 +298,11 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 }
 
 type insertDataRequest struct {
-	metric   string
-	data     []model.Insertable
-	finished *sync.WaitGroup
-	errChan  chan error
+	metric            string
+	finished          *sync.WaitGroup
+	data              []model.Insertable
+	containsExemplars bool
+	errChan           chan error
 }
 
 func (idr *insertDataRequest) reportResult(err error) {

@@ -42,8 +42,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
 
-	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
-	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -52,13 +51,9 @@ import (
 type Queryable interface {
 	// SamplesQuerier returns a new promql.Querier on the storage. It helps querying over samples
 	// in the database.
-	Samples(ctx context.Context, mint, maxt int64) (SamplesQuerier, error)
+	SamplesQuerier(ctx context.Context, mint, maxt int64) (SamplesQuerier, error)
 	// ExemplarQuerier returns a new Querier that helps querying exemplars in the database.
-	Exemplar(ctx context.Context) ExemplarQuerier
-}
-
-type ExemplarQuerier interface {
-	Select(start, end time.Time, matchers ...[]*labels.Matcher) ([]pgmodel.ExemplarQueryResult, error)
+	ExemplarsQuerier(ctx context.Context) pgquerier.ExemplarQuerier
 }
 
 // SamplesQuerier provides querying access over time series data of a fixed time range.
@@ -76,7 +71,7 @@ type SamplesQuerier interface {
 	// Select returns a set of series that matches the given label matchers.
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
-	Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
+	Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
 }
 
 const (
@@ -587,7 +582,7 @@ func durationMilliseconds(d time.Duration) int64 {
 func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.EvalStmt) (parser.Value, storage.Warnings, error) {
 	prepareSpanTimer, ctxPrepare := query.stats.GetSpanTimer(ctx, stats.QueryPreparationTime, ng.metrics.queryPrepareTime)
 	mint, maxt := ng.findMinMaxTime(s)
-	querier, err := query.queryable.Samples(ctxPrepare, mint, maxt)
+	querier, err := query.queryable.SamplesQuerier(ctxPrepare, mint, maxt)
 	if err != nil {
 		prepareSpanTimer.Finish()
 		return nil, nil, err
@@ -800,7 +795,7 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map
 	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
 		case *parser.VectorSelector:
-			var qh *mq.QueryHints
+			var qh *pgquerier.QueryHints
 			start, end := ng.getTimeRangesForSelector(s, n, path, evalRange)
 			hints := &storage.SelectHints{
 				Start: start,
@@ -810,7 +805,7 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map
 				Func:  extractFuncFromPath(path),
 			}
 
-			qh = &mq.QueryHints{
+			qh = &pgquerier.QueryHints{
 				StartTime:   s.Start,
 				EndTime:     s.End,
 				CurrentNode: n,

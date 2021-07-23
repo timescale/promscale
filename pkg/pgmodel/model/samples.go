@@ -24,7 +24,7 @@ type promSamples struct {
 	samples []prompb.Sample
 }
 
-func newPromSamples(series *Series, sampleSet []prompb.Sample) Insertable {
+func NewPromSamples(series *Series, sampleSet []prompb.Sample) Insertable {
 	s := promSamplesPool.Get().(*promSamples)
 	s.series = series
 	if cap(s.samples) < len(sampleSet) {
@@ -57,10 +57,6 @@ func (t *promSamples) MaxTs() int64 {
 		return -1
 	}
 	return t.samples[numSamples-1].Timestamp
-}
-
-func (t *promSamples) AllExemplarLabelKeys() []string {
-	return nil
 }
 
 var samplesIteratorPool = sync.Pool{New: func() interface{} { return new(samplesIterator) }}

@@ -6,7 +6,6 @@ package querier
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func TestPrepareExemplarQueryResult(t *testing.T) {
@@ -40,13 +38,18 @@ func TestPrepareExemplarQueryResult(t *testing.T) {
 	exemplarCache := cache.NewExemplarLabelsPosCache(cache.Config{ExemplarCacheSize: 3})
 	exemplarCache.SetorUpdateLabelPositions("test_metric_exemplar", getExemplarPosIndices())
 
-	result, err := prepareExemplarQueryResult(conn, lrCache, exemplarCache, seriesRow)
+	tools := &queryTools{
+		conn:             conn,
+		labelsReader:     lrCache,
+		exemplarPosCache: exemplarCache,
+	}
+	result, err := prepareExemplarQueryResult(tools, seriesRow)
 	require.NoError(t, err)
 
 	bSlice, err := json.Marshal(result)
 	require.NoError(t, err)
 	require.Equal(t,
-		`{"seriesLabels":{"__name__":"test_metric_exemplar","instance":"localhost:9100"},"exemplars":[{"labels":{"component":"test","job":"generator"},"value":1,"timestamp":0},{"labels":{"TraceID":"some_trace_id","component":"test"},"value":2,"timestamp":1},{"labels":{},"value":3,"timestamp":2}]}`,
+		`{"seriesLabels":{"__name__":"test_metric_exemplar","instance":"localhost:9100"},"exemplars":[{"labels":{"component":"test","job":"generator"},"value":1,"timestamp":0},{"labels":{"TraceID":"some_trace_id","component":"test"},"value":2,"timestamp":1000},{"labels":{},"value":3,"timestamp":2000}]}`,
 		string(bSlice),
 	)
 }
@@ -84,19 +87,13 @@ func (m mockLabelsReader) LabelValues(_ string) ([]string, error) {
 	return nil, nil
 }
 
-// PrompbLabelsForIds returns protobuf representation of the label names
-// and values for supplied IDs.
-func (m mockLabelsReader) PrompbLabelsForIds(ids []int64) (lls []prompb.Label, err error) {
-	lbls := make([]prompb.Label, len(ids))
-	for i, id := range ids {
-		lbl, exists := m.items[id]
-		if !exists {
-			return nil, fmt.Errorf("missing label for %d id", id)
+func (m mockLabelsReader) LabelsForIdMap(index map[int64]labels.Label) error {
+	for seriesId := range index {
+		if lbls, present := m.items[seriesId]; present {
+			index[seriesId] = lbls
 		}
-		lbls[i].Name = lbl.Name
-		lbls[i].Value = lbl.Value
 	}
-	return lbls, nil
+	return nil
 }
 
 // LabelsForIds returns label names and values for the supplied IDs.

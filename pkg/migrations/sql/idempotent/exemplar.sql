@@ -1,7 +1,7 @@
 -- get_exemplar_label_positions returns the position of label_keys as a one-to-one mapping with label_keys. It returns
 -- the positions of all label keys corresponding to that metric, so that it remains easier to add null values to those indexes
 -- whose labels are not present in the exemplar being inserted at the golang level.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(metric_name_text TEXT, label_keys TEXT[])
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(metric_name TEXT, label_keys TEXT[])
 RETURNS TABLE (metric_family_text TEXT, label_positions_map JSON) AS
 $$
 DECLARE
@@ -10,16 +10,16 @@ DECLARE
     k TEXT;
 BEGIN
     LOCK TABLE SCHEMA_CATALOG.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
-    -- If there isn't any data for the given metric_name_text.
-    IF ( SELECT count(key) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text ) THEN
+    -- If there isn't any data for the given metric_name in params.
+    IF ( SELECT count(*) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position p WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name ) THEN
         FOREACH k in ARRAY label_keys LOOP
-            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name_text, k, current_position);
+            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name, k, current_position);
             current_position := current_position + 1;
         END LOOP;
         RETURN QUERY (
             SELECT row.metric_name, json_object_agg(row.key, row.position) FROM (
-                SELECT metric_name, key, pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position
-                    WHERE metric_name=metric_name_text GROUP BY metric_name, key, pos ORDER BY pos
+                SELECT ep.metric_name as metric_name, ep.key as key, ep.pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position ep
+                    WHERE ep.metric_name=get_or_create_exemplar_label_key_positions.metric_name GROUP BY ep.metric_name, ep.key, ep.pos ORDER BY ep.pos
             ) AS row GROUP BY row.metric_name LIMIT 1
         );
     RETURN;
@@ -27,17 +27,17 @@ BEGIN
 
     -- Position already exists for some keys. Let's add for the new keys only.
     FOREACH k in ARRAY label_keys LOOP
-        IF (SELECT count(key) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text AND key=k) THEN
-            SELECT max(pos) + 1 INTO new_position FROM SCHEMA_CATALOG.exemplar_label_key_position WHERE metric_name=metric_name_text;
+        IF (SELECT count(*) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position p WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name AND p.key=k) THEN
+            SELECT max(p.pos) + 1 INTO new_position FROM SCHEMA_CATALOG.exemplar_label_key_position p WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name;
             RAISE NOTICE 'inserting key % at pos %', k, new_position;
-            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name_text, k, new_position);
+            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name, k, new_position);
             new_position := -1;
         END IF;
     END LOOP;
     RETURN QUERY (
     SELECT row.metric_name, json_object_agg(row.key, row.position) FROM (
-        SELECT metric_name, key, pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position
-            WHERE metric_name=metric_name_text GROUP BY metric_name, key, pos ORDER BY pos
+        SELECT p.metric_name as metric_name, p.key as key, p.pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position p
+            WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name GROUP BY p.metric_name, p.key, p.pos ORDER BY p.pos
         ) AS row GROUP BY row.metric_name
     );
 END;
@@ -46,23 +46,23 @@ LANGUAGE PLPGSQL;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_writer;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(metric_name_text TEXT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(metric_name TEXT)
 RETURNS JSON AS
 $$
     SELECT json_object_agg(row.key, row.position) FROM (
-        SELECT key, pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position
-            WHERE metric_name=metric_name_text GROUP BY metric_name, key, pos ORDER BY pos
+        SELECT p.key as key, p.pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position p
+            WHERE p.metric_name=get_exemplar_label_key_positions.metric_name GROUP BY p.metric_name, p.key, p.pos ORDER BY p.pos
         ) AS row
 $$
 LANGUAGE SQL
 STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT) TO prom_writer;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_reader;
 
 -- creates exemplar table in prom_data_exemplar schema if the table does not exists. This function
 -- must be called after the metric is created in _prom_catalog.metric as it utilizes the table_name
 -- from the metric table. It returns true if the table was created.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_exemplar_table_if_not_exists(metric_name_text TEXT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_exemplar_table_if_not_exists(metric_name TEXT)
 RETURNS BOOLEAN
 AS
 $$
@@ -70,15 +70,15 @@ DECLARE
     table_name_fetched TEXT;
     metric_name_fetched TEXT;
 BEGIN
-    SELECT metric_name, table_name INTO metric_name_fetched, table_name_fetched FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_text;
+    SELECT m.metric_name, m.table_name INTO metric_name_fetched, table_name_fetched FROM SCHEMA_CATALOG.metric m WHERE m.metric_name=create_exemplar_table_if_not_exists.metric_name;
     IF table_name_fetched IS NULL THEN
         -- metric table entry does not exists in SCHEMA_CATALOG.metric, hence we cannot create. Error out.
         -- Note: even though we can create an entry from here, we should not as it keeps the approach systematic.
-        RAISE EXCEPTION 'SCHEMA_CATALOG.metric does not contain the table entry for % metric', metric_name_text;
+        RAISE EXCEPTION 'SCHEMA_CATALOG.metric does not contain the table entry for % metric', metric_name;
     END IF;
     -- check if table is already created.
     IF (
-        SELECT count(table_name) > 0 FROM SCHEMA_CATALOG.exemplar WHERE metric_name=metric_name_text
+        SELECT count(e.table_name) > 0 FROM SCHEMA_CATALOG.exemplar e WHERE e.metric_name=create_exemplar_table_if_not_exists.metric_name
     ) THEN
         RETURN FALSE;
     END IF;

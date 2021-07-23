@@ -6,6 +6,7 @@ package clockcache
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 )
@@ -60,7 +61,7 @@ func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) 
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
-	elem, exists := self.insert(key, value, sizeBytes)
+	elem, _, exists := self.insert(key, value, sizeBytes)
 	return elem.value, exists
 }
 
@@ -79,30 +80,30 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBy
 	defer self.insertLock.Unlock()
 
 	for idx := range keys {
-		elem, inserted := self.insert(keys[idx], values[idx], sizesBytes[idx])
+		elem, _, inCache := self.insert(keys[idx], values[idx], sizesBytes[idx])
 		keys[idx], values[idx] = elem.key, elem.value
-		if !inserted {
+		if !inCache {
 			return idx
 		}
 	}
 	return len(keys)
 }
 
-func (self *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool) {
+func (self *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool, inCache bool) {
 	elem, present := self.elements[key]
 	if present {
 		// we'll count a double-insert as a hit. See the comment in get
 		if atomic.LoadUint32(&elem.used) != 0 {
 			atomic.StoreUint32(&elem.used, 1)
 		}
-		return elem, true
+		return elem, false, true
 	}
 
 	var insertLocation *element
 	if len(self.storage) >= cap(self.storage) {
 		insertLocation = self.evict()
 		if insertLocation == nil {
-			return &element{key: key, value: value, size: size}, false
+			return &element{key: key, value: value, size: size}, false, false
 		}
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
@@ -120,23 +121,27 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 	}
 
 	self.elements[key] = insertLocation
-	return self.elements[key], true
+	return insertLocation, true, true
 }
 
 // Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
 // returns the 'inserted' as true.
-func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}, inserted bool) {
-	existingElement, inserted := self.insert(key, value, size)
-	self.elementsLock.Lock()
-	defer self.elementsLock.Unlock()
-	if !inserted {
-		// Element already exists, let's update the "used" mark as this element is in active demand.
-		atomic.StoreUint32(&existingElement.used, 1)
+func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}) {
+	updateProps := func(elem *element) {
+		self.elementsLock.Lock()
+		defer self.elementsLock.Unlock()
+		elem.value = value
+		elem.size = size
 	}
-	existingElement.key = key
-	existingElement.value = value
-	existingElement.size = size
-	return existingElement.value, inserted
+	self.insertLock.Lock()
+	existingElement, inserted, inCache := self.insert(key, value, size)
+	self.insertLock.Unlock()
+	// Avoid EQL value comparisons as value is always an interface. Incase, the value is of type map, EQL operator will panic.
+	if !inserted && inCache && (!reflect.DeepEqual(existingElement.value, value) || existingElement.size != size) {
+		// If it's not inserted, we don't need to go into this block, as the props are already updated.
+		updateProps(existingElement)
+	}
+	return existingElement.value
 }
 
 func (self *Cache) evict() (insertPtr *element) {
@@ -226,7 +231,6 @@ func (self *Cache) Get(key interface{}) (interface{}, bool) {
 }
 
 func (self *Cache) get(key interface{}) (interface{}, bool) {
-
 	elem, present := self.elements[key]
 	if !present {
 		return 0, false

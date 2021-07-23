@@ -60,12 +60,17 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
 }
 
-func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
-	time.Sleep(m.timeToSleepOnSelect)
-	return &mockSeriesSet{err: m.selectErr}, nil
+func (m mockQuerier) SamplesQuerier() querier.SamplesQuerier {
+	return m
 }
 
-func (m mockQuerier) Exemplar(_ context.Context) querier.ExemplarQuerier {
+// Select implements the querier.ExemplarQuerier interface.
+func (ms mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
+	time.Sleep(ms.timeToSleepOnSelect)
+	return &mockSeriesSet{err: ms.selectErr}, nil
+}
+
+func (m mockQuerier) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
 	return mockExemplarQuerier{}
 }
 

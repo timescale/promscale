@@ -7,6 +7,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"sort"
 	"strings"
 	"time"
@@ -14,15 +15,12 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/prompb"
 )
 
-const getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_or_create_exemplar_label_key_positions($1::TEXT)"
+const getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_exemplar_label_key_positions($1::TEXT)"
 
 type exemplarSeriesRow struct {
 	metricName string
@@ -36,9 +34,8 @@ type exemplarRow struct {
 	labelValues []string // Exemplar label values.
 }
 
-// appendExemplarRows adds new results rows to already existing result rows and
-// returns the as a result.
-func appendExemplarRows(metricName string, in pgxconn.PgxRows) (rows []exemplarSeriesRow, err error) {
+// getExemplarSeriesRows returns exemplar series rows.
+func getExemplarSeriesRows(metricName string, in pgxconn.PgxRows) (rows []exemplarSeriesRow, err error) {
 	if in.Err() != nil {
 		return rows, in.Err()
 	}
@@ -71,10 +68,10 @@ func appendExemplarRows(metricName string, in pgxconn.PgxRows) (rows []exemplarS
 		seriesRow.data = append(seriesRow.data, row)
 		seriesRowMap[key] = seriesRow
 	}
-	return getExemplarSeriesRows(seriesRowMap), in.Err()
+	return getExemplarSeriesSlice(seriesRowMap), in.Err()
 }
 
-func getExemplarSeriesRows(m map[string]*exemplarSeriesRow) []exemplarSeriesRow {
+func getExemplarSeriesSlice(m map[string]*exemplarSeriesRow) []exemplarSeriesRow {
 	s := make([]exemplarSeriesRow, len(m))
 	i := 0
 	for _, v := range m {
@@ -84,13 +81,8 @@ func getExemplarSeriesRows(m map[string]*exemplarSeriesRow) []exemplarSeriesRow 
 	return s
 }
 
-// prepareExemplarQueryResult extracts the data from fetched pgx.Rows (or set of pgx.Rows
-// in case returned selectors are multiple)
-// Its more efficient to directly prepare results from rows than making an iterator
-// since if you want to make iterator, then you first need to scan and keep all results
-// in array of type A, and then use the cache (exemplar label values cache and labels cache)
-// to convert it to type B.
-func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, exemplarKeyPos cache.PositionCache, queryResult exemplarSeriesRow) (model.ExemplarQueryResult, error) {
+// prepareExemplarQueryResult returns exemplar query result from the supplied exemplar series rows.
+func prepareExemplarQueryResult(tools *queryTools, queryResult exemplarSeriesRow) (model.ExemplarQueryResult, error) {
 	var (
 		result   model.ExemplarQueryResult
 		metric   = queryResult.metricName
@@ -98,7 +90,9 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 	)
 	index := make(map[int64]labels.Label)
 	initLabelIdIndexForExemplars(index, queryResult.labelIds)
-	err := lr.LabelsForIdMap(index)
+
+	labelsReader := tools.labelsReader
+	err := labelsReader.LabelsForIdMap(index)
 	if err != nil {
 		return result, fmt.Errorf("fill labelIds map: %w", err)
 	}
@@ -111,14 +105,10 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 	result.SeriesLabels = sortedLabels
 	result.Exemplars = make([]model.ExemplarData, 0)
 
-	keyPosIndex, exists := exemplarKeyPos.GetLabelPositions(metric)
-	if !exists {
-		var index map[string]int
-		if err := conn.QueryRow(context.Background(), getExemplarLabelPositions, metric).Scan(&index); err != nil {
-			return model.ExemplarQueryResult{}, fmt.Errorf("scanning exemplar key-position index: %w", err)
-		}
-		exemplarKeyPos.SetorUpdateLabelPositions(metric, index)
-		keyPosIndex = index
+	keyPosCache := tools.exemplarPosCache
+	keyPosIndex, err := getPositionIndex(tools, keyPosCache, metric)
+	if err != nil {
+		return model.ExemplarQueryResult{}, fmt.Errorf("get position index: %w", err)
 	}
 	// Let's create an inverse index of keyPosIndex since now we have array of exemplar label values, i.e., [key: index].
 	// The index of this array needs to be used to get the key, and hence this can be done efficiently
@@ -128,10 +118,7 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 	for i := range queryResult.data {
 		row := queryResult.data[i]
 
-		exemplarLabels := createPromLabels(keyIndex, row.labelValues)
-		sort.Slice(exemplarLabels, func(i, j int) bool {
-			return strings.Compare(exemplarLabels[i].Name, exemplarLabels[j].Name) < 0 // < 0 keeps the TraceID label pair towards the first.
-		})
+		exemplarLabels := createPromLabelsFromExamplarLabels(keyIndex, row.labelValues)
 		exemplarValue := row.value
 		result.Exemplars = append(result.Exemplars, model.ExemplarData{
 			Labels: exemplarLabels,
@@ -140,6 +127,19 @@ func prepareExemplarQueryResult(conn pgxconn.PgxConn, lr lreader.LabelsReader, e
 		})
 	}
 	return result, nil
+}
+
+func getPositionIndex(tools *queryTools, posCache cache.PositionCache, metric string) (map[string]int, error) {
+	keyPosIndex, exists := posCache.GetLabelPositions(metric)
+	if !exists {
+		var index map[string]int
+		if err := tools.conn.QueryRow(context.Background(), getExemplarLabelPositions, metric).Scan(&index); err != nil {
+			return nil, fmt.Errorf("scanning exemplar key-position index: %w", err)
+		}
+		posCache.SetorUpdateLabelPositions(metric, index)
+		keyPosIndex = index
+	}
+	return keyPosIndex, nil
 }
 
 func initLabelIdIndexForExemplars(index map[int64]labels.Label, labelIds []int64) {
@@ -152,7 +152,7 @@ func initLabelIdIndexForExemplars(index map[int64]labels.Label, labelIds []int64
 	}
 }
 
-func createPromLabels(index map[int]string, values []string) []labels.Label {
+func createPromLabelsFromExamplarLabels(index map[int]string, values []string) []labels.Label {
 	var l []labels.Label
 	for i := range values {
 		value := values[i]
@@ -165,6 +165,9 @@ func createPromLabels(index map[int]string, values []string) []labels.Label {
 		key := index[position]
 		l = append(l, labels.Label{Name: key, Value: value})
 	}
+	sort.Slice(l, func(i, j int) bool {
+		return strings.Compare(l[i].Name, l[j].Name) < 0 // < 0 keeps the TraceID label pair towards the first.
+	})
 	return l
 }
 
@@ -174,13 +177,4 @@ func makeInverseIndex(index map[string]int) map[int]string {
 		inverseIndex[v] = k
 	}
 	return inverseIndex
-}
-
-func getLabels(pLbls []prompb.Label) []labels.Label {
-	lbls := make([]labels.Label, len(pLbls))
-	for i := range pLbls {
-		lbls[i].Name = pLbls[i].Name
-		lbls[i].Value = pLbls[i].Value
-	}
-	return lbls
 }

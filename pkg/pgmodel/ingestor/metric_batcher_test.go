@@ -107,7 +107,7 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 	insertables := make([]model.Insertable, 3) // Since 3 exemplars.
 
 	for i, exemplar := range rawExemplars {
-		insertable := model.NewInsertable(series, []prompb.Exemplar{exemplar}) // To be in line with write request behaviour.
+		insertable := model.NewPromExemplars(series, []prompb.Exemplar{exemplar}) // To be in line with write request behaviour.
 		insertables[i] = insertable
 	}
 
@@ -122,16 +122,48 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify exemplar label value positioning.
-	require.Equal(t, []prompb.Label{{Value: "some_trace_id"}, {Value: "tester"}, {Value: model.EmptyExemplarValues}}, insertables[0].At(0).ExemplarLabels())
-	require.Equal(t, []prompb.Label{{Value: model.EmptyExemplarValues}, {Value: "tester"}, {Value: "test"}}, insertables[1].At(0).ExemplarLabels())
-	require.Equal(t, []prompb.Label{{Value: model.EmptyExemplarValues}, {Value: model.EmptyExemplarValues}, {Value: model.EmptyExemplarValues}}, insertables[2].At(0).ExemplarLabels())
-	// Verify if all label names are empty.
-	for _, i := range insertables {
-		lbls := i.At(0).ExemplarLabels()
-		for j := range lbls {
-			require.Equal(t, "", lbls[j].Name, i)
+	for i, insertable := range insertables {
+		itr := insertable.Iterator()
+		// Note: Each insertable contains exactly a single exemplar sample.
+		require.True(t, itr.HasNext())
+		labels, _, _ := itr.Value()
+		labelKeys, labelValues := separateLabelKeysValues(labels)
+		require.True(t, allLabelKeysEmpty(labelKeys))
+		switch i {
+		case 0:
+			require.Equal(t, []prompb.Label{{Value: "some_trace_id"}, {Value: "tester"}, {Value: model.EmptyExemplarValues}}, labelValues)
+		case 1:
+			require.Equal(t, []prompb.Label{{Value: model.EmptyExemplarValues}, {Value: "tester"}, {Value: "test"}}, labelValues)
+		case 2:
+			require.Equal(t, []prompb.Label{{Value: model.EmptyExemplarValues}, {Value: model.EmptyExemplarValues}, {Value: model.EmptyExemplarValues}}, labelValues)
+		default:
+			require.Fail(t, "count was not expected", i)
+		}
+		require.False(t, itr.HasNext())
+	}
+}
+
+func separateLabelKeysValues(lbls []prompb.Label) (onlyLabelKeys, onlyLabelValues []prompb.Label) {
+	onlyLabelKeys = make([]prompb.Label, len(lbls))
+	onlyLabelValues = make([]prompb.Label, len(lbls))
+	copy(onlyLabelKeys, lbls[:])
+	copy(onlyLabelValues, lbls[:])
+	for i := range onlyLabelKeys {
+		onlyLabelKeys[i].Value = ""
+	}
+	for i := range onlyLabelValues {
+		onlyLabelValues[i].Name = ""
+	}
+	return
+}
+
+func allLabelKeysEmpty(lbls []prompb.Label) bool {
+	for i := range lbls {
+		if lbls[i].Name != "" {
+			return false
 		}
 	}
+	return true
 }
 
 func prepareExemplarPosCache(posCache cache.PositionCache) {
