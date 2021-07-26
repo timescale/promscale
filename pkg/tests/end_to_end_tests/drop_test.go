@@ -169,7 +169,7 @@ func TestSQLDropChunk(t *testing.T) {
 		}
 
 		var tableName string
-		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('test')").Scan(&tableName)
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('prom_data', 'test')").Scan(&tableName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -257,7 +257,7 @@ func TestSQLDropChunkWithLocked(t *testing.T) {
 
 		var tableName string
 		var metricId int
-		err = db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_metric_table_name_if_exists('test')").Scan(&metricId, &tableName)
+		err = db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_metric_table_name_if_exists('', 'test')").Scan(&metricId, &tableName)
 		require.NoError(t, err)
 
 		cnt := 0
@@ -361,7 +361,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 		}
 
 		var tableName string
-		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('test')").Scan(&tableName)
+		err = db.QueryRow(context.Background(), "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists('prom_data', 'test')").Scan(&tableName)
 		if err != nil {
 			t.Fatal(err)
 		}

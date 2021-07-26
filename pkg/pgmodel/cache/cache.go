@@ -5,10 +5,11 @@
 package cache
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 const (
@@ -17,8 +18,8 @@ const (
 
 // MetricCache provides a caching mechanism for metric table names.
 type MetricCache interface {
-	Get(metric string) (string, error)
-	Set(metric string, tableName string) error
+	Get(schema, metric string) (model.MetricInfo, error)
+	Set(schema, metric string, mInfo model.MetricInfo) error
 	// Len returns the number of metrics cached in the system.
 	Len() int
 	// Cap returns the capacity of the metrics cache.
@@ -46,31 +47,51 @@ type LabelsCache interface {
 	Evictions() uint64
 }
 
+type key struct {
+	schema, metric string
+}
+
+func (k key) len() int {
+	return len(k.schema) + len(k.metric)
+}
+
 // MetricNameCache stores and retrieves metric table names in a in-memory cache.
 type MetricNameCache struct {
 	Metrics *clockcache.Cache
 }
 
 // Get fetches the table name for specified metric.
-func (m *MetricNameCache) Get(metric string) (string, error) {
-	result, ok := m.Metrics.Get(metric)
+func (m *MetricNameCache) Get(schema, metric string) (model.MetricInfo, error) {
+	var (
+		mInfo = model.MetricInfo{}
+		key   = key{schema, metric}
+	)
+	result, ok := m.Metrics.Get(key)
 	if !ok {
-		return "", errors.ErrEntryNotFound
+		return mInfo, errors.ErrEntryNotFound
 	}
-	return result.(string), nil
+
+	mInfo, ok = result.(model.MetricInfo)
+	if !ok {
+		return mInfo, fmt.Errorf("invalid cache value stored")
+	}
+
+	return mInfo, nil
 }
 
-// Set stores table name for specified metric.
-func (m *MetricNameCache) Set(metric string, tableName string) error {
-	// deep copy the strings so the original memory doesn't need to stick around
-	metricBuilder := strings.Builder{}
-	metricBuilder.Grow(len(metric))
-	metricBuilder.WriteString(metric)
-	tableBuilder := strings.Builder{}
-	tableBuilder.Grow(len(tableName))
-	tableBuilder.WriteString(tableName)
+// Set stores metric info for specified metric with schema.
+func (m *MetricNameCache) Set(schema, metric string, val model.MetricInfo) error {
+	k := key{schema, metric}
 	//size includes an 8-byte overhead for each string
-	m.Metrics.Insert(metricBuilder.String(), tableBuilder.String(), uint64(metricBuilder.Len()+tableBuilder.Len()+16))
+	m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+16))
+
+	// If the schema inserted above was empty, also populate the cache with the real schema.
+	if schema == "" {
+		k = key{val.TableSchema, metric}
+		//size includes an 8-byte overhead for each string
+		m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+16))
+	}
+
 	return nil
 }
 

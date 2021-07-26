@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -34,15 +35,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"__name__", "bar"},
-					Results: model.RowResults{{1, []int64{}}},
+					Results: model.RowResults{{1, 1, []int64{}}},
 					Err:     error(nil),
 				},
 			},
@@ -59,12 +60,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"__name__", "bar"},
 					Results: model.RowResults{{"{}", []time.Time{}, []float64{}}},
@@ -83,21 +84,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"foo", "bar"},
-					Results: model.RowResults{{`foo`, []int64{1}}},
+					Results: model.RowResults{{"prom_data", "foo", []int64{1}}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"foo"},
-					Results: model.RowResults{{"foo"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "foo"},
+					Results: model.RowResults{{"prom_data", "foo", "foo"}},
 					Err:     fmt.Errorf("some error 2"),
 				},
 			},
@@ -114,21 +115,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"foo", "bar"},
-					Results: model.RowResults{{"foo", []int64{1}}},
+					Results: model.RowResults{{"prom_data", "foo", []int64{1}}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"foo"},
-					Results: model.RowResults{{"foo"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "foo"},
+					Results: model.RowResults{{"prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -155,19 +156,19 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"__name__", "bar"},
 					Results: model.RowResults{{0}},
 					Err:     error(nil),
 				},
 			},
-			err: fmt.Errorf("mock scanning error, missing results for scanning: got 1 []interface {}{0}\nwanted 2"),
+			err: fmt.Errorf("mock scanning error, missing results for scanning: got 1 []interface {}{0}\nwanted 3"),
 		},
 		{
 			name:   "Empty query",
@@ -185,12 +186,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"foo", "bar"},
 					Results: model.RowResults(nil),
@@ -210,10 +211,10 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"bar"},
-					Results: model.RowResults(nil),
-					Err:     error(nil),
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"", "bar"},
+					Results: model.RowResults{nil},
+					Err:     pgx.ErrNoRows,
 				},
 			},
 		},
@@ -234,21 +235,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"__name__", "bar"},
-					Results: model.RowResults{{"foo", []int64{1}}},
+					Results: model.RowResults{{"prom_data", "foo", []int64{1}}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"foo"},
-					Results: model.RowResults{{"foo"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "foo"},
+					Results: model.RowResults{{"prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -289,9 +290,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"bar"},
-					Results: model.RowResults{{"bar"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"", "bar"},
+					Results: model.RowResults{{"prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -337,27 +338,27 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value !~ $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"__name__", "^(?:)$"},
-					Results: model.RowResults{{"foo", []int64{1}}, {"bar", []int64{1}}},
+					Results: model.RowResults{{"prom_data", "foo", []int64{1}}, {"prom_data", "bar", []int64{1}}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"foo"},
-					Results: model.RowResults{{"foo"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "foo"},
+					Results: model.RowResults{{"prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"bar"},
-					Results: model.RowResults{{"bar"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "bar"},
+					Results: model.RowResults{{"prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -408,9 +409,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"foo"},
-					Results: model.RowResults{{"foo"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"", "foo"},
+					Results: model.RowResults{{"prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -441,21 +442,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"foo", "bar"},
-					Results: model.RowResults{{"metric", []int64{1, 99, 98}}},
+					Results: model.RowResults{{"prom_data", "metric", []int64{1, 99, 98}}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"metric"},
-					Results: model.RowResults{{"metric"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "metric"},
+					Results: model.RowResults{{"prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -502,21 +503,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"foo", "bar", "foo1", "bar1", "foo2", "^(?:^bar2)$", "foo3", "^(?:bar3$)$"},
-					Results: model.RowResults{{"metric", []int64{1, 4, 5}}},
+					Results: model.RowResults{{"prom_data", "metric", []int64{1, 4, 5}}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"metric"},
-					Results: model.RowResults{{"metric"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "metric"},
+					Results: model.RowResults{{"prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -563,21 +564,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql: "SELECT m.metric_name, array_agg(s.id)\n\t" +
+					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)\n\t" +
-						"GROUP BY m.metric_name\n\t" +
+						"GROUP BY m.metric_name, m.table_schema\n\t" +
 						"ORDER BY m.metric_name",
 					Args:    []interface{}{"foo", "", "foo1", "bar1", "foo2", "^(?:^bar2$)$", "foo3", "^(?:bar3)$"},
-					Results: model.RowResults{{"metric", []int64{1, 2}}},
+					Results: model.RowResults{{"prom_data", "metric", []int64{1, 2}}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_name FROM _prom_catalog.get_metric_table_name_if_exists($1)",
-					Args:    []interface{}{"metric"},
-					Results: model.RowResults{{"metric"}},
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"prom_data", "metric"},
+					Results: model.RowResults{{"prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -606,9 +607,20 @@ func TestPGXQuerierQuery(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
-			metricCache := map[string]string{"metric_1": "metricTableName_1"}
 			mockMetrics := &model.MockMetricCache{
-				MetricCache: metricCache,
+				MetricCache: make(map[string]model.MetricInfo),
+			}
+			err := mockMetrics.Set(
+				"prom_data",
+				"metric_1",
+				model.MetricInfo{
+					TableSchema: "prom_data",
+					TableName:   "metricTableName_1",
+					SeriesTable: "metric_1",
+				},
+			)
+			if err != nil {
+				t.Fatalf("error setting up mock cache: %s", err.Error())
 			}
 			querier := pgxQuerier{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0))}
 

@@ -73,23 +73,31 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) 
 // exist. This only does the most critical part of metric table creation, the
 // rest is handled by completeMetricTableCreation().
 func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
-	tableName, err = metricTableNames.Get(metricName)
+	mInfo, err := metricTableNames.Get(schema.Data, metricName)
+	if err == nil && mInfo.TableName != "" {
+		return mInfo.TableName, nil
+	}
+
+	tableName, possiblyNew, err := metricTableName(conn, metricName)
 	if err != nil || tableName == "" {
-		var possiblyNew bool
-		tableName, possiblyNew, err = metricTableName(conn, metricName)
-		if err != nil || tableName == "" {
-			return "", err
-		}
+		return "", err
+	}
 
-		//ignore error since this is just an optimization
-		_ = metricTableNames.Set(metricName, tableName)
+	//ignore error since this is just an optimization
+	_ = metricTableNames.Set(
+		schema.Data,
+		metricName,
+		model.MetricInfo{
+			TableSchema: schema.Data, TableName: tableName,
+			SeriesTable: "",
+		},
+	)
 
-		if possiblyNew {
-			//pass a signal if there is space
-			select {
-			case completeMetricCreationSignal <- struct{}{}:
-			default:
-			}
+	if possiblyNew {
+		//pass a signal if there is space
+		select {
+		case completeMetricCreationSignal <- struct{}{}:
+		default:
 		}
 	}
 	return tableName, err

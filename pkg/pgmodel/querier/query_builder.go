@@ -41,12 +41,12 @@ const (
 	/* MULTIPLE METRIC PATH (less common case) */
 	/* The following two sql statements are for queries where the metric name is unknown in the query. The first query gets the
 	* metric name and series_id array and the second queries individual metrics while passing down the array */
-	metricNameSeriesIDSQLFormat = `SELECT m.metric_name, array_agg(s.id)
+	metricNameSeriesIDSQLFormat = `SELECT m.table_schema, m.metric_name, array_agg(s.id)
 	FROM _prom_catalog.series s
 	INNER JOIN _prom_catalog.metric m
 	ON (m.id = s.metric_id)
 	WHERE %s
-	GROUP BY m.metric_name
+	GROUP BY m.metric_name, m.table_schema
 	ORDER BY m.metric_name`
 
 	timeseriesBySeriesIDsSQLFormat = `SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
@@ -159,7 +159,7 @@ func GetMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.
 	if err != nil {
 		return nil, nil, fmt.Errorf("build metric name series: %w", err)
 	}
-	metricNames, correspondingSeriesIDs, err := GetSeriesPerMetric(rows)
+	metricNames, _, correspondingSeriesIDs, err := GetSeriesPerMetric(rows)
 	if err != nil {
 		return nil, nil, fmt.Errorf("series per metric: %w", err)
 	}
@@ -180,6 +180,10 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 		case labels.MatchEqual:
 			if m.Name == pgmodel.MetricNameLabelName {
 				cb.SetMetricName(m.Value)
+				continue
+			}
+			if m.Name == pgmodel.SchemaNameLabelName {
+				cb.SetSchemaName(m.Value)
 				continue
 			}
 			sq := subQueryEQ
@@ -238,6 +242,7 @@ func setParameterNumbers(clause string, existingArgs []interface{}, newArgs ...i
 }
 
 type clauseBuilder struct {
+	schemaName    string
 	metricName    string
 	contradiction bool
 	clauses       []string
@@ -260,7 +265,26 @@ func (c *clauseBuilder) GetMetricName() string {
 	return c.metricName
 }
 
+func (c *clauseBuilder) SetSchemaName(name string) {
+	if c.schemaName == "" {
+		c.schemaName = name
+		return
+	}
+
+	/* Impossible to have 2 different schema names at same time */
+	if c.schemaName != name {
+		c.contradiction = true
+	}
+}
+
+func (c *clauseBuilder) GetSchemaName() string {
+	return c.schemaName
+}
+
 func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
+	if len(args) > 0 && args[0] == pgmodel.SchemaNameLabelName {
+		return fmt.Errorf("__schema__ label matcher only supports equals matcher")
+	}
 	clauseWithParameters, newArgs, err := setParameterNumbers(clause, c.args, args...)
 	if err != nil {
 		return err
@@ -307,6 +331,17 @@ func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []timescaleRow)
 	}
 }
 
+// getSchemaLabel returns the name and value of schema label if its not empty.
+// Empty value signifies that there is no need to add the schema label.
+// Additionally, we only set the schema if its not the default data schema.
+func getSchemaLabel(metricSchema string) (string, string) {
+	if metricSchema == "" || metricSchema == schema.Data {
+		return "", ""
+	}
+
+	return pgmodel.SchemaNameLabelName, metricSchema
+}
+
 func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 	labelIDMap := make(map[int64]labels.Label)
@@ -340,6 +375,17 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 			}
 			promLabels = append(promLabels, prompb.Label{Name: label.Name, Value: label.Value})
 
+		}
+
+		if schemaLabelName, schemaLabelValue := getSchemaLabel(row.schema); schemaLabelName != "" {
+			// If its a custom schema, we need to update the metric name as well.
+			for i := range promLabels {
+				if promLabels[i].Name == pgmodel.MetricNameLabelName {
+					promLabels[i].Value = row.metric
+					break
+				}
+			}
+			promLabels = append(promLabels, prompb.Label{Name: schemaLabelName, Value: schemaLabelValue})
 		}
 
 		sort.Slice(promLabels, func(i, j int) bool {
@@ -379,8 +425,8 @@ func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmod
 	}
 	return fmt.Sprintf(
 		timeseriesBySeriesIDsSQLFormat,
-		pgx.Identifier{schema.Data, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
+		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(s, ","),
 		filter.startTime,
 		filter.endTime,
@@ -427,8 +473,8 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 	}
 
 	finalSQL := fmt.Sprintf(template,
-		pgx.Identifier{schema.Data, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
+		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(cases, " AND "),
 		filter.startTime,
 		filter.endTime,
@@ -556,17 +602,19 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 	return getDefaultAggregators(), nil, nil
 }
 
-func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, [][]pgmodel.SeriesID, error) {
+func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, []string, [][]pgmodel.SeriesID, error) {
 	metrics := make([]string, 0)
+	schemas := make([]string, 0)
 	series := make([][]pgmodel.SeriesID, 0)
 
 	for rows.Next() {
 		var (
 			metricName string
+			schemaName string
 			seriesIDs  []int64
 		)
-		if err := rows.Scan(&metricName, &seriesIDs); err != nil {
-			return nil, nil, err
+		if err := rows.Scan(&schemaName, &metricName, &seriesIDs); err != nil {
+			return nil, nil, nil, err
 		}
 
 		sIDs := make([]pgmodel.SeriesID, 0, len(seriesIDs))
@@ -576,10 +624,11 @@ func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, [][]pgmodel.SeriesID, e
 		}
 
 		metrics = append(metrics, metricName)
+		schemas = append(schemas, schemaName)
 		series = append(series, sIDs)
 	}
 
-	return metrics, series, nil
+	return metrics, schemas, series, nil
 }
 
 // anchorValue adds anchors to values in regexps since PromQL docs

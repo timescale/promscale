@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/pkg/labels"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 //nolint
@@ -130,20 +132,22 @@ type seriesSetRow struct {
 	labels     []int64
 	timestamps []pgtype.Timestamptz
 	values     []pgtype.Float8
+	schema     string
 }
 
 var arbitraryErr = fmt.Errorf("arbitrary err")
 
 func TestPgxSeriesSet(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    [][]seriesSetRow
-		labels   []int64
-		ts       []pgtype.Timestamptz
-		vs       []pgtype.Float8
-		rowCount int
-		err      error
-		rowErr   error
+		name         string
+		input        [][]seriesSetRow
+		labels       []int64
+		ts           []pgtype.Timestamptz
+		vs           []pgtype.Float8
+		metricSchema string
+		rowCount     int
+		err          error
+		rowErr       error
 	}{
 		{
 			name:     "invalid row",
@@ -162,7 +166,8 @@ func TestPgxSeriesSet(t *testing.T) {
 				genSeries(
 					[]int64{1},
 					[]pgtype.Timestamptz{},
-					[]pgtype.Float8{{Float: 1.0}}),
+					[]pgtype.Float8{{Float: 1.0}},
+					""),
 			}},
 			rowCount: 1,
 			err:      pgmodelErrs.ErrInvalidRowData,
@@ -230,6 +235,34 @@ func TestPgxSeriesSet(t *testing.T) {
 			},
 			rowCount: 1,
 		},
+		{
+			name:   "check default metric schema",
+			labels: []int64{2, 3},
+			ts: []pgtype.Timestamptz{
+				{Time: time.Unix(0, 500000)},
+				{Time: time.Unix(0, 6000000)},
+			},
+			vs: []pgtype.Float8{
+				{Float: 30000},
+				{Float: 100},
+			},
+			metricSchema: schema.Data,
+			rowCount:     1,
+		},
+		{
+			name:   "check custom metric schema",
+			labels: []int64{2, 3},
+			ts: []pgtype.Timestamptz{
+				{Time: time.Unix(0, 500000)},
+				{Time: time.Unix(0, 6000000)},
+			},
+			vs: []pgtype.Float8{
+				{Float: 30000},
+				{Float: 100},
+			},
+			metricSchema: "customSchema",
+			rowCount:     1,
+		},
 	}
 
 	labelMapping := make(map[int64]struct {
@@ -253,7 +286,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					labels[i] = l
 				}
 				c.input = [][]seriesSetRow{{
-					genSeries(labels, c.ts, c.vs)}}
+					genSeries(labels, c.ts, c.vs, c.metricSchema)}}
 			}
 			p := buildSeriesSet(genPgxRows(c.input, c.rowErr), mapQuerier{labelMapping})
 			if p.Err() != nil {
@@ -281,6 +314,19 @@ func TestPgxSeriesSet(t *testing.T) {
 
 				if ss, ok = s.(*pgxSeries); !ok {
 					t.Fatal("unexpected type for storage.Series")
+				}
+
+				expectedLabels := make([]labels.Label, 0, len(c.labels))
+				for _, v := range c.labels {
+					expectedLabels = append(expectedLabels, labels.Label{Name: labelMapping[v].k, Value: labelMapping[v].v})
+				}
+
+				if schemaLabelName, schemaLabelValue := getSchemaLabel(c.metricSchema); schemaLabelName != "" {
+					expectedLabels = append(expectedLabels, labels.Label{Name: schemaLabelName, Value: schemaLabelValue})
+				}
+				expectedMap := labels.Labels(expectedLabels).Map()
+				if !reflect.DeepEqual(ss.Labels().Map(), expectedMap) {
+					t.Fatalf("unexpected labels values: got %+v, wanted %+v\n", ss.Labels().Map(), expectedMap)
 				}
 
 				iter := ss.Iterator()
@@ -415,6 +461,7 @@ func genPgxRows(m [][]seriesSetRow, err error) []timescaleRow {
 				labelIds: r.labels,
 				times:    newRowTimestampSeries(toTimestampTzArray(r.timestamps)),
 				values:   toFloat8Array(r.values),
+				schema:   r.schema,
 				err:      err,
 			})
 		}
@@ -439,7 +486,7 @@ func toFloat8Array(values []pgtype.Float8) *pgtype.Float8Array {
 	}
 }
 
-func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8) seriesSetRow {
+func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema string) seriesSetRow {
 
 	for i := range ts {
 		if ts[i].Status == pgtype.Undefined {
@@ -457,5 +504,6 @@ func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8) seri
 		labels:     labels,
 		timestamps: ts,
 		values:     vs,
+		schema:     schema,
 	}
 }

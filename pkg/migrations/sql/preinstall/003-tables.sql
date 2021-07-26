@@ -99,8 +99,11 @@ CREATE TABLE SCHEMA_CATALOG.metric (
     retention_period INTERVAL DEFAULT NULL, --NULL to use the default retention_period
     default_compression BOOLEAN NOT NULL DEFAULT true,
     delay_compression_until TIMESTAMPTZ DEFAULT NULL,
-    UNIQUE (metric_name) INCLUDE (table_name),
-    UNIQUE(table_name)
+    table_schema name NOT NULL DEFAULT 'SCHEMA_DATA',
+    series_table name NOT NULL, -- series_table specifies the name of table where the series data is stored.
+    is_view BOOLEAN NOT NULL DEFAULT false,
+    UNIQUE (metric_name, table_schema) INCLUDE (table_name),
+    UNIQUE(table_schema, table_name)
 );
 GRANT SELECT ON TABLE SCHEMA_CATALOG.metric TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.metric TO prom_writer;

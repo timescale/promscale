@@ -11,7 +11,10 @@ import (
 	"github.com/jackc/pgtype"
 )
 
-const MetricNameLabelName = "__name__"
+const (
+	MetricNameLabelName = "__name__"
+	SchemaNameLabelName = "__schema__"
+)
 
 var (
 	MinTime = time.Unix(math.MinInt64/1000+62135596801, 0).UTC()

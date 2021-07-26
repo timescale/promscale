@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 const (
@@ -108,7 +109,17 @@ func (p *pgxSeriesSet) At() storage.Series {
 			return nil
 		}
 		lls = append(lls, label)
+	}
 
+	if schemaLabelName, schemaLabelValue := getSchemaLabel(row.schema); schemaLabelName != "" {
+		// If its a custom schema, we need to update the metric name as well.
+		for i := range lls {
+			if lls[i].Name == model.MetricNameLabelName {
+				lls[i].Value = row.metric
+				break
+			}
+		}
+		lls = append(lls, labels.Label{Name: schemaLabelName, Value: schemaLabelValue})
 	}
 	sort.Sort(lls)
 	ps.labels = lls
