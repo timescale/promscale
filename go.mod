@@ -4,7 +4,6 @@ go 1.15
 
 require (
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/armon/go-metrics v0.3.3 // indirect
 	github.com/blang/semver/v4 v4.0.0
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68
@@ -37,6 +36,11 @@ require (
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514
+	github.com/thanos-io/thanos v0.20.1
 	github.com/uber/jaeger-client-go v2.28.0+incompatible
 	go.uber.org/goleak v1.1.10
+	google.golang.org/grpc v1.37.0
 )
+
+// Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20210605142932-7bc11dcb0664
