@@ -945,7 +945,7 @@ AS $$
     SELECT
         array_agg(l.id), array_agg(l.key), array_agg(l.value)
     FROM
-      label_unnest(labels) label_id
+      SCHEMA_CATALOG.label_unnest(labels) label_id
       INNER JOIN SCHEMA_CATALOG.label l ON (l.id = label_id)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;

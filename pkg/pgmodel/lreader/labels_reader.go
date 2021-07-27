@@ -21,7 +21,7 @@ import (
 const (
 	getLabelNamesSQL  = "SELECT distinct key from " + schema.Catalog + ".label"
 	getLabelValuesSQL = "SELECT value from " + schema.Catalog + ".label WHERE key = $1"
-	getLabelsSQL      = "SELECT (labels_info($1::int[])).*"
+	getLabelsSQL      = "SELECT (" + schema.Prom + ".labels_info($1::int[])).*"
 )
 
 // LabelsReader defines the methods for accessing labels data
@@ -30,7 +30,7 @@ type LabelsReader interface {
 	LabelNames() ([]string, error)
 	// LabelValues returns all the distinct values for a given label name.
 	LabelValues(labelName string) ([]string, error)
-	//  LabelsForIdMap fills in the label.Label values in a map of label id => labels.Label.
+	// LabelsForIdMap fills in the label.Label values in a map of label id => labels.Label.
 	LabelsForIdMap(idMap map[int64]labels.Label) (err error)
 }
 
