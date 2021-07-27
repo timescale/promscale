@@ -14,6 +14,7 @@ import (
 const (
 	MetricNameLabelName = "__name__"
 	SchemaNameLabelName = "__schema__"
+	ColumnNameLabelName = "__column__"
 )
 
 var (

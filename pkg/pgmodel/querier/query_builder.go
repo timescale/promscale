@@ -107,7 +107,7 @@ const (
 		SELECT %[6]s
 		FROM
 		(
-			SELECT time, value
+			SELECT time, %[9]s as value
 			FROM %[1]s metric
 			WHERE metric.series_id = series.id
 			AND time >= '%[4]s'
@@ -127,7 +127,7 @@ const (
 		SELECT series_id, %[6]s
 		FROM
 		(
-			SELECT series_id, time, value
+			SELECT series_id, time, %[9]s as value
 			FROM %[1]s metric
 			WHERE
 			time >= '%[4]s'
@@ -136,6 +136,8 @@ const (
 		) as time_ordered_rows
 		GROUP BY series_id
 	) as result ON (result.value_array is not null AND result.series_id = series.id)`
+
+	defaultColumnName = "value"
 )
 
 var (
@@ -184,6 +186,10 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 			}
 			if m.Name == pgmodel.SchemaNameLabelName {
 				cb.SetSchemaName(m.Value)
+				continue
+			}
+			if m.Name == pgmodel.ColumnNameLabelName {
+				cb.SetColumnName(m.Value)
 				continue
 			}
 			sq := subQueryEQ
@@ -244,6 +250,7 @@ func setParameterNumbers(clause string, existingArgs []interface{}, newArgs ...i
 type clauseBuilder struct {
 	schemaName    string
 	metricName    string
+	columnName    string
 	contradiction bool
 	clauses       []string
 	args          []interface{}
@@ -281,9 +288,33 @@ func (c *clauseBuilder) GetSchemaName() string {
 	return c.schemaName
 }
 
+func (c *clauseBuilder) SetColumnName(name string) {
+	if c.columnName == "" {
+		c.columnName = name
+		return
+	}
+
+	/* Impossible to have 2 different column names at same time */
+	if c.columnName != name {
+		c.contradiction = true
+	}
+}
+
+func (c *clauseBuilder) GetColumnName() string {
+	if c.columnName == "" {
+		return defaultColumnName
+	}
+	return c.columnName
+}
+
 func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
-	if len(args) > 0 && args[0] == pgmodel.SchemaNameLabelName {
-		return fmt.Errorf("__schema__ label matcher only supports equals matcher")
+	if len(args) > 0 {
+		switch args[0] {
+		case pgmodel.SchemaNameLabelName:
+			return fmt.Errorf("__schema__ label matcher only supports equals matcher")
+		case pgmodel.ColumnNameLabelName:
+			return fmt.Errorf("__column__ label matcher only supports equals matcher")
+		}
 	}
 	clauseWithParameters, newArgs, err := setParameterNumbers(clause, c.args, args...)
 	if err != nil {
@@ -331,17 +362,6 @@ func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []timescaleRow)
 	}
 }
 
-// getSchemaLabel returns the name and value of schema label if its not empty.
-// Empty value signifies that there is no need to add the schema label.
-// Additionally, we only set the schema if its not the default data schema.
-func getSchemaLabel(metricSchema string) (string, string) {
-	if metricSchema == "" || metricSchema == schema.Data {
-		return "", ""
-	}
-
-	return pgmodel.SchemaNameLabelName, metricSchema
-}
-
 func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 	labelIDMap := make(map[int64]labels.Label)
@@ -376,16 +396,16 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 			promLabels = append(promLabels, prompb.Label{Name: label.Name, Value: label.Value})
 
 		}
-
-		if schemaLabelName, schemaLabelValue := getSchemaLabel(row.schema); schemaLabelName != "" {
-			// If its a custom schema, we need to update the metric name as well.
+		if row.metricOverride != "" {
 			for i := range promLabels {
 				if promLabels[i].Name == pgmodel.MetricNameLabelName {
-					promLabels[i].Value = row.metric
+					promLabels[i].Value = row.metricOverride
 					break
 				}
 			}
-			promLabels = append(promLabels, prompb.Label{Name: schemaLabelName, Value: schemaLabelValue})
+		}
+		for _, v := range row.GetAdditionalLabels() {
+			promLabels = append(promLabels, prompb.Label{Name: v.Name, Value: v.Value})
 		}
 
 		sort.Slice(promLabels, func(i, j int) bool {
@@ -481,6 +501,7 @@ func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []st
 		strings.Join(selectorClauses, ", "),
 		strings.Join(selectors, ", "),
 		orderByClause,
+		pgx.Identifier{filter.column}.Sanitize(),
 	)
 
 	return finalSQL, values, node, qf.tsSeries, nil

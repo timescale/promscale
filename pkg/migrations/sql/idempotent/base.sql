@@ -2251,10 +2251,10 @@ BEGIN
     AND table_name   = register_metric_view.view_name
     AND ((column_name = 'time' AND data_type = 'timestamp with time zone')
     OR (column_name = 'series_id' AND data_type = 'bigint')
-    OR (column_name = 'value' AND data_type = 'double precision'));
+    OR data_type = 'double precision');
 
-    IF column_count <> 3 THEN
-        RAISE EXCEPTION 'view must contain time, series_id, and value columns with appropriate types';
+    IF column_count < 3 THEN
+        RAISE EXCEPTION 'view must contain time (data type: timestamp with time zone), series_id (data type: bigint), and at least one column with double precision data type';
     END IF;
 
     -- insert into metric table
