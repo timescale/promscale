@@ -139,7 +139,7 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 			require.NoError(r.t, err)
 			expected, err := row.Args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
 			require.NoError(r.t, err)
-			require.Equal(r.t, expected, got, "sql args aren't equal for query # %v: %v", idx, sql)
+			require.Equal(r.t, string(expected), string(got), "sql args aren't equal for query # %v: %v", idx, sql)
 		default:
 			if !row.ArgsUnordered {
 				require.Equal(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)

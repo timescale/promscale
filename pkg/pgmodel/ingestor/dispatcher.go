@@ -62,8 +62,16 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		handleDecompression = skipDecompression
 	}
 
+	var labelArrayOID uint32
+	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&labelArrayOID)
+	if err != nil {
+		return nil, err
+	}
+
+	sw := NewSeriesWriter(conn, labelArrayOID)
+
 	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, toCopiers)
+		go runCopier(conn, toCopiers, sw)
 	}
 
 	inserter := &pgxDispatcher{
@@ -77,11 +85,6 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		doneChannel:        make(chan struct{}),
 	}
 	runBatchWatcher(inserter.doneChannel)
-
-	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&inserter.labelArrayOID)
-	if err != nil {
-		return nil, err
-	}
 
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
