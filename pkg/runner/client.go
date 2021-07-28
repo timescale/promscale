@@ -150,11 +150,10 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		return nil, fmt.Errorf("elector init error: %w", err)
 	}
 
-	if elector == nil && !cfg.APICfg.ReadOnly {
-		log.Warn(
+	if (elector == nil && !cfg.APICfg.HighAvailability) && !cfg.APICfg.ReadOnly {
+		log.Info(
 			"msg",
-			"No adapter leader election. Group lock id is not set. "+
-				"Possible duplicate write load if running multiple connectors",
+			"Prometheus HA is not enabled",
 		)
 	}
 
