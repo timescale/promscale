@@ -16,6 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/prompb"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
@@ -30,6 +31,22 @@ func getTestLabelArray(t *testing.T, l [][]int32) *pgtype.ArrayType {
 
 func init() {
 	tput.InitWatcher(time.Second)
+}
+
+type sVisitor []model.Samples
+
+func (c sVisitor) VisitSeries(cb func(s *pgmodel.Series) error) error {
+	for _, sample := range c {
+		err := cb(sample.GetSeries())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c sVisitor) NumSeries() int {
+	return len(c)
 }
 
 func TestPGXInserterInsertSeries(t *testing.T) {
@@ -73,6 +90,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Err: error(nil),
 				},
 				{Sql: "COMMIT;"},
+				{Sql: "BEGIN;"},
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
@@ -82,6 +100,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Results: model.RowResults{{int64(1), int64(1)}},
 					Err:     error(nil),
 				},
+				{Sql: "COMMIT;"},
 			},
 		},
 		{
@@ -93,7 +112,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 				{
 					{Name: "name_2", Value: "value_2"},
-					{Name: "__name__", Value: "metric_2"},
+					{Name: "__name__", Value: "metric_1"},
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -110,24 +129,26 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "name_1", "__name__", "name_2"},
-						[]string{"metric_1", "value_1", "metric_2", "value_2"},
+						[]string{"__name__", "name_1", "name_2"},
+						[]string{"metric_1", "value_1", "value_2"},
 					},
 					Results: model.RowResults{
-						{[]int32{1, 1, 2, 3}, []int32{1, 2, 3, 4}, []string{"__name__", "__name__", "name_1", "name_2"}, []string{"metric_1", "metric_2", "value_1", "value_2"}},
+						{[]int32{1, 2, 3}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_2"}, []string{"metric_1", "value_1", "value_2"}},
 					},
 					Err: error(nil),
 				},
 				{Sql: "COMMIT;"},
+				{Sql: "BEGIN;"},
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
 						"metric_1",
-						getTestLabelArray(t, [][]int32{{1, 3}, {2, 0, 4}}),
+						getTestLabelArray(t, [][]int32{{1, 2}, {1, 0, 3}}),
 					},
 					Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}},
 					Err:     error(nil),
 				},
+				{Sql: "COMMIT;"},
 			},
 		},
 		{
@@ -138,7 +159,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					{Name: "__name__", Value: "metric_1"}},
 				{
 					{Name: "name_2", Value: "value_2"},
-					{Name: "__name__", Value: "metric_2"}},
+					{Name: "__name__", Value: "metric_1"}},
 				{
 					{Name: "name_1", Value: "value_1"},
 					{Name: "__name__", Value: "metric_1"},
@@ -158,24 +179,26 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "name_1", "__name__", "name_2"},
-						[]string{"metric_1", "value_1", "metric_2", "value_2"},
+						[]string{"__name__", "name_1", "name_2"},
+						[]string{"metric_1", "value_1", "value_2"},
 					},
 					Results: model.RowResults{
-						{[]int32{1, 1, 2, 3}, []int32{1, 2, 3, 4}, []string{"__name__", "__name__", "name_1", "name_2"}, []string{"metric_1", "metric_2", "value_1", "value_2"}},
+						{[]int32{1, 2, 3}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_2"}, []string{"metric_1", "value_1", "value_2"}},
 					},
 					Err: error(nil),
 				},
 				{Sql: "COMMIT;"},
+				{Sql: "BEGIN;"},
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
 						"metric_1",
-						getTestLabelArray(t, [][]int32{{1, 3}, {2, 0, 4}, {1, 3}}),
+						getTestLabelArray(t, [][]int32{{1, 2}, {1, 0, 3}, {1, 2}}),
 					},
 					Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}, {int64(1), int64(1)}},
 					Err:     error(nil),
 				},
+				{Sql: "COMMIT;"},
 			},
 		},
 		{
@@ -186,7 +209,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					{Name: "__name__", Value: "metric_1"}},
 				{
 					{Name: "name_2", Value: "value_2"},
-					{Name: "__name__", Value: "metric_2"},
+					{Name: "__name__", Value: "metric_1"},
 				},
 			},
 			sqlQueries: []model.SqlQuery{
@@ -203,8 +226,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
 					Args: []interface{}{
 						"metric_1",
-						[]string{"__name__", "name_1", "__name__", "name_2"},
-						[]string{"metric_1", "value_1", "metric_2", "value_2"},
+						[]string{"__name__", "name_1", "name_2"},
+						[]string{"metric_1", "value_1", "value_2"},
 					},
 					Results: model.RowResults{
 						{int32(1), int32(1), "__name__", "metric_1"},
@@ -235,9 +258,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
 
-			inserter := metricBatcher{
-				conn: mock,
-			}
+			sw := NewSeriesWriter(mock, 0)
 
 			lsi := make([]model.Samples, 0)
 			for _, ser := range c.series {
@@ -248,7 +269,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				lsi = append(lsi, model.NewPromSample(ls, nil))
 			}
 
-			err := inserter.setSeriesIds(lsi)
+			err := sw.WriteSeries(sVisitor(lsi))
 			if err != nil {
 				foundErr := false
 				for _, q := range c.sqlQueries {
@@ -313,6 +334,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Err: error(nil),
 		},
 		{Sql: "COMMIT;"},
+		{Sql: "BEGIN;"},
 		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{
@@ -322,6 +344,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}},
 			Err:     error(nil),
 		},
+		{Sql: "COMMIT;"},
 
 		// first labels cache refresh, does not trash
 		{
@@ -362,6 +385,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Err: error(nil),
 		},
 		{Sql: "COMMIT;"},
+		{Sql: "BEGIN;"},
 		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{
@@ -371,6 +395,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 			Results: model.RowResults{{int64(3), int64(1)}, {int64(4), int64(2)}},
 			Err:     error(nil),
 		},
+		{Sql: "COMMIT;"},
 	}
 
 	for i := range sqlQueries {
@@ -387,9 +412,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	mock := model.NewSqlRecorder(sqlQueries, t)
 	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 
-	handler := metricBatcher{
-		conn: mock,
-	}
+	sw := NewSeriesWriter(mock, 0)
 	inserter := pgxDispatcher{
 		conn:   mock,
 		scache: scache,
@@ -408,7 +431,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	samples := makeSamples(series)
-	err := handler.setSeriesIds(samples)
+	err := sw.WriteSeries(sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +457,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	require.NoError(t, err)
 
 	samples = makeSamples(series)
-	err = handler.setSeriesIds(samples)
+	err = sw.WriteSeries(sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +479,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	// retrying rechecks the DB and uses the new IDs
 	samples = makeSamples(series)
-	err = handler.setSeriesIds(samples)
+	err = sw.WriteSeries(sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,10 @@ func getSeries(t *testing.T, scache *cache.SeriesCacheImpl, labels labels.Labels
 	return series
 }
 
+func makeLabelKey(l labels.Label) labelKey {
+	return labelKey{MetricName: "metric", Name: l.Name, Value: l.Value}
+}
+
 func TestLabelArrayCreator(t *testing.T) {
 	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 	metricNameLabel := labels.Label{Name: "__name__", Value: "metric"}
@@ -27,9 +31,9 @@ func TestLabelArrayCreator(t *testing.T) {
 	seriesSet := []*model.Series{
 		getSeries(t, scache, labels.Labels{metricNameLabel, valOne}),
 	}
-	labelMap := map[labels.Label]labelInfo{
-		metricNameLabel: {2, 1},
-		valOne:          {3, 2},
+	labelMap := map[labelKey]labelInfo{
+		makeLabelKey(metricNameLabel): {2, 1},
+		makeLabelKey(valOne):          {3, 2},
 	}
 
 	res, _, err := createLabelArrays(seriesSet, labelMap, 2)
@@ -42,7 +46,7 @@ func TestLabelArrayCreator(t *testing.T) {
 	expected = [][]int32{{2, 3}}
 	require.Equal(t, res, expected)
 
-	labelMap[valOne] = labelInfo{3, 3}
+	labelMap[makeLabelKey(valOne)] = labelInfo{3, 3}
 	res, _, err = createLabelArrays(seriesSet, labelMap, 3)
 	require.NoError(t, err)
 	expected = [][]int32{{2, 0, 3}}
@@ -53,10 +57,10 @@ func TestLabelArrayCreator(t *testing.T) {
 		getSeries(t, scache, labels.Labels{metricNameLabel, valOne}),
 		getSeries(t, scache, labels.Labels{metricNameLabel, valTwo}),
 	}
-	labelMap = map[labels.Label]labelInfo{
-		metricNameLabel: {100, 1},
-		valOne:          {1, 5},
-		valTwo:          {2, 5},
+	labelMap = map[labelKey]labelInfo{
+		makeLabelKey(metricNameLabel): {100, 1},
+		makeLabelKey(valOne):          {1, 5},
+		makeLabelKey(valTwo):          {2, 5},
 	}
 
 	res, ser, err := createLabelArrays(seriesSet, labelMap, 5)
@@ -75,10 +79,10 @@ func TestLabelArrayCreator(t *testing.T) {
 		getSeries(t, scache, labels.Labels{metricNameLabel, valOne}),
 		setSeries,
 	}
-	labelMap = map[labels.Label]labelInfo{
-		metricNameLabel: {100, 1},
-		valOne:          {1, 5},
-		valTwo:          {2, 5},
+	labelMap = map[labelKey]labelInfo{
+		makeLabelKey(metricNameLabel): {100, 1},
+		makeLabelKey(valOne):          {1, 5},
+		makeLabelKey(valTwo):          {2, 5},
 	}
 	res, ser, err = createLabelArrays(seriesSet, labelMap, 5)
 	require.NoError(t, err)
