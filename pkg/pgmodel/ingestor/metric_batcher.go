@@ -202,9 +202,21 @@ func (h *metricBatcher) flush() {
 	h.flushPending()
 }
 
-// Set all unset SeriesIds and flush to the next layer
 func (h *metricBatcher) flushPending() {
-	MetricBatcherFlushSeries.Observe(float64(h.pending.batch.CountSeries()))
-	h.toCopiers <- copyRequest{h.pending, h.metricTableName}
-	h.pending = NewPendingBuffer()
+	recvChannel := h.input
+	for {
+		if h.pending.IsFull() {
+			recvChannel = nil
+		}
+		numSeries := h.pending.batch.CountSeries()
+		select {
+		case h.toCopiers <- copyRequest{h.pending, h.metricTableName}:
+			MetricBatcherFlushSeries.Observe(float64(numSeries))
+			h.pending = NewPendingBuffer()
+			return
+		case req := <-recvChannel:
+			h.pending.addReq(req)
+
+		}
+	}
 }
