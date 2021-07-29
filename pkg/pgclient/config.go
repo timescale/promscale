@@ -169,8 +169,8 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 		}
 		// we try to only use 80% the database connections, capped at 50
 		max = int(0.8 * float32(max))
-		if max > 50 {
-			max = 50
+		if max > 100 {
+			max = 100
 		}
 	}
 
@@ -187,7 +187,7 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 	// we try to leave one connection per-core for non-copier usages, otherwise using half the connections.
 	if numCopiers > max-maxProcs {
 		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max/2))
-		numCopiers = max / 2
+		numCopiers = max - maxProcs
 	}
 	return
 }
