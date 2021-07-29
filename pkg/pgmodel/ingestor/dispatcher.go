@@ -35,7 +35,7 @@ type pgxDispatcher struct {
 	batchers               sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
-	toCopiers              chan<- copyRequest
+	copierReadRequestCh    chan<- readRequest
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
 	doneWG                 sync.WaitGroup
@@ -49,13 +49,11 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		numCopiers = 1
 	}
 
-	// We run inserters bus-style: all of them competing to grab requests off a
-	// single channel. This should offer a decent compromise between batching
-	// and balancing: if an inserter is awake and has little work, it'll be more
-	// likely to win the race, while one that's busy or asleep won't.
-	copierCap := numCopiers * maxCopyRequestsPerTxn
-	toCopiers := make(chan copyRequest, copierCap)
-	setCopierChannelToMonitor(toCopiers)
+	//the copier read request channel keep the queue order
+	//between metrucs
+	maxMetrics := 10000
+	copierReadRequestCh := make(chan readRequest, maxMetrics)
+	setCopierChannelToMonitor(copierReadRequestCh)
 
 	if cfg.IgnoreCompressedChunks {
 		// Handle decompression to not decompress anything.
@@ -71,7 +69,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	sw := NewSeriesWriter(conn, labelArrayOID)
 
 	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, toCopiers, sw)
+		go runCopier(conn, copierReadRequestCh, sw)
 	}
 
 	inserter := &pgxDispatcher{
@@ -79,7 +77,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		metricTableNames:       cache,
 		scache:                 scache,
 		completeMetricCreation: make(chan struct{}, 1),
-		toCopiers:              toCopiers,
+		copierReadRequestCh:    copierReadRequestCh,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
 		doneChannel:        make(chan struct{}),
@@ -173,7 +171,7 @@ func (p *pgxDispatcher) Close() {
 		close(value.(chan *insertDataRequest))
 		return true
 	})
-	close(p.toCopiers)
+	close(p.copierReadRequestCh)
 	close(p.doneChannel)
 	p.doneWG.Wait()
 }
@@ -282,7 +280,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
-			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
+			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh, p.labelArrayOID)
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)

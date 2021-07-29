@@ -42,7 +42,7 @@ var (
 			Namespace: util.PromNamespace,
 			Name:      "copier_inserts_per_batch",
 			Help:      "number of INSERTs in a single transaction",
-			Buckets:   util.HistogramBucketsSaturating(1, 2, maxCopyRequestsPerTxn),
+			Buckets:   util.HistogramBucketsSaturating(1, 2, maxInsertStmtPerTxn),
 		},
 	)
 	NumRowsPerBatch = prometheus.NewHistogram(
@@ -90,7 +90,7 @@ var (
 
 	copierChannelMutex sync.Mutex
 
-	SamplesCopierChannelToMonitor chan copyRequest
+	SamplesCopierChannelToMonitor chan readRequest
 	SamplesCopierChLen            = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
@@ -108,7 +108,7 @@ var (
 	)
 )
 
-func setCopierChannelToMonitor(toSamplesCopiers chan copyRequest) {
+func setCopierChannelToMonitor(toSamplesCopiers chan readRequest) {
 	copierChannelMutex.Lock()
 	defer copierChannelMutex.Unlock()
 
