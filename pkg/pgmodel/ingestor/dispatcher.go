@@ -285,14 +285,16 @@ func (p *pgxDispatcher) send(payload *insertDataRequest) {
 	if p.sentToCurrentBatcher > NumberRequestPerBatcherMax {
 		p.rotateBatcher()
 	}
-	for {
-		select {
-		case p.batchers[p.currentBatcher] <- payload:
-			return
-		default:
-			p.rotateBatcher()
-		}
+
+	select {
+	case p.batchers[p.currentBatcher] <- payload:
+		return
+	default:
+		p.rotateBatcher()
+		p.batchers[p.currentBatcher] <- payload
+		return
 	}
+
 }
 
 func (p *pgxDispatcher) rotateBatcher() {
