@@ -5,12 +5,14 @@
 package cache
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
 	"sort"
-	"strings"
+	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
@@ -141,17 +143,23 @@ func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Serie
 // Get a string representation for hashing and comparison
 // This representation is guaranteed to uniquely represent the underlying label
 // set, though need not human-readable, or indeed, valid utf-8
-func generateKey(labels []prompb.Label) (key string, metricName string, error error) {
+func generateKey(labels []prompb.Label, builder *bytes.Buffer) (metricName string, error error) {
 	if len(labels) == 0 {
-		return "", "", nil
+		return "", nil
 	}
 
 	comparator := func(i, j int) bool {
 		return labels[i].Name < labels[j].Name
 	}
 
-	if !sort.SliceIsSorted(labels, comparator) {
-		sort.Slice(labels, comparator)
+	//this is equivalent to sort.SliceIsSorted but avoids the interface conversion
+	//and resulting allocation.
+	//We really shouldn't find unsorted labels. This code is to be extra safe.
+	for i := len(labels) - 1; i > 0; i-- {
+		if labels[i].Name < labels[i-1].Name {
+			sort.Slice(labels, comparator)
+			break
+		}
 	}
 
 	expectedStrLen := len(labels) * 4 // 2 for the length of each key, and 2 for the length of each value
@@ -165,14 +173,13 @@ func generateKey(labels []prompb.Label) (key string, metricName string, error er
 	// total length anyway, we only use 16bits to store the legth of each substring
 	// in our string encoding
 	if expectedStrLen > math.MaxUint16 {
-		return "", metricName, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
+		return metricName, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, ^uint16(0))
 	}
 
 	// the string representation is
 	//   (<key-len>key <val-len> val)* (<key-len>key <val-len> val)?
 	// that is a series of the a sequence of key values pairs with each string
 	// prefixed with it's length as a little-endian uint16
-	builder := strings.Builder{}
 	builder.Grow(expectedStrLen)
 
 	lengthBuf := make([]byte, 2)
@@ -200,7 +207,13 @@ func generateKey(labels []prompb.Label) (key string, metricName string, error er
 		builder.WriteString(val)
 	}
 
-	return builder.String(), metricName, nil
+	return metricName, nil
+}
+
+var keyPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
 }
 
 // GetSeriesFromLabels converts a labels.Labels to a canonical Labels object
@@ -214,14 +227,31 @@ func (t *SeriesCacheImpl) GetSeriesFromLabels(ls labels.Labels) (*model.Series, 
 	return l, err
 }
 
+// byteToStringBorrow gets a string from a byte slice without allocation.
+// Must make sure the bytes survives the string lifetime
+func byteToStringBorrow(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
 // GetSeriesFromProtos converts a prompb.Label to a canonical Labels object
 func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, string, error) {
-	key, metricName, err := generateKey(labelPairs)
+	builder := keyPool.Get().(*bytes.Buffer)
+	builder.Reset()
+	defer keyPool.Put(builder)
+	metricName, err := generateKey(labelPairs, builder)
 	if err != nil {
 		return nil, "", err
 	}
-	series := t.loadSeries(key)
+
+	var series *model.Series
+	//func restricts the lifetime of the borrowed key
+	func() {
+		key := byteToStringBorrow(builder.Bytes())
+		series = t.loadSeries(key)
+	}()
 	if series == nil {
+		//this will allocate the key
+		key := builder.String()
 		series = model.NewSeries(key, labelPairs)
 		series = t.setSeries(key, series)
 	}
