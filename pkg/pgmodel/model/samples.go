@@ -6,6 +6,7 @@ package model
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -68,20 +69,27 @@ type SamplesBatch struct {
 	err           error
 }
 
-// NewSamplesBatch is the constructor
-func NewSamplesBatch() SamplesBatch {
-	si := SamplesBatch{seriesSamples: make([]Samples, 0)}
-	si.ResetPosition()
-	return si
+var samplesBatch = sync.Pool{
+	New: func() interface{} {
+		sb := &SamplesBatch{seriesSamples: make([]Samples, 0)}
+		sb.ResetPosition()
+		return sb
+	},
 }
 
-func (t *SamplesBatch) Reset() {
+// NewSamplesBatch is the constructor
+func NewSamplesBatch() *SamplesBatch {
+	return samplesBatch.Get().(*SamplesBatch)
+}
+
+func (t *SamplesBatch) Release() {
 	for i := 0; i < len(t.seriesSamples); i++ {
 		// nil all pointers to prevent memory leaks
 		t.seriesSamples[i] = nil
 	}
 	*t = SamplesBatch{seriesSamples: t.seriesSamples[:0]}
 	t.ResetPosition()
+	samplesBatch.Put(t)
 }
 
 func (t *SamplesBatch) CountSeries() int {

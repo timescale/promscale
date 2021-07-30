@@ -25,7 +25,12 @@ import (
 const maxInsertStmtPerTxn = 100
 
 type copyRequest struct {
-	data  *pendingBuffer
+	data          *pendingBuffer
+	tableCallback func(string) (string, error)
+}
+
+type insertRequest struct {
+	data  *pgmodel.SamplesBatch
 	table string
 }
 
@@ -34,11 +39,11 @@ var (
 	handleDecompression = retryAfterDecompression
 )
 
-type copyBatch []copyRequest
+type copyBatch []*insertRequest
 
 func (c copyBatch) VisitSeries(cb func(s *pgmodel.Series) error) error {
 	for _, req := range c {
-		samples := req.data.batch.GetSeriesSamples()
+		samples := req.data.GetSeriesSamples()
 		for _, sample := range samples {
 			err := cb(sample.GetSeries())
 			if err != nil {
@@ -52,7 +57,7 @@ func (c copyBatch) VisitSeries(cb func(s *pgmodel.Series) error) error {
 func (c copyBatch) NumSeries() int {
 	i := 0
 	for _, req := range c {
-		i += len(req.data.batch.GetSeriesSamples())
+		i += len(req.data.GetSeriesSamples())
 	}
 	return i
 }
@@ -60,28 +65,27 @@ func (c copyBatch) NumSeries() int {
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
 func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter) {
-	requestBatch := make([]readRequest, 0, maxInsertStmtPerTxn)
-	insertBatch := make([]copyRequest, 0, cap(requestBatch))
+	insertBatch := make([]*insertRequest, 0, 1000)
 	for {
 		var ok bool
 
-		//fetch the batch of request upfront to make sure all of the
-		//requests fetched are for unique metrics. This is insured
-		//by the fact that the batcher only has one outstanding readRequest
-		//at a time and the fact that we fetch the entire batch before
-		//executing any of the reads. This guarantees that we never
-		//need to batch the same metrics together in the copier
-		requestBatch, ok = copierGetBatch(requestBatch, in)
+		request, ok := <-in
 		if !ok {
 			return
 		}
 
-		for i := range requestBatch {
-			copyRequest, ok := <-requestBatch[i].copySender
-			if !ok {
-				continue
+		copyRequest, ok := <-request.copySender
+		if !ok {
+			panic("here should never happen")
+			continue
+		}
+
+		for metricName, sb := range copyRequest.data.batch {
+			tableName, err := copyRequest.tableCallback(metricName)
+			if err != nil {
+				panic(err)
 			}
-			insertBatch = append(insertBatch, copyRequest)
+			insertBatch = append(insertBatch, &insertRequest{data: sb, table: tableName})
 		}
 
 		// sort to prevent deadlocks on table locks
@@ -94,15 +98,11 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter) {
 			fmt.Println(err)
 		}
 
-		doInsertOrFallback(conn, insertBatch...)
-		for i := range requestBatch {
-			requestBatch[i] = readRequest{}
-		}
+		doInsertOrFallback(conn, copyRequest, insertBatch...)
 		for i := range insertBatch {
-			insertBatch[i] = copyRequest{}
+			insertBatch[i] = &insertRequest{}
 		}
 		insertBatch = insertBatch[:0]
-		requestBatch = requestBatch[:0]
 	}
 }
 
@@ -135,37 +135,40 @@ hot_gather:
 	return batch, true
 }
 
-func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
+func doInsertOrFallback(conn pgxconn.PgxConn, copyRequest copyRequest, reqs ...*insertRequest) {
 	err := insertSeries(conn, reqs...)
 	if err != nil {
-		insertBatchErrorFallback(conn, reqs...)
+		insertBatchErrorFallback(conn, copyRequest, reqs...)
 		return
 	}
 
-	for i := range reqs {
-		reqs[i].data.reportResults(nil)
-		reqs[i].data.release()
-	}
+	copyRequest.data.reportResults(nil)
+	copyRequest.data.release()
 }
 
-func insertBatchErrorFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
+func insertBatchErrorFallback(conn pgxconn.PgxConn, copyRequest copyRequest, reqs ...*insertRequest) {
+	var oneErr error = nil
 	for i := range reqs {
-		reqs[i].data.batch.ResetPosition()
+		reqs[i].data.ResetPosition()
 		err := insertSeries(conn, reqs[i])
 		if err != nil {
 			err = tryRecovery(conn, err, reqs[i])
 		}
+		if err != nil {
+			oneErr = err
+		}
 
-		reqs[i].data.reportResults(err)
-		reqs[i].data.release()
 	}
+	//FIXME
+	copyRequest.data.reportResults(oneErr)
+	copyRequest.data.release()
 }
 
 // we can currently recover from one error:
 // If we inserted into a compressed chunk, we decompress the chunk and try again.
 // Since a single batch can have both errors, we need to remember the insert method
 // we're using, so that we deduplicate if needed.
-func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest) error {
+func tryRecovery(conn pgxconn.PgxConn, err error, req *insertRequest) error {
 	// we only recover from postgres errors right now
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
@@ -183,7 +186,7 @@ func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest) error {
 	return pgErr
 }
 
-func skipDecompression(_ pgxconn.PgxConn, _ copyRequest) error {
+func skipDecompression(_ pgxconn.PgxConn, _ *insertRequest) error {
 	log.WarnRateLimited("msg", "Rejecting samples falling on compressed chunks as decompression is disabled")
 	return nil
 }
@@ -191,11 +194,11 @@ func skipDecompression(_ pgxconn.PgxConn, _ copyRequest) error {
 // In the event we filling in old data and the chunk we want to INSERT into has
 // already been compressed, we decompress the chunk and try again. When we do
 // this we delay the recompression to give us time to insert additional data.
-func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest) error {
+func retryAfterDecompression(conn pgxconn.PgxConn, req *insertRequest) error {
 	var (
 		table   = req.table
 		pending = req.data
-		minTime = model.Time(pending.batch.MinSeen).Time()
+		minTime = model.Time(pending.MinSeen).Time()
 	)
 	//how much faster are we at ingestion than wall-clock time?
 	ingestSpeedup := 2
@@ -223,7 +226,7 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest) error {
 	metrics.DecompressCalls.Inc()
 	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
 
-	req.data.batch.ResetPosition()
+	req.data.ResetPosition()
 	return insertSeries(conn, req) // Attempt an insert again.
 }
 
@@ -244,15 +247,15 @@ func debugInsert() {
 */
 
 // insertSeries performs the insertion of time-series into the DB.
-func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
+func insertSeries(conn pgxconn.PgxConn, reqs ...*insertRequest) (err error) {
 	batch := conn.NewBatch()
 
 	numRowsPerInsert := make([]int, 0, len(reqs))
 	numRowsTotal := 0
 	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	for r := range reqs {
-		req := &reqs[r]
-		numRows := req.data.batch.CountSamples()
+		req := reqs[r]
+		numRows := req.data.CountSamples()
 		NumRowsPerInsert.Observe(float64(numRows))
 
 		// flatten the various series into arrays.
@@ -270,8 +273,8 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		times := make([]time.Time, 0, numRows)
 		vals := make([]float64, 0, numRows)
 		series := make([]int64, 0, numRows)
-		for req.data.batch.Next() {
-			timestamp, val, seriesID, seriesEpoch := req.data.batch.Values()
+		for req.data.Next() {
+			timestamp, val, seriesID, seriesEpoch := req.data.Values()
 			if seriesEpoch < lowestEpoch {
 				lowestEpoch = seriesEpoch
 			}
@@ -279,7 +282,7 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 			vals = append(vals, val)
 			series = append(series, int64(seriesID))
 		}
-		if err = req.data.batch.Err(); err != nil {
+		if err = req.data.Err(); err != nil {
 			return err
 		}
 		if len(times) != numRows {

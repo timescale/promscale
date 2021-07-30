@@ -36,14 +36,15 @@ func (idt *insertDataTask) reportResult(err error) {
 
 type pendingBuffer struct {
 	needsResponse []insertDataTask
-	batch         model.SamplesBatch
+	batch         map[string]*model.SamplesBatch
 }
 
 var pendingBuffers = sync.Pool{
 	New: func() interface{} {
 		pb := new(pendingBuffer)
 		pb.needsResponse = make([]insertDataTask, 0)
-		pb.batch = model.NewSamplesBatch()
+		//pb.batch = model.NewSamplesBatch()
+		pb.batch = make(map[string]*model.SamplesBatch)
 		return pb
 	},
 }
@@ -53,11 +54,11 @@ func NewPendingBuffer() *pendingBuffer {
 }
 
 func (p *pendingBuffer) IsFull() bool {
-	return p.batch.CountSeries() > flushSize
+	return len(p.batch) > 500
 }
 
 func (p *pendingBuffer) IsEmpty() bool {
-	return p.batch.CountSeries() == 0
+	return len(p.batch) == 0
 }
 
 // Report completion of an insert batch to all goroutines that may be waiting
@@ -74,16 +75,33 @@ func (p *pendingBuffer) release() {
 		p.needsResponse[i] = insertDataTask{}
 	}
 	p.needsResponse = p.needsResponse[:0]
-	p.batch.Reset()
+	for metricName, sb := range p.batch {
+		sb.Release()
+		delete(p.batch, metricName)
+	}
 	pendingBuffers.Put(p)
 }
 
 func (p *pendingBuffer) addReq(req *insertDataRequest) {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
-	p.batch.AppendSlice(req.data)
+	for metricName, samples := range req.data {
+		sb, ok := p.batch[metricName]
+		if !ok {
+			sb = model.NewSamplesBatch()
+			p.batch[metricName] = sb
+		}
+		sb.AppendSlice(samples)
+	}
 }
 
 func (p *pendingBuffer) absorb(other *pendingBuffer) {
 	p.needsResponse = append(p.needsResponse, other.needsResponse...)
-	p.batch.Absorb(other.batch)
+	for metricName, otherSb := range other.batch {
+		sb, ok := p.batch[metricName]
+		if !ok {
+			p.batch[metricName] = otherSb
+		} else {
+			sb.Absorb(*otherSb)
+		}
+	}
 }

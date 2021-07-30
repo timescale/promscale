@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
@@ -63,7 +62,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) 
 // Create the metric table for the metric we handle, if it does not already
 // exist. This only does the most critical part of metric table creation, the
 // rest is handled by completeMetricTableCreation().
-func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
+func getMetricTableName(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
 	mInfo, err := metricTableNames.Get(schema.Data, metricName)
 	if err == nil && mInfo.TableName != "" {
 		return mInfo.TableName, nil
@@ -96,15 +95,14 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 
 func runMetricBatcher(conn pgxconn.PgxConn,
 	input chan *insertDataRequest,
-	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
 	copierReadRequestCh chan<- readRequest,
 	labelArrayOID uint32) {
 
-	var tableName string
-	var firstReq *insertDataRequest
-	firstReqSet := false
+	//var tableName string
+	//var firstReq *insertDataRequest
+	//firstReqSet := false
 
 	//This channel in synchronous (no buffering). This provides backpressure
 	//to the batcher to keep batching until the copier is ready to read.
@@ -112,7 +110,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	defer close(copySender)
 	readRequest := readRequest{copySender: copySender}
 
-	for firstReq = range input {
+	/*for firstReq = range input {
 		var err error
 		tableName, err = initializeMetricBatcher(conn, metricName, completeMetricCreationSignal, metricTableNames)
 		if err != nil {
@@ -128,7 +126,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	//input channel was closed before getting a successful request
 	if !firstReqSet {
 		return
-	}
+	}*/
 
 	//the basic structure of communication from the batcher to the copier is as follows:
 	// 1. the batcher gets a request from the input channel
@@ -146,8 +144,12 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	// 3. The batcher has only a single read request out at a time.
 
 	pending := NewPendingBuffer()
-	pending.addReq(firstReq)
-	copierReadRequestCh <- readRequest
+	//pending.addReq(firstReq)
+	//copierReadRequestCh <- readRequest
+
+	metricTableCallback := func(metricName string) (string, error) {
+		return getMetricTableName(conn, metricName, completeMetricCreationSignal, metricTableNames)
+	}
 
 	for {
 		if pending.IsEmpty() {
@@ -160,20 +162,23 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		}
 
 		recvCh := input
-		if pending.IsFull() {
+		if len(pending.batch) > 30 {
 			recvCh = nil
 		}
 
-		numSeries := pending.batch.CountSeries()
+		numSeries := 0
+		for _, sb := range pending.batch {
+			numSeries += sb.CountSeries()
+		}
 		select {
 		//try to send first, if not then keep batching
-		case copySender <- copyRequest{pending, tableName}:
+		case copySender <- copyRequest{pending, metricTableCallback}:
 			MetricBatcherFlushSeries.Observe(float64(numSeries))
 			pending = NewPendingBuffer()
 		case req, ok := <-recvCh:
 			if !ok {
 				if !pending.IsEmpty() {
-					copySender <- copyRequest{pending, tableName}
+					copySender <- copyRequest{pending, metricTableCallback}
 					MetricBatcherFlushSeries.Observe(float64(numSeries))
 				}
 				return

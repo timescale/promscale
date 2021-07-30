@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	MetricBatcherChannelCap = 1000
-	finalizeMetricCreation  = "CALL " + schema.Catalog + ".finalize_metric_creation()"
-	getEpochSQL             = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
+	MetricBatcherChannelCap    = 1000
+	NumberRequestPerBatcherMax = 50
+	finalizeMetricCreation     = "CALL " + schema.Catalog + ".finalize_metric_creation()"
+	getEpochSQL                = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
 )
 
 // pgxDispatcher redirects incoming samples to the appropriate metricBatcher
@@ -32,7 +33,9 @@ type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
-	batchers               sync.Map
+	batchers               []chan *insertDataRequest
+	currentBatcher         int
+	sentToCurrentBatcher   int
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
 	copierReadRequestCh    chan<- readRequest
@@ -72,11 +75,22 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		go runCopier(conn, copierReadRequestCh, sw)
 	}
 
+	completeMetricCreation := make(chan struct{}, 1)
+	batchers := make([]chan *insertDataRequest, 10)
+	for i := range batchers {
+		//no buffering
+		c := make(chan *insertDataRequest)
+		go runMetricBatcher(conn, c, completeMetricCreation, cache, copierReadRequestCh, labelArrayOID)
+		batchers[i] = c
+
+	}
+
 	inserter := &pgxDispatcher{
 		conn:                   conn,
 		metricTableNames:       cache,
+		batchers:               batchers,
 		scache:                 scache,
-		completeMetricCreation: make(chan struct{}, 1),
+		completeMetricCreation: completeMetricCreation,
 		copierReadRequestCh:    copierReadRequestCh,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
@@ -167,10 +181,9 @@ func (p *pgxDispatcher) CompleteMetricCreation() error {
 
 func (p *pgxDispatcher) Close() {
 	close(p.completeMetricCreation)
-	p.batchers.Range(func(key, value interface{}) bool {
-		close(value.(chan *insertDataRequest))
-		return true
-	})
+	for i := range p.batchers {
+		close(p.batchers[i])
+	}
 	close(p.copierReadRequestCh)
 	close(p.doneChannel)
 	p.doneWG.Wait()
@@ -189,12 +202,12 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 		rows         = dataTS.Rows
 		workFinished = new(sync.WaitGroup)
 	)
-	workFinished.Add(len(rows))
+	workFinished.Add(1)
 	// we only allocate enough space for a single error message here as we only
 	// report one error back upstream. The inserter should not block on this
 	// channel, but only insert if it's empty, anything else can deadlock.
 	errChan := make(chan error, 1)
-	for metricName, data := range rows {
+	for _, data := range rows {
 		for _, si := range data {
 			numRows += uint64(si.CountSamples())
 			ls := si.LastSample()
@@ -205,8 +218,8 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 			}
 		}
 		// the following is usually non-blocking, just a channel insert
-		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
+	p.send(&insertDataRequest{data: rows, finished: workFinished, errChan: errChan})
 	reportIncomingBatch(numRows)
 	reportOutgoing := func() {
 		reportOutgoingBatch(numRows)
@@ -268,29 +281,27 @@ func postIngestTasks(maxTs int64, numSamples, numMetadata uint64) {
 }
 
 // Get the handler for a given metric name, creating a new one if none exists
-func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataRequest {
-	batcher, ok := p.batchers.Load(metric)
-	if !ok {
-		// The ordering is important here: we need to ensure that every call
-		// to getMetricInserter() returns the same inserter. Therefore, we can
-		// only start up the inserter routine if we know that we won the race
-		// to create the inserter, anything else will leave a zombie inserter
-		// lying around.
-		c := make(chan *insertDataRequest, MetricBatcherChannelCap)
-		actual, old := p.batchers.LoadOrStore(metric, c)
-		batcher = actual
-		if !old {
-			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh, p.labelArrayOID)
+func (p *pgxDispatcher) send(payload *insertDataRequest) {
+	if p.sentToCurrentBatcher > NumberRequestPerBatcherMax {
+		p.rotateBatcher()
+	}
+	for {
+		select {
+		case p.batchers[p.currentBatcher] <- payload:
+			return
+		default:
+			p.rotateBatcher()
 		}
 	}
-	ch := batcher.(chan *insertDataRequest)
-	MetricBatcherChLen.Observe(float64(len(ch)))
-	return ch
+}
+
+func (p *pgxDispatcher) rotateBatcher() {
+	p.currentBatcher = (p.currentBatcher + 1) % len(p.batchers)
+	p.sentToCurrentBatcher = 0
 }
 
 type insertDataRequest struct {
-	metric   string
-	data     []model.Samples
+	data     map[string][]model.Samples
 	finished *sync.WaitGroup
 	errChan  chan error
 }
