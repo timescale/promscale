@@ -205,7 +205,7 @@ func ClearTableFromSnapshot(snap dbSnapshot, schemaName, tableName string) dbSna
 func getSchemas(t *testing.T, db *pgxpool.Pool) (out []string) {
 	row := db.QueryRow(
 		context.Background(),
-		"SELECT array_agg(nspname::TEXT order by nspname::TEXT) FROM pg_namespace",
+		"SELECT array_agg(nspname::TEXT order by nspname::TEXT) FROM pg_namespace WHERE nspname::TEXT != 'timescaledb_experimental'",
 	)
 	err := row.Scan(&out)
 	if err != nil {
