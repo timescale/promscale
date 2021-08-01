@@ -66,6 +66,7 @@ func (c copyBatch) NumSeries() int {
 // We have one of these per connection reserved for insertion.
 func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter) {
 	insertBatch := make([]*insertRequest, 0, 1000)
+loop:
 	for {
 		var ok bool
 
@@ -83,7 +84,9 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter) {
 		for metricName, sb := range copyRequest.data.batch {
 			tableName, err := copyRequest.tableCallback(metricName)
 			if err != nil {
-				panic(err)
+				copyRequest.data.reportResults(err)
+				copyRequest.data.release()
+				goto loop
 			}
 			insertBatch = append(insertBatch, &insertRequest{data: sb, table: tableName})
 		}
