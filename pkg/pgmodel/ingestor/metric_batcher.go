@@ -151,6 +151,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		return getMetricTableName(conn, metricName, completeMetricCreationSignal, metricTableNames)
 	}
 
+	requestCnt := 0
 	for {
 		if pending.IsEmpty() {
 			req, ok := <-input
@@ -158,13 +159,14 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 				return
 			}
 			pending.addReq(req)
+			requestCnt += 1
 			copierReadRequestCh <- readRequest
 		}
 
 		recvCh := input
-		if len(pending.batch) > 30 {
-			recvCh = nil
-		}
+		//if len(pending.batch) > 30 {
+		//recvCh = nil
+		//}
 
 		numSeries := 0
 		for _, sb := range pending.batch {
@@ -173,6 +175,8 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		select {
 		//try to send first, if not then keep batching
 		case copySender <- copyRequest{pending, metricTableCallback}:
+			fmt.Println("metric batch flush", requestCnt)
+			requestCnt = 0
 			MetricBatcherFlushSeries.Observe(float64(numSeries))
 			pending = NewPendingBuffer()
 		case req, ok := <-recvCh:
@@ -184,6 +188,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 				return
 			}
 			pending.addReq(req)
+			requestCnt += 1
 		}
 	}
 }
