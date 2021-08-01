@@ -101,7 +101,22 @@ loop:
 			fmt.Println(err)
 		}
 
-		doInsertOrFallback(conn, copyRequest, insertBatch...)
+		batchCt := 100
+		err = nil
+		for i := 0; i < len(insertBatch); i += batchCt {
+			high := i + batchCt
+			if len(insertBatch) < high {
+				high = len(insertBatch)
+			}
+			batch := insertBatch[i:high]
+			err = doInsertOrFallback(conn, copyRequest, batch...)
+			if err != nil {
+				break
+			}
+		}
+		copyRequest.data.reportResults(err)
+		copyRequest.data.release()
+
 		for i := range insertBatch {
 			insertBatch[i] = &insertRequest{}
 		}
@@ -138,18 +153,15 @@ hot_gather:
 	return batch, true
 }
 
-func doInsertOrFallback(conn pgxconn.PgxConn, copyRequest copyRequest, reqs ...*insertRequest) {
+func doInsertOrFallback(conn pgxconn.PgxConn, copyRequest copyRequest, reqs ...*insertRequest) error {
 	err := insertSeries(conn, reqs...)
 	if err != nil {
-		insertBatchErrorFallback(conn, copyRequest, reqs...)
-		return
+		return insertBatchErrorFallback(conn, copyRequest, reqs...)
 	}
-
-	copyRequest.data.reportResults(nil)
-	copyRequest.data.release()
+	return nil
 }
 
-func insertBatchErrorFallback(conn pgxconn.PgxConn, copyRequest copyRequest, reqs ...*insertRequest) {
+func insertBatchErrorFallback(conn pgxconn.PgxConn, copyRequest copyRequest, reqs ...*insertRequest) error {
 	var oneErr error = nil
 	for i := range reqs {
 		reqs[i].data.ResetPosition()
@@ -163,8 +175,7 @@ func insertBatchErrorFallback(conn pgxconn.PgxConn, copyRequest copyRequest, req
 
 	}
 	//FIXME
-	copyRequest.data.reportResults(oneErr)
-	copyRequest.data.release()
+	return oneErr
 }
 
 // we can currently recover from one error:
