@@ -266,7 +266,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT (labels_info($1::int[])).*",
+					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{1}},
 					Results: model.RowResults{{[]int64{1}, []string{"__name__"}, []string{"foo"}}},
 					Err:     error(nil),
@@ -310,7 +310,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT (labels_info($1::int[])).*",
+					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{2}},
 					Results: model.RowResults{{[]int64{2}, []string{"__name__"}, []string{"bar"}}},
 					Err:     error(nil),
@@ -388,7 +388,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:           "SELECT (labels_info($1::int[])).*",
+					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:          []interface{}{[]int64{3, 4}},
 					ArgsUnordered: true,
 					Results:       model.RowResults{{[]int64{3, 4}, []string{"__name__", "__name__"}, []string{"foo", "bar"}}},
@@ -473,7 +473,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT (labels_info($1::int[])).*",
+					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{7}},
 					Results: model.RowResults{{[]int64{7}, []string{"foo"}, []string{"bar"}}},
 					Err:     error(nil),
@@ -534,7 +534,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:           "SELECT (labels_info($1::int[])).*",
+					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:          []interface{}{[]int64{9, 8}},
 					ArgsUnordered: true,
 					Results:       model.RowResults{{[]int64{8, 9}, []string{"foo", "foo2"}, []string{"bar", "bar2"}}},
@@ -595,7 +595,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT (labels_info($1::int[])).*",
+					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{10}},
 					Results: model.RowResults{{[]int64{10}, []string{"foo2"}, []string{"bar2"}}},
 					Err:     error(nil),
