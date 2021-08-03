@@ -300,7 +300,102 @@ func TestPGXQuerierQuery(t *testing.T) {
 					FROM "prom_data_series"."bar" series
 					INNER JOIN (
 						SELECT series_id, array_agg(time) as time_array, array_agg(value) as value_array
-						FROM ( SELECT series_id, time, value FROM "prom_data"."bar" metric
+						FROM ( SELECT series_id, time, "value" as value FROM "prom_data"."bar" metric
+						WHERE time >= '1970-01-01T00:00:01Z' AND time <= '1970-01-01T00:00:02Z'
+						ORDER BY series_id, time ) as time_ordered_rows
+						GROUP BY series_id
+						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
+					Args:    nil,
+					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
+					Args:    []interface{}{[]int64{2}},
+					Results: model.RowResults{{[]int64{2}, []string{"__name__"}, []string{"bar"}}},
+					Err:     error(nil),
+				},
+			},
+		},
+		{
+			name: "Simple query, metric name matcher, custom schema",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: model.MetricNameLabelName, Value: "custom"},
+				},
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "custom"},
+						{Name: model.SchemaNameLabelName, Value: "custom_schema"},
+					},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			sqlQueries: []model.SqlQuery{
+				{
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"", "custom"},
+					Results: model.RowResults{{"custom_schema", "custom", "bar"}},
+					Err:     error(nil),
+				},
+				{
+					Sql: `SELECT series.labels, result.time_array, result.value_array
+					FROM "prom_data_series"."bar" series
+					INNER JOIN (
+						SELECT series_id, array_agg(time) as time_array, array_agg(value) as value_array
+						FROM ( SELECT series_id, time, "value" as value FROM "custom_schema"."custom" metric
+						WHERE time >= '1970-01-01T00:00:01Z' AND time <= '1970-01-01T00:00:02Z'
+						ORDER BY series_id, time ) as time_ordered_rows
+						GROUP BY series_id
+						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
+					Args:    nil,
+					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
+					Args:    []interface{}{[]int64{2}},
+					Results: model.RowResults{{[]int64{2}, []string{"__name__"}, []string{"bar"}}},
+					Err:     error(nil),
+				},
+			},
+		},
+		{
+			name: "Simple query, metric name matcher, custom column",
+			query: &prompb.Query{
+				StartTimestampMs: 1000,
+				EndTimestampMs:   2000,
+				Matchers: []*prompb.LabelMatcher{
+					{Type: prompb.LabelMatcher_EQ, Name: model.ColumnNameLabelName, Value: "max"},
+					{Type: prompb.LabelMatcher_EQ, Name: model.MetricNameLabelName, Value: "bar"},
+				},
+			},
+			result: []*prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: model.ColumnNameLabelName, Value: "max"},
+						{Name: model.MetricNameLabelName, Value: "bar"},
+					},
+					Samples: []prompb.Sample{{Timestamp: toMilis(time.Unix(0, 0)), Value: 1}},
+				},
+			},
+			sqlQueries: []model.SqlQuery{
+				{
+					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Args:    []interface{}{"", "bar"},
+					Results: model.RowResults{{"prom_data", "bar", "bar"}},
+					Err:     error(nil),
+				},
+				{
+					Sql: `SELECT series.labels, result.time_array, result.value_array
+					FROM "prom_data_series"."bar" series
+					INNER JOIN (
+						SELECT series_id, array_agg(time) as time_array, array_agg(value) as value_array
+						FROM ( SELECT series_id, time, "max" as value FROM "prom_data"."bar" metric
 						WHERE time >= '1970-01-01T00:00:01Z' AND time <= '1970-01-01T00:00:02Z'
 						ORDER BY series_id, time ) as time_ordered_rows
 						GROUP BY series_id
@@ -417,7 +512,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql: `SELECT series.labels, result.time_array, result.value_array FROM "prom_data_series"."foo" series
 					INNER JOIN LATERAL
-					( SELECT array_agg(time) as time_array, array_agg(value) as value_array FROM ( SELECT time, value FROM "prom_data"."foo" metric WHERE metric.series_id = series.id AND time >= '1970-01-01T00:00:01Z' AND time <= '1970-01-01T00:00:02Z' ORDER BY time ) as time_ordered_rows ) as result ON (result.value_array is not null)
+					( SELECT array_agg(time) as time_array, array_agg(value) as value_array FROM ( SELECT time, "value" as value FROM "prom_data"."foo" metric WHERE metric.series_id = series.id AND time >= '1970-01-01T00:00:01Z' AND time <= '1970-01-01T00:00:02Z' ORDER BY time ) as time_ordered_rows ) as result ON (result.value_array is not null)
 					WHERE FALSE`,
 					Args:    []interface{}(nil),
 					Results: model.RowResults{},

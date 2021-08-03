@@ -5,7 +5,10 @@ import (
 	"sync"
 
 	"github.com/jackc/pgtype"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -130,12 +133,13 @@ func (dstwrapper *float8ArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src []by
 }
 
 type timescaleRow struct {
-	labelIds []int64
-	times    TimestampSeries
-	values   *pgtype.Float8Array
-	err      error
-	metric   string
-	schema   string
+	labelIds       []int64
+	times          TimestampSeries
+	values         *pgtype.Float8Array
+	err            error
+	metricOverride string
+	schema         string
+	column         string
 
 	//only used to hold ownership for releasing to pool
 	timeArrayOwnership *pgtype.TimestamptzArray
@@ -148,9 +152,19 @@ func (r *timescaleRow) Close() {
 	fPool.Put(r.values)
 }
 
+func (r *timescaleRow) GetAdditionalLabels() (ll labels.Labels) {
+	if r.schema != "" && r.schema != schema.Data {
+		ll = append(ll, labels.Label{Name: model.SchemaNameLabelName, Value: r.schema})
+	}
+	if r.column != "" && r.column != defaultColumnName {
+		ll = append(ll, labels.Label{Name: model.ColumnNameLabelName, Value: r.column})
+	}
+	return ll
+}
+
 // appendTsRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendTsRows(out []timescaleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, schema, metric string) ([]timescaleRow, error) {
+func appendTsRows(out []timescaleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metric, schema, column string) ([]timescaleRow, error) {
 	if in.Err() != nil {
 		return out, in.Err()
 	}
@@ -174,8 +188,9 @@ func appendTsRows(out []timescaleRow, in pgxconn.PgxRows, tsSeries TimestampSeri
 		}
 
 		row.values = values
+		row.metricOverride = metric
 		row.schema = schema
-		row.metric = metric
+		row.column = column
 
 		out = append(out, row)
 		if row.err != nil {

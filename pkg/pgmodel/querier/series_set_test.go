@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 //nolint
@@ -133,6 +134,7 @@ type seriesSetRow struct {
 	timestamps []pgtype.Timestamptz
 	values     []pgtype.Float8
 	schema     string
+	column     string
 }
 
 var arbitraryErr = fmt.Errorf("arbitrary err")
@@ -145,6 +147,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		ts           []pgtype.Timestamptz
 		vs           []pgtype.Float8
 		metricSchema string
+		columnName   string
 		rowCount     int
 		err          error
 		rowErr       error
@@ -167,6 +170,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					[]int64{1},
 					[]pgtype.Timestamptz{},
 					[]pgtype.Float8{{Float: 1.0}},
+					"",
 					""),
 			}},
 			rowCount: 1,
@@ -263,6 +267,20 @@ func TestPgxSeriesSet(t *testing.T) {
 			metricSchema: "customSchema",
 			rowCount:     1,
 		},
+		{
+			name:   "check custom column name",
+			labels: []int64{2, 3},
+			ts: []pgtype.Timestamptz{
+				{Time: time.Unix(0, 500000)},
+				{Time: time.Unix(0, 6000000)},
+			},
+			vs: []pgtype.Float8{
+				{Float: 30000},
+				{Float: 100},
+			},
+			columnName: "max",
+			rowCount:   1,
+		},
 	}
 
 	labelMapping := make(map[int64]struct {
@@ -281,12 +299,15 @@ func TestPgxSeriesSet(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			if c.input == nil {
+				if c.columnName == "" {
+					c.columnName = defaultColumnName
+				}
 				labels := make([]int64, len(c.labels))
 				for i, l := range c.labels {
 					labels[i] = l
 				}
 				c.input = [][]seriesSetRow{{
-					genSeries(labels, c.ts, c.vs, c.metricSchema)}}
+					genSeries(labels, c.ts, c.vs, c.metricSchema, c.columnName)}}
 			}
 			p := buildSeriesSet(genPgxRows(c.input, c.rowErr), mapQuerier{labelMapping})
 			if p.Err() != nil {
@@ -321,9 +342,13 @@ func TestPgxSeriesSet(t *testing.T) {
 					expectedLabels = append(expectedLabels, labels.Label{Name: labelMapping[v].k, Value: labelMapping[v].v})
 				}
 
-				if schemaLabelName, schemaLabelValue := getSchemaLabel(c.metricSchema); schemaLabelName != "" {
-					expectedLabels = append(expectedLabels, labels.Label{Name: schemaLabelName, Value: schemaLabelValue})
+				if c.metricSchema != "" && c.metricSchema != schema.Data {
+					expectedLabels = append(expectedLabels, labels.Label{Name: model.SchemaNameLabelName, Value: c.metricSchema})
 				}
+				if c.columnName != "" && c.columnName != defaultColumnName {
+					expectedLabels = append(expectedLabels, labels.Label{Name: model.ColumnNameLabelName, Value: c.columnName})
+				}
+
 				expectedMap := labels.Labels(expectedLabels).Map()
 				if !reflect.DeepEqual(ss.Labels().Map(), expectedMap) {
 					t.Fatalf("unexpected labels values: got %+v, wanted %+v\n", ss.Labels().Map(), expectedMap)
@@ -462,6 +487,7 @@ func genPgxRows(m [][]seriesSetRow, err error) []timescaleRow {
 				times:    newRowTimestampSeries(toTimestampTzArray(r.timestamps)),
 				values:   toFloat8Array(r.values),
 				schema:   r.schema,
+				column:   r.column,
 				err:      err,
 			})
 		}
@@ -486,7 +512,7 @@ func toFloat8Array(values []pgtype.Float8) *pgtype.Float8Array {
 	}
 }
 
-func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema string) seriesSetRow {
+func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema, column string) seriesSetRow {
 
 	for i := range ts {
 		if ts[i].Status == pgtype.Undefined {
@@ -505,5 +531,6 @@ func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, sche
 		timestamps: ts,
 		values:     vs,
 		schema:     schema,
+		column:     column,
 	}
 }

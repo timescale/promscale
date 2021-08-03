@@ -111,16 +111,16 @@ func (p *pgxSeriesSet) At() storage.Series {
 		lls = append(lls, label)
 	}
 
-	if schemaLabelName, schemaLabelValue := getSchemaLabel(row.schema); schemaLabelName != "" {
-		// If its a custom schema, we need to update the metric name as well.
+	if row.metricOverride != "" {
 		for i := range lls {
 			if lls[i].Name == model.MetricNameLabelName {
-				lls[i].Value = row.metric
+				lls[i].Value = row.metricOverride
 				break
 			}
 		}
-		lls = append(lls, labels.Label{Name: schemaLabelName, Value: schemaLabelValue})
 	}
+	lls = append(lls, row.GetAdditionalLabels()...)
+
 	sort.Sort(lls)
 	ps.labels = lls
 

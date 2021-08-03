@@ -70,6 +70,7 @@ func NewQuerier(conn pgxconn.PgxConn, metricCache cache.MetricCache, labelsReade
 type metricTimeRangeFilter struct {
 	metric      string
 	schema      string
+	column      string
 	seriesTable string
 	startTime   string
 	endTime     string
@@ -160,6 +161,7 @@ func (q *pgxQuerier) getResultRows(startTimestamp int64, endTimestamp int64, hin
 	filter := metricTimeRangeFilter{
 		metric:    metric,
 		schema:    builder.GetSchemaName(),
+		column:    builder.GetColumnName(),
 		startTime: toRFC3339Nano(startTimestamp),
 		endTime:   toRFC3339Nano(endTimestamp),
 	}
@@ -194,6 +196,7 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 
 		return nil, nil, err
 	}
+
 	filter.metric = mInfo.TableName
 	filter.schema = mInfo.TableSchema
 	filter.seriesTable = mInfo.SeriesTable
@@ -206,10 +209,16 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 	rows, err := q.conn.Query(context.Background(), sqlQuery, values...)
 	if err != nil {
 		if e, ok := err.(*pgconn.PgError); ok {
-			// If we are getting undefined table error, it means the metric we are trying to query
-			// existed at some point but the underlying relation was removed from outside of the system.
-			if e.Code == pgerrcode.UndefinedTable {
+			switch e.Code {
+			case pgerrcode.UndefinedTable:
+				// If we are getting undefined table error, it means the metric we are trying to query
+				// existed at some point but the underlying relation was removed from outside of the system.
 				return nil, nil, fmt.Errorf(errors.ErrTmplMissingUnderlyingRelation, mInfo.TableSchema, mInfo.TableName)
+			case pgerrcode.UndefinedColumn:
+				// If we are getting undefined column error, it means the column we are trying to query
+				// does not exist in the metric table so we return empty results.
+				// Empty result is more consistent and in-line with PromQL assumption of a missing series based on matchers.
+				return nil, nil, nil
 			}
 		}
 
@@ -218,8 +227,15 @@ func (q *pgxQuerier) querySingleMetric(metric string, filter metricTimeRangeFilt
 
 	defer rows.Close()
 
+	updatedMetricName := ""
+	// If the table name and series table name don't match, this is a custom metric view which
+	// shares the series table with the raw metric, hence we have to update the metric name label.
+	if mInfo.TableName != mInfo.SeriesTable {
+		updatedMetricName = metric
+	}
+
 	// TODO this allocation assumes we usually have 1 row, if not, refactor
-	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows, tsSeries, mInfo.TableSchema, metric)
+	tsRows, err := appendTsRows(make([]timescaleRow, 0, 1), rows, tsSeries, updatedMetricName, filter.schema, filter.column)
 	return tsRows, topNode, err
 }
 
@@ -285,9 +301,9 @@ func (q *pgxQuerier) queryMultipleMetrics(filter metricTimeRangeFilter, cases []
 			rows.Close()
 			return nil, nil, err
 		}
-		// Append all rows into results. Schema is ignored since we only return
-		// default schema for multi-metric queries.
-		results, err = appendTsRows(results, rows, nil, "", "")
+		// Append all rows into results. Metric name and additional labels are
+		// ignored for multi-metric queries
+		results, err = appendTsRows(results, rows, nil, "", "", "")
 		// Can't defer because we need to Close before the next loop iteration.
 		rows.Close()
 		if err != nil {
