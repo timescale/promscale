@@ -1253,15 +1253,26 @@ COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT)
 IS 'resets the chunk interval for a specific metric to using the default';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(schema_name TEXT, metric_name TEXT)
 RETURNS INTERVAL
 AS $$
     SELECT COALESCE(m.retention_period, SCHEMA_CATALOG.get_default_retention_period())
     FROM SCHEMA_CATALOG.metric m
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', get_metric_retention_period.metric_name))
+    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, get_metric_retention_period.metric_name))
     UNION ALL
     SELECT SCHEMA_CATALOG.get_default_retention_period()
     LIMIT 1
+$$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_retention_period(TEXT, TEXT) TO prom_reader;
+
+-- convenience function for returning retention period of raw metrics
+-- without the need to specify the schema
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
+RETURNS INTERVAL
+AS $$
+    SELECT * 
+    FROM SCHEMA_CATALOG.get_metric_retention_period('SCHEMA_DATA', metric_name)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_retention_period(TEXT) TO prom_reader;
@@ -1278,33 +1289,54 @@ COMMENT ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL)
 IS 'set the retention period for any metrics (existing and new) without an explicit override';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(schema_name TEXT, metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
 AS $func$
     --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
     --needs to run before update so row exists before update.
-    SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_retention_period.metric_name);
+    SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_retention_period.metric_name)
+    WHERE schema_name = 'SCHEMA_DATA';
 
     UPDATE SCHEMA_CATALOG.metric SET retention_period = new_retention_period
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', set_metric_retention_period.metric_name));
+    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, set_metric_retention_period.metric_name));
 
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)
+COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, TEXT, INTERVAL)
 IS 'set a retention period for a specific metric (this overrides the default)';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, TEXT, INTERVAL)TO prom_admin;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
+RETURNS BOOLEAN
+AS $func$
+    SELECT SCHEMA_PROM.set_metric_retention_period('SCHEMA_PROM', metric_name, new_retention_period);
+$func$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)
+IS 'set a retention period for a specific raw metric in default schema (this overrides the default)';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)TO prom_admin;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(schema_name TEXT, metric_name TEXT)
+RETURNS BOOLEAN
+AS $func$
+    UPDATE SCHEMA_CATALOG.metric SET retention_period = NULL
+    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, reset_metric_retention_period.metric_name));
+    SELECT true;
+$func$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT, TEXT)
+IS 'resets the retention period for a specific metric to using the default';
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT, TEXT) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
-    UPDATE SCHEMA_CATALOG.metric SET retention_period = NULL
-    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', reset_metric_retention_period.metric_name));
-    SELECT true;
+    SELECT SCHEMA_PROM.reset_metric_retention_period('SCHEMA_PROM', metric_name);
 $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT)
-IS 'resets the retention period for a specific metric to using the default';
+IS 'resets the retention period for a specific raw metric in the default schema to using the default retention period';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_compression_setting(metric_name TEXT)
@@ -1516,7 +1548,7 @@ IS 'ABORT an INSERT transaction due to the ID epoch being out of date';
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.epoch_abort TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_confirmed_unused_series(
-    series_table TEXT, potential_series_ids BIGINT[], check_time TIMESTAMPTZ
+    metric_schema NAME, metric_table NAME, series_table NAME, potential_series_ids BIGINT[], check_time TIMESTAMPTZ
 ) RETURNS BIGINT[]
 AS $func$
 DECLARE
@@ -1530,7 +1562,7 @@ BEGIN
     LOOP
 
     check_time_condition := '';
-    IF NOT r.is_view THEN
+    IF r.table_schema = metric_schema::NAME AND r.table_name = metric_table::NAME THEN
         check_time_condition := FORMAT('AND time >= %L', check_time);
     END IF;
 
@@ -1555,14 +1587,15 @@ BEGIN
     INTO potential_series_ids;
 
     END LOOP;
+
     RETURN potential_series_ids;
 END
 $func$
 LANGUAGE PLPGSQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_confirmed_unused_series(TEXT, BIGINT[], TIMESTAMPTZ) TO prom_maintenance;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_confirmed_unused_series(NAME, NAME, NAME, BIGINT[], TIMESTAMPTZ) TO prom_maintenance;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.mark_unused_series(
-    metric_table TEXT, older_than TIMESTAMPTZ, check_time TIMESTAMPTZ
+    metric_schema TEXT, metric_table TEXT, metric_series_table TEXT, older_than TIMESTAMPTZ, check_time TIMESTAMPTZ
 ) RETURNS VOID AS $func$
 DECLARE
 BEGIN
@@ -1573,21 +1606,21 @@ BEGIN
     $query$
         WITH potentially_drop_series AS (
             SELECT distinct series_id
-            FROM SCHEMA_DATA.%1$I
-            WHERE time < %2$L
+            FROM %1$I.%2$I
+            WHERE time < %4$L
             EXCEPT
             SELECT distinct series_id 
-            FROM SCHEMA_DATA.%1$I
-            WHERE time >= %2$L AND time < %3$L
+            FROM %1$I.%2$I
+            WHERE time >= %4$L AND time < %5$L
         ), confirmed_drop_series AS (
-            SELECT SCHEMA_CATALOG.get_confirmed_unused_series('%1$s', array_agg(series_id), %3$L) as ids
+            SELECT SCHEMA_CATALOG.get_confirmed_unused_series('%1$s','%2$s','%3$s', array_agg(series_id), %5$L) as ids
             FROM potentially_drop_series
         ) -- we want this next statement to be the last one in the txn since it could block series fetch (both of them update delete_epoch)
-        UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = current_epoch+1
+        UPDATE SCHEMA_DATA_SERIES.%3$I SET delete_epoch = current_epoch+1
         FROM SCHEMA_CATALOG.ids_epoch
         WHERE delete_epoch IS NULL
             AND id IN (SELECT unnest(ids) FROM confirmed_drop_series)
-    $query$, metric_table, older_than, check_time);
+    $query$, metric_schema, metric_table, metric_series_table, older_than, check_time);
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE
@@ -1596,11 +1629,11 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, timestamptz, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, timestamptz, timestamptz) TO prom_maintenance;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, text, text, timestamptz, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, text, text, timestamptz, timestamptz) TO prom_maintenance;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_expired_series(
-    metric_table TEXT, ran_at TIMESTAMPTZ, present_epoch BIGINT, last_updated_epoch TIMESTAMPTZ
+    metric_schema TEXT, metric_table TEXT, metric_series_table TEXT, ran_at TIMESTAMPTZ, present_epoch BIGINT, last_updated_epoch TIMESTAMPTZ
 ) RETURNS VOID AS $func$
 DECLARE
     label_array int[];
@@ -1624,30 +1657,30 @@ BEGIN
             FROM
             (
                 SELECT id
-                FROM SCHEMA_DATA_SERIES.%1$I
-                WHERE delete_epoch <= %2$L
+                FROM SCHEMA_DATA_SERIES.%3$I
+                WHERE delete_epoch <= %4$L
             ) as potential
             LEFT JOIN LATERAL (
                 SELECT 1
-                FROM SCHEMA_DATA.%1$I metric_data
+                FROM %1$I.%2$I metric_data
                 WHERE metric_data.series_id = potential.id
                 LIMIT 1
             ) as lateral_exists(indicator) ON (TRUE)
             WHERE indicator IS NULL
         ), deleted_series AS (
-            DELETE FROM SCHEMA_DATA_SERIES.%1$I
-            WHERE delete_epoch <= %2$L
+            DELETE FROM SCHEMA_DATA_SERIES.%3$I
+            WHERE delete_epoch <= %4$L
                 AND id IN (SELECT id FROM dead_series) -- concurrency means we need this qual in both
             RETURNING id, labels
         ), resurrected_series AS (
-            UPDATE SCHEMA_DATA_SERIES.%1$I
+            UPDATE SCHEMA_DATA_SERIES.%3$I
             SET delete_epoch = NULL
-            WHERE delete_epoch <= %2$L
+            WHERE delete_epoch <= %4$L
                 AND id NOT IN (SELECT id FROM dead_series) -- concurrency means we need this qual in both
         )
         SELECT ARRAY(SELECT DISTINCT unnest(labels) as label_id
             FROM deleted_series)
-    $query$, metric_table, deletion_epoch) INTO label_array;
+    $query$, metric_schema, metric_table, metric_series_table, deletion_epoch) INTO label_array;
 
 
     IF array_length(label_array, 1) > 0 THEN
@@ -1682,7 +1715,7 @@ BEGIN
             )
             DELETE FROM SCHEMA_CATALOG.label
             WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
-        $query$, metric_table) USING label_array;
+        $query$, metric_series_table) USING label_array;
 
         SET LOCAL jit = DEFAULT;
     END IF;
@@ -1699,36 +1732,37 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz, BIGINT, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, timestamptz, BIGINT, timestamptz) TO prom_maintenance;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, text, text, timestamptz, BIGINT, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, text, text, timestamptz, BIGINT, timestamptz) TO prom_maintenance;
 
 --drop chunks from metrics tables and delete the appropriate series.
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(
-    metric_name TEXT, older_than TIMESTAMPTZ
+    schema_name TEXT, metric_name TEXT, older_than TIMESTAMPTZ
 ) RETURNS VOID AS $func$
 DECLARE
+    metric_schema NAME;
     metric_table NAME;
 BEGIN
-    SELECT table_name
-    INTO STRICT metric_table
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
+    SELECT table_schema, table_name
+    INTO STRICT metric_schema, metric_table
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, metric_name);
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
             PERFORM SCHEMA_TIMESCALE.drop_chunks(
-                relation=>format('%I.%I', 'SCHEMA_DATA', metric_table),
+                relation=>format('%I.%I', metric_schema, metric_table),
                 older_than=>older_than
             );
         ELSE
             PERFORM SCHEMA_TIMESCALE.drop_chunks(
                 table_name=>metric_table,
-                schema_name=> 'SCHEMA_DATA',
+                schema_name=> metric_schema,
                 older_than=>older_than,
                 cascade_to_materializations=>FALSE
             );
         END IF;
     ELSE
-        EXECUTE format($$ DELETE FROM SCHEMA_DATA.%I WHERE time < %L $$, metric_table, older_than);
+        EXECUTE format($$ DELETE FROM %I.%I WHERE time < %L $$, metric_schema, metric_table, older_than);
     END IF;
 END
 $func$
@@ -1738,16 +1772,19 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(text, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(text, timestamptz) TO prom_maintenance;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(text, text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(text, text, timestamptz) TO prom_maintenance;
 
 --drop chunks from metrics tables and delete the appropriate series.
 CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(
-    metric_name TEXT, older_than TIMESTAMPTZ, ran_at TIMESTAMPTZ = now(), log_verbose BOOLEAN = FALSE
+    schema_name TEXT, metric_name TEXT, older_than TIMESTAMPTZ, ran_at TIMESTAMPTZ = now(), log_verbose BOOLEAN = FALSE
 ) AS $func$
 DECLARE
     metric_id int;
+    metric_schema NAME;
     metric_table NAME;
+    metric_series_table NAME;
+    is_metric_view BOOLEAN;
     check_time TIMESTAMPTZ;
     time_dimension_id INT;
     last_updated TIMESTAMPTZ;
@@ -1755,9 +1792,9 @@ DECLARE
     lastT TIMESTAMPTZ;
     startT TIMESTAMPTZ;
 BEGIN
-    SELECT id, table_name
-    INTO STRICT metric_id, metric_table
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
+    SELECT id, table_schema, table_name, series_table, is_view
+    INTO STRICT metric_id, metric_schema, metric_table, metric_series_table, is_metric_view
+    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, metric_name);
 
     SELECT older_than + INTERVAL '1 hour'
     INTO check_time;
@@ -1774,9 +1811,8 @@ BEGIN
             --Get the time dimension id for the time dimension
             SELECT d.id
             INTO STRICT time_dimension_id
-            FROM _timescaledb_catalog.hypertable h
-            INNER JOIN _timescaledb_catalog.dimension d ON (d.hypertable_id = h.id)
-            WHERE h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table
+            FROM _timescaledb_catalog.dimension d
+            INNER JOIN SCHEMA_CATALOG.get_storage_hypertable_info(metric_schema, metric_table, is_metric_view) hi ON (hi.id = d.hypertable_id)
             ORDER BY d.id ASC
             LIMIT 1;
 
@@ -1803,7 +1839,7 @@ BEGIN
         -- we may still have old ones to delete
         lastT := clock_timestamp();
         PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: delete expired series', metric_name), false);
-        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at, present_epoch, last_updated);
+        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_schema, metric_table, metric_series_table, ran_at, present_epoch, last_updated);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done deleting expired series as only action in %', metric_name, clock_timestamp-lastT;
             RAISE LOG 'promscale maintenance: data retention: metric %: finished in %', metric_name, clock_timestamp()-startT;
@@ -1814,7 +1850,7 @@ BEGIN
     -- transaction 2
         lastT := clock_timestamp();
         PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: mark unused series', metric_name), false);
-        PERFORM SCHEMA_CATALOG.mark_unused_series(metric_table, older_than, check_time);
+        PERFORM SCHEMA_CATALOG.mark_unused_series(metric_schema, metric_table, metric_series_table, older_than, check_time);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done marking unused series in %', metric_name, clock_timestamp()-lastT;
         END IF;
@@ -1823,7 +1859,7 @@ BEGIN
     -- transaction 3
         lastT := clock_timestamp();
         PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: drop chunks', metric_name), false);
-        PERFORM SCHEMA_CATALOG.drop_metric_chunk_data(metric_name, older_than);
+        PERFORM SCHEMA_CATALOG.drop_metric_chunk_data(metric_schema, metric_name, older_than);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done dropping chunks in %', metric_name, clock_timestamp()-lastT;
         END IF;
@@ -1835,7 +1871,7 @@ BEGIN
     -- transaction 4
         lastT := clock_timestamp();
         PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: delete expired series', metric_name), false);
-        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_table, ran_at, present_epoch, last_updated);
+        PERFORM SCHEMA_CATALOG.delete_expired_series(metric_schema, metric_table, metric_series_table, ran_at, present_epoch, last_updated);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: metric %: done deleting expired series in %', metric_name, clock_timestamp()-lastT;
             RAISE LOG 'promscale maintenance: data retention: metric %: finished in %', metric_name, clock_timestamp()-startT;
@@ -1844,7 +1880,55 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL;
-GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(text, timestamptz, timestamptz, boolean) TO prom_maintenance;
+GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(text, text, timestamptz, timestamptz, boolean) TO prom_maintenance;
+
+
+-- Get hypertable information for where data is stored for raw metrics and for 
+-- the materialized hypertable for cagg metrics. For non-materialized views return 
+-- no rows
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(metric_schema_name text, metric_table_name text, is_view boolean)
+RETURNS TABLE (id int, hypertable_relation text)
+AS $$
+BEGIN
+        IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
+            RETURN;
+        END IF;
+
+        IF NOT is_view THEN
+                RETURN QUERY
+                SELECT h.id, format('%I.%I', h.schema_name,  h.table_name) 
+                FROM _timescaledb_catalog.hypertable h 
+                WHERE h.schema_name = metric_schema_name 
+                AND h.table_name = metric_table_name;
+                RETURN;
+        END IF;
+
+        -- for TSDB 2.x we return the view schema and name because functions like
+        -- show_chunks don't work on materialized hypertables, which is a difference
+        -- from 1.x version
+        IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+            RETURN QUERY
+            SELECT h.id, format('%I.%I', c.view_schema,  c.view_name) 
+            FROM timescaledb_information.continuous_aggregates c 
+            INNER JOIN _timescaledb_catalog.hypertable h 
+                ON (h.schema_name = c.materialization_hypertable_schema 
+                    AND h.table_name = c.materialization_hypertable_name)
+            WHERE c.view_schema = metric_schema_name
+            AND c.view_name = metric_table_name;
+            RETURN;
+        ELSE
+            RETURN QUERY
+            SELECT h.id, format('%I.%I', h.schema_name,  h.table_name) 
+            FROM timescaledb_information.continuous_aggregates c 
+            INNER JOIN _timescaledb_catalog.hypertable h 
+                ON (c.materialization_hypertable::text = format('%I.%I', h.schema_name,  h.table_name))
+            WHERE c.view_name::text = format('%I.%I', metric_schema_name, metric_table_name);
+            RETURN;
+        END IF;
+END
+$$
+LANGUAGE PLPGSQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(text, text, boolean) TO prom_reader;
 
 --Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
@@ -1857,6 +1941,7 @@ BEGIN
                     RETURN QUERY
                     SELECT m.*
                     FROM SCHEMA_CATALOG.metric m
+                    WHERE is_view = FALSE
                     ORDER BY random();
                     RETURN;
         END IF;
@@ -1864,13 +1949,14 @@ BEGIN
         RETURN QUERY
         SELECT m.*
         FROM SCHEMA_CATALOG.metric m
-        WHERE is_view = FALSE
-        AND EXISTS (
+        WHERE EXISTS (
             SELECT 1 FROM
-            show_chunks(format('%I.%I', 'SCHEMA_DATA', m.table_name),
-                         older_than=>NOW() - SCHEMA_CATALOG.get_metric_retention_period(m.metric_name)))
+            SCHEMA_CATALOG.get_storage_hypertable_info(m.table_schema, m.table_name, m.is_view) hi 
+            INNER JOIN show_chunks(hi.hypertable_relation,
+                         older_than=>NOW() - SCHEMA_CATALOG.get_metric_retention_period(m.table_schema, m.metric_name)) sc ON TRUE)
         --random order also to prevent starvation
         ORDER BY random();
+        RETURN;
 END
 $$
 LANGUAGE PLPGSQL STABLE;
@@ -1895,7 +1981,7 @@ BEGIN
             remaining_metrics := remaining_metrics || r;
             CONTINUE;
         END IF;
-        CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name), log_verbose=>log_verbose);
+        CALL SCHEMA_CATALOG.drop_metric_chunks(r.table_schema, r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.table_schema, r.metric_name), log_verbose=>log_verbose);
         PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
 
         COMMIT;
@@ -1911,7 +1997,7 @@ BEGIN
     LOOP
         PERFORM set_config('application_name', format('promscale maintenance: data retention: metric %s: wait for lock', r.metric_name), false);
         PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
-        CALL SCHEMA_CATALOG.drop_metric_chunks(r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.metric_name), log_verbose=>log_verbose);
+        CALL SCHEMA_CATALOG.drop_metric_chunks(r.table_schema, r.metric_name, NOW() - SCHEMA_CATALOG.get_metric_retention_period(r.table_schema, r.metric_name), log_verbose=>log_verbose);
         PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
 
         COMMIT;
@@ -2613,7 +2699,7 @@ BEGIN
                             FROM SCHEMA_CATALOG.label_key_position lkp
                             WHERE lkp.metric_name = m.metric_name
                             ORDER BY key) label_keys,
-                        SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                        SCHEMA_CATALOG.get_metric_retention_period(m.table_schema, m.metric_name) as retention_period,
                         NULL::interval as chunk_interval,
                         pg_size_pretty(pg_total_relation_size(format('SCHEMA_DATA.%I', m.table_name)::regclass)) as total_size,
                         0.0 as compression_ratio,
@@ -2644,7 +2730,7 @@ BEGIN
                     FROM SCHEMA_CATALOG.label_key_position lkp
                     WHERE lkp.metric_name = m.metric_name
                     ORDER BY key) label_keys,
-                SCHEMA_CATALOG.get_metric_retention_period(m.metric_name) as retention_period,
+                SCHEMA_CATALOG.get_metric_retention_period(m.table_schema, m.metric_name) as retention_period,
                 dims.time_interval as chunk_interval,
                 ci.compressed_interval,
                 ci.total_interval,
@@ -2688,7 +2774,7 @@ BEGIN
                         WHERE lkp.metric_name = m.metric_name
                         ORDER BY key
                     ) label_keys,
-                    _prom_catalog.get_metric_retention_period(m.metric_name) as retention_period,
+                    _prom_catalog.get_metric_retention_period(m.table_schema, m.metric_name) as retention_period,
                     (
                         SELECT _timescaledb_internal.to_interval(interval_length)
                             FROM _timescaledb_catalog.dimension d
@@ -3026,6 +3112,7 @@ BEGIN
         SELECT m.*
         FROM SCHEMA_CATALOG.metric m
         WHERE
+          is_view = false AND
           SCHEMA_CATALOG.get_metric_compression_setting(m.metric_name) AND
           delay_compression_until IS NULL OR delay_compression_until < now() AND
           is_view = FALSE

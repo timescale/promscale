@@ -2,6 +2,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,9 +14,12 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
 )
@@ -158,8 +162,23 @@ func TestContinuousAggDownsampling(t *testing.T) {
 	}
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ts := []prompb.TimeSeries{
+			{
+				// This series will be deleted along with it's label once the samples
+				// have been deleted from raw metric and cagg.
+				Labels: []prompb.Label{
+					{Name: pgmodel.MetricNameLabelName, Value: "metric_2"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					//this will be dropped (notice the - 1000)
+					{Timestamp: startTime - 1000, Value: 0.1},
+				},
+			},
+		}
+
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		ingestQueryTestDataset(db, t, append(generateLargeTimeseries(), ts...))
 
 		if _, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()"); err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
@@ -251,7 +270,7 @@ WITH (timescaledb.continuous,  timescaledb.ignore_invalidation_older_than = '1 m
 
 		// Drop some raw metric data and check that the series data is not marked for deletion.
 		// NOTE: we cannot drop all the raw data becuase we are getting `too far behind` issues with 1.x caggs
-		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "metric_2", time.Unix(endTime/1000-20000, 0))
+		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2, $3)", schema.Data, "metric_2", time.Unix(endTime/1000-20000, 0))
 		if err != nil {
 			t.Fatalf("unexpected error while dropping metric chunks: %s", err)
 		}
@@ -270,7 +289,7 @@ WITH (timescaledb.continuous,  timescaledb.ignore_invalidation_older_than = '1 m
 			t.Error("error fetching series count after drop:", err)
 		}
 
-		// none of the series should be removed
+		// None of the series should be removed.
 		if afterCount != seriesCount {
 			t.Errorf("unexpected series count: got %v, wanted %v", afterCount, seriesCount)
 		}
@@ -280,9 +299,148 @@ WITH (timescaledb.continuous,  timescaledb.ignore_invalidation_older_than = '1 m
 			t.Error("error fetching series marked for deletion count", err)
 		}
 
-		// none of the series should be marked for deletion
+		// None of the series should be marked for deletion.
 		if count != 0 {
 			t.Errorf("unexpected series count: got %v, wanted 0", count)
 		}
+
+		// Count cagg rows before dropping.
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM cagg_schema.cagg`).Scan(&count)
+		if err != nil {
+			t.Error("error fetching count of raw metric timeseries", err)
+		}
+
+		// Drop all of the cagg data.
+		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2, $3)", "cagg_schema", "cagg", time.Now())
+		if err != nil {
+			t.Fatalf("unexpected error while dropping cagg chunks: %s", err)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM cagg_schema.cagg`).Scan(&afterCount)
+		if err != nil {
+			t.Error("error fetching count of cagg metric timeseries", err)
+		}
+		if afterCount >= count {
+			t.Errorf("unexpected row count: got %v, wanted less then %v", afterCount, count)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series`).Scan(&afterCount)
+		if err != nil {
+			t.Error("error fetching series count after drop:", err)
+		}
+
+		// None of the series should be removed.
+		if afterCount != seriesCount {
+			t.Errorf("unexpected series count: got %v, wanted %v", afterCount, seriesCount)
+		}
+
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
+		if err != nil {
+			t.Error("error fetching series marked for deletion count", err)
+		}
+
+		// Now that the raw metric and cagg metric have been deleted, one series that was completely
+		// deleted will be marked for deletion.
+		if count != 1 {
+			t.Errorf("unexpected series count: got %v, wanted 1", count)
+		}
+	})
+}
+
+func TestContinuousAggDataRetention(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("continuous aggregates need TimescaleDB support")
+	}
+	if *useTimescaleOSS {
+		t.Skip("continuous aggregates need non-OSS version of TimescaleDB")
+	}
+	if *useMultinode {
+		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
+	}
+
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
+		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		require.NoError(t, err)
+		defer dbSuper.Close()
+		//a chunk way back in 2009
+		oldChunk := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
+		chunkInRetentionPolicy := time.Now().Add(-100 * 24 * time.Hour)
+
+		ts := []prompb.TimeSeries{
+			{
+				Labels: []prompb.Label{
+					{Name: pgmodel.MetricNameLabelName, Value: "test"},
+					{Name: "name1", Value: "value1"},
+				},
+				Samples: []prompb.Sample{
+					{Timestamp: int64(model.TimeFromUnixNano(oldChunk.UnixNano()) - 1), Value: 0.1},
+					{Timestamp: int64(model.TimeFromUnixNano(chunkInRetentionPolicy.UnixNano()) - 1), Value: 0.1},
+					{Timestamp: int64(model.TimeFromUnixNano(time.Now().UnixNano()) - 1), Value: 0.1},
+				},
+			},
+		}
+		ingestQueryTestDataset(db, t, ts)
+
+		_, err = db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
+		require.NoError(t, err)
+		_, err = db.Exec(context.Background(), "CREATE SCHEMA cagg_schema")
+		require.NoError(t, err)
+
+		if *useTimescale2 {
+			_, err = db.Exec(context.Background(),
+				`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
+WITH (timescaledb.continuous) AS
+  SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
+    FROM prom_data.test
+    GROUP BY time_bucket('1hour', time), series_id`)
+			require.NoError(t, err)
+		} else {
+			// Using TimescaleDB 1.x
+			_, err = db.Exec(context.Background(),
+				`CREATE VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
+WITH (timescaledb.continuous, timescaledb.max_interval_per_job = '1000 weeks', timescaledb.ignore_invalidation_older_than = '1 min') AS
+  SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
+    FROM prom_data.test
+    GROUP BY time_bucket('1hour', time), series_id`)
+			require.NoError(t, err)
+			_, err = db.Exec(context.Background(), `REFRESH MATERIALIZED VIEW cagg_schema.cagg`)
+			require.NoError(t, err)
+		}
+		_, err = db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('cagg_schema', 'cagg')")
+		require.NoError(t, err)
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('cagg_schema', 'cagg', INTERVAL '180 days')")
+		require.NoError(t, err)
+
+		caggHypertable := ""
+		err = db.QueryRow(context.Background(), "SELECT hypertable_relation FROM _prom_catalog.get_storage_hypertable_info('cagg_schema', 'cagg', true)").Scan(&caggHypertable)
+		require.NoError(t, err)
+
+		cnt := 0
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('%s', older_than => NOW())`, caggHypertable)).Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 2, int(cnt), "Expected for cagg to have exactly 2 chunks")
+
+		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance(log_verbose=>true)")
+		require.NoError(t, err)
+
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('%s', older_than => NOW())`, caggHypertable)).Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 1, int(cnt), "Expected for cagg to have exactly 1 chunk that is outside of 180 day retention period previously set for this metric")
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('cagg_schema', 'cagg')")
+		require.NoError(t, err)
+
+		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance(log_verbose=>true)")
+		require.NoError(t, err)
+
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('%s', older_than => NOW())`, caggHypertable)).Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 0, int(cnt), "Expected for cagg to have exactly 0 chunks since only data left in default retention period is too new to materialize")
 	})
 }
