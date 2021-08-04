@@ -100,7 +100,11 @@ func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter) {
 
 		err := sw.WriteSeries(copyBatch(insertBatch))
 		if err != nil {
-			fmt.Println(err)
+			for i := range insertBatch {
+				insertBatch[i].data.reportResults(err)
+				insertBatch[i].data.release()
+			}
+			return
 		}
 
 		doInsertOrFallback(conn, insertBatch...)

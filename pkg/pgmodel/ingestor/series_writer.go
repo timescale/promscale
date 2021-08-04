@@ -191,12 +191,6 @@ func (h *seriesWriter) fillLabelIDs(infos map[string]*perMetricInfo, labelMap ma
 	batch := h.conn.NewBatch()
 	var dbEpoch model.SeriesEpoch
 
-	/*names, values := labelList.Get()
-	items := len(names.Elements)
-	if items != len(labelMap) {
-		return dbEpoch, 0, fmt.Errorf("error filling labels: number of items in labelList and labelMap doesn't match")
-	}*/
-
 	// The epoch will never decrease, so we can check it once at the beginning,
 	// at worst we'll store too small an epoch, which is always safe
 	batch.Queue("BEGIN;")

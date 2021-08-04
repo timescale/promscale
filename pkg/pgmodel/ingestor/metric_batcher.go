@@ -189,7 +189,7 @@ func (h *metricBatcher) nonblockingHandleReq() bool {
 func (h *metricBatcher) handleReq(req *insertDataRequest) bool {
 	h.pending.addReq(req)
 	if h.pending.IsFull() {
-		h.flushPending()
+		h.tryFlushOrBatchMore()
 		return true
 	}
 	return false
@@ -199,10 +199,10 @@ func (h *metricBatcher) flush() {
 	if h.pending.IsEmpty() {
 		return
 	}
-	h.flushPending()
+	h.tryFlushOrBatchMore()
 }
 
-func (h *metricBatcher) flushPending() {
+func (h *metricBatcher) tryFlushOrBatchMore() {
 	recvChannel := h.input
 	for {
 		if h.pending.IsFull() {
