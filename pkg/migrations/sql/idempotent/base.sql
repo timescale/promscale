@@ -460,8 +460,8 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key(TEXT) to prom_w
 -- we want the positions to be as compact as possible.
 -- This uses some pretty heavy locks so use sparingly.
 -- locks: label_key_position, data table, series partition (in view creation),
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(
-        metric_name text, key_name_array text[])
+CREATE OR REPLACE FUNCTION _prom_catalog.get_new_pos_for_key(
+        metric_name text, key_name_array text[], is_exemplar_label_keys boolean)
     RETURNS int[]
 AS $func$
 DECLARE
@@ -472,42 +472,77 @@ DECLARE
     key_name text;
     next_position int;
     max_position int;
-    metric_table NAME;
+    metric_table name;
+    schema_name text;
+    position_table_name text;
+    q text;
 BEGIN
-    --use double check locking here
-    --fist optimistic check:
-    SELECT
-        array_agg(lkp.pos ORDER BY k.ord)
-    FROM
-        unnest(key_name_array) WITH ORDINALITY as k(key, ord)
-        INNER JOIN SCHEMA_CATALOG.label_key_position lkp ON
-        (
-            lkp.metric_name = get_new_pos_for_key.metric_name
-            AND lkp.key = k.key
-        )
-    INTO position_array;
+    If is_exemplar_label_keys THEN
+        schema_name := 'SCHEMA_DATA_EXEMPLAR';
+        position_table_name := 'exemplar_label_key_position';
+    ELSE
+        schema_name := 'SCHEMA_DATA_EXEMPLAR';
+        position_table_name := 'label_key_position';
+    END IF;
 
+    --Use double check locking here
+    --fist optimistic check:
+    IF is_exemplar_label_keys THEN
+        EXECUTE FORMAT('SELECT array_agg(ep.pos ORDER BY ep.pos)
+            FROM _prom_catalog.%I ep
+        WHERE ep.metric_name=$1', position_table_name) USING metric_name
+        INTO position_array;
+    ELSE
+        EXECUTE FORMAT('SELECT
+            array_agg(lp.pos ORDER BY k.ord)
+        FROM
+            unnest($1) WITH ORDINALITY as k(key, ord)
+            INNER JOIN _prom_catalog.%I lp ON
+            (
+                lp.metric_name = $2
+                AND lp.key = k.key
+            )', position_table_name) USING key_name_array, metric_name
+        INTO position_array;
+    END IF;
+
+    -- Return the array if the length is same, as the received key_name_array does not contain any new keys.
     IF array_length(key_name_array, 1) = array_length(position_array, 1) THEN
         RETURN position_array;
     END IF;
 
-    SELECT table_name
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(get_new_pos_for_key.metric_name)
-    INTO metric_table;
-    --lock as for ALTER TABLE because we are in effect changing the schema here
-    --also makes sure the next_position below is correct in terms of concurrency
-    EXECUTE format('LOCK TABLE SCHEMA_DATA_SERIES.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
+    -- Lock tables for exclusiveness.
+    IF NOT is_exemplar_label_keys THEN
+        SELECT table_name
+        FROM _prom_catalog.get_or_create_metric_table_name(get_new_pos_for_key.metric_name)
+        INTO metric_table;
+        --lock as for ALTER TABLE because we are in effect changing the schema here
+        --also makes sure the next_position below is correct in terms of concurrency
+        EXECUTE format('LOCK TABLE prom_data_series.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
+    ELSE
+        LOCK TABLE _prom_catalog.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
+    END IF;
 
-    SELECT
-        max(pos) + 1
-    FROM
-        SCHEMA_CATALOG.label_key_position lkp
-    WHERE
-        lkp.metric_name = get_new_pos_for_key.metric_name
-    INTO max_position;
+    IF is_exemplar_label_keys THEN
+        EXECUTE FORMAT('SELECT max(ep.pos) + 1
+            FROM _prom_catalog.%I ep
+        WHERE ep.metric_name = $1', position_table_name) USING get_new_pos_for_key.metric_name
+        INTO max_position;
+    ELSE
+        EXECUTE FORMAT('SELECT max(pos) + 1
+            FROM _prom_catalog.%I lp
+        WHERE lp.metric_name = $1', position_table_name) USING get_new_pos_for_key.metric_name
+        INTO max_position;
+    END IF;
+
+    raise notice 'max position is %', max_position;
 
     IF max_position IS NULL THEN
-        max_position := 2; -- element 1 reserved for __name__
+        IF is_exemplar_label_keys THEN
+            max_position := 1;
+        ELSE
+            -- Specific to label_key_position table only.
+            max_position := 2; -- element 1 reserved for __name__
+        END IF;
     END IF;
 
     position_array := array[]::int[];
@@ -515,20 +550,23 @@ BEGIN
     count_new := 0;
     FOREACH key_name IN ARRAY key_name_array LOOP
         --second check after lock
-        SELECT
-            pos
-        FROM
-            SCHEMA_CATALOG.label_key_position lkp
+        EXECUTE FORMAT('SELECT pos FROM _prom_catalog.%I lp
         WHERE
-            lkp.metric_name = get_new_pos_for_key.metric_name
-            AND lkp.key =  key_name
+            lp.metric_name = $1
+        AND
+            lp.key = $2', position_table_name) USING metric_name, key_name
         INTO position;
 
-        IF FOUND THEN
+        IF position IS NOT NULL THEN
+            raise notice 'found, position at %', position;
             position_array[position_array_idx] := position;
             position_array_idx := position_array_idx + 1;
             CONTINUE;
         END IF;
+
+        raise notice 'not found';
+
+        -- key_name does not exists in the position table.
 
         count_new := count_new + 1;
         IF key_name = '__name__' THEN
@@ -538,28 +576,38 @@ BEGIN
             max_position := max_position + 1;
         END IF;
 
-        PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
-
-        INSERT INTO SCHEMA_CATALOG.label_key_position
-            VALUES (metric_name, key_name, next_position)
-        ON CONFLICT
-            DO NOTHING
-        RETURNING
-            pos INTO position;
-        IF NOT FOUND THEN
-            RAISE 'Could not find a new position';
+        IF NOT is_exemplar_label_keys THEN
+            PERFORM _prom_catalog.get_or_create_label_key(key_name);
         END IF;
+
+        IF is_exemplar_label_keys THEN
+            EXECUTE FORMAT('INSERT INTO _prom_catalog.%I
+                VALUES ($1, $2, $3)', position_table_name) USING metric_name, key_name, next_position;
+            SELECT ep.pos into position FROM _prom_catalog.exemplar_label_key_position ep where ep.metric_name=get_new_pos_for_key.metric_name and ep.key=key_name;
+        ELSE
+            EXECUTE FORMAT('INSERT INTO _prom_catalog.%I
+            VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+            RETURNING pos', position_table_name) USING metric_name, key_name, next_position
+            INTO position;
+        END IF;
+        raise notice 'position is %', position;
+        IF NOT FOUND THEN
+            RAISE 'Could not find a new position when the is_exemplar_label_keys is %', is_exemplar_label_keys;
+        END IF;
+        raise warning 'adding position % to index %', position, position_array_idx;
         position_array[position_array_idx] := position;
         position_array_idx := position_array_idx + 1;
     END LOOP;
 
-    IF count_new  > 0 THEN
+    IF NOT is_exemplar_label_keys AND count_new > 0 THEN
         --note these functions are expensive in practice so they
         --must be run once across a collection of keys
-        PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
-        PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
+        PERFORM _prom_catalog.create_series_view(metric_name);
+        PERFORM _prom_catalog.create_metric_view(metric_name);
     END IF;
 
+    raise notice 'position array is %', position_array;
     RETURN position_array;
 END
 $func$
@@ -569,8 +617,9 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[]) TO prom_writer;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) TO prom_reader; -- For exemplars querying. 
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) TO prom_writer;
 
 --should only be called after a check that that the label doesn't exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
@@ -737,7 +786,7 @@ AS $$
         AND lkp.key = get_or_create_label_key_pos.key
     UNION ALL
     SELECT
-        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, array[get_or_create_label_key_pos.key]))[1]
+        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, array[get_or_create_label_key_pos.key], false))[1]
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
@@ -924,7 +973,7 @@ RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
            case when count(*) = count(known_pos) Then
               array_agg(known_pos)
            else
-              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(key_str))
+              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(key_str), false)
            end as poss,
            array_agg(label_id) as label_ids,
            array_agg(key_str) as keys,

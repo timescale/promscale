@@ -3,10 +3,17 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/log"
 
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+)
+
+const (
+	createExemplarTable             = "SELECT * FROM " + schema.Catalog + ".create_exemplar_table_if_not_exists($1)"
+	// getExemplarLabelPositions       = "SELECT * FROM " + schema.Catalog + ".get_or_create_exemplar_label_key_positions($1::TEXT, $2::TEXT[])"
+	getExemplarLabelPositions       = "SELECT * FROM " + schema.Catalog + ".get_new_pos_for_key($1::TEXT, $2::TEXT[], true)"
 )
 
 func processExemplars(conn pgxconn.PgxConn, metricName string, catalog *exemplarInfo, data []model.Insertable) error {
@@ -31,6 +38,7 @@ func orderExemplarLabelValues(conn pgxconn.PgxConn, info *exemplarInfo, data []m
 	var (
 		batch          pgxconn.PgxBatch
 		pendingIndexes []int
+		labelKeysArr 		[][]string // This will be used to form index with the received key position values from database.
 	)
 
 	for i := range data {
@@ -45,14 +53,15 @@ func orderExemplarLabelValues(conn pgxconn.PgxConn, info *exemplarInfo, data []m
 				needsFetch = false
 			}
 		}
-		if needsFetch && len(row.AllExemplarLabelKeys()) != 0 {
+		if labelKeys := row.AllExemplarLabelKeys(); needsFetch && len(labelKeys) != 0 {
 			// Do not fetch exemplar label positions if there are no labels/keys in the given exemplars.
 			if batch == nil {
 				// Allocate a batch only if required. If the cache does the job, why to waste on allocs.
 				batch = conn.NewBatch()
 			}
-			batch.Queue(getExemplarLabelPositions, row.Series().MetricName(), row.AllExemplarLabelKeys())
+			batch.Queue(getExemplarLabelPositions, row.Series().MetricName(), labelKeys)
 			pendingIndexes = append(pendingIndexes, i)
+			labelKeysArr = append(labelKeysArr, labelKeys)
 		}
 	}
 	if len(pendingIndexes) > 0 {
@@ -64,15 +73,18 @@ func orderExemplarLabelValues(conn pgxconn.PgxConn, info *exemplarInfo, data []m
 			return fmt.Errorf("sending fetch label key positions batch: %w", err)
 		}
 		defer results.Close()
-		for _, index := range pendingIndexes {
+		for i, index := range pendingIndexes {
 			var (
 				metricName    string
-				labelKeyIndex map[string]int
+				keyPositions []int
+
+				labelKeyIndex = make(map[string]int)
 			)
-			err := results.QueryRow().Scan(&metricName, &labelKeyIndex)
+			err := results.QueryRow().Scan(&metricName, &keyPositions)
 			if err != nil {
 				return fmt.Errorf("fetching label key positions: %w", err)
 			}
+			buildKeyIndex(labelKeyIndex, labelKeysArr[i], keyPositions)
 			info.exemplarCache.SetorUpdateLabelPositions(metricName, labelKeyIndex)
 			row, ok := data[index].(model.InsertableExemplar)
 			if !ok {
@@ -90,4 +102,12 @@ func orderExemplarLabelValues(conn pgxconn.PgxConn, info *exemplarInfo, data []m
 		}
 	}
 	return nil
+}
+
+func buildKeyIndex(index map[string]int, keyNames []string, keyPositions []int) {
+	for i := range keyNames {
+		key := keyNames[i]
+		pos := keyPositions[i]
+		index[key] = pos
+	}
 }

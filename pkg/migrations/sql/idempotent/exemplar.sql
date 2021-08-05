@@ -9,6 +9,7 @@ DECLARE
     new_position INTEGER;
     k TEXT;
 BEGIN
+-- check for existing pos
     LOCK TABLE SCHEMA_CATALOG.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
     -- If there isn't any data for the given metric_name in params.
     IF ( SELECT count(*) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position p WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name ) THEN
