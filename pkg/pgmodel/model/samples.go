@@ -67,7 +67,7 @@ func (i *samplesIterator) HasNext() bool {
 
 // Value in samplesIterator does not return labels, since samples do not have labels.
 // Its the series that have th labels in samples.
-func (i *samplesIterator) Value() (labels []prompb.Label, timestamp int64, value float64) {
+func (i *samplesIterator) Value() (timestamp int64, value float64) {
 	timestamp, value = i.data[i.curr].Timestamp, i.data[i.curr].Value
 	i.curr++
 	return

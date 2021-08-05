@@ -32,14 +32,24 @@ type Insertable interface {
 	Close()
 }
 
-// Iterator iterates over data values.
+// Iterator iterates over datapoints.
 type Iterator interface {
 	// HasNext returns true if there is any datapoint that is yet to be read.
 	HasNext() bool
-	// Value returns the current datapoint's value and also increments the counter of the iterator.
-	// The labels returned are labels of the exemplars, since samples do not have labels.
-	// Hence, expect a nil in case of samples.
-	Value() (labels []prompb.Label, timestamp int64, value float64)
 	// Close puts the iterator alloc back into the pool, allowing it to be reused.
 	Close()
+}
+
+// SamplesIterator iterates over samples.
+type SamplesIterator interface {
+	Iterator
+	// Value returns current samples timestamp and value.
+	Value() (timestamp int64, value float64)
+}
+
+// ExemplarsIterator iterates over exemplars.
+type ExemplarsIterator interface {
+	Iterator
+	// Value returns the current exemplar's value array, timestamp and value.
+	Value() (labels []prompb.Label, timestamp int64, value float64)
 }

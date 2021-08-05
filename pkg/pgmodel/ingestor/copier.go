@@ -279,51 +279,66 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		// INSERT using that overcomes most of the performance issues for sending
 		// multiple data, and brings INSERT nearly on par with CopyFrom. In the
 		// future we may wish to send compressed data instead.
-		timeSamples := make([]time.Time, 0, numSamples)
-		valSamples := make([]float64, 0, numSamples)
-		seriesSamples := make([]int64, 0, numSamples)
+		var (
+			hasSamples   bool
+			hasExemplars bool
 
-		timeE := make([]time.Time, 0, numExemplars)
-		valE := make([]float64, 0, numExemplars)
-		seriesE := make([]int64, 0, numExemplars)
-		exemplarLbls := make([][]string, 0, numExemplars)
+			timeSamples   []time.Time
+			timeExemplars []time.Time
 
-		hasSamples := false
-		hasExemplars := false
-		batchIterator := req.data.batch.Iterator()
+			valSamples   []float64
+			valExemplars []float64
 
-		for batchIterator.HasNext() {
-			labels, timestamp, val, seriesID, seriesEpoch, typ := batchIterator.Value()
-			// Note: `labels` received above are labels of exemplars since samples do not have labels.
-			// Hence, in case of samples. the `labels` will actually be nil.
-			if seriesEpoch < lowestEpoch {
-				lowestEpoch = seriesEpoch
-			}
-			switch typ {
-			case pgmodel.Sample:
-				hasSamples = true
-				timeSamples = append(timeSamples, timestamp)
-				valSamples = append(valSamples, val)
-				seriesSamples = append(seriesSamples, int64(seriesID))
-			case pgmodel.Exemplar:
-				hasExemplars = true
-				timeE = append(timeE, timestamp)
-				valE = append(valE, val)
-				seriesE = append(seriesE, int64(seriesID))
-				exemplarLbls = append(exemplarLbls, labelsToStringSlice(labels))
-			}
+			seriesIdSamples   []int64
+			seriesIdExemplars []int64
+
+			exemplarLbls [][]string
+		)
+
+		if numSamples > 0 {
+			timeSamples = make([]time.Time, 0, numSamples)
+			valSamples = make([]float64, 0, numSamples)
+			seriesIdSamples = make([]int64, 0, numSamples)
 		}
-		batchIterator.Close()
+		if numExemplars > 0 {
+			timeExemplars = make([]time.Time, 0, numExemplars)
+			valExemplars = make([]float64, 0, numExemplars)
+			seriesIdExemplars = make([]int64, 0, numExemplars)
+			exemplarLbls = make([][]string, 0, numExemplars)
+		}
 
-		if err = req.data.batch.Err(); err != nil {
+		visitor := req.data.batch.Visitor()
+		visitor.Visit(
+			func(t time.Time, v float64, seriesId int64) {
+				hasSamples = true
+				timeSamples = append(timeSamples, t)
+				valSamples = append(valSamples, v)
+				seriesIdSamples = append(seriesIdSamples, seriesId)
+			},
+			func(t time.Time, v float64, seriesId int64, lvalues []string) {
+				hasExemplars = true
+				timeExemplars = append(timeExemplars, t)
+				valExemplars = append(valExemplars, v)
+				seriesIdExemplars = append(seriesIdExemplars, seriesId)
+				exemplarLbls = append(exemplarLbls, lvalues)
+			},
+		)
+		epoch := visitor.LowestEpoch()
+		if epoch < lowestEpoch {
+			lowestEpoch = epoch
+		}
+		if err = visitor.Error(); err != nil {
+			visitor.Close()
 			return err
 		}
+		visitor.Close()
+
 		numRowsTotal += numSamples + numExemplars
 		totalSamples += numSamples
 		totalExemplars += numExemplars
 		if hasSamples {
 			numRowsPerInsert = append(numRowsPerInsert, numSamples)
-			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1::NAME, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesSamples)
+			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1::NAME, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesIdSamples)
 		}
 		if hasExemplars {
 			// We cannot send 2-D [][]TEXT to postgres via the pgx.encoder. For this and easier querying reasons, we create a
@@ -334,7 +349,7 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 				return fmt.Errorf("setting prom_api.label_value_array[] value: %w", err)
 			}
 			numRowsPerInsert = append(numRowsPerInsert, numExemplars)
-			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1::NAME, $2::TIMESTAMPTZ[], $3::BIGINT[], $4::"+schema.Prom+".label_value_array[], $5::DOUBLE PRECISION[])", req.table, timeE, seriesE, labelValues, valE)
+			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1::NAME, $2::TIMESTAMPTZ[], $3::BIGINT[], $4::"+schema.Prom+".label_value_array[], $5::DOUBLE PRECISION[])", req.table, timeExemplars, seriesIdExemplars, labelValues, valExemplars)
 		}
 	}
 

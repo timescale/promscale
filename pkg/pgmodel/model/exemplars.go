@@ -58,10 +58,6 @@ func (t *promExemplars) MaxTs() int64 {
 	return t.exemplars[numSamples-1].Timestamp
 }
 
-func (t *promExemplars) At(index int) sampleFields {
-	return t.exemplars[index]
-}
-
 // todo: pool
 type exemplarsIterator struct {
 	curr  int
