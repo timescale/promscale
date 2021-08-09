@@ -18,6 +18,73 @@ DEFAULT '{}'::jsonb
 CHECK (jsonb_typeof(value) = 'object')
 ;
 
+DROP DOMAIN IF EXISTS attribute_type CASCADE;
+CREATE DOMAIN attribute_type smallint NOT NULL
+;
+
+CREATE OR REPLACE FUNCTION span_attribute_type() RETURNS smallint AS
+$sql$
+SELECT (1<<0)::smallint
+$sql$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE
+;
+
+CREATE OR REPLACE FUNCTION is_span_attribute_type(_attribute_type attribute_type) RETURNS BOOLEAN AS
+$sql$
+SELECT _attribute_type & span_attribute_type() = span_attribute_type()
+$sql$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE
+;
+
+DROP TABLE IF EXISTS attribute_key CASCADE;
+CREATE TABLE attribute_key
+(
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    key text NOT NULL UNIQUE,
+    attribute_type attribute_type NOT NULL
+);
+
+DROP TABLE IF EXISTS attribute CASCADE;
+CREATE TABLE attribute
+(
+    id BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
+    key_id BIGINT NOT NULL,
+    attribute_type attribute_type NOT NULL,
+    value jsonb,
+    FOREIGN KEY (key_id) REFERENCES attribute_key (id) ON DELETE CASCADE
+)
+PARTITION BY HASH (key_id)
+;
+
+DO $block$
+DECLARE
+    _i bigint;
+    _max bigint = 64;
+BEGIN
+    FOR _i IN 1.._max
+    LOOP
+        EXECUTE format($sql$
+            CREATE TABLE attribute_%s PARTITION OF attribute FOR VALUES WITH (MODULUS %s, REMAINDER %s)
+            $sql$,
+            _i,
+            _max,
+            _i - 1
+        );
+        EXECUTE format($sql$
+            ALTER TABLE attribute_%s ADD PRIMARY KEY (id)
+            $sql$,
+            _i
+        );
+        EXECUTE format($sql$
+            ALTER TABLE attribute_%s ADD UNIQUE (key_id, value) INCLUDE (id)
+            $sql$,
+            _i
+        );
+    END LOOP;
+END
+$block$
+;
+
 DROP TYPE IF EXISTS span_kind CASCADE;
 CREATE TYPE span_kind AS ENUM
 (
@@ -59,70 +126,6 @@ CREATE TABLE IF NOT EXISTS instrumentation_library
     version text NOT NULL,
     schema_url_id BIGINT NOT NULL REFERENCES schema_url(id),
     UNIQUE(name, version, schema_url_id)
-);
-
-DROP TABLE IF EXISTS span_attribute_key CASCADE;
-CREATE TABLE span_attribute_key
-(
-    id BIGINT PRIMARY KEY,
-    key text NOT NULL UNIQUE
-);
-
-DROP TABLE IF EXISTS span_attribute CASCADE;
-CREATE TABLE span_attribute
-(
-    id BIGINT PRIMARY KEY,
-    key_id BIGINT REFERENCES span_attribute_key (id) ON DELETE CASCADE,
-    value jsonb,
-    UNIQUE(key_id, value)
-);
-
-DROP TABLE IF EXISTS resource_attribute_key CASCADE;
-CREATE TABLE resource_attribute_key
-(
-    id BIGINT PRIMARY KEY,
-    key text NOT NULL UNIQUE
-);
-
-DROP TABLE IF EXISTS resource_attribute CASCADE;
-CREATE TABLE resource_attribute
-(
-    id BIGINT PRIMARY KEY,
-    key_id BIGINT NOT NULL REFERENCES resource_attribute_key (id) ON DELETE CASCADE,
-    value jsonb,
-    UNIQUE(key_id, value)
-);
-
-DROP TABLE IF EXISTS event_attribute_key CASCADE;
-CREATE TABLE event_attribute_key
-(
-    id BIGINT PRIMARY KEY,
-    key text NOT NULL UNIQUE
-);
-
-DROP TABLE IF EXISTS event_attribute CASCADE;
-CREATE TABLE event_attribute
-(
-    id BIGINT PRIMARY KEY,
-    key_id BIGINT NOT NULL REFERENCES event_attribute_key (id) ON DELETE CASCADE,
-    value jsonb,
-    UNIQUE(key_id, value)
-);
-
-DROP TABLE IF EXISTS link_attribute_key CASCADE;
-CREATE TABLE link_attribute_key
-(
-    id BIGINT PRIMARY KEY,
-    key text NOT NULL UNIQUE
-);
-
-DROP TABLE IF EXISTS link_attribute CASCADE;
-CREATE TABLE link_attribute
-(
-    id BIGINT PRIMARY KEY,
-    key_id BIGINT NOT NULL REFERENCES link_attribute_key (id) ON DELETE CASCADE,
-    value jsonb,
-    UNIQUE(key_id, value)
 );
 
 DROP TABLE IF EXISTS trace CASCADE;
