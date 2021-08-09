@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/inhies/go-bytesize"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
@@ -62,6 +63,7 @@ type config struct {
 	writerAuth           utils.Auth
 	progressMetricAuth   utils.Auth
 	readerMetricsMatcher string
+	readerLabelsMatcher  []*labels.Matcher
 }
 
 func main() {
@@ -108,18 +110,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	ms, err := parser.ParseExpr(conf.readerMetricsMatcher)
-	if err != nil {
-		log.Error("msg", "could not parse reader metrics matcher", "error", err)
-		os.Exit(2)
-	}
-
-	vs, ok := ms.(*parser.VectorSelector)
-	if !ok {
-		log.Error("msg", "invalid metrics matcher", "error", "only vector selector can be used")
-		os.Exit(2)
-	}
-
 	var (
 		readErrChan  = make(chan error)
 		writeErrChan = make(chan error)
@@ -133,7 +123,7 @@ func main() {
 		HTTPConfig:      conf.readerAuth.ToHTTPClientConfig(),
 		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigSlabRead,
-		MetricsMatchers: vs.LabelMatchers,
+		MetricsMatchers: conf.readerLabelsMatcher,
 	}
 	read, err := reader.New(readerConfig)
 	if err != nil {
@@ -385,6 +375,22 @@ func convertTimeStrFlagsToTs(conf *config) error {
 	return nil
 }
 
+func convertMetricsMatcherStrToLabelMatchers(conf *config) error {
+	ms, err := parser.ParseExpr(conf.readerMetricsMatcher)
+	if err != nil {
+		return fmt.Errorf("parsing '-reader-metrics-matcher': %w", err)
+	}
+
+	vs, ok := ms.(*parser.VectorSelector)
+	if !ok {
+		return fmt.Errorf("'-reader-metrics-matcher' should always be a valid vector_selector as per PromQL")
+	}
+
+	conf.readerLabelsMatcher = vs.LabelMatchers
+
+	return nil
+}
+
 func validateConf(conf *config) error {
 	if err := convertTimeStrFlagsToTs(conf); err != nil {
 		return fmt.Errorf("validate time flags: %w", err)
@@ -437,5 +443,10 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("parsing byte-size: %w", err)
 	}
 	conf.maxSlabSizeBytes = int64(maxSlabSizeBytes)
+
+	if err := convertMetricsMatcherStrToLabelMatchers(conf); err != nil {
+		return fmt.Errorf("validate '-reader-metrics-matcher': %w", err)
+	}
+
 	return nil
 }
