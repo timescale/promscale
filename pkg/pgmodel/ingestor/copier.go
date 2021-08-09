@@ -34,9 +34,32 @@ var (
 	handleDecompression = retryAfterDecompression
 )
 
+type copyBatch []copyRequest
+
+func (c copyBatch) VisitSeries(cb func(s *pgmodel.Series) error) error {
+	for _, req := range c {
+		samples := req.data.batch.GetSeriesSamples()
+		for _, sample := range samples {
+			err := cb(sample.GetSeries())
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c copyBatch) NumSeries() int {
+	i := 0
+	for _, req := range c {
+		i += len(req.data.batch.GetSeriesSamples())
+	}
+	return i
+}
+
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runCopier(conn pgxconn.PgxConn, in chan copyRequest) {
+func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter) {
 	// We grab copyRequests off the channel one at a time. This, and the name is
 	// a legacy from when we used CopyFrom to perform the insertions, and may
 	// change in the future.
@@ -74,6 +97,15 @@ func runCopier(conn pgxconn.PgxConn, in chan copyRequest) {
 			}
 		}
 		insertBatch = insertBatch[:dst+1]
+
+		err := sw.WriteSeries(copyBatch(insertBatch))
+		if err != nil {
+			for i := range insertBatch {
+				insertBatch[i].data.reportResults(err)
+				insertBatch[i].data.release()
+			}
+			return
+		}
 
 		doInsertOrFallback(conn, insertBatch...)
 		for i := range insertBatch {
