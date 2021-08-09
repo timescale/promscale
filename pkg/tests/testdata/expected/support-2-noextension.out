@@ -43,7 +43,7 @@ EXPLAIN (costs off) SELECT time, value, jsonb(labels), val(namespace_id) FROM cp
                ->  Nested Loop
                      ->  Seq Scan on cpu_usage series
                            Filter: (NOT ((labels)::integer[] && ((('namespace'::text)::label_key !== ('dev'::text)::pattern))::integer[]))
-                     ->  Seq Scan on _hyper_1_1_chunk data
+                     ->  Seq Scan on _hyper_4_1_chunk data
                            Filter: (series.id = series_id)
 (9 rows)
 

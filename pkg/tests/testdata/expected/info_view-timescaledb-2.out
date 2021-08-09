@@ -40,13 +40,13 @@ SELECT id , metric_name , table_name, retention_period, chunk_interval > interva
 SELECT compress_chunk(show_chunks('prom_data.cpu_usage'));
              compress_chunk             
 ----------------------------------------
- _timescaledb_internal._hyper_1_1_chunk
+ _timescaledb_internal._hyper_4_1_chunk
 (1 row)
 
 SELECT compress_chunk(show_chunks('prom_data.cpu_total'));
              compress_chunk             
 ----------------------------------------
- _timescaledb_internal._hyper_3_2_chunk
+ _timescaledb_internal._hyper_6_2_chunk
 (1 row)
 
 -- fetch stats with compressed chunks

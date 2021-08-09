@@ -40,13 +40,16 @@ const (
 )
 
 var (
-	tableOfContets = map[string][]string{
+	tableOfContents = map[string][]string{
 		"idempotent": {
 			"base.sql",
 			"matcher-functions.sql",
 			"ha.sql",
 			"metric-metadata.sql",
 			"exemplar.sql",
+			"tracing-private.sql",
+			"tracing-public.sql",
+			"tracing-public-views.sql",
 			"apply_permissions.sql", //should be last
 		},
 	}
@@ -98,7 +101,7 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.Extensi
 		return errors.ErrInvalidSemverFormat
 	}
 
-	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContets)
+	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContents)
 
 	err = mig.Migrate(appVersion)
 	if err != nil {
@@ -390,6 +393,8 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", schema.DataSeries)
 	s = strings.ReplaceAll(s, "SCHEMA_DATA", schema.Data)
 	s = strings.ReplaceAll(s, "SCHEMA_INFO", schema.Info)
+	s = strings.ReplaceAll(s, "SCHEMA_TRACING_PUBLIC", schema.TracePublic)
+	s = strings.ReplaceAll(s, "SCHEMA_TRACING", schema.Trace)
 	s = strings.ReplaceAll(s, "ADVISORY_LOCK_PREFIX_JOB", "12377")
 	s = strings.ReplaceAll(s, "ADVISORY_LOCK_PREFIX_MAINTENACE", "12378")
 	return s, err

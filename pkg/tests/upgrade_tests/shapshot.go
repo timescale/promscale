@@ -31,6 +31,7 @@ type dbSnapshot struct {
 var schemas = []string{
 	"_prom_catalog",
 	"_prom_ext",
+	"_ps_trace",
 	"_timescaledb_cache",
 	"_timescaledb_catalog",
 	"_timescaledb_config",
@@ -47,6 +48,7 @@ var schemas = []string{
 	"prom_info",
 	"prom_metric",
 	"prom_series",
+	"ps_trace",
 	"public",
 	"timescaledb_information",
 }
@@ -54,6 +56,7 @@ var schemas = []string{
 var schemasWOTimescaleDB = []string{
 	"_prom_catalog",
 	"_prom_ext",
+	"_ps_trace",
 	"information_schema",
 	"pg_catalog",
 	"pg_temp_1",
@@ -66,6 +69,7 @@ var schemasWOTimescaleDB = []string{
 	"prom_info",
 	"prom_metric",
 	"prom_series",
+	"ps_trace",
 	"public",
 }
 
@@ -73,6 +77,7 @@ var ourSchemas = []string{
 	"public",
 	"_prom_catalog",
 	"_prom_ext",
+	"_ps_trace",
 	"prom_api",
 	"prom_data",
 	"prom_data_exemplar",
@@ -80,6 +85,7 @@ var ourSchemas = []string{
 	"prom_info",
 	"prom_metric",
 	"prom_series",
+	"ps_trace",
 }
 
 type schemaInfo struct {
@@ -134,6 +140,7 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 }
 
 var replaceChildren = regexp.MustCompile("timescaledb_internal\\._hyper_.*\n")
+var replaceSatisfiesOID = regexp.MustCompile("satisfies_hash_partition.{3,20}::oid")
 
 func expectedSchemas(extstate testhelpers.ExtensionState) []string {
 	considerSchemas := schemas
@@ -174,6 +181,7 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 		info.name = schema
 		info.tables = getPsqlInfo(t, container, dbName, outputDir, "\\d+ "+schema+".*")
 		info.tables = replaceChildren.ReplaceAllLiteralString(info.tables, "timescaledb_internal._hyper_*\n")
+		info.tables = replaceSatisfiesOID.ReplaceAllLiteralString(info.tables, "satisfies_hash_partition('xxx'::oid")
 		info.functions = getPsqlInfo(t, container, dbName, outputDir, "\\df+ "+schema+".*")
 		info.privileges = getPsqlInfo(t, container, dbName, outputDir, "\\dp "+schema+".*")
 		// not using \di+ since the sizes are too noisy, and the descriptions
