@@ -7,7 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgErrors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
@@ -16,10 +16,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const (
-	seriesInsertSQL                 = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
-	getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
-)
+const getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
 
 type metricBatcher struct {
 	conn            pgxconn.PgxConn
@@ -77,7 +74,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) 
 // exist. This only does the most critical part of metric table creation, the
 // rest is handled by completeMetricTableCreation().
 func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
-	// Metric batchers are always initialized with metric names of samples and not of exemplars.	
+	// Metric batchers are always initialized with metric names of samples and not of exemplars.
 	mInfo, err := metricTableNames.Get(schema.Data, metricName, false)
 	if err == nil && mInfo.TableName != "" {
 		return mInfo.TableName, nil
@@ -111,8 +108,6 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 		case completeMetricCreationSignal <- struct{}{}:
 		default:
 		}
-	} else if err != nil {
-		return "", fmt.Errorf("get metric name from metric table cache: %w", err)
 	}
 	return tableName, err
 }
@@ -124,8 +119,8 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	metricTableNames cache.MetricCache,
 	exemplarKeyPos cache.PositionCache,
 	toCopiers chan<- copyRequest,
-	labelArrayOID uint32) {
-
+	labelArrayOID uint32,
+) {
 	var (
 		tableName   string
 		firstReq    *insertDataRequest
@@ -237,13 +232,21 @@ func (h *metricBatcher) tryFlushOrBatchMore() {
 		}
 		numSeries := h.pending.batch.CountSeries()
 		select {
-		case h.toCopiers <- copyRequest{h.pending, h.metricTableName}:
+		case h.toCopiers <- copyRequest{h.pending, h.exemplarProcessor, h.metricTableName}:
 			MetricBatcherFlushSeries.Observe(float64(numSeries))
 			h.pending = NewPendingBuffer()
 			return
 		case req := <-recvChannel:
 			h.pending.addReq(req)
-
 		}
 	}
+}
+
+func (h *metricBatcher) exemplarProcessor(data []model.Insertable) error {
+	if containsExemplars(data) {
+		if err := processExemplars(h.conn, h.metricName, h.exemplarCatalog, data); err != nil {
+			return fmt.Errorf("process exemplars: %w", err)
+		}
+	}
+	return nil
 }

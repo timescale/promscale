@@ -35,7 +35,7 @@ func (fc *Storage) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 		return err
 	}
 
-	q, err := fc.queryable.Querier(srv.Context(), req.MinTime, req.MaxTime)
+	q, err := fc.queryable.SamplesQuerier(srv.Context(), req.MinTime, req.MaxTime)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (fc *Storage) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 }
 
 func (fc *Storage) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
-	q, err := fc.queryable.Querier(ctx, req.Start, req.End)
+	q, err := fc.queryable.SamplesQuerier(ctx, req.Start, req.End)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (fc *Storage) LabelNames(ctx context.Context, req *storepb.LabelNamesReques
 }
 
 func (fc *Storage) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-	q, err := fc.queryable.Querier(ctx, req.Start, req.End)
+	q, err := fc.queryable.SamplesQuerier(ctx, req.Start, req.End)
 	if err != nil {
 		return nil, err
 	}

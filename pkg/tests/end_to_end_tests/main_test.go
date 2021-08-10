@@ -48,8 +48,16 @@ var (
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
 	promContainer          testcontainers.Container
+	// We need a different set of environment for testing exemplars. This is because behaviour of exemplars and that of samples
+	// are very different in Prometheus, in nutshell, exemplars are WAL only. The moment a block is created, exemplars are lost.
+	// Hence, we need an isolated environment for testing exemplars. In the future, once exemplars become block compatible,
+	// we can remove this separation.
+	promExemplarContainer testcontainers.Container
 	// extensionState expects setExtensionState() to be called before using its value.
 	extensionState testhelpers.ExtensionState
+	// timeseriesWithExemplars is a singleton instance for testing generated timeseries for exemplars based E2E tests.
+	// The called must ensure to use by call/copy only.
+	timeseriesWithExemplars []prompb.TimeSeries
 )
 
 func init() {
@@ -126,7 +134,7 @@ func TestMain(m *testing.M) {
 				os.Exit(1)
 			}
 
-			storagePath, err := generatePrometheusWALFile()
+			_, storagePath, err := generatePrometheusWAL(false)
 			if err != nil {
 				fmt.Println("Error creating WAL file", err)
 				os.Exit(1)
@@ -137,6 +145,15 @@ func TestMain(m *testing.M) {
 				fmt.Println("Error setting up container", err)
 				os.Exit(1)
 			}
+
+			var storageExemplarPath string
+			timeseriesWithExemplars, storageExemplarPath, err = generatePrometheusWAL(true)
+			if err != nil {
+				fmt.Println("Error creating WAL with exemplar file", err)
+				os.Exit(1)
+			}
+
+			promExemplarContainer, err = testhelpers.StartPromContainer(storageExemplarPath, ctx)
 			defer func() {
 				if err != nil {
 					panic(err)

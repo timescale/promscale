@@ -43,7 +43,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"__name__", "bar"},
 					Results: model.RowResults{{1, 1, []int64{}}},
 					Err:     error(nil),
@@ -68,7 +68,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"__name__", "bar"},
 					Results: model.RowResults{{"{}", []time.Time{}, []float64{}}},
 					Err:     fmt.Errorf("some error"),
@@ -92,7 +92,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"foo", "bar"},
 					Results: model.RowResults{{"prom_data", "foo", []int64{1}}},
 					Err:     error(nil),
@@ -123,7 +123,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"foo", "bar"},
 					Results: model.RowResults{{"prom_data", "foo", []int64{1}}},
 					Err:     error(nil),
@@ -164,7 +164,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"__name__", "bar"},
 					Results: model.RowResults{{0}},
 					Err:     error(nil),
@@ -194,7 +194,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"foo", "bar"},
 					Results: model.RowResults(nil),
 					Err:     error(nil),
@@ -243,7 +243,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"__name__", "bar"},
 					Results: model.RowResults{{"prom_data", "foo", []int64{1}}},
 					Err:     error(nil),
@@ -441,7 +441,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value !~ $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"__name__", "^(?:)$"},
 					Results: model.RowResults{{"prom_data", "foo", []int64{1}}, {"prom_data", "bar", []int64{1}}},
 					Err:     error(nil),
@@ -545,7 +545,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"foo", "bar"},
 					Results: model.RowResults{{"prom_data", "metric", []int64{1, 99, 98}}},
 					Err:     error(nil),
@@ -606,7 +606,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value = $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"foo", "bar", "foo1", "bar1", "foo2", "^(?:^bar2)$", "foo3", "^(?:bar3$)$"},
 					Results: model.RowResults{{"prom_data", "metric", []int64{1, 4, 5}}},
 					Err:     error(nil),
@@ -667,7 +667,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ON (m.id = s.metric_id)\n\t" +
 						"WHERE NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $1 and l.value != $2) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $3 and l.value = $4) AND labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $5 and l.value ~ $6) AND NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $7 and l.value ~ $8)\n\t" +
 						"GROUP BY m.metric_name, m.table_schema\n\t" +
-						"ORDER BY m.metric_name",
+						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"foo", "", "foo1", "bar1", "foo2", "^(?:^bar2$)$", "foo3", "^(?:bar3)$"},
 					Results: model.RowResults{{"prom_data", "metric", []int64{1, 2}}},
 					Err:     error(nil),
@@ -714,7 +714,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					TableSchema: "prom_data",
 					TableName:   "metricTableName_1",
 					SeriesTable: "metric_1",
-				},
+				}, false,
 			)
 			if err != nil {
 				t.Fatalf("error setting up mock cache: %s", err.Error())

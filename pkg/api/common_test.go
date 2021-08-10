@@ -336,6 +336,6 @@ func TestMarshalExemplar(t *testing.T) {
 		err := marshalExemplarResponse(&s, tc.result)
 		require.NoError(t, err, tc.name)
 		response := s.String()
-		require.Equal(t, tc.expectedStr, response[:len(response)-1], tc.name) // Avoid the ending '\n' in str. This is due to the default behaviour of marshalCommonFooter.
+		require.Equal(t, tc.expectedStr, response, tc.name)
 	}
 }

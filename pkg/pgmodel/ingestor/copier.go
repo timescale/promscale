@@ -7,7 +7,6 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/prompb"
 	"math"
 	"sort"
 	"strings"
@@ -25,9 +24,12 @@ import (
 
 const maxCopyRequestsPerTxn = 100
 
+type processor func([]pgmodel.Insertable) error
+
 type copyRequest struct {
-	data  *pendingBuffer
-	table string
+	data              *pendingBuffer
+	exemplarProcessor processor
+	table             string
 }
 
 var (
@@ -37,12 +39,11 @@ var (
 
 type copyBatch []copyRequest
 
-func (c copyBatch) VisitSeries(cb func(s *pgmodel.Series) error) error {
-	for _, req := range c {
-		samples := req.data.batch.GetSeriesSamples()
-		for _, sample := range samples {
-			err := cb(sample.GetSeries())
-			if err != nil {
+func (reqs copyBatch) VisitSeries(callBack func(s *pgmodel.Series) error) error {
+	for _, req := range reqs {
+		insertables := req.data.batch.Data()
+		for i := range insertables {
+			if err := callBack(insertables[i].Series()); err != nil {
 				return err
 			}
 		}
@@ -50,12 +51,13 @@ func (c copyBatch) VisitSeries(cb func(s *pgmodel.Series) error) error {
 	return nil
 }
 
-func (c copyBatch) NumSeries() int {
-	i := 0
-	for _, req := range c {
-		i += len(req.data.batch.GetSeriesSamples())
+func (reqs copyBatch) processExemplars() error {
+	for _, req := range reqs {
+		if err := req.exemplarProcessor(req.data.batch.Data()); err != nil {
+			return fmt.Errorf("process exemplars: %w", err)
+		}
 	}
-	return i
+	return nil
 }
 
 // Handles actual insertion into the DB.
@@ -65,6 +67,12 @@ func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter) {
 	// a legacy from when we used CopyFrom to perform the insertions, and may
 	// change in the future.
 	insertBatch := make([]copyRequest, 0, maxCopyRequestsPerTxn)
+	processErr := func(err error) {
+		for i := range insertBatch {
+			insertBatch[i].data.reportResults(err)
+			insertBatch[i].data.release()
+		}
+	}
 	for {
 		var ok bool
 		insertBatch, ok = copierGetBatch(insertBatch, in)
@@ -99,12 +107,15 @@ func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter) {
 		}
 		insertBatch = insertBatch[:dst+1]
 
-		err := sw.WriteSeries(copyBatch(insertBatch))
+		batch := copyBatch(insertBatch)
+
+		err := sw.WriteSeries(batch)
 		if err != nil {
-			for i := range insertBatch {
-				insertBatch[i].data.reportResults(err)
-				insertBatch[i].data.release()
-			}
+			processErr(fmt.Errorf("copier: writing series: %w", err))
+			return
+		}
+		if err = batch.processExemplars(); err != nil {
+			processErr(fmt.Errorf("copier: processing exemplars: %w", err))
 			return
 		}
 
@@ -308,7 +319,9 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 
 		visitor := req.data.batch.Visitor()
-		visitor.Visit(
+		defer visitor.Close()
+
+		err = visitor.Visit(
 			func(t time.Time, v float64, seriesId int64) {
 				hasSamples = true
 				timeSamples = append(timeSamples, t)
@@ -323,22 +336,20 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 				exemplarLbls = append(exemplarLbls, lvalues)
 			},
 		)
+		if err != nil {
+			return err
+		}
 		epoch := visitor.LowestEpoch()
 		if epoch < lowestEpoch {
 			lowestEpoch = epoch
 		}
-		if err = visitor.Error(); err != nil {
-			visitor.Close()
-			return err
-		}
-		visitor.Close()
 
 		numRowsTotal += numSamples + numExemplars
 		totalSamples += numSamples
 		totalExemplars += numExemplars
 		if hasSamples {
 			numRowsPerInsert = append(numRowsPerInsert, numSamples)
-			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1::NAME, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesIdSamples)
+			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesIdSamples)
 		}
 		if hasExemplars {
 			// We cannot send 2-D [][]TEXT to postgres via the pgx.encoder. For this and easier querying reasons, we create a
@@ -419,12 +430,4 @@ func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows
 	}
 	MetadataBatchInsertDuration.Observe(time.Since(start).Seconds())
 	return insertedRows, nil
-}
-
-func labelsToStringSlice(lbls []prompb.Label) []string {
-	s := make([]string, len(lbls))
-	for i := range lbls {
-		s[i] = lbls[i].Value
-	}
-	return s
 }

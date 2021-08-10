@@ -162,20 +162,25 @@ func corsWrapper(conf *Config, f http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func setResponseHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
+func setResponseHeaders(w http.ResponseWriter, samples *promql.Result, isExemplar bool, warnings storage.Warnings) {
 	w.Header().Set("Content-Type", "application/json")
 	if warnings != nil && len(warnings) > 0 {
 		w.Header().Set("Cache-Control", "no-store")
 	}
-	if res != nil && res.Value != nil {
+	if isExemplar {
+		// Exemplar response headers do not return StatusNoContent, if data is nil.
 		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusNoContent)
+		return
 	}
+	if samples != nil && samples.Value != nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setResponseHeaders(w, res, warnings)
+	setResponseHeaders(w, res, false, warnings)
 	switch resVal := res.Value.(type) {
 	case promql.Vector:
 		warnings := make([]string, 0, len(res.Warnings))
@@ -205,6 +210,7 @@ func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Wa
 }
 
 func respondExemplar(w http.ResponseWriter, data []pgmodel.ExemplarQueryResult) {
+	setResponseHeaders(w, nil, true, nil)
 	_ = marshalExemplarResponse(w, data)
 }
 
@@ -263,7 +269,7 @@ func marshalMatrixResponse(writer io.Writer, data promql.Matrix, warnings []stri
 	out := &errorWrapper{writer: writer}
 	marshalCommonHeader(out)
 	marshalMatrixData(out, data)
-	marshalCommonFooter(out, warnings)
+	marshalCommonFooter(out, warnings, true)
 	return out.err
 }
 

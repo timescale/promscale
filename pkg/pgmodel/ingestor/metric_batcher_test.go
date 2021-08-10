@@ -123,7 +123,10 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 
 	// Verify exemplar label value positioning.
 	for i, insertable := range insertables {
-		itr := insertable.Iterator()
+		if !insertable.IsOfType(model.Exemplar) {
+			continue
+		}
+		itr := insertable.Iterator().(model.ExemplarsIterator)
 		// Note: Each insertable contains exactly a single exemplar sample.
 		require.True(t, itr.HasNext())
 		labels, _, _ := itr.Value()

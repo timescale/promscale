@@ -18,9 +18,13 @@ import (
 func QueryExemplar(ctx context.Context, query string, queryable promql.Queryable, start, end time.Time) ([]model.ExemplarQueryResult, error) {
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
-		return nil, fmt.Errorf("PromQL parse: %w", err)
+		return nil, err
 	}
 	selectors := parser.ExtractSelectors(expr)
+	if len(selectors) < 1 {
+		// We have nothing to fetch if there are no selectors.
+		return []model.ExemplarQueryResult{}, nil
+	}
 	querier := queryable.ExemplarsQuerier(ctx)
 	results, err := querier.Select(start, end, selectors...)
 	if err != nil {

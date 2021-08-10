@@ -44,8 +44,6 @@ type pgxDispatcher struct {
 }
 
 func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
-	cmc := make(chan struct{}, 1)
-
 	numCopiers := cfg.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")
@@ -65,12 +63,11 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		handleDecompression = skipDecompression
 	}
 
-	var labelArrayOID uint32
-	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&labelArrayOID)
-	if err != nil {
-		return nil, err
+	if err := model.RegisterCustomPgTypes(conn); err != nil {
+		return nil, fmt.Errorf("registering custom pg types: %w", err)
 	}
 
+	labelArrayOID := model.GetCustomTypeOID(model.LabelArray)
 	sw := NewSeriesWriter(conn, labelArrayOID)
 
 	for i := 0; i < numCopiers; i++ {
@@ -82,7 +79,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		metricTableNames:       cache,
 		scache:                 scache,
 		exemplarKeyPosCache:    eCache,
-		completeMetricCreation: cmc,
+		completeMetricCreation: make(chan struct{}, 1),
 		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
@@ -91,14 +88,9 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	}
 	runBatchWatcher(inserter.doneChannel)
 
-	if err := model.RegisterCustomPgTypes(conn); err != nil {
-		return nil, fmt.Errorf("registering custom pg types: %w", err)
-	}
-
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
-	err := inserter.CompleteMetricCreation()
-	if err != nil {
+	if err := inserter.CompleteMetricCreation(); err != nil {
 		return nil, err
 	}
 
@@ -214,7 +206,7 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 			}
 		}
 		// the following is usually non-blocking, just a channel insert
-		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, containsExemplars: dataTS.ContainsExemplars, finished: workFinished, errChan: errChan}
+		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
 	reportIncomingBatch(numRows)
 	reportOutgoing := func() {
@@ -298,11 +290,10 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 }
 
 type insertDataRequest struct {
-	metric            string
-	finished          *sync.WaitGroup
-	data              []model.Insertable
-	containsExemplars bool
-	errChan           chan error
+	metric   string
+	finished *sync.WaitGroup
+	data     []model.Insertable
+	errChan  chan error
 }
 
 func (idr *insertDataRequest) reportResult(err error) {

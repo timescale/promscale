@@ -24,7 +24,13 @@ func newQueryExemplars(qr *pgxQuerier) *queryExemplars {
 
 func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.Matcher) ([]model.ExemplarQueryResult, error) {
 	results := make([]model.ExemplarQueryResult, 0, len(matchersList))
+	evaluatedMatchers := make(map[string]struct{})
 	for _, matchers := range matchersList {
+		matcherStr := fmt.Sprintf("%v", matchers)
+		if _, seenPreviously := evaluatedMatchers[matcherStr]; seenPreviously {
+			continue
+		}
+		evaluatedMatchers[matcherStr] = struct{}{}
 		metadata, err := getEvaluationMetadata(q.tools, timestamp.FromTime(start), timestamp.FromTime(end), GetPromQLMetadata(matchers))
 		if err != nil {
 			return nil, fmt.Errorf("get evaluation metadata: %w", err)
@@ -33,14 +39,16 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 		metadata.isExemplarQuery = true
 
 		if metadata.isSingleMetric {
-			tableName, err := q.tools.getMetricTableName(metadata.metric, true)
+			metricInfo, err := q.tools.getMetricTableName("", metadata.metric, true)
 			if err != nil {
 				if err == errors.ErrMissingTableName {
-					return nil, nil
+					// The received metric does not have exemplars. Skip the remaining part and continue with
+					// the next matchers.
+					continue
 				}
 				return nil, fmt.Errorf("get metric table name: %w", err)
 			}
-			metadata.timeFilter.metric = tableName
+			metadata.timeFilter.metric = metricInfo.TableName
 
 			exemplarRows, err := fetchSingleMetricExemplars(q.tools, metadata)
 			if err != nil {
@@ -102,7 +110,7 @@ func fetchSingleMetricExemplars(tools *queryTools, metadata *evalMetadata) ([]ex
 // using the supplied query parameters.
 func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
 	// First fetch series IDs per metric.
-	metrics, correspondingSeriesIds, err := GetMetricNameSeriesIds(tools.conn, metadata)
+	metrics, _, correspondingSeriesIds, err := GetMetricNameSeriesIds(tools.conn, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("get metric-name series-ids: %w", err)
 	}
@@ -118,20 +126,24 @@ func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([
 	// Generate queries for each metric and send them in a single batch.
 	for i := range metrics {
 		//TODO batch getMetricTableName
-		tableName, err := tools.getMetricTableName(metrics[i], true)
+		metricInfo, err := tools.getMetricTableName("", metrics[i], true)
 		if err != nil {
-			// If the metric table is missing, there are no results for this query.
 			if err == errors.ErrMissingTableName {
+				// If the metric table is missing, there are no results for this query.
 				continue
 			}
 			return nil, err
 		}
-		tFilter := timeFilter{metric: tableName, start: metadata.timeFilter.start, end: metadata.timeFilter.end}
+		tFilter := timeFilter{
+			metric: metricInfo.TableName,
+			start:  metadata.timeFilter.start,
+			end:    metadata.timeFilter.end,
+		}
 		sqlQuery, err := buildMultipleMetricExemplarsQuery(tFilter, correspondingSeriesIds[i])
 		if err != nil {
 			return nil, fmt.Errorf("build timeseries by series-id: %w", err)
 		}
-		metricTableNames = append(metricTableNames, tableName)
+		metricTableNames = append(metricTableNames, metricInfo.TableName)
 		batch.Queue(sqlQuery)
 		numQueries += 1
 	}

@@ -97,6 +97,17 @@ func (p *pgxSamplesSeriesSet) At() storage.Series {
 	if err != nil {
 		p.err = err
 	}
+
+	if row.metricOverride != "" {
+		for i := range lls {
+			if lls[i].Name == model.MetricNameLabelName {
+				lls[i].Value = row.metricOverride
+				break
+			}
+		}
+	}
+	lls = append(lls, row.GetAdditionalLabels()...)
+
 	sort.Sort(lls)
 	ps.labels = lls
 
@@ -118,21 +129,7 @@ func getLabelsFromLabelIds(labelIds []int64, index map[int64]labels.Label) (labe
 		}
 		lls = append(lls, label)
 	}
-
-	if row.metricOverride != "" {
-		for i := range lls {
-			if lls[i].Name == model.MetricNameLabelName {
-				lls[i].Value = row.metricOverride
-				break
-			}
-		}
-	}
-	lls = append(lls, row.GetAdditionalLabels()...)
-
-	sort.Sort(lls)
-	ps.labels = lls
-
-	return ps
+	return lls, nil
 }
 
 // Err implements storage.SeriesSet.

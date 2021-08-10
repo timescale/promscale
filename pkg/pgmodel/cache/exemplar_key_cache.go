@@ -38,5 +38,6 @@ func (pos *ExemplarLabelsPosCache) GetLabelPositions(metric string) (map[string]
 }
 
 func (pos *ExemplarLabelsPosCache) SetorUpdateLabelPositions(metric string, index map[string]int) {
+	/* #nosec */
 	pos.cache.Update(metric, index, uint64(unsafe.Sizeof(index)))
 }

@@ -132,6 +132,10 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 
 	require.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
 	for i := range row.Args {
+		if _, ok := row.Args[i].([]time.Time); ok {
+			// Skip trivial time comparison, otherwise we get complains regarding time.Time.loc as nil.
+			continue
+		}
 		switch row.Args[i].(type) {
 		case pgtype.TextEncoder:
 			ci := pgtype.NewConnInfo()

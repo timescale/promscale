@@ -8,9 +8,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -70,7 +67,7 @@ func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
 	qrySamples := newQuerySamples(q)
 	sampleRows, _, err := qrySamples.fetchSamplesRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
 	if err != nil {
-		return nil, fmt.Errorf("fetching sample rows: %w", err)
+		return nil, err
 	}
 	results, err := buildTimeSeries(sampleRows, q.tools.labelsReader)
 	if err != nil {

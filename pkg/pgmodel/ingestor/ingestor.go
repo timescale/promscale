@@ -67,14 +67,6 @@ type result struct {
 	err     error
 }
 
-func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	return model.NewPromSamples(l, ts.Samples), len(ts.Samples), nil
-}
-
-func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	return model.NewPromExemplars(l, ts.Exemplars), len(ts.Exemplars), nil
-}
-
 // Ingest transforms and ingests the timeseries data into Timescale database.
 // input:
 //     tts the []Timeseries to insert
@@ -150,8 +142,7 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngest
 
 func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
 	var (
-		totalRows         uint64
-		containsExemplars bool
+		totalRowsExpected uint64
 
 		insertables = make(map[string][]model.Insertable)
 	)
@@ -182,16 +173,15 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 			if err != nil {
 				return 0, fmt.Errorf("samples: %w", err)
 			}
-			totalRows += uint64(count)
+			totalRowsExpected += uint64(count)
 			insertables[metricName] = append(insertables[metricName], samples)
 		}
 		if len(ts.Exemplars) > 0 {
-			containsExemplars = true
 			exemplars, count, err := ingestor.exemplars(series, ts)
 			if err != nil {
 				return 0, fmt.Errorf("exemplars: %w", err)
 			}
-			totalRows += uint64(count)
+			totalRowsExpected += uint64(count)
 			insertables[metricName] = append(insertables[metricName], exemplars)
 		}
 		// we're going to free req after this, but we still need the samples,
@@ -201,13 +191,19 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 	}
 	releaseMem()
 
-	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(model.Data{
-		Rows: insertables, ReceivedTime: time.Now(), ContainsExemplars: containsExemplars},
-	)
-	if errSamples == nil && numInsertablesIngested != totalRows {
-		return numInsertablesIngested, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRows, numInsertablesIngested)
+	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: insertables, ReceivedTime: time.Now()})
+	if errSamples == nil && numInsertablesIngested != totalRowsExpected {
+		return numInsertablesIngested, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRowsExpected, numInsertablesIngested)
 	}
 	return numInsertablesIngested, errSamples
+}
+
+func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewPromSamples(l, ts.Samples), len(ts.Samples), nil
+}
+
+func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewPromExemplars(l, ts.Exemplars), len(ts.Exemplars), nil
 }
 
 // ingestMetadata ingests metric metadata received from Prometheus. It runs as a secondary routine, independent from

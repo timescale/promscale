@@ -66,7 +66,7 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 		results, err := exemplar.QueryExemplar(ctx, r.FormValue("query"), queryable, start, end)
 		if err != nil {
 			log.Error("msg", err, "endpoint", "query_exemplars")
-			respondError(w, http.StatusInternalServerError, err, "execution_error")
+			respondError(w, http.StatusInternalServerError, err, "bad_data")
 			return
 		}
 		metrics.QueryDuration.Observe(time.Since(begin).Seconds())

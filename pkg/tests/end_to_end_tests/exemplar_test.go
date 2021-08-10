@@ -77,14 +77,19 @@ var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
 
 var exemplarTS_2 = []prompb.TimeSeries{ // If timeseries are sent with exemplars in same alloc.
 	{
-		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_3}, {Name: "job", Value: "generator"}},
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_3}, {Name: "job", Value: "generator"}, {Name: "le", Value: "1"}},
+		Samples:   []prompb.Sample{{Timestamp: 1, Value: 1}},
+		Exemplars: []prompb.Exemplar{rawExemplar[1]},
+	},
+	{
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_3}},
 		Samples:   []prompb.Sample{{Timestamp: 0, Value: 0}},
 		Exemplars: []prompb.Exemplar{rawExemplar[0]},
 	},
 	{
-		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_3}, {Name: "job", Value: "generator"}, {Name: "le", Value: "1"}},
-		Samples:   []prompb.Sample{{Timestamp: 1, Value: 1}},
-		Exemplars: []prompb.Exemplar{rawExemplar[1]},
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_3}, {Name: "job", Value: "generator"}},
+		Samples:   []prompb.Sample{{Timestamp: 0, Value: 0}},
+		Exemplars: []prompb.Exemplar{rawExemplar[0]},
 	},
 	{
 		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_2}, {Name: "job", Value: "generator"}, {Name: "le", Value: "10"}},
@@ -99,9 +104,10 @@ var exemplarTS_2 = []prompb.TimeSeries{ // If timeseries are sent with exemplars
 }
 
 type exemplarTableRow struct {
-	ts                  float64 // Epoch in postgres is decimal.
+	ts  float64 // Epoch in postgres is decimal.
+	val float64
+
 	exemplarLabelValues []string
-	val                 float64
 }
 
 func TestExemplarIngestion(t *testing.T) {
@@ -140,9 +146,9 @@ func TestExemplarIngestion(t *testing.T) {
 
 		// Check inserted exemplars.
 		expectedRows := []exemplarTableRow{
-			{0.004, []string{model.EmptyExemplarValues, "tests", "localhost:9100"}, 3},
-			{0.003, []string{}, 2},
-			{0.002, []string{"E2E", "abcdef"}, 1},
+			{0.004, 3, []string{model.EmptyExemplarValues, "tests", "localhost:9100"}},
+			{0.003, 2, []string{}},
+			{0.002, 1, []string{"E2E", "abcdef"}},
 		}
 		rows, err = db.Query(context.Background(), "SELECT extract(epoch FROM time), exemplar_label_values, value FROM prom_data_exemplar."+metric_2+" ORDER BY time DESC")
 		require.NoError(t, err)
@@ -165,6 +171,10 @@ func TestExemplarIngestion(t *testing.T) {
 			require.Equal(t, r.val, val)
 			i++
 		}
+		insertablesIngested, metadataIngested, err = ingestor.Ingest(newWriteRequestWithTs(exemplarTS_2))
+		require.NoError(t, err)
+		require.Equal(t, 10, int(insertablesIngested))
+		require.Equal(t, 0, int(metadataIngested))
 	})
 }
 
@@ -177,10 +187,10 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		insertablesIngested, metadataIngested, err := ingestor.Ingest(newWriteRequestWithTs(exemplarTS_2))
+		_, _, err = ingestor.Ingest(newWriteRequestWithTs(exemplarTS_2))
 		require.NoError(t, err)
-		require.Equal(t, 8, int(insertablesIngested))
-		require.Equal(t, 0, int(metadataIngested))
+		// We do not check num of insertablesIngested and metadataIngested returned above from ingestor.Ingest,
+		// since the return will be 0, as they have already been ingested by TestExemplarIngestion.
 
 		labelsReader := lreader.NewLabelsReader(pgxconn.NewPgxConn(db), cache.NewLabelsCache(cache.DefaultConfig))
 		r := querier.NewQuerier(
@@ -207,7 +217,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		bSlice, err = json.Marshal(results)
 		require.NoError(t, err)
 		require.Equal(t,
-			`[{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
+			`[{"seriesLabels":{"__name__":"test_metric_3_total"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
 			string(bSlice))
 
 		// Query all exemplars of all metrics that we inserted.
@@ -217,7 +227,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		bSlice, err = json.Marshal(results)
 		require.NoError(t, err)
 		require.Equal(t,
-			`[{"seriesLabels":{"__name__":"test_metric_1","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":4}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
+			`[{"seriesLabels":{"__name__":"test_metric_1","job":"generator","le":"100"},"exemplars":[{"labels":{"component":"tests","instance":"localhost:9100"},"value":3,"timestamp":4}]},{"seriesLabels":{"__name__":"test_metric_2_histogram","job":"generator","le":"10"},"exemplars":[{"labels":{},"value":2,"timestamp":3}]},{"seriesLabels":{"__name__":"test_metric_3_total"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator"},"exemplars":[{"labels":{"TraceID":"abcde"},"value":0,"timestamp":1}]},{"seriesLabels":{"__name__":"test_metric_3_total","job":"generator","le":"1"},"exemplars":[{"labels":{"TraceID":"abcdef","component":"E2E"},"value":1,"timestamp":2}]}]`,
 			string(bSlice))
 	})
 }

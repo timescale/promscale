@@ -21,11 +21,12 @@ func GetPromQLMetadata(matchers []*labels.Matcher) *promqlMetadata {
 }
 
 type timeFilter struct {
-	metric string
-	schema string
-	column string
-	start  string
-	end    string
+	metric      string
+	schema      string
+	column      string
+	seriesTable string
+	start       string
+	end         string
 }
 
 type evalMetadata struct {
@@ -57,6 +58,8 @@ func getEvaluationMetadata(tools *queryTools, start, end int64, promMetadata *pr
 	metric := builder.GetMetricName()
 	timeFilter := timeFilter{
 		metric: metric,
+		schema: builder.GetSchemaName(),
+		column: builder.GetColumnName(),
 		start:  toRFC3339Nano(start),
 		end:    toRFC3339Nano(end),
 	}
@@ -75,7 +78,7 @@ func getEvaluationMetadata(tools *queryTools, start, end int64, promMetadata *pr
 			timeFilter:     timeFilter,
 			clauses:        clauses,
 			values:         values,
-			promqlMetadata: new(promqlMetadata),
+			promqlMetadata: promMetadata,
 		}, nil
 	}
 	// Multiple metric.
@@ -84,7 +87,6 @@ func getEvaluationMetadata(tools *queryTools, start, end int64, promMetadata *pr
 		return nil, fmt.Errorf("building multiple metric clauses: %w", err)
 	}
 	return &evalMetadata{
-		metric:         metric,
 		timeFilter:     timeFilter,
 		clauses:        clauses,
 		values:         values,

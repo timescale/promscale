@@ -1,8 +1,8 @@
 package model
 
 import (
+	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/timestamp"
@@ -13,28 +13,20 @@ type batchVisitor struct {
 	data        []Insertable
 	lowestEpoch SeriesEpoch
 	batchCopy   *Batch // Maintain a copy of batch to update the stats.
-	err         error
 }
 
-var batchVisitorPool = sync.Pool{New: func() interface{} { return new(batchVisitor) }}
-
-func putBatchVisitor(vtr *batchVisitor) {
-	vtr.data = vtr.data[:0]
-	vtr.lowestEpoch = SeriesEpoch(math.MaxInt64)
-	vtr.batchCopy = nil
-	vtr.err = nil
-	batchVisitorPool.Put(vtr)
+func getBatchVisitor(batch *Batch) *batchVisitor {
+	return &batchVisitor{batch.data, SeriesEpoch(math.MaxInt64), batch}
 }
 
-// Close preserves the visitor to be re-used.
 func (vtr *batchVisitor) Close() {
-	putBatchVisitor(vtr)
-}
-
-// Error returns the most recent error, that is encountered while iterating over insertables.
-// It must be called after Visit() has completed.
-func (vtr *batchVisitor) Error() error {
-	return vtr.err
+	// TODO: Is this explanation right?
+	// Remove the reference from the batch so that GC can collect the visitor alloc.
+	// Otherwise, this may lead to mem leak, as batch itself cannot be GCed since its being
+	// linked with the visitor. Hence, now we have both *Batch and *batchVisitor unable to
+	// GCed.
+	vtr.data = nil
+	vtr.batchCopy = nil
 }
 
 // LowestEpoch returns the lowest epoch value encountered while visiting insertables.
@@ -46,7 +38,7 @@ func (vtr *batchVisitor) LowestEpoch() SeriesEpoch {
 func (vtr *batchVisitor) Visit(
 	appendSamples func(t time.Time, v float64, seriesId int64),
 	appendExemplars func(t time.Time, v float64, seriesId int64, lvalues []string),
-) {
+) error {
 	var (
 		seriesId    SeriesID
 		seriesEpoch SeriesEpoch
@@ -69,8 +61,7 @@ func (vtr *batchVisitor) Visit(
 		}
 		seriesId, seriesEpoch, err = insertable.Series().GetSeriesID()
 		if err != nil {
-			vtr.err = err
-			continue
+			return fmt.Errorf("get series-id: %w", err)
 		}
 		switch insertable.Type() {
 		case Sample:
@@ -90,6 +81,7 @@ func (vtr *batchVisitor) Visit(
 		}
 		updateStats(seriesEpoch, minTs)
 	}
+	return nil
 }
 
 func labelsToStringSlice(lbls []prompb.Label) []string {

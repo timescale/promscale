@@ -5,6 +5,7 @@
 package api
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -20,7 +21,7 @@ func marshalVectorResponse(writer io.Writer, data promql.Vector, warnings []stri
 	out := &errorWrapper{writer: writer}
 	marshalCommonHeader(out)
 	marshalVectorData(out, data)
-	marshalCommonFooter(out, warnings)
+	marshalCommonFooter(out, warnings, true)
 	return out.err
 }
 
@@ -28,7 +29,7 @@ func marshalExemplarResponse(writer io.Writer, data []model.ExemplarQueryResult)
 	out := &errorWrapper{writer: writer}
 	marshalCommonHeader(out)
 	marshalExemplarData(out, data)
-	marshalCommonFooter(out, nil)
+	marshalCommonFooter(out, nil, false)
 	return out.err
 }
 
@@ -36,7 +37,7 @@ func marshalCommonHeader(out *errorWrapper) {
 	out.WriteStrings(`{"status":"success","data":`)
 }
 
-func marshalCommonFooter(out *errorWrapper, warnings []string) {
+func marshalCommonFooter(out *errorWrapper, warnings []string, applyNewLine bool) {
 	{
 		if len(warnings) != 0 {
 			out.WriteStrings(`,"warnings":[`)
@@ -52,7 +53,10 @@ func marshalCommonFooter(out *errorWrapper, warnings []string) {
 			out.WriteStrings(`]`)
 		}
 	}
-	out.WriteStrings("}\n")
+	out.WriteStrings("}")
+	if applyNewLine {
+		out.WriteStrings("\n")
+	}
 }
 
 func marshalMatrixData(out *errorWrapper, data promql.Matrix) {
@@ -107,7 +111,7 @@ func writeExemplarData(out *errorWrapper, data []model.ExemplarData) {
 		out.WriteStrings(`},"value":"`)
 		out.writeFloat(d.Value)
 		out.WriteStrings(`","timestamp":`)
-		out.writeJsonFloat(float64(d.Ts) / 1000)
+		out.WriteStrings(fmt.Sprintf("%.3f", float64(d.Ts)/1000))
 		out.WriteStrings(`}`)
 		if i != len(data)-1 {
 			out.WriteStrings(`,`)

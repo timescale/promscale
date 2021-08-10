@@ -17,21 +17,21 @@ type InsertableExemplar interface {
 	OrderExemplarLabels(index map[string]int) (positionExists bool)
 }
 
-var promExemplarsPool = sync.Pool{New: func() interface{} { return new(promExemplars) }}
+var promExemplarsPool = sync.Pool{New: func() interface{} { return new(PromExemplars) }}
 
-func putExemplars(s *promExemplars) {
+func putExemplars(s *PromExemplars) {
 	s.series = nil
 	s.exemplars = s.exemplars[:0]
 	promExemplarsPool.Put(s)
 }
 
-type promExemplars struct {
+type PromExemplars struct {
 	series    *Series
 	exemplars []prompb.Exemplar
 }
 
 func NewPromExemplars(series *Series, exemplarSet []prompb.Exemplar) InsertableExemplar {
-	s := promExemplarsPool.Get().(*promExemplars)
+	s := promExemplarsPool.Get().(*PromExemplars)
 	s.series = series
 	if cap(s.exemplars) < len(exemplarSet) {
 		s.exemplars = make([]prompb.Exemplar, len(exemplarSet))
@@ -40,15 +40,15 @@ func NewPromExemplars(series *Series, exemplarSet []prompb.Exemplar) InsertableE
 	return s
 }
 
-func (t *promExemplars) Series() *Series {
+func (t *PromExemplars) Series() *Series {
 	return t.series
 }
 
-func (t *promExemplars) Count() int {
+func (t *PromExemplars) Count() int {
 	return len(t.exemplars)
 }
 
-func (t *promExemplars) MaxTs() int64 {
+func (t *PromExemplars) MaxTs() int64 {
 	numSamples := len(t.exemplars)
 	if numSamples == 0 {
 		// If no samples exist, return a -ve int, so that the stats
@@ -58,7 +58,6 @@ func (t *promExemplars) MaxTs() int64 {
 	return t.exemplars[numSamples-1].Timestamp
 }
 
-// todo: pool
 type exemplarsIterator struct {
 	curr  int
 	total int
@@ -84,7 +83,7 @@ func (i *exemplarsIterator) Close() {
 	exemplarsIteratorPool.Put(i)
 }
 
-func (t *promExemplars) Iterator() Iterator {
+func (t *PromExemplars) Iterator() Iterator {
 	return &exemplarsIterator{data: t.exemplars, total: len(t.exemplars)}
 }
 
@@ -99,9 +98,19 @@ func (t *promExemplars) Iterator() Iterator {
 // when for same metric, two different series have exemplars with different labels_set, which will require the cache
 // to have positions as union of the different labels_set. For this to happen, we need to re-fetch the positions with
 // the missing keys and update the underlying cache (which happens in the calling function).
-func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionExists bool) {
+func (t *PromExemplars) OrderExemplarLabels(index map[string]int) (positionExists bool) {
 	for i := range t.exemplars {
-		orderedLabels := make([]prompb.Label, len(index))
+		// We fetch the highest position in the index because we need to fill all the positions, even if they are empty.
+		// Example: the index can be
+		// {"some_a": 1, "some_b": 2, "job": 3, "TraceID": 4, "some_c": 5, "random_label": 6}
+		// This means that when the position was created, there were already some indexes with position 1 and 2, but they
+		// have not been asked while fetching the positions.
+		//
+		// If exemplar labels are [{"job": "promscale"}, {"TraceID": "some_id"}, {"random_label": "some_value"}]
+		// When we write the values here, we have to write like
+		// "", "", promscale, "some_id", "", "some_value" (Note: the index is index-1, as array in postgres starts from 1).
+		// Hence, we need to allocate the highest possible index position present in the index.
+		orderedLabels := make([]prompb.Label, highestPos(index))
 		fillEmptyValues(orderedLabels)
 		labels := t.exemplars[i].Labels
 		for _, l := range labels {
@@ -118,6 +127,16 @@ func (t *promExemplars) OrderExemplarLabels(index map[string]int) (positionExist
 	return true
 }
 
+func highestPos(index map[string]int) (highest int) {
+	highest = -1
+	for _, v := range index {
+		if v > highest {
+			highest = v
+		}
+	}
+	return
+}
+
 const EmptyExemplarValues = ""
 
 func fillEmptyValues(s []prompb.Label) []prompb.Label {
@@ -128,7 +147,7 @@ func fillEmptyValues(s []prompb.Label) []prompb.Label {
 	return s
 }
 
-func (t *promExemplars) AllExemplarLabelKeys() []string {
+func (t *PromExemplars) AllExemplarLabelKeys() []string {
 	uniqueKeys := make(map[string]struct{})
 	for i := range t.exemplars {
 		l := t.exemplars[i].Labels
@@ -147,15 +166,15 @@ func getSlice(m map[string]struct{}) []string {
 	return s
 }
 
-func (t *promExemplars) Type() InsertableType {
+func (t *PromExemplars) Type() InsertableType {
 	return Exemplar
 }
 
-func (t *promExemplars) IsOfType(typ InsertableType) bool {
+func (t *PromExemplars) IsOfType(typ InsertableType) bool {
 	return typ == Exemplar
 }
 
-func (t *promExemplars) Close() {
+func (t *PromExemplars) Close() {
 	putExemplars(t)
 }
 

@@ -32,7 +32,7 @@ const (
 
 	postgresUser    = "postgres"
 	promUser        = "prom"
-	emptyPromConfig = "global:\n  scrape_interval: 10s"
+	emptyPromConfig = "global:\n  scrape_interval: 10s\nstorage:\n  exemplars:\n    max_exemplars: 100000"
 
 	Superuser   = true
 	NoSuperuser = false
@@ -685,9 +685,10 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 			"--storage.tsdb.path=/prometheus",
 			"--web.console.libraries=/usr/share/prometheus/console_libraries",
 			"--web.console.templates=/usr/share/prometheus/consoles",
+			"--log.level=debug",
 
 			// Enable features.
-			"--enable-feature=promql-at-modifier,promql-negative-offset",
+			"--enable-feature=promql-at-modifier,promql-negative-offset,exemplar-storage",
 
 			// This is to stop Prometheus from messing with the data.
 			"--storage.tsdb.retention.time=30y",

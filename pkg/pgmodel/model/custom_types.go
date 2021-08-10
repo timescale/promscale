@@ -65,6 +65,23 @@ const (
 	LabelValueArray
 )
 
+func GetCustomTypeOID(t PgCustomType) uint32 {
+	switch t {
+	case LabelArray:
+		if !isLabelArrayOIDSet {
+			panic("label_array oid is not set. This needs to be set first before calling the type.")
+		}
+		return labelArrayOID
+	case LabelValueArray:
+		if !isLabelValueArrayOIDSet {
+			panic("label_value_array oid is not set.  This needs to be set first before calling the type.")
+		}
+		return labelValueArrayOID
+	default:
+		panic("invalid type")
+	}
+}
+
 // GetCustomType returns a custom pgtype.
 func GetCustomType(t PgCustomType) *pgtype.ArrayType {
 	switch t {

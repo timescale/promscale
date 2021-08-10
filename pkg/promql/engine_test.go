@@ -190,7 +190,7 @@ func (qry *errQueryable) Samples(_ context.Context, mint int64, maxt int64) (Sam
 	return &errSamplesQuerier{ErrStorage{errors.New("storage error")}}, nil
 }
 
-func (qry *errQueryable) Exemplar(_ context.Context) ExemplarQuerier {
+func (qry *errQueryable) Exemplar(_ context.Context) querier.ExemplarQuerier {
 	return nil
 }
 

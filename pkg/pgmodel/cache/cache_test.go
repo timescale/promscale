@@ -5,6 +5,7 @@
 package cache
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/clockcache"
@@ -114,7 +115,7 @@ func TestMetricTableNameCache(t *testing.T) {
 
 			// Check if specific schema key is set with correct value
 			if c.schema == "" && c.tableSchema != "" {
-				mInfo, err = cache.Get(c.tableSchema, c.metric)
+				mInfo, err = cache.Get(c.tableSchema, c.metric, false)
 
 				if mInfo.TableSchema != c.tableSchema {
 					t.Fatalf("found wrong cache schema value: got %s wanted %s", mInfo.TableSchema, c.tableSchema)
@@ -136,43 +137,44 @@ func TestMetricTableNameCache(t *testing.T) {
 
 func TestMetricNameCacheExemplarEntry(t *testing.T) {
 	metric, table := "test_metric", "test_table"
+	mInfo := model.MetricInfo{TableName: table}
 	cache := NewMetricCache(Config{MetricsCacheSize: 2})
-	_, found := cache.Get(metric, false)
-	if found != errors.ErrEntryNotFound {
+	_, foundErr := cache.Get("", metric, false)
+	if foundErr != errors.ErrEntryNotFound {
 		t.Fatal("entry found for non inserted data")
 	}
-	err := cache.Set(metric, table, false)
+	err := cache.Set("", metric, mInfo, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	val, err := cache.Get(metric, false)
+	val, err := cache.Get("", metric, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if val != table {
+	if !reflect.DeepEqual(val, mInfo) {
 		t.Fatalf("metric entry does not match table entry")
 	}
-	_, err = cache.Get(metric, true)
+	_, err = cache.Get("", metric, true)
 	if err != errors.ErrEntryNotFound {
 		t.Fatalf("exemplar metric not set, but still exists")
 	}
-	err = cache.Set(metric, table, true)
+	err = cache.Set("", metric, mInfo, true)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
 	// Should have entry both for exemplar metric and sample metric.
-	val, err = cache.Get(metric, true)
+	val, err = cache.Get("", metric, true)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	if val != table {
+	if !reflect.DeepEqual(val, mInfo) {
 		t.Fatalf("does not match")
 	}
-	val, err = cache.Get(metric, false)
+	val, err = cache.Get("", metric, false)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	if val != table {
+	if !reflect.DeepEqual(val, mInfo) {
 		t.Fatalf("does not match")
 	}
 }

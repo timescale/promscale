@@ -133,10 +133,10 @@ func (dstwrapper *float8ArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src []by
 }
 
 type sampleRow struct {
-	labelIds []int64
-	times    TimestampSeries
-	values   *pgtype.Float8Array
-	err      error
+	labelIds       []int64
+	times          TimestampSeries
+	values         *pgtype.Float8Array
+	err            error
 	metricOverride string
 	schema         string
 	column         string

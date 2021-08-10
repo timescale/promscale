@@ -127,19 +127,16 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 // Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
 // returns the 'inserted' as true.
 func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}) {
-	updateProps := func(elem *element) {
+	self.insertLock.Lock()
+	defer self.insertLock.Unlock()
+	existingElement, inserted, inCache := self.insert(key, value, size)
+	// Avoid EQL value comparisons as value is always an interface. Incase, the value is of type map, EQL operator will panic.
+	if !inserted && inCache && (existingElement.size != size || !reflect.DeepEqual(existingElement.value, value)) {
+		// If it is inserted (instead of updated), we don't need to go into this block, as the props are already updated.
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
-		elem.value = value
-		elem.size = size
-	}
-	self.insertLock.Lock()
-	existingElement, inserted, inCache := self.insert(key, value, size)
-	self.insertLock.Unlock()
-	// Avoid EQL value comparisons as value is always an interface. Incase, the value is of type map, EQL operator will panic.
-	if !inserted && inCache && (!reflect.DeepEqual(existingElement.value, value) || existingElement.size != size) {
-		// If it's not inserted, we don't need to go into this block, as the props are already updated.
-		updateProps(existingElement)
+		existingElement.value = value
+		existingElement.size = size
 	}
 	return existingElement.value
 }

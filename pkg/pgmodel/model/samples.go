@@ -30,7 +30,7 @@ func NewPromSamples(series *Series, sampleSet []prompb.Sample) Insertable {
 	if cap(s.samples) < len(sampleSet) {
 		s.samples = make([]prompb.Sample, len(sampleSet))
 	}
-	s.samples = sampleSet[:]
+	s.samples = sampleSet[:] // todo: is this right too?
 	return s
 }
 
@@ -42,7 +42,6 @@ func (t *promSamples) Count() int {
 	return len(t.samples)
 }
 
-// todo: pool
 type samplesIterator struct {
 	curr  int
 	total int

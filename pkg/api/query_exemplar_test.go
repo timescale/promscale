@@ -88,7 +88,7 @@ func TestQueryExemplar(t *testing.T) {
 			query:      `metric_name{job~="some_value.*"}`,
 			statusCode: http.StatusInternalServerError,
 			shouldErr:  true,
-			err:        `{"status":"error","errorType":"execution_error","error":"PromQL parse: 1:16: parse error: unexpected character inside braces: '~'"}`,
+			err:        `{"status":"error","errorType":"bad_data","error":"1:16: parse error: unexpected character inside braces: '~'"}`,
 		},
 	}
 

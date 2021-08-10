@@ -69,7 +69,7 @@ const (
 		SELECT %[6]s
 		FROM
 		(
-			SELECT time, value
+			SELECT time, %[9]s as value
 			FROM %[1]s metric
 			WHERE metric.series_id = series.id
 			AND time >= '%[4]s'
@@ -89,7 +89,7 @@ const (
 		SELECT series_id, %[6]s
 		FROM
 		(
-			SELECT series_id, time, value
+			SELECT series_id, time, %[9]s as value
 			FROM %[1]s metric
 			WHERE
 			time >= '%[4]s'
@@ -100,26 +100,23 @@ const (
 	) as result ON (result.value_array is not null AND result.series_id = series.id)`
 
 	defaultColumnName = "value"
-	exemplarFormat = "result.exemplar_label_values"
 )
 
 func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{}, parser.Node, TimestampSeries, error) {
 	// Aggregators are not in exemplar queries. In sample query, we have aggregations since they are
 	// to serve promql evaluations. But, exemplar queries are fetch-only queries. Their responses are not meant to be
-	// evaluated by any PromQL function.
+	// served by any PromQL function.
 	qf, node, err := getAggregators(metadata.promqlMetadata)
 	if err != nil {
 		return "", nil, nil, nil, err
 	}
 
-	var (
-		selectors, selectorClauses []string
-		values                     []interface{}
-	)
+	var selectors, selectorClauses []string
+	values := metadata.values
 
 	if qf.timeClause != "" {
 		var timeClauseBound string
-		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, metadata.values, qf.timeParams...)
+		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
 		if err != nil {
 			return "", nil, nil, nil, err
 		}
@@ -145,17 +142,19 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 			orderByClause = "ORDER BY series_id, time"
 		}
 	}
-	tFilter := metadata.timeFilter
+	filter := metadata.timeFilter
 	finalSQL := fmt.Sprintf(template,
-		pgx.Identifier{schema.Data, tFilter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, tFilter.metric}.Sanitize(),
+		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(cases, " AND "),
-		tFilter.start,
-		tFilter.end,
+		filter.start,
+		filter.end,
 		strings.Join(selectorClauses, ", "),
 		strings.Join(selectors, ", "),
 		orderByClause,
+		pgx.Identifier{filter.column}.Sanitize(),
 	)
+
 	return finalSQL, values, node, qf.tsSeries, nil
 }
 
@@ -169,17 +168,21 @@ func buildMultipleMetricSamplesQuery(filter timeFilter, series []pgmodel.SeriesI
 		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
 		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(s, ","),
-		filter.startTime,
-		filter.endTime,
-	)
+		filter.start,
+		filter.end,
+	), nil
 }
 
 /* MULTIPLE METRIC PATH (less common case) */
 /* The following two sql statements are for queries where the metric name is unknown in the query. The first query gets the
 * metric name and series_id array and the second queries individual metrics while passing down the array */
-const metricNameSeriesIDSQLFormat = `SELECT m.metric_name, array_agg(s.id) FROM _prom_catalog.series s
-INNER JOIN _prom_catalog.metric m ON (m.id = s.metric_id)
-WHERE %s GROUP BY m.metric_name ORDER BY m.metric_name`
+const metricNameSeriesIDSQLFormat = `SELECT m.table_schema, m.metric_name, array_agg(s.id)
+FROM _prom_catalog.series s
+INNER JOIN _prom_catalog.metric m
+ON (m.id = s.metric_id)
+WHERE %s
+GROUP BY m.metric_name, m.table_schema
+ORDER BY m.metric_name, m.table_schema`
 
 func buildMetricNameSeriesIDQuery(cases []string) string {
 	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))

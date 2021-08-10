@@ -1,52 +1,3 @@
--- get_exemplar_label_positions returns the position of label_keys as a one-to-one mapping with label_keys. It returns
--- the positions of all label keys corresponding to that metric, so that it remains easier to add null values to those indexes
--- whose labels are not present in the exemplar being inserted at the golang level.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(metric_name TEXT, label_keys TEXT[])
-RETURNS TABLE (metric_family_text TEXT, label_positions_map JSON) AS
-$$
-DECLARE
-    current_position INTEGER := 1; -- index in postgres starts from 1. Let's maintain the convention for less confusion.
-    new_position INTEGER;
-    k TEXT;
-BEGIN
--- check for existing pos
-    LOCK TABLE SCHEMA_CATALOG.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
-    -- If there isn't any data for the given metric_name in params.
-    IF ( SELECT count(*) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position p WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name ) THEN
-        FOREACH k in ARRAY label_keys LOOP
-            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name, k, current_position);
-            current_position := current_position + 1;
-        END LOOP;
-        RETURN QUERY (
-            SELECT row.metric_name, json_object_agg(row.key, row.position) FROM (
-                SELECT ep.metric_name as metric_name, ep.key as key, ep.pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position ep
-                    WHERE ep.metric_name=get_or_create_exemplar_label_key_positions.metric_name GROUP BY ep.metric_name, ep.key, ep.pos ORDER BY ep.pos
-            ) AS row GROUP BY row.metric_name LIMIT 1
-        );
-    RETURN;
-    END IF;
-
-    -- Position already exists for some keys. Let's add for the new keys only.
-    FOREACH k in ARRAY label_keys LOOP
-        IF (SELECT count(*) = 0 FROM SCHEMA_CATALOG.exemplar_label_key_position p WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name AND p.key=k) THEN
-            SELECT max(p.pos) + 1 INTO new_position FROM SCHEMA_CATALOG.exemplar_label_key_position p WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name;
-            RAISE NOTICE 'inserting key % at pos %', k, new_position;
-            INSERT INTO SCHEMA_CATALOG.exemplar_label_key_position VALUES (metric_name, k, new_position);
-            new_position := -1;
-        END IF;
-    END LOOP;
-    RETURN QUERY (
-    SELECT row.metric_name, json_object_agg(row.key, row.position) FROM (
-        SELECT p.metric_name as metric_name, p.key as key, p.pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position p
-            WHERE p.metric_name=get_or_create_exemplar_label_key_positions.metric_name GROUP BY p.metric_name, p.key, p.pos ORDER BY p.pos
-        ) AS row GROUP BY row.metric_name
-    );
-END;
-$$
-LANGUAGE PLPGSQL;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_writer;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_exemplar_label_key_positions(TEXT, TEXT[]) TO prom_reader;
-
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(metric_name TEXT)
 RETURNS JSON AS
 $$
@@ -57,7 +8,6 @@ $$
 $$
 LANGUAGE SQL
 STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_writer;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(TEXT) TO prom_reader;
 
 -- creates exemplar table in prom_data_exemplar schema if the table does not exists. This function
@@ -89,7 +39,7 @@ BEGIN
     EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_reader', table_name_fetched);
     EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_writer', table_name_fetched);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_EXEMPLAR.%I TO prom_modifier', table_name_fetched);
-    EXECUTE format('CREATE UNIQUE INDEX exemplar_index_%s ON SCHEMA_DATA_EXEMPLAR.%I (series_id, time) INCLUDE (value)',
+    EXECUTE format('CREATE UNIQUE INDEX ei_%s ON SCHEMA_DATA_EXEMPLAR.%I (series_id, time) INCLUDE (value)',
                    table_name_fetched, table_name_fetched);
     INSERT INTO SCHEMA_CATALOG.exemplar (metric_name, table_name)
         VALUES (metric_name_fetched, table_name_fetched);

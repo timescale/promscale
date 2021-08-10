@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -65,11 +66,28 @@ func getMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.
 	if err != nil {
 		return nil, nil, fmt.Errorf("delete series build clauses: %w", err)
 	}
-	metrics, correspondingSeriesIDs, err := querier.GetMetricNameSeriesIds(conn, querier.GetMetadata(clauses, values))
+	metrics, schemas, correspondingSeriesIDs, err := querier.GetMetricNameSeriesIds(conn, querier.GetMetadata(clauses, values))
 	if err != nil {
 		return nil, nil, fmt.Errorf("get metric-name series-ids: %w", err)
 	}
+	metrics, correspondingSeriesIDs = filterMetricNameSeriesIds(metrics, schemas, correspondingSeriesIDs)
 	return metrics, correspondingSeriesIDs, nil
+}
+
+// filterMetricNameSeriesIds returns the metrics, schemas and corresonding series-ids that are associated with
+// actual metric hypertables only.
+func filterMetricNameSeriesIds(metrics, schemas []string, seriesIds [][]model.SeriesID) (filteredMetrics []string, filteredSeriesIds [][]model.SeriesID) {
+	for i := range metrics {
+		metricSchema := schemas[i]
+		if metricSchema != schema.Data {
+			continue
+		}
+		metric := metrics[i]
+		correspondingSeriesIds := seriesIds[i]
+		filteredMetrics = append(filteredMetrics, metric)
+		filteredSeriesIds = append(filteredSeriesIds, correspondingSeriesIds)
+	}
+	return
 }
 
 func convertSeriesIDsToInt64s(s []model.SeriesID) []int64 {

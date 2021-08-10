@@ -52,7 +52,7 @@ func labelsHandler(queryable promql.Queryable) http.HandlerFunc {
 }
 
 func respondLabels(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setResponseHeaders(w, res, warnings)
+	setResponseHeaders(w, res, false, warnings)
 	resp := &response{
 		Status: "success",
 		Data:   res.Value,

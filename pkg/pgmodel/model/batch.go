@@ -13,9 +13,8 @@ import (
 // Data wraps incoming data with its in-timestamp. It is used to warn if the rate
 // of incoming samples vs outgoing samples is too low, based on time.
 type Data struct {
-	Rows              map[string][]Insertable
-	ReceivedTime      time.Time
-	ContainsExemplars bool
+	Rows         map[string][]Insertable
+	ReceivedTime time.Time
 }
 
 // Batch is an iterator over a collection of Insertables that returns
@@ -25,8 +24,7 @@ type Batch struct {
 	seriesIndex int
 	dataIndex   int
 
-	MinSeen           int64
-	ContainsExemplars bool
+	MinSeen int64
 }
 
 // NewBatch returns a new batch that can hold samples and exemplars.
@@ -78,13 +76,7 @@ func (t *Batch) ResetPosition() {
 }
 
 func (t *Batch) Visitor() *batchVisitor {
-	vtr := batchVisitorPool.Get().(*batchVisitor)
-	if cap(vtr.data) < len(t.data) {
-		vtr.data = make([]Insertable, 0, len(t.data))
-	}
-	vtr.data = t.data[:]
-	vtr.batchCopy = t
-	return vtr
+	return getBatchVisitor(t)
 }
 
 func (t *Batch) Absorb(other Batch) {

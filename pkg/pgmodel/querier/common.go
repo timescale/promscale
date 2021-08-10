@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	getSampleMetricTableSQL   = "SELECT table_name FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1)"
+	getMetricTableSQL         = "SELECT table_schema, table_name, series_table FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1, $2)"
 	getExemplarMetricTableSQL = "SELECT COALESCE(table_name, '') FROM " + schema.Catalog + ".exemplar WHERE metric_name=$1"
 )
 
@@ -51,32 +51,34 @@ type QueryHints struct {
 	Lookback    time.Duration
 }
 
-func GetMetricNameSeriesIds(conn pgxconn.PgxConn, metadata *evalMetadata) (metrics []string, correspondingSeriesIDs [][]model.SeriesID, err error) {
+func GetMetricNameSeriesIds(conn pgxconn.PgxConn, metadata *evalMetadata) (metrics, schemas []string, correspondingSeriesIDs [][]model.SeriesID, err error) {
 	sqlQuery := buildMetricNameSeriesIDQuery(metadata.clauses)
 	rows, err := conn.Query(context.Background(), sqlQuery, metadata.values...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("querying metric-name series-ids: %w", err)
+		return nil, nil, nil, err
 	}
 	defer rows.Close()
 
-	metrics, correspondingSeriesIDs, err = getSeriesPerMetric(rows)
+	metrics, schemas, correspondingSeriesIDs, err = getSeriesPerMetric(rows)
 	if err != nil {
-		return nil, nil, fmt.Errorf("get series per metric: %w", err)
+		return nil, nil, nil, err
 	}
 	return
 }
 
-func getSeriesPerMetric(rows pgxconn.PgxRows) ([]string, [][]model.SeriesID, error) {
+func getSeriesPerMetric(rows pgxconn.PgxRows) ([]string, []string, [][]model.SeriesID, error) {
 	metrics := make([]string, 0)
+	schemas := make([]string, 0)
 	series := make([][]model.SeriesID, 0)
 
 	for rows.Next() {
 		var (
 			metricName string
+			schemaName string
 			seriesIDs  []int64
 		)
-		if err := rows.Scan(&metricName, &seriesIDs); err != nil {
-			return nil, nil, err
+		if err := rows.Scan(&schemaName, &metricName, &seriesIDs); err != nil {
+			return nil, nil, nil, err
 		}
 
 		sIDs := make([]model.SeriesID, 0, len(seriesIDs))
@@ -86,8 +88,13 @@ func getSeriesPerMetric(rows pgxconn.PgxRows) ([]string, [][]model.SeriesID, err
 		}
 
 		metrics = append(metrics, metricName)
+		schemas = append(schemas, schemaName)
 		series = append(series, sIDs)
 	}
 
-	return metrics, series, nil
+	return metrics, schemas, series, nil
+}
+
+func toMilis(t time.Time) int64 {
+	return t.UnixNano() / 1e6
 }

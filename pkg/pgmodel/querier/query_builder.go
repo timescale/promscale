@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/blang/semver/v4"
@@ -220,29 +219,29 @@ type aggregators struct {
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
 // todo: investigate if query hints can have only node and lookback
 func getAggregators(md *promqlMetadata) (*aggregators, parser.Node, error) {
-	ast := md.path // PromQL AST.
-	queryHints := md.queryHints
-	selectHints := md.selectHints
-	if !extension.ExtensionIsInstalled || queryHints == nil || hasSubquery(ast) || selectHints == nil {
+	path := md.path // PromQL AST.
+	qh := md.queryHints
+	hints := md.selectHints
+	if !extension.ExtensionIsInstalled || qh == nil || hasSubquery(path) || hints == nil {
 		return getDefaultAggregators(), nil, nil
 	}
 
 	//switch on the current node being processed
-	vs, isVectorSelector := queryHints.CurrentNode.(*parser.VectorSelector)
+	vs, isVectorSelector := qh.CurrentNode.(*parser.VectorSelector)
 	if isVectorSelector {
 		/* Try to optimize the aggregation first since that would return less data than a plain vector selector */
-		if len(ast) >= 2 {
+		if len(path) >= 2 {
 			//switch on the 2nd-to-last last path node
-			node := ast[len(ast)-2]
+			node := path[len(path)-2]
 			callNode, isCall := node.(*parser.Call)
 			if isCall {
 				switch callNode.Func.Name {
 				case "delta":
-					agg, err := callAggregator(selectHints, callNode.Func.Name)
+					agg, err := callAggregator(hints, callNode.Func.Name)
 					return agg, node, err
 				case "rate", "increase":
 					if rateIncreaseExtensionRange(extension.PromscaleExtensionVersion) {
-						agg, err := callAggregator(selectHints, callNode.Func.Name)
+						agg, err := callAggregator(hints, callNode.Func.Name)
 						return agg, node, err
 					}
 				}
@@ -254,40 +253,23 @@ func getAggregators(md *promqlMetadata) (*aggregators, parser.Node, error) {
 		* in a vector selector window(step) this decreases the amount of samples transferred from the DB to Promscale
 		* by orders of magnitude. A vector selector aggregate also does not require ordered inputs which saves
 		* a sort and allows for parallel evaluation. */
-		if selectHints.Step > 0 &&
-			selectHints.Range == 0 && /* So this is not an aggregate. That's optimized above */
-			!calledByTimestamp(ast) &&
+		if hints.Step > 0 &&
+			hints.Range == 0 && /* So this is not an aggregate. That's optimized above */
+			!calledByTimestamp(path) &&
 			vs.OriginalOffset == time.Duration(0) &&
 			vs.Offset == time.Duration(0) &&
 			vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
 			qf := aggregators{
 				valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
-				valueParams: []interface{}{queryHints.StartTime, queryHints.EndTime, selectHints.Step, queryHints.Lookback.Milliseconds()},
+				valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
 				unOrdered:   true,
-				tsSeries:    newRegularTimestampSeries(queryHints.StartTime, queryHints.EndTime, time.Duration(selectHints.Step)*time.Millisecond),
+				tsSeries:    newRegularTimestampSeries(qh.StartTime, qh.EndTime, time.Duration(hints.Step)*time.Millisecond),
 			}
-			return &qf, queryHints.CurrentNode, nil
+			return &qf, qh.CurrentNode, nil
 		}
 	}
 
 	return getDefaultAggregators(), nil, nil
-}
-
-func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, []string, [][]pgmodel.SeriesID, error) {
-	metrics := make([]string, 0)
-	schemas := make([]string, 0)
-	series := make([][]pgmodel.SeriesID, 0)
-
-	for rows.Next() {
-		var (
-			metricName string
-			schemaName string
-			seriesIDs  []int64
-		)
-		if err := rows.Scan(&schemaName, &metricName, &seriesIDs); err != nil {
-			return nil, nil, nil, err
-		}
-	}
 }
 
 func getDefaultAggregators() *aggregators {
@@ -310,13 +292,14 @@ func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, 
 		if queryStart != queryEnd {
 			return nil, fmt.Errorf("query start should equal query end")
 		}
-
-		metrics = append(metrics, metricName)
-		schemas = append(schemas, schemaName)
-		series = append(series, sIDs)
 	}
-
-	return metrics, schemas, series, nil
+	qf := aggregators{
+		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
+		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), stepDuration.Milliseconds(), rangeDuration.Milliseconds()},
+		unOrdered:   false,
+		tsSeries:    newRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
+	}
+	return &qf, nil
 }
 
 // anchorValue adds anchors to values in regexps since PromQL docs
