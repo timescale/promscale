@@ -64,7 +64,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			t.Fatal(err)
 		}
 		verifyRetentionPeriod(t, db, "TEST", 90*24*time.Hour)
-		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test2', INTERVAL '7 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('prom_data', 'test2', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
@@ -77,11 +77,11 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		}
 		verifyRetentionPeriod(t, db, "TEST", 6*time.Hour)
 		verifyRetentionPeriod(t, db, "test2", 7*time.Hour)
-		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('TEST', INTERVAL '8 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('prom_data', 'TEST', INTERVAL '8 hours')")
 		if err != nil {
 			t.Error(err)
 		}
-		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('test2')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('prom_data', 'test2')")
 		if err != nil {
 			t.Error(err)
 		}
@@ -89,7 +89,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 		verifyRetentionPeriod(t, db, "TEST", 8*time.Hour)
 
 		//set on a metric that doesn't exist should create the metric and set the parameter
-		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test_new_metric1', INTERVAL '7 hours')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('prom_data', 'test_new_metric1', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
 		}
@@ -112,7 +112,7 @@ func verifyRetentionPeriod(t testing.TB, db *pgxpool.Pool, metricName string, ex
 	var dur time.Duration
 
 	err := db.QueryRow(context.Background(),
-		`SELECT EXTRACT(epoch FROM _prom_catalog.get_metric_retention_period($1))`,
+		`SELECT EXTRACT(epoch FROM _prom_catalog.get_metric_retention_period('prom_data', $1))`,
 		metricName).Scan(&durS)
 	if err != nil {
 		t.Error(err)
@@ -518,7 +518,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 
 		beforeDropCorrect(4, "before drop")
 
-		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5))
+		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2, $3)", "prom_data", "test", chunkEnds.Add(time.Second*5))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -567,7 +567,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		beforeDeleteCorrect("after first")
 
 		//rerun again -- nothing changes
-		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5))
+		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2, $3)", "prom_data", "test", chunkEnds.Add(time.Second*5))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -575,8 +575,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 
 		// reruns don't change anything until the dead series are actually dropped
 		for i := 0; i < 5; i++ {
-			drop := fmt.Sprintf("CALL _prom_catalog.drop_metric_chunks($1, $2, now()+'%v hours')", i)
-			_, err = db.Exec(context.Background(), drop, "test", chunkEnds.Add(time.Second*5))
+			drop := fmt.Sprintf("CALL _prom_catalog.drop_metric_chunks($1, $2, $3, now()+'%v hours')", i)
+			_, err = db.Exec(context.Background(), drop, "prom_data", "test", chunkEnds.Add(time.Second*5))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -628,8 +628,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		for i := 5; i < 10; i++ {
-			drop := fmt.Sprintf("CALL _prom_catalog.drop_metric_chunks($1, $2, now()+'%v hours')", i)
-			_, err = db.Exec(context.Background(), drop, "test", chunkEnds.Add(time.Second*5))
+			drop := fmt.Sprintf("CALL _prom_catalog.drop_metric_chunks($1, $2, $3, now()+'%v hours')", i)
+			_, err = db.Exec(context.Background(), drop, "prom_data", "test", chunkEnds.Add(time.Second*5))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -729,7 +729,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			t.Error(err)
 		}
 
-		_, err = dbMaint.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2)", "test", chunkEnds.Add(time.Second*5))
+		_, err = dbMaint.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2, $3)", "prom_data", "test", chunkEnds.Add(time.Second*5))
 		if err != nil {
 			t.Fatal(err)
 		}

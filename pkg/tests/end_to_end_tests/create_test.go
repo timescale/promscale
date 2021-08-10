@@ -1306,7 +1306,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 			t.Error("chunk compressed too soon")
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test', INTERVAL '100 years')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('prom_data', 'test', INTERVAL '100 years')")
 		if err != nil {
 			t.Error(err)
 		}
@@ -1474,7 +1474,7 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 			t.Error("chunk compressed too soon")
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('test', INTERVAL '100 years')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('prom_data', 'test', INTERVAL '100 years')")
 		if err != nil {
 			t.Error(err)
 		}
