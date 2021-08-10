@@ -248,3 +248,11 @@ CREATE TABLE IF NOT EXISTS link
     FOREIGN KEY (span_id, trace_id) REFERENCES span (span_id, trace_id) ON DELETE CASCADE
 );
 CREATE INDEX ON link USING GIN (attributes jsonb_path_ops);
+
+/*
+CREATE OR REPLACE FUNCTION put_attributes(_attributes jsonb, _attribute_type attribute_type) RETURNS TABLE ()
+AS $sql$
+
+$sql$
+LANGUAGE SQL VOLATILE STRICT
+;*/
