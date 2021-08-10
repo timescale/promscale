@@ -29,20 +29,67 @@ $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE
 ;
 
+CREATE OR REPLACE FUNCTION resource_attribute_type() RETURNS smallint AS
+$sql$
+SELECT (1<<1)::smallint
+$sql$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE
+;
+
+CREATE OR REPLACE FUNCTION event_attribute_type() RETURNS smallint AS
+$sql$
+SELECT (1<<2)::smallint
+$sql$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE
+;
+
+CREATE OR REPLACE FUNCTION link_attribute_type() RETURNS smallint AS
+$sql$
+SELECT (1<<3)::smallint
+$sql$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE
+;
+
 CREATE OR REPLACE FUNCTION is_span_attribute_type(_attribute_type attribute_type) RETURNS BOOLEAN AS
 $sql$
 SELECT _attribute_type & span_attribute_type() = span_attribute_type()
 $sql$
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
+;
+
+CREATE OR REPLACE FUNCTION is_resource_attribute_type(_attribute_type attribute_type) RETURNS BOOLEAN AS
+$sql$
+SELECT _attribute_type & resource_attribute_type() = resource_attribute_type()
+$sql$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
+;
+
+CREATE OR REPLACE FUNCTION is_event_attribute_type(_attribute_type attribute_type) RETURNS BOOLEAN AS
+$sql$
+SELECT _attribute_type & event_attribute_type() = event_attribute_type()
+$sql$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
+;
+
+CREATE OR REPLACE FUNCTION is_link_attribute_type(_attribute_type attribute_type) RETURNS BOOLEAN AS
+$sql$
+SELECT _attribute_type & link_attribute_type() = link_attribute_type()
+$sql$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
 ;
 
 DROP TABLE IF EXISTS attribute_key CASCADE;
 CREATE TABLE attribute_key
 (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    key text NOT NULL UNIQUE,
+    id BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    key text NOT NULL,
     attribute_type attribute_type NOT NULL
 );
+CREATE UNIQUE INDEX ON attribute_key (key) INCLUDE (id);
+CREATE INDEX ON attribute_key (key) INCLUDE (id) WHERE is_span_attribute_type(attribute_type);
+CREATE INDEX ON attribute_key (key) INCLUDE (id) WHERE is_resource_attribute_type(attribute_type);
+CREATE INDEX ON attribute_key (key) INCLUDE (id) WHERE is_event_attribute_type(attribute_type);
+CREATE INDEX ON attribute_key (key) INCLUDE (id) WHERE is_link_attribute_type(attribute_type);
 
 DROP TABLE IF EXISTS attribute CASCADE;
 CREATE TABLE attribute
@@ -65,21 +112,25 @@ BEGIN
     LOOP
         EXECUTE format($sql$
             CREATE TABLE attribute_%s PARTITION OF attribute FOR VALUES WITH (MODULUS %s, REMAINDER %s)
-            $sql$,
-            _i,
-            _max,
-            _i - 1
-        );
+            $sql$, _i, _max, _i - 1);
         EXECUTE format($sql$
             ALTER TABLE attribute_%s ADD PRIMARY KEY (id)
-            $sql$,
-            _i
-        );
+            $sql$, _i);
         EXECUTE format($sql$
             ALTER TABLE attribute_%s ADD UNIQUE (key_id, value) INCLUDE (id)
-            $sql$,
-            _i
-        );
+            $sql$, _i);
+        EXECUTE format($sql$
+            CREATE INDEX ON attribute_%s USING BTREE (key_id) INCLUDE (id) WHERE is_span_attribute_type(attribute_type)
+            $sql$, _i);
+        EXECUTE format($sql$
+            CREATE INDEX ON attribute_%s USING BTREE (key_id) INCLUDE (id) WHERE is_resource_attribute_type(attribute_type)
+            $sql$, _i);
+        EXECUTE format($sql$
+            CREATE INDEX ON attribute_%s USING BTREE (key_id) INCLUDE (id) WHERE is_event_attribute_type(attribute_type)
+            $sql$, _i);
+        EXECUTE format($sql$
+            CREATE INDEX ON attribute_%s USING BTREE (key_id) INCLUDE (id) WHERE is_link_attribute_type(attribute_type)
+            $sql$, _i);
     END LOOP;
 END
 $block$
@@ -133,7 +184,7 @@ CREATE TABLE IF NOT EXISTS trace
 (
     id trace_id NOT NULL PRIMARY KEY,
     span_time_range tstzrange NOT NULL,
-    event_time_range tstzrange NOT NULL --should this be included?
+    event_time_range tstzrange NOT NULL default tstzrange('infinity', 'infinity', '()') --should this be included?
     --graph representation? --
 );
 
