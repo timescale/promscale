@@ -27,7 +27,8 @@ CREATE TABLE attribute
     attribute_type attribute_type NOT NULL,
     key text NOT NULL,
     value jsonb,
-    FOREIGN KEY (key) REFERENCES attribute_key (key) ON DELETE CASCADE
+    FOREIGN KEY (key) REFERENCES attribute_key (key) ON DELETE CASCADE,
+    UNIQUE (key, value) INCLUDE (id, attribute_type)
 )
 PARTITION BY HASH (key)
 ;
@@ -44,9 +45,6 @@ BEGIN
             $sql$, _i, _max, _i - 1);
         EXECUTE format($sql$
             ALTER TABLE attribute_%s ADD PRIMARY KEY (id)
-            $sql$, _i);
-        EXECUTE format($sql$
-            ALTER TABLE attribute_%s ADD UNIQUE (key, value) INCLUDE (id, attribute_type)
             $sql$, _i);
     END LOOP;
 END
