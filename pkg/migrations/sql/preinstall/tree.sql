@@ -1,3 +1,8 @@
+/*
+    this is just some scratch work to explore how we
+    might represent the DAGs that make up traces
+*/
+
 
 -- adjacency model
 -- each node has a "pointer" to its parent node
