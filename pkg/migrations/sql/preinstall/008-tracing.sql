@@ -107,8 +107,8 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.instrumentation_library
 (
     id bigint NOT NULL GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name text NOT NULL,
-    version text NOT NULL,
-    schema_url_id BIGINT NOT NULL REFERENCES SCHEMA_TRACING.schema_url(id),
+    version text,
+    schema_url_id BIGINT REFERENCES SCHEMA_TRACING.schema_url(id),
     UNIQUE(name, version, schema_url_id)
 );
 GRANT SELECT ON TABLE SCHEMA_TRACING.instrumentation_library TO prom_reader;

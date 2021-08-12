@@ -6,7 +6,7 @@
     this sql processes the json objects from the `trace_stg` tool into the tracing schema
 */
 
-set search_path to prom_tracing;
+set search_path to prom_trace;
 
 -- load the attribute_key and attribute tables with resource and span attributes
 do $do$
@@ -28,7 +28,7 @@ begin
         cross join
         (
             select jsonb_path_query(t.trace, '$.resourceSpans[*]') as trace
-            from trace_stg t
+            from public.trace_stg t
         ) t
         cross join lateral jsonb_path_query(
         t.trace,
@@ -44,4 +44,33 @@ $do$;
 
 select * from attribute_key;
 select * from attribute;
+
+-- load the span_name table
+insert into span_name (name)
+select jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].spans[*].name')
+from public.trace_stg t
+on conflict (name) do nothing
+;
+
+select * from span_name;
+
+-- load the schema_url table (none found in sample data)
+insert into schema_url (url)
+select jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].schemaUrl')
+from public.trace_stg t
+on conflict (url) do nothing
+;
+
+-- load the instrumentation_library table
+insert into instrumentation_library (name, version, schema_url_id)
+select distinct
+  i->>'name'
+, i->>'version'
+, null::bigint -- none in the sample data
+from public.trace_stg t
+cross join lateral jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].instrumentationLibrary') i
+on conflict (name, version, schema_url_id) do nothing
+;
+
+select * from instrumentation_library;
 
