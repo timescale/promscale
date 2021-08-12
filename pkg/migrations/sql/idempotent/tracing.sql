@@ -8,28 +8,28 @@ GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.text(SCHEMA_TRACING.trace_id) TO prom_r
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_attribute_type() RETURNS SCHEMA_TRACING.attribute_type AS
 $sql$
-SELECT (1<<0)::smallint
+SELECT (1<<0)::smallint::SCHEMA_TRACING.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_attribute_type() TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.resource_attribute_type() RETURNS SCHEMA_TRACING.attribute_type AS
 $sql$
-SELECT (1<<1)::smallint
+SELECT (1<<1)::smallint::SCHEMA_TRACING.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.resource_attribute_type() TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_attribute_type() RETURNS SCHEMA_TRACING.attribute_type AS
 $sql$
-SELECT (1<<2)::smallint
+SELECT (1<<2)::smallint::SCHEMA_TRACING.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_attribute_type() TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_attribute_type() RETURNS SCHEMA_TRACING.attribute_type AS
 $sql$
-SELECT (1<<3)::smallint
+SELECT (1<<3)::smallint::SCHEMA_TRACING.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_attribute_type() TO prom_reader;
