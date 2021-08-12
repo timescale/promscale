@@ -43,6 +43,15 @@ func main() {
 		}
 	}(tx, ctx)
 
+	_, err = tx.Exec(ctx, "drop table if exists public.trace_stg cascade")
+	if err != nil {
+		panic(err)
+	}
+	_, err = tx.Exec(ctx, "create table if not exists public.trace_stg (trace jsonb)")
+	if err != nil {
+		panic(err)
+	}
+
 	dec := json.NewDecoder(os.Stdin)
 	trace := make(map[string]interface{})
 	for {
@@ -54,7 +63,7 @@ func main() {
 		}
 
 		// insert the json object into the trace_stg table
-		_, err := tx.Exec(ctx, "insert into trace_stg (trace) values ($1)", trace)
+		_, err := tx.Exec(ctx, "insert into public.trace_stg (trace) values ($1)", trace)
 		if err != nil {
 			panic(err)
 		}

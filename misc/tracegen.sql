@@ -6,6 +6,8 @@
     this sql processes the json objects from the `trace_stg` tool into the tracing schema
 */
 
+set search_path to prom_tracing;
+
 -- load the attribute_key and attribute tables with resource and span attributes
 do $do$
 declare
@@ -42,3 +44,4 @@ $do$;
 
 select * from attribute_key;
 select * from attribute;
+
