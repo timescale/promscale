@@ -444,3 +444,71 @@ WITH (timescaledb.continuous, timescaledb.max_interval_per_job = '1000 weeks', t
 		require.Equal(t, 0, int(cnt), "Expected for cagg to have exactly 0 chunks since only data left in default retention period is too new to materialize")
 	})
 }
+
+func TestContinuousAgg2StepAgg(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescale2 {
+		t.Skip("2-step continuous aggregates need TimescaleDB 2.x support")
+	}
+	if *useExtension {
+		t.Skip("2-step continuous aggregates need TimescaleDB 2.x HA image")
+	}
+	if *useTimescaleOSS {
+		t.Skip("continuous aggregates need non-OSS version of TimescaleDB")
+	}
+	if *useMultinode {
+		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
+	}
+
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
+		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		require.NoError(t, err)
+		defer dbSuper.Close()
+		_, err = dbSuper.Exec(context.Background(), "CREATE EXTENSION timescaledb_toolkit")
+		require.NoError(t, err)
+
+		// Ingest test dataset.
+		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+
+		if _, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()"); err != nil {
+			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
+		}
+		if _, err := db.Exec(context.Background(),
+			`CREATE MATERIALIZED VIEW twa_cagg( time, series_id, tw)
+WITH (timescaledb.continuous) AS
+  SELECT time_bucket('1hour', time), series_id, time_weight('Linear', time, value) as tw
+    FROM prom_data.metric_2
+    GROUP BY time_bucket('1hour', time), series_id`); err != nil {
+			t.Fatalf("unexpected error while creating metric view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(),
+			`CREATE VIEW tw_1hour( time, series_id, value) AS
+  SELECT time, series_id, average(tw) as value
+    FROM twa_cagg`); err != nil {
+			t.Fatalf("unexpected error while creating metric view: %s", err)
+		}
+
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('public', 'tw_1hour')"); err != nil {
+			t.Fatalf("unexpected error while registering metric view: %s", err)
+		}
+
+		caggHypertable := ""
+		err = db.QueryRow(context.Background(), "SELECT hypertable_relation FROM _prom_catalog.get_storage_hypertable_info('public', 'tw_1hour', true)").Scan(&caggHypertable)
+		require.NoError(t, err)
+
+		cnt := 0
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('%s', older_than => NOW())`, caggHypertable)).Scan(&cnt)
+		require.NoError(t, err)
+		require.Greater(t, int(cnt), 0, "Expected for cagg to have at least one chunk")
+
+		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance(log_verbose=>true)")
+		require.NoError(t, err)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('%s', older_than => NOW())`, caggHypertable)).Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 0, int(cnt), "Expected for cagg to have no chunks, all outside of data retention period")
+	})
+}

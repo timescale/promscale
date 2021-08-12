@@ -12,6 +12,16 @@ UPDATE SCHEMA_CATALOG.metric SET series_table = table_name;
 ALTER TABLE SCHEMA_CATALOG.metric ALTER COLUMN series_table SET NOT NULL;
 COMMIT;
 
+-- table for storing continuous aggregate information for metric views that are based on them
+CREATE TABLE SCHEMA_CATALOG.metric_view_cagg (
+    view_schema NAME,
+    view_name NAME,
+    cagg_schema NAME,
+    cagg_name NAME,
+    PRIMARY KEY (view_schema, view_name)
+);
+GRANT SELECT ON TABLE SCHEMA_CATALOG.metric_view_cagg TO prom_reader;
+
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_metric_table_name_if_exists(TEXT);
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_confirmed_unused_series( TEXT, BIGINT[], TIMESTAMPTZ); 
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.mark_unused_series(TEXT, TIMESTAMPTZ, TIMESTAMPTZ);
