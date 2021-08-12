@@ -327,7 +327,7 @@ func StartPGContainer(
 		}
 		image = LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
 	case Timescale2, Multinode:
-		image = "timescale/timescaledb:latest-" + PGTag
+		image = "timescale/timescaledb-ha:" + PGTag + "-latest"
 	case Timescale2AndPromscale, MultinodeAndPromscale:
 		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
 	case VanillaPostgres:

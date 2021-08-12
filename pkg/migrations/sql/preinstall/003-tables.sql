@@ -109,6 +109,16 @@ GRANT SELECT ON TABLE SCHEMA_CATALOG.metric TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.metric TO prom_writer;
 GRANT USAGE ON SEQUENCE SCHEMA_CATALOG.metric_id_seq TO prom_writer;
 
+-- table for storing continuous aggregate information for metric views that are based on them
+CREATE TABLE SCHEMA_CATALOG.metric_view_cagg (
+    view_schema NAME,
+    view_name NAME,
+    cagg_schema NAME,
+    cagg_name NAME,
+    PRIMARY KEY (view_schema, view_name)
+);
+GRANT SELECT ON TABLE SCHEMA_CATALOG.metric_view_cagg TO prom_reader;
+
 CREATE TABLE SCHEMA_CATALOG.default (
     key TEXT PRIMARY KEY,
     value TEXT

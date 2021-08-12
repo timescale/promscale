@@ -243,10 +243,8 @@ DECLARE
   compressed_hypertable_name text;
 BEGIN
 
-   -- Note: if the inserted metric is a view, handle the necessary permissions and exit.
+   -- Note: if the inserted metric is a view, nothing to do.
    IF NEW.is_view THEN
-        EXECUTE format('GRANT USAGE ON SCHEMA %I TO prom_reader', NEW.table_schema);
-        EXECUTE format('GRANT SELECT ON TABLE %I.%I TO prom_reader', NEW.table_schema, NEW.table_name);
         RETURN NEW; 
    END IF;
 
@@ -1292,17 +1290,50 @@ GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL) TO 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(schema_name TEXT, metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
 AS $func$
+DECLARE
+    r SCHEMA_CATALOG.metric_view_cagg;
+    agg_schema NAME;
+    agg_name NAME;
+BEGIN
     --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
     --needs to run before update so row exists before update.
-    SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_retention_period.metric_name)
+    PERFORM SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_retention_period.metric_name)
     WHERE schema_name = 'SCHEMA_DATA';
 
-    UPDATE SCHEMA_CATALOG.metric SET retention_period = new_retention_period
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, set_metric_retention_period.metric_name));
+    --check if its a metric view with cagg
+    SELECT cagg_schema, cagg_name
+    INTO agg_schema, agg_name
+    FROM SCHEMA_CATALOG.metric_view_cagg
+    WHERE view_schema = schema_name
+    AND view_name = metric_name;
 
-    SELECT true;
+    IF NOT FOUND THEN
+        UPDATE SCHEMA_CATALOG.metric m SET retention_period = new_retention_period
+        WHERE m.table_schema = schema_name
+        AND m.metric_name = set_metric_retention_period.metric_name;
+
+        RETURN true;
+    END IF;
+
+    RAISE NOTICE 'Setting data retention period for all metrics with underlying continuous aggregate %.%', agg_schema, agg_name;
+
+    FOR r IN
+        SELECT mvc.*
+        FROM SCHEMA_CATALOG.metric_view_cagg mvc
+        WHERE mvc.cagg_schema = agg_schema
+        AND mvc.cagg_name = agg_name
+    LOOP
+        RAISE NOTICE 'Setting data retention for metrics %.%', r.view_schema, r.view_name;
+
+        UPDATE SCHEMA_CATALOG.metric m SET retention_period = new_retention_period
+        WHERE m.table_schema = r.view_schema
+        AND m.metric_name = r.view_name;
+    END LOOP;
+
+    RETURN true;
+END
 $func$
-LANGUAGE SQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, TEXT, INTERVAL)
 IS 'set a retention period for a specific metric (this overrides the default)';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, TEXT, INTERVAL)TO prom_admin;
@@ -1320,11 +1351,46 @@ GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(schema_name TEXT, metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
-    UPDATE SCHEMA_CATALOG.metric SET retention_period = NULL
-    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, reset_metric_retention_period.metric_name));
-    SELECT true;
+DECLARE
+    r SCHEMA_CATALOG.metric_view_cagg;
+    agg_schema NAME;
+    agg_name NAME;
+BEGIN
+
+    --check if its a metric view with cagg
+    SELECT cagg_schema, cagg_name
+    INTO agg_schema, agg_name
+    FROM SCHEMA_CATALOG.metric_view_cagg
+    WHERE view_schema = schema_name
+    AND view_name = metric_name;
+
+    IF NOT FOUND THEN
+        UPDATE SCHEMA_CATALOG.metric m SET retention_period = NULL
+        WHERE m.table_schema = schema_name
+        AND m.metric_name = reset_metric_retention_period.metric_name;
+
+        RETURN true;
+    END IF;
+
+    RAISE NOTICE 'Resetting data retention period for all metrics with underlying continuous aggregate %.%', agg_schema, agg_name;
+
+    FOR r IN
+        SELECT *
+        FROM SCHEMA_CATALOG.metric_view_cagg mvc
+        WHERE mvc.cagg_schema = agg_schema
+        AND mvc.cagg_name = agg_name
+    LOOP
+        RAISE NOTICE 'Resetting data retention for metrics %.%', r.view_schema, r.view_name;
+
+        UPDATE SCHEMA_CATALOG.metric m SET retention_period = NULL
+        WHERE m.table_schema = r.view_schema
+        AND m.metric_name = r.view_name;
+    END LOOP;
+
+    RETURN true;
+END
 $func$
-LANGUAGE SQL VOLATILE;
+LANGUAGE PLPGSQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT, TEXT)
 IS 'resets the retention period for a specific metric to using the default';
 GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT, TEXT) TO prom_admin;
@@ -1742,10 +1808,20 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.drop_metric_chunk_data(
 DECLARE
     metric_schema NAME;
     metric_table NAME;
+    metric_view BOOLEAN;
 BEGIN
-    SELECT table_schema, table_name
-    INTO STRICT metric_schema, metric_table
+    SELECT table_schema, table_name, is_view
+    INTO STRICT metric_schema, metric_table, metric_view
     FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, metric_name);
+
+    -- need to check for caggs when dealing with metric views
+    IF metric_view THEN
+        SELECT cagg_schema, cagg_name
+        INTO metric_schema, metric_table
+        FROM SCHEMA_CATALOG.metric_view_cagg mvc
+        WHERE mvc.view_schema = metric_schema
+        AND mvc.view_name = metric_table;
+    END IF;
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
@@ -1889,6 +1965,9 @@ GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(text, text, timesta
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(metric_schema_name text, metric_table_name text, is_view boolean)
 RETURNS TABLE (id int, hypertable_relation text)
 AS $$
+DECLARE
+    agg_schema name;
+    agg_name name;
 BEGIN
         IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
             RETURN;
@@ -1903,6 +1982,18 @@ BEGIN
                 RETURN;
         END IF;
 
+        -- fetch cagg details if exists
+        SELECT mvc.cagg_schema, mvc.cagg_name
+        INTO agg_schema, agg_name
+        FROM SCHEMA_CATALOG.metric_view_cagg mvc
+        WHERE mvc.view_schema = metric_schema_name
+        AND mvc.view_name = metric_table_name;
+
+        IF agg_schema IS NULL AND agg_name IS NULL THEN
+            agg_schema := metric_schema_name;
+            agg_name := metric_table_name;
+        END IF;
+
         -- for TSDB 2.x we return the view schema and name because functions like
         -- show_chunks don't work on materialized hypertables, which is a difference
         -- from 1.x version
@@ -1913,8 +2004,8 @@ BEGIN
             INNER JOIN _timescaledb_catalog.hypertable h 
                 ON (h.schema_name = c.materialization_hypertable_schema 
                     AND h.table_name = c.materialization_hypertable_name)
-            WHERE c.view_schema = metric_schema_name
-            AND c.view_name = metric_table_name;
+            WHERE c.view_schema = agg_schema
+            AND c.view_name = agg_name;
             RETURN;
         ELSE
             RETURN QUERY
@@ -1922,13 +2013,49 @@ BEGIN
             FROM timescaledb_information.continuous_aggregates c 
             INNER JOIN _timescaledb_catalog.hypertable h 
                 ON (c.materialization_hypertable::text = format('%I.%I', h.schema_name,  h.table_name))
-            WHERE c.view_name::text = format('%I.%I', metric_schema_name, metric_table_name);
+            WHERE c.view_name::text = format('%I.%I', agg_schema, agg_name);
             RETURN;
         END IF;
 END
 $$
 LANGUAGE PLPGSQL STABLE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(text, text, boolean) TO prom_reader;
+
+
+--Get underlying metric view schema and name
+--we need to support up to two levels of views to support 2-step caggs
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_view_info(metric_schema text, metric_table text)
+RETURNS TABLE (view_schema name, view_name name, metric_table_name name)
+AS $$
+BEGIN
+    --RAISE WARNING 'checking view: % %', metric_schema, metric_table;
+    RETURN QUERY
+    SELECT v.view_schema::name, v.view_name::name, v.table_name::name
+    FROM information_schema.view_table_usage v 
+    WHERE v.view_schema = metric_schema
+    AND v.view_name = metric_table
+    AND v.table_schema = 'SCHEMA_DATA';
+
+    IF FOUND THEN
+        RETURN;
+    END IF;
+
+    -- if first level not found, return 2nd level if any
+    RETURN QUERY
+    SELECT v2.view_schema::name, v2.view_name::name, v2.table_name::name
+    FROM information_schema.view_table_usage v 
+    LEFT JOIN information_schema.view_table_usage v2 
+        ON (v2.view_schema = v.table_schema
+            AND v2.view_name = v.table_name)
+    WHERE v.view_schema = metric_schema
+    AND v.view_name = metric_table
+    AND v2.table_schema = 'SCHEMA_DATA';
+    RETURN;
+END
+$$
+LANGUAGE PLPGSQL STABLE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_view_info(text, text) TO prom_reader;
+
 
 --Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
@@ -2302,6 +2429,8 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.register_metric_view(schema_name name,
     RETURNS BOOLEAN
 AS $func$
 DECLARE
+   agg_schema name;
+   agg_name name;
    metric_table_name name;
    column_count int;
 BEGIN
@@ -2320,11 +2449,10 @@ BEGIN
     END IF; 
 
     -- check if view is based on a metric from prom_data
-    SELECT table_name FROM information_schema.view_table_usage
-    INTO metric_table_name
-    WHERE view_schema = register_metric_view.schema_name
-    AND view_table_usage.view_name = register_metric_view.view_name
-    AND table_schema = 'SCHEMA_DATA';
+    -- we check for two levels so we can support 2-step continuous aggregates
+    SELECT v.view_schema, v.view_name, v.metric_table_name 
+    INTO agg_schema, agg_name, metric_table_name
+    FROM SCHEMA_CATALOG.get_view_info(schema_name, view_name) v;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'view not based on a metric table from SCHEMA_DATA schema';
@@ -2355,6 +2483,21 @@ BEGIN
         ELSE
             RAISE EXCEPTION 'metric with the same name and schema already exists, could not register';
         END IF;
+    END IF;
+
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO prom_reader', register_metric_view.schema_name);
+    EXECUTE format('GRANT SELECT ON TABLE %I.%I TO prom_reader', register_metric_view.schema_name, register_metric_view.view_name);
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO prom_reader', agg_schema);
+    EXECUTE format('GRANT SELECT ON TABLE %I.%I TO prom_reader', agg_schema, agg_name);
+
+    PERFORM *
+    FROM SCHEMA_CATALOG.get_storage_hypertable_info(agg_schema, agg_name, true);
+    
+    -- if there is a hypertable for the aggregate view, its a continuous agg
+    -- need to make note of it for data retention purposes
+    IF FOUND THEN
+        INSERT INTO SCHEMA_CATALOG.metric_view_cagg (view_schema, view_name, cagg_schema, cagg_name)
+        VALUES (register_metric_view.schema_name, register_metric_view.view_name, agg_schema, agg_name);
     END IF;
 
     RETURN true;
@@ -2388,6 +2531,11 @@ BEGIN
             RAISE EXCEPTION 'metric with specified name and schema does not exist, could not unregister';
         END IF;
     END IF;
+
+    -- remove cagg info if any
+    DELETE FROM SCHEMA_CATALOG.metric_view_cagg mvc
+    WHERE unregister_metric_view.schema_name = mvc.view_schema
+    AND unregister_metric_view.view_name = mvc.view_name;
 
     RETURN TRUE;
 END
