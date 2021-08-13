@@ -218,7 +218,7 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.readerClientConfig.OnErrStr, "reader-on-error", "abort", "When an error occurs during read process, how should the reader behave. "+
 		"Valid options: ['retry', 'skip', 'abort']. "+
 		"See 'reader-on-timeout' for more information on the above options. ")
-	flag.StringVar(&conf.readerMetricsMatcher, "reader-metrics-matcher", `{__name__=".*"}`, "Metrics vector selector to read data for migration.")
+	flag.StringVar(&conf.readerMetricsMatcher, "reader-metrics-matcher", `{__name__=~".*"}`, "Metrics vector selector to read data for migration.")
 
 	flag.StringVar(&conf.writerClientConfig.URL, "writer-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.DurationVar(&conf.writerClientConfig.Timeout, "writer-timeout", defaultTimeout, "Timeout for pushing data to write storage.")
