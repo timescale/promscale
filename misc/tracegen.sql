@@ -47,7 +47,7 @@ select * from attribute;
 
 -- load the span_name table
 insert into span_name (name)
-select jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].spans[*].name')
+select jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].spans[*]')->>'name'
 from public.trace_stg t
 on conflict (name) do nothing
 ;
@@ -78,9 +78,35 @@ on conflict (name, version, schema_url_id) do nothing
 
 select * from instrumentation_library;
 
-
+insert into span
+(
+    trace_id,
+    span_id,
+    trace_state,
+    parent_span_id,
+    name_id,
+    span_kind,
+    start_time,
+    end_time,
+    span_attributes,
+    dropped_attributes_count,
+    event_time,
+    dropped_events_count,
+    dropped_link_count,
+    status_code,
+    status_message,
+    instrumentation_library_id,
+    resource_attributes,
+    resource_dropped_attributes_count,
+    resource_schema_url_id
+)
 select
-  (case s->>'kind'
+  (s->>'traceId')::trace_id as trace_id
+, ('x' || lpad(s->>'spanId', 16, '0'))::bit(64)::bigint as span_id -- convert hex string to bigint
+, null as trace_state
+, case when s->>'parentSpanId' = '' then null else ('x' || lpad(s->>'parentSpanId', 16, '0'))::bit(64)::bigint end as parent_span_id -- convert hex string to bigint
+, n.id as span_name_id
+, (case s->>'kind'
     when 'SPAN_KIND_UNSPECIFIED' then 'UNSPECIFIED'
     when 'SPAN_KIND_INTERNAL' then 'INTERNAL'
     when 'SPAN_KIND_SERVER' then 'SERVER'
@@ -88,29 +114,23 @@ select
     when 'SPAN_KIND_PRODUCER' then 'PRODUCER'
     when 'SPAN_KIND_CONSUMER' then 'CONSUMER'
   end)::span_kind as span_kind
-, s->>'name' as span_name
-, ('x' || lpad(s->>'spanId', 16, '0'))::bit(64)::bigint as span_id -- convert hex string to bigint
+, 'epoch'::timestamptz + ((s->>'startTimeUnixNano')::bigint / 1000000000.0 * interval '1 second') as start_time -- convert epoch nanos to timestamptz
+, 'epoch'::timestamptz + ((s->>'endTimeUnixNano')::bigint / 1000000000.0 * interval '1 second') as end_time -- convert epoch nanos to timestamptz
+, sa.span_attributes::attribute_map as span_attributes
+, coalesce((s->>'droppedAttributesCount')::int, 0) as dropped_attributes_count
+, tstzrange('infinity', 'infinity', '()') as event_time
+, coalesce((s->>'droppedEventsCount')::int, 0) as dropped_events_count
+, coalesce((s->>'droppedLinksCount')::int, 0) as dropped_links_count
 , (case s->'status'->>'code'
     when 'STATUS_CODE_UNSET' then 'UNSET'
     when 'STATUS_CODE_OK' then 'OK'
     when 'STATUS_CODE_ERROR' then 'ERROR'
   end)::status_code status_code
 , s->'status'->>'message' as status_message
-, (s->>'traceId')::trace_id as trace_id
-, sa.span_attributes
-, case when s->>'parentSpanId' = '' then null else ('x' || lpad(s->>'parentSpanId', 16, '0'))::bit(64)::bigint end as parent_span_id -- convert hex string to bigint
-, 'epoch'::timestamptz + ((s->>'endTimeUnixNano')::bigint / 1000000000.0 * interval '1 second') as end_time -- convert epoch nanos to timestamptz
-, 'epoch'::timestamptz + ((s->>'startTimeUnixNano')::bigint / 1000000000.0 * interval '1 second') as start_time -- convert epoch nanos to timestamptz
-, coalesce(r->>'schemaUrl', 'https://schema.instlib.example') as resource_schema_url
-, ra.resource_attributes
+, il.id as instrumentation_library_id
+, ra.resource_attributes::attribute_map as resource_attributes
 , coalesce((r->'resource'->>'droppedAttributesCount')::int, 0) as resource_dropped_attributes_count
-, coalesce(i->>'schemaUrl', 'https://schema.instlib.example') as instrumentation_library_schema_url
-, i->'instrumentationLibrary'->>'name' as instrumentation_library_name
-, coalesce(i->'instrumentationLibrary'->>'version', '1.2.3') as instrumentation_library_version
-, s->'links' as links
-, coalesce((s->>'droppedLinksCount')::int, 0) as dropped_links_count
-, s->'events' as events
-, coalesce((s->>'droppedEventsCount')::int, 0) as dropped_events_count
+, u2.id as resource_schema_url
 from public.trace_stg t
 cross join lateral jsonb_path_query(t.trace, '$.resourceSpans[*]') r
 cross join lateral jsonb_path_query(r, '$.instrumentationLibrarySpans[*]') i
@@ -145,4 +165,15 @@ left outer join lateral
     where is_resource_attribute_type(a.attribute_type)
     and is_resource_attribute_type(ak.attribute_type)
 ) ra on (true)
+left outer join span_name n on (n.name = s->>'name')
+left outer join schema_url u on (u.url = coalesce(i->>'schemaUrl', 'https://schema.instlib.example'))
+left outer join instrumentation_library il on
+(
+    il.name = i->'instrumentationLibrary'->>'name' and
+    il.version = coalesce(i->'instrumentationLibrary'->>'version', '1.2.3') and
+    il.schema_url_id = u.id
+)
+left outer join schema_url u2 on (u2.url = coalesce(r->>'schemaUrl', 'https://schema.instlib.example'))
 ;
+
+
