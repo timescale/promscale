@@ -37,12 +37,21 @@ Two Prometheus instances running as part of a HA cluster, MUST send the same
 `cluster` label and different `__replica__` labels.
 
 In Kubernetes environments, it is often useful to set the `__replica__`
-label to the pod name. When using the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator#prometheus-operator) this can be done
+label to the pod name, and the cluster name as the Prometheus deployment/statefulset name. When using the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator#prometheus-operator) this can be done
 with the following settings:
 
 ```
   replicaExternalLabelName: "__replica__"
   prometheusExternalLabelName: "cluster"
+```
+
+In bare metal and other environments, you need to configure external labels with the cluster and replica names in each Prometheus instance config as mentioned below:
+
+```
+global:
+  external_labels:
+    __replica__: <REPLICA_NAME> (This should be unique name of the Prometheus instance)
+    cluster: <CLUSTER_NAME> (This should be the name of the Prometheus deployment, which should be common across the Prometheus replica instances.)
 ```
 
 After Prometheus instances are configured to send the correct labels,
