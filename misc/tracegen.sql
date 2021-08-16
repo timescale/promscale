@@ -61,12 +61,16 @@ from public.trace_stg t
 on conflict (url) do nothing
 ;
 
+insert into schema_url (url) values ('https://schema.instlib.example');
+
+select * from schema_url;
+
 -- load the instrumentation_library table
 insert into instrumentation_library (name, version, schema_url_id)
 select distinct
   i->>'name'
-, i->>'version'
-, null::bigint -- none in the sample data
+, coalesce(i->>'version', '1.2.3')
+, (select id from schema_url limit 1) -- none in the sample data
 from public.trace_stg t
 cross join lateral jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].instrumentationLibrary') i
 on conflict (name, version, schema_url_id) do nothing
@@ -74,3 +78,71 @@ on conflict (name, version, schema_url_id) do nothing
 
 select * from instrumentation_library;
 
+
+select
+  (case s->>'kind'
+    when 'SPAN_KIND_UNSPECIFIED' then 'UNSPECIFIED'
+    when 'SPAN_KIND_INTERNAL' then 'INTERNAL'
+    when 'SPAN_KIND_SERVER' then 'SERVER'
+    when 'SPAN_KIND_CLIENT' then 'CLIENT'
+    when 'SPAN_KIND_PRODUCER' then 'PRODUCER'
+    when 'SPAN_KIND_CONSUMER' then 'CONSUMER'
+  end)::span_kind as span_kind
+, s->>'name' as span_name
+, ('x' || lpad(s->>'spanId', 16, '0'))::bit(64)::bigint as span_id -- convert hex string to bigint
+, (case s->'status'->>'code'
+    when 'STATUS_CODE_UNSET' then 'UNSET'
+    when 'STATUS_CODE_OK' then 'OK'
+    when 'STATUS_CODE_ERROR' then 'ERROR'
+  end)::status_code status_code
+, s->'status'->>'message' as status_message
+, (s->>'traceId')::trace_id as trace_id
+, sa.span_attributes
+, case when s->>'parentSpanId' = '' then null else ('x' || lpad(s->>'parentSpanId', 16, '0'))::bit(64)::bigint end as parent_span_id -- convert hex string to bigint
+, 'epoch'::timestamptz + ((s->>'endTimeUnixNano')::bigint / 1000000000.0 * interval '1 second') as end_time -- convert epoch nanos to timestamptz
+, 'epoch'::timestamptz + ((s->>'startTimeUnixNano')::bigint / 1000000000.0 * interval '1 second') as start_time -- convert epoch nanos to timestamptz
+, coalesce(r->>'schemaUrl', 'https://schema.instlib.example') as resource_schema_url
+, ra.resource_attributes
+, coalesce((r->'resource'->>'droppedAttributesCount')::int, 0) as resource_dropped_attributes_count
+, coalesce(i->>'schemaUrl', 'https://schema.instlib.example') as instrumentation_library_schema_url
+, i->'instrumentationLibrary'->>'name' as instrumentation_library_name
+, coalesce(i->'instrumentationLibrary'->>'version', '1.2.3') as instrumentation_library_version
+, s->'links' as links
+, coalesce((s->>'droppedLinksCount')::int, 0) as dropped_links_count
+, s->'events' as events
+, coalesce((s->>'droppedEventsCount')::int, 0) as dropped_events_count
+from public.trace_stg t
+cross join lateral jsonb_path_query(t.trace, '$.resourceSpans[*]') r
+cross join lateral jsonb_path_query(r, '$.instrumentationLibrarySpans[*]') i
+cross join lateral jsonb_path_query(i, '$.spans[*]') s
+left outer join lateral
+(
+    select jsonb_object_agg(ak.id, a.id) as span_attributes
+    from attribute a
+    inner join attribute_key ak on a.key = ak.key
+    inner join
+    (
+        select
+          x->>'key' as key
+        , jsonb_path_query_first(x, '$.value.*') as value
+        from jsonb_path_query(s, '$.attributes[*]') x
+    ) x on (a.key = x.key and a.value = x.value)
+    where is_span_attribute_type(a.attribute_type)
+    and is_span_attribute_type(ak.attribute_type)
+) sa on (true)
+left outer join lateral
+(
+    select jsonb_object_agg(ak.id, a.id) as resource_attributes
+    from attribute a
+    inner join attribute_key ak on a.key = ak.key
+    inner join
+    (
+        select
+          x->>'key' as key
+        , jsonb_path_query_first(x, '$.value.*') as value
+        from jsonb_path_query(r, '$.resource.attributes[*]') x
+    ) x on (a.key = x.key and a.value = x.value)
+    where is_resource_attribute_type(a.attribute_type)
+    and is_resource_attribute_type(ak.attribute_type)
+) ra on (true)
+;
