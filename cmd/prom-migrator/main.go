@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/inhies/go-bytesize"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
 	"github.com/timescale/promscale/pkg/migration-tool/reader"
@@ -60,6 +62,8 @@ type config struct {
 	readerAuth           utils.Auth
 	writerAuth           utils.Auth
 	progressMetricAuth   utils.Auth
+	readerMetricsMatcher string
+	readerLabelsMatcher  []*labels.Matcher
 }
 
 func main() {
@@ -119,6 +123,7 @@ func main() {
 		HTTPConfig:      conf.readerAuth.ToHTTPClientConfig(),
 		ConcurrentPulls: conf.concurrentPull,
 		SigSlabRead:     sigSlabRead,
+		MetricsMatchers: conf.readerLabelsMatcher,
 	}
 	read, err := reader.New(readerConfig)
 	if err != nil {
@@ -213,6 +218,7 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.readerClientConfig.OnErrStr, "reader-on-error", "abort", "When an error occurs during read process, how should the reader behave. "+
 		"Valid options: ['retry', 'skip', 'abort']. "+
 		"See 'reader-on-timeout' for more information on the above options. ")
+	flag.StringVar(&conf.readerMetricsMatcher, "reader-metrics-matcher", `{__name__=~".+"}`, "Metrics vector selector to read data for migration.")
 
 	flag.StringVar(&conf.writerClientConfig.URL, "writer-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.DurationVar(&conf.writerClientConfig.Timeout, "writer-timeout", defaultTimeout, "Timeout for pushing data to write storage.")
@@ -369,6 +375,22 @@ func convertTimeStrFlagsToTs(conf *config) error {
 	return nil
 }
 
+func convertMetricsMatcherStrToLabelMatchers(conf *config) error {
+	ms, err := parser.ParseExpr(conf.readerMetricsMatcher)
+	if err != nil {
+		return fmt.Errorf("parsing '-reader-metrics-matcher': %w", err)
+	}
+
+	vs, ok := ms.(*parser.VectorSelector)
+	if !ok {
+		return fmt.Errorf("'-reader-metrics-matcher' should always be a valid vector_selector as per PromQL")
+	}
+
+	conf.readerLabelsMatcher = vs.LabelMatchers
+
+	return nil
+}
+
 func validateConf(conf *config) error {
 	if err := convertTimeStrFlagsToTs(conf); err != nil {
 		return fmt.Errorf("validate time flags: %w", err)
@@ -378,6 +400,9 @@ func validateConf(conf *config) error {
 	}
 	if err := utils.ParseClientInfo(&conf.writerClientConfig); err != nil {
 		return fmt.Errorf("parsing writer-client info: %w", err)
+	}
+	if err := convertMetricsMatcherStrToLabelMatchers(conf); err != nil {
+		return fmt.Errorf("validate '-reader-metrics-matcher': %w", err)
 	}
 	switch {
 	case conf.start == defaultStartTime:
@@ -421,5 +446,6 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("parsing byte-size: %w", err)
 	}
 	conf.maxSlabSizeBytes = int64(maxSlabSizeBytes)
+
 	return nil
 }
