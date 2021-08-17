@@ -176,4 +176,90 @@ left outer join instrumentation_library il on
 left outer join schema_url u2 on (u2.url = coalesce(r->>'schemaUrl', 'https://schema.instlib.example'))
 ;
 
+-- trace table
+-- array of node paths
+with recursive x as
+(
+    select
+      trace_id
+    , span_id as root_span_id
+    , 1 as span_count
+    , span_id
+    , start_time
+    , end_time
+    , jsonb_build_array(span_id) as span_tree
+    from span
+    where parent_span_id is null
+    union all
+    select
+      x.trace_id
+    , x.span_id as root_span_id
+    , x.span_count + 1 as span_count
+    , s.span_id
+    , least(x.start_time, s.start_time) as start_time
+    , greatest(x.end_time, s.end_time) as end_time
+    , x.span_tree || jsonb_build_array(s.span_id) as span_tree
+    from x
+    inner join span s on x.trace_id = s.trace_id
+    and x.span_id = s.parent_span_id
+)
+insert into trace (id, root_span_id, span_count, span_time_range, event_time_range, span_tree)
+select
+  x.trace_id
+, max(x.root_span_id)
+, max(x.span_count)
+, tstzrange(x.start_time, x.end_time, '[)') as span_time_range
+, tstzrange('infinity', 'infinity', '()') as event_time_range
+, jsonb_agg(x.span_tree) as span_tree
+from x
+group by x.trace_id, x.start_time, x.end_time
+;
 
+/*
+-- attempt at an alternate tree representation
+with recursive x as
+(
+    select
+      trace_id
+    , span_id
+    , span_id as root_span_id
+    , 1 as span_count
+    , start_time
+    , end_time
+    , 1 as lvl
+    from span s
+    where parent_span_id is null
+    union all
+    select
+      x.trace_id
+    , s.span_id
+    , x.span_id as root_span_id
+    , x.span_count + 1 as span_count
+    , least(s.start_time, x.start_time) as start_time
+    , greatest(s.end_time, x.end_time) as end_time
+    , x.lvl + 1 as lvl
+    from x
+    inner join span s on x.trace_id = s.trace_id
+    and x.span_id = s.parent_span_id
+)
+select
+  trace_id
+, max(x.root_span_id) as root_span_id
+, max(span_count) as span
+,
+from
+(
+    select
+      trace_id
+    , lvl
+    , max(root_span_id) as root_span_id
+    , max(span_count) as span_count
+    , min(start_time) as start_time
+    , max(end_time) as end_time
+    , jsonb_build_array(span_id) as span_tree
+    from x
+    group by trace_id, lvl
+) x
+group by trace_id
+;
+*/
