@@ -218,7 +218,7 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.readerClientConfig.OnErrStr, "reader-on-error", "abort", "When an error occurs during read process, how should the reader behave. "+
 		"Valid options: ['retry', 'skip', 'abort']. "+
 		"See 'reader-on-timeout' for more information on the above options. ")
-	flag.StringVar(&conf.readerMetricsMatcher, "reader-metrics-matcher", `{__name__=~".*"}`, "Metrics vector selector to read data for migration.")
+	flag.StringVar(&conf.readerMetricsMatcher, "reader-metrics-matcher", `{__name__=~".+"}`, "Metrics vector selector to read data for migration.")
 
 	flag.StringVar(&conf.writerClientConfig.URL, "writer-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.DurationVar(&conf.writerClientConfig.Timeout, "writer-timeout", defaultTimeout, "Timeout for pushing data to write storage.")
@@ -401,6 +401,9 @@ func validateConf(conf *config) error {
 	if err := utils.ParseClientInfo(&conf.writerClientConfig); err != nil {
 		return fmt.Errorf("parsing writer-client info: %w", err)
 	}
+	if err := convertMetricsMatcherStrToLabelMatchers(conf); err != nil {
+		return fmt.Errorf("validate '-reader-metrics-matcher': %w", err)
+	}
 	switch {
 	case conf.start == defaultStartTime:
 		return fmt.Errorf("'start' should be provided for the migration to begin")
@@ -443,10 +446,6 @@ func validateConf(conf *config) error {
 		return fmt.Errorf("parsing byte-size: %w", err)
 	}
 	conf.maxSlabSizeBytes = int64(maxSlabSizeBytes)
-
-	if err := convertMetricsMatcherStrToLabelMatchers(conf); err != nil {
-		return fmt.Errorf("validate '-reader-metrics-matcher': %w", err)
-	}
 
 	return nil
 }

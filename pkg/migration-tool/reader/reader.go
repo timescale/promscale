@@ -83,7 +83,7 @@ func (r *Read) Run(errChan chan<- error) {
 			ms := r.Config.MetricsMatchers
 			if len(ms) == 0 {
 				log.Warn("msg", "empty matchers received. Please open an issue regarding this at https://github.com/timescale/promscale/issues")
-				ms = []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*")}
+				ms = []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".+")}
 			}
 			err = slabRef.Fetch(r.Context, r.client, slabRef.Mint(), slabRef.Maxt(), ms)
 			if err != nil {
