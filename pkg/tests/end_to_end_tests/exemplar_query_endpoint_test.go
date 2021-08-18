@@ -76,7 +76,7 @@ func runExemplarQueryTests(t *testing.T, cases []testCase, start, end time.Time,
 		defer ts.Close()
 
 		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
-		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		promURL := fmt.Sprintf("http://%s:%d/api/v1", promExemplarHost, promExemplarPort.Int())
 		client := &http.Client{Timeout: 300 * time.Second}
 
 		var (

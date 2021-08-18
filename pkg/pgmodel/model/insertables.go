@@ -28,16 +28,12 @@ type Insertable interface {
 	Type() InsertableType
 	// IsOfType returns true if the provided type matches with the underlying insertable datatype.
 	IsOfType(InsertableType) bool
-	// Close puts the underlying insertable into the pool, allowing them to be reused.
-	Close()
 }
 
 // Iterator iterates over datapoints.
 type Iterator interface {
 	// HasNext returns true if there is any datapoint that is yet to be read.
 	HasNext() bool
-	// Close puts the iterator alloc back into the pool, allowing it to be reused.
-	Close()
 }
 
 // SamplesIterator iterates over samples.

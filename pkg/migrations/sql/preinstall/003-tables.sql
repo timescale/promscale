@@ -22,6 +22,7 @@ INSERT INTO public.prom_installation_info(key, value) VALUES
     ('series schema',         'SCHEMA_SERIES'),
     ('metric schema',         'SCHEMA_METRIC'),
     ('data schema',           'SCHEMA_DATA'),
+    ('exemplar data schema',  'SCHEMA_DATA_EXEMPLAR'),
     ('information schema',    'SCHEMA_INFO');
 
 

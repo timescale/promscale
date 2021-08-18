@@ -4,20 +4,7 @@
 
 package model
 
-import (
-	"sync"
-
-	"github.com/timescale/promscale/pkg/prompb"
-)
-
-var promSamplesPool = sync.Pool{New: func() interface{} { return new(promSamples) }}
-
-// putSamples adds samples to the pool.
-func putSamples(s *promSamples) {
-	s.series = nil
-	s.samples = s.samples[:0]
-	promSamplesPool.Put(s)
-}
+import "github.com/timescale/promscale/pkg/prompb"
 
 type promSamples struct {
 	series  *Series
@@ -25,13 +12,7 @@ type promSamples struct {
 }
 
 func NewPromSamples(series *Series, sampleSet []prompb.Sample) Insertable {
-	s := promSamplesPool.Get().(*promSamples)
-	s.series = series
-	if cap(s.samples) < len(sampleSet) {
-		s.samples = make([]prompb.Sample, len(sampleSet))
-	}
-	s.samples = sampleSet[:] // todo: is this right too?
-	return s
+	return &promSamples{series, sampleSet}
 }
 
 func (t *promSamples) Series() *Series {
@@ -58,8 +39,6 @@ func (t *promSamples) MaxTs() int64 {
 	return t.samples[numSamples-1].Timestamp
 }
 
-var samplesIteratorPool = sync.Pool{New: func() interface{} { return new(samplesIterator) }}
-
 func (i *samplesIterator) HasNext() bool {
 	return i.curr < i.total
 }
@@ -72,12 +51,6 @@ func (i *samplesIterator) Value() (timestamp int64, value float64) {
 	return
 }
 
-func (i *samplesIterator) Close() {
-	i.data = i.data[:0]
-	i.curr = 0
-	samplesIteratorPool.Put(i)
-}
-
 func (t *promSamples) Iterator() Iterator {
 	return &samplesIterator{data: t.samples, total: len(t.samples)}
 }
@@ -88,8 +61,4 @@ func (t *promSamples) Type() InsertableType {
 
 func (t *promSamples) IsOfType(typ InsertableType) bool {
 	return Sample == typ
-}
-
-func (t *promSamples) Close() {
-	putSamples(t)
 }

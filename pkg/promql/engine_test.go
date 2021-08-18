@@ -34,13 +34,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-type QueryableFunc func(ctx context.Context, mint, maxt int64) (Queryable, error)
-
-// Querier calls f() with the given parameters.
-func (f QueryableFunc) Querier(ctx context.Context, mint, maxt int64) (SamplesQuerier, error) {
-	return f.Querier(ctx, mint, maxt)
-}
-
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
@@ -184,29 +177,31 @@ func TestQueryCancel(t *testing.T) {
 	require.NoError(t, res.Err)
 }
 
-type errQueryable struct{}
-
-func (qry *errQueryable) Samples(_ context.Context, mint int64, maxt int64) (SamplesQuerier, error) {
-	return &errSamplesQuerier{ErrStorage{errors.New("storage error")}}, nil
-}
-
-func (qry *errQueryable) Exemplar(_ context.Context) querier.ExemplarQuerier {
-	return nil
-}
-
-// errSamplesQuerier implements storage.Querier which always returns error.
-type errSamplesQuerier struct {
+type errQueryable struct {
 	err error
 }
 
-func (q *errSamplesQuerier) Select(bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (qry *errQueryable) SamplesQuerier(_ context.Context, mint int64, maxt int64) (SamplesQuerier, error) {
+	return &errQuerier{qry.err}, nil
+}
+
+func (qry *errQueryable) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
+	return nil
+}
+
+// errQuerier implements storage.Querier which always returns error.
+type errQuerier struct {
+	err error
+}
+
+func (q *errQuerier) Select(bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	return errSeriesSet{err: q.err}, nil
 }
-func (*errSamplesQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
+func (*errQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (*errSamplesQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
-func (*errSamplesQuerier) Close() error                                    { return nil }
+func (*errQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
+func (*errQuerier) Close() error                                    { return nil }
 
 // errSeriesSet implements storage.SeriesSet which always returns error.
 type errSeriesSet struct {
@@ -227,7 +222,7 @@ func TestQueryError(t *testing.T) {
 	}
 	engine := NewEngine(opts)
 	errStorage := ErrStorage{errors.New("storage error")}
-	queryable := &errQueryable{}
+	queryable := &errQueryable{err: errStorage}
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()
 
@@ -250,8 +245,12 @@ type noopHintRecordingQueryable struct {
 	hints []*storage.SelectHints
 }
 
-func (h *noopHintRecordingQueryable) Querier(context.Context, int64, int64) (SamplesQuerier, error) {
-	return &hintRecordingQuerier{SamplesQuerier: &errSamplesQuerier{}, h: h}, nil
+func (h *noopHintRecordingQueryable) SamplesQuerier(context.Context, int64, int64) (SamplesQuerier, error) {
+	return &hintRecordingQuerier{SamplesQuerier: &errQuerier{}, h: h}, nil
+}
+
+func (h *noopHintRecordingQueryable) ExemplarsQuerier(context.Context) querier.ExemplarQuerier {
+	return nil
 }
 
 type hintRecordingQuerier struct {

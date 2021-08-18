@@ -5,8 +5,6 @@
 package model
 
 import (
-	"sync"
-
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -17,27 +15,13 @@ type InsertableExemplar interface {
 	OrderExemplarLabels(index map[string]int) (positionExists bool)
 }
 
-var promExemplarsPool = sync.Pool{New: func() interface{} { return new(PromExemplars) }}
-
-func putExemplars(s *PromExemplars) {
-	s.series = nil
-	s.exemplars = s.exemplars[:0]
-	promExemplarsPool.Put(s)
-}
-
 type PromExemplars struct {
 	series    *Series
 	exemplars []prompb.Exemplar
 }
 
 func NewPromExemplars(series *Series, exemplarSet []prompb.Exemplar) InsertableExemplar {
-	s := promExemplarsPool.Get().(*PromExemplars)
-	s.series = series
-	if cap(s.exemplars) < len(exemplarSet) {
-		s.exemplars = make([]prompb.Exemplar, len(exemplarSet))
-	}
-	s.exemplars = exemplarSet[:]
-	return s
+	return &PromExemplars{series, exemplarSet}
 }
 
 func (t *PromExemplars) Series() *Series {
@@ -64,8 +48,6 @@ type exemplarsIterator struct {
 	data  []prompb.Exemplar
 }
 
-var exemplarsIteratorPool = sync.Pool{New: func() interface{} { return new(exemplarsIterator) }}
-
 func (i *exemplarsIterator) HasNext() bool {
 	return i.curr < i.total
 }
@@ -75,12 +57,6 @@ func (i *exemplarsIterator) Value() (labels []prompb.Label, timestamp int64, val
 	labels, timestamp, value = datapoint.Labels, datapoint.Timestamp, datapoint.Value
 	i.curr++
 	return
-}
-
-func (i *exemplarsIterator) Close() {
-	i.data = i.data[:0]
-	i.curr = 0
-	exemplarsIteratorPool.Put(i)
 }
 
 func (t *PromExemplars) Iterator() Iterator {
@@ -172,10 +148,6 @@ func (t *PromExemplars) Type() InsertableType {
 
 func (t *PromExemplars) IsOfType(typ InsertableType) bool {
 	return typ == Exemplar
-}
-
-func (t *PromExemplars) Close() {
-	putExemplars(t)
 }
 
 // ExemplarData is additional information associated with a time series.

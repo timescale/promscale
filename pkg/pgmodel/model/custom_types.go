@@ -7,6 +7,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
@@ -17,11 +18,14 @@ var (
 	// Read-only fields after the ingestor inits.
 	labelArrayOID      uint32
 	isLabelArrayOIDSet bool
+	labelArrayOIDMux   sync.Mutex
 )
 
 func labelArrayTranscoder() pgtype.ValueTranscoder { return new(pgtype.Int4Array) }
 
 func registerLabelArrayOID(conn pgxconn.PgxConn) error {
+	labelArrayOIDMux.Lock()
+	defer labelArrayOIDMux.Unlock()
 	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&labelArrayOID)
 	if err != nil {
 		return fmt.Errorf("registering prom_api.label_array oid: %w", err)
@@ -34,11 +38,14 @@ var (
 	// Read-only fields after the ingestor inits.
 	labelValueArrayOID      uint32
 	isLabelValueArrayOIDSet bool
+	labelValueArrayOIDMux   sync.Mutex
 )
 
 func labelValueArrayTranscoder() pgtype.ValueTranscoder { return new(pgtype.TextArray) }
 
 func registerLabelValueArrayOID(conn pgxconn.PgxConn) error {
+	labelValueArrayOIDMux.Lock()
+	defer labelValueArrayOIDMux.Unlock()
 	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_value_array'::regtype::oid`).Scan(&labelValueArrayOID)
 	if err != nil {
 		return fmt.Errorf("registering prom_api.label_value_array oid: %w", err)
@@ -68,11 +75,15 @@ const (
 func GetCustomTypeOID(t PgCustomType) uint32 {
 	switch t {
 	case LabelArray:
+		labelArrayOIDMux.Lock()
+		defer labelArrayOIDMux.Unlock()
 		if !isLabelArrayOIDSet {
 			panic("label_array oid is not set. This needs to be set first before calling the type.")
 		}
 		return labelArrayOID
 	case LabelValueArray:
+		labelValueArrayOIDMux.Lock()
+		defer labelValueArrayOIDMux.Unlock()
 		if !isLabelValueArrayOIDSet {
 			panic("label_value_array oid is not set.  This needs to be set first before calling the type.")
 		}

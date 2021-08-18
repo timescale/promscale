@@ -88,7 +88,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		defer ts.Close()
 
 		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
-		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		promURL := fmt.Sprintf("http://%s:%d/api/v1", promHost, promPort.Int())
 		client := &http.Client{Timeout: 10 * time.Second}
 
 		var (

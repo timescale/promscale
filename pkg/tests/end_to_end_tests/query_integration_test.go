@@ -149,7 +149,7 @@ func TestSQLQuery(t *testing.T) {
 		{
 			name:      "empty request",
 			query:     &prompb.Query{},
-			expectErr: fmt.Errorf("fetching sample rows: get evaluation metadata: building multiple metric clauses: no clauses generated"),
+			expectErr: fmt.Errorf("get evaluation metadata: building multiple metric clauses: no clauses generated"),
 		},
 		{
 			name: "empty response",
@@ -775,7 +775,7 @@ func TestPromQL(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	promClient, err := NewPromClient(fmt.Sprintf("http://%s:%d/api/v1/read", testhelpers.PromHost, testhelpers.PromPort.Int()), 10*time.Second)
+	promClient, err := NewPromClient(fmt.Sprintf("http://%s:%d/api/v1/read", promHost, promPort.Int()), 10*time.Second)
 
 	if err != nil {
 		t.Fatalf("unable to create read client for Prometheus: %s", err)

@@ -319,8 +319,6 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (err error) {
 		}
 
 		visitor := req.data.batch.Visitor()
-		defer visitor.Close()
-
 		err = visitor.Visit(
 			func(t time.Time, v float64, seriesId int64) {
 				hasSamples = true

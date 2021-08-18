@@ -2245,132 +2245,267 @@ func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 }
 
 func TestPromQLQueryEndpoint(t *testing.T) {
-	//todo: fix this
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 
 	testCases := []testCase{
 		{
+			name:  "basic query",
+			query: "metric_1",
+		},
+		{
+			name:  "basic query, capital metric name",
+			query: "METRIC_4",
+		},
+		{
+			name:  "basic query, not regex match metric name",
+			query: `{__name__!~".*_1", instance="1"}`,
+		},
+		{
+			name:  "basic query, regex match metric name",
+			query: `{__name__=~"metric_.*"}`,
+		},
+		{
+			name:  "basic query, regex no wildcards",
+			query: `{__name__=~"metric_1"}`,
+		},
+		{
+			name:  "basic query, no metric name matchers",
+			query: `{instance="1", foo=""}`,
+		},
+		{
+			name:  "basic query, multiple matchers",
+			query: `{__name__!="metric_1", instance="1"}`,
+		},
+		{
+			name:  "basic query, non-existant metric",
+			query: `nonexistant_metric_name`,
+		},
+		{
+			name:  "basic query, with offset",
+			query: `metric_3 offset 5m`,
+		},
+		{
+			name:  "basic aggregator",
+			query: `sum (metric_3)`,
+		},
+		{
+			name:  "aggregator by empty",
+			query: `avg by() (metric_2)`,
+		},
+		{
+			name:  "aggregator by instance",
+			query: `max by(instance) (metric_1)`,
+		},
+		{
+			name:  "aggregator by instance and foo",
+			query: `min by(instance, foo) (metric_3)`,
+		},
+		{
+			name:  "aggregator by non-existant",
+			query: `count by(nonexistant) (metric_2)`,
+		},
+		{
+			name:  "aggregator without empty",
+			query: `avg without() (metric_2)`,
+		},
+		{
+			name:  "aggregator without instance",
+			query: `max without(instance) (metric_1)`,
+		},
+		{
+			name:  "aggregator without instance and foo",
+			query: `min without(instance, foo) (metric_3)`,
+		},
+		{
+			name:  "aggregator without non-existant",
+			query: `count without(nonexistant) (metric_2)`,
+		},
+		{
+			name:  "topk",
+			query: `topk (3, metric_2)`,
+		},
+		{
+			name:  "bottomk",
+			query: `bottomk (3, metric_1)`,
+		},
+		{
+			name:  "topk by instance",
+			query: `topk by(instance) (2, metric_3)`,
+		},
+		{
+			name:  "quantile 0.5",
+			query: `quantile(0.5, metric_1)`,
+		},
+		{
+			name:  "quantile 0.1",
+			query: `quantile(0.1, metric_2)`,
+		},
+		{
+			name:  "quantile 0.95",
+			query: `quantile(0.95, metric_3)`,
+		},
+		{
+			name:  "sum_over_time",
+			query: `sum_over_time(metric_1[5m])`,
+		},
+		{
+			name:  "count_over_time",
+			query: `count_over_time(metric_2[5m])`,
+		},
+		{
+			name:  "avg_over_time",
+			query: `avg_over_time(metric_3[5m])`,
+		},
+		{
+			name:  "min_over_time",
+			query: `min_over_time(metric_1[5m])`,
+		},
+		{
+			name:  "max_over_time",
+			query: `max_over_time(metric_2[5m])`,
+		},
+		{
+			name:  "stddev_over_time",
+			query: `stddev_over_time(metric_2[5m])`,
+		},
+		{
+			name:  "delta",
+			query: `delta(metric_3[5m])`,
+		},
+		{
+			name:  "delta 1m",
+			query: `delta(metric_3[1m])`,
+		},
+		{
+			name:  "increase",
+			query: `increase(metric_1[5m])`,
+		},
+		{
+			name:  "rate",
+			query: `rate(metric_2[5m])`,
+		},
+		{
 			name:  "resets",
 			query: `resets(metric_3[5m])`,
 		},
-		//{
-		//	name:  "changes",
-		//	query: `changes(metric_1[5m])`,
-		//},
-		//{
-		//	name:  "idelta",
-		//	query: `idelta(metric_2[5m])`,
-		//},
-		//{
-		//	name:  "predict_linear",
-		//	query: `predict_linear(metric_3[5m], 100)`,
-		//},
-		//{
-		//	name:  "deriv",
-		//	query: `deriv(metric_1[5m])`,
-		//},
-		//{
-		//	name:  "timestamp",
-		//	query: `timestamp(metric_2)`,
-		//},
-		//{
-		//	name:  "timestamp timestamp",
-		//	query: `timestamp(timestamp(metric_2))`,
-		//},
-		//{
-		//	name:  "vector",
-		//	query: `vector(1)`,
-		//},
-		//{
-		//	name:  "vector time",
-		//	query: `vector(time())`,
-		//},
-		//{
-		//	name:  "histogram quantile non-existent",
-		//	query: `histogram_quantile(0.9, nonexistent_metric)`,
-		//},
-		//{
-		//	name:  "histogram quantile complex",
-		//	query: `histogram_quantile(0.5, rate(metric_1[1m]))`,
-		//},
-		//{
-		//	name:  "complex query 1",
-		//	query: `sum by(instance) (metric_1) + on(instance) group_left(foo) metric_2`,
-		//},
-		//{
-		//	name:  "complex query 2",
-		//	query: `max_over_time((time() - max(metric_3) < 1000)[5m:10s] offset 5m)`,
-		//},
-		//{
-		//	name:  "complex query 3",
-		//	query: `holt_winters(metric_1[10m], 0.1, 0.5)`,
-		//},
-		//{
-		//	name:  "enabled-feature: query with @ modifier",
-		//	query: fmt.Sprintf("sum(metric_1 @ %d)", startTime+30000/1000),
-		//},
-		//{
-		//	name:  "enabled-feature: query with -ve offset",
-		//	query: "sum_over_time(metric[5m] offset -5m)",
-		//},
-		//{
-		//	name:  "double name",
-		//	query: `{__name__="metric_1", __name__="metric_1"}`,
-		//},
-		//{
-		//	name:  "contradictory name",
-		//	query: `{__name__="metric_1", __name__="metric_2"}`,
-		//},
-		//{
-		//	name:  "non-contradictory name",
-		//	query: `{__name__="metric_1", __name__!="metric_2"}`,
-		//},
-		//{
-		//	name:  "anchored-regex 1",
-		//	query: `{__name__="metric_2", foo=~"bar"}`,
-		//},
-		//{
-		//	name:  "anchored-regex 2",
-		//	query: `{__name__="metric_2", foo=~"^bar$"}`,
-		//},
-		//{
-		//	name:  "anchored-regex 3",
-		//	query: `{__name__="metric_2", foo=~"bar|"}`,
-		//},
-		//{
-		//	name:  "anchored-regex 4",
-		//	query: `{__name__="metric_2", foo=~"^bar$|^$"}`,
-		//},
-		//{
-		//	name:  "anchored-regex 5",
-		//	query: `{__name__="metric_2", foo=~"^bar|$"}`,
-		//},
-		//{
-		//	name:  "anchored-regex 6",
-		//	query: `{__name__="metric_2", foo=~""}`,
-		//},
-		//{
-		//	name:  "anchored-regex 7",
-		//	query: `{__name__="metric_2", foo=~"^$"}`,
-		//},
-		//{
-		//	name:  "rollup",
-		//	query: "count by (env)(up)",
-		//},
-		//{
-		//	name:  "two pushdowns",
-		//	query: "rate(metric_2[5m])/rate(metric_3[5m])",
-		//},
-		//{
-		//	name:  "two pushdowns with sum",
-		//	query: "sum(rate(metric_2[5m]))/sum(rate(metric_3[5m]))",
-		//},
-		//{
-		//	name:  "two pushdowns, same metric different matchers",
-		//	query: `sum(rate(metric_2{foo = "bar"}[5m]))/sum(rate(metric_2[5m]))`,
-		//},
+		{
+			name:  "changes",
+			query: `changes(metric_1[5m])`,
+		},
+		{
+			name:  "idelta",
+			query: `idelta(metric_2[5m])`,
+		},
+		{
+			name:  "predict_linear",
+			query: `predict_linear(metric_3[5m], 100)`,
+		},
+		{
+			name:  "deriv",
+			query: `deriv(metric_1[5m])`,
+		},
+		{
+			name:  "timestamp",
+			query: `timestamp(metric_2)`,
+		},
+		{
+			name:  "timestamp timestamp",
+			query: `timestamp(timestamp(metric_2))`,
+		},
+		{
+			name:  "vector",
+			query: `vector(1)`,
+		},
+		{
+			name:  "vector time",
+			query: `vector(time())`,
+		},
+		{
+			name:  "histogram quantile non-existent",
+			query: `histogram_quantile(0.9, nonexistent_metric)`,
+		},
+		{
+			name:  "histogram quantile complex",
+			query: `histogram_quantile(0.5, rate(metric_1[1m]))`,
+		},
+		{
+			name:  "complex query 1",
+			query: `sum by(instance) (metric_1) + on(instance) group_left(foo) metric_2`,
+		},
+		{
+			name:  "complex query 2",
+			query: `max_over_time((time() - max(metric_3) < 1000)[5m:10s] offset 5m)`,
+		},
+		{
+			name:  "complex query 3",
+			query: `holt_winters(metric_1[10m], 0.1, 0.5)`,
+		},
+		{
+			name:  "enabled-feature: query with @ modifier",
+			query: fmt.Sprintf("sum(metric_1 @ %d)", startTime+30000/1000),
+		},
+		{
+			name:  "enabled-feature: query with -ve offset",
+			query: "sum_over_time(metric[5m] offset -5m)",
+		},
+		{
+			name:  "double name",
+			query: `{__name__="metric_1", __name__="metric_1"}`,
+		},
+		{
+			name:  "contradictory name",
+			query: `{__name__="metric_1", __name__="metric_2"}`,
+		},
+		{
+			name:  "non-contradictory name",
+			query: `{__name__="metric_1", __name__!="metric_2"}`,
+		},
+		{
+			name:  "anchored-regex 1",
+			query: `{__name__="metric_2", foo=~"bar"}`,
+		},
+		{
+			name:  "anchored-regex 2",
+			query: `{__name__="metric_2", foo=~"^bar$"}`,
+		},
+		{
+			name:  "anchored-regex 3",
+			query: `{__name__="metric_2", foo=~"bar|"}`,
+		},
+		{
+			name:  "anchored-regex 4",
+			query: `{__name__="metric_2", foo=~"^bar$|^$"}`,
+		},
+		{
+			name:  "anchored-regex 5",
+			query: `{__name__="metric_2", foo=~"^bar|$"}`,
+		},
+		{
+			name:  "anchored-regex 6",
+			query: `{__name__="metric_2", foo=~""}`,
+		},
+		{
+			name:  "anchored-regex 7",
+			query: `{__name__="metric_2", foo=~"^$"}`,
+		},
+		{
+			name:  "rollup",
+			query: "count by (env)(up)",
+		},
+		{
+			name:  "two pushdowns",
+			query: "rate(metric_2[5m])/rate(metric_3[5m])",
+		},
+		{
+			name:  "two pushdowns with sum",
+			query: "sum(rate(metric_2[5m]))/sum(rate(metric_3[5m]))",
+		},
+		{
+			name:  "two pushdowns, same metric different matchers",
+			query: `sum(rate(metric_2{foo = "bar"}[5m]))/sum(rate(metric_2[5m]))`,
+		},
 	}
 	start := time.Unix(startTime/1000, 0)
 	end := time.Unix(endTime/1000, 0)
@@ -2413,7 +2548,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time, f
 		defer ts.Close()
 
 		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
-		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		promURL := fmt.Sprintf("http://%s:%d/api/v1", promHost, promPort.Int())
 		client := &http.Client{Timeout: 300 * time.Second}
 
 		var (

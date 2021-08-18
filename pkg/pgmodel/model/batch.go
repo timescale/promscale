@@ -82,13 +82,3 @@ func (t *Batch) Visitor() *batchVisitor {
 func (t *Batch) Absorb(other Batch) {
 	t.AppendSlice(other.data)
 }
-
-// Close closes the batch and puts the underlying insertables back into their respective pools,
-// allowing them to be re-used.
-//
-// Batch should never be used once Close() is called.
-func (t *Batch) Close() {
-	for _, insertable := range t.data {
-		insertable.Close()
-	}
-}

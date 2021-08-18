@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -17,16 +17,6 @@ type batchVisitor struct {
 
 func getBatchVisitor(batch *Batch) *batchVisitor {
 	return &batchVisitor{batch.data, SeriesEpoch(math.MaxInt64), batch}
-}
-
-func (vtr *batchVisitor) Close() {
-	// TODO: Is this explanation right?
-	// Remove the reference from the batch so that GC can collect the visitor alloc.
-	// Otherwise, this may lead to mem leak, as batch itself cannot be GCed since its being
-	// linked with the visitor. Hence, now we have both *Batch and *batchVisitor unable to
-	// GCed.
-	vtr.data = nil
-	vtr.batchCopy = nil
 }
 
 // LowestEpoch returns the lowest epoch value encountered while visiting insertables.
@@ -69,14 +59,14 @@ func (vtr *batchVisitor) Visit(
 			for itr.HasNext() {
 				t, v := itr.Value()
 				updateMinTs(t)
-				appendSamples(timestamp.Time(t), v, int64(seriesId))
+				appendSamples(model.Time(t).Time(), v, int64(seriesId))
 			}
 		case Exemplar:
 			itr := insertable.Iterator().(ExemplarsIterator)
 			for itr.HasNext() {
 				l, t, v := itr.Value()
 				updateMinTs(t)
-				appendExemplars(timestamp.Time(t), v, int64(seriesId), labelsToStringSlice(l))
+				appendExemplars(model.Time(t).Time(), v, int64(seriesId), labelsToStringSlice(l))
 			}
 		}
 		updateStats(seriesEpoch, minTs)
