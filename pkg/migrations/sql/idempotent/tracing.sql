@@ -83,3 +83,36 @@ AS $sql$
 $sql$
 LANGUAGE SQL VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.put_attribute(text, jsonb, SCHEMA_TRACING.attribute_type) TO prom_writer;
+
+/* unfinished
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.find_attributes(_attr_obj jsonb, _attribute_type SCHEMA_TRACING.attribute_type)
+RETURNS TABLE
+( attribute_key_id bigint
+, attribute_id bigint
+, key text
+, value jsonb
+, attribute_type SCHEMA_TRACING.attribute_type
+)
+AS $sql$
+    SELECT
+        ak.id as attribute_key_id,
+        a.id as attribute_id,
+        ak.key,
+        a.value,
+        a.attribute_type
+    FROM jsonb_each(_attr_obj) f
+    INNER JOIN SCHEMA_TRACING.attribute_key ak ON
+    (
+        f.key = ak.key AND
+        ak.attribute_type & _attribute_type = _attribute_type
+    )
+    INNER JOIN SCHEMA_TRACING.attribute a ON
+    (
+        ak.key = a.key AND
+        f.value = a.value AND
+        a.attribute_type & _attribute_type = _attribute_type
+    )
+$sql$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.find_attributes(jsonb, SCHEMA_TRACING.attribute_type) TO prom_reader;
+*/

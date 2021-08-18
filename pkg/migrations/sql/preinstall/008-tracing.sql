@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
     span_kind SCHEMA_TRACING.span_kind,
     start_time timestamptz NOT NULL,
     end_time timestamptz NOT NULL,
+    duration interval NOT NULL GENERATED ALWAYS AS ( end_time - start_time ) STORED,
     span_attributes SCHEMA_TRACING.attribute_map,
     dropped_attributes_count int NOT NULL default 0,
     event_time tstzrange NOT NULL default tstzrange('infinity', 'infinity', '()'),
@@ -151,6 +152,10 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
     PRIMARY KEY (span_id, trace_id, start_time),
     CHECK (start_time <= end_time)
 );
+CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (trace_id, span_id);
+CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (span_id);
+CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (parent_span_id);
+CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (name_id);
 CREATE INDEX ON SCHEMA_TRACING.span USING GIST (tstzrange(start_time, end_time, '[]'));
 CREATE INDEX ON SCHEMA_TRACING.span USING GIN (span_attributes jsonb_path_ops);
 CREATE INDEX ON SCHEMA_TRACING.span USING GIN (resource_attributes jsonb_path_ops);
@@ -189,6 +194,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.link
     event_number smallint NOT NULL
     -- FOREIGN KEY (span_id, trace_id) REFERENCES SCHEMA_TRACING.span (span_id, trace_id) ON DELETE CASCADE -- foreign keys to hypertables are not supported
 );
+CREATE INDEX ON SCHEMA_TRACING.link USING BTREE (span_id, span_start_time);
 CREATE INDEX ON SCHEMA_TRACING.link USING GIN (attributes jsonb_path_ops);
 SELECT create_hypertable('SCHEMA_TRACING.link', 'span_start_time', partitioning_column=>'trace_id', number_partitions=>64);
 GRANT SELECT ON TABLE SCHEMA_TRACING.link TO prom_reader;
