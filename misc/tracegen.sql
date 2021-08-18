@@ -73,6 +73,7 @@ select distinct
 , (select id from schema_url limit 1) -- none in the sample data
 from public.trace_stg t
 cross join lateral jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].instrumentationLibrary') i
+where i ? 'name'
 on conflict (name, version, schema_url_id) do nothing
 ;
 
@@ -208,12 +209,14 @@ select
   x.trace_id
 , max(x.root_span_id)
 , max(x.span_count)
-, tstzrange(x.start_time, x.end_time, '[)') as span_time_range
+, tstzrange(min(x.start_time), max(x.end_time), '[)') as span_time_range
 , tstzrange('infinity', 'infinity', '()') as event_time_range
 , jsonb_agg(x.span_tree) as span_tree
 from x
-group by x.trace_id, x.start_time, x.end_time
+group by x.trace_id
 ;
+
+
 
 /*
 -- attempt at an alternate tree representation
