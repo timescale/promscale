@@ -22,6 +22,9 @@ CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
 
     CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
     GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
+
+    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
+    GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
 END $$ $ee$);
 
 -- the promscale extension contains optimized version of some
@@ -31,7 +34,7 @@ DO $$
 DECLARE
    new_path text;
 BEGIN
-   new_path := current_setting('search_path') || format(',%L,%L,%L,%L', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG');
+   new_path := current_setting('search_path') || format(',%L,%L,%L,%L', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG', 'SCHEMA_TRACING');
    execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
    execute format('SET search_path = %s', new_path);
 END

@@ -19,7 +19,8 @@ INSERT INTO public.prom_installation_info(key, value) VALUES
     ('series schema',         'SCHEMA_SERIES'),
     ('metric schema',         'SCHEMA_METRIC'),
     ('data schema',           'SCHEMA_DATA'),
-    ('information schema',    'SCHEMA_INFO');
+    ('information schema',    'SCHEMA_INFO'),
+    ('tracing schema',        'SCHEMA_TRACING');
 
 
 CREATE TABLE SCHEMA_CATALOG.series (
