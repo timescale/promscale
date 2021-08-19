@@ -41,7 +41,7 @@ DO $$
 DECLARE
    new_path text;
 BEGIN
-   new_path := current_setting('search_path') || format(',%L,%L,%L,%L', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG');
+   new_path := current_setting('search_path') || format(',%L,%L,%L,%L', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG', 'SCHEMA_TRACING');
    execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
    execute format('SET search_path = %s', new_path);
 END

@@ -146,6 +146,12 @@ COMMENT ON FUNCTION SCHEMA_TRACING.eq(SCHEMA_TRACING.attribute_map, jsonb)
 IS 'returns true if the attribute_map and jsonb object are equal';
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eq(SCHEMA_TRACING.attribute_map, jsonb) TO prom_reader;
 
+CREATE OPERATOR SCHEMA_TRACING.== (
+    LEFTARG = SCHEMA_TRACING.attribute_map,
+    RIGHTARG = jsonb,
+    FUNCTION = SCHEMA_TRACING.eq
+);
+
 --------------------- op @> ------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.attribute_map_contains(_attr_map SCHEMA_TRACING.attribute_map, _json_attrs jsonb)

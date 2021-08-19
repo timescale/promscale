@@ -214,6 +214,7 @@ select
 , jsonb_agg(x.span_tree) as span_tree
 from x
 group by x.trace_id
+on conflict (id) do nothing
 ;
 
 
