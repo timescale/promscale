@@ -112,8 +112,8 @@ func runExemplarQueryTests(t *testing.T, cases []testCase, start, end time.Time,
 }
 
 func queryExemplarsResultComparator(promContent []byte, tsContent []byte, _ string) error {
-	tsStr := trimNewLineIfFound(string(tsContent))
-	promStr := trimNewLineIfFound(string(promContent))
+	tsStr := string(tsContent)
+	promStr := string(promContent)
 
 	if !reflect.DeepEqual(tsStr, promStr) {
 		dmp := diffmatchpatch.New()
@@ -121,12 +121,4 @@ func queryExemplarsResultComparator(promContent []byte, tsContent []byte, _ stri
 		return fmt.Errorf("unexpected response:\ntimescale\n%+v\nprom\n%+v\ndiff\n%v", tsStr, promStr, dmp.DiffPrettyText(diffs))
 	}
 	return nil
-}
-
-func trimNewLineIfFound(s string) string {
-	l := len(s)
-	if s[l-1] == '\n' {
-		s = s[:l-1]
-	}
-	return s
 }

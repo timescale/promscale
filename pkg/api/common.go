@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/timescale/promscale/pkg/log"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/tenancy"
@@ -228,23 +229,35 @@ func respondError(w http.ResponseWriter, status int, err error, errType string) 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(&errResponse{
+	b, err := json.Marshal(&errResponse{
 		Status:    "error",
 		ErrorType: errType,
 		Error:     err.Error(),
 	})
+	if err != nil {
+		log.Error("msg", "error marshalling json error", "err", err)
+	}
+	if n, err := w.Write(b); err != nil {
+		log.Error("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
 }
 
 func respondErrorWithMessage(w http.ResponseWriter, status int, err error, errType string, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(&errResponse{
+	b, err := json.Marshal(&errResponse{
 		Status:    "error",
 		ErrorType: errType,
 		Error:     err.Error(),
 		Message:   message,
 	})
+	if err != nil {
+		log.Error("msg", "error marshalling json error", "err", err)
+	}
+	if n, err := w.Write(b); err != nil {
+		log.Error("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
 }
 
 type errResponse struct {

@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -40,12 +41,12 @@ func (tools *queryTools) getMetricTableName(metricSchema, metricName string, isE
 		if err != nil {
 			return model.MetricInfo{}, err
 		}
-		return model.MetricInfo{TableName: tableName}, nil
-	}
-
-	metricInfo, err = querySampleMetricTableName(tools.conn, metricSchema, metricName)
-	if err != nil {
-		return model.MetricInfo{}, err
+		metricInfo = model.MetricInfo{TableSchema: schema.Exemplar, TableName: tableName}
+	} else {
+		metricInfo, err = querySampleMetricTableName(tools.conn, metricSchema, metricName)
+		if err != nil {
+			return model.MetricInfo{}, err
+		}
 	}
 
 	err = tools.metricTableNames.Set(metricSchema, metricName, metricInfo, isExemplarQuery)

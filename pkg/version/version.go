@@ -39,7 +39,7 @@ var (
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 
 	Promscale                           = "0.5.2-dev.2"
-	PromMigrator                        = "0.0.2-beta.1"
+	PromMigrator                        = "0.0.2-beta.1.dev.0"
 	CommitHash                          = ""
 	EarliestUpgradeTestVersion          = "0.1.0"
 	EarliestUpgradeTestVersionMultinode = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0

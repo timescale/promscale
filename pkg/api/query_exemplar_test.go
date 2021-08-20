@@ -112,7 +112,7 @@ func TestQueryExemplar(t *testing.T) {
 		if tc.shouldErr {
 			b, err := ioutil.ReadAll(r.Body)
 			require.NoError(t, err)
-			require.Equal(t, tc.err, string(b[:len(b)-1]), tc.name) // string(b[:len(b)-1]) to skip the ending \n
+			require.Equal(t, tc.err, string(b), tc.name)
 		}
 	}
 }
