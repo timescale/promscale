@@ -1,10 +1,14 @@
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_exemplar_label_key_positions(metric_name TEXT)
 RETURNS JSON AS
 $$
-    SELECT json_object_agg(row.key, row.position) FROM (
-        SELECT p.key as key, p.pos as position FROM SCHEMA_CATALOG.exemplar_label_key_position p
-            WHERE p.metric_name=get_exemplar_label_key_positions.metric_name GROUP BY p.metric_name, p.key, p.pos ORDER BY p.pos
-        ) AS row
+    SELECT json_object_agg(row.key, row.position)
+    FROM (
+        SELECT p.key as key, p.pos as position
+        FROM SCHEMA_CATALOG.exemplar_label_key_position p
+        WHERE p.metric_name=get_exemplar_label_key_positions.metric_name
+        GROUP BY p.metric_name, p.key, p.pos
+        ORDER BY p.pos
+    ) AS row
 $$
 LANGUAGE SQL
 STABLE PARALLEL SAFE;
@@ -21,8 +25,12 @@ DECLARE
     table_name_fetched TEXT;
     metric_name_fetched TEXT;
 BEGIN
-    SELECT m.metric_name, m.table_name INTO metric_name_fetched, table_name_fetched FROM SCHEMA_CATALOG.metric m WHERE m.metric_name=create_exemplar_table_if_not_exists.metric_name;
-    IF table_name_fetched IS NULL THEN
+    SELECT m.metric_name, m.table_name
+    INTO metric_name_fetched, table_name_fetched
+    FROM SCHEMA_CATALOG.metric m
+    WHERE m.metric_name=create_exemplar_table_if_not_exists.metric_name AND table_schema = 'SCHEMA_DATA';
+
+    IF NOT FOUND THEN
         -- metric table entry does not exists in SCHEMA_CATALOG.metric, hence we cannot create. Error out.
         -- Note: even though we can create an entry from here, we should not as it keeps the approach systematic.
         RAISE EXCEPTION 'SCHEMA_CATALOG.metric does not contain the table entry for % metric', metric_name;
