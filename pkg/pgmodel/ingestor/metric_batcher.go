@@ -17,21 +17,26 @@ import (
 )
 
 const getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
+const createExemplarTable = "SELECT * FROM " + schema.Catalog + ".create_exemplar_table_if_not_exists($1)"
 
 type metricBatcher struct {
-	conn            pgxconn.PgxConn
-	input           chan *insertDataRequest
-	pending         *pendingBuffer
-	metricName      string
-	metricTableName string
-	toCopiers       chan<- copyRequest
-	labelArrayOID   uint32
-	exemplarCatalog *exemplarInfo
+	conn                 pgxconn.PgxConn
+	input                chan *insertDataRequest
+	pending              *pendingBuffer
+	metricName           string
+	metricTableName      string
+	toCopiers            chan<- copyRequest
+	labelArrayOID        uint32
+	exemplarsInitialized bool
 }
 
-type exemplarInfo struct {
-	seenPreviously bool
-	exemplarCache  cache.PositionCache
+func containsExemplars(data []model.Insertable) bool {
+	for _, row := range data {
+		if row.IsOfType(model.Exemplar) {
+			return true
+		}
+	}
+	return false
 }
 
 func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
@@ -112,12 +117,26 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 	return tableName, err
 }
 
+// initilizeExemplars creates the necessary tables for exemplars. Called lazily only if exemplars are found
+func (h *metricBatcher) initializeExemplars() error {
+	// We are seeing the exemplar belonging to this metric first time. It may be the
+	// first time of this exemplar in the database. So, let's attempt to create a table
+	// if it does not exists.
+	var created bool
+	err := h.conn.QueryRow(context.Background(), createExemplarTable, h.metricName).Scan(&created)
+	if err != nil {
+		return fmt.Errorf("error initializing exemplar tables for %s: %w", h.metricName, err)
+	}
+	//created is ignored
+	h.exemplarsInitialized = true
+	return nil
+}
+
 func runMetricBatcher(conn pgxconn.PgxConn,
 	input chan *insertDataRequest,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
-	exemplarKeyPos cache.PositionCache,
 	toCopiers chan<- copyRequest,
 	labelArrayOID uint32,
 ) {
@@ -152,9 +171,6 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		metricTableName: tableName,
 		toCopiers:       toCopiers,
 		labelArrayOID:   labelArrayOID,
-		exemplarCatalog: &exemplarInfo{
-			exemplarCache: exemplarKeyPos,
-		},
 	}
 
 	handler.handleReq(firstReq)
@@ -209,6 +225,14 @@ func (h *metricBatcher) nonblockingHandleReq() bool {
 }
 
 func (h *metricBatcher) handleReq(req *insertDataRequest) bool {
+	if !h.exemplarsInitialized && containsExemplars(req.data) {
+		if err := h.initializeExemplars(); err != nil {
+			log.Error("msg", err)
+			req.reportResult(err)
+			return false
+		}
+
+	}
 	h.pending.addReq(req)
 	if h.pending.IsFull() {
 		h.tryFlushOrBatchMore()
@@ -232,7 +256,7 @@ func (h *metricBatcher) tryFlushOrBatchMore() {
 		}
 		numSeries := h.pending.batch.CountSeries()
 		select {
-		case h.toCopiers <- copyRequest{h.pending, h.exemplarProcessor, h.metricTableName}:
+		case h.toCopiers <- copyRequest{h.pending, h.metricTableName}:
 			MetricBatcherFlushSeries.Observe(float64(numSeries))
 			h.pending = NewPendingBuffer()
 			return
@@ -240,13 +264,4 @@ func (h *metricBatcher) tryFlushOrBatchMore() {
 			h.pending.addReq(req)
 		}
 	}
-}
-
-func (h *metricBatcher) exemplarProcessor(data []model.Insertable) error {
-	if containsExemplars(data) {
-		if err := processExemplars(h.conn, h.metricName, h.exemplarCatalog, data); err != nil {
-			return fmt.Errorf("process exemplars: %w", err)
-		}
-	}
-	return nil
 }

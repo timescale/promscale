@@ -303,9 +303,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					c.columnName = defaultColumnName
 				}
 				labels := make([]int64, len(c.labels))
-				for i, l := range c.labels {
-					labels[i] = l
-				}
+				copy(labels, c.labels)
 				c.input = [][]seriesSetRow{{
 					genSeries(labels, c.ts, c.vs, c.metricSchema, c.columnName)}}
 			}

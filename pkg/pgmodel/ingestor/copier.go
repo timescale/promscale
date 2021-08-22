@@ -24,12 +24,9 @@ import (
 
 const maxCopyRequestsPerTxn = 100
 
-type processor func([]pgmodel.Insertable) error
-
 type copyRequest struct {
-	data              *pendingBuffer
-	exemplarProcessor processor
-	table             string
+	data  *pendingBuffer
+	table string
 }
 
 var (
@@ -51,10 +48,16 @@ func (reqs copyBatch) VisitSeries(callBack func(s *pgmodel.Series) error) error 
 	return nil
 }
 
-func (reqs copyBatch) processExemplars() error {
+func (reqs copyBatch) VisitExemplar(callBack func(s *pgmodel.PromExemplars) error) error {
 	for _, req := range reqs {
-		if err := req.exemplarProcessor(req.data.batch.Data()); err != nil {
-			return fmt.Errorf("process exemplars: %w", err)
+		insertables := req.data.batch.Data()
+		for i := range insertables {
+			exemplar, ok := insertables[i].(*pgmodel.PromExemplars)
+			if ok {
+				if err := callBack(exemplar); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -62,7 +65,7 @@ func (reqs copyBatch) processExemplars() error {
 
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter) {
+func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
 	// We grab copyRequests off the channel one at a time. This, and the name is
 	// a legacy from when we used CopyFrom to perform the insertions, and may
 	// change in the future.
@@ -114,8 +117,9 @@ func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter) {
 			processErr(fmt.Errorf("copier: writing series: %w", err))
 			return
 		}
-		if err = batch.processExemplars(); err != nil {
-			processErr(fmt.Errorf("copier: processing exemplars: %w", err))
+		err = elf.orderExemplarLabelValues(batch)
+		if err != nil {
+			processErr(fmt.Errorf("copier: formatting exemplar label values: %w", err))
 			return
 		}
 

@@ -69,9 +69,10 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 
 	labelArrayOID := model.GetCustomTypeOID(model.LabelArray)
 	sw := NewSeriesWriter(conn, labelArrayOID)
+	elf := NewExamplarLabelFormatter(conn, eCache)
 
 	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, toCopiers, sw)
+		go runCopier(conn, toCopiers, sw, elf)
 	}
 
 	inserter := &pgxDispatcher{
@@ -281,7 +282,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
-			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.exemplarKeyPosCache, p.toCopiers, p.labelArrayOID)
+			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.toCopiers, p.labelArrayOID)
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)

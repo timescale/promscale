@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -83,6 +84,21 @@ func TestMetricTableName(t *testing.T) {
 	}
 }
 
+type insertableVisitor []model.Insertable
+
+func (insertables insertableVisitor) VisitExemplar(callBack func(s *pgmodel.PromExemplars) error) error {
+	for i := range insertables {
+		exemplar, ok := insertables[i].(*pgmodel.PromExemplars)
+		if ok {
+			if err := callBack(exemplar); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func TestOrderExemplarLabelValues(t *testing.T) {
 	rawExemplars := []prompb.Exemplar{
 		{
@@ -115,10 +131,8 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 	posCache := cache.NewExemplarLabelsPosCache(cache.Config{ExemplarCacheSize: 4})
 	prepareExemplarPosCache(posCache)
 
-	exemplarCatalog := &exemplarInfo{
-		exemplarCache: posCache,
-	}
-	err := orderExemplarLabelValues(mockConn, exemplarCatalog, insertables)
+	elf := NewExamplarLabelFormatter(mockConn, posCache)
+	err := elf.orderExemplarLabelValues(insertableVisitor(insertables))
 	require.NoError(t, err)
 
 	// Verify exemplar label value positioning.
