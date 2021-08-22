@@ -10,13 +10,13 @@ import (
 )
 
 type batchVisitor struct {
-	data        []Insertable
+	batch       *Batch
 	lowestEpoch SeriesEpoch
-	batchCopy   *Batch // Maintain a copy of batch to update the stats.
+	minTime     int64
 }
 
 func getBatchVisitor(batch *Batch) *batchVisitor {
-	return &batchVisitor{batch.data, SeriesEpoch(math.MaxInt64), batch}
+	return &batchVisitor{batch, SeriesEpoch(math.MaxInt64), math.MaxInt64}
 }
 
 // LowestEpoch returns the lowest epoch value encountered while visiting insertables.
@@ -25,51 +25,53 @@ func (vtr *batchVisitor) LowestEpoch() SeriesEpoch {
 	return vtr.lowestEpoch
 }
 
+func (vtr *batchVisitor) MinTime() int64 {
+	return vtr.minTime
+}
+
 func (vtr *batchVisitor) Visit(
-	appendSamples func(t time.Time, v float64, seriesId int64),
-	appendExemplars func(t time.Time, v float64, seriesId int64, lvalues []string),
+	visitSamples func(t time.Time, v float64, seriesId int64),
+	visitExemplars func(t time.Time, v float64, seriesId int64, lvalues []string),
 ) error {
 	var (
 		seriesId    SeriesID
 		seriesEpoch SeriesEpoch
 		err         error
 	)
-	updateStats := func(epoch SeriesEpoch, t int64) {
+	updateEpoch := func(epoch SeriesEpoch) {
 		if epoch < vtr.lowestEpoch {
 			vtr.lowestEpoch = epoch
 		}
-		if vtr.batchCopy.MinSeen > t {
-			vtr.batchCopy.MinSeen = t
-		}
 	}
-	for _, insertable := range vtr.data {
-		minTs := int64(math.MaxInt64)
+	for _, insertable := range vtr.batch.data {
 		updateMinTs := func(t int64) {
-			if t < minTs {
-				minTs = t
+			if t < vtr.minTime {
+				vtr.minTime = t
 			}
 		}
 		seriesId, seriesEpoch, err = insertable.Series().GetSeriesID()
 		if err != nil {
 			return fmt.Errorf("get series-id: %w", err)
 		}
+
+		updateEpoch(seriesEpoch)
+
 		switch insertable.Type() {
 		case Sample:
 			itr := insertable.Iterator().(SamplesIterator)
 			for itr.HasNext() {
 				t, v := itr.Value()
 				updateMinTs(t)
-				appendSamples(model.Time(t).Time(), v, int64(seriesId))
+				visitSamples(model.Time(t).Time(), v, int64(seriesId))
 			}
 		case Exemplar:
 			itr := insertable.Iterator().(ExemplarsIterator)
 			for itr.HasNext() {
 				l, t, v := itr.Value()
 				updateMinTs(t)
-				appendExemplars(model.Time(t).Time(), v, int64(seriesId), labelsToStringSlice(l))
+				visitExemplars(model.Time(t).Time(), v, int64(seriesId), labelsToStringSlice(l))
 			}
 		}
-		updateStats(seriesEpoch, minTs)
 	}
 	return nil
 }

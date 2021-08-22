@@ -6,7 +6,6 @@ package model
 
 import (
 	"fmt"
-	"math"
 	"time"
 )
 
@@ -20,17 +19,12 @@ type Data struct {
 // Batch is an iterator over a collection of Insertables that returns
 // data in the format expected for the data table row.
 type Batch struct {
-	data        []Insertable
-	seriesIndex int
-	dataIndex   int
-
-	MinSeen int64
+	data []Insertable
 }
 
 // NewBatch returns a new batch that can hold samples and exemplars.
 func NewBatch() Batch {
 	si := Batch{data: make([]Insertable, 0)}
-	si.ResetPosition()
 	return si
 }
 
@@ -40,7 +34,6 @@ func (t *Batch) Reset() {
 		t.data[i] = nil
 	}
 	*t = Batch{data: t.data[:0]}
-	t.ResetPosition()
 }
 
 func (t *Batch) CountSeries() int {
@@ -66,13 +59,6 @@ func (t *Batch) Count() (numSamples, numExemplars int) {
 
 func (t *Batch) AppendSlice(s []Insertable) {
 	t.data = append(t.data, s...)
-}
-
-//ResetPosition resets the iteration position to the beginning
-func (t *Batch) ResetPosition() {
-	t.dataIndex = -1
-	t.seriesIndex = 0
-	t.MinSeen = math.MaxInt64
 }
 
 func (t *Batch) Visitor() *batchVisitor {
