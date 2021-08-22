@@ -128,7 +128,7 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 	}
 
 	mockConn := model.NewSqlRecorder([]model.SqlQuery{}, t)
-	posCache := cache.NewExemplarLabelsPosCache(cache.Config{ExemplarCacheSize: 4})
+	posCache := cache.NewExemplarLabelsPosCache(cache.Config{ExemplarKeyPosCacheSize: 4})
 	prepareExemplarPosCache(posCache)
 
 	elf := NewExamplarLabelFormatter(mockConn, posCache)
@@ -189,5 +189,5 @@ func prepareExemplarPosCache(posCache cache.PositionCache) {
 		"component": 2,
 		"app":       3,
 	}
-	posCache.SetorUpdateLabelPositions("exemplar_test_metric", index)
+	posCache.SetOrUpdateLabelPositions("exemplar_test_metric", index)
 }

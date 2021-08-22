@@ -35,8 +35,8 @@ func TestPrepareExemplarQueryResult(t *testing.T) {
 	lrCache := newMockLabelsReader([]int64{1, 3}, []labels.Label{{Name: "__name__", Value: "test_metric_exemplar"}, {Name: "instance", Value: "localhost:9100"}})
 
 	conn := model.NewSqlRecorder([]model.SqlQuery{}, t)
-	exemplarCache := cache.NewExemplarLabelsPosCache(cache.Config{ExemplarCacheSize: 3})
-	exemplarCache.SetorUpdateLabelPositions("test_metric_exemplar", getExemplarPosIndices())
+	exemplarCache := cache.NewExemplarLabelsPosCache(cache.Config{ExemplarKeyPosCacheSize: 3})
+	exemplarCache.SetOrUpdateLabelPositions("test_metric_exemplar", getExemplarPosIndices())
 
 	tools := &queryTools{
 		conn:             conn,

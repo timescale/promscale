@@ -3,10 +3,11 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgerrcode"
 	"sort"
 	"time"
+
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
@@ -31,7 +32,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 			continue
 		}
 		evaluatedMatchers[matcherStr] = struct{}{}
-		metadata, err := getEvaluationMetadata(q.tools, timestamp.FromTime(start), timestamp.FromTime(end), GetPromQLMetadata(matchers))
+		metadata, err := getEvaluationMetadata(q.tools, timestamp.FromTime(start), timestamp.FromTime(end), GetPromQLMetadata(matchers, nil, nil, nil))
 		if err != nil {
 			return nil, fmt.Errorf("get evaluation metadata: %w", err)
 		}

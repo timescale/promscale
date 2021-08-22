@@ -86,7 +86,7 @@ func (t *ExemplarLabelFormatter) orderExemplarLabelValues(ev ExemplarVisitor) er
 			metricName := pending.metricName
 			labelKeys := pending.labelKeys
 			buildKeyIndex(labelKeyIndex, labelKeys, correspondingKeyPositions)
-			t.exemplarKeyPosCache.SetorUpdateLabelPositions(metricName, labelKeyIndex)
+			t.exemplarKeyPosCache.SetOrUpdateLabelPositions(metricName, labelKeyIndex)
 			exemplarRef := pending.exemplarRef
 			if found := exemplarRef.OrderExemplarLabels(labelKeyIndex); !found {
 				// Sanity check, since we just filled the missing labels positions.

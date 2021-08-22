@@ -10,14 +10,17 @@ import (
 
 // promqlMetadata is metadata received directly from our native PromQL engine.
 type promqlMetadata struct {
-	matchers    []*labels.Matcher
-	path        []parser.Node
+	//alwyas set
+	matchers []*labels.Matcher
+
+	//following may be nil
 	selectHints *storage.SelectHints
 	queryHints  *QueryHints
+	path        []parser.Node
 }
 
-func GetPromQLMetadata(matchers []*labels.Matcher) *promqlMetadata {
-	return &promqlMetadata{matchers: matchers}
+func GetPromQLMetadata(matchers []*labels.Matcher, hints *storage.SelectHints, qh *QueryHints, path []parser.Node) *promqlMetadata {
+	return &promqlMetadata{selectHints: hints, queryHints: qh, path: path, matchers: matchers}
 }
 
 type timeFilter struct {

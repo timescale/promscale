@@ -7,10 +7,11 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
@@ -136,7 +137,7 @@ func getPositionIndex(tools *queryTools, posCache cache.PositionCache, metric st
 		if err := tools.conn.QueryRow(context.Background(), getExemplarLabelPositions, metric).Scan(&index); err != nil {
 			return nil, fmt.Errorf("scanning exemplar key-position index: %w", err)
 		}
-		posCache.SetorUpdateLabelPositions(metric, index)
+		posCache.SetOrUpdateLabelPositions(metric, index)
 		keyPosIndex = index
 	}
 	return keyPosIndex, nil

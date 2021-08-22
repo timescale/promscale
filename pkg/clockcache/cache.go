@@ -61,8 +61,8 @@ func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) 
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
-	elem, _, exists := self.insert(key, value, sizeBytes)
-	return elem.value, exists
+	elem, _, inCache := self.insert(key, value, sizeBytes)
+	return elem.value, inCache
 }
 
 // InsertBatch inserts a batch of keys with their corresponding values.

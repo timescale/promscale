@@ -33,15 +33,10 @@ func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHin
 }
 
 func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms []*labels.Matcher) ([]sampleRow, parser.Node, error) {
-	metadata, err := getEvaluationMetadata(q.tools, mint, maxt, GetPromQLMetadata(ms))
+	metadata, err := getEvaluationMetadata(q.tools, mint, maxt, GetPromQLMetadata(ms, hints, qh, path))
 	if err != nil {
 		return nil, nil, fmt.Errorf("get evaluation metadata: %w", err)
 	}
-
-	// Fill query metadata.
-	metadata.promqlMetadata.path = path
-	metadata.promqlMetadata.selectHints = hints
-	metadata.promqlMetadata.queryHints = qh
 
 	filter := metadata.timeFilter
 	if metadata.isSingleMetric {

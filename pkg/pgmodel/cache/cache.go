@@ -47,7 +47,7 @@ func (k key) len() int {
 
 // MetricCache provides a caching mechanism for metric table names.
 type MetricCache interface {
-	Get(schema, metric string, expectExemplar bool) (model.MetricInfo, error)
+	Get(schema, metric string, isExemplar bool) (model.MetricInfo, error)
 	Set(schema, metric string, mInfo model.MetricInfo, isExemplar bool) error
 	// Len returns the number of metrics cached in the system.
 	Len() int
