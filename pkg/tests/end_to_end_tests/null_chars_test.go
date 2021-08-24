@@ -66,7 +66,7 @@ func TestOperationWithNullChars(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		resp, err := r.Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{

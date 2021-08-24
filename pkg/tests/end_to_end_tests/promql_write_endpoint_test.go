@@ -20,7 +20,6 @@ import (
 	"github.com/golang/snappy"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
-	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -88,7 +87,7 @@ func getHTTPWriteRequest(protoRequest *prompb.WriteRequest) (*http.Request, erro
 	}
 
 	body := string(snappy.Encode(nil, data))
-	u, err := url.Parse(fmt.Sprintf("http://%s:%d/write", testhelpers.PromHost, testhelpers.PromPort.Int()))
+	u, err := url.Parse(fmt.Sprintf("http://%s:%d/write", promHost, promPort.Int()))
 
 	if err != nil {
 		return nil, err

@@ -46,6 +46,7 @@ var (
 			"matcher-functions.sql",
 			"ha.sql",
 			"metric-metadata.sql",
+			"exemplar.sql",
 			"apply_permissions.sql", //should be last
 		},
 	}
@@ -385,6 +386,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	s = strings.ReplaceAll(s, "SCHEMA_TIMESCALE", schema.Timescale)
 	s = strings.ReplaceAll(s, "SCHEMA_SERIES", schema.SeriesView)
 	s = strings.ReplaceAll(s, "SCHEMA_METRIC", schema.MetricView)
+	s = strings.ReplaceAll(s, "SCHEMA_DATA_EXEMPLAR", schema.Exemplar) // Keep this above SCHEMA_DATA to avoid conflicts.
 	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", schema.DataSeries)
 	s = strings.ReplaceAll(s, "SCHEMA_DATA", schema.Data)
 	s = strings.ReplaceAll(s, "SCHEMA_INFO", schema.Info)

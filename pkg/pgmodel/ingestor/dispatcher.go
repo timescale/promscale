@@ -32,6 +32,7 @@ type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
+	exemplarKeyPosCache    cache.PositionCache
 	batchers               sync.Map
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
@@ -42,7 +43,7 @@ type pgxDispatcher struct {
 	labelArrayOID          uint32
 }
 
-func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, cfg *Cfg) (*pgxDispatcher, error) {
+func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
 	numCopiers := cfg.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")
@@ -62,23 +63,25 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		handleDecompression = skipDecompression
 	}
 
-	var labelArrayOID uint32
-	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&labelArrayOID)
-	if err != nil {
-		return nil, err
+	if err := model.RegisterCustomPgTypes(conn); err != nil {
+		return nil, fmt.Errorf("registering custom pg types: %w", err)
 	}
 
+	labelArrayOID := model.GetCustomTypeOID(model.LabelArray)
 	sw := NewSeriesWriter(conn, labelArrayOID)
+	elf := NewExamplarLabelFormatter(conn, eCache)
 
 	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, toCopiers, sw)
+		go runCopier(conn, toCopiers, sw, elf)
 	}
 
 	inserter := &pgxDispatcher{
 		conn:                   conn,
 		metricTableNames:       cache,
 		scache:                 scache,
+		exemplarKeyPosCache:    eCache,
 		completeMetricCreation: make(chan struct{}, 1),
+		asyncAcks:              cfg.AsyncAcks,
 		toCopiers:              toCopiers,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
@@ -88,8 +91,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
-	err = inserter.CompleteMetricCreation()
-	if err != nil {
+	if err := inserter.CompleteMetricCreation(); err != nil {
 		return nil, err
 	}
 
@@ -178,7 +180,7 @@ func (p *pgxDispatcher) Close() {
 	p.doneWG.Wait()
 }
 
-// Insert a batch of data into the DB.
+// InsertTs inserts a batch of data into the database.
 // The data should be grouped by metric name.
 // returns the number of rows we intended to insert (_not_ how many were
 // actually inserted) and any error.
@@ -197,13 +199,11 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 	// channel, but only insert if it's empty, anything else can deadlock.
 	errChan := make(chan error, 1)
 	for metricName, data := range rows {
-		for _, si := range data {
-			numRows += uint64(si.CountSamples())
-			ls := si.LastSample()
-			if maxt < ls.Timestamp {
-				// Since by default, samples are expected to arrive in sorted order with time,
-				// the last sample should be the maxt of that series. This assumption helps avoid costly inner loops.
-				maxt = ls.Timestamp
+		for _, insertable := range data {
+			numRows += uint64(insertable.Count())
+			ts := insertable.MaxTs()
+			if maxt < ts {
+				maxt = ts
 			}
 		}
 		// the following is usually non-blocking, just a channel insert
@@ -292,8 +292,8 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 
 type insertDataRequest struct {
 	metric   string
-	data     []model.Samples
 	finished *sync.WaitGroup
+	data     []model.Insertable
 	errChan  chan error
 }
 

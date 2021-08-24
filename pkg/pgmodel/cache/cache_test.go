@@ -1,9 +1,11 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package cache
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/clockcache"
@@ -70,7 +72,7 @@ func TestMetricTableNameCache(t *testing.T) {
 				Metrics: clockcache.WithMax(100),
 			}
 
-			mInfo, err := cache.Get(c.schema, c.metric)
+			mInfo, err := cache.Get(c.schema, c.metric, false)
 
 			if mInfo.TableName != "" {
 				t.Fatal("found cache that should be missing, not stored yet")
@@ -88,13 +90,14 @@ func TestMetricTableNameCache(t *testing.T) {
 					TableName:   c.tableName,
 					SeriesTable: c.seriesTable,
 				},
+				false,
 			)
 
 			if err != nil {
 				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\nnil\n", err)
 			}
 
-			mInfo, err = cache.Get(c.schema, c.metric)
+			mInfo, err = cache.Get(c.schema, c.metric, false)
 
 			if mInfo.TableSchema != c.tableSchema {
 				t.Fatalf("found wrong cache schema value: got %s wanted %s", mInfo.TableSchema, c.schema)
@@ -112,7 +115,7 @@ func TestMetricTableNameCache(t *testing.T) {
 
 			// Check if specific schema key is set with correct value
 			if c.schema == "" && c.tableSchema != "" {
-				mInfo, err = cache.Get(c.tableSchema, c.metric)
+				mInfo, err = cache.Get(c.tableSchema, c.metric, false)
 
 				if mInfo.TableSchema != c.tableSchema {
 					t.Fatalf("found wrong cache schema value: got %s wanted %s", mInfo.TableSchema, c.tableSchema)
@@ -129,5 +132,49 @@ func TestMetricTableNameCache(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMetricNameCacheExemplarEntry(t *testing.T) {
+	metric, table := "test_metric", "test_table"
+	mInfo := model.MetricInfo{TableName: table}
+	cache := NewMetricCache(Config{MetricsCacheSize: 2})
+	_, foundErr := cache.Get("", metric, false)
+	if foundErr != errors.ErrEntryNotFound {
+		t.Fatal("entry found for non inserted data")
+	}
+	err := cache.Set("", metric, mInfo, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	val, err := cache.Get("", metric, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(val, mInfo) {
+		t.Fatalf("metric entry does not match table entry")
+	}
+	_, err = cache.Get("", metric, true)
+	if err != errors.ErrEntryNotFound {
+		t.Fatalf("exemplar metric not set, but still exists")
+	}
+	err = cache.Set("", metric, mInfo, true)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	// Should have entry both for exemplar metric and sample metric.
+	val, err = cache.Get("", metric, true)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if !reflect.DeepEqual(val, mInfo) {
+		t.Fatalf("does not match")
+	}
+	val, err = cache.Get("", metric, false)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if !reflect.DeepEqual(val, mInfo) {
+		t.Fatalf("does not match")
 	}
 }

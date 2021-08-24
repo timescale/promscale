@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
-	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
 	pgQuerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/promql"
 )
@@ -25,15 +24,7 @@ type queryable struct {
 	labelsReader lreader.LabelsReader
 }
 
-func (q queryable) Querier(ctx context.Context, mint, maxt int64) (promql.Querier, error) {
-	return &querier{
-		ctx: ctx, mint: mint, maxt: maxt,
-		metricsReader: q.querier,
-		labelsReader:  q.labelsReader,
-	}, nil
-}
-
-type querier struct {
+type samplesQuerier struct {
 	ctx           context.Context
 	mint, maxt    int64
 	metricsReader pgQuerier.Querier
@@ -41,25 +32,42 @@ type querier struct {
 	seriesSets    []pgQuerier.SeriesSet
 }
 
-func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q queryable) ExemplarsQuerier(ctx context.Context) pgQuerier.ExemplarQuerier {
+	return q.querier.ExemplarsQuerier(ctx)
+}
+
+func (q queryable) SamplesQuerier(ctx context.Context, mint, maxt int64) (promql.SamplesQuerier, error) {
+	return q.newSamplesQuerier(ctx, mint, maxt), nil
+}
+
+func (q queryable) newSamplesQuerier(ctx context.Context, mint, maxt int64) *samplesQuerier {
+	return &samplesQuerier{
+		ctx: ctx, mint: mint, maxt: maxt,
+		metricsReader: q.querier,
+		labelsReader:  q.labelsReader,
+	}
+}
+
+func (q samplesQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	lVals, err := q.labelsReader.LabelValues(name)
 	return lVals, nil, err
 }
 
-func (q querier) LabelNames() ([]string, storage.Warnings, error) {
+func (q samplesQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	lNames, err := q.labelsReader.LabelNames()
 	return lNames, nil, err
 }
 
-func (q *querier) Close() error {
+func (q *samplesQuerier) Close() error {
 	for _, ss := range q.seriesSets {
 		ss.Close()
 	}
 	return nil
 }
 
-func (q *querier) Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	ss, n := q.metricsReader.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
+func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgQuerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+	qry := q.metricsReader.SamplesQuerier()
+	ss, n := qry.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
 	q.seriesSets = append(q.seriesSets, ss)
 	return ss, n
 }

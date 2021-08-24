@@ -86,7 +86,7 @@ func runMain(m *testing.M) int {
 			fmt.Println("Error getting temp dir for Prometheus storage", err)
 			os.Exit(1)
 		}
-		promContainer, err := StartPromContainer(path, ctx)
+		promContainer, _, _, err := StartPromContainer(path, ctx)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)

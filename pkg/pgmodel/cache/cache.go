@@ -16,17 +16,6 @@ const (
 	DefaultMetricCacheSize = 10000
 )
 
-// MetricCache provides a caching mechanism for metric table names.
-type MetricCache interface {
-	Get(schema, metric string) (model.MetricInfo, error)
-	Set(schema, metric string, mInfo model.MetricInfo) error
-	// Len returns the number of metrics cached in the system.
-	Len() int
-	// Cap returns the capacity of the metrics cache.
-	Cap() int
-	Evictions() uint64
-}
-
 type LabelsCache interface {
 	// GetValues tries to get a batch of keys and store the corresponding values is valuesOut
 	// returns the number of keys that were actually found.
@@ -49,22 +38,38 @@ type LabelsCache interface {
 
 type key struct {
 	schema, metric string
+	isExemplar     bool
 }
 
 func (k key) len() int {
 	return len(k.schema) + len(k.metric)
 }
 
-// MetricNameCache stores and retrieves metric table names in a in-memory cache.
+// MetricCache provides a caching mechanism for metric table names.
+type MetricCache interface {
+	Get(schema, metric string, isExemplar bool) (model.MetricInfo, error)
+	Set(schema, metric string, mInfo model.MetricInfo, isExemplar bool) error
+	// Len returns the number of metrics cached in the system.
+	Len() int
+	// Cap returns the capacity of the metrics cache.
+	Cap() int
+	Evictions() uint64
+}
+
+// MetricNameCache stores and retrieves metric table names in an in-memory cache.
 type MetricNameCache struct {
 	Metrics *clockcache.Cache
 }
 
+func NewMetricCache(config Config) *MetricNameCache {
+	return &MetricNameCache{Metrics: clockcache.WithMax(config.MetricsCacheSize)}
+}
+
 // Get fetches the table name for specified metric.
-func (m *MetricNameCache) Get(schema, metric string) (model.MetricInfo, error) {
+func (m *MetricNameCache) Get(schema, metric string, isExemplar bool) (model.MetricInfo, error) {
 	var (
 		mInfo = model.MetricInfo{}
-		key   = key{schema, metric}
+		key   = key{schema, metric, isExemplar}
 	)
 	result, ok := m.Metrics.Get(key)
 	if !ok {
@@ -80,16 +85,16 @@ func (m *MetricNameCache) Get(schema, metric string) (model.MetricInfo, error) {
 }
 
 // Set stores metric info for specified metric with schema.
-func (m *MetricNameCache) Set(schema, metric string, val model.MetricInfo) error {
-	k := key{schema, metric}
+func (m *MetricNameCache) Set(schema, metric string, val model.MetricInfo, isExemplar bool) error {
+	k := key{schema, metric, isExemplar}
 	//size includes an 8-byte overhead for each string
-	m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+16))
+	m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 
 	// If the schema inserted above was empty, also populate the cache with the real schema.
 	if schema == "" {
-		k = key{val.TableSchema, metric}
+		k = key{val.TableSchema, metric, isExemplar}
 		//size includes an 8-byte overhead for each string
-		m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+16))
+		m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 	}
 
 	return nil
@@ -105,10 +110,6 @@ func (m *MetricNameCache) Cap() int {
 
 func (m *MetricNameCache) Evictions() uint64 {
 	return m.Metrics.Evictions()
-}
-
-func NewMetricCache(config Config) *MetricNameCache {
-	return &MetricNameCache{Metrics: clockcache.WithMax(config.MetricsCacheSize)}
 }
 
 func NewLabelsCache(config Config) LabelsCache {

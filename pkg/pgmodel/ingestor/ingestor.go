@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -32,8 +31,8 @@ type DBIngestor struct {
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, cfg *Cfg) (*DBIngestor, error) {
-	dispatcher, err := newPgxDispatcher(conn, cache, sCache, cfg)
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
+	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -49,9 +48,11 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	if cfg == nil {
 		cfg = &Cfg{}
 	}
-	c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-	s := cache.NewSeriesCache(cache.DefaultConfig, nil)
-	return NewPgxIngestor(conn, c, s, cfg)
+	cacheConfig := cache.DefaultConfig
+	c := cache.NewMetricCache(cacheConfig)
+	s := cache.NewSeriesCache(cacheConfig, nil)
+	e := cache.NewExemplarLabelsPosCache(cacheConfig)
+	return NewPgxIngestor(conn, c, s, e, cfg)
 }
 
 const (
@@ -71,7 +72,7 @@ type result struct {
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, numMetadata uint64, err error) {
+func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
 	activeWriteRequests.Inc()
 	defer activeWriteRequests.Dec() // Dec() is defered otherwise it will lead to loosing a decrement if some error occurs.
 	var (
@@ -111,11 +112,6 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 		res <- result{meta, n, err}
 	}()
 
-	var (
-		samplesRowsInserted  uint64
-		metadataRowsInserted uint64
-	)
-
 	mergeErr := func(prevErr, err error, message string) error {
 		if prevErr != nil {
 			err = fmt.Errorf("%s: %s: %w", prevErr.Error(), message, err)
@@ -127,10 +123,10 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 		response := <-res
 		switch response.id {
 		case series:
-			samplesRowsInserted = response.numRows
+			numInsertablesIngested = response.numRows
 			err = mergeErr(err, response.err, "ingesting timeseries")
 		case meta:
-			metadataRowsInserted = response.numRows
+			numMetadataIngested = response.numRows
 			err = mergeErr(err, response.err, "ingesting metadata")
 		}
 	}
@@ -141,43 +137,73 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numSamples uint64, n
 	// In order for this to work correctly, any data we wish to keep using (e.g.
 	// samples) must no longer be reachable from req.
 	FinishWriteRequest(r)
-	return samplesRowsInserted, metadataRowsInserted, err
+	return numInsertablesIngested, numMetadataIngested, err
 }
 
 func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
 	var (
-		totalSamplesRows uint64
-		dataSamples      = make(map[string][]model.Samples)
+		totalRowsExpected uint64
+
+		insertables = make(map[string][]model.Insertable)
 	)
+
 	for i := range timeseries {
-		ts := &timeseries[i]
-		if len(ts.Samples) == 0 {
+		var (
+			err        error
+			series     *model.Series
+			metricName string
+
+			ts = &timeseries[i]
+		)
+		if len(ts.Labels) == 0 {
 			continue
 		}
 		// Normalize and canonicalize t.Labels.
 		// After this point t.Labels should never be used again.
-		seriesLabels, metricName, err := ingestor.sCache.GetSeriesFromProtos(ts.Labels)
+		series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
 		if err != nil {
 			return 0, err
 		}
 		if metricName == "" {
 			return 0, errors.ErrNoMetricName
 		}
-		sample := model.NewPromSample(seriesLabels, ts.Samples)
-		totalSamplesRows += uint64(len(ts.Samples))
 
-		dataSamples[metricName] = append(dataSamples[metricName], sample)
+		if len(ts.Samples) > 0 {
+			samples, count, err := ingestor.samples(series, ts)
+			if err != nil {
+				return 0, fmt.Errorf("samples: %w", err)
+			}
+			totalRowsExpected += uint64(count)
+			insertables[metricName] = append(insertables[metricName], samples)
+		}
+		if len(ts.Exemplars) > 0 {
+			exemplars, count, err := ingestor.exemplars(series, ts)
+			if err != nil {
+				return 0, fmt.Errorf("exemplars: %w", err)
+			}
+			totalRowsExpected += uint64(count)
+			insertables[metricName] = append(insertables[metricName], exemplars)
+		}
 		// we're going to free req after this, but we still need the samples,
 		// so nil the field
 		ts.Samples = nil
+		ts.Exemplars = nil
 	}
 	releaseMem()
 
-	samplesRowsInserted, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: dataSamples, ReceivedTime: time.Now()})
-	if errSamples == nil && samplesRowsInserted != totalSamplesRows {
-		return samplesRowsInserted, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalSamplesRows, samplesRowsInserted)
+	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: insertables, ReceivedTime: time.Now()})
+	if errSamples == nil && numInsertablesIngested != totalRowsExpected {
+		return numInsertablesIngested, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRowsExpected, numInsertablesIngested)
 	}
-	return samplesRowsInserted, errSamples
+	return numInsertablesIngested, errSamples
+}
+
+func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewPromSamples(l, ts.Samples), len(ts.Samples), nil
+}
+
+func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewPromExemplars(l, ts.Exemplars), len(ts.Exemplars), nil
 }
 
 // ingestMetadata ingests metric metadata received from Prometheus. It runs as a secondary routine, independent from
@@ -195,11 +221,11 @@ func (ingestor *DBIngestor) ingestMetadata(metadata []prompb.MetricMetadata, rel
 		}
 	}
 	releaseMem()
-	rowsInserted, errMetadata := ingestor.dispatcher.InsertMetadata(data)
+	numMetadataIngested, errMetadata := ingestor.dispatcher.InsertMetadata(data)
 	if errMetadata != nil {
 		return 0, errMetadata
 	}
-	return rowsInserted, nil
+	return numMetadataIngested, nil
 }
 
 // Parts of metric creation not needed to insert data

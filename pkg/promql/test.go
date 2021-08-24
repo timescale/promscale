@@ -77,12 +77,16 @@ func NewTestStorage(t testutil.T) *TestStorage {
 	return &TestStorage{DB: db, dir: dir}
 }
 
-func (db *TestStorage) Querier(ctx context.Context, mint, maxt int64) (Querier, error) {
+func (db *TestStorage) SamplesQuerier(ctx context.Context, mint, maxt int64) (SamplesQuerier, error) {
 	q, err := db.DB.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
 	return &QuerierWrapper{q}, err
+}
+
+func (t *TestStorage) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
+	return nil
 }
 
 func (s TestStorage) Close() error {

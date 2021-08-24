@@ -102,6 +102,28 @@ func genRangeRequest(apiURL, query string, start, end time.Time, step time.Durat
 	)
 }
 
+func genExemplarRequest(apiURL, query string, start, end time.Time) (*http.Request, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/query_exemplars", apiURL))
+
+	if err != nil {
+		return nil, err
+	}
+
+	val := url.Values{}
+
+	val.Add("query", query)
+	val.Add("start", fmt.Sprintf("%d", start.Unix()))
+	val.Add("end", fmt.Sprintf("%d", end.Unix()))
+
+	u.RawQuery = val.Encode()
+
+	return http.NewRequest(
+		"GET",
+		u.String(),
+		nil,
+	)
+}
+
 func TestPromQLQueryEndpointRealDataset(t *testing.T) {
 	if testing.Short() || !*extendedTest {
 		t.Skip("skipping integration test")
@@ -2526,7 +2548,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time, f
 		defer ts.Close()
 
 		tsURL := fmt.Sprintf("%s/api/v1", ts.URL)
-		promURL := fmt.Sprintf("http://%s:%d/api/v1", testhelpers.PromHost, testhelpers.PromPort.Int())
+		promURL := fmt.Sprintf("http://%s:%d/api/v1", promHost, promPort.Int())
 		client := &http.Client{Timeout: 300 * time.Second}
 
 		var (
@@ -2556,7 +2578,7 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time, f
 			}
 			requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (instant query, ts=start+30sec query=%v)", c.name, c.query)})
 		}
-		testMethod := testRequestConcurrent(requestCases, client, queryResultComparator, failOnStatusErrors)
+		testMethod := testRequestConcurrent(requestCases, client, querySamplesResultComparator, failOnStatusErrors)
 		tester.Run("test instant query endpoint", testMethod)
 
 		requestCases = nil
@@ -2586,12 +2608,12 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time, f
 				requestCases = append(requestCases, requestCase{tsReq, promReq, fmt.Sprintf("%s (range query, step size: %s, straddles_end, query=%v)", c.name, step.String(), c.query)})
 			}
 		}
-		testMethod = testRequestConcurrent(requestCases, client, queryResultComparator, failOnStatusErrors)
+		testMethod = testRequestConcurrent(requestCases, client, querySamplesResultComparator, failOnStatusErrors)
 		tester.Run("test range query endpoint", testMethod)
 	})
 }
 
-func queryResultComparator(promContent []byte, tsContent []byte, log string) error {
+func querySamplesResultComparator(promContent []byte, tsContent []byte, log string) error {
 	var tsRes, promRes queryResponse
 
 	err := json.Unmarshal(tsContent, &tsRes)

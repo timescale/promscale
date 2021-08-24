@@ -5,6 +5,7 @@
 package pgclient
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -25,12 +26,22 @@ type mockQuerier struct {
 
 var _ querier.Querier = (*mockQuerier)(nil)
 
-func (q *mockQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *querier.QueryHints, path []parser.Node, ms ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
+func (q *mockQuerier) SamplesQuerier() querier.SamplesQuerier {
+	return mockSamplesQuerier{}
+}
+
+type mockSamplesQuerier struct{}
+
+func (q mockSamplesQuerier) Select(mint int64, maxt int64, sortSeries bool, hints *storage.SelectHints, qh *querier.QueryHints, path []parser.Node, ms ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
 	return nil, nil
 }
 
 func (q *mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	return q.tts, q.err
+}
+
+func (q *mockQuerier) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
+	return nil
 }
 
 func (q *mockQuerier) LabelNames() ([]string, error) {

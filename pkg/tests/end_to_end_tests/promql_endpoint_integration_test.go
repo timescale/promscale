@@ -252,7 +252,6 @@ func compareHTTPHeaders(t *testing.T, expected, actual http.Header) {
 			return
 		}
 	}
-
 }
 
 // dateHeadersMatch checks if the date headers from two HTTP responses match

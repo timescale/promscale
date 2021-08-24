@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/timescale/promscale/pkg/log"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/tenancy"
@@ -162,20 +163,25 @@ func corsWrapper(conf *Config, f http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func setResponseHeaders(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
+func setResponseHeaders(w http.ResponseWriter, samples *promql.Result, isExemplar bool, warnings storage.Warnings) {
 	w.Header().Set("Content-Type", "application/json")
 	if warnings != nil && len(warnings) > 0 {
 		w.Header().Set("Cache-Control", "no-store")
 	}
-	if res != nil && res.Value != nil {
+	if isExemplar {
+		// Exemplar response headers do not return StatusNoContent, if data is nil.
 		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusNoContent)
+		return
 	}
+	if samples != nil && samples.Value != nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setResponseHeaders(w, res, warnings)
+	setResponseHeaders(w, res, false, warnings)
 	switch resVal := res.Value.(type) {
 	case promql.Vector:
 		warnings := make([]string, 0, len(res.Warnings))
@@ -204,6 +210,11 @@ func respondQuery(w http.ResponseWriter, res *promql.Result, warnings storage.Wa
 	}
 }
 
+func respondExemplar(w http.ResponseWriter, data []pgmodel.ExemplarQueryResult) {
+	setResponseHeaders(w, nil, true, nil)
+	_ = marshalExemplarResponse(w, data)
+}
+
 func respond(w http.ResponseWriter, status int, message interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -218,23 +229,35 @@ func respondError(w http.ResponseWriter, status int, err error, errType string) 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(&errResponse{
+	b, err := json.Marshal(&errResponse{
 		Status:    "error",
 		ErrorType: errType,
 		Error:     err.Error(),
 	})
+	if err != nil {
+		log.Error("msg", "error marshalling json error", "err", err)
+	}
+	if n, err := w.Write(b); err != nil {
+		log.Error("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
 }
 
 func respondErrorWithMessage(w http.ResponseWriter, status int, err error, errType string, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(&errResponse{
+	b, err := json.Marshal(&errResponse{
 		Status:    "error",
 		ErrorType: errType,
 		Error:     err.Error(),
 		Message:   message,
 	})
+	if err != nil {
+		log.Error("msg", "error marshalling json error", "err", err)
+	}
+	if n, err := w.Write(b); err != nil {
+		log.Error("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
 }
 
 type errResponse struct {
@@ -259,7 +282,7 @@ func marshalMatrixResponse(writer io.Writer, data promql.Matrix, warnings []stri
 	out := &errorWrapper{writer: writer}
 	marshalCommonHeader(out)
 	marshalMatrixData(out, data)
-	marshalCommonFooter(out, warnings)
+	marshalCommonFooter(out, warnings, true)
 	return out.err
 }
 

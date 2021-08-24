@@ -5,6 +5,7 @@
 package api
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -19,7 +21,15 @@ func marshalVectorResponse(writer io.Writer, data promql.Vector, warnings []stri
 	out := &errorWrapper{writer: writer}
 	marshalCommonHeader(out)
 	marshalVectorData(out, data)
-	marshalCommonFooter(out, warnings)
+	marshalCommonFooter(out, warnings, true)
+	return out.err
+}
+
+func marshalExemplarResponse(writer io.Writer, data []model.ExemplarQueryResult) error {
+	out := &errorWrapper{writer: writer}
+	marshalCommonHeader(out)
+	marshalExemplarData(out, data)
+	marshalCommonFooter(out, nil, false)
 	return out.err
 }
 
@@ -27,7 +37,7 @@ func marshalCommonHeader(out *errorWrapper) {
 	out.WriteStrings(`{"status":"success","data":`)
 }
 
-func marshalCommonFooter(out *errorWrapper, warnings []string) {
+func marshalCommonFooter(out *errorWrapper, warnings []string, applyNewLine bool) {
 	{
 		if len(warnings) != 0 {
 			out.WriteStrings(`,"warnings":[`)
@@ -43,7 +53,10 @@ func marshalCommonFooter(out *errorWrapper, warnings []string) {
 			out.WriteStrings(`]`)
 		}
 	}
-	out.WriteStrings("}\n")
+	out.WriteStrings("}")
+	if applyNewLine {
+		out.WriteStrings("\n")
+	}
 }
 
 func marshalMatrixData(out *errorWrapper, data promql.Matrix) {
@@ -72,6 +85,45 @@ func marshalMatrixData(out *errorWrapper, data promql.Matrix) {
 		}
 	}
 	out.WriteStrings(`]}`)
+}
+
+func marshalExemplarData(out *errorWrapper, data []model.ExemplarQueryResult) {
+	out.WriteStrings(`[`)
+	for i := range data {
+		resultRow := data[i]
+		out.WriteStrings(`{`)
+		writeExemplarSeriesLabels(out, resultRow.SeriesLabels)
+		writeExemplarData(out, resultRow.Exemplars)
+		out.WriteStrings(`}`)
+		if i != len(data)-1 {
+			out.WriteStrings(`,`)
+		}
+	}
+	out.WriteStrings(`]`)
+}
+
+func writeExemplarData(out *errorWrapper, data []model.ExemplarData) {
+	out.WriteStrings(`"exemplars":[`)
+	for i := range data {
+		d := data[i]
+		out.WriteStrings(`{"labels":{`)
+		marshalLabels(out, d.Labels)
+		out.WriteStrings(`},"value":"`)
+		out.writeFloat(d.Value)
+		out.WriteStrings(`","timestamp":`)
+		out.WriteStrings(fmt.Sprintf("%.3f", float64(d.Ts)/1000))
+		out.WriteStrings(`}`)
+		if i != len(data)-1 {
+			out.WriteStrings(`,`)
+		}
+	}
+	out.WriteStrings(`]`)
+}
+
+func writeExemplarSeriesLabels(out *errorWrapper, seriesLbls labels.Labels) {
+	out.WriteStrings(`"seriesLabels":{`)
+	marshalLabels(out, seriesLbls)
+	out.WriteStrings(`},`)
 }
 
 func marshalVectorData(out *errorWrapper, data promql.Vector) {
@@ -103,6 +155,9 @@ func marshalVectorData(out *errorWrapper, data promql.Vector) {
 }
 
 func marshalLabels(out *errorWrapper, labels labels.Labels) {
+	if labels.Len() == 0 {
+		return
+	}
 	for i, label := range labels {
 		open := `,"`
 		if i == 0 {

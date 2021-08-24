@@ -35,7 +35,6 @@ type labelKey struct {
 
 type SeriesVisitor interface {
 	VisitSeries(func(s *model.Series) error) error
-	NumSeries() int
 }
 
 func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} }

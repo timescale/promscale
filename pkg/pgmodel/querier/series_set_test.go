@@ -303,9 +303,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					c.columnName = defaultColumnName
 				}
 				labels := make([]int64, len(c.labels))
-				for i, l := range c.labels {
-					labels[i] = l
-				}
+				copy(labels, c.labels)
 				c.input = [][]seriesSetRow{{
 					genSeries(labels, c.ts, c.vs, c.metricSchema, c.columnName)}}
 			}
@@ -477,12 +475,12 @@ func genRows(count int) [][][]byte {
 	return result
 }
 
-func genPgxRows(m [][]seriesSetRow, err error) []timescaleRow {
-	var result []timescaleRow
+func genPgxRows(m [][]seriesSetRow, err error) []sampleRow {
+	var result []sampleRow
 
 	for _, mm := range m {
 		for _, r := range mm {
-			result = append(result, timescaleRow{
+			result = append(result, sampleRow{
 				labelIds: r.labels,
 				times:    newRowTimestampSeries(toTimestampTzArray(r.timestamps)),
 				values:   toFloat8Array(r.values),

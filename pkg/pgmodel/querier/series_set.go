@@ -22,28 +22,28 @@ const (
 	PostgresUnixEpoch = -946684800000
 )
 
-// pgxSeriesSet implements storage.SeriesSet.
-type pgxSeriesSet struct {
+// pgxSamplesSeriesSet implements storage.SeriesSet.
+type pgxSamplesSeriesSet struct {
 	rowIdx     int
-	rows       []timescaleRow
+	rows       []sampleRow
 	labelIDMap map[int64]labels.Label
 	err        error
 	querier    labelQuerier
 }
 
-// pgxSeriesSet must implement storage.SeriesSet
-var _ storage.SeriesSet = (*pgxSeriesSet)(nil)
+// pgxSamplesSeriesSet must implement storage.SeriesSet
+var _ storage.SeriesSet = (*pgxSamplesSeriesSet)(nil)
 
-func buildSeriesSet(rows []timescaleRow, querier labelQuerier) SeriesSet {
+func buildSeriesSet(rows []sampleRow, querier labelQuerier) SeriesSet {
 	labelIDMap := make(map[int64]labels.Label)
-	initializeLabeIDMap(labelIDMap, rows)
+	initLabelIdIndexForSamples(labelIDMap, rows)
 
 	err := querier.LabelsForIdMap(labelIDMap)
 	if err != nil {
 		return &errorSeriesSet{err}
 	}
 
-	return &pgxSeriesSet{
+	return &pgxSamplesSeriesSet{
 		rows:       rows,
 		querier:    querier,
 		rowIdx:     -1,
@@ -52,7 +52,7 @@ func buildSeriesSet(rows []timescaleRow, querier labelQuerier) SeriesSet {
 }
 
 // Next forwards the internal cursor to next storage.Series
-func (p *pgxSeriesSet) Next() bool {
+func (p *pgxSamplesSeriesSet) Next() bool {
 	if p.rowIdx >= len(p.rows) {
 		return false
 	}
@@ -67,7 +67,7 @@ func (p *pgxSeriesSet) Next() bool {
 }
 
 // At returns the current storage.Series.
-func (p *pgxSeriesSet) At() storage.Series {
+func (p *pgxSamplesSeriesSet) At() storage.Series {
 	if p.rowIdx >= len(p.rows) {
 		return nil
 	}
@@ -93,22 +93,9 @@ func (p *pgxSeriesSet) At() storage.Series {
 		return ps
 	}
 
-	var lls labels.Labels
-	lls = make([]labels.Label, 0, len(row.labelIds))
-	for _, id := range row.labelIds {
-		if id == 0 {
-			continue
-		}
-		label, ok := p.labelIDMap[id]
-		if !ok {
-			p.err = fmt.Errorf("Missing label for id %v", id)
-			return nil
-		}
-		if label == (labels.Label{}) {
-			p.err = fmt.Errorf("Missing label for id %v", id)
-			return nil
-		}
-		lls = append(lls, label)
+	lls, err := getLabelsFromLabelIds(row.labelIds, p.labelIDMap)
+	if err != nil {
+		p.err = err
 	}
 
 	if row.metricOverride != "" {
@@ -127,17 +114,35 @@ func (p *pgxSeriesSet) At() storage.Series {
 	return ps
 }
 
+func getLabelsFromLabelIds(labelIds []int64, index map[int64]labels.Label) (labels.Labels, error) {
+	lls := make([]labels.Label, 0, len(labelIds))
+	for _, id := range labelIds {
+		if id == 0 {
+			continue
+		}
+		label, ok := index[id]
+		if !ok {
+			return nil, fmt.Errorf("missing label for id %v", id)
+		}
+		if label == (labels.Label{}) {
+			return nil, fmt.Errorf("missing label for id %v", id)
+		}
+		lls = append(lls, label)
+	}
+	return lls, nil
+}
+
 // Err implements storage.SeriesSet.
-func (p *pgxSeriesSet) Err() error {
+func (p *pgxSamplesSeriesSet) Err() error {
 	if p.err != nil {
-		return fmt.Errorf("Error retrieving series set: %w", p.err)
+		return fmt.Errorf("error retrieving series set: %w", p.err)
 	}
 	return nil
 }
 
-func (p *pgxSeriesSet) Warnings() storage.Warnings { return nil }
+func (p *pgxSamplesSeriesSet) Warnings() storage.Warnings { return nil }
 
-func (p *pgxSeriesSet) Close() {
+func (p *pgxSamplesSeriesSet) Close() {
 	for _, row := range p.rows {
 		row.Close()
 	}

@@ -4,150 +4,61 @@
 
 package model
 
-import (
-	"math"
-	"time"
+import "github.com/timescale/promscale/pkg/prompb"
 
-	"github.com/prometheus/common/model"
-	"github.com/timescale/promscale/pkg/prompb"
-)
-
-type Metadata struct {
-	MetricFamily string `json:"metric,omitempty"`
-	Unit         string `json:"unit"`
-	Type         string `json:"type"`
-	Help         string `json:"help"`
-}
-
-type Samples interface {
-	GetSeries() *Series
-	CountSamples() int
-	LastSample() prompb.Sample
-	getSample(int) *prompb.Sample
-}
-
-// Data wraps incoming data with its in-timestamp. It is used to warn if the rate
-// of incoming samples vs outgoing samples is too low, based on time.
-type Data struct {
-	Rows         map[string][]Samples
-	ReceivedTime time.Time
-}
-
-type promSample struct {
+type promSamples struct {
 	series  *Series
 	samples []prompb.Sample
 }
 
-func NewPromSample(series *Series, samples []prompb.Sample) *promSample {
-	return &promSample{series, samples}
+func NewPromSamples(series *Series, sampleSet []prompb.Sample) Insertable {
+	return &promSamples{series, sampleSet}
 }
 
-func (t *promSample) GetSeries() *Series {
+func (t *promSamples) Series() *Series {
 	return t.series
 }
 
-func (t *promSample) CountSamples() int {
+func (t *promSamples) Count() int {
 	return len(t.samples)
 }
 
-func (t *promSample) LastSample() prompb.Sample {
-	return t.samples[len(t.samples)-1]
+type samplesIterator struct {
+	curr  int
+	total int
+	data  []prompb.Sample
 }
 
-func (t *promSample) getSample(index int) *prompb.Sample {
-	return &t.samples[index]
-}
-
-// SamplesBatch is an iterator over a collection of sampleInfos that returns
-// data in the format expected for the data table row.
-type SamplesBatch struct {
-	seriesSamples []Samples
-	seriesIndex   int
-	sampleIndex   int
-	MinSeen       int64
-	err           error
-}
-
-// NewSamplesBatch is the constructor
-func NewSamplesBatch() SamplesBatch {
-	si := SamplesBatch{seriesSamples: make([]Samples, 0)}
-	si.ResetPosition()
-	return si
-}
-
-func (t *SamplesBatch) Reset() {
-	for i := 0; i < len(t.seriesSamples); i++ {
-		// nil all pointers to prevent memory leaks
-		t.seriesSamples[i] = nil
+func (t *promSamples) MaxTs() int64 {
+	numSamples := len(t.samples)
+	if numSamples == 0 {
+		// If no samples exist, return a -ve int, so that the stats
+		// caller does not capture this value.
+		return -1
 	}
-	*t = SamplesBatch{seriesSamples: t.seriesSamples[:0]}
-	t.ResetPosition()
+	return t.samples[numSamples-1].Timestamp
 }
 
-func (t *SamplesBatch) CountSeries() int {
-	return len(t.seriesSamples)
+func (i *samplesIterator) HasNext() bool {
+	return i.curr < i.total
 }
 
-func (t *SamplesBatch) GetSeriesSamples() []Samples {
-	return t.seriesSamples
+// Value in samplesIterator does not return labels, since samples do not have labels.
+// Its the series that have th labels in samples.
+func (i *samplesIterator) Value() (timestamp int64, value float64) {
+	timestamp, value = i.data[i.curr].Timestamp, i.data[i.curr].Value
+	i.curr++
+	return
 }
 
-func (t *SamplesBatch) CountSamples() int {
-	c := 0
-	for i := range t.seriesSamples {
-		c += t.seriesSamples[i].CountSamples()
-	}
-	return c
+func (t *promSamples) Iterator() Iterator {
+	return &samplesIterator{data: t.samples, total: len(t.samples)}
 }
 
-//Append adds a sample info to the back of the iterator
-func (t *SamplesBatch) Append(s Samples) {
-	t.seriesSamples = append(t.seriesSamples, s)
+func (t *promSamples) Type() InsertableType {
+	return Sample
 }
 
-func (t *SamplesBatch) AppendSlice(s []Samples) {
-	t.seriesSamples = append(t.seriesSamples, s...)
-}
-
-//ResetPosition resets the iteration position to the beginning
-func (t *SamplesBatch) ResetPosition() {
-	t.sampleIndex = -1
-	t.seriesIndex = 0
-	t.MinSeen = math.MaxInt64
-}
-
-// Next returns true if there is another row and makes the next row data
-// available to Values(). When there are no more rows available or an error
-// has occurred it returns false.
-func (t *SamplesBatch) Next() bool {
-	t.sampleIndex++
-	if t.seriesIndex < len(t.seriesSamples) && t.sampleIndex >= t.seriesSamples[t.seriesIndex].CountSamples() {
-		t.seriesIndex++
-		t.sampleIndex = 0
-	}
-	return t.seriesIndex < len(t.seriesSamples)
-}
-
-// Values returns the values for the current row
-func (t *SamplesBatch) Values() (time.Time, float64, SeriesID, SeriesEpoch) {
-	info := t.seriesSamples[t.seriesIndex]
-	sample := info.getSample(t.sampleIndex)
-	if t.MinSeen > sample.Timestamp {
-		t.MinSeen = sample.Timestamp
-	}
-	sid, eid, err := info.GetSeries().GetSeriesID()
-	if t.err == nil {
-		t.err = err
-	}
-	return model.Time(sample.Timestamp).Time(), sample.Value, sid, eid
-}
-
-func (t *SamplesBatch) Absorb(other SamplesBatch) {
-	t.AppendSlice(other.seriesSamples)
-}
-
-// Err returns any error that has been encountered by the CopyFromSource. If
-// this is not nil *Conn.CopyFrom will abort the copy.
-func (t *SamplesBatch) Err() error {
-	return t.err
+func (t *promSamples) IsOfType(typ InsertableType) bool {
+	return Sample == typ
 }

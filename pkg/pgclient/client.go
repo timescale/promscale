@@ -137,12 +137,15 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 		IgnoreCompressedChunks: cfg.IgnoreCompressedChunks,
 	}
 
-	var dbIngestor *ingestor.DBIngestor
+	var (
+		dbIngestor          *ingestor.DBIngestor
+		exemplarKeyPosCache = cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
+	)
 	if !readOnly {
 		var err error
-		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, &c)
+		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
 		if err != nil {
-			log.Error("msg", "err starting ingestor", "err", err)
+			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err
 		}
 	}
@@ -150,7 +153,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
 
 	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)
-	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, mt.ReadAuthorizer())
+	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)

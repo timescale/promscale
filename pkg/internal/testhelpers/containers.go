@@ -32,7 +32,7 @@ const (
 
 	postgresUser    = "postgres"
 	promUser        = "prom"
-	emptyPromConfig = "global:\n  scrape_interval: 10s"
+	emptyPromConfig = "global:\n  scrape_interval: 10s\nstorage:\n  exemplars:\n    max_exemplars: 100000"
 
 	Superuser   = true
 	NoSuperuser = false
@@ -138,9 +138,6 @@ func (e ExtensionState) UsesTimescaleDBOSS() bool {
 }
 
 var (
-	PromHost          = "localhost"
-	PromPort nat.Port = "9090/tcp"
-
 	pgHost          = "localhost"
 	pgPort nat.Port = "5432/tcp"
 )
@@ -655,20 +652,20 @@ func (c CloseAll) Close() error {
 
 // StartPromContainer starts a Prometheus container for use in testing
 // #nosec
-func StartPromContainer(storagePath string, ctx context.Context) (testcontainers.Container, error) {
+func StartPromContainer(storagePath string, ctx context.Context) (testcontainers.Container, string, nat.Port, error) {
 	// Set the storage directories permissions so Prometheus can write to them.
 	err := os.Chmod(storagePath, 0777)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 	if err := os.Chmod(filepath.Join(storagePath, "wal"), 0777); err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 
 	promConfigFile := filepath.Join(storagePath, "prometheus.yml")
 	err = ioutil.WriteFile(promConfigFile, []byte(emptyPromConfig), 0777)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 	prometheusPort := nat.Port("9090/tcp")
 	req := testcontainers.ContainerRequest{
@@ -685,9 +682,10 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 			"--storage.tsdb.path=/prometheus",
 			"--web.console.libraries=/usr/share/prometheus/console_libraries",
 			"--web.console.templates=/usr/share/prometheus/consoles",
+			"--log.level=debug",
 
 			// Enable features.
-			"--enable-feature=promql-at-modifier,promql-negative-offset",
+			"--enable-feature=promql-at-modifier,promql-negative-offset,exemplar-storage",
 
 			// This is to stop Prometheus from messing with the data.
 			"--storage.tsdb.retention.time=30y",
@@ -700,19 +698,19 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 		Started:          true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
-	PromHost, err = container.Host(ctx)
+	host, err := container.Host(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 
-	PromPort, err = container.MappedPort(ctx, prometheusPort)
+	port, err := container.MappedPort(ctx, prometheusPort)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 
-	return container, nil
+	return container, host, port, nil
 }
 
 var ConnectorPort = nat.Port("9201/tcp")

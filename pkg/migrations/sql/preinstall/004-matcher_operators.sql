@@ -51,6 +51,19 @@ CREATE OPERATOR SCHEMA_PROM.@> (
     FUNCTION = SCHEMA_CATALOG.label_contains
 );
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_value_contains(labels SCHEMA_PROM.label_value_array, label_value TEXT)
+RETURNS BOOLEAN
+AS $func$
+    SELECT labels @> ARRAY[label_value]::TEXT[]
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_PROM.@> (
+    LEFTARG = SCHEMA_PROM.label_value_array,
+    RIGHTARG = TEXT,
+    FUNCTION = SCHEMA_CATALOG.label_value_contains
+);
+
 --------------------- op ? ------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_array, matchers SCHEMA_PROM.matcher_positive)

@@ -2134,7 +2134,6 @@ func (m *TimeSeries) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Exemplars = append(m.Exemplars, Exemplar{})
 			if len(m.Exemplars) < cap(m.Exemplars) {
 				m.Exemplars = m.Exemplars[:len(m.Exemplars)+1]
 				m.Exemplars[len(m.Exemplars)-1].Reset()

@@ -247,7 +247,7 @@ BEGIN
    IF NEW.is_view THEN
         EXECUTE format('GRANT USAGE ON SCHEMA %I TO prom_reader', NEW.table_schema);
         EXECUTE format('GRANT SELECT ON TABLE %I.%I TO prom_reader', NEW.table_schema, NEW.table_name);
-        RETURN NEW; 
+        RETURN NEW;
    END IF;
 
    EXECUTE format('CREATE TABLE %I.%I(time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION NOT NULL, series_id BIGINT NOT NULL) WITH (autovacuum_vacuum_threshold = 50000, autovacuum_analyze_threshold = 50000)',
@@ -461,7 +461,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key(TEXT) to prom_w
 -- This uses some pretty heavy locks so use sparingly.
 -- locks: label_key_position, data table, series partition (in view creation),
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(
-        metric_name text, key_name_array text[])
+        metric_name text, key_name_array text[], is_for_exemplar boolean)
     RETURNS int[]
 AS $func$
 DECLARE
@@ -472,42 +472,59 @@ DECLARE
     key_name text;
     next_position int;
     max_position int;
-    metric_table NAME;
+    metric_table name;
+    position_table_name text;
 BEGIN
-    --use double check locking here
+    If is_for_exemplar THEN
+        position_table_name := 'exemplar_label_key_position';
+    ELSE
+        position_table_name := 'label_key_position';
+    END IF;
+
+    --Use double check locking here
     --fist optimistic check:
-    SELECT
-        array_agg(lkp.pos ORDER BY k.ord)
-    FROM
-        unnest(key_name_array) WITH ORDINALITY as k(key, ord)
-        INNER JOIN SCHEMA_CATALOG.label_key_position lkp ON
+    position_array := NULL;
+    EXECUTE FORMAT('SELECT array_agg(p.pos ORDER BY k.ord)
+        FROM
+            unnest($1) WITH ORDINALITY as k(key, ord)
+        INNER JOIN
+            SCHEMA_CATALOG.%I p ON
         (
-            lkp.metric_name = get_new_pos_for_key.metric_name
-            AND lkp.key = k.key
-        )
+            p.metric_name = $2
+            AND p.key = k.key
+        )', position_table_name) USING key_name_array, metric_name
     INTO position_array;
 
+    -- Return the array if the length is same, as the received key_name_array does not contain any new keys.
     IF array_length(key_name_array, 1) = array_length(position_array, 1) THEN
         RETURN position_array;
     END IF;
 
-    SELECT table_name
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(get_new_pos_for_key.metric_name)
-    INTO metric_table;
-    --lock as for ALTER TABLE because we are in effect changing the schema here
-    --also makes sure the next_position below is correct in terms of concurrency
-    EXECUTE format('LOCK TABLE SCHEMA_DATA_SERIES.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
+    -- Lock tables for exclusiveness.
+    IF NOT is_for_exemplar THEN
+        SELECT table_name
+        FROM SCHEMA_CATALOG.get_or_create_metric_table_name(get_new_pos_for_key.metric_name)
+        INTO metric_table;
+        --lock as for ALTER TABLE because we are in effect changing the schema here
+        --also makes sure the next_position below is correct in terms of concurrency
+        EXECUTE format('LOCK TABLE prom_data_series.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
+    ELSE
+        LOCK TABLE SCHEMA_CATALOG.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
+    END IF;
 
-    SELECT
-        max(pos) + 1
-    FROM
-        SCHEMA_CATALOG.label_key_position lkp
-    WHERE
-        lkp.metric_name = get_new_pos_for_key.metric_name
+    max_position := NULL;
+    EXECUTE FORMAT('SELECT max(pos) + 1
+        FROM SCHEMA_CATALOG.%I
+    WHERE metric_name = $1', position_table_name) USING get_new_pos_for_key.metric_name
     INTO max_position;
 
     IF max_position IS NULL THEN
-        max_position := 2; -- element 1 reserved for __name__
+        IF is_for_exemplar THEN
+            max_position := 1;
+        ELSE
+            -- Specific to label_key_position table only.
+            max_position := 2; -- element 1 reserved for __name__
+        END IF;
     END IF;
 
     position_array := array[]::int[];
@@ -515,45 +532,47 @@ BEGIN
     count_new := 0;
     FOREACH key_name IN ARRAY key_name_array LOOP
         --second check after lock
-        SELECT
-            pos
-        FROM
-            SCHEMA_CATALOG.label_key_position lkp
+        position := NULL;
+        EXECUTE FORMAT('SELECT pos FROM SCHEMA_CATALOG.%I lp
         WHERE
-            lkp.metric_name = get_new_pos_for_key.metric_name
-            AND lkp.key =  key_name
+            lp.metric_name = $1
+        AND
+            lp.key = $2', position_table_name) USING metric_name, key_name
         INTO position;
 
-        IF FOUND THEN
+        IF position IS NOT NULL THEN
             position_array[position_array_idx] := position;
             position_array_idx := position_array_idx + 1;
             CONTINUE;
         END IF;
-
+        -- key_name does not exists in the position table.
         count_new := count_new + 1;
-        IF key_name = '__name__' THEN
+        IF (NOT is_for_exemplar) AND (key_name = '__name__') THEN
             next_position := 1; -- 1-indexed arrays, __name__ as first element
         ELSE
             next_position := max_position;
             max_position := max_position + 1;
         END IF;
 
-        PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
+        IF NOT is_for_exemplar THEN
+            PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
+        END IF;
 
-        INSERT INTO SCHEMA_CATALOG.label_key_position
-            VALUES (metric_name, key_name, next_position)
-        ON CONFLICT
-            DO NOTHING
-        RETURNING
-            pos INTO position;
-        IF NOT FOUND THEN
-            RAISE 'Could not find a new position';
+        position := NULL;
+        EXECUTE FORMAT('INSERT INTO SCHEMA_CATALOG.%I
+        VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING
+        RETURNING pos', position_table_name) USING metric_name, key_name, next_position
+        INTO position;
+
+        IF position IS NULL THEN
+            RAISE 'Could not find a new position. (is_for_exemplar=%)', is_for_exemplar;
         END IF;
         position_array[position_array_idx] := position;
         position_array_idx := position_array_idx + 1;
     END LOOP;
 
-    IF count_new  > 0 THEN
+    IF NOT is_for_exemplar AND count_new > 0 THEN
         --note these functions are expensive in practice so they
         --must be run once across a collection of keys
         PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
@@ -569,8 +588,9 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[]) TO prom_writer;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) TO prom_reader; -- For exemplars querying.
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) TO prom_writer;
 
 --should only be called after a check that that the label doesn't exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
@@ -682,12 +702,12 @@ BEGIN
     FROM SCHEMA_CATALOG.metric m
     WHERE m.table_schema = 'SCHEMA_DATA'
     AND m.metric_name = get_metric_table_name_if_exists.metric_name;
-        
+
     IF FOUND THEN
         RETURN;
     END IF;
-    
-    SELECT count(*) 
+
+    SELECT count(*)
     INTO rows_found
     FROM SCHEMA_CATALOG.metric m
     WHERE m.metric_name = get_metric_table_name_if_exists.metric_name;
@@ -737,7 +757,7 @@ AS $$
         AND lkp.key = get_or_create_label_key_pos.key
     UNION ALL
     SELECT
-        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, array[get_or_create_label_key_pos.key]))[1]
+        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, array[get_or_create_label_key_pos.key], false))[1]
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
@@ -924,7 +944,7 @@ RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
            case when count(*) = count(known_pos) Then
               array_agg(known_pos)
            else
-              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(key_str))
+              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(key_str), false)
            end as poss,
            array_agg(label_id) as label_ids,
            array_agg(key_str) as keys,
@@ -1271,7 +1291,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_retention_period(TEXT, TEXT)
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
 RETURNS INTERVAL
 AS $$
-    SELECT * 
+    SELECT *
     FROM SCHEMA_CATALOG.get_metric_retention_period('SCHEMA_DATA', metric_name)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
@@ -1609,7 +1629,7 @@ BEGIN
             FROM %1$I.%2$I
             WHERE time < %4$L
             EXCEPT
-            SELECT distinct series_id 
+            SELECT distinct series_id
             FROM %1$I.%2$I
             WHERE time >= %4$L AND time < %5$L
         ), confirmed_drop_series AS (
@@ -1883,8 +1903,8 @@ LANGUAGE PLPGSQL;
 GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.drop_metric_chunks(text, text, timestamptz, timestamptz, boolean) TO prom_maintenance;
 
 
--- Get hypertable information for where data is stored for raw metrics and for 
--- the materialized hypertable for cagg metrics. For non-materialized views return 
+-- Get hypertable information for where data is stored for raw metrics and for
+-- the materialized hypertable for cagg metrics. For non-materialized views return
 -- no rows
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(metric_schema_name text, metric_table_name text, is_view boolean)
 RETURNS TABLE (id int, hypertable_relation text)
@@ -1896,9 +1916,9 @@ BEGIN
 
         IF NOT is_view THEN
                 RETURN QUERY
-                SELECT h.id, format('%I.%I', h.schema_name,  h.table_name) 
-                FROM _timescaledb_catalog.hypertable h 
-                WHERE h.schema_name = metric_schema_name 
+                SELECT h.id, format('%I.%I', h.schema_name,  h.table_name)
+                FROM _timescaledb_catalog.hypertable h
+                WHERE h.schema_name = metric_schema_name
                 AND h.table_name = metric_table_name;
                 RETURN;
         END IF;
@@ -1908,19 +1928,19 @@ BEGIN
         -- from 1.x version
         IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
             RETURN QUERY
-            SELECT h.id, format('%I.%I', c.view_schema,  c.view_name) 
-            FROM timescaledb_information.continuous_aggregates c 
-            INNER JOIN _timescaledb_catalog.hypertable h 
-                ON (h.schema_name = c.materialization_hypertable_schema 
+            SELECT h.id, format('%I.%I', c.view_schema,  c.view_name)
+            FROM timescaledb_information.continuous_aggregates c
+            INNER JOIN _timescaledb_catalog.hypertable h
+                ON (h.schema_name = c.materialization_hypertable_schema
                     AND h.table_name = c.materialization_hypertable_name)
             WHERE c.view_schema = metric_schema_name
             AND c.view_name = metric_table_name;
             RETURN;
         ELSE
             RETURN QUERY
-            SELECT h.id, format('%I.%I', h.schema_name,  h.table_name) 
-            FROM timescaledb_information.continuous_aggregates c 
-            INNER JOIN _timescaledb_catalog.hypertable h 
+            SELECT h.id, format('%I.%I', h.schema_name,  h.table_name)
+            FROM timescaledb_information.continuous_aggregates c
+            INNER JOIN _timescaledb_catalog.hypertable h
                 ON (c.materialization_hypertable::text = format('%I.%I', h.schema_name,  h.table_name))
             WHERE c.view_name::text = format('%I.%I', metric_schema_name, metric_table_name);
             RETURN;
@@ -1951,7 +1971,7 @@ BEGIN
         FROM SCHEMA_CATALOG.metric m
         WHERE EXISTS (
             SELECT 1 FROM
-            SCHEMA_CATALOG.get_storage_hypertable_info(m.table_schema, m.table_name, m.is_view) hi 
+            SCHEMA_CATALOG.get_storage_hypertable_info(m.table_schema, m.table_name, m.is_view) hi
             INNER JOIN show_chunks(hi.hypertable_relation,
                          older_than=>NOW() - SCHEMA_CATALOG.get_metric_retention_period(m.table_schema, m.metric_name)) sc ON TRUE)
         --random order also to prevent starvation
@@ -2306,7 +2326,7 @@ DECLARE
    column_count int;
 BEGIN
     -- check if table/view exists
-    PERFORM * FROM information_schema.tables 
+    PERFORM * FROM information_schema.tables
     WHERE  table_schema = register_metric_view.schema_name
     AND    table_name   = register_metric_view.view_name;
 
@@ -2317,7 +2337,7 @@ BEGIN
     -- cannot register view in data schema
     IF schema_name = 'SCHEMA_DATA' THEN
         RAISE EXCEPTION 'cannot register metric view in SCHEMA_DATA schema';
-    END IF; 
+    END IF;
 
     -- check if view is based on a metric from prom_data
     SELECT table_name FROM information_schema.view_table_usage
@@ -2348,7 +2368,7 @@ BEGIN
     VALUES (register_metric_view.view_name, register_metric_view.view_name, register_metric_view.schema_name, metric_table_name, true, true)
     ON CONFLICT DO NOTHING;
 
-    IF NOT FOUND THEN 
+    IF NOT FOUND THEN
         IF register_metric_view.if_not_exists THEN
             RAISE NOTICE 'metric with same name and schema already exists';
             RETURN FALSE;
@@ -2375,12 +2395,12 @@ DECLARE
    metric_table_name name;
    column_count int;
 BEGIN
-    DELETE FROM SCHEMA_CATALOG.metric 
+    DELETE FROM SCHEMA_CATALOG.metric
     WHERE unregister_metric_view.schema_name = table_schema
     AND unregister_metric_view.view_name = table_name
     AND is_view = TRUE;
 
-    IF NOT FOUND THEN 
+    IF NOT FOUND THEN
         IF unregister_metric_view.if_exists THEN
             RAISE NOTICE 'metric with specified name and schema does not exist';
             RETURN FALSE;
@@ -2555,7 +2575,7 @@ BEGIN
             JOIN up ON (dht.node_name = up.node_name)
         $function$
         LANGUAGE sql
-        STRICT STABLE 
+        STRICT STABLE
         SECURITY DEFINER
         --search path must be set for security definer
         SET search_path = pg_temp;
@@ -2581,7 +2601,7 @@ BEGIN
             GROUP BY dht.hypertable_name
         $function$
         LANGUAGE sql
-        STRICT STABLE 
+        STRICT STABLE
         SECURITY DEFINER
         --search path must be set for security definer
         SET search_path = pg_temp;
@@ -2742,7 +2762,7 @@ BEGIN
                 hcs.total_chunks::BIGINT,
                 hcs.number_compressed_chunks::BIGINT as compressed_chunks
             FROM SCHEMA_CATALOG.metric m
-            LEFT JOIN 
+            LEFT JOIN
             (
                 SELECT
                   x.hypertable_name

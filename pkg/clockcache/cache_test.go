@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package clockcache
 
 import (
@@ -41,6 +45,38 @@ func TestEntryNotFound(t *testing.T) {
 	val, found = cache.Get("nonExistingKey")
 	if found {
 		t.Errorf("found %d for noexistent key", val)
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	t.Parallel()
+
+	cache := WithMax(100)
+
+	val, found := cache.Get("nonExistingKey")
+	if found {
+		t.Errorf("found %d for noexistent key", val)
+	}
+
+	cache.Insert("key", 1, 8+1+8)
+	val, found = cache.Get("key")
+	if !found {
+		t.Errorf("not found for 'key'")
+	}
+	if val.(int) != 1 {
+		t.Fatal("wrong value received")
+	}
+
+	canonicalVal := cache.Update("key", 2, 8+1+8)
+	if !reflect.DeepEqual(canonicalVal, 2) {
+		t.Errorf("canonical value returned was not updated")
+	}
+	val, found = cache.Get("key")
+	if !found {
+		t.Errorf("not found for 'key'")
+	}
+	if val != 2 {
+		t.Errorf("updated value does not match for 'key'")
 	}
 }
 

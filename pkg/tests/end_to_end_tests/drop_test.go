@@ -15,7 +15,6 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
@@ -460,8 +459,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		c := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, &ingstr.Cfg{DisableEpochSync: true})
+		c := cache.NewMetricCache(cache.DefaultConfig)
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Cfg{DisableEpochSync: true})
 		if err != nil {
 			t.Fatal(err)
 		}

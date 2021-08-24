@@ -5,15 +5,12 @@
 package querier
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/blang/semver/v4"
-	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
@@ -21,10 +18,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -37,136 +32,12 @@ const (
 	subQueryREMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
 	subQueryNRE           = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
 	subQueryNREMatchEmpty = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
-
-	/* MULTIPLE METRIC PATH (less common case) */
-	/* The following two sql statements are for queries where the metric name is unknown in the query. The first query gets the
-	* metric name and series_id array and the second queries individual metrics while passing down the array */
-	metricNameSeriesIDSQLFormat = `SELECT m.table_schema, m.metric_name, array_agg(s.id)
-	FROM _prom_catalog.series s
-	INNER JOIN _prom_catalog.metric m
-	ON (m.id = s.metric_id)
-	WHERE %s
-	GROUP BY m.metric_name, m.table_schema
-	ORDER BY m.metric_name`
-
-	timeseriesBySeriesIDsSQLFormat = `SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)
-	FROM %[1]s m
-	INNER JOIN %[2]s s
-	ON m.series_id = s.id
-	WHERE m.series_id IN (%[3]s)
-	AND time >= '%[4]s'
-	AND time <= '%[5]s'
-	GROUP BY s.id`
-
-	/* SINGLE METRIC PATH (common, performance critical case) */
-	/* The simpler query (which isn't used):
-			SELECT s.labels, array_agg(m.time ORDER BY time) as time_array, array_agg(m.value ORDER BY time)
-			FROM
-				"prom_data"."demo_api_request_duration_seconds_bucket" m
-			INNER JOIN
-				"prom_data_series"."demo_api_request_duration_seconds_bucket" s ON m.series_id = s.id
-			WHERE
-				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = '__name__' and l.value = 'demo_api_request_duration_seconds_bucket')
-				AND  labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo')
-				AND time >= '2020-08-10 10:34:56.828+00'
-				AND time <= '2020-08-10 11:39:11.828+00'
-			GROUP BY s.id;
-
-			Is not used because it has performance issues:
-			1) If the series are scanned using the gin index, then the nested loop is not ordered by s.id. That means
-				the scan coming out of the metric table needs to be sorted by s.id with a sort node.
-			2) In any case, the array_agg have to sort things explicitly by time, wasting the series_id, time column index on the metric table
-				and incurring sort overhead.
-
-	Instead we use the following query, which avoids both the sorts above:
-			SELECT
-				s.labels, result.time_array, result.value_array
-			FROM
-				"prom_data_series"."demo_api_request_duration_seconds_bucket" s
-			INNER JOIN LATERAL
-			(
-				SELECT array_agg(time) as time_array, array_agg(value) as value_array
-				FROM
-				(
-					SELECT time, value
-					FROM
-						"prom_data"."demo_api_request_duration_seconds_bucket" m
-					WHERE
-						m.series_id = s.id
-						AND time >= '2020-08-10 10:34:56.828+00'
-						AND time <= '2020-08-10 11:39:11.828+00'
-					ORDER BY time
-				) as rows
-			) as result  ON (result.time_array is not null)
-			WHERE
-				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
-	*/
-	timeseriesByMetricSQLFormat = `SELECT series.labels,  %[7]s
-	FROM %[2]s series
-	INNER JOIN LATERAL (
-		SELECT %[6]s
-		FROM
-		(
-			SELECT time, %[9]s as value
-			FROM %[1]s metric
-			WHERE metric.series_id = series.id
-			AND time >= '%[4]s'
-			AND time <= '%[5]s'
-			%[8]s
-		) as time_ordered_rows
-	) as result ON (result.value_array is not null)
-	WHERE
-	     %[3]s`
-
-	/* optimized for no clauses besides __name__
-	   uses a inner join without a lateral to allow for better parallel execution
-	*/
-	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels,  %[7]s
-	FROM %[2]s series
-	INNER JOIN (
-		SELECT series_id, %[6]s
-		FROM
-		(
-			SELECT series_id, time, %[9]s as value
-			FROM %[1]s metric
-			WHERE
-			time >= '%[4]s'
-			AND time <= '%[5]s'
-			%[8]s
-		) as time_ordered_rows
-		GROUP BY series_id
-	) as result ON (result.value_array is not null AND result.series_id = series.id)`
-
-	defaultColumnName = "value"
 )
 
 var (
 	minTime = timestamp.FromTime(time.Unix(math.MinInt64/1000+62135596801, 0).UTC())
 	maxTime = timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC())
 )
-
-// GetMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
-// as a matrix.
-func GetMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.Matcher) ([]string, [][]pgmodel.SeriesID, error) {
-	cb, err := BuildSubQueries(matchers)
-	if err != nil {
-		return nil, nil, fmt.Errorf("delete series build subqueries: %w", err)
-	}
-	clauses, values, err := cb.Build(true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("delete series build clauses: %w", err)
-	}
-	query := BuildMetricNameSeriesIDQuery(clauses)
-	rows, err := conn.Query(context.Background(), query, values...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("build metric name series: %w", err)
-	}
-	metricNames, _, correspondingSeriesIDs, err := GetSeriesPerMetric(rows)
-	if err != nil {
-		return nil, nil, fmt.Errorf("series per metric: %w", err)
-	}
-	return metricNames, correspondingSeriesIDs, nil
-}
 
 func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 	var err error
@@ -225,147 +96,22 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 	return cb, err
 }
 
-/* Given a clause with %d placeholder for parameter numbers, and the existing and new parameters, return a clause with the parameters set to the appropriate $index and the full set of parameter values */
-func setParameterNumbers(clause string, existingArgs []interface{}, newArgs ...interface{}) (string, []interface{}, error) {
-	argIndex := len(existingArgs) + 1
-	argCountInClause := strings.Count(clause, "%d")
-
-	if argCountInClause != len(newArgs) {
-		return "", nil, fmt.Errorf("invalid number of args: in sql %d vs args %d", argCountInClause, len(newArgs))
-	}
-
-	argIndexes := make([]interface{}, 0, argCountInClause)
-
-	for argCountInClause > 0 {
-		argIndexes = append(argIndexes, argIndex)
-		argIndex++
-		argCountInClause--
-	}
-
-	newSQL := fmt.Sprintf(clause, argIndexes...)
-	resArgs := append(existingArgs, newArgs...)
-	return newSQL, resArgs, nil
-}
-
-type clauseBuilder struct {
-	schemaName    string
-	metricName    string
-	columnName    string
-	contradiction bool
-	clauses       []string
-	args          []interface{}
-}
-
-func (c *clauseBuilder) SetMetricName(name string) {
-	if c.metricName == "" {
-		c.metricName = name
-		return
-	}
-
-	/* Impossible to have 2 different metric names at same time */
-	if c.metricName != name {
-		c.contradiction = true
-	}
-}
-
-func (c *clauseBuilder) GetMetricName() string {
-	return c.metricName
-}
-
-func (c *clauseBuilder) SetSchemaName(name string) {
-	if c.schemaName == "" {
-		c.schemaName = name
-		return
-	}
-
-	/* Impossible to have 2 different schema names at same time */
-	if c.schemaName != name {
-		c.contradiction = true
-	}
-}
-
-func (c *clauseBuilder) GetSchemaName() string {
-	return c.schemaName
-}
-
-func (c *clauseBuilder) SetColumnName(name string) {
-	if c.columnName == "" {
-		c.columnName = name
-		return
-	}
-
-	/* Impossible to have 2 different column names at same time */
-	if c.columnName != name {
-		c.contradiction = true
-	}
-}
-
-func (c *clauseBuilder) GetColumnName() string {
-	if c.columnName == "" {
-		return defaultColumnName
-	}
-	return c.columnName
-}
-
-func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {
-	if len(args) > 0 {
-		switch args[0] {
-		case pgmodel.SchemaNameLabelName:
-			return fmt.Errorf("__schema__ label matcher only supports equals matcher")
-		case pgmodel.ColumnNameLabelName:
-			return fmt.Errorf("__column__ label matcher only supports equals matcher")
-		}
-	}
-	clauseWithParameters, newArgs, err := setParameterNumbers(clause, c.args, args...)
-	if err != nil {
-		return err
-	}
-
-	c.clauses = append(c.clauses, clauseWithParameters)
-	c.args = newArgs
-	return nil
-}
-
-func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, error) {
-	if c.contradiction {
-		return []string{"FALSE"}, nil, nil
-	}
-
-	/* no support for queries across all data */
-	if len(c.clauses) == 0 && c.metricName == "" {
-		return nil, nil, errors.ErrNoClausesGen
-	}
-
-	if includeMetricName && c.metricName != "" {
-		nameClause, newArgs, err := setParameterNumbers(subQueryEQ, c.args, pgmodel.MetricNameLabelName, c.metricName)
-		if err != nil {
-			return nil, nil, err
-		}
-		return append(c.clauses, nameClause), newArgs, err
-	}
-
-	if len(c.clauses) == 0 {
-		return []string{"TRUE"}, nil, nil
-	}
-	return c.clauses, c.args, nil
-}
-
-func initializeLabeIDMap(labelIDMap map[int64]labels.Label, rows []timescaleRow) {
+func initLabelIdIndexForSamples(index map[int64]labels.Label, rows []sampleRow) {
 	for i := range rows {
 		for _, id := range rows[i].labelIds {
 			//id==0 means there is no label for the key, so nothing to look up
 			if id == 0 {
 				continue
 			}
-			labelIDMap[id] = labels.Label{}
+			index[id] = labels.Label{}
 		}
 	}
 }
 
-func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
+func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
 	labelIDMap := make(map[int64]labels.Label)
-	initializeLabeIDMap(labelIDMap, rows)
+	initLabelIdIndexForSamples(labelIDMap, rows)
 
 	err := lr.LabelsForIdMap(labelIDMap)
 	if err != nil {
@@ -434,79 +180,6 @@ func buildTimeSeries(rows []timescaleRow, lr lreader.LabelsReader) ([]*prompb.Ti
 	return results, nil
 }
 
-func BuildMetricNameSeriesIDQuery(cases []string) string {
-	return fmt.Sprintf(metricNameSeriesIDSQLFormat, strings.Join(cases, " AND "))
-}
-
-func buildTimeseriesBySeriesIDQuery(filter metricTimeRangeFilter, series []pgmodel.SeriesID) string {
-	s := make([]string, 0, len(series))
-	for _, sID := range series {
-		s = append(s, fmt.Sprintf("%d", sID))
-	}
-	return fmt.Sprintf(
-		timeseriesBySeriesIDsSQLFormat,
-		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
-		strings.Join(s, ","),
-		filter.startTime,
-		filter.endTime,
-	)
-}
-
-func buildTimeseriesByLabelClausesQuery(filter metricTimeRangeFilter, cases []string, values []interface{},
-	hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (string, []interface{}, parser.Node, TimestampSeries, error) {
-	qf, node, err := getAggregators(hints, qh, path)
-	if err != nil {
-		return "", nil, nil, nil, err
-	}
-
-	selectors := []string{}
-	selectorClauses := []string{}
-
-	if qf.timeClause != "" {
-		var timeClauseBound string
-		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
-		if err != nil {
-			return "", nil, nil, nil, err
-		}
-		selectors = append(selectors, "result.time_array")
-		selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
-	}
-	valueClauseBound, values, err := setParameterNumbers(qf.valueClause, values, qf.valueParams...)
-	if err != nil {
-		return "", nil, nil, nil, err
-	}
-	selectors = append(selectors, "result.value_array")
-	selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
-
-	orderByClause := "ORDER BY time"
-	if qf.unOrdered {
-		orderByClause = ""
-	}
-
-	template := timeseriesByMetricSQLFormat
-	if len(cases) == 1 && cases[0] == "TRUE" {
-		template = timeseriesByMetricSQLFormatNoClauses
-		if !qf.unOrdered {
-			orderByClause = "ORDER BY series_id, time"
-		}
-	}
-
-	finalSQL := fmt.Sprintf(template,
-		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
-		strings.Join(cases, " AND "),
-		filter.startTime,
-		filter.endTime,
-		strings.Join(selectorClauses, ", "),
-		strings.Join(selectors, ", "),
-		orderByClause,
-		pgx.Identifier{filter.column}.Sanitize(),
-	)
-
-	return finalSQL, values, node, qf.tsSeries, nil
-}
-
 func hasSubquery(path []parser.Node) bool {
 	for _, node := range path {
 		switch node.(type) {
@@ -515,15 +188,6 @@ func hasSubquery(path []parser.Node) bool {
 		}
 	}
 	return false
-}
-
-type aggregators struct {
-	timeClause  string
-	timeParams  []interface{}
-	valueClause string
-	valueParams []interface{}
-	unOrdered   bool
-	tsSeries    TimestampSeries //can be NULL and only present if timeClause == ""
 }
 
 /* vectorSelectors called by the timestamp function have special handling see engine.go */
@@ -538,41 +202,26 @@ func calledByTimestamp(path []parser.Node) bool {
 	return false
 }
 
-var vectorSelectorExtensionRange = semver.MustParseRange(">= 0.2.0")
-var rateIncreaseExtensionRange = semver.MustParseRange(">= 0.2.0")
+var (
+	vectorSelectorExtensionRange = semver.MustParseRange(">= 0.2.0")
+	rateIncreaseExtensionRange   = semver.MustParseRange(">= 0.2.0")
+)
 
-func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, error) {
-	queryStart := hints.Start + hints.Range
-	queryEnd := hints.End
-	stepDuration := time.Second
-	rangeDuration := time.Duration(hints.Range) * time.Millisecond
-
-	if hints.Step > 0 {
-		stepDuration = time.Duration(hints.Step) * time.Millisecond
-	} else {
-		if queryStart != queryEnd {
-			return nil, fmt.Errorf("query start should equal query end")
-		}
-	}
-	qf := aggregators{
-		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
-		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), int64(stepDuration.Milliseconds()), int64(rangeDuration.Milliseconds())},
-		unOrdered:   false,
-		tsSeries:    newRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
-	}
-	return &qf, nil
-}
-
-func getDefaultAggregators() *aggregators {
-	return &aggregators{
-		timeClause:  "array_agg(time)",
-		valueClause: "array_agg(value)",
-		unOrdered:   false,
-	}
+type aggregators struct {
+	timeClause  string
+	timeParams  []interface{}
+	valueClause string
+	valueParams []interface{}
+	unOrdered   bool
+	tsSeries    TimestampSeries //can be NULL and only present if timeClause == ""
 }
 
 /* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
-func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.Node) (*aggregators, parser.Node, error) {
+// todo: investigate if query hints can have only node and lookback
+func getAggregators(md *promqlMetadata) (*aggregators, parser.Node, error) {
+	path := md.path // PromQL AST.
+	qh := md.queryHints
+	hints := md.selectHints
 	if !extension.ExtensionIsInstalled || qh == nil || hasSubquery(path) || hints == nil {
 		return getDefaultAggregators(), nil, nil
 	}
@@ -623,33 +272,34 @@ func getAggregators(hints *storage.SelectHints, qh *QueryHints, path []parser.No
 	return getDefaultAggregators(), nil, nil
 }
 
-func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, []string, [][]pgmodel.SeriesID, error) {
-	metrics := make([]string, 0)
-	schemas := make([]string, 0)
-	series := make([][]pgmodel.SeriesID, 0)
-
-	for rows.Next() {
-		var (
-			metricName string
-			schemaName string
-			seriesIDs  []int64
-		)
-		if err := rows.Scan(&schemaName, &metricName, &seriesIDs); err != nil {
-			return nil, nil, nil, err
-		}
-
-		sIDs := make([]pgmodel.SeriesID, 0, len(seriesIDs))
-
-		for _, v := range seriesIDs {
-			sIDs = append(sIDs, pgmodel.SeriesID(v))
-		}
-
-		metrics = append(metrics, metricName)
-		schemas = append(schemas, schemaName)
-		series = append(series, sIDs)
+func getDefaultAggregators() *aggregators {
+	return &aggregators{
+		timeClause:  "array_agg(time)",
+		valueClause: "array_agg(value)",
+		unOrdered:   false,
 	}
+}
 
-	return metrics, schemas, series, nil
+func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, error) {
+	queryStart := hints.Start + hints.Range
+	queryEnd := hints.End
+	stepDuration := time.Second
+	rangeDuration := time.Duration(hints.Range) * time.Millisecond
+
+	if hints.Step > 0 {
+		stepDuration = time.Duration(hints.Step) * time.Millisecond
+	} else {
+		if queryStart != queryEnd {
+			return nil, fmt.Errorf("query start should equal query end")
+		}
+	}
+	qf := aggregators{
+		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
+		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), stepDuration.Milliseconds(), rangeDuration.Milliseconds()},
+		unOrdered:   false,
+		tsSeries:    newRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
+	}
+	return &qf, nil
 }
 
 // anchorValue adds anchors to values in regexps since PromQL docs
@@ -657,10 +307,6 @@ func GetSeriesPerMetric(rows pgxconn.PgxRows) ([]string, []string, [][]pgmodel.S
 func anchorValue(str string) string {
 	//Reference:  NewFastRegexMatcher in Prometheus source code
 	return "^(?:" + str + ")$"
-}
-
-func toMilis(t time.Time) int64 {
-	return t.UnixNano() / 1e6
 }
 
 func toRFC3339Nano(milliseconds int64) string {

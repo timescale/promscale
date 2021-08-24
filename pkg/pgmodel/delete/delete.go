@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -30,7 +31,7 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 		err              error
 		metricsTouched   = make(map[string]struct{})
 	)
-	metricNames, seriesIDMatrix, err := querier.GetMetricNameSeriesIDFromMatchers(pgDel.Conn, matchers)
+	metricNames, seriesIDMatrix, err := getMetricNameSeriesIDFromMatchers(pgDel.Conn, matchers)
 	if err != nil {
 		return nil, nil, -1, fmt.Errorf("delete-series: %w", err)
 	}
@@ -52,6 +53,41 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 		totalRowsDeleted += rowsDeleted
 	}
 	return getKeys(metricsTouched), deletedSeriesIDs, totalRowsDeleted, nil
+}
+
+// getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
+// as a matrix.
+func getMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.Matcher) ([]string, [][]model.SeriesID, error) {
+	cb, err := querier.BuildSubQueries(matchers)
+	if err != nil {
+		return nil, nil, fmt.Errorf("delete series build subqueries: %w", err)
+	}
+	clauses, values, err := cb.Build(true)
+	if err != nil {
+		return nil, nil, fmt.Errorf("delete series build clauses: %w", err)
+	}
+	metrics, schemas, correspondingSeriesIDs, err := querier.GetMetricNameSeriesIds(conn, querier.GetMetadata(clauses, values))
+	if err != nil {
+		return nil, nil, fmt.Errorf("get metric-name series-ids: %w", err)
+	}
+	metrics, correspondingSeriesIDs = filterMetricNameSeriesIds(metrics, schemas, correspondingSeriesIDs)
+	return metrics, correspondingSeriesIDs, nil
+}
+
+// filterMetricNameSeriesIds returns the metrics, schemas and corresonding series-ids that are associated with
+// actual metric hypertables only.
+func filterMetricNameSeriesIds(metrics, schemas []string, seriesIds [][]model.SeriesID) (filteredMetrics []string, filteredSeriesIds [][]model.SeriesID) {
+	for i := range metrics {
+		metricSchema := schemas[i]
+		if metricSchema != schema.Data {
+			continue
+		}
+		metric := metrics[i]
+		correspondingSeriesIds := seriesIds[i]
+		filteredMetrics = append(filteredMetrics, metric)
+		filteredSeriesIds = append(filteredSeriesIds, correspondingSeriesIds)
+	}
+	return
 }
 
 func convertSeriesIDsToInt64s(s []model.SeriesID) []int64 {

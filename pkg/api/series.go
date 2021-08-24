@@ -68,7 +68,7 @@ func series(queryable promql.Queryable) http.HandlerFunc {
 		}
 		ctx := r.Context()
 
-		q, err := queryable.Querier(ctx, timestamp.FromTime(start), timestamp.FromTime(end))
+		q, err := queryable.SamplesQuerier(ctx, timestamp.FromTime(start), timestamp.FromTime(end))
 		if err != nil {
 			respondError(w, http.StatusUnprocessableEntity, err, "execution")
 			return
@@ -103,7 +103,7 @@ func series(queryable promql.Queryable) http.HandlerFunc {
 	}
 }
 func respondSeries(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setResponseHeaders(w, res, warnings)
+	setResponseHeaders(w, res, false, warnings)
 	resp := &response{
 		Status: "success",
 		Data:   res.Value,

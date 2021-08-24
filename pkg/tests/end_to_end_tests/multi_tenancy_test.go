@@ -51,7 +51,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, mt.ReadAuthorizer())
+		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
 
 		// ----- query-test: querying a single tenant (tenant-a) -----
 		expectedResult := []prompb.TimeSeries{
@@ -244,7 +244,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, mt.ReadAuthorizer())
+		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
 
 		// ----- query-test: querying a valid tenant (tenant-a) -----
 		expectedResult := []prompb.TimeSeries{
@@ -367,7 +367,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		labelsReader = lreader.NewLabelsReader(dbConn, lCache)
-		qr = querier.NewQuerier(dbConn, mCache, labelsReader, mt.ReadAuthorizer())
+		qr = querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
 
 		expectedResult = []prompb.TimeSeries{}
 
@@ -445,7 +445,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, mt.ReadAuthorizer())
+		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
 
 		// ----- query-test: querying a non-tenant -----
 		expectedResult := []prompb.TimeSeries{
@@ -532,7 +532,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		require.NoError(t, err)
 
 		labelsReader = lreader.NewLabelsReader(dbConn, lCache)
-		qr = querier.NewQuerier(dbConn, mCache, labelsReader, mt.ReadAuthorizer())
+		qr = querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
 
 		expectedResult = []prompb.TimeSeries{
 			{
@@ -638,7 +638,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, mt.ReadAuthorizer())
+		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
 
 		// ----- query-test: querying a single tenant (tenant-b) -----
 		expectedResult := []prompb.TimeSeries{

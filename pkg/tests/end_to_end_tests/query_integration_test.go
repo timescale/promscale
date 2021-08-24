@@ -12,9 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"os"
 	"reflect"
-	"runtime"
 	"testing"
 	"time"
 
@@ -25,7 +23,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
@@ -116,7 +113,7 @@ func TestDroppedViewQuery(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		_, err := r.Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
@@ -152,7 +149,7 @@ func TestSQLQuery(t *testing.T) {
 		{
 			name:      "empty request",
 			query:     &prompb.Query{},
-			expectErr: fmt.Errorf("no clauses generated"),
+			expectErr: fmt.Errorf("get evaluation metadata: building multiple metric clauses: no clauses generated"),
 		},
 		{
 			name: "empty response",
@@ -694,7 +691,7 @@ func TestSQLQuery(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.Query(c.query)
@@ -704,7 +701,7 @@ func TestSQLQuery(t *testing.T) {
 				}
 
 				if !reflect.DeepEqual(resp, c.expectResponse) {
-					t.Fatalf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, &c.expectResponse)
+					t.Fatalf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, c.expectResponse)
 				}
 
 			})
@@ -728,7 +725,7 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.Tim
 	firstMetricName := ""
 
 	for _, ts := range metrics {
-		expectedCount = expectedCount + len(ts.Samples)
+		expectedCount = expectedCount + len(ts.Samples) + len(ts.Exemplars)
 
 		if firstMetricName == "" {
 			for _, l := range ts.Labels {
@@ -778,7 +775,7 @@ func TestPromQL(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	promClient, err := NewPromClient(fmt.Sprintf("http://%s:%d/api/v1/read", testhelpers.PromHost, testhelpers.PromPort.Int()), 10*time.Second)
+	promClient, err := NewPromClient(fmt.Sprintf("http://%s:%d/api/v1/read", promHost, promPort.Int()), 10*time.Second)
 
 	if err != nil {
 		t.Fatalf("unable to create read client for Prometheus: %s", err)
@@ -1068,7 +1065,7 @@ func TestPromQL(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.Query(c.query)
@@ -1099,87 +1096,6 @@ func TestPromQL(t *testing.T) {
 			})
 		}
 	})
-}
-
-func generatePrometheusWALFile() (string, error) {
-	tmpDir := ""
-
-	if runtime.GOOS == "darwin" {
-		// Docker on Mac lacks access to default os tmp dir - "/var/folders/random_number"
-		// so switch to cross-user tmp dir
-		tmpDir = "/tmp"
-	}
-	dbPath, err := ioutil.TempDir(tmpDir, "prom_dbtest_storage")
-	if err != nil {
-		return "", err
-	}
-	snapPath, err := ioutil.TempDir(tmpDir, "prom_snaptest_storage")
-	if err != nil {
-		return "", err
-	}
-
-	st, err := tsdb.Open(dbPath, nil, nil, &tsdb.Options{
-		RetentionDuration: 15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
-		NoLockfile:        true,
-	}, nil)
-	if err != nil {
-		return "", err
-	}
-
-	app := st.Appender(context.Background())
-
-	tts := generateLargeTimeseries()
-	if *extendedTest {
-		tts = append(tts, generateRealTimeseries()...)
-	}
-	var ref *uint64
-
-	for _, ts := range tts {
-		ref = nil
-		builder := labels.Builder{}
-
-		for _, l := range ts.Labels {
-			builder.Set(l.Name, l.Value)
-		}
-
-		var (
-			labels  = builder.Labels()
-			tempRef uint64
-			err     error
-		)
-
-		for _, s := range ts.Samples {
-			if ref == nil || *ref == 0 {
-				tempRef, err = app.Append(tempRef, labels, s.Timestamp, s.Value)
-				if err != nil {
-					return "", err
-				}
-				ref = &tempRef
-				continue
-			}
-
-			_, err = app.Append(*ref, labels, s.Timestamp, s.Value)
-
-			if err != nil {
-				return "", err
-			}
-		}
-	}
-
-	if err := app.Commit(); err != nil {
-		return "", err
-	}
-	if err := st.Snapshot(snapPath, true); err != nil {
-		return "", err
-	}
-	if err := os.Mkdir(snapPath+"/wal", 0700); err != nil {
-		return "", err
-	}
-	if err := st.Close(); err != nil {
-		return "", err
-	}
-
-	return snapPath, nil
 }
 
 func TestMetricNameResolutionFromMultipleSchemas(t *testing.T) {
@@ -1350,7 +1266,7 @@ func TestPushdownDelta(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, []string{})
 		if err != nil {
@@ -1425,7 +1341,7 @@ func TestPushdownVecSel(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, []string{})
 		if err != nil {

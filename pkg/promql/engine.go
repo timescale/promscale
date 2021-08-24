@@ -42,19 +42,22 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
 
-	mq "github.com/timescale/promscale/pkg/pgmodel/querier"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/util"
 )
 
 // A Queryable handles queries against a storage.
 // Use it when you need to have access to all samples without chunk encoding abstraction e.g promQL.
 type Queryable interface {
-	// Querier returns a new Querier on the storage.
-	Querier(ctx context.Context, mint, maxt int64) (Querier, error)
+	// SamplesQuerier returns a new promql.Querier on the storage. It helps querying over samples
+	// in the database.
+	SamplesQuerier(ctx context.Context, mint, maxt int64) (SamplesQuerier, error)
+	// ExemplarQuerier returns a new Querier that helps querying exemplars in the database.
+	ExemplarsQuerier(ctx context.Context) pgquerier.ExemplarQuerier
 }
 
-// Querier provides querying access over time series data of a fixed time range.
-type Querier interface {
+// SamplesQuerier provides querying access over time series data of a fixed time range.
+type SamplesQuerier interface {
 	// LabelValues returns all potential values for a label name.
 	// It is not safe to use the strings beyond the lifefime of the querier.
 	LabelValues(name string) ([]string, storage.Warnings, error)
@@ -68,7 +71,7 @@ type Querier interface {
 	// Select returns a set of series that matches the given label matchers.
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
-	Select(sortSeries bool, hints *storage.SelectHints, qh *mq.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
+	Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
 }
 
 const (
@@ -579,7 +582,7 @@ func durationMilliseconds(d time.Duration) int64 {
 func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.EvalStmt) (parser.Value, storage.Warnings, error) {
 	prepareSpanTimer, ctxPrepare := query.stats.GetSpanTimer(ctx, stats.QueryPreparationTime, ng.metrics.queryPrepareTime)
 	mint, maxt := ng.findMinMaxTime(s)
-	querier, err := query.queryable.Querier(ctxPrepare, mint, maxt)
+	querier, err := query.queryable.SamplesQuerier(ctxPrepare, mint, maxt)
 	if err != nil {
 		prepareSpanTimer.Finish()
 		return nil, nil, err
@@ -780,7 +783,7 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 	return start, end
 }
 
-func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) map[parser.Node]struct{} {
+func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map[parser.Node]struct{} {
 	var (
 		// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 		// The evaluation of the VectorSelector inside then evaluates the given range and unsets
@@ -792,7 +795,7 @@ func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) map[parser
 	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
 		case *parser.VectorSelector:
-			var qh *mq.QueryHints
+			var qh *pgquerier.QueryHints
 			start, end := ng.getTimeRangesForSelector(s, n, path, evalRange)
 			hints := &storage.SelectHints{
 				Start: start,
@@ -802,7 +805,7 @@ func (ng *Engine) populateSeries(querier Querier, s *parser.EvalStmt) map[parser
 				Func:  extractFuncFromPath(path),
 			}
 
-			qh = &mq.QueryHints{
+			qh = &pgquerier.QueryHints{
 				StartTime:   s.Start,
 				EndTime:     s.End,
 				CurrentNode: n,

@@ -24,6 +24,9 @@ jobs:
       -
         name: Login to Docker Hub
         uses: docker/login-action@v1
+        #login only on tags. Note that login can't work on PRs from forked repos because of missing secrets
+        #this gets around that by only logging in when needed.
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

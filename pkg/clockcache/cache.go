@@ -1,7 +1,12 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package clockcache
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 )
@@ -56,11 +61,11 @@ func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) 
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
-	_, canonicalValue, in_cache = self.insert(key, value, sizeBytes)
-	return
+	elem, _, inCache := self.insert(key, value, sizeBytes)
+	return elem.value, inCache
 }
 
-// Insert a batch of keys with their corresponding values.
+// InsertBatch inserts a batch of keys with their corresponding values.
 // This function will _overwrite_ the keys and values slices with their
 // canonical versions.
 // sizesBytes is the in-memory size of the key+value of each element.
@@ -75,30 +80,30 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBy
 	defer self.insertLock.Unlock()
 
 	for idx := range keys {
-		var inserted bool
-		keys[idx], values[idx], inserted = self.insert(keys[idx], values[idx], sizesBytes[idx])
-		if !inserted {
+		elem, _, inCache := self.insert(keys[idx], values[idx], sizesBytes[idx])
+		keys[idx], values[idx] = elem.key, elem.value
+		if !inCache {
 			return idx
 		}
 	}
 	return len(keys)
 }
 
-func (self *Cache) insert(key interface{}, value interface{}, size uint64) (canonicalKey interface{}, canonicalValue interface{}, inserted bool) {
+func (self *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool, inCache bool) {
 	elem, present := self.elements[key]
 	if present {
 		// we'll count a double-insert as a hit. See the comment in get
 		if atomic.LoadUint32(&elem.used) != 0 {
 			atomic.StoreUint32(&elem.used, 1)
 		}
-		return elem.key, elem.value, true
+		return elem, false, true
 	}
 
 	var insertLocation *element
 	if len(self.storage) >= cap(self.storage) {
 		insertLocation = self.evict()
 		if insertLocation == nil {
-			return key, value, false
+			return &element{key: key, value: value, size: size}, false, false
 		}
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
@@ -116,7 +121,24 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (cano
 	}
 
 	self.elements[key] = insertLocation
-	return key, value, true
+	return insertLocation, true, true
+}
+
+// Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
+// returns the 'inserted' as true.
+func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}) {
+	self.insertLock.Lock()
+	defer self.insertLock.Unlock()
+	existingElement, inserted, inCache := self.insert(key, value, size)
+	// Avoid EQL value comparisons as value is always an interface. Incase, the value is of type map, EQL operator will panic.
+	if !inserted && inCache && (existingElement.size != size || !reflect.DeepEqual(existingElement.value, value)) {
+		// If it is inserted (instead of updated), we don't need to go into this block, as the props are already updated.
+		self.elementsLock.Lock()
+		defer self.elementsLock.Unlock()
+		existingElement.value = value
+		existingElement.size = size
+	}
+	return existingElement.value
 }
 
 func (self *Cache) evict() (insertPtr *element) {
@@ -206,7 +228,6 @@ func (self *Cache) Get(key interface{}) (interface{}, bool) {
 }
 
 func (self *Cache) get(key interface{}) (interface{}, bool) {
-
 	elem, present := self.elements[key]
 	if !present {
 		return 0, false

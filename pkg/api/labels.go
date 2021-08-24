@@ -34,7 +34,7 @@ func Labels(conf *Config, queryable promql.Queryable) http.Handler {
 
 func labelsHandler(queryable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		querier, err := queryable.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+		querier, err := queryable.SamplesQuerier(context.Background(), math.MinInt64, math.MaxInt64)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return
@@ -52,7 +52,7 @@ func labelsHandler(queryable promql.Queryable) http.HandlerFunc {
 }
 
 func respondLabels(w http.ResponseWriter, res *promql.Result, warnings storage.Warnings) {
-	setResponseHeaders(w, res, warnings)
+	setResponseHeaders(w, res, false, warnings)
 	resp := &response{
 		Status: "success",
 		Data:   res.Value,

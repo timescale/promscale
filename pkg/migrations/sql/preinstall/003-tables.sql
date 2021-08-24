@@ -5,6 +5,9 @@
 -- a special type we use in our tables so must be created here
 CREATE DOMAIN SCHEMA_PROM.label_array AS int[] NOT NULL;
 
+-- special type to store only values of labels
+CREATE DOMAIN SCHEMA_PROM.label_value_array AS TEXT[];
+
 CREATE TABLE public.prom_installation_info (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -19,6 +22,7 @@ INSERT INTO public.prom_installation_info(key, value) VALUES
     ('series schema',         'SCHEMA_SERIES'),
     ('metric schema',         'SCHEMA_METRIC'),
     ('data schema',           'SCHEMA_DATA'),
+    ('exemplar data schema',  'SCHEMA_DATA_EXEMPLAR'),
     ('information schema',    'SCHEMA_INFO');
 
 

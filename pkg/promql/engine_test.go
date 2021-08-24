@@ -34,13 +34,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-type QueryableFunc func(ctx context.Context, mint, maxt int64) (Querier, error)
-
-// Querier calls f() with the given parameters.
-func (f QueryableFunc) Querier(ctx context.Context, mint, maxt int64) (Querier, error) {
-	return f(ctx, mint, maxt)
-}
-
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
@@ -184,6 +177,18 @@ func TestQueryCancel(t *testing.T) {
 	require.NoError(t, res.Err)
 }
 
+type errQueryable struct {
+	err error
+}
+
+func (qry *errQueryable) SamplesQuerier(_ context.Context, mint int64, maxt int64) (SamplesQuerier, error) {
+	return &errQuerier{qry.err}, nil
+}
+
+func (qry *errQueryable) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
+	return nil
+}
+
 // errQuerier implements storage.Querier which always returns error.
 type errQuerier struct {
 	err error
@@ -217,9 +222,7 @@ func TestQueryError(t *testing.T) {
 	}
 	engine := NewEngine(opts)
 	errStorage := ErrStorage{errors.New("storage error")}
-	queryable := QueryableFunc(func(ctx context.Context, mint, maxt int64) (Querier, error) {
-		return &errQuerier{err: errStorage}, nil
-	})
+	queryable := &errQueryable{err: errStorage}
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()
 
@@ -242,19 +245,23 @@ type noopHintRecordingQueryable struct {
 	hints []*storage.SelectHints
 }
 
-func (h *noopHintRecordingQueryable) Querier(context.Context, int64, int64) (Querier, error) {
-	return &hintRecordingQuerier{Querier: &errQuerier{}, h: h}, nil
+func (h *noopHintRecordingQueryable) SamplesQuerier(context.Context, int64, int64) (SamplesQuerier, error) {
+	return &hintRecordingQuerier{SamplesQuerier: &errQuerier{}, h: h}, nil
+}
+
+func (h *noopHintRecordingQueryable) ExemplarsQuerier(context.Context) querier.ExemplarQuerier {
+	return nil
 }
 
 type hintRecordingQuerier struct {
-	Querier
+	SamplesQuerier
 
 	h *noopHintRecordingQueryable
 }
 
 func (h *hintRecordingQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *querier.QueryHints, p []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	h.h.hints = append(h.h.hints, hints)
-	return h.Querier.Select(sortSeries, hints, qh, nil, matchers...)
+	return h.SamplesQuerier.Select(sortSeries, hints, qh, nil, matchers...)
 }
 
 func TestSelectHintsSetCorrectly(t *testing.T) {

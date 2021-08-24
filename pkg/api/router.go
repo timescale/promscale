@@ -75,6 +75,10 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
+	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, metrics))
+	router.Get("/api/v1/query_exemplars", exemplarQueryHandler)
+	router.Post("/api/v1/query_exemplars", exemplarQueryHandler)
+
 	seriesHandler := timeHandler(metrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
 	router.Get("/api/v1/series", seriesHandler)
 	router.Post("/api/v1/series", seriesHandler)

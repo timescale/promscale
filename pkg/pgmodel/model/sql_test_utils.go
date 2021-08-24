@@ -461,12 +461,12 @@ func (m *MockMetricCache) Evictions() uint64 {
 	return 0
 }
 
-func (m *MockMetricCache) Get(schema, metric string) (MetricInfo, error) {
+func (m *MockMetricCache) Get(schema, metric string, isExemplar bool) (MetricInfo, error) {
 	if m.GetMetricErr != nil {
 		return MetricInfo{}, m.GetMetricErr
 	}
 
-	val, ok := m.MetricCache[schema+"*"+metric]
+	val, ok := m.MetricCache[fmt.Sprintf("%s_%s_%t", schema, metric, isExemplar)]
 	if !ok {
 		return val, errors.ErrEntryNotFound
 	}
@@ -474,14 +474,14 @@ func (m *MockMetricCache) Get(schema, metric string) (MetricInfo, error) {
 	return val, nil
 }
 
-func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo) error {
+func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo, isExemplar bool) error {
 	m.MetricCache[schema+"*"+metric] = mInfo
 	return m.SetMetricErr
 }
 
 type MockInserter struct {
 	InsertedSeries  map[string]SeriesID
-	InsertedData    []map[string][]Samples
+	InsertedData    []map[string][]Insertable
 	InsertSeriesErr error
 	InsertDataErr   error
 }
@@ -500,13 +500,13 @@ func (m *MockInserter) InsertTs(data Data) (uint64, error) {
 	rows := data.Rows
 	for _, v := range rows {
 		for i, si := range v {
-			seriesStr := si.GetSeries().String()
+			seriesStr := si.Series().String()
 			id, ok := m.InsertedSeries[seriesStr]
 			if !ok {
 				id = SeriesID(len(m.InsertedSeries))
 				m.InsertedSeries[seriesStr] = id
 			}
-			v[i].GetSeries().seriesID = id
+			v[i].Series().seriesID = id
 		}
 	}
 	if m.InsertSeriesErr != nil {
@@ -516,7 +516,7 @@ func (m *MockInserter) InsertTs(data Data) (uint64, error) {
 	ret := 0
 	for _, data := range rows {
 		for _, si := range data {
-			ret += si.CountSamples()
+			ret += si.Count()
 		}
 	}
 	if m.InsertDataErr != nil {

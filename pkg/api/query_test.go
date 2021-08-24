@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
@@ -59,9 +60,25 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
 }
 
-func (m mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
-	time.Sleep(m.timeToSleepOnSelect)
-	return &mockSeriesSet{err: m.selectErr}, nil
+func (m mockQuerier) SamplesQuerier() querier.SamplesQuerier {
+	return m
+}
+
+// Select implements the querier.ExemplarQuerier interface.
+func (ms mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (querier.SeriesSet, parser.Node) {
+	time.Sleep(ms.timeToSleepOnSelect)
+	return &mockSeriesSet{err: ms.selectErr}, nil
+}
+
+func (m mockQuerier) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
+	return mockExemplarQuerier{}
+}
+
+type mockExemplarQuerier struct{}
+
+// Select implements the querier.ExemplarQuerier interface.
+func (me mockExemplarQuerier) Select(_, _ time.Time, _ ...[]*labels.Matcher) ([]model.ExemplarQueryResult, error) {
+	return nil, nil
 }
 
 type mockLabelsReader struct {
