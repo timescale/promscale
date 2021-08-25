@@ -452,7 +452,7 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 	if !*useTimescale2 {
 		t.Skip("2-step continuous aggregates need TimescaleDB 2.x support")
 	}
-	if *useExtension {
+	if !*useExtension {
 		t.Skip("2-step continuous aggregates need TimescaleDB 2.x HA image")
 	}
 	if *useTimescaleOSS {
