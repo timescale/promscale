@@ -37,7 +37,7 @@ func NewTimedEWMARate(alpha float64) *TimedRate {
 func (r *TimedRate) WallRate() float64 {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	return r.lastTimedRate
+	return r.lastWallRate
 }
 
 // Rate returns the per-second rate.
