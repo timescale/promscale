@@ -70,7 +70,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	elf := NewExamplarLabelFormatter(conn, eCache)
 
 	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, copierReadRequestCh, sw, elf)
+		go runCopier(conn, copierReadRequestCh, sw, elf, cfg)
 	}
 
 	inserter := &pgxDispatcher{

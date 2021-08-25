@@ -66,7 +66,7 @@ func (reqs copyBatch) VisitExemplar(callBack func(s *pgmodel.PromExemplars) erro
 
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
+func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter, cfg *Cfg) {
 	requestBatch := make([]readRequest, 0, maxInsertStmtPerTxn)
 	insertBatch := make([]copyRequest, 0, cap(requestBatch))
 	processErr := func(err error) {
@@ -115,7 +115,7 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 			return
 		}
 
-		doInsertOrFallback(conn, insertBatch...)
+		doInsertOrFallback(conn, cfg, insertBatch...)
 		for i := range requestBatch {
 			requestBatch[i] = readRequest{}
 		}
@@ -156,10 +156,10 @@ hot_gather:
 	return batch, true
 }
 
-func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
-	err, _ := insertSeries(conn, reqs...)
+func doInsertOrFallback(conn pgxconn.PgxConn, cfg *Cfg, reqs ...copyRequest) {
+	err, _ := insertSeries(conn, cfg, reqs...)
 	if err != nil {
-		insertBatchErrorFallback(conn, reqs...)
+		insertBatchErrorFallback(conn, cfg, reqs...)
 		return
 	}
 
@@ -169,9 +169,9 @@ func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 	}
 }
 
-func insertBatchErrorFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
+func insertBatchErrorFallback(conn pgxconn.PgxConn, cfg *Cfg, reqs ...copyRequest) {
 	for i := range reqs {
-		err, minTime := insertSeries(conn, reqs[i])
+		err, minTime := insertSeries(conn, cfg, reqs[i])
 		if err != nil {
 			err = tryRecovery(conn, err, reqs[i], minTime)
 		}
@@ -241,7 +241,7 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest, minTimeInt i
 
 	metrics.DecompressCalls.Inc()
 	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
-	err, _ := insertSeries(conn, req) // Attempt an insert again.
+	err, _ := insertSeries(conn, &Cfg{}, req) // Attempt an insert again.
 	return err
 }
 
@@ -266,7 +266,7 @@ func debugInsert() {
 var thruput *ewma.TimedRate
 var thruputStarter sync.Once
 
-func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
+func insertSeries(conn pgxconn.PgxConn, cfg *Cfg, reqs ...copyRequest) (error, int64) {
 	batch := conn.NewBatch()
 
 	thruputStarter.Do(func() {
@@ -275,11 +275,11 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
 			t := time.NewTicker(time.Second * 10)
 			for range t.C {
 				thruput.Tick()
-				insertRate := thruput.Rate()
-				if insertRate == 0 {
+				timed := thruput.TimedRate()
+				if timed == 0 {
 					continue
 				}
-				log.Info("msg", "Rate at inserter (db only)", "samples/sec", int(insertRate))
+				log.Info("msg", "Rate at inserter", "rate per single copy", int(timed), "parallelized rate_per_copy", int(timed)*cfg.NumCopiers, "wall rate", thruput.WallRate())
 			}
 		}()
 	})

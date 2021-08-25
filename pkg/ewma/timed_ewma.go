@@ -18,10 +18,12 @@ type TimedRate struct {
 	newDuration int64
 	newCount    int64
 
-	alpha    float64
-	lastRate float64
-	init     bool
-	mutex    sync.Mutex
+	alpha         float64
+	lastTimedRate float64
+	lastWallRate  float64
+	lastWallTime  time.Time
+	init          bool
+	mutex         sync.Mutex
 }
 
 // NewEWMARate always allocates a new ewmaRate, as this guarantees the atomically
@@ -32,30 +34,40 @@ func NewTimedEWMARate(alpha float64) *TimedRate {
 	}
 }
 
-// Rate returns the per-second rate.
-func (r *TimedRate) Rate() float64 {
+func (r *TimedRate) WallRate() float64 {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	return r.lastRate
+	return r.lastTimedRate
+}
+
+// Rate returns the per-second rate.
+func (r *TimedRate) TimedRate() float64 {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.lastTimedRate
 }
 
 // Tick assumes to be called every r.interval.
 func (r *TimedRate) Tick() {
 	newEvents := atomic.SwapInt64(&r.newEvents, 0)
-	newDurationSum := atomic.SwapInt64(&r.newDuration, 0)
-	newCount := atomic.SwapInt64(&r.newCount, 0)
-	newDurationAvg := newDurationSum / newCount
-	instantRate := float64(newEvents) / time.Duration(newDurationAvg).Seconds()
+	newDuration := atomic.SwapInt64(&r.newDuration, 0)
+	_ = atomic.SwapInt64(&r.newCount, 0)
+
+	instantRateTimed := float64(newEvents) / time.Duration(newDuration).Seconds()
+	instantRateWall := float64(newEvents) / time.Since(r.lastWallTime).Seconds()
 
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	if r.init {
-		r.lastRate += r.alpha * (instantRate - r.lastRate)
+		r.lastTimedRate += r.alpha * (instantRateTimed - r.lastTimedRate)
+		r.lastWallRate += r.alpha * (instantRateWall - r.lastWallRate)
 	} else if newEvents > 0 {
 		r.init = true
-		r.lastRate = instantRate
+		r.lastTimedRate = instantRateTimed
+		r.lastWallRate = 0
 	}
+	r.lastWallTime = time.Now()
 }
 
 // Incr counts incr events.
