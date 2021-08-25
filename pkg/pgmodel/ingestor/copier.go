@@ -289,7 +289,9 @@ func insertSeries(conn pgxconn.PgxConn, cfg *Cfg, reqs ...copyRequest) (error, i
 					"wall rate", int(thruput.WallRate()),
 					"samples", thruput.Events(),
 					"inserts", thruputInserts.Events(),
+					"batches", thruput.Count(),
 					"samples/insert", thruput.Events()/thruputInserts.Events(),
+					"samples/batch", thruput.Events()/thruputInserts.Count(),
 				)
 			}
 		}()
