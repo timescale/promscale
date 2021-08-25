@@ -279,7 +279,7 @@ func insertSeries(conn pgxconn.PgxConn, cfg *Cfg, reqs ...copyRequest) (error, i
 				if timed == 0 {
 					continue
 				}
-				log.Info("msg", "Rate at inserter", "rate per single copy", int(timed), "parallelized rate_per_copy", int(timed)*cfg.NumCopiers, "wall rate", thruput.WallRate())
+				log.Info("msg", "Rate at inserter", "rate per single copy", int(timed), "parallelized rate_per_copy", int(timed)*cfg.NumCopiers, "copiers", cfg.NumCopiers, "wall rate", int(thruput.WallRate()))
 			}
 		}()
 	})
