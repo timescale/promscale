@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/prometheus/common/model"
+	"github.com/timescale/promscale/pkg/ewma"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
@@ -261,8 +262,27 @@ func debugInsert() {
 */
 
 // insertSeries performs the insertion of time-series into the DB.
+
+var thruput *ewma.TimedRate
+var thruputStarter sync.Once
+
 func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
 	batch := conn.NewBatch()
+
+	thruputStarter.Do(func() {
+		thruput = ewma.NewTimedEWMARate(1)
+		go func() {
+			t := time.NewTicker(time.Second * 10)
+			for range t.C {
+				thruput.Tick()
+				insertRate := thruput.Rate()
+				if insertRate == 0 {
+					continue
+				}
+				log.Info("msg", "Rate at inserter (db only)", "samples/sec", int(insertRate))
+			}
+		}()
+	})
 
 	numRowsPerInsert := make([]int, 0, len(reqs))
 	numRowsTotal := 0
@@ -402,7 +422,9 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
 		return err, lowestMinTime
 	}
 	reportDuplicates(affectedMetrics)
-	DbBatchInsertDuration.Observe(time.Since(start).Seconds())
+	took := time.Since(start)
+	DbBatchInsertDuration.Observe(took.Seconds())
+	thruput.Incr(int64(totalSamples), took)
 	return nil, lowestMinTime
 }
 
