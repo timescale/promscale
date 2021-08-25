@@ -265,21 +265,32 @@ func debugInsert() {
 
 var thruput *ewma.TimedRate
 var thruputStarter sync.Once
+var thruputInserts *ewma.TimedRate
 
 func insertSeries(conn pgxconn.PgxConn, cfg *Cfg, reqs ...copyRequest) (error, int64) {
 	batch := conn.NewBatch()
 
 	thruputStarter.Do(func() {
 		thruput = ewma.NewTimedEWMARate(1)
+		thruputInserts = ewma.NewTimedEWMARate(1)
 		go func() {
 			t := time.NewTicker(time.Second * 10)
 			for range t.C {
 				thruput.Tick()
+				thruputInserts.Tick()
 				timed := thruput.TimedRate()
 				if timed == 0 {
 					continue
 				}
-				log.Info("msg", "Rate at inserter", "rate per single copy", int(timed), "parallelized rate_per_copy", int(timed)*cfg.NumCopiers, "copiers", cfg.NumCopiers, "wall rate", int(thruput.WallRate()))
+				log.Info("msg", "Rate at inserter",
+					"rate per single copy", int(timed),
+					"parallelized rate_per_copy", int(timed)*cfg.NumCopiers,
+					"copiers", cfg.NumCopiers,
+					"wall rate", int(thruput.WallRate()),
+					"samples", thruput.Events(),
+					"inserts", thruputInserts.Events(),
+					"samples/insert", thruput.Events()/thruputInserts.Events(),
+				)
 			}
 		}()
 	})
@@ -392,6 +403,7 @@ func insertSeries(conn pgxconn.PgxConn, cfg *Cfg, reqs ...copyRequest) (error, i
 
 	NumRowsPerBatch.Observe(float64(numRowsTotal))
 	NumInsertsPerBatch.Observe(float64(len(reqs)))
+	thruputInserts.Incr(int64(len(reqs)), 0)
 	start := time.Now()
 	results, err := conn.SendBatch(context.Background(), batch)
 	if err != nil {

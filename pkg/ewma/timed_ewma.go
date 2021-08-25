@@ -19,6 +19,8 @@ type TimedRate struct {
 	newCount    int64
 
 	alpha         float64
+	lastEvents    int64
+	lastCount     int64
 	lastTimedRate float64
 	lastWallRate  float64
 	lastWallTime  time.Time
@@ -32,6 +34,18 @@ func NewTimedEWMARate(alpha float64) *TimedRate {
 	return &TimedRate{
 		alpha: alpha,
 	}
+}
+
+func (r *TimedRate) Events() int64 {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.lastEvents
+}
+
+func (r *TimedRate) Count() int64 {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.lastCount
 }
 
 func (r *TimedRate) WallRate() float64 {
@@ -51,7 +65,7 @@ func (r *TimedRate) TimedRate() float64 {
 func (r *TimedRate) Tick() {
 	newEvents := atomic.SwapInt64(&r.newEvents, 0)
 	newDuration := atomic.SwapInt64(&r.newDuration, 0)
-	_ = atomic.SwapInt64(&r.newCount, 0)
+	newCount := atomic.SwapInt64(&r.newCount, 0)
 
 	instantRateTimed := float64(newEvents) / time.Duration(newDuration).Seconds()
 	instantRateWall := float64(newEvents) / time.Since(r.lastWallTime).Seconds()
@@ -67,6 +81,8 @@ func (r *TimedRate) Tick() {
 		r.lastTimedRate = instantRateTimed
 		r.lastWallRate = 0
 	}
+	r.lastEvents = newEvents
+	r.lastCount = newCount
 	r.lastWallTime = time.Now()
 }
 
