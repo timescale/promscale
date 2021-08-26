@@ -61,7 +61,7 @@ from public.trace_stg t
 on conflict (url) do nothing
 ;
 
-insert into schema_url (url) values ('https://schema.instlib.example');
+insert into schema_url (url) values ('UNKNOWN');
 
 select * from schema_url;
 
@@ -70,7 +70,7 @@ insert into instrumentation_library (name, version, schema_url_id)
 select distinct
   i->>'name'
 , coalesce(i->>'version', '1.2.3')
-, (select id from schema_url limit 1) -- none in the sample data
+, (select id from schema_url where url = coalesce(i->>'schemaUrl', 'UNKNOWN') limit 1) -- none in the sample data
 from public.trace_stg t
 cross join lateral jsonb_path_query(t.trace, '$.resourceSpans[*].instrumentationLibrarySpans[*].instrumentationLibrary') i
 where i ? 'name'
@@ -167,7 +167,7 @@ left outer join lateral
     and is_resource_attribute_type(ak.attribute_type)
 ) ra on (true)
 left outer join span_name n on (n.name = s->>'name')
-left outer join schema_url u on (u.url = coalesce(i->>'schemaUrl', 'https://schema.instlib.example'))
+left outer join schema_url u on (u.url = coalesce(i->>'schemaUrl', 'UNKNOWN'))
 left outer join instrumentation_library il on
 (
 
@@ -175,7 +175,7 @@ left outer join instrumentation_library il on
     il.version = coalesce(i->'instrumentationLibrary'->>'version', '1.2.3') and
     il.schema_url_id = u.id
 )
-left outer join schema_url u2 on (u2.url = coalesce(r->>'schemaUrl', 'https://schema.instlib.example'))
+left outer join schema_url u2 on (u2.url = coalesce(r->>'schemaUrl', 'UNKNOWN'))
 ;
 
 -- trace table
@@ -189,7 +189,7 @@ with recursive x as
     , span_id
     , start_time
     , end_time
-    , jsonb_build_array(span_id) as span_tree
+--    , jsonb_build_array(span_id) as span_tree
     from span
     where parent_span_id is null
     union all
@@ -200,19 +200,19 @@ with recursive x as
     , s.span_id
     , least(x.start_time, s.start_time) as start_time
     , greatest(x.end_time, s.end_time) as end_time
-    , x.span_tree || jsonb_build_array(s.span_id) as span_tree
+--    , x.span_tree || jsonb_build_array(s.span_id) as span_tree
     from x
     inner join span s on x.trace_id = s.trace_id
     and x.span_id = s.parent_span_id
 )
-insert into trace (id, root_span_id, span_count, span_time_range, event_time_range, span_tree)
+insert into trace (id, root_span_id, span_count, span_time_range, event_time_range/*, span_tree*/)
 select
   x.trace_id
 , max(x.root_span_id)
 , max(x.span_count)
 , tstzrange(min(x.start_time), max(x.end_time), '[)') as span_time_range
 , tstzrange('infinity', 'infinity', '()') as event_time_range
-, jsonb_agg(x.span_tree) as span_tree
+--, jsonb_agg(x.span_tree) as span_tree
 from x
 group by x.trace_id
 on conflict (id) do nothing
