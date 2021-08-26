@@ -19,17 +19,6 @@ import (
 const getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
 const createExemplarTable = "SELECT * FROM " + schema.Catalog + ".create_exemplar_table_if_not_exists($1)"
 
-type metricBatcher struct {
-	conn                 pgxconn.PgxConn
-	input                chan *insertDataRequest
-	pending              *pendingBuffer
-	metricName           string
-	metricTableName      string
-	toCopiers            chan<- copyRequest
-	labelArrayOID        uint32
-	exemplarsInitialized bool
-}
-
 func containsExemplars(data []model.Insertable) bool {
 	for _, row := range data {
 		if row.IsOfType(model.Exemplar) {
@@ -37,6 +26,10 @@ func containsExemplars(data []model.Insertable) bool {
 		}
 	}
 	return false
+}
+
+type readRequest struct {
+	copySender <-chan copyRequest
 }
 
 func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
@@ -118,17 +111,15 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 }
 
 // initilizeExemplars creates the necessary tables for exemplars. Called lazily only if exemplars are found
-func (h *metricBatcher) initializeExemplars() error {
+func initializeExemplars(conn pgxconn.PgxConn, metricName string) error {
 	// We are seeing the exemplar belonging to this metric first time. It may be the
 	// first time of this exemplar in the database. So, let's attempt to create a table
 	// if it does not exists.
 	var created bool
-	err := h.conn.QueryRow(context.Background(), createExemplarTable, h.metricName).Scan(&created)
+	err := conn.QueryRow(context.Background(), createExemplarTable, metricName).Scan(&created)
 	if err != nil {
-		return fmt.Errorf("error initializing exemplar tables for %s: %w", h.metricName, err)
+		return fmt.Errorf("error initializing exemplar tables for %s: %w", metricName, err)
 	}
-	//created is ignored
-	h.exemplarsInitialized = true
 	return nil
 }
 
@@ -137,14 +128,33 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
-	toCopiers chan<- copyRequest,
-	labelArrayOID uint32,
-) {
+	copierReadRequestCh chan<- readRequest,
+	labelArrayOID uint32) {
+
 	var (
-		tableName   string
-		firstReq    *insertDataRequest
-		firstReqSet = false
+		tableName            string
+		firstReq             *insertDataRequest
+		firstReqSet          = false
+		exemplarsInitialized = false
 	)
+
+	addReq := func(req *insertDataRequest, buf *pendingBuffer) {
+		if !exemplarsInitialized && containsExemplars(req.data) {
+			if err := initializeExemplars(conn, metricName); err != nil {
+				log.Error("msg", err)
+				req.reportResult(err)
+				return
+			}
+			exemplarsInitialized = true
+		}
+		buf.addReq(req)
+	}
+	//This channel in synchronous (no buffering). This provides backpressure
+	//to the batcher to keep batching until the copier is ready to read.
+	copySender := make(chan copyRequest)
+	defer close(copySender)
+	readRequest := readRequest{copySender: copySender}
+
 	for firstReq = range input {
 		var err error
 		tableName, err = initializeMetricBatcher(conn, metricName, completeMetricCreationSignal, metricTableNames)
@@ -163,105 +173,55 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		return
 	}
 
-	handler := metricBatcher{
-		conn:            conn,
-		input:           input,
-		pending:         NewPendingBuffer(),
-		metricName:      metricName,
-		metricTableName: tableName,
-		toCopiers:       toCopiers,
-		labelArrayOID:   labelArrayOID,
-	}
+	//the basic structure of communication from the batcher to the copier is as follows:
+	// 1. the batcher gets a request from the input channel
+	// 2. the batcher sends a readRequest to the copier on a channel shared by all the metric batchers
+	// 3. the batcher keeps on batching together requests from the input channel as long as the copier isn't ready to receive the batch
+	// 4. the copier catches up and gets the read request from the shared channel
+	// 5. the copier reads from the channel specified in the read request
+	// 6. the batcher is able to send it's batch to the copier
 
-	handler.handleReq(firstReq)
+	// Notice some properties:
+	// 1. The shared channel in step 2 acts as a queue between metric batchers where the priority is approximately the earliest arrival time of any
+	//     request in the batch (that's why we only do step 2 after step 1). Note this means we probably want a single copier reading a batch
+	//     of requests consecutively so as to minimize processing delays. That's what the mutex in the copier does.
+	// 2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
+	// 3. The batcher has only a single read request out at a time.
 
-	// Grab new requests from our channel and handle them. We do this hot-load
-	// style: we keep grabbing requests off the channel while we can do so
-	// without blocking, and flush them to the next layer when we run out, or
-	// reach a predetermined threshold. The theory is that wake/sleep and
-	// flushing is relatively expensive, and can be easily amortized over
-	// multiple requests, so it pays to batch as much as we are able. However,
-	// writes to a given metric can be relatively rare, so if we don't have
-	// additional requests immediately we're likely not going to for a while.
+	pending := NewPendingBuffer()
+	addReq(firstReq, pending)
+	copierReadRequestCh <- readRequest
+
 	for {
-		if handler.pending.IsEmpty() {
-			stillAlive := handler.blockingHandleReq()
-			if !stillAlive {
+		if pending.IsEmpty() {
+			req, ok := <-input
+			if !ok {
 				return
 			}
-			continue
+			addReq(req, pending)
+			copierReadRequestCh <- readRequest
 		}
 
-	hotReceive:
-		for handler.nonblockingHandleReq() {
-			if handler.pending.IsFull() {
-				break hotReceive
-			}
+		recvCh := input
+		if pending.IsFull() {
+			recvCh = nil
 		}
 
-		handler.flush()
-	}
-}
-
-func (h *metricBatcher) blockingHandleReq() bool {
-	req, ok := <-h.input
-	if !ok {
-		return false
-	}
-
-	h.handleReq(req)
-
-	return true
-}
-
-func (h *metricBatcher) nonblockingHandleReq() bool {
-	select {
-	case req := <-h.input:
-		h.handleReq(req)
-		return true
-	default:
-		return false
-	}
-}
-
-func (h *metricBatcher) handleReq(req *insertDataRequest) bool {
-	if !h.exemplarsInitialized && containsExemplars(req.data) {
-		if err := h.initializeExemplars(); err != nil {
-			log.Error("msg", err)
-			req.reportResult(err)
-			return false
-		}
-
-	}
-	h.pending.addReq(req)
-	if h.pending.IsFull() {
-		h.tryFlushOrBatchMore()
-		return true
-	}
-	return false
-}
-
-func (h *metricBatcher) flush() {
-	if h.pending.IsEmpty() {
-		return
-	}
-	h.tryFlushOrBatchMore()
-}
-
-func (h *metricBatcher) tryFlushOrBatchMore() {
-	recvChannel := h.input
-	for {
-		if h.pending.IsFull() {
-			recvChannel = nil
-		}
-		numSeries := h.pending.batch.CountSeries()
+		numSeries := pending.batch.CountSeries()
 		select {
-		case h.toCopiers <- copyRequest{h.pending, h.metricTableName}:
+		//try to send first, if not then keep batching
+		case copySender <- copyRequest{pending, tableName}:
 			MetricBatcherFlushSeries.Observe(float64(numSeries))
-			h.pending = NewPendingBuffer()
-			return
-		case req := <-recvChannel:
-			h.pending.addReq(req)
+			pending = NewPendingBuffer()
+		case req, ok := <-recvCh:
+			if !ok {
+				if !pending.IsEmpty() {
+					copySender <- copyRequest{pending, tableName}
+					MetricBatcherFlushSeries.Observe(float64(numSeries))
+				}
+				return
+			}
+			addReq(req, pending)
 		}
 	}
 }

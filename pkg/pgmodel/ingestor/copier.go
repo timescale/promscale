@@ -22,7 +22,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const maxCopyRequestsPerTxn = 100
+const maxInsertStmtPerTxn = 100
 
 type copyRequest struct {
 	data  *pendingBuffer
@@ -65,11 +65,9 @@ func (reqs copyBatch) VisitExemplar(callBack func(s *pgmodel.PromExemplars) erro
 
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
-	// We grab copyRequests off the channel one at a time. This, and the name is
-	// a legacy from when we used CopyFrom to perform the insertions, and may
-	// change in the future.
-	insertBatch := make([]copyRequest, 0, maxCopyRequestsPerTxn)
+func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
+	requestBatch := make([]readRequest, 0, maxInsertStmtPerTxn)
+	insertBatch := make([]copyRequest, 0, cap(requestBatch))
 	processErr := func(err error) {
 		for i := range insertBatch {
 			insertBatch[i].data.reportResults(err)
@@ -78,37 +76,30 @@ func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter, elf 
 	}
 	for {
 		var ok bool
-		insertBatch, ok = copierGetBatch(insertBatch, in)
+
+		//fetch the batch of request upfront to make sure all of the
+		//requests fetched are for unique metrics. This is insured
+		//by the fact that the batcher only has one outstanding readRequest
+		//at a time and the fact that we fetch the entire batch before
+		//executing any of the reads. This guarantees that we never
+		//need to batch the same metrics together in the copier
+		requestBatch, ok = copierGetBatch(requestBatch, in)
 		if !ok {
 			return
 		}
 
-		// sort to prevent deadlocks
+		for i := range requestBatch {
+			copyRequest, ok := <-requestBatch[i].copySender
+			if !ok {
+				continue
+			}
+			insertBatch = append(insertBatch, copyRequest)
+		}
+
+		// sort to prevent deadlocks on table locks
 		sort.Slice(insertBatch, func(i, j int) bool {
 			return insertBatch[i].table < insertBatch[j].table
 		})
-
-		//merge tables to prevent deadlocks (on row order) and for efficiency
-
-		// invariant: there's a gap-free prefix containing data we want to insert
-		//            in table order, Following this is a gap which once contained
-		//            batches we compacted away, following this is the
-		//            uncompacted data.
-		dst := 0
-		for src := 1; src < len(insertBatch); src++ {
-			if insertBatch[dst].table == insertBatch[src].table {
-				insertBatch[dst].data.absorb(insertBatch[src].data)
-				insertBatch[src].data.release()
-				insertBatch[src] = copyRequest{}
-			} else {
-				dst++
-				if dst != src {
-					insertBatch[dst] = insertBatch[src]
-					insertBatch[src] = copyRequest{}
-				}
-			}
-		}
-		insertBatch = insertBatch[:dst+1]
 
 		batch := copyBatch(insertBatch)
 
@@ -124,14 +115,18 @@ func runCopier(conn pgxconn.PgxConn, in chan copyRequest, sw *seriesWriter, elf 
 		}
 
 		doInsertOrFallback(conn, insertBatch...)
+		for i := range requestBatch {
+			requestBatch[i] = readRequest{}
+		}
 		for i := range insertBatch {
 			insertBatch[i] = copyRequest{}
 		}
 		insertBatch = insertBatch[:0]
+		requestBatch = requestBatch[:0]
 	}
 }
 
-func copierGetBatch(batch []copyRequest, in chan copyRequest) ([]copyRequest, bool) {
+func copierGetBatch(batch []readRequest, in <-chan readRequest) ([]readRequest, bool) {
 	//This mutex is not for safety, but rather for better batching.
 	//It guarantees that only one copier is reading from the channel at one time
 	//This ensures bigger batches as well as less spread of a

@@ -82,8 +82,3 @@ func (p *pendingBuffer) addReq(req *insertDataRequest) {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.AppendSlice(req.data)
 }
-
-func (p *pendingBuffer) absorb(other *pendingBuffer) {
-	p.needsResponse = append(p.needsResponse, other.needsResponse...)
-	p.batch.Absorb(other.batch)
-}
