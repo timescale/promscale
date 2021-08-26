@@ -84,6 +84,41 @@ $sql$
 LANGUAGE SQL VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.put_attribute(text, jsonb, SCHEMA_TRACING.attribute_type) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.get_attribute_map(_attrs jsonb) RETURNS SCHEMA_TRACING.attribute_map
+AS $sql$
+    SELECT coalesce(jsonb_object_agg(ak.id, a.id), '{}')::SCHEMA_TRACING.attribute_map
+    FROM jsonb_each(_attrs) x
+    INNER JOIN SCHEMA_TRACING.attribute_key ak on (x.key = ak.key)
+    INNER JOIN SCHEMA_TRACING.attribute a on (x.value = a.value)
+$sql$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.get_attribute_map(jsonb) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.get_attribute_map_like(_key text, _pattern text) RETURNS jsonb[]
+AS $sql$
+    SELECT array_agg(jsonb_build_object(ak.id, a.id))
+    FROM (SELECT * FROM SCHEMA_TRACING.attribute a WHERE (a.key = _key AND a.value::text LIKE _pattern )) a
+    INNER JOIN SCHEMA_TRACING.attribute_key ak on (ak.key = _key)
+$sql$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.get_attribute_map_like(text, text) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.get_attribute_key(_attr_key text) RETURNS text
+AS $sql$
+    SELECT ak.id::text FROM SCHEMA_TRACING.attribute_key ak where ak.key = _attr_key
+$sql$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.get_attribute_key(text) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.get_attribute_keys(VARIADIC _attr_keys text[]) RETURNS text[]
+AS $sql$
+    SELECT array_agg(ak.id::text)
+    FROM unnest(_attr_keys) arg
+    INNER JOIN SCHEMA_TRACING.attribute_key ak ON (ak.key = arg)
+$sql$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.get_attribute_keys(VARIADIC text[]) TO prom_reader;
+
 /****************** there's probably a better name than "explode" but I can't think of one at the moment */
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.explode(_attr_map SCHEMA_TRACING.attribute_map)
@@ -133,6 +168,7 @@ $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.val(bigint) TO prom_reader;
 
+/*
 ---------------- eq functions ------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eq(_attr_map SCHEMA_TRACING.attribute_map, _json_attrs jsonb)
@@ -166,3 +202,4 @@ CREATE OPERATOR SCHEMA_TRACING.@> (
     RIGHTARG = jsonb,
     FUNCTION = SCHEMA_TRACING.attribute_map_contains
 );
+*/

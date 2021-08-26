@@ -170,6 +170,7 @@ left outer join span_name n on (n.name = s->>'name')
 left outer join schema_url u on (u.url = coalesce(i->>'schemaUrl', 'https://schema.instlib.example'))
 left outer join instrumentation_library il on
 (
+
     il.name = i->'instrumentationLibrary'->>'name' and
     il.version = coalesce(i->'instrumentationLibrary'->>'version', '1.2.3') and
     il.schema_url_id = u.id

@@ -153,13 +153,13 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
     CHECK (start_time <= end_time)
 );
 CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (trace_id, span_id);
-CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (span_id);
+--CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (span_id);
 CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (parent_span_id);
-CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (name_id);
-CREATE INDEX ON SCHEMA_TRACING.span USING GIST (tstzrange(start_time, end_time, '[]'));
+--CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (name_id);
+--CREATE INDEX ON SCHEMA_TRACING.span USING GIST (tstzrange(start_time, end_time, '[]'));
 CREATE INDEX ON SCHEMA_TRACING.span USING GIN (span_attributes jsonb_path_ops);
 CREATE INDEX ON SCHEMA_TRACING.span USING GIN (resource_attributes jsonb_path_ops);
-SELECT create_hypertable('SCHEMA_TRACING.span', 'start_time', partitioning_column=>'trace_id', number_partitions=>64);
+SELECT create_hypertable('SCHEMA_TRACING.span', 'start_time', partitioning_column=>'trace_id', number_partitions=>1);
 GRANT SELECT ON TABLE SCHEMA_TRACING.span TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.span TO prom_writer;
 
@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.event
 );
 CREATE INDEX ON SCHEMA_TRACING.event USING GIN (attributes jsonb_path_ops);
 CREATE INDEX ON SCHEMA_TRACING.event USING BTREE (span_id, time);
-SELECT create_hypertable('SCHEMA_TRACING.event', 'time', partitioning_column=>'trace_id', number_partitions=>64);
+SELECT create_hypertable('SCHEMA_TRACING.event', 'time', partitioning_column=>'trace_id', number_partitions=>1);
 GRANT SELECT ON TABLE SCHEMA_TRACING.event TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.event TO prom_writer;
 
@@ -196,6 +196,6 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.link
 );
 CREATE INDEX ON SCHEMA_TRACING.link USING BTREE (span_id, span_start_time);
 CREATE INDEX ON SCHEMA_TRACING.link USING GIN (attributes jsonb_path_ops);
-SELECT create_hypertable('SCHEMA_TRACING.link', 'span_start_time', partitioning_column=>'trace_id', number_partitions=>64);
+SELECT create_hypertable('SCHEMA_TRACING.link', 'span_start_time', partitioning_column=>'trace_id', number_partitions=>1);
 GRANT SELECT ON TABLE SCHEMA_TRACING.link TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.link TO prom_writer;
