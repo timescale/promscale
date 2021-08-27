@@ -38,6 +38,7 @@ const (
 	NoSuperuser = false
 
 	LatestDBWithPromscaleImageBase = "timescaledev/promscale-extension"
+	LatestDBHAPromscaleImageBase   = "timescale/timescaledb-ha"
 )
 
 var (
@@ -326,7 +327,7 @@ func StartPGContainer(
 	case Timescale2, Multinode:
 		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale2AndPromscale, MultinodeAndPromscale:
-		image = LatestDBWithPromscaleImageBase + ":latest-ts2-" + PGTag
+		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
 	case VanillaPostgres:
 		image = "postgres:" + PGMajor
 	case TimescaleOSS:

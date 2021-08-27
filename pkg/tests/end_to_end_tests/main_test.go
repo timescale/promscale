@@ -283,11 +283,22 @@ func generatePGTestDirFiles() string {
 		log.Fatal(err)
 	}
 
+	err = os.Chmod(tmpDir, 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	err = os.Mkdir(filepath.Join(tmpDir, "sql"), 0777)
 	if err != nil {
 		log.Fatal(err)
 	}
 	err = os.Mkdir(filepath.Join(tmpDir, "out"), 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	//Mkdir obeys umask. have to force
+	err = os.Chmod(filepath.Join(tmpDir, "out"), 0777)
 	if err != nil {
 		log.Fatal(err)
 	}
