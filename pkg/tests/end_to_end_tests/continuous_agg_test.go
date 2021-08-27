@@ -512,3 +512,210 @@ WITH (timescaledb.continuous) AS
 		require.Equal(t, 0, int(cnt), "Expected for cagg to have no chunks, all outside of data retention period")
 	})
 }
+
+func TestContinuousAgg2StepAggCounter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescale2 {
+		t.Skip("2-step continuous aggregates need TimescaleDB 2.x support")
+	}
+	if !*useExtension {
+		t.Skip("2-step continuous aggregates need TimescaleDB 2.x HA image")
+	}
+	if *useTimescaleOSS {
+		t.Skip("continuous aggregates need non-OSS version of TimescaleDB")
+	}
+	if *useMultinode {
+		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
+	}
+
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
+		defer dbJob.Close()
+		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		require.NoError(t, err)
+		defer dbSuper.Close()
+		_, err = dbSuper.Exec(context.Background(), "CREATE EXTENSION timescaledb_toolkit")
+		require.NoError(t, err)
+
+		// Ingest test dataset.
+		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+
+		if _, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()"); err != nil {
+			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
+		}
+		if _, err := db.Exec(context.Background(),
+			`
+CREATE MATERIALIZED VIEW counter_cagg
+WITH (timescaledb.continuous) AS
+  SELECT
+  	time_bucket('1hour', time) as time,
+	series_id as series_id,
+	toolkit_experimental.counter_agg(time, value, toolkit_experimental.time_bucket_range('1 hour'::interval, time)) as aggregated_counter
+  FROM prom_data.metric_counter
+  GROUP BY time_bucket('1hour', time), series_id
+    `); err != nil {
+			t.Fatalf("unexpected error while creating metric view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(),
+			`
+set timescaledb_toolkit_acknowledge_auto_drop to 'true';
+CREATE VIEW counter_1hour AS
+  SELECT time + '1 hour' as time,
+         series_id as series_id,
+	 toolkit_experimental.extrapolated_rate(aggregated_counter, 'prometheus') as value,
+	 toolkit_experimental.extrapolated_delta(aggregated_counter, 'prometheus') as increase,
+	 toolkit_experimental.extrapolated_rate(aggregated_counter, method => 'prometheus') as rate,
+	 toolkit_experimental.irate_right(aggregated_counter) as irate,
+	 toolkit_experimental.num_resets(aggregated_counter)::float as resets
+    FROM counter_cagg`); err != nil {
+			t.Fatalf("unexpected error while creating metric view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('public', 'counter_1hour')"); err != nil {
+			t.Fatalf("unexpected error while registering metric view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(),
+			`
+		set timescaledb_toolkit_acknowledge_auto_drop to 'true';
+		CREATE VIEW counter_3hour AS
+		  SELECT time_bucket('3hour', time) + '3 hour' as time,
+			 series_id as series_id,
+			 toolkit_experimental.extrapolated_rate(
+			   toolkit_experimental.with_bounds(
+			     toolkit_experimental.rollup(aggregated_counter),
+			     toolkit_experimental.time_bucket_range('3 hour'::interval, time_bucket('3hour', time))
+			   )
+			   , 'prometheus') as value,
+			 toolkit_experimental.extrapolated_delta(
+			   toolkit_experimental.with_bounds(
+			     toolkit_experimental.rollup(aggregated_counter),
+			     toolkit_experimental.time_bucket_range('3 hour'::interval, time_bucket('3hour', time))
+			   )
+			   , 'prometheus') as increase,
+			 toolkit_experimental.extrapolated_rate(
+			   toolkit_experimental.with_bounds(
+			     toolkit_experimental.rollup(aggregated_counter),
+			     toolkit_experimental.time_bucket_range('3 hour'::interval, time_bucket('3hour', time))
+			   )
+			   , method => 'prometheus') as rate,
+			 toolkit_experimental.irate_right(
+			   toolkit_experimental.with_bounds(
+			     toolkit_experimental.rollup(aggregated_counter),
+			     toolkit_experimental.time_bucket_range('3 hour'::interval, time_bucket('3hour', time))
+			   )
+			 ) as irate,
+			 toolkit_experimental.num_resets(
+			   toolkit_experimental.with_bounds(
+			     toolkit_experimental.rollup(aggregated_counter),
+			     toolkit_experimental.time_bucket_range('3 hour'::interval, time_bucket('3hour', time))
+			   )
+			)::float as resets
+		    FROM counter_cagg
+		    GROUP BY time_bucket('3hour', time), series_id
+		    `); err != nil {
+			t.Fatalf("unexpected error while creating metric view: %s", err)
+		}
+		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('public', 'counter_3hour')"); err != nil {
+			t.Fatalf("unexpected error while registering metric view: %s", err)
+		}
+
+		cnt := 0
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM counter_1hour").Scan(&cnt)
+		require.NoError(t, err)
+		require.Greater(t, cnt, 0)
+
+	})
+
+	// Getting a read-only connection to ensure read path is idempotent.
+	readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
+	defer readOnly.Close()
+
+	mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+	lCache := clockcache.WithMax(100)
+	//dbConn := pgxconn.NewQueryLoggingPgxConn(readOnly)
+	dbConn := pgxconn.NewPgxConn(readOnly)
+	labelsReader := lreader.NewLabelsReader(dbConn, lCache)
+	r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
+	queryable := query.NewQueryable(r, labelsReader)
+	queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, []string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runSuite(t, queryEngine, queryable, "metric_counter", "counter_1hour", time.Hour)
+	runSuite(t, queryEngine, queryable, "metric_counter", "counter_3hour", 3*time.Hour)
+}
+
+func runSuite(t *testing.T, queryEngine *promql.Engine, queryable promql.Queryable, raw_metric, cagg_metric string, duration time.Duration) {
+
+	durationMs := duration.Milliseconds()
+	/* subtract a millisecond from Prom since its inclusive on BOTH ends */
+	durationPromString := fmt.Sprintf("%vms", (duration - time.Millisecond).Milliseconds())
+	testCases := []struct {
+		name      string
+		queryRaw  string
+		queryCagg string
+	}{
+		{
+			name:      "basic rate on default column",
+			queryRaw:  fmt.Sprintf("rate(%s[%s])", raw_metric, durationPromString),
+			queryCagg: cagg_metric,
+		},
+		{
+			name:      "rate",
+			queryRaw:  fmt.Sprintf("rate(%s[%s])", raw_metric, durationPromString),
+			queryCagg: fmt.Sprintf(`%s{__column__="rate"}`, cagg_metric),
+		},
+		{
+			name:      "irate",
+			queryRaw:  fmt.Sprintf("irate(%s[%s])", raw_metric, durationPromString),
+			queryCagg: fmt.Sprintf(`%s{__column__="irate"}`, cagg_metric),
+		},
+		{
+			name:      "resets",
+			queryRaw:  fmt.Sprintf("resets(%s[%s])", raw_metric, durationPromString),
+			queryCagg: fmt.Sprintf(`%s{__column__="resets"}`, cagg_metric),
+		},
+		{
+			name:      "increase",
+			queryRaw:  fmt.Sprintf("increase(%s[%s])", raw_metric, durationPromString),
+			queryCagg: fmt.Sprintf(`%s{__column__="increase"}`, cagg_metric),
+		},
+	}
+
+	for _, c := range testCases {
+		tc := c
+		times := map[string]int64{
+			"end of last full period": ((endTime / durationMs) * durationMs),
+			"last period":             ((endTime / durationMs) * durationMs) + durationMs,
+			"first period":            ((startTime / durationMs) * durationMs) + durationMs,
+			"before first period":     ((startTime / durationMs) * durationMs),
+		}
+		for desc, endMs := range times {
+			t.Run(cagg_metric+" "+c.name+" "+desc, func(t *testing.T) {
+				var qryRaw promql.Query
+				var qryCagg promql.Query
+				var err error
+
+				qryRaw, err = queryEngine.NewInstantQuery(queryable, tc.queryRaw, model.Time(endMs-1).Time()) /* note the -1. Prom is inclusive on both ends, so we use a duration = range - 1 ms to mimick bucketing behavior and start it one millisecond before */
+				require.NoError(t, err)
+				qryCagg, err = queryEngine.NewInstantQuery(queryable, tc.queryCagg, model.Time(endMs).Time())
+				require.NoError(t, err)
+
+				resRaw := qryRaw.Exec(context.Background())
+				resCagg := qryCagg.Exec(context.Background())
+
+				vec, err := resCagg.Vector()
+				if err == nil {
+					for i := range vec {
+						sample := vec[i]
+						vec[i].Metric = sample.Metric.WithoutLabels("__column__", "__name__", "__schema__")
+						vec[i].Point.T = sample.Point.T - 1 /* see note about subtracting 1ms above */
+					}
+				}
+				require.Equal(t, *resRaw, *resCagg)
+			})
+		}
+	}
+}
