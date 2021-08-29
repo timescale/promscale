@@ -1311,9 +1311,10 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(schema_name T
 RETURNS BOOLEAN
 AS $func$
 DECLARE
-    r SCHEMA_CATALOG.metric_view_cagg;
-    agg_schema NAME;
-    agg_name NAME;
+    r SCHEMA_CATALOG.metric;
+    _is_cagg BOOLEAN;
+    _cagg_schema NAME;
+    _cagg_name NAME;
 BEGIN
     --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
     --needs to run before update so row exists before update.
@@ -1321,13 +1322,11 @@ BEGIN
     WHERE schema_name = 'SCHEMA_DATA';
 
     --check if its a metric view with cagg
-    SELECT cagg_schema, cagg_name
-    INTO agg_schema, agg_name
-    FROM SCHEMA_CATALOG.metric_view_cagg
-    WHERE view_schema = schema_name
-    AND view_name = metric_name;
+    SELECT is_cagg, cagg_schema, cagg_name
+    INTO _is_cagg, _cagg_schema, _cagg_name
+    FROM SCHEMA_CATALOG.get_cagg_info(schema_name, metric_name);
 
-    IF NOT FOUND THEN
+    IF NOT _is_cagg OR (_cagg_name = metric_name AND _cagg_schema = schema_name) THEN
         UPDATE SCHEMA_CATALOG.metric m SET retention_period = new_retention_period
         WHERE m.table_schema = schema_name
         AND m.metric_name = set_metric_retention_period.metric_name;
@@ -1335,19 +1334,23 @@ BEGIN
         RETURN true;
     END IF;
 
-    RAISE NOTICE 'Setting data retention period for all metrics with underlying continuous aggregate %.%', agg_schema, agg_name;
+    --handles 2-step aggregatop
+    RAISE NOTICE 'Setting data retention period for all metrics with underlying continuous aggregate %.%', _cagg_schema, cagg_name;
 
     FOR r IN
-        SELECT mvc.*
-        FROM SCHEMA_CATALOG.metric_view_cagg mvc
-        WHERE mvc.cagg_schema = agg_schema
-        AND mvc.cagg_name = agg_name
+        SELECT m.*
+        FROM information_schema.view_table_usage v
+        INNER JOIN SCHEMA_CATALOG.metric m
+          ON (m.table_name = v.view_name AND m.table_schema = v.view_schema)
+        WHERE v.table_name = _cagg_name
+          AND v.table_schema = _cagg_schema
     LOOP
-        RAISE NOTICE 'Setting data retention for metrics %.%', r.view_schema, r.view_name;
+        RAISE NOTICE 'Setting data retention for metrics %.%', r.table_schema, r.metric_name;
 
-        UPDATE SCHEMA_CATALOG.metric m SET retention_period = new_retention_period
-        WHERE m.table_schema = r.view_schema
-        AND m.metric_name = r.view_name;
+        UPDATE SCHEMA_CATALOG.metric m
+        SET retention_period = new_retention_period
+        WHERE m.table_schema = r.table_schema
+        AND m.metric_name = r.metric_name;
     END LOOP;
 
     RETURN true;
@@ -1372,19 +1375,18 @@ CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(schema_name
 RETURNS BOOLEAN
 AS $func$
 DECLARE
-    r SCHEMA_CATALOG.metric_view_cagg;
-    agg_schema NAME;
-    agg_name NAME;
+    r SCHEMA_CATALOG.metric;
+    _is_cagg BOOLEAN;
+    _cagg_schema NAME;
+    _cagg_name NAME;
 BEGIN
 
     --check if its a metric view with cagg
-    SELECT cagg_schema, cagg_name
-    INTO agg_schema, agg_name
-    FROM SCHEMA_CATALOG.metric_view_cagg
-    WHERE view_schema = schema_name
-    AND view_name = metric_name;
+    SELECT is_cagg, cagg_schema, cagg_name
+    INTO _is_cagg, _cagg_schema, _cagg_name
+    FROM SCHEMA_CATALOG.get_cagg_info(schema_name, metric_name);
 
-    IF NOT FOUND THEN
+    IF NOT _is_cagg OR (_cagg_name = metric_name AND _cagg_schema = schema_name) THEN
         UPDATE SCHEMA_CATALOG.metric m SET retention_period = NULL
         WHERE m.table_schema = schema_name
         AND m.metric_name = reset_metric_retention_period.metric_name;
@@ -1392,19 +1394,22 @@ BEGIN
         RETURN true;
     END IF;
 
-    RAISE NOTICE 'Resetting data retention period for all metrics with underlying continuous aggregate %.%', agg_schema, agg_name;
+    RAISE NOTICE 'Resetting data retention period for all metrics with underlying continuous aggregate %.%', _cagg_schema, cagg_name;
 
     FOR r IN
-        SELECT *
-        FROM SCHEMA_CATALOG.metric_view_cagg mvc
-        WHERE mvc.cagg_schema = agg_schema
-        AND mvc.cagg_name = agg_name
+        SELECT m.*
+        FROM information_schema.view_table_usage v
+        INNER JOIN SCHEMA_CATALOG.metric m
+          ON (m.table_name = v.view_name AND m.table_schema = v.view_schema)
+        WHERE v.table_name = _cagg_name
+          AND v.table_schema = _cagg_schem
     LOOP
-        RAISE NOTICE 'Resetting data retention for metrics %.%', r.view_schema, r.view_name;
+        RAISE NOTICE 'Resetting data retention for metrics %.%', r.table_schema, r.metric_name;
 
-        UPDATE SCHEMA_CATALOG.metric m SET retention_period = NULL
-        WHERE m.table_schema = r.view_schema
-        AND m.metric_name = r.view_name;
+        UPDATE SCHEMA_CATALOG.metric m
+        SET retention_period = NULL
+        WHERE m.table_schema = r.table_schema
+        AND m.metric_name = r.metric_name;
     END LOOP;
 
     RETURN true;
@@ -1829,6 +1834,7 @@ DECLARE
     metric_schema NAME;
     metric_table NAME;
     metric_view BOOLEAN;
+    _is_cagg BOOLEAN;
 BEGIN
     SELECT table_schema, table_name, is_view
     INTO STRICT metric_schema, metric_table, metric_view
@@ -1836,11 +1842,12 @@ BEGIN
 
     -- need to check for caggs when dealing with metric views
     IF metric_view THEN
-        SELECT cagg_schema, cagg_name
-        INTO metric_schema, metric_table
-        FROM SCHEMA_CATALOG.metric_view_cagg mvc
-        WHERE mvc.view_schema = metric_schema
-        AND mvc.view_name = metric_table;
+        SELECT is_cagg, cagg_schema, cagg_name
+        INTO _is_cagg, metric_schema, metric_table
+        FROM SCHEMA_CATALOG.get_cagg_info(schema_name, metric_name);
+        IF NOT _is_cagg THEN
+          RETURN;
+        END IF;
     END IF;
 
     IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
@@ -2002,17 +2009,9 @@ BEGIN
                 RETURN;
         END IF;
 
-        -- fetch cagg details if exists
-        SELECT mvc.cagg_schema, mvc.cagg_name
+        SELECT view_schema, view_name
         INTO agg_schema, agg_name
-        FROM SCHEMA_CATALOG.metric_view_cagg mvc
-        WHERE mvc.view_schema = metric_schema_name
-        AND mvc.view_name = metric_table_name;
-
-        IF agg_schema IS NULL AND agg_name IS NULL THEN
-            agg_schema := metric_schema_name;
-            agg_name := metric_table_name;
-        END IF;
+        FROM SCHEMA_CATALOG.get_view_info(metric_schema_name, metric_table_name);
 
         -- for TSDB 2.x we return the view schema and name because functions like
         -- show_chunks don't work on materialized hypertables, which is a difference
@@ -2051,7 +2050,7 @@ BEGIN
     --RAISE WARNING 'checking view: % %', metric_schema, metric_table;
     RETURN QUERY
     SELECT v.view_schema::name, v.view_name::name, v.table_name::name
-    FROM information_schema.view_table_usage v 
+    FROM information_schema.view_table_usage v
     WHERE v.view_schema = metric_schema
     AND v.view_name = metric_table
     AND v.table_schema = 'SCHEMA_DATA';
@@ -2063,14 +2062,51 @@ BEGIN
     -- if first level not found, return 2nd level if any
     RETURN QUERY
     SELECT v2.view_schema::name, v2.view_name::name, v2.table_name::name
-    FROM information_schema.view_table_usage v 
-    LEFT JOIN information_schema.view_table_usage v2 
+    FROM information_schema.view_table_usage v
+    LEFT JOIN information_schema.view_table_usage v2
         ON (v2.view_schema = v.table_schema
             AND v2.view_name = v.table_name)
     WHERE v.view_schema = metric_schema
     AND v.view_name = metric_table
     AND v2.table_schema = 'SCHEMA_DATA';
     RETURN;
+END
+$$
+LANGUAGE PLPGSQL STABLE
+--security definer to add jobs as the logged-in user
+SECURITY DEFINER
+--search path must be set for security definer
+SET search_path = pg_temp;
+--redundant given schema settings but extra caution for security definers
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_view_info(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_view_info(text, text) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_cagg_info(
+    metric_schema text, metric_table text,
+    OUT is_cagg BOOLEAN, OUT cagg_schema name, OUT cagg_name name, OUT metric_table_name name)
+AS $$
+BEGIN
+    is_cagg := FALSE;
+    SELECT *
+    FROM SCHEMA_CATALOG.get_view_info(metric_schema, metric_table)
+    INTO cagg_schema, cagg_name, metric_table_name;
+
+    IF NOT FOUND THEN
+      RETURN;
+    END IF;
+
+    PERFORM *
+    FROM SCHEMA_CATALOG.get_storage_hypertable_info(metric_schema, metric_table,  true);
+
+    IF NOT FOUND THEN
+      cagg_schema := NULL;
+      cagg_name := NULL;
+      metric_table_name := NULL;
+      RETURN;
+    END IF;
+
+    is_cagg := true;
+    return;
 END
 $$
 LANGUAGE PLPGSQL STABLE;
@@ -2470,7 +2506,7 @@ BEGIN
 
     -- check if view is based on a metric from prom_data
     -- we check for two levels so we can support 2-step continuous aggregates
-    SELECT v.view_schema, v.view_name, v.metric_table_name 
+    SELECT v.view_schema, v.view_name, v.metric_table_name
     INTO agg_schema, agg_name, metric_table_name
     FROM SCHEMA_CATALOG.get_view_info(schema_name, view_name) v;
 
@@ -2512,13 +2548,6 @@ BEGIN
 
     PERFORM *
     FROM SCHEMA_CATALOG.get_storage_hypertable_info(agg_schema, agg_name, true);
-    
-    -- if there is a hypertable for the aggregate view, its a continuous agg
-    -- need to make note of it for data retention purposes
-    IF FOUND THEN
-        INSERT INTO SCHEMA_CATALOG.metric_view_cagg (view_schema, view_name, cagg_schema, cagg_name)
-        VALUES (register_metric_view.schema_name, register_metric_view.view_name, agg_schema, agg_name);
-    END IF;
 
     RETURN true;
 END
@@ -2551,11 +2580,6 @@ BEGIN
             RAISE EXCEPTION 'metric with specified name and schema does not exist, could not unregister';
         END IF;
     END IF;
-
-    -- remove cagg info if any
-    DELETE FROM SCHEMA_CATALOG.metric_view_cagg mvc
-    WHERE unregister_metric_view.schema_name = mvc.view_schema
-    AND unregister_metric_view.view_name = mvc.view_name;
 
     RETURN TRUE;
 END
