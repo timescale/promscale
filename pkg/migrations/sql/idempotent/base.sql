@@ -1995,6 +1995,9 @@ AS $$
 DECLARE
     agg_schema name;
     agg_name name;
+    _is_cagg boolean;
+    _materialized_hypertable_id int;
+    _storage_hypertable_relation text;
 BEGIN
         IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
             RETURN;
@@ -2009,32 +2012,15 @@ BEGIN
                 RETURN;
         END IF;
 
-        SELECT view_schema, view_name
-        INTO agg_schema, agg_name
-        FROM SCHEMA_CATALOG.get_view_info(metric_schema_name, metric_table_name);
+        SELECT is_cagg, materialized_hypertable_id, storage_hypertable_relation
+        INTO _is_cagg, _materialized_hypertable_id, _storage_hypertable_relation
+        FROM SCHEMA_CATALOG.get_cagg_info(metric_schema_name, metric_table_name);
 
-        -- for TSDB 2.x we return the view schema and name because functions like
-        -- show_chunks don't work on materialized hypertables, which is a difference
-        -- from 1.x version
-        IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-            RETURN QUERY
-            SELECT h.id, format('%I.%I', c.view_schema,  c.view_name)
-            FROM timescaledb_information.continuous_aggregates c
-            INNER JOIN _timescaledb_catalog.hypertable h
-                ON (h.schema_name = c.materialization_hypertable_schema
-                    AND h.table_name = c.materialization_hypertable_name)
-            WHERE c.view_schema = agg_schema
-            AND c.view_name = agg_name;
-            RETURN;
-        ELSE
-            RETURN QUERY
-            SELECT h.id, format('%I.%I', h.schema_name,  h.table_name)
-            FROM timescaledb_information.continuous_aggregates c
-            INNER JOIN _timescaledb_catalog.hypertable h
-                ON (c.materialization_hypertable::text = format('%I.%I', h.schema_name,  h.table_name))
-            WHERE c.view_name::text = format('%I.%I', agg_schema, agg_name);
+        IF NOT _is_cagg THEN
             RETURN;
         END IF;
+
+        RETURN QUERY SELECT _materialized_hypertable_id, _storage_hypertable_relation;
 END
 $$
 LANGUAGE PLPGSQL STABLE;
@@ -2043,7 +2029,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(text, text,
 
 --Get underlying metric view schema and name
 --we need to support up to two levels of views to support 2-step caggs
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_view_info(metric_schema text, metric_table text)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_first_level_view_on_metric(metric_schema text, metric_table text)
 RETURNS TABLE (view_schema name, view_name name, metric_table_name name)
 AS $$
 BEGIN
@@ -2078,25 +2064,44 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_view_info(text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_view_info(text, text) TO prom_reader;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_first_level_view_on_metric(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_first_level_view_on_metric(text, text) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_cagg_info(
     metric_schema text, metric_table text,
-    OUT is_cagg BOOLEAN, OUT cagg_schema name, OUT cagg_name name, OUT metric_table_name name)
+    OUT is_cagg BOOLEAN, OUT cagg_schema name, OUT cagg_name name, OUT metric_table_name name,
+    OUT materialized_hypertable_id INT, OUT storage_hypertable_relation TEXT)
 AS $$
 BEGIN
     is_cagg := FALSE;
     SELECT *
-    FROM SCHEMA_CATALOG.get_view_info(metric_schema, metric_table)
+    FROM SCHEMA_CATALOG.get_first_level_view_on_metric(metric_schema, metric_table)
     INTO cagg_schema, cagg_name, metric_table_name;
 
     IF NOT FOUND THEN
       RETURN;
     END IF;
 
-    PERFORM *
-    FROM SCHEMA_CATALOG.get_storage_hypertable_info(metric_schema, metric_table,  true);
+    -- for TSDB 2.x we return the view schema and name because functions like
+    -- show_chunks don't work on materialized hypertables, which is a difference
+    -- from 1.x version
+    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+        SELECT h.id, format('%I.%I', c.view_schema,  c.view_name)
+        INTO materialized_hypertable_id, storage_hypertable_relation
+        FROM timescaledb_information.continuous_aggregates c
+        INNER JOIN _timescaledb_catalog.hypertable h
+            ON (h.schema_name = c.materialization_hypertable_schema
+                AND h.table_name = c.materialization_hypertable_name)
+        WHERE c.view_schema = cagg_schema
+        AND c.view_name = cagg_name;
+    ELSE
+        SELECT h.id, format('%I.%I', h.schema_name,  h.table_name)
+        INTO materialized_hypertable_id, storage_hypertable_relation
+        FROM timescaledb_information.continuous_aggregates c
+        INNER JOIN _timescaledb_catalog.hypertable h
+            ON (c.materialization_hypertable::text = format('%I.%I', h.schema_name,  h.table_name))
+        WHERE c.view_name::text = format('%I.%I', cagg_schema, cagg_name);
+    END IF;
 
     IF NOT FOUND THEN
       cagg_schema := NULL;
@@ -2110,7 +2115,7 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_view_info(text, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_cagg_info(text, text) TO prom_reader;
 
 
 --Order by random with stable marking gives us same order in a statement and different
@@ -2508,7 +2513,7 @@ BEGIN
     -- we check for two levels so we can support 2-step continuous aggregates
     SELECT v.view_schema, v.view_name, v.metric_table_name
     INTO agg_schema, agg_name, metric_table_name
-    FROM SCHEMA_CATALOG.get_view_info(schema_name, view_name) v;
+    FROM SCHEMA_CATALOG.get_first_level_view_on_metric(schema_name, view_name) v;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'view not based on a metric table from SCHEMA_DATA schema';
