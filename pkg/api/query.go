@@ -34,7 +34,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 		ctx := r.Context()
 		if to := r.FormValue("timeout"); to != "" {
 			var cancel context.CancelFunc
-			timeout, err := parseDuration(to)
+			timeout, err := ParseDuration(to)
 			if err != nil {
 				log.Error("msg", "Query error", "err", err.Error())
 				respondError(w, http.StatusBadRequest, err, "bad_data")

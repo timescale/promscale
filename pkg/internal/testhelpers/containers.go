@@ -160,6 +160,7 @@ func PgConnectURLUser(dbName string, user string) string {
 func getRoleUser(role string) string {
 	return role + "_user"
 }
+
 func setupRole(t testing.TB, dbName string, role string) {
 	user := getRoleUser(role)
 	dbOwner, err := pgx.Connect(context.Background(), PgConnectURL(dbName, NoSuperuser))
@@ -174,6 +175,12 @@ func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
 	user := getRoleUser(role)
 	setupRole(t, dbName, role)
 	pool, err := pgxpool.Connect(context.Background(), PgConnectURLUser(dbName, user))
+	require.NoError(t, err)
+	return pool
+}
+
+func PgxPoolWithSuperuser(t testing.TB, dbName string) *pgxpool.Pool {
+	pool, err := pgxpool.Connect(context.Background(), PgConnectURLUser(dbName, postgresUser))
 	require.NoError(t, err)
 	return pool
 }

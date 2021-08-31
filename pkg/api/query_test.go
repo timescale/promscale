@@ -123,7 +123,7 @@ func TestParseDuration(t *testing.T) {
 	}
 
 	for _, tc := range testCase {
-		got, err := parseDuration(tc.in)
+		got, err := ParseDuration(tc.in)
 		if err == nil && tc.expectError {
 			t.Errorf("unexpected lack of error for input: %s", tc.in)
 			continue
@@ -212,7 +212,7 @@ func TestQuery(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			timeout, _ := parseDuration(tc.timeout)
+			timeout, _ := ParseDuration(tc.timeout)
 			engine := promql.NewEngine(
 				promql.EngineOpts{
 					Logger:     log.GetLogger(),
