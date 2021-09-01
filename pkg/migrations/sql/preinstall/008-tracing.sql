@@ -13,8 +13,8 @@ DEFAULT '{}'::jsonb
 CHECK (jsonb_typeof(value) = 'object');
 GRANT USAGE ON DOMAIN prom_trace.attribute_map TO prom_reader;
 
-CREATE DOMAIN prom_trace.attribute_matchers AS prom_trace.attribute_map[] NOT NULL;
-GRANT USAGE ON DOMAIN prom_trace.attribute_matchers TO prom_reader;
+CREATE DOMAIN prom_trace.attribute_maps AS prom_trace.attribute_map[] NOT NULL;
+GRANT USAGE ON DOMAIN prom_trace.attribute_maps TO prom_reader;
 
 CREATE DOMAIN prom_trace.attribute_type smallint NOT NULL;
 GRANT USAGE ON DOMAIN prom_trace.attribute_type TO prom_reader;
@@ -198,214 +198,214 @@ SELECT create_hypertable('prom_trace.link', 'span_start_time', partitioning_colu
 GRANT SELECT ON TABLE prom_trace.link TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE prom_trace.link TO prom_writer;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_jsonpath(_key text, _qry jsonpath)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_jsonpath(_key text, _qry jsonpath)
+RETURNS prom_trace.attribute_maps
 AS $sql$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_text_equal(_key text, _val text)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_text_equal(_key text, _val text)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_text_not_equal(_key text, _val text)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_text_not_equal(_key text, _val text)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_int_equal(_key text, _val int)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_int_equal(_key text, _val int)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_int_not_equal(_key text, _val int)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_int_not_equal(_key text, _val int)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_bigint_equal(_key text, _val bigint)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bigint_equal(_key text, _val bigint)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_bigint_not_equal(_key text, _val bigint)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bigint_not_equal(_key text, _val bigint)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_numeric_equal(_key text, _val numeric)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_numeric_equal(_key text, _val numeric)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_numeric_not_equal(_key text, _val numeric)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_numeric_not_equal(_key text, _val numeric)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_real_equal(_key text, _val real)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_real_equal(_key text, _val real)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_real_not_equal(_key text, _val real)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_real_not_equal(_key text, _val real)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_double_equal(_key text, _val double precision)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_double_equal(_key text, _val double precision)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_double_not_equal(_key text, _val double precision)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_double_not_equal(_key text, _val double precision)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_bool_equal(_key text, _val bool)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bool_equal(_key text, _val bool)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_bool_not_equal(_key text, _val bool)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bool_not_equal(_key text, _val bool)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_timestamptz_equal(_key text, _val timestamptz)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_timestamptz_equal(_key text, _val timestamptz)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_timestamptz_not_equal(_key text, _val timestamptz)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_timestamptz_not_equal(_key text, _val timestamptz)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_time_equal(_key text, _val time)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_time_equal(_key text, _val time)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_time_not_equal(_key text, _val time)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_time_not_equal(_key text, _val time)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_date_equal(_key text, _val date)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_date_equal(_key text, _val date)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_date_not_equal(_key text, _val date)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_date_not_equal(_key text, _val date)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_regex(_key text,  _pattern text)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_regex(_key text,  _pattern text)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators (no "if not exists" for operators)
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_matchers_not_regex(_key text,  _pattern text)
-RETURNS prom_trace.attribute_matchers
+CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_not_regex(_key text,  _pattern text)
+RETURNS prom_trace.attribute_maps
 AS $func$
     -- this function body will be replaced later in idempotent script
     -- it's only here so we can create the operators (no "if not exists" for operators)
-    SELECT '{}'::prom_trace.attribute_matchers
+    SELECT '{}'::prom_trace.attribute_maps
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
-CREATE OR REPLACE FUNCTION prom_trace.match(_attr_map prom_trace.attribute_map, _matchers prom_trace.attribute_matchers)
+CREATE OR REPLACE FUNCTION prom_trace.match(_attr_map prom_trace.attribute_map, _matchers prom_trace.attribute_maps)
 RETURNS boolean
 AS $func$
     -- this function body will be replaced later in idempotent script
@@ -417,144 +417,144 @@ LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 CREATE OPERATOR prom_trace.@? (
     LEFTARG = text,
     RIGHTARG = jsonpath,
-    FUNCTION = prom_trace.attribute_matchers_jsonpath
+    FUNCTION = prom_trace.attribute_maps_jsonpath
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = text,
-    FUNCTION = prom_trace.attribute_matchers_text_equal
+    FUNCTION = prom_trace.attribute_maps_text_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = text,
-    FUNCTION = prom_trace.attribute_matchers_text_not_equal
+    FUNCTION = prom_trace.attribute_maps_text_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = int,
-    FUNCTION = prom_trace.attribute_matchers_int_equal
+    FUNCTION = prom_trace.attribute_maps_int_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = int,
-    FUNCTION = prom_trace.attribute_matchers_int_not_equal
+    FUNCTION = prom_trace.attribute_maps_int_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = bigint,
-    FUNCTION = prom_trace.attribute_matchers_bigint_equal
+    FUNCTION = prom_trace.attribute_maps_bigint_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = bigint,
-    FUNCTION = prom_trace.attribute_matchers_bigint_not_equal
+    FUNCTION = prom_trace.attribute_maps_bigint_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = numeric,
-    FUNCTION = prom_trace.attribute_matchers_numeric_equal
+    FUNCTION = prom_trace.attribute_maps_numeric_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = numeric,
-    FUNCTION = prom_trace.attribute_matchers_numeric_not_equal
+    FUNCTION = prom_trace.attribute_maps_numeric_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = real,
-    FUNCTION = prom_trace.attribute_matchers_real_equal
+    FUNCTION = prom_trace.attribute_maps_real_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = real,
-    FUNCTION = prom_trace.attribute_matchers_real_not_equal
+    FUNCTION = prom_trace.attribute_maps_real_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = double precision,
-    FUNCTION = prom_trace.attribute_matchers_double_equal
+    FUNCTION = prom_trace.attribute_maps_double_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = double precision,
-    FUNCTION = prom_trace.attribute_matchers_double_not_equal
+    FUNCTION = prom_trace.attribute_maps_double_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = bool,
-    FUNCTION = prom_trace.attribute_matchers_bool_equal
+    FUNCTION = prom_trace.attribute_maps_bool_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = bool,
-    FUNCTION = prom_trace.attribute_matchers_bool_not_equal
+    FUNCTION = prom_trace.attribute_maps_bool_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = timestamptz,
-    FUNCTION = prom_trace.attribute_matchers_timestamptz_equal
+    FUNCTION = prom_trace.attribute_maps_timestamptz_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = timestamptz,
-    FUNCTION = prom_trace.attribute_matchers_timestamptz_not_equal
+    FUNCTION = prom_trace.attribute_maps_timestamptz_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = time,
-    FUNCTION = prom_trace.attribute_matchers_time_equal
+    FUNCTION = prom_trace.attribute_maps_time_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = time,
-    FUNCTION = prom_trace.attribute_matchers_time_not_equal
+    FUNCTION = prom_trace.attribute_maps_time_not_equal
 );
 
 CREATE OPERATOR prom_trace.== (
     LEFTARG = text,
     RIGHTARG = date,
-    FUNCTION = prom_trace.attribute_matchers_date_equal
+    FUNCTION = prom_trace.attribute_maps_date_equal
 );
 
 CREATE OPERATOR prom_trace.!== (
     LEFTARG = text,
     RIGHTARG = date,
-    FUNCTION = prom_trace.attribute_matchers_date_not_equal
+    FUNCTION = prom_trace.attribute_maps_date_not_equal
 );
 
 CREATE OPERATOR prom_trace.==~ (
     LEFTARG = text,
     RIGHTARG = text,
-    FUNCTION = prom_trace.attribute_matchers_regex
+    FUNCTION = prom_trace.attribute_maps_regex
 );
 
 CREATE OPERATOR prom_trace.!=~ (
     LEFTARG = text,
     RIGHTARG = text,
-    FUNCTION = prom_trace.attribute_matchers_not_regex
+    FUNCTION = prom_trace.attribute_maps_not_regex
 );
 
 CREATE OPERATOR prom_trace.? (
     LEFTARG = prom_trace.attribute_map,
-    RIGHTARG = prom_trace.attribute_matchers,
+    RIGHTARG = prom_trace.attribute_maps,
     FUNCTION = prom_trace.match
 );
 
