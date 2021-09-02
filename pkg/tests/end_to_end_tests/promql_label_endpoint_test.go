@@ -19,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 type labelsResponse struct {
@@ -60,9 +61,9 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		dataset := generateLargeTimeseries()
+		dataset := common.GenerateLargeTimeseries()
 		if *extendedTest {
-			dataset = append(dataset, generateRealTimeseries()...)
+			dataset = append(dataset, common.GenerateRealTimeseries()...)
 		}
 
 		ingestQueryTestDataset(db, t, dataset)

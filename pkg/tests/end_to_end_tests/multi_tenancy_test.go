@@ -21,10 +21,11 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tenancy"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 func TestMultiTenancyWithoutValidTenants(t *testing.T) {
-	ts, tenants := generateSmallMultiTenantTimeseries()
+	ts, tenants := common.GenerateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Without valid tenants.
 		cfg := tenancy.NewAllowAllTenantsConfig(false)
@@ -205,7 +206,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 }
 
 func TestMultiTenancyWithValidTenants(t *testing.T) {
-	ts, tenants := generateSmallMultiTenantTimeseries()
+	ts, tenants := common.GenerateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// With valid tenants.
 		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], false) // valid tenant-a & tenant-b.
@@ -390,7 +391,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 }
 
 func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
-	ts, tenants := generateSmallMultiTenantTimeseries()
+	ts, tenants := common.GenerateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// With valid tenants and non-tenant operations are allowed.
 		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], true) // valid tenant-a & tenant-b.
@@ -599,7 +600,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 }
 
 func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
-	ts, tenants := generateSmallMultiTenantTimeseries()
+	ts, tenants := common.GenerateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// With valid tenants.
 		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], false) // valid tenant-a & tenant-b.

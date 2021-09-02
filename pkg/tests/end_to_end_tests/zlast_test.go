@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/common"
 	"github.com/timescale/promscale/pkg/tests/upgrade_tests"
 )
 
@@ -26,9 +27,9 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 		container = pgContainer
 	)
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, tb testing.TB) {
-		ts := generateLargeTimeseries()
+		ts := common.GenerateLargeTimeseries()
 		if *extendedTest {
-			ts = generateRealTimeseries()
+			ts = common.GenerateRealTimeseries()
 		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
@@ -43,7 +44,7 @@ func TestDeleteMetricSQLAPI(t *testing.T) {
 			t.Fatal(err)
 		}
 		startSnapShot := upgrade_tests.GetDbInfoIgnoringTable(t, container, *testDatabase, testDir, db, "", "label", extensionState)
-		tts := generateSmallTimeseries()
+		tts := common.GenerateSmallTimeseries()
 		if _, _, err := ingestor.Ingest(newWriteRequestWithTs(copyMetrics(tts))); err != nil {
 			t.Fatal(err)
 		}

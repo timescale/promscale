@@ -37,6 +37,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 // PromClient is a wrapper around http.Client for sending read requests.
@@ -100,7 +101,7 @@ func (c *PromClient) Read(rr *prompb.ReadRequest) (*prompb.ReadResponse, error) 
 func TestDroppedViewQuery(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateSmallTimeseries())
+		ingestQueryTestDataset(db, t, common.GenerateSmallTimeseries())
 		// Drop the view.
 		if _, err := db.Exec(context.Background(), `DROP VIEW prom_view.metric_view`); err != nil {
 			t.Fatalf("unexpected error while dropping metric view: %s", err)
@@ -676,7 +677,7 @@ func TestSQLQuery(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateSmallTimeseries())
+		ingestQueryTestDataset(db, t, common.GenerateSmallTimeseries())
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
 		defer readOnly.Close()
@@ -1049,7 +1050,7 @@ func TestPromQL(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		ingestQueryTestDataset(db, t, common.GenerateLargeTimeseries())
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
 		defer readOnly.Close()
@@ -1101,7 +1102,7 @@ func TestPromQL(t *testing.T) {
 func TestMetricNameResolutionFromMultipleSchemas(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		ingestQueryTestDataset(db, t, common.GenerateLargeTimeseries())
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
 			t.Fatal(err)
@@ -1250,7 +1251,7 @@ func TestPushdownDelta(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		ingestQueryTestDataset(db, t, common.GenerateLargeTimeseries())
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
 		defer readOnly.Close()
@@ -1325,7 +1326,7 @@ func TestPushdownVecSel(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		ingestQueryTestDataset(db, t, common.GenerateLargeTimeseries())
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
 		defer readOnly.Close()

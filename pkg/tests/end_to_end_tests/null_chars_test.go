@@ -22,6 +22,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 var (
@@ -32,7 +33,7 @@ var (
 )
 
 func TestOperationWithNullChars(t *testing.T) {
-	ts := generateSmallTimeseries()
+	ts := common.GenerateSmallTimeseries()
 	// Apply null chars in ts.
 	for i := range ts {
 		ts[i].Labels = applyNullCharsToFoo(t, ts[i].Labels) // Insert null char in label key.
@@ -119,7 +120,7 @@ func applyNullCharsToFoo(t *testing.T, l []prompb.Label) []prompb.Label {
 	)
 	for i, lbl := range l {
 		if lbl.Name == "foo" {
-			// Ensure that in future, if the generateSmallTimeseries() is changed, then this test fails as well.
+			// Ensure that in future, if the common.GenerateSmallTimeseries() is changed, then this test fails as well.
 			hasFoo = true
 			lbl.Name = testNullLabelVal
 		}
@@ -139,7 +140,7 @@ func applyNullCharsToTag(t *testing.T, l []prompb.Label) []prompb.Label {
 	)
 	for i, lbl := range l {
 		if lbl.Value == "tag" {
-			// Ensure that in future, if the generateSmallTimeseries() is changed, then this test fails as well.
+			// Ensure that in future, if the common.GenerateSmallTimeseries() is changed, then this test fails as well.
 			hasTag = true
 			lbl.Value = testNullTagValue
 		}

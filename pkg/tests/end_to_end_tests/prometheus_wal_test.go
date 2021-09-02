@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 // generatePrometheusWAL generates Prometheus WAL with exemplars. It returns the path where

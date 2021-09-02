@@ -7,6 +7,8 @@ package integration
 import (
 	"context"
 	"io"
+	"io/fs"
+	"io/ioutil"
 	"os"
 	"testing"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tests/common"
 )
 
@@ -30,7 +33,7 @@ var (
 	benchDatabase  = "tmp_db_promscale_go_benchmark"
 )
 
-func MainTest(m *testing.M) {
+func TestMain(m *testing.M) {
 	if err := log.Init(log.Config{Level: "info"}); err != nil {
 		reportAndExit(err)
 	}
@@ -39,6 +42,7 @@ func MainTest(m *testing.M) {
 		reportAndExit(err)
 	}
 	benchDir = dir
+	os.Exit(m.Run())
 }
 
 // startContainer clean starts the container, and fills new data, so that benchmarking is done fresh
@@ -59,24 +63,11 @@ func startContainer() {
 	containerActive = true
 }
 
-// prepareContainer fills the pg container with initial data, so that the database
-// is non-empty before being benchmarked.
-func prepareContainer(t testing.TB) {
-	ts := common.GeneratePromLikeLargeTimeseries()
-	db := testhelpers.PgxPoolWithSuperuser(t, benchDatabase)
-
-	ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
-	require.NoError(t, err)
-
-	numInsertables, numMetadata, err := ingestor.Ingest(common.NewWriteRequestWithTs(ts))
-	require.NoError(t, err)
-	require.NotEqual(t, 0, int(numInsertables))
-	require.Equal(t, 0, int(numMetadata))
-}
-
+// terminateContainer terminates an active benchmarkPgContainer container. If the container is not active,
+// it exits silently.
 func terminateContainer() {
 	if !containerActive {
-		log.Fatal("msg", "cannot terminate an inactive container")
+		return
 	}
 	if err := benchmarkPgContainer.Terminate(context.Background()); err != nil {
 		reportAndExit(err)
@@ -101,4 +92,43 @@ func withDB(t testing.TB, DBName string, benchFunc func(db *pgxpool.Pool, t test
 func reportAndExit(err error) {
 	log.Error("msg", err)
 	os.Exit(1)
+}
+
+const benchDataPath = "../../testdata/bench_data"
+
+func ingestBenchData(t testing.TB, db *pgxpool.Pool) {
+	log.Info("msg", "ingesting bench dataset...")
+	files, err := ioutil.ReadDir(benchDataPath)
+	require.NoError(t, err)
+
+	ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+	require.NoError(t, err)
+
+	for _, f := range files {
+		ts := readTimeseries(t, f)
+		log.Info("msg", "ingesting dump", "name", f.Name(), "num-series", len(ts))
+		numInsertables, _, err := ingestor.Ingest(common.NewWriteRequestWithTs(ts))
+		require.NoError(t, err)
+		require.NotEqual(t, 0, int(numInsertables))
+	}
+
+	log.Info("msg", "completed ingesting bench dataset")
+}
+
+func readTimeseries(t testing.TB, f fs.FileInfo) []prompb.TimeSeries {
+	name := benchDataPath + "/" + f.Name()
+	bSlice, err := ioutil.ReadFile(name)
+	require.NoError(t, err)
+
+	qry := &prompb.QueryResult{}
+	err = qry.Unmarshal(bSlice)
+	require.NoError(t, err)
+
+	ts := make([]prompb.TimeSeries, len(qry.Timeseries))
+
+	for i := range qry.Timeseries {
+		ts[i] = *qry.Timeseries[i]
+	}
+
+	return ts
 }

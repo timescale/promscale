@@ -22,6 +22,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 func TestContinuousAggDownsampling(t *testing.T) {
@@ -178,7 +179,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		}
 
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, append(generateLargeTimeseries(), ts...))
+		ingestQueryTestDataset(db, t, append(common.GenerateLargeTimeseries(), ts...))
 
 		if _, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()"); err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
@@ -472,7 +473,7 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, generateLargeTimeseries())
+		ingestQueryTestDataset(db, t, common.GenerateLargeTimeseries())
 
 		if _, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()"); err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)

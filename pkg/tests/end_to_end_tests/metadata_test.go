@@ -15,11 +15,12 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 func TestMetricMetadataIngestion(t *testing.T) {
-	ts := generateSmallTimeseries()
-	metadata := generateRandomMetricMetadata(20)
+	ts := common.GenerateSmallTimeseries()
+	metadata := common.GenerateRandomMetricMetadata(20)
 
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
@@ -59,8 +60,8 @@ func TestMetricMetadataIngestion(t *testing.T) {
 }
 
 func TestFetchMetricMetadataAPI(t *testing.T) {
-	ts := generateSmallTimeseries()
-	metadata := generateRandomMetricMetadata(20)
+	ts := common.GenerateSmallTimeseries()
+	metadata := common.GenerateRandomMetricMetadata(20)
 
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")

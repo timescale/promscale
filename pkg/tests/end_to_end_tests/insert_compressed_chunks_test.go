@@ -14,13 +14,14 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 func TestInsertInCompressedChunks(t *testing.T) {
 	if *useTimescaleOSS {
 		t.Skip("compression not applicable in TimescaleDB-OSS")
 	}
-	ts := generateSmallTimeseries()
+	ts := common.GenerateSmallTimeseries()
 	if !*useTimescaleDB {
 		// Ingest in plain postgres to ensure everything works well even if TimescaleDB is not installed.
 		withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {

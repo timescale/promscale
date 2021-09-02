@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 const (
@@ -2521,9 +2522,9 @@ func runPromQLQueryTests(t *testing.T, cases []testCase, start, end time.Time, f
 	steps := []time.Duration{10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 30 * time.Minute}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Ingest test dataset.
-		dataset := generateLargeTimeseries()
+		dataset := common.GenerateLargeTimeseries()
 		if *extendedTest {
-			dataset = append(dataset, generateRealTimeseries()...)
+			dataset = append(dataset, common.GenerateRealTimeseries()...)
 		}
 		ingestQueryTestDataset(db, t, dataset)
 		// Getting a read-only connection to ensure read path is idempotent.
