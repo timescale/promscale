@@ -412,7 +412,7 @@ AS $func$
     -- it's only here so we can create the operators (no "if not exists" for operators)
     SELECT false
 $func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
 CREATE OPERATOR prom_trace.@? (
     LEFTARG = text,

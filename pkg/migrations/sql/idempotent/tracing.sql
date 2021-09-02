@@ -10,7 +10,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.text(prom_trace.trace_id) TO prom_reader;
 CREATE OR REPLACE FUNCTION prom_trace.span_attribute_type()
 RETURNS prom_trace.attribute_type
 AS $sql$
-SELECT (1<<0)::smallint::prom_trace.attribute_type
+    SELECT (1<<0)::smallint::prom_trace.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.span_attribute_type() TO prom_reader;
@@ -18,7 +18,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.span_attribute_type() TO prom_reader;
 CREATE OR REPLACE FUNCTION prom_trace.resource_attribute_type()
 RETURNS prom_trace.attribute_type
 AS $sql$
-SELECT (1<<1)::smallint::prom_trace.attribute_type
+    SELECT (1<<1)::smallint::prom_trace.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.resource_attribute_type() TO prom_reader;
@@ -26,7 +26,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.resource_attribute_type() TO prom_reader;
 CREATE OR REPLACE FUNCTION prom_trace.event_attribute_type()
 RETURNS prom_trace.attribute_type
 AS $sql$
-SELECT (1<<2)::smallint::prom_trace.attribute_type
+    SELECT (1<<2)::smallint::prom_trace.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.event_attribute_type() TO prom_reader;
@@ -34,7 +34,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.event_attribute_type() TO prom_reader;
 CREATE OR REPLACE FUNCTION prom_trace.link_attribute_type()
 RETURNS prom_trace.attribute_type
 AS $sql$
-SELECT (1<<3)::smallint::prom_trace.attribute_type
+    SELECT (1<<3)::smallint::prom_trace.attribute_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.link_attribute_type() TO prom_reader;
@@ -42,7 +42,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.link_attribute_type() TO prom_reader;
 CREATE OR REPLACE FUNCTION prom_trace.is_span_attribute_type(_attribute_type prom_trace.attribute_type)
 RETURNS BOOLEAN
 AS $sql$
-SELECT _attribute_type & prom_trace.span_attribute_type() = prom_trace.span_attribute_type()
+    SELECT _attribute_type & prom_trace.span_attribute_type() = prom_trace.span_attribute_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.is_span_attribute_type(prom_trace.attribute_type) TO prom_reader;
@@ -50,7 +50,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.is_span_attribute_type(prom_trace.attribute
 CREATE OR REPLACE FUNCTION prom_trace.is_resource_attribute_type(_attribute_type prom_trace.attribute_type)
 RETURNS BOOLEAN
 AS $sql$
-SELECT _attribute_type & prom_trace.resource_attribute_type() = prom_trace.resource_attribute_type()
+    SELECT _attribute_type & prom_trace.resource_attribute_type() = prom_trace.resource_attribute_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.is_resource_attribute_type(prom_trace.attribute_type) TO prom_reader;
@@ -58,7 +58,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.is_resource_attribute_type(prom_trace.attri
 CREATE OR REPLACE FUNCTION prom_trace.is_event_attribute_type(_attribute_type prom_trace.attribute_type)
 RETURNS BOOLEAN
 AS $sql$
-SELECT _attribute_type & prom_trace.event_attribute_type() = prom_trace.event_attribute_type()
+    SELECT _attribute_type & prom_trace.event_attribute_type() = prom_trace.event_attribute_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.is_event_attribute_type(prom_trace.attribute_type) TO prom_reader;
@@ -66,7 +66,7 @@ GRANT EXECUTE ON FUNCTION prom_trace.is_event_attribute_type(prom_trace.attribut
 CREATE OR REPLACE FUNCTION prom_trace.is_link_attribute_type(_attribute_type prom_trace.attribute_type)
 RETURNS BOOLEAN
 AS $sql$
-SELECT _attribute_type & prom_trace.link_attribute_type() = prom_trace.link_attribute_type()
+    SELECT _attribute_type & prom_trace.link_attribute_type() = prom_trace.link_attribute_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION prom_trace.is_link_attribute_type(prom_trace.attribute_type) TO prom_reader;
