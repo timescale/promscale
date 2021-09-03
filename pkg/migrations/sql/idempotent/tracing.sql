@@ -386,3 +386,35 @@ BEGIN
     END LOOP;
 END;
 $do$;
+
+
+SELECT
+    s.trace_id,
+    s.span_id,
+    s.trace_state,
+    s.parent_span_id,
+    s.parent_span_id is null as is_root_span,
+    n.name,
+    s.span_kind,
+    s.start_time,
+    s.end_time,
+    tstzrange(s.start_time, s.end_time, '[]') as time_range,
+    s.end_time - s.start_time as duration,
+    s.span_tags,
+    s.dropped_tags_count,
+    s.event_time,
+    s.dropped_events_count,
+    s.dropped_link_count,
+    s.status_code,
+    s.status_message,
+    il.name as inst_lib_name,
+    il.version as inst_lib_version,
+    u.url as inst_lib_schema_url,
+    s.resource_tags,
+    s.resource_dropped_tags_count,
+    s.resource_schema_url_id
+FROM _ps_trace.span s
+INNER JOIN _ps_trace.span_name n ON (s.name_id = n.id)
+INNER JOIN _ps_trace.inst_lib il ON (s.inst_lib_id = il.id)
+INNER JOIN _ps_trace.schema_url u on (il.schema_url_id = u.id)
+;

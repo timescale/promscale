@@ -107,7 +107,7 @@ GRANT SELECT ON TABLE _ps_trace.schema_url TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.schema_url TO prom_writer;
 GRANT USAGE ON SEQUENCE _ps_trace.schema_url_id_seq TO prom_writer;
 
-CREATE TABLE IF NOT EXISTS _ps_trace.instrumentation_library
+CREATE TABLE IF NOT EXISTS _ps_trace.inst_lib
 (
     id bigint NOT NULL GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name text NOT NULL,
@@ -115,9 +115,9 @@ CREATE TABLE IF NOT EXISTS _ps_trace.instrumentation_library
     schema_url_id BIGINT NOT NULL REFERENCES _ps_trace.schema_url(id),
     UNIQUE(name, version, schema_url_id)
 );
-GRANT SELECT ON TABLE _ps_trace.instrumentation_library TO prom_reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.instrumentation_library TO prom_writer;
-GRANT USAGE ON SEQUENCE _ps_trace.instrumentation_library_id_seq TO prom_writer;
+GRANT SELECT ON TABLE _ps_trace.inst_lib TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.inst_lib TO prom_writer;
+GRANT USAGE ON SEQUENCE _ps_trace.inst_lib_id_seq TO prom_writer;
 /*
 CREATE TABLE IF NOT EXISTS _ps_trace.trace
 (
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS _ps_trace.span
     dropped_link_count int NOT NULL default 0,
     status_code _ps_trace.status_code,
     status_message text,
-    instrumentation_library_id bigint,
+    inst_lib_id bigint,
     resource_tags _ps_trace.tag_map,
     resource_dropped_tags_count int NOT NULL default 0,
     resource_schema_url_id BIGINT NOT NULL,
@@ -390,3 +390,4 @@ BEGIN
     END LOOP;
 END;
 $do$;
+
