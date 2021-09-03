@@ -1,386 +1,218 @@
-
-CREATE OR REPLACE FUNCTION prom_trace.text(_trace_id prom_trace.trace_id)
+/*
+CREATE OR REPLACE FUNCTION _ps_trace.text(_trace_id _ps_trace.trace_id)
 RETURNS text
 AS $function$
     SELECT replace(_trace_id::text, '-', '')
 $function$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.text(prom_trace.trace_id) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.span_attribute_type()
-RETURNS prom_trace.attribute_type
+GRANT EXECUTE ON FUNCTION _ps_trace.text(_ps_trace.trace_id) TO prom_reader;
+*/
+CREATE OR REPLACE FUNCTION _ps_trace.span_tag_type()
+RETURNS _ps_trace.tag_type
 AS $sql$
-    SELECT (1<<0)::smallint::prom_trace.attribute_type
+    SELECT (1<<0)::smallint::_ps_trace.tag_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.span_attribute_type() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.span_tag_type() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.resource_attribute_type()
-RETURNS prom_trace.attribute_type
+CREATE OR REPLACE FUNCTION _ps_trace.resource_tag_type()
+RETURNS _ps_trace.tag_type
 AS $sql$
-    SELECT (1<<1)::smallint::prom_trace.attribute_type
+    SELECT (1<<1)::smallint::_ps_trace.tag_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.resource_attribute_type() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.resource_tag_type() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.event_attribute_type()
-RETURNS prom_trace.attribute_type
+CREATE OR REPLACE FUNCTION _ps_trace.event_tag_type()
+RETURNS _ps_trace.tag_type
 AS $sql$
-    SELECT (1<<2)::smallint::prom_trace.attribute_type
+    SELECT (1<<2)::smallint::_ps_trace.tag_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.event_attribute_type() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.event_tag_type() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.link_attribute_type()
-RETURNS prom_trace.attribute_type
+CREATE OR REPLACE FUNCTION _ps_trace.link_tag_type()
+RETURNS _ps_trace.tag_type
 AS $sql$
-    SELECT (1<<3)::smallint::prom_trace.attribute_type
+    SELECT (1<<3)::smallint::_ps_trace.tag_type
 $sql$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.link_attribute_type() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.link_tag_type() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.is_span_attribute_type(_attribute_type prom_trace.attribute_type)
+CREATE OR REPLACE FUNCTION _ps_trace.is_span_tag_type(_tag_type _ps_trace.tag_type)
 RETURNS BOOLEAN
 AS $sql$
-    SELECT _attribute_type & prom_trace.span_attribute_type() = prom_trace.span_attribute_type()
+    SELECT _tag_type & _ps_trace.span_tag_type() = _ps_trace.span_tag_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.is_span_attribute_type(prom_trace.attribute_type) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.is_span_tag_type(_ps_trace.tag_type) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.is_resource_attribute_type(_attribute_type prom_trace.attribute_type)
+CREATE OR REPLACE FUNCTION _ps_trace.is_resource_tag_type(_tag_type _ps_trace.tag_type)
 RETURNS BOOLEAN
 AS $sql$
-    SELECT _attribute_type & prom_trace.resource_attribute_type() = prom_trace.resource_attribute_type()
+    SELECT _tag_type & _ps_trace.resource_tag_type() = _ps_trace.resource_tag_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.is_resource_attribute_type(prom_trace.attribute_type) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.is_resource_tag_type(_ps_trace.tag_type) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.is_event_attribute_type(_attribute_type prom_trace.attribute_type)
+CREATE OR REPLACE FUNCTION _ps_trace.is_event_tag_type(_tag_type _ps_trace.tag_type)
 RETURNS BOOLEAN
 AS $sql$
-    SELECT _attribute_type & prom_trace.event_attribute_type() = prom_trace.event_attribute_type()
+    SELECT _tag_type & _ps_trace.event_tag_type() = _ps_trace.event_tag_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.is_event_attribute_type(prom_trace.attribute_type) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.is_event_tag_type(_ps_trace.tag_type) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.is_link_attribute_type(_attribute_type prom_trace.attribute_type)
+CREATE OR REPLACE FUNCTION _ps_trace.is_link_tag_type(_tag_type _ps_trace.tag_type)
 RETURNS BOOLEAN
 AS $sql$
-    SELECT _attribute_type & prom_trace.link_attribute_type() = prom_trace.link_attribute_type()
+    SELECT _tag_type & _ps_trace.link_tag_type() = _ps_trace.link_tag_type()
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION prom_trace.is_link_attribute_type(prom_trace.attribute_type) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.is_link_tag_type(_ps_trace.tag_type) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.put_attribute_key(_key text, _attribute_type prom_trace.attribute_type)
+CREATE OR REPLACE FUNCTION _ps_trace.put_tag_key(_key _ps_trace.tag_k, _tag_type _ps_trace.tag_type)
 RETURNS VOID
 AS $sql$
-    INSERT INTO prom_trace.attribute_key AS k (key, attribute_type)
-    VALUES (_key, _attribute_type)
+    INSERT INTO _ps_trace.tag_key AS k (key, tag_type)
+    VALUES (_key, _tag_type)
     ON CONFLICT (key) DO
-    UPDATE SET attribute_type = k.attribute_type | EXCLUDED.attribute_type
-    WHERE k.attribute_type & EXCLUDED.attribute_type = 0
+    UPDATE SET tag_type = k.tag_type | EXCLUDED.tag_type
+    WHERE k.tag_type & EXCLUDED.tag_type = 0
 $sql$
 LANGUAGE SQL VOLATILE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.put_attribute_key(text, prom_trace.attribute_type) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _ps_trace.put_tag_key(_ps_trace.tag_k, _ps_trace.tag_type) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION prom_trace.put_attribute(_key text, _value jsonb, _attribute_type prom_trace.attribute_type)
+CREATE OR REPLACE FUNCTION _ps_trace.put_tag(_key _ps_trace.tag_k, _value jsonb, _tag_type _ps_trace.tag_type)
 RETURNS VOID
 AS $sql$
-    INSERT INTO prom_trace.attribute AS a (attribute_type, key_id, key, value)
-    SELECT _attribute_type, ak.id, _key, _value
-    FROM prom_trace.attribute_key ak
+    INSERT INTO _ps_trace.tag AS a (tag_type, key_id, key, value)
+    SELECT _tag_type, ak.id, _key, _value
+    FROM _ps_trace.tag_key ak
     WHERE ak.key = _key
     ON CONFLICT (key, value) DO
-    UPDATE SET attribute_type = a.attribute_type | EXCLUDED.attribute_type
-    WHERE a.attribute_type & EXCLUDED.attribute_type = 0
+    UPDATE SET tag_type = a.tag_type | EXCLUDED.tag_type
+    WHERE a.tag_type & EXCLUDED.tag_type = 0
 $sql$
 LANGUAGE SQL VOLATILE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.put_attribute(text, jsonb, prom_trace.attribute_type) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _ps_trace.put_tag(_ps_trace.tag_k, jsonb, _ps_trace.tag_type) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION prom_trace.jsonb(_attr_map prom_trace.attribute_map)
+CREATE OR REPLACE FUNCTION _ps_trace.has_tag(_tag_map _ps_trace.tag_map, _key _ps_trace.tag_k)
+RETURNS boolean
+AS $sql$
+    SELECT _tag_map ?
+    (
+        SELECT k.id::text
+        FROM _ps_trace.tag_key k
+        WHERE k.key = _key
+        LIMIT 1
+    )
+$sql$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION _ps_trace.has_tag(_ps_trace.tag_map, _ps_trace.tag_k) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION _ps_trace.jsonb(_attr_map _ps_trace.tag_map)
 RETURNS jsonb
 AS $sql$
     /*
-    takes an attribute_map which is a map of attribute_key.id to attribute.id
-    and returns a jsonb object containing the key value pairs of attributes
+    takes an tag_map which is a map of tag_key.id to tag.id
+    and returns a jsonb object containing the key value pairs of tags
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_attr_map) x -- key is attribute_key.id, value is attribute.id
+    FROM jsonb_each(_attr_map) x -- key is tag_key.id, value is tag.id
     CROSS JOIN LATERAL -- cross join lateral enables partition elimination at execution time
     (
         SELECT
             a.key,
             a.value
-        FROM prom_trace.attribute a
+        FROM _ps_trace.tag a
         WHERE a.id = x.value::text::bigint
     ) a
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.jsonb(prom_trace.attribute_map) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.jsonb(_ps_trace.tag_map) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.jsonb(_attr_map prom_trace.attribute_map, VARIADIC _keys text[])
+CREATE OR REPLACE FUNCTION _ps_trace.jsonb(_attr_map _ps_trace.tag_map, VARIADIC _keys _ps_trace.tag_k[])
 RETURNS jsonb
 AS $sql$
     /*
-    takes an attribute_map which is a map of attribute_key.id to attribute.id
-    and returns a jsonb object containing the key value pairs of attributes
+    takes an tag_map which is a map of tag_key.id to tag.id
+    and returns a jsonb object containing the key value pairs of tags
     only the key/value pairs with keys passed as arguments are included in the output
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_attr_map) x -- key is attribute_key.id, value is attribute.id
+    FROM jsonb_each(_attr_map) x -- key is tag_key.id, value is tag.id
     CROSS JOIN LATERAL -- cross join lateral enables partition elimination at execution time
     (
         SELECT
             a.key,
             a.value
-        FROM prom_trace.attribute a
+        FROM _ps_trace.tag a
         WHERE a.id = x.value::text::bigint
         AND a.key = ANY(_keys) -- ANY works with partition elimination
     ) a
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.jsonb(prom_trace.attribute_map) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.jsonb(_ps_trace.tag_map) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.val(_attr_map prom_trace.attribute_map, _key text)
+CREATE OR REPLACE FUNCTION _ps_trace.val(_attr_map _ps_trace.tag_map, _key _ps_trace.tag_k)
 RETURNS jsonb
 AS $sql$
     SELECT a.value
-    FROM prom_trace.attribute a
+    FROM _ps_trace.tag a
     WHERE a.key = _key
     AND _attr_map @> jsonb_build_object(a.key_id, a.id)
     LIMIT 1
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.val(prom_trace.attribute_map, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.val(_ps_trace.tag_map, _ps_trace.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.val_text(_attr_map prom_trace.attribute_map, _key text)
+CREATE OR REPLACE FUNCTION _ps_trace.val_text(_attr_map _ps_trace.tag_map, _key _ps_trace.tag_k)
 RETURNS text
 AS $sql$
     SELECT a.value#>>'{}'
-    FROM prom_trace.attribute a
+    FROM _ps_trace.tag a
     WHERE a.key = _key
     AND _attr_map @> jsonb_build_object(a.key_id, a.id)
     LIMIT 1
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.val_text(prom_trace.attribute_map, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.val_text(_ps_trace.tag_map, _ps_trace.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.get_attribute_map(_attrs jsonb)
-RETURNS prom_trace.attribute_map
+CREATE OR REPLACE FUNCTION _ps_trace.get_tag_map(_attrs jsonb)
+RETURNS _ps_trace.tag_map
 AS $sql$
-    SELECT coalesce(jsonb_object_agg(a.key_id, a.id), '{}')::prom_trace.attribute_map
+    SELECT coalesce(jsonb_object_agg(a.key_id, a.id), '{}')::_ps_trace.tag_map
     FROM jsonb_each(_attrs) x
-    CROSS JOIN LATERAL (SELECT * FROM prom_trace.attribute a where x.key = a.key AND x.value = a.value) a
+    CROSS JOIN LATERAL (SELECT * FROM _ps_trace.tag a where x.key = a.key AND x.value = a.value) a
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.get_attribute_map(jsonb) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.get_tag_map(jsonb) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps(_key text, _qry jsonpath, _vars jsonb DEFAULT '{}'::jsonb, _silent boolean DEFAULT false)
-RETURNS prom_trace.attribute_maps
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps(_key _ps_trace.tag_k, _qry jsonpath, _vars jsonb DEFAULT '{}'::jsonb, _silent boolean DEFAULT false)
+RETURNS _ps_trace.tag_maps
 AS $sql$
-    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::prom_trace.attribute_maps
-    FROM prom_trace.attribute a
+    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
+    FROM _ps_trace.tag a
     WHERE a.key = _key
     AND jsonb_path_exists(a.value, _qry, _vars, _silent)
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps(text, jsonpath, jsonb, boolean) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps(_ps_trace.tag_k, jsonpath, jsonb, boolean) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_jsonpath(_key text, _qry jsonpath)
-RETURNS prom_trace.attribute_maps
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_query(_key _ps_trace.tag_k, _path jsonpath)
+RETURNS _ps_trace.tag_maps
 AS $sql$
-    SELECT prom_trace.attribute_maps(_key, _qry);
+    SELECT _ps_trace.tag_maps(_key, _path);
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_jsonpath(text, jsonpath) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_query(_ps_trace.tag_k, jsonpath) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_equal(_key text, _val jsonb)
-RETURNS prom_trace.attribute_maps
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_regex(_key _ps_trace.tag_k, _pattern text)
+RETURNS _ps_trace.tag_maps
 AS $func$
-    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::prom_trace.attribute_maps
-    FROM prom_trace.attribute a
-    WHERE a.key = _key
-    AND a.value = _val
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_equal(text, jsonb) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_not_equal(_key text, _val jsonb)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::prom_trace.attribute_maps
-    FROM prom_trace.attribute a
-    WHERE a.key = _key
-    AND a.value != _val
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_not_equal(text, jsonb) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_text_equal(_key text, _val text)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_text_equal(text, text) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_text_not_equal(_key text, _val text)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_text_not_equal(text, text) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_int_equal(_key text, _val int)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_int_equal(text, int) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_int_not_equal(_key text, _val int)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_int_not_equal(text, int) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bigint_equal(_key text, _val bigint)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_bigint_equal(text, bigint) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bigint_not_equal(_key text, _val bigint)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_bigint_not_equal(text, bigint) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_numeric_equal(_key text, _val numeric)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_numeric_equal(text, numeric) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_numeric_not_equal(_key text, _val numeric)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_numeric_not_equal(text, numeric) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_real_equal(_key text, _val real)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_real_equal(text, real) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_real_not_equal(_key text, _val real)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_real_not_equal(text, real) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_double_equal(_key text, _val double precision)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_double_equal(text, double precision) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_double_not_equal(_key text, _val double precision)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_double_not_equal(text, double precision) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bool_equal(_key text, _val bool)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_bool_equal(text, bool) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_bool_not_equal(_key text, _val bool)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_bool_not_equal(text, bool) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_timestamptz_equal(_key text, _val timestamptz)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_timestamptz_equal(text, timestamptz) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_timestamptz_not_equal(_key text, _val timestamptz)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_timestamptz_not_equal(text, timestamptz) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_time_equal(_key text, _val time)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_time_equal(text, time) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_time_not_equal(_key text, _val time)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_time_not_equal(text, time) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_date_equal(_key text, _val date)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_equal(_key,to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_date_equal(text, date) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_date_not_equal(_key text, _val date)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT prom_trace.attribute_maps_not_equal(_key, to_jsonb(_val))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_date_not_equal(text, date) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_regex(_key text, _pattern text)
-RETURNS prom_trace.attribute_maps
-AS $func$
-    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::prom_trace.attribute_maps
-    FROM prom_trace.attribute a
+    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
+    FROM _ps_trace.tag a
     WHERE a.key = _key AND
     -- if the jsonb value is a string, apply the regex directly
     -- otherwise, convert the value to a text representation, back to a jsonb string, and then apply
@@ -390,13 +222,13 @@ AS $func$
     END
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_regex(text, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_regex(_ps_trace.tag_k, text) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_maps_not_regex(_key text, _pattern text)
-RETURNS prom_trace.attribute_maps
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_not_regex(_key _ps_trace.tag_k, _pattern text)
+RETURNS _ps_trace.tag_maps
 AS $func$
-    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::prom_trace.attribute_maps
-    FROM prom_trace.attribute a
+    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
+    FROM _ps_trace.tag a
     WHERE a.key = _key AND
     -- if the jsonb value is a string, apply the regex directly
     -- otherwise, convert the value to a text representation, back to a jsonb string, and then apply
@@ -406,33 +238,151 @@ AS $func$
     END
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_maps_not_regex(text, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_not_regex(_ps_trace.tag_k, text) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.match(_attr_map prom_trace.attribute_map, _matchers prom_trace.attribute_maps)
+CREATE OR REPLACE FUNCTION _ps_trace.match(_attr_map _ps_trace.tag_map, _maps _ps_trace.tag_maps)
 RETURNS boolean
 AS $func$
-    SELECT _attr_map @> ANY(_matchers)
+    SELECT _attr_map @> ANY(_maps)
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.match(prom_trace.attribute_map, prom_trace.attribute_maps) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.match(_ps_trace.tag_map, _ps_trace.tag_maps) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_id(_key text)
+CREATE OR REPLACE FUNCTION _ps_trace.tag_id(_key _ps_trace.tag_k)
 RETURNS text
 AS $func$
     SELECT k.id::text
-    FROM prom_trace.attribute_key k
+    FROM _ps_trace.tag_key k
     WHERE k.key = _key
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_id(text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_id(_ps_trace.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION prom_trace.attribute_ids(VARIADIC _keys text[])
+CREATE OR REPLACE FUNCTION _ps_trace.tag_ids(VARIADIC _keys _ps_trace.tag_k[])
 RETURNS text[]
 AS $func$
-    SELECT array_agg(k.id::text)
-    FROM prom_trace.attribute_key k
+    SELECT array_agg(k.id::text)ƒ
+    FROM _ps_trace.tag_key k
     WHERE k.key = ANY(_keys)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION prom_trace.attribute_ids(text[]) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_ids(_ps_trace.tag_k[]) TO prom_reader;
 
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_equal(_key _ps_trace.tag_k, _val jsonb)
+RETURNS _ps_trace.tag_maps
+AS $func$
+    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
+    FROM _ps_trace.tag a
+    WHERE a.key = _key
+    AND a.value = _val
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_equal(_ps_trace.tag_k, jsonb) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_not_equal(_key _ps_trace.tag_k, _val jsonb)
+RETURNS _ps_trace.tag_maps
+AS $func$
+    SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
+    FROM _ps_trace.tag a
+    WHERE a.key = _key
+    AND a.value != _val
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_not_equal(_ps_trace.tag_k, jsonb) TO prom_reader;
+
+DO $do$
+DECLARE
+    _tpl1 text =
+$sql$
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_%1$s_%2$s(_key _ps_trace.tag_k, _val %3$s)
+RETURNS _ps_trace.tag_maps
+AS $func$
+    SELECT _ps_trace.tag_maps_%2$s(_key,to_jsonb(_val))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+$sql$;
+    _tpl2 text =
+$sql$
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_%1$s_%2$s(_ps_trace.tag_k, %3$s) TO prom_reader;
+$sql$;
+    _types text[] = ARRAY[
+        'text',
+        'smallint',
+        'int',
+        'bigint',
+        'bool',
+        'real',
+        'double precision',
+        'numeric',
+        'timestamptz',
+        'timestamp',
+        'time',
+        'date'
+    ];
+    _type text;
+BEGIN
+    FOREACH _type IN ARRAY _types
+    LOOP
+        EXECUTE format(_tpl1, replace(_type, ' ', '_'), 'equal', _type);
+        EXECUTE format(_tpl2, replace(_type, ' ', '_'), 'equal', _type);
+        EXECUTE format(_tpl1, replace(_type, ' ', '_'), 'not_equal', _type);
+        EXECUTE format(_tpl2, replace(_type, ' ', '_'), 'equal', _type);
+    END LOOP;
+END;
+$do$;
+
+DO $do$
+DECLARE
+    _tpl1 text =
+$sql$
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_%1$s_%2$s(_key _ps_trace.tag_k, _val %3$s)
+RETURNS _ps_trace.tag_maps
+AS $func$
+    SELECT _ps_trace.tag_maps(_key, '%4$s', jsonb_build_object('x', to_jsonb(_val)))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+$sql$;
+    _tpl2 text =
+$sql$
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_%1$s_%2$s(_ps_trace.tag_k, %3$s) TO prom_reader;
+$sql$;
+    _sql record;
+BEGIN
+    FOR _sql IN
+    (
+        SELECT
+            format
+            (
+                _tpl1,
+                replace(t.type, ' ', '_'),
+                f.name,
+                t.type,
+                format('$?(@ %s $x)', f.jop)
+            ) as func,
+            format(_tpl2, replace(t.type, ' ', '_'), f.name, t.type) as op
+        FROM
+        (
+            VALUES
+            ('smallint'        ),
+            ('int'             ),
+            ('bigint'          ),
+            ('bool'            ),
+            ('real'            ),
+            ('double precision'),
+            ('numeric'         )
+        ) t(type)
+        CROSS JOIN
+        (
+            VALUES
+            ('less_than'            , '#<'  , '<'),
+            ('less_than_equal'      , '#<=' , '<='),
+            ('greater_than'         , '#>'  , '>'),
+            ('greater_than_equal'   , '#>=' , '>=')
+        ) f(name, op, jop)
+    )
+    LOOP
+        EXECUTE _sql.func;
+        EXECUTE _sql.op;
+    END LOOP;
+END;
+$do$;
