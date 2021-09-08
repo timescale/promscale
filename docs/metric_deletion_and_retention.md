@@ -128,6 +128,18 @@ SQL command to set the default retention policy to two days for all metrics that
 SELECT prom_api.set_default_retention_period(INTERVAL '1 day' * 2)
 ```
 
+SQL command to get the current default retention policy measured in days.
+
+```
+SELECT EXTRACT(day FROM _prom_catalog.get_metric_retention_period('')) AS retention_days;
+```
+
+SQL command to get the current retention policy for the metric `container_cpu_usage_seconds_total` measured in days.
+
+```
+SELECT EXTRACT(day FROM _prom_catalog.get_metric_retention_period(container_cpu_usage_seconds_total')) AS retention_days;
+```
+
 SQL command to set a custom retention policy for a specific metric.
 
 ```
