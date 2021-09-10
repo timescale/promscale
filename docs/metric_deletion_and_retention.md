@@ -122,6 +122,18 @@ SELECT compress_chunks(show_chunks('prom_data.container_cpu_load_average_10s', o
 
 Promscale offers full control over data retentions i.e., you can set a default data retention period as well as overwrite the default on a per-metric basis.
 
+SQL command to get the default retention policy
+
+```
+SELECT EXTRACT(day FROM _prom_catalog.get_metric_retention_period(''))
+```
+
+SQL command to get the default retention policy for a specific metric
+
+```
+SELECT EXTRACT(day FROM _prom_catalog.get_metric_retention_period('container_cpu_usage_seconds_total'))
+```
+
 SQL command to set the default retention policy to two days for all metrics that do not have custom retention policy already configured.
 
 ```
