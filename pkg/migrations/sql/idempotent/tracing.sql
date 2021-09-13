@@ -83,7 +83,7 @@ $sql$
 LANGUAGE SQL VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.put_tag_key(_ps_trace.tag_k, _ps_trace.tag_type) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION _ps_trace.put_tag(_key _ps_trace.tag_k, _value jsonb, _tag_type _ps_trace.tag_type)
+CREATE OR REPLACE FUNCTION _ps_trace.put_tag(_key _ps_trace.tag_k, _value _ps_trace.tag_v, _tag_type _ps_trace.tag_type)
 RETURNS VOID
 AS $sql$
     INSERT INTO _ps_trace.tag AS a (tag_type, key_id, key, value)
@@ -95,7 +95,7 @@ AS $sql$
     WHERE a.tag_type & EXCLUDED.tag_type = 0
 $sql$
 LANGUAGE SQL VOLATILE STRICT;
-GRANT EXECUTE ON FUNCTION _ps_trace.put_tag(_ps_trace.tag_k, jsonb, _ps_trace.tag_type) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _ps_trace.put_tag(_ps_trace.tag_k, _ps_trace.tag_v, _ps_trace.tag_type) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION _ps_trace.has_tag(_tag_map _ps_trace.tag_map, _key _ps_trace.tag_k)
 RETURNS boolean
@@ -156,7 +156,7 @@ LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.jsonb(_ps_trace.tag_map) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION _ps_trace.val(_attr_map _ps_trace.tag_map, _key _ps_trace.tag_k)
-RETURNS jsonb
+RETURNS _ps_trace.tag_v
 AS $sql$
     SELECT a.value
     FROM _ps_trace.tag a
@@ -268,7 +268,7 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.tag_ids(_ps_trace.tag_k[]) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_equal(_key _ps_trace.tag_k, _val jsonb)
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_equal(_key _ps_trace.tag_k, _val _ps_trace.tag_v)
 RETURNS _ps_trace.tag_maps
 AS $func$
     SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
@@ -277,9 +277,9 @@ AS $func$
     AND a.value = _val
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_equal(_ps_trace.tag_k, jsonb) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_equal(_ps_trace.tag_k, _ps_trace.tag_v) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_not_equal(_key _ps_trace.tag_k, _val jsonb)
+CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_not_equal(_key _ps_trace.tag_k, _val _ps_trace.tag_v)
 RETURNS _ps_trace.tag_maps
 AS $func$
     SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
@@ -288,7 +288,7 @@ AS $func$
     AND a.value != _val
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_not_equal(_ps_trace.tag_k, jsonb) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_not_equal(_ps_trace.tag_k, _ps_trace.tag_v) TO prom_reader;
 
 DO $do$
 DECLARE
@@ -326,7 +326,7 @@ BEGIN
         EXECUTE format(_tpl1, replace(_type, ' ', '_'), 'equal', _type);
         EXECUTE format(_tpl2, replace(_type, ' ', '_'), 'equal', _type);
         EXECUTE format(_tpl1, replace(_type, ' ', '_'), 'not_equal', _type);
-        EXECUTE format(_tpl2, replace(_type, ' ', '_'), 'equal', _type);
+        EXECUTE format(_tpl2, replace(_type, ' ', '_'), 'not_equal', _type);
     END LOOP;
 END;
 $do$;
@@ -374,9 +374,9 @@ BEGIN
         CROSS JOIN
         (
             VALUES
-            ('less_than'            , '#<'  , '<'),
+            ('less_than'            , '#<'  , '<' ),
             ('less_than_equal'      , '#<=' , '<='),
-            ('greater_than'         , '#>'  , '>'),
+            ('greater_than'         , '#>'  , '>' ),
             ('greater_than_equal'   , '#>=' , '>=')
         ) f(name, op, jop)
     )
