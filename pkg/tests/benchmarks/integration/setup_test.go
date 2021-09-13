@@ -7,9 +7,9 @@ package integration
 import (
 	"context"
 	"io"
-	"io/fs"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -94,11 +94,11 @@ func reportAndExit(err error) {
 	os.Exit(1)
 }
 
-const benchDataPath = "../../testdata/bench_data"
+const benchDataPath = "../../testdata/bench_data/"
 
 func ingestBenchData(t testing.TB, db *pgxpool.Pool) {
 	log.Info("msg", "ingesting bench dataset...")
-	files, err := ioutil.ReadDir(benchDataPath)
+	files, err := filepath.Glob(benchDataPath + "*")
 	require.NoError(t, err)
 
 	ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
@@ -106,7 +106,7 @@ func ingestBenchData(t testing.TB, db *pgxpool.Pool) {
 
 	for _, f := range files {
 		ts := readTimeseries(t, f)
-		log.Info("msg", "ingesting dump", "name", f.Name(), "num-series", len(ts))
+		log.Info("msg", "ingesting dump", "file", f, "num-series", len(ts))
 		numInsertables, _, err := ingestor.Ingest(common.NewWriteRequestWithTs(ts))
 		require.NoError(t, err)
 		require.NotEqual(t, 0, int(numInsertables))
@@ -115,8 +115,8 @@ func ingestBenchData(t testing.TB, db *pgxpool.Pool) {
 	log.Info("msg", "completed ingesting bench dataset")
 }
 
-func readTimeseries(t testing.TB, f fs.FileInfo) []prompb.TimeSeries {
-	name := benchDataPath + "/" + f.Name()
+func readTimeseries(t testing.TB, f string) []prompb.TimeSeries {
+	name := f
 	bSlice, err := ioutil.ReadFile(name)
 	require.NoError(t, err)
 

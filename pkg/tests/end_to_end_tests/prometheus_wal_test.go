@@ -61,11 +61,11 @@ func generatePrometheusWAL(withExemplars bool) ([]prompb.TimeSeries, string, err
 	if withExemplars {
 		tts = generateRecentLargeTimeseries()
 	} else {
-		tts = generateLargeTimeseries()
+		tts = common.GenerateLargeTimeseries()
 		if *extendedTest {
 			// Only apply generatedRealTimeseries for non-exemplar based
 			// Prometheus WAL, since these are not required for exemplar based tests.
-			tts = append(tts, generateRealTimeseries()...)
+			tts = append(tts, common.GenerateRealTimeseries()...)
 		}
 	}
 	var copyTts []prompb.TimeSeries

@@ -1,0 +1,16 @@
+name: Go Benchmarks
+on: workflow_dispatch
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Set up Go 1.14
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.14
+        id: go
+      - name: Benchmark
+        run: |
+          ./scripts/auto_bench.sh

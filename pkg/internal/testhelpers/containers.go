@@ -179,12 +179,6 @@ func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
 	return pool
 }
 
-func PgxPoolWithSuperuser(t testing.TB, dbName string) *pgxpool.Pool {
-	pool, err := pgxpool.Connect(context.Background(), PgConnectURLUser(dbName, postgresUser))
-	require.NoError(t, err)
-	return pool
-}
-
 // WithDB establishes a database for testing and calls the callback
 func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState ExtensionState, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
 	db, err := DbSetup(DBName, superuser, deferNode2Setup, extensionState)
