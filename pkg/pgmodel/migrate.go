@@ -395,6 +395,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	s = strings.ReplaceAll(s, "SCHEMA_INFO", schema.Info)
 	s = strings.ReplaceAll(s, "SCHEMA_TRACING_PUBLIC", schema.TracePublic)
 	s = strings.ReplaceAll(s, "SCHEMA_TRACING", schema.Trace)
+	s = strings.ReplaceAll(s, "SCHEMA_TRACING_VIEW", schema.TraceView)
 	s = strings.ReplaceAll(s, "ADVISORY_LOCK_PREFIX_JOB", "12377")
 	s = strings.ReplaceAll(s, "ADVISORY_LOCK_PREFIX_MAINTENACE", "12378")
 	return s, err

@@ -2,6 +2,9 @@
 CREATE SCHEMA IF NOT EXISTS _ps_trace;
 GRANT USAGE ON SCHEMA _ps_trace TO prom_reader;
 
+CREATE SCHEMA IF NOT EXISTS ps_trace;
+GRANT USAGE ON SCHEMA ps_trace TO prom_reader;
+
 CREATE DOMAIN _ps_trace.trace_id uuid NOT NULL CHECK (value != '00000000-0000-0000-0000-000000000000');
 GRANT USAGE ON DOMAIN _ps_trace.trace_id TO prom_reader;
 

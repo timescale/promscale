@@ -387,7 +387,7 @@ BEGIN
 END;
 $do$;
 
-
+CREATE OR REPLACE VIEW ps_trace.span AS
 SELECT
     s.trace_id,
     s.span_id,
@@ -409,12 +409,16 @@ SELECT
     s.status_message,
     il.name as inst_lib_name,
     il.version as inst_lib_version,
-    u.url as inst_lib_schema_url,
+    u1.url as inst_lib_schema_url,
     s.resource_tags,
     s.resource_dropped_tags_count,
-    s.resource_schema_url_id
+    u2.url as resource_schema_url
 FROM _ps_trace.span s
 INNER JOIN _ps_trace.span_name n ON (s.name_id = n.id)
 INNER JOIN _ps_trace.inst_lib il ON (s.inst_lib_id = il.id)
-INNER JOIN _ps_trace.schema_url u on (il.schema_url_id = u.id)
+INNER JOIN _ps_trace.schema_url u1 on (il.schema_url_id = u1.id)
+INNER JOIN _ps_trace.schema_url u2 on (il.schema_url_id = u2.id)
 ;
+GRANT SELECT ON ps_trace.span to prom_reader;
+
+
