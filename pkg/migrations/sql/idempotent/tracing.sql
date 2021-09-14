@@ -184,7 +184,14 @@ RETURNS _ps_trace.tag_map
 AS $sql$
     SELECT coalesce(jsonb_object_agg(a.key_id, a.id), '{}')::_ps_trace.tag_map
     FROM jsonb_each(_attrs) x
-    CROSS JOIN LATERAL (SELECT * FROM _ps_trace.tag a where x.key = a.key AND x.value = a.value) a
+    INNER JOIN LATERAL
+    (
+        SELECT *
+        FROM _ps_trace.tag a
+        WHERE x.key = a.key
+        AND x.value = a.value
+        LIMIT 1
+    ) a on (true)
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.get_tag_map(jsonb) TO prom_reader;
