@@ -120,14 +120,16 @@ AS $sql$
     */
     SELECT jsonb_object_agg(a.key, a.value)
     FROM jsonb_each(_attr_map) x -- key is tag_key.id, value is tag.id
-    CROSS JOIN LATERAL -- cross join lateral enables partition elimination at execution time
+    INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
             a.key,
             a.value
         FROM _ps_trace.tag a
         WHERE a.id = x.value::text::bigint
-    ) a
+        AND a.key = (SELECT k.key from _ps_trace.tag_key k WHERE k.id = x.key::bigint)
+        LIMIT 1
+    ) a on (true)
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.jsonb(_ps_trace.tag_map) TO prom_reader;
@@ -142,7 +144,7 @@ AS $sql$
     */
     SELECT jsonb_object_agg(a.key, a.value)
     FROM jsonb_each(_attr_map) x -- key is tag_key.id, value is tag.id
-    CROSS JOIN LATERAL -- cross join lateral enables partition elimination at execution time
+    INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
             a.key,
@@ -150,7 +152,7 @@ AS $sql$
         FROM _ps_trace.tag a
         WHERE a.id = x.value::text::bigint
         AND a.key = ANY(_keys) -- ANY works with partition elimination
-    ) a
+    ) a on (true)
 $sql$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.jsonb(_ps_trace.tag_map) TO prom_reader;
@@ -186,7 +188,7 @@ AS $sql$
     FROM jsonb_each(_attrs) x
     INNER JOIN LATERAL
     (
-        SELECT *
+        SELECT a.key_id, a.id
         FROM _ps_trace.tag a
         WHERE x.key = a.key
         AND x.value = a.value
