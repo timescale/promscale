@@ -7,6 +7,7 @@ $function$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION _ps_trace.text(_ps_trace.trace_id) TO prom_reader;
 */
+/*
 CREATE OR REPLACE FUNCTION _ps_trace.span_tag_type()
 RETURNS _ps_trace.tag_type
 AS $sql$
@@ -70,32 +71,34 @@ AS $sql$
 $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION _ps_trace.is_link_tag_type(_ps_trace.tag_type) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION _ps_trace.put_tag_key(_key _ps_trace.tag_k, _tag_type _ps_trace.tag_type)
+*/
+CREATE OR REPLACE FUNCTION _ps_trace.put_tag_key(_key _ps_trace.tag_k/*, _tag_type _ps_trace.tag_type*/)
 RETURNS VOID
 AS $sql$
-    INSERT INTO _ps_trace.tag_key AS k (key, tag_type)
-    VALUES (_key, _tag_type)
+    INSERT INTO _ps_trace.tag_key AS k (key/*, tag_type*/)
+    VALUES (_key/*, _tag_type*/)
     ON CONFLICT (key) DO
-    UPDATE SET tag_type = k.tag_type | EXCLUDED.tag_type
-    WHERE k.tag_type & EXCLUDED.tag_type = 0
+    NOTHING
+    /*UPDATE SET tag_type = k.tag_type | EXCLUDED.tag_type
+    WHERE k.tag_type & EXCLUDED.tag_type = 0*/
 $sql$
 LANGUAGE SQL VOLATILE STRICT;
-GRANT EXECUTE ON FUNCTION _ps_trace.put_tag_key(_ps_trace.tag_k, _ps_trace.tag_type) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _ps_trace.put_tag_key(_ps_trace.tag_k/*, _ps_trace.tag_type*/) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION _ps_trace.put_tag(_key _ps_trace.tag_k, _value _ps_trace.tag_v, _tag_type _ps_trace.tag_type)
+CREATE OR REPLACE FUNCTION _ps_trace.put_tag(_key _ps_trace.tag_k, _value _ps_trace.tag_v/*, _tag_type _ps_trace.tag_type*/)
 RETURNS VOID
 AS $sql$
-    INSERT INTO _ps_trace.tag AS a (tag_type, key_id, key, value)
-    SELECT _tag_type, ak.id, _key, _value
+    INSERT INTO _ps_trace.tag AS a (/*tag_type, */key_id, key, value)
+    SELECT /*_tag_type, */ak.id, _key, _value
     FROM _ps_trace.tag_key ak
     WHERE ak.key = _key
     ON CONFLICT (key, value) DO
-    UPDATE SET tag_type = a.tag_type | EXCLUDED.tag_type
-    WHERE a.tag_type & EXCLUDED.tag_type = 0
+    NOTHING
+    /*UPDATE SET tag_type = a.tag_type | EXCLUDED.tag_type
+    WHERE a.tag_type & EXCLUDED.tag_type = 0*/
 $sql$
 LANGUAGE SQL VOLATILE STRICT;
-GRANT EXECUTE ON FUNCTION _ps_trace.put_tag(_ps_trace.tag_k, _ps_trace.tag_v, _ps_trace.tag_type) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _ps_trace.put_tag(_ps_trace.tag_k, _ps_trace.tag_v/*, _ps_trace.tag_type*/) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION _ps_trace.has_tag(_tag_map _ps_trace.tag_map, _key _ps_trace.tag_k)
 RETURNS boolean

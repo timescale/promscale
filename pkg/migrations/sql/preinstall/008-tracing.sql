@@ -19,17 +19,17 @@ GRANT USAGE ON DOMAIN _ps_trace.tag_map TO prom_reader;
 
 CREATE DOMAIN _ps_trace.tag_maps _ps_trace.tag_map[] NOT NULL;
 GRANT USAGE ON DOMAIN _ps_trace.tag_maps TO prom_reader;
-
+/*
 CREATE DOMAIN _ps_trace.tag_type smallint NOT NULL;
 GRANT USAGE ON DOMAIN _ps_trace.tag_type TO prom_reader;
-
+*/
 CREATE TABLE _ps_trace.tag_key
 (
     id BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    tag_type _ps_trace.tag_type NOT NULL,
+--    tag_type _ps_trace.tag_type NOT NULL,
     key _ps_trace.tag_k NOT NULL
 );
-CREATE UNIQUE INDEX ON _ps_trace.tag_key (key) INCLUDE (id, tag_type);
+CREATE UNIQUE INDEX ON _ps_trace.tag_key (key) INCLUDE (id/*, tag_type*/);
 GRANT SELECT ON TABLE _ps_trace.tag_key TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.tag_key TO prom_writer;
 GRANT USAGE ON SEQUENCE _ps_trace.tag_key_id_seq TO prom_writer;
@@ -37,7 +37,7 @@ GRANT USAGE ON SEQUENCE _ps_trace.tag_key_id_seq TO prom_writer;
 CREATE TABLE _ps_trace.tag
 (
     id BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
-    tag_type _ps_trace.tag_type NOT NULL,
+    --tag_type _ps_trace.tag_type NOT NULL,
     key_id bigint NOT NULL,
     key _ps_trace.tag_k NOT NULL REFERENCES _ps_trace.tag_key (key) ON DELETE CASCADE,
     value _ps_trace.tag_v NOT NULL,
@@ -75,20 +75,20 @@ $block$
 
 CREATE TYPE _ps_trace.span_kind AS ENUM
 (
-    'UNSPECIFIED',
-    'INTERNAL',
-    'SERVER',
-    'CLIENT',
-    'PRODUCER',
-    'CONSUMER'
+    'SPAN_KIND_UNSPECIFIED',
+    'SPAN_KIND_INTERNAL',
+    'SPAN_KIND_SERVER',
+    'SPAN_KIND_CLIENT',
+    'SPAN_KIND_PRODUCER',
+    'SPAN_KIND_CONSUMER'
 );
 GRANT USAGE ON TYPE _ps_trace.span_kind TO prom_reader;
 
 CREATE TYPE _ps_trace.status_code AS ENUM
 (
-    'UNSET',
-    'OK',
-    'ERROR'
+    'STATUS_CODE_UNSET',
+    'STATUS_CODE_OK',
+    'STATUS_CODE_ERROR'
 );
 GRANT USAGE ON TYPE _ps_trace.status_code TO prom_reader;
 
