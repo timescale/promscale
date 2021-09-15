@@ -72,22 +72,23 @@ $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION _ps_trace.is_link_tag_type(_ps_trace.tag_type) TO prom_reader;
 */
+
 CREATE OR REPLACE FUNCTION _ps_trace.put_tag_key(_key _ps_trace.tag_k/*, _tag_type _ps_trace.tag_type*/)
 RETURNS VOID
-AS $sql$
+AS $func$
     INSERT INTO _ps_trace.tag_key AS k (key/*, tag_type*/)
     VALUES (_key/*, _tag_type*/)
     ON CONFLICT (key) DO
     NOTHING
     /*UPDATE SET tag_type = k.tag_type | EXCLUDED.tag_type
     WHERE k.tag_type & EXCLUDED.tag_type = 0*/
-$sql$
+$func$
 LANGUAGE SQL VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.put_tag_key(_ps_trace.tag_k/*, _ps_trace.tag_type*/) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION _ps_trace.put_tag(_key _ps_trace.tag_k, _value _ps_trace.tag_v/*, _tag_type _ps_trace.tag_type*/)
 RETURNS VOID
-AS $sql$
+AS $func$
     INSERT INTO _ps_trace.tag AS a (/*tag_type, */key_id, key, value)
     SELECT /*_tag_type, */ak.id, _key, _value
     FROM _ps_trace.tag_key ak
@@ -96,13 +97,13 @@ AS $sql$
     NOTHING
     /*UPDATE SET tag_type = a.tag_type | EXCLUDED.tag_type
     WHERE a.tag_type & EXCLUDED.tag_type = 0*/
-$sql$
+$func$
 LANGUAGE SQL VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.put_tag(_ps_trace.tag_k, _ps_trace.tag_v/*, _ps_trace.tag_type*/) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION _ps_trace.has_tag(_tag_map _ps_trace.tag_map, _key _ps_trace.tag_k)
 RETURNS boolean
-AS $sql$
+AS $func$
     SELECT _tag_map ?
     (
         SELECT k.id::text
@@ -110,19 +111,19 @@ AS $sql$
         WHERE k.key = _key
         LIMIT 1
     )
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.has_tag(_ps_trace.tag_map, _ps_trace.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.jsonb(_attr_map _ps_trace.tag_map)
+CREATE OR REPLACE FUNCTION _ps_trace.jsonb(_tag_map _ps_trace.tag_map)
 RETURNS jsonb
-AS $sql$
+AS $func$
     /*
     takes an tag_map which is a map of tag_key.id to tag.id
     and returns a jsonb object containing the key value pairs of tags
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_attr_map) x -- key is tag_key.id, value is tag.id
+    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
     INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
@@ -133,20 +134,20 @@ AS $sql$
         AND a.key = (SELECT k.key from _ps_trace.tag_key k WHERE k.id = x.key::bigint)
         LIMIT 1
     ) a on (true)
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.jsonb(_ps_trace.tag_map) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.jsonb(_attr_map _ps_trace.tag_map, VARIADIC _keys _ps_trace.tag_k[])
+CREATE OR REPLACE FUNCTION _ps_trace.jsonb(_tag_map _ps_trace.tag_map, VARIADIC _keys _ps_trace.tag_k[])
 RETURNS jsonb
-AS $sql$
+AS $func$
     /*
     takes an tag_map which is a map of tag_key.id to tag.id
     and returns a jsonb object containing the key value pairs of tags
     only the key/value pairs with keys passed as arguments are included in the output
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_attr_map) x -- key is tag_key.id, value is tag.id
+    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
     INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
@@ -156,39 +157,39 @@ AS $sql$
         WHERE a.id = x.value::text::bigint
         AND a.key = ANY(_keys) -- ANY works with partition elimination
     ) a on (true)
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.jsonb(_ps_trace.tag_map) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.val(_attr_map _ps_trace.tag_map, _key _ps_trace.tag_k)
+CREATE OR REPLACE FUNCTION _ps_trace.val(_tag_map _ps_trace.tag_map, _key _ps_trace.tag_k)
 RETURNS _ps_trace.tag_v
-AS $sql$
+AS $func$
     SELECT a.value
     FROM _ps_trace.tag a
     WHERE a.key = _key
-    AND _attr_map @> jsonb_build_object(a.key_id, a.id)
+    AND _tag_map @> jsonb_build_object(a.key_id, a.id)
     LIMIT 1
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.val(_ps_trace.tag_map, _ps_trace.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.val_text(_attr_map _ps_trace.tag_map, _key _ps_trace.tag_k)
+CREATE OR REPLACE FUNCTION _ps_trace.val_text(_tag_map _ps_trace.tag_map, _key _ps_trace.tag_k)
 RETURNS text
-AS $sql$
+AS $func$
     SELECT a.value#>>'{}'
     FROM _ps_trace.tag a
     WHERE a.key = _key
-    AND _attr_map @> jsonb_build_object(a.key_id, a.id)
+    AND _tag_map @> jsonb_build_object(a.key_id, a.id)
     LIMIT 1
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.val_text(_ps_trace.tag_map, _ps_trace.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.get_tag_map(_attrs jsonb)
+CREATE OR REPLACE FUNCTION _ps_trace.get_tag_map(_tags jsonb)
 RETURNS _ps_trace.tag_map
-AS $sql$
+AS $func$
     SELECT coalesce(jsonb_object_agg(a.key_id, a.id), '{}')::_ps_trace.tag_map
-    FROM jsonb_each(_attrs) x
+    FROM jsonb_each(_tags) x
     INNER JOIN LATERAL
     (
         SELECT a.key_id, a.id
@@ -197,26 +198,26 @@ AS $sql$
         AND x.value = a.value
         LIMIT 1
     ) a on (true)
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.get_tag_map(jsonb) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION _ps_trace.tag_maps(_key _ps_trace.tag_k, _qry jsonpath, _vars jsonb DEFAULT '{}'::jsonb, _silent boolean DEFAULT false)
 RETURNS _ps_trace.tag_maps
-AS $sql$
+AS $func$
     SELECT coalesce(array_agg(jsonb_build_object(a.key_id, a.id)), '{}')::_ps_trace.tag_maps
     FROM _ps_trace.tag a
     WHERE a.key = _key
     AND jsonb_path_exists(a.value, _qry, _vars, _silent)
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps(_ps_trace.tag_k, jsonpath, jsonb, boolean) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION _ps_trace.tag_maps_query(_key _ps_trace.tag_k, _path jsonpath)
 RETURNS _ps_trace.tag_maps
-AS $sql$
+AS $func$
     SELECT _ps_trace.tag_maps(_key, _path);
-$sql$
+$func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_query(_ps_trace.tag_k, jsonpath) TO prom_reader;
 
@@ -252,10 +253,10 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.tag_maps_not_regex(_ps_trace.tag_k, text) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION _ps_trace.match(_attr_map _ps_trace.tag_map, _maps _ps_trace.tag_maps)
+CREATE OR REPLACE FUNCTION _ps_trace.match(_tag_map _ps_trace.tag_map, _maps _ps_trace.tag_maps)
 RETURNS boolean
 AS $func$
-    SELECT _attr_map @> ANY(_maps)
+    SELECT _tag_map @> ANY(_maps)
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION _ps_trace.match(_ps_trace.tag_map, _ps_trace.tag_maps) TO prom_reader;
