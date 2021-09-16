@@ -73,6 +73,128 @@ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION _ps_trace.is_link_tag_type(_ps_trace.tag_type) TO prom_reader;
 */
 
+CREATE OR REPLACE FUNCTION _ps_trace.trace_tree(_trace_id _ps_trace.trace_id)
+RETURNS TABLE
+(
+    trace_id _ps_trace.trace_id,
+    parent_span_id bigint,
+    span_id bigint,
+    lvl int,
+    path bigint[]
+)
+AS $func$
+    WITH RECURSIVE x as
+    (
+        SELECT
+            s1.parent_span_id,
+            s1.span_id,
+            1 as lvl,
+            array[s1.span_id] as path
+        FROM _ps_trace.span s1
+        WHERE s1.trace_id = _trace_id
+        AND s1.parent_span_id IS NULL
+        UNION ALL
+        SELECT
+            s2.parent_span_id,
+            s2.span_id,
+            x.lvl + 1 as lvl,
+            x.path || s2.span_id as path
+        FROM x
+        INNER JOIN _ps_trace.span s2
+        ON (x.span_id = s2.parent_span_id AND s2.trace_id = _trace_id)
+    )
+    SELECT
+        _trace_id,
+        x.parent_span_id,
+        x.span_id,
+        x.lvl,
+        x.path
+    FROM x
+$func$ LANGUAGE sql STABLE STRICT;
+GRANT EXECUTE ON FUNCTION _ps_trace.trace_tree(_ps_trace.trace_id) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION _ps_trace.upstream_spans(_trace_id _ps_trace.trace_id, _span_id bigint, _max_dist int default null)
+RETURNS TABLE
+(
+    trace_id _ps_trace.trace_id,
+    parent_span_id bigint,
+    span_id bigint,
+    dist int,
+    path bigint[]
+)
+AS $func$
+    WITH RECURSIVE x as
+    (
+        SELECT
+          s1.parent_span_id,
+          s1.span_id,
+          1 as dist,
+          array[s1.span_id] as path
+        FROM _ps_trace.span s1
+        WHERE s1.trace_id = _trace_id
+        AND s1.span_id = _span_id
+        UNION ALL
+        SELECT
+          s2.parent_span_id,
+          s2.span_id,
+          x.dist + 1 as dist,
+          x.path || s2.span_id as path
+        FROM x
+        INNER JOIN _ps_trace.span s2
+        ON (x.parent_span_id = s2.span_id and s2.trace_id = _trace_id)
+        WHERE (_max_dist IS NULL OR x.dist + 1 <= _max_dist)
+    )
+    SELECT
+        _trace_id,
+        x.parent_span_id,
+        x.span_id,
+        x.dist,
+        x.path
+    FROM x
+$func$ LANGUAGE sql STABLE;
+GRANT EXECUTE ON FUNCTION _ps_trace.upstream_spans(_ps_trace.trace_id, bigint, int) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION _ps_trace.downstream_spans(_trace_id _ps_trace.trace_id, _span_id bigint, _max_dist int default null)
+RETURNS TABLE
+(
+    trace_id _ps_trace.trace_id,
+    parent_span_id bigint,
+    span_id bigint,
+    dist int,
+    path bigint[]
+)
+AS $func$
+    WITH RECURSIVE x as
+    (
+        SELECT
+          s1.parent_span_id,
+          s1.span_id,
+          1 as dist,
+          array[s1.span_id] as path
+        FROM _ps_trace.span s1
+        WHERE s1.trace_id = _trace_id
+        AND s1.span_id = _span_id
+        UNION ALL
+        SELECT
+          s2.parent_span_id,
+          s2.span_id,
+          x.dist + 1 as dist,
+          x.path || s2.span_id as path
+        FROM x
+        INNER JOIN _ps_trace.span s2
+        ON (x.span_id = s2.parent_span_id and s2.trace_id = _trace_id)
+        WHERE (_max_dist IS NULL OR x.dist + 1 <= _max_dist)
+    )
+    SELECT
+        _trace_id,
+        x.parent_span_id,
+        x.span_id,
+        x.dist,
+        x.path
+    FROM x
+$func$ LANGUAGE sql STABLE;
+GRANT EXECUTE ON FUNCTION _ps_trace.downstream_spans(_ps_trace.trace_id, bigint, int) TO prom_reader;
+
 CREATE OR REPLACE FUNCTION _ps_trace.put_tag_key(_key _ps_trace.tag_k/*, _tag_type _ps_trace.tag_type*/)
 RETURNS VOID
 AS $func$
@@ -274,7 +396,7 @@ GRANT EXECUTE ON FUNCTION _ps_trace.tag_id(_ps_trace.tag_k) TO prom_reader;
 CREATE OR REPLACE FUNCTION _ps_trace.tag_ids(VARIADIC _keys _ps_trace.tag_k[])
 RETURNS text[]
 AS $func$
-    SELECT array_agg(k.id::text)ƒ
+    SELECT array_agg(k.id::text)
     FROM _ps_trace.tag_key k
     WHERE k.key = ANY(_keys)
 $func$

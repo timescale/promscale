@@ -139,12 +139,12 @@ CREATE TABLE IF NOT EXISTS _ps_trace.span
 (
     trace_id _ps_trace.trace_id NOT NULL,
     span_id bigint NOT NULL,
-    trace_state text,
     parent_span_id bigint NULL,
     name_id bigint NOT NULL,
-    span_kind _ps_trace.span_kind,
     start_time timestamptz NOT NULL,
     end_time timestamptz NOT NULL,
+    trace_state text,
+    span_kind _ps_trace.span_kind,
     span_tags _ps_trace.tag_map,
     dropped_tags_count int NOT NULL default 0,
     event_time tstzrange NOT NULL default tstzrange('infinity', 'infinity', '()'),
@@ -262,7 +262,7 @@ CREATE OPERATOR _ps_trace.!=~ (
     FUNCTION = _ps_trace.tag_maps_not_regex
 );
 
-CREATE OR REPLACE FUNCTION _ps_trace.match(_attr_map _ps_trace.tag_map, _maps _ps_trace.tag_maps)
+CREATE OR REPLACE FUNCTION _ps_trace.match(_tag_map _ps_trace.tag_map, _maps _ps_trace.tag_maps)
 RETURNS boolean
 AS $func$
     -- this function body will be replaced later in idempotent script
