@@ -120,6 +120,7 @@ RETURNS TABLE
     parent_span_id bigint,
     span_id bigint,
     dist int,
+    idx int,
     path bigint[]
 )
 AS $func$
@@ -128,7 +129,8 @@ AS $func$
         SELECT
           s1.parent_span_id,
           s1.span_id,
-          1 as dist,
+          0 as dist,
+          1 as idx,
           array[s1.span_id] as path
         FROM _ps_trace.span s1
         WHERE s1.trace_id = _trace_id
@@ -138,6 +140,7 @@ AS $func$
           s2.parent_span_id,
           s2.span_id,
           x.dist + 1 as dist,
+          x.idx + 1 as idx,
           x.path || s2.span_id as path
         FROM x
         INNER JOIN _ps_trace.span s2
@@ -149,6 +152,7 @@ AS $func$
         x.parent_span_id,
         x.span_id,
         x.dist,
+        x.idx,
         x.path
     FROM x
 $func$ LANGUAGE sql STABLE;
@@ -161,6 +165,7 @@ RETURNS TABLE
     parent_span_id bigint,
     span_id bigint,
     dist int,
+    idx int,
     path bigint[]
 )
 AS $func$
@@ -169,7 +174,8 @@ AS $func$
         SELECT
           s1.parent_span_id,
           s1.span_id,
-          1 as dist,
+          0 as dist,
+          1 as idx,
           array[s1.span_id] as path
         FROM _ps_trace.span s1
         WHERE s1.trace_id = _trace_id
@@ -179,6 +185,7 @@ AS $func$
           s2.parent_span_id,
           s2.span_id,
           x.dist + 1 as dist,
+          x.idx + 1 as idx,
           x.path || s2.span_id as path
         FROM x
         INNER JOIN _ps_trace.span s2
@@ -190,10 +197,42 @@ AS $func$
         x.parent_span_id,
         x.span_id,
         x.dist,
+        x.idx,
         x.path
     FROM x
 $func$ LANGUAGE sql STABLE;
 GRANT EXECUTE ON FUNCTION _ps_trace.downstream_spans(_ps_trace.trace_id, bigint, int) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION _ps_trace.span_tree(_trace_id _ps_trace.trace_id, _span_id bigint, _max_dist int default null)
+RETURNS TABLE
+(
+    trace_id _ps_trace.trace_id,
+    parent_span_id bigint,
+    span_id bigint,
+    dist int,
+    idx int,
+    path bigint[]
+)
+AS $func$
+    SELECT
+        trace_id,
+        parent_span_id,
+        span_id,
+        dist * -1 as dist,
+        idx,
+        path
+    FROM _ps_trace.upstream_spans(_trace_id, _span_id, _max_dist)
+    UNION
+    SELECT
+        trace_id,
+        parent_span_id,
+        span_id,
+        dist as dist,
+        idx,
+        path
+    FROM _ps_trace.downstream_spans(_trace_id, _span_id, _max_dist)
+$func$ LANGUAGE sql STABLE;
+GRANT EXECUTE ON FUNCTION _ps_trace.span_tree(_ps_trace.trace_id, bigint, int) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION _ps_trace.put_tag_key(_key _ps_trace.tag_k/*, _tag_type _ps_trace.tag_type*/)
 RETURNS VOID
