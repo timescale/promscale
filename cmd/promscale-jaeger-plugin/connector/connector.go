@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,10 +12,9 @@ import (
 	"strings"
 	"time"
 
-	//"github.com/influxdata/influxdb-observability/common"
-	//"github.com/influxdata/influxdb-observability/jaeger-query-query-plugin/config"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 )
 
 type connector struct {
@@ -105,11 +105,57 @@ func (c *connector) GetTrace(ctx context.Context, traceID model.TraceID) (*model
 	return nil, nil
 }
 
-func (c *connector) FindTraces(ctx context.Context, traceQueryParameters *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
+func (c *connector) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
+	r := &storage_v1.FindTracesRequest{
+		Query: &storage_v1.TraceQueryParameters{
+			ServiceName:   query.ServiceName,
+			OperationName: query.OperationName,
+			Tags:          query.Tags,
+			StartTimeMin:  query.StartTimeMin,
+			StartTimeMax:  query.StartTimeMax,
+			DurationMin:   query.DurationMin,
+			DurationMax:   query.DurationMax,
+			NumTraces:     int32(query.NumTraces),
+		},
+	}
+	// todo: next version improvement: snappy compress.
+	bSlice, err := r.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("marshalling 'findTracesRequest': %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "post", c.url + api.JaegerQuerySingleTraceEndpoint, bytes.NewReader(bSlice))
+	if err != nil {
+		return nil, fmt.Errorf("creating request from Promscale: %w", err)
+	}
+	applyValidityHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching response from Promscale: %w", err)
+	}
+
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response body from Promscale: %w", err)
+	}
+
+	return nil, nil
 	return []*model.Trace{}, nil
 }
 
 func (c *connector) FindTraceIDs(ctx context.Context, traceQueryParameters *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
 	var traceIDs []model.TraceID
 	return traceIDs, nil
+}
+
+type kv struct {
+	k, v string
+}
+
+func buildForm(pairs ...kv) (form url.Values) {
+	for _, p := range pairs {
+		form.Add(p.k, p.v)
+	}
+	return
 }

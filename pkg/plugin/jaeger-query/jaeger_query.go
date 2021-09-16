@@ -2,6 +2,7 @@ package jaeger_query
 
 import (
 	"context"
+
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -27,4 +28,12 @@ func (r *jaegerQueryReader) GetOperations(ctx context.Context, query spanstore.O
 
 func (r *jaegerQueryReader) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
 	return singleTrace(ctx, r.conn, traceID)
+}
+
+func (r *jaegerQueryReader) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
+	return findTraces(ctx, r.conn, query)
+}
+
+func (r *jaegerQueryReader) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
+	return findTraceIDs(ctx, r.conn, query)
 }

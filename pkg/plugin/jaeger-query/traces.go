@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jaegertracing/jaeger/model"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -17,4 +18,16 @@ func singleTrace(ctx context.Context, conn pgxconn.PgxConn, traceID model.TraceI
 		return nil, fmt.Errorf("fetching a trace with %s as ID: %w", traceID.String(), err)
 	}
 	return trace, nil
+}
+
+func findTraces(ctx context.Context, conn pgxconn.PgxConn, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
+	traces := make([]*model.Trace, 0)
+	// query
+	return traces, nil
+}
+
+func findTraceIDs(ctx context.Context, conn pgxconn.PgxConn, query *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
+	traceIds := make([]model.TraceID, 0)
+	// query
+	return traceIds, nil
 }

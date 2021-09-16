@@ -6,7 +6,11 @@ package api
 
 import (
 	"fmt"
+	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
+	"github.com/timescale/promscale/pkg/api/store"
 	jaeger_query "github.com/timescale/promscale/pkg/plugin/jaeger-query"
+	"google.golang.org/grpc"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -29,6 +33,8 @@ const (
 	JaegerQueryServicesEndpoint = "api/v1/jaeger/query/services"
 	JaegerQueryOperationsEndpoint = "api/v1/jaeger/query/operations"
 	JaegerQuerySingleTraceEndpoint = "api/v1/jaeger/query/get-trace"
+	JaegerQueryTracesEndpoint = "api/v1/jaeger/query/get-traces"
+	JaegerQueryTraceIdsEndpoint = "api/v1/jaeger/query/get-trace-ids"
 )
 
 func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
@@ -91,6 +97,11 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		writer.Write([]byte("success"))
 	})
 
+	gRPCServer := grpc.NewServer()
+	connector := store.New()
+	listener :- net.Listener("tcp", ":9202")
+	storage_v1.RegisterSpanReaderPluginServer(gRPCServer, connector)
+
 	seriesHandler := timeHandler(metrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
 	router.Get("/api/v1/series", seriesHandler)
 	router.Post("/api/v1/series", seriesHandler)
@@ -123,8 +134,14 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	operationsHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQueryOperationsEndpoint, Operations(apiConf, jaegerQueryReader))
 	router.Post(JaegerQueryOperationsEndpoint, operationsHandler)
 
-	singleTraceHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQueryOperationsEndpoint, SingleTrace(apiConf, jaegerQueryReader))
+	singleTraceHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQuerySingleTraceEndpoint, SingleTrace(apiConf, jaegerQueryReader))
 	router.Post(JaegerQuerySingleTraceEndpoint, singleTraceHandler)
+
+	findTracesHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQueryTracesEndpoint, FindTraces(apiConf, jaegerQueryReader))
+	router.Post(JaegerQueryTracesEndpoint, findTracesHandler)
+
+	findTraceIdsHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQueryTraceIdsEndpoint, FindTraceIds(apiConf, jaegerQueryReader))
+	router.Post(JaegerQueryTraceIdsEndpoint, findTraceIdsHandler)
 
 	router.Get(apiConf.TelemetryPath, promhttp.Handler().ServeHTTP)
 	router.Get("/debug/pprof/", pprof.Index)
