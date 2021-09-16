@@ -69,10 +69,6 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	sw := NewSeriesWriter(conn, labelArrayOID)
 	elf := NewExamplarLabelFormatter(conn, eCache)
 
-	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, copierReadRequestCh, sw, elf)
-	}
-
 	inserter := &pgxDispatcher{
 		conn:                   conn,
 		metricTableNames:       cache,
@@ -86,6 +82,23 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		doneChannel:        make(chan struct{}),
 	}
 	runBatchWatcher(inserter.doneChannel)
+
+	for i := 0; i < numCopiers; i++ {
+		// inserter is claen untile copier is done
+		inserter.doneWG.Add(1)
+		go func() {
+			defer inserter.doneWG.Done()
+			for {
+				select {
+				case <-inserter.doneChannel:
+					// inserter singal stoped, do not restart
+					return
+				default:
+					runCopier(conn, copierReadRequestCh, sw, elf)
+				}
+			}
+		}()
+	}
 
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
