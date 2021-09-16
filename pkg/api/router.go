@@ -6,6 +6,7 @@ package api
 
 import (
 	"fmt"
+	jaeger_query "github.com/timescale/promscale/pkg/plugin/jaeger-query"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -22,6 +23,12 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/util"
+)
+
+const (
+	JaegerQueryServicesEndpoint = "api/v1/jaeger/query/services"
+	JaegerQueryOperationsEndpoint = "api/v1/jaeger/query/operations"
+	JaegerQuerySingleTraceEndpoint = "api/v1/jaeger/query/get-trace"
 )
 
 func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
@@ -78,6 +85,11 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, metrics))
 	router.Get("/api/v1/query_exemplars", exemplarQueryHandler)
 	router.Post("/api/v1/query_exemplars", exemplarQueryHandler)
+	// todo: below is debug. remove on PR.
+	router.Get("/api/v1/report", func(writer http.ResponseWriter, request *http.Request) {
+		fmt.Println("got a ping in report")
+		writer.Write([]byte("success"))
+	})
 
 	seriesHandler := timeHandler(metrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
 	router.Get("/api/v1/series", seriesHandler)
@@ -96,6 +108,23 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 
 	healthChecker := func() error { return client.HealthCheck() }
 	router.Get("/healthz", Health(healthChecker))
+
+	// Serve Jaeger plugin endpoints.
+	// Todo 1: (incremental optimizations):
+	// 1. Support bearer_token & TLS between jaeger-query-plugin and Promscale.
+	// 2. Protocol buffers as encoding layer.
+	// 3. gRPC calls instead of JSON.
+	// Todo 2: (refactor): pkg/api => pkg/api/handlers/traces & pkg/api/handlers/metrics & pkg/api/router.go
+	jaegerQueryReader := jaeger_query.NewReader(client.Connection)
+
+	servicesHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQueryServicesEndpoint, Services(apiConf, jaegerQueryReader))
+	router.Post(JaegerQueryServicesEndpoint, servicesHandler)
+
+	operationsHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQueryOperationsEndpoint, Operations(apiConf, jaegerQueryReader))
+	router.Post(JaegerQueryOperationsEndpoint, operationsHandler)
+
+	singleTraceHandler := timeHandler(metrics.HTTPRequestDuration, JaegerQueryOperationsEndpoint, SingleTrace(apiConf, jaegerQueryReader))
+	router.Post(JaegerQuerySingleTraceEndpoint, singleTraceHandler)
 
 	router.Get(apiConf.TelemetryPath, promhttp.Handler().ServeHTTP)
 	router.Get("/debug/pprof/", pprof.Index)
