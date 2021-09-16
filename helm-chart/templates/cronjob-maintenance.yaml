@@ -57,7 +57,7 @@ spec:
           volumes:
             - name: script-volume
               configMap:
-                name: {{ include "promscal.fullname" . | trunc 51 }}-maintenance
+                name: {{ include "promscale.fullname" . | trunc 51 }}-maintenance
           restartPolicy: OnFailure
           {{- with .Values.maintenance.nodeSelector }}
           nodeSelector:
