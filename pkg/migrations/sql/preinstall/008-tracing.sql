@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS _ps_trace.span
 );
 CREATE INDEX ON _ps_trace.span USING BTREE (trace_id, parent_span_id);
 CREATE INDEX ON _ps_trace.span USING GIN (span_tags jsonb_path_ops);
+CREATE INDEX ON _ps_trace.span USING BTREE (name_id);
 --CREATE INDEX ON _ps_trace.span USING GIN (jsonb_object_keys(span_tags) array_ops); -- possible way to index key exists
 CREATE INDEX ON _ps_trace.span USING GIN (resource_tags jsonb_path_ops);
 SELECT create_hypertable('_ps_trace.span', 'start_time', partitioning_column=>'trace_id', number_partitions=>1);
@@ -394,3 +395,77 @@ BEGIN
 END;
 $do$;
 
+INSERT INTO _ps_trace.tag_key (id, key)
+OVERRIDING SYSTEM VALUE
+VALUES
+    (1, 'service.name'),
+    (2, 'service.namespace'),
+    (3, 'service.instance.id'),
+    (4, 'service.version'),
+    (5, 'telemetry.sdk.name'),
+    (6, 'telemetry.sdk.language'),
+    (7, 'telemetry.sdk.version'),
+    (8, 'telemetry.auto.version'),
+    (9, 'container.name'),
+    (10, 'container.id'),
+    (11, 'container.runtime'),
+    (12, 'container.image.name'),
+    (13, 'container.image.tag'),
+    (14, 'faas.name'),
+    (15, 'faas.id'),
+    (16, 'faas.version'),
+    (17, 'faas.instance'),
+    (18, 'faas.max_memory'),
+    (19, 'process.pid'),
+    (20, 'process.executable.name'),
+    (21, 'process.executable.path'),
+    (22, 'process.command'),
+    (23, 'process.command_line'),
+    (24, 'process.command_args'),
+    (25, 'process.owner'),
+    (26, 'process.runtime.name'),
+    (27, 'process.runtime.version'),
+    (28, 'process.runtime.description'),
+    (29, 'webengine.name'),
+    (30, 'webengine.version'),
+    (31, 'webengine.description'),
+    (32, 'host.id'),
+    (33, 'host.name'),
+    (34, 'host.type'),
+    (35, 'host.arch'),
+    (36, 'host.image.name'),
+    (37, 'host.image.id'),
+    (38, 'host.image.version'),
+    (39, 'os.type'),
+    (40, 'os.description'),
+    (41, 'os.name'),
+    (42, 'os.version'),
+    (43, 'device.id'),
+    (44, 'device.model.identifier'),
+    (45, 'device.model.name'),
+    (46, 'cloud.provider'),
+    (47, 'cloud.account.id'),
+    (48, 'cloud.region'),
+    (49, 'cloud.availability_zone'),
+    (50, 'cloud.platform'),
+    (51, 'deployment.environment'),
+    (52, 'k8s.cluster'),
+    (53, 'k8s.node.name'),
+    (54, 'k8s.node.uid'),
+    (55, 'k8s.namespace.name'),
+    (56, 'k8s.pod.uid'),
+    (57, 'k8s.pod.name'),
+    (58, 'k8s.container.name'),
+    (59, 'k8s.replicaset.uid'),
+    (60, 'k8s.replicaset.name'),
+    (61, 'k8s.deployment.uid'),
+    (62, 'k8s.deployment.name'),
+    (63, 'k8s.statefulset.uid'),
+    (64, 'k8s.statefulset.name'),
+    (65, 'k8s.daemonset.uid'),
+    (66, 'k8s.daemonset.name'),
+    (67, 'k8s.job.uid'),
+    (68, 'k8s.job.name'),
+    (69, 'k8s.cronjob.uid'),
+    (70, 'k8s.cronjob.name')
+;
