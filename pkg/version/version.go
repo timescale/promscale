@@ -48,7 +48,7 @@ var (
 	// Note: This must be an exact semver match.
 	//
 	// In future releases, this will help us be backwards compatible when we extend the plugin versions.
-	CompatibleJaegerPluginVersion		= "0.0.1-dev.0"
+	CompatibleJaegerPluginVersion       = "0.0.1-dev.0"
 	CommitHash                          = ""
 	EarliestUpgradeTestVersion          = "0.1.0"
 	EarliestUpgradeTestVersionMultinode = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0

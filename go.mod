@@ -13,6 +13,7 @@ require (
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.3
+	github.com/hashicorp/go-hclog v0.16.2
 	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
 	github.com/jackc/pgconn v1.8.1
@@ -21,6 +22,7 @@ require (
 	github.com/jackc/pgtype v1.4.2
 	github.com/jackc/pgx/v4 v4.8.0
 	github.com/jaegertracing/jaeger v1.26.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.35.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pbnjay/memory v0.0.0-20201129165224-b12e5d931931
@@ -32,10 +34,12 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20210605142932-7bc11dcb0664
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
+	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514
 	github.com/thanos-io/thanos v0.20.1
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
+	go.opentelemetry.io/collector/model v0.35.0
 	go.uber.org/goleak v1.1.10
 	google.golang.org/grpc v1.40.0
 )

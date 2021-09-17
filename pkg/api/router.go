@@ -6,11 +6,7 @@ package api
 
 import (
 	"fmt"
-	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
-	"github.com/timescale/promscale/pkg/api/store"
 	jaeger_query "github.com/timescale/promscale/pkg/plugin/jaeger-query"
-	"google.golang.org/grpc"
-	"net"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -30,11 +26,11 @@ import (
 )
 
 const (
-	JaegerQueryServicesEndpoint = "api/v1/jaeger/query/services"
-	JaegerQueryOperationsEndpoint = "api/v1/jaeger/query/operations"
-	JaegerQuerySingleTraceEndpoint = "api/v1/jaeger/query/get-trace"
-	JaegerQueryTracesEndpoint = "api/v1/jaeger/query/get-traces"
-	JaegerQueryTraceIdsEndpoint = "api/v1/jaeger/query/get-trace-ids"
+	JaegerQueryServicesEndpoint    = "/api/v1/jaeger/query/services"
+	JaegerQueryOperationsEndpoint  = "/api/v1/jaeger/query/operations"
+	JaegerQuerySingleTraceEndpoint = "/api/v1/jaeger/query/get-trace"
+	JaegerQueryTracesEndpoint      = "/api/v1/jaeger/query/get-traces"
+	JaegerQueryTraceIdsEndpoint    = "/api/v1/jaeger/query/get-trace-ids"
 )
 
 func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
@@ -96,11 +92,6 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		fmt.Println("got a ping in report")
 		writer.Write([]byte("success"))
 	})
-
-	gRPCServer := grpc.NewServer()
-	connector := store.New()
-	listener :- net.Listener("tcp", ":9202")
-	storage_v1.RegisterSpanReaderPluginServer(gRPCServer, connector)
 
 	seriesHandler := timeHandler(metrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
 	router.Get("/api/v1/series", seriesHandler)

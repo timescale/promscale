@@ -5,7 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/timescale/promscale/pkg/api"
+	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
+	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -13,23 +14,47 @@ import (
 	"time"
 
 	"github.com/jaegertracing/jaeger/model"
-	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/timescale/promscale/pkg/api"
 )
 
-type connector struct {
-	url string
+var (
+	_ shared.StoragePlugin   = (*Connector)(nil)
+	_ spanstore.Reader       = (*Connector)(nil)
+	_ dependencystore.Reader = (*Connector)(nil)
+)
+
+type Connector struct {
+	url        string
 	httpClient *http.Client
 }
 
-func NewReader(url string) spanstore.Reader {
-	return &connector{
-		httpClient: &http.Client{Timeout: time.Second*10},
+func NewReader(url string) *Connector {
+	return &Connector{
+		url:        url,
+		httpClient: &http.Client{Timeout: time.Second * 10},
 	}
 }
 
-func (c *connector) GetServices(ctx context.Context) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, "post", c.url + api.JaegerQueryServicesEndpoint, nil)
+func (c *Connector) SpanWriter() spanstore.Writer {
+	panic("Use Promscale coupled with OTLP-collector to ingest data")
+}
+
+func (c *Connector) SpanReader() spanstore.Reader {
+	return c
+}
+
+func (c *Connector) DependencyReader() dependencystore.Reader {
+	return nil
+}
+
+func (c *Connector) GetDependencies(ctx context.Context, endTs time.Time, lookback time.Duration) ([]model.DependencyLink, error) {
+	return nil, nil
+}
+
+func (c *Connector) GetServices(ctx context.Context) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", c.url+api.JaegerQueryServicesEndpoint, bytes.NewReader([]byte("temp")))
 	if err != nil {
 		return nil, fmt.Errorf("creating request from Promscale: %w", err)
 	}
@@ -53,12 +78,12 @@ func (c *connector) GetServices(ctx context.Context) ([]string, error) {
 	return services, nil
 }
 
-func (c *connector) GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
+func (c *Connector) GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
 	var form url.Values
 	form.Add("service_name", query.ServiceName)
 	form.Add("span_kind", query.SpanKind)
 
-	req, err := http.NewRequestWithContext(ctx, "post", c.url + api.JaegerQueryOperationsEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "post", c.url+api.JaegerQueryOperationsEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("creating request from Promscale: %w", err)
 	}
@@ -81,12 +106,12 @@ func (c *connector) GetOperations(ctx context.Context, query spanstore.Operation
 	return operations, nil
 }
 
-func (c *connector) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
+func (c *Connector) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
 	var form url.Values
 	form.Add("trace_id_low", fmt.Sprintf("%d", traceID.Low))
 	form.Add("trace_id_high", fmt.Sprintf("%d", traceID.High))
 
-	req, err := http.NewRequestWithContext(ctx, "post", c.url + api.JaegerQuerySingleTraceEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "post", c.url+api.JaegerQuerySingleTraceEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("creating request from Promscale: %w", err)
 	}
@@ -105,7 +130,7 @@ func (c *connector) GetTrace(ctx context.Context, traceID model.TraceID) (*model
 	return nil, nil
 }
 
-func (c *connector) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
+func (c *Connector) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
 	r := &storage_v1.FindTracesRequest{
 		Query: &storage_v1.TraceQueryParameters{
 			ServiceName:   query.ServiceName,
@@ -124,7 +149,7 @@ func (c *connector) FindTraces(ctx context.Context, query *spanstore.TraceQueryP
 		return nil, fmt.Errorf("marshalling 'findTracesRequest': %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "post", c.url + api.JaegerQuerySingleTraceEndpoint, bytes.NewReader(bSlice))
+	req, err := http.NewRequestWithContext(ctx, "post", c.url+api.JaegerQuerySingleTraceEndpoint, bytes.NewReader(bSlice))
 	if err != nil {
 		return nil, fmt.Errorf("creating request from Promscale: %w", err)
 	}
@@ -140,22 +165,10 @@ func (c *connector) FindTraces(ctx context.Context, query *spanstore.TraceQueryP
 		return nil, fmt.Errorf("reading response body from Promscale: %w", err)
 	}
 
-	return nil, nil
 	return []*model.Trace{}, nil
 }
 
-func (c *connector) FindTraceIDs(ctx context.Context, traceQueryParameters *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
+func (c *Connector) FindTraceIDs(ctx context.Context, traceQueryParameters *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
 	var traceIDs []model.TraceID
 	return traceIDs, nil
-}
-
-type kv struct {
-	k, v string
-}
-
-func buildForm(pairs ...kv) (form url.Values) {
-	for _, p := range pairs {
-		form.Add(p.k, p.v)
-	}
-	return
 }

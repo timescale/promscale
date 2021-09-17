@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/timescale/promscale/pkg/log"
 	"io"
 	"io/ioutil"
 	"math"
@@ -223,6 +224,20 @@ func respond(w http.ResponseWriter, status int, message interface{}) {
 		Status: http.StatusText(status),
 		Data:   message,
 	})
+}
+
+func respondProto(w http.ResponseWriter, status int, data []byte) {
+	w.WriteHeader(status)
+	if _, err := w.Write(data); err != nil {
+		log.Error("msg", "error writing proto response to jaeger plugin: "+err.Error())
+	}
+}
+
+func respondProtoWithErr(w http.ResponseWriter, status int) {
+	w.WriteHeader(status)
+	if _, err := w.Write(nil); err != nil {
+		log.Error("msg", "error writing proto response to jaeger plugin: "+err.Error())
+	}
 }
 
 func respondError(w http.ResponseWriter, status int, err error, errType string) {

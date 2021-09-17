@@ -52,4 +52,3 @@ func main() {
 	}
 	println(time.Now().Sub(start))
 }
-
