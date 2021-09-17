@@ -469,3 +469,4 @@ VALUES
     (69, 'k8s.cronjob.uid'),
     (70, 'k8s.cronjob.name')
 ;
+SELECT setval('_ps_trace.tag_key_id_seq', (SELECT max(id) from _ps_trace.tag_key));
