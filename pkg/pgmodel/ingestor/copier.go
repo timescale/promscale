@@ -68,12 +68,6 @@ func (reqs copyBatch) VisitExemplar(callBack func(s *pgmodel.PromExemplars) erro
 func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
 	requestBatch := make([]readRequest, 0, maxInsertStmtPerTxn)
 	insertBatch := make([]copyRequest, 0, cap(requestBatch))
-	processErr := func(err error) {
-		for i := range insertBatch {
-			insertBatch[i].data.reportResults(err)
-			insertBatch[i].data.release()
-		}
-	}
 	for {
 		var ok bool
 
@@ -101,20 +95,13 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 			return insertBatch[i].table < insertBatch[j].table
 		})
 
-		batch := copyBatch(insertBatch)
-
-		err := sw.WriteSeries(batch)
+		err := persistBatch(conn, sw, elf, insertBatch)
 		if err != nil {
-			processErr(fmt.Errorf("copier: writing series: %w", err))
-			return
+			for i := range insertBatch {
+				insertBatch[i].data.reportResults(err)
+				insertBatch[i].data.release()
+			}
 		}
-		err = elf.orderExemplarLabelValues(batch)
-		if err != nil {
-			processErr(fmt.Errorf("copier: formatting exemplar label values: %w", err))
-			return
-		}
-
-		doInsertOrFallback(conn, insertBatch...)
 		for i := range requestBatch {
 			requestBatch[i] = readRequest{}
 		}
@@ -124,6 +111,21 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 		insertBatch = insertBatch[:0]
 		requestBatch = requestBatch[:0]
 	}
+}
+
+func persistBatch(conn pgxconn.PgxConn, sw *seriesWriter, elf *ExemplarLabelFormatter, insertBatch []copyRequest) error {
+	batch := copyBatch(insertBatch)
+	err := sw.WriteSeries(batch)
+	if err != nil {
+		return fmt.Errorf("copier: writing series: %w", err)
+	}
+	err = elf.orderExemplarLabelValues(batch)
+	if err != nil {
+		return fmt.Errorf("copier: formatting exemplar label values: %w", err)
+	}
+
+	doInsertOrFallback(conn, insertBatch...)
+	return nil
 }
 
 func copierGetBatch(batch []readRequest, in <-chan readRequest) ([]readRequest, bool) {
