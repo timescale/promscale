@@ -354,6 +354,7 @@ def save_trace(trace: Trace, cur, con) -> None:
 
         save_instrumentation_lib(span.instrumentation_lib, cur)
         save_span_name(span.name, cur)
+
         save_span(span, cur)
 
         print('.', end='', flush=True)
