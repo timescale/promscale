@@ -765,7 +765,7 @@ func createMetricView(db *pgxpool.Pool, t testing.TB, schemaName, viewName, metr
 	if _, err := db.Exec(context.Background(), fmt.Sprintf(`CREATE VIEW "%s"."%s" AS SELECT * FROM prom_data."%s"`, schemaName, viewName, metricName)); err != nil {
 		t.Fatalf("unexpected error while creating metric view: %s", err)
 	}
-	if _, err := db.Exec(context.Background(), fmt.Sprintf("SELECT _prom_catalog.register_metric_view('%s', '%s')", schemaName, viewName)); err != nil {
+	if _, err := db.Exec(context.Background(), fmt.Sprintf("SELECT prom_api.register_metric_view('%s', '%s')", schemaName, viewName)); err != nil {
 		t.Fatalf("unexpected error while registering metric view: %s", err)
 	}
 }
