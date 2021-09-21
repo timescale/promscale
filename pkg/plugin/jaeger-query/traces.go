@@ -3,6 +3,7 @@ package jaeger_query
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
@@ -274,8 +275,24 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 		return nil, fmt.Errorf("iterating raw-traces: %w", err)
 	}
 	fmt.Println("total spans are", traces.SpanCount())
-	jaegertranslator.InternalTracesToJaegerProto(traces)
+	batch, err := jaegertranslator.InternalTracesToJaegerProto(traces)
+	if err != nil {
+		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
+	}
+	fmt.Println("elements in batch", len(batch))
 	// query
+	bSlice, err := json.Marshal(batch)
+	if err != nil {
+		return nil, fmt.Errorf("json marshaling: %w", err)
+	}
+	fmt.Println("num bytes", len(bSlice))
+
+	var receivingSide []*model.Batch
+	if err := json.Unmarshal(bSlice, &receivingSide); err != nil {
+		return nil, fmt.Errorf("json unmarshaling: %w", err)
+	}
+	fmt.Println("after: elements in batch", len(batch))
+	fmt.Println(batch[0].Process.ServiceName)
 	return nil, nil
 }
 
