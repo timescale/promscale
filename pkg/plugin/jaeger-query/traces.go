@@ -3,6 +3,7 @@ package jaeger_query
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
@@ -119,7 +120,6 @@ SELECT s.trace_id,
        array_agg(s.parent_span_id) parent_span_ids,
        array_agg(s.start_time) start_times,
        array_agg(s.end_time) end_times,
-	   array_agg(s.end_time - s.start_time) durations,
        array_agg(s.span_kind) span_kinds,
        array_agg(s.dropped_tags_count) dropped_tags_counts,
        array_agg(s.dropped_events_count) dropped_events_counts,
@@ -133,38 +133,38 @@ FROM   _ps_trace.span s
        INNER JOIN _ps_trace.span_name sn
                ON s.name_id = sn.id
 WHERE
-		sn.name = $1
+		
+		s.start_time BETWEEN $1::timestamptz AND $2::timestamptz
 	AND
-		s.start_time BETWEEN $2::timestamptz AND $3::timestamptz
-	AND
-	(s.end_time - s.start_time) BETWEEN $4 AND $5
-GROUP BY s.trace_id LIMIT $6`
+	(s.end_time - s.start_time) BETWEEN $3 AND $4
+GROUP BY s.trace_id LIMIT $5`
 
 func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQueryParameters) ([]model.Trace, error) {
-	rawTracesIterator, err := conn.Query(ctx, getTraces, q.ServiceName, q.StartTimeMin, q.StartTimeMax, q.DurationMin, q.DurationMax, q.NumTraces)
+	fmt.Println("query parameters", q)
+	fmt.Println("operation name", q.OperationName)
+	rawTracesIterator, err := conn.Query(ctx, getTraces, q.StartTimeMin, q.StartTimeMax, q.DurationMin, q.DurationMax, q.NumTraces)
 	if err != nil {
 		return nil, fmt.Errorf("querying traces: %w", err)
 	}
 	defer rawTracesIterator.Close()
 
 	var (
-		// traces pdata.Traces
+		//traces pdata.Traces
 
 		// Iteration vars.
 		// Each element in the array corresponds to one span, of a trace.
-		traceId             string // The value is received in uuid.
-		spanIds             []string
-		parentSpanIds       []string
-		startTimes          []time.Duration
-		endTimes            []time.Duration
-		durations           []time.Duration
-		kinds               []string
-		droppedTagsCounts   []int
-		droppedEventsCounts []int
-		droppedLinkCounts   []int
-		traceStates         []string
-		schemaUrls          []string
-		spanNames           []string
+		traceId             pgtype.Bytea // The value is received in uuid.
+		spanIds             pgtype.Int8Array
+		parentSpanIds       pgtype.Int8Array
+		startTimes          pgtype.TimestamptzArray
+		endTimes            pgtype.TimestamptzArray
+		kinds               pgtype.TextArray
+		droppedTagsCounts   pgtype.Int4Array
+		droppedEventsCounts pgtype.Int4Array
+		droppedLinkCounts   pgtype.Int4Array
+		traceStates         pgtype.TextArray
+		schemaUrls          pgtype.TextArray
+		spanNames           pgtype.TextArray
 
 		// resourceSpans = traces.ResourceSpans()
 	)
@@ -183,7 +183,6 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 			&parentSpanIds,
 			&startTimes,
 			&endTimes,
-			&durations,
 			&kinds,
 			&droppedTagsCounts,
 			&droppedEventsCounts,
@@ -195,9 +194,16 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 			break
 		}
 		fmt.Println("traceId", traceId)
+
+		b := traceId.Get().([]byte)
+		var b16 [16]byte
+		copy(b16[:16], b)
+		traceIdStr := pdata.NewTraceID(b16).HexString()
+
+		fmt.Println("traceId str", traceIdStr)
 		fmt.Println("spanIds", spanIds)
 		fmt.Println("startTimes", startTimes)
-		fmt.Println("durations", durations)
+		fmt.Println("kinds", kinds)
 		fmt.Println("schemaUrls", schemaUrls)
 
 	}
