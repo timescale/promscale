@@ -5,13 +5,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"go.opentelemetry.io/collector/model/pdata"
-	"time"
 )
 
 const (
@@ -166,7 +167,7 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 		schemaUrls          pgtype.TextArray
 		spanNames           pgtype.TextArray
 
-		traces = pdata.NewTraces()
+		traces        = pdata.NewTraces()
 		resourceSpans = traces.ResourceSpans().AppendEmpty()
 	)
 	for rawTracesIterator.Next() {
@@ -248,7 +249,6 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 			return nil, fmt.Errorf("spanNames: text-array-to-string-array: %w", err)
 		}
 
-
 		makeSpans(libSpans,
 			makeTraceId(traceId),
 			spanIds_,
@@ -262,14 +262,6 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 			traceStates_,
 			schemaUrls_,
 			spanNames_)
-
-		//fmt.Println("traceId str", traceIdStr)
-		//fmt.Println("spanIds", spanIds)
-		//fmt.Println("startTimes", startTimes)
-		//fmt.Println("kinds", kinds)
-		//fmt.Println("schemaUrls", schemaUrls)
-
-
 	}
 	if err != nil {
 		return nil, fmt.Errorf("iterating raw-traces: %w", err)
@@ -367,11 +359,11 @@ func makeSpanIds(s pgtype.Int8Array) ([]pdata.SpanID, error) {
 	if err != nil {
 		return nil, fmt.Errorf("int8ArraytoInt64Arr: %w", err)
 	}
- 	b := make([]byte, 8)
-    spanIds := make([]pdata.SpanID, len(tmp))
+	b := make([]byte, 8)
+	spanIds := make([]pdata.SpanID, len(tmp))
 	for i := range tmp {
 		if tmp[i] == nil {
-			spanIds[i] = pdata.NewSpanID([8]byte{0,0,0,0,0,0,0,0}) // Empty span id.
+			spanIds[i] = pdata.NewSpanID([8]byte{0, 0, 0, 0, 0, 0, 0, 0}) // Empty span id.
 			continue
 		}
 		binary.BigEndian.PutUint64(b, uint64(*tmp[i]))

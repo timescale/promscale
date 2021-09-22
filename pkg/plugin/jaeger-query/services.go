@@ -3,21 +3,26 @@ package jaeger_query
 import (
 	"context"
 	"fmt"
+
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/pkg/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const getServices = "select array_agg(value) from _ps_trace.tag where key='service.name' group by value order by value"
+const getServices = "select array_agg(a.value) from (select value from _ps_trace.tag where key='service.name' and value is not null order by value) a"
 
 func services(ctx context.Context, conn pgxconn.PgxConn) ([]string, error) {
-	services := make([]string, 0)
-	if err := conn.QueryRow(ctx, getServices).Scan(&services); err != nil {
+	var pgServices pgtype.TextArray
+	if err := conn.QueryRow(ctx, getServices).Scan(&pgServices); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			services = append(services, "mock_service") // only for debug
-			return services, nil
+			return []string{}, nil
 		}
 		return nil, fmt.Errorf("fetching services: %w", err)
 	}
-	return services, nil
+	s, err := textArraytoStringArr(pgServices)
+	if err != nil {
+		return nil, fmt.Errorf("services: converting text-array-to-string-arr: %w", err)
+	}
+	return s, nil
 }

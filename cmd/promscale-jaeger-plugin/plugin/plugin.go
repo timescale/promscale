@@ -121,7 +121,6 @@ func (p *Plugin) waitForResponse(ctx context.Context, requestData marshallable, 
 }
 
 func (p *Plugin) GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
-	p.logger.Warn("msg", "into operations")
 	request := &storage_v1.GetOperationsRequest{
 		Service:  query.ServiceName,
 		SpanKind: query.SpanKind,

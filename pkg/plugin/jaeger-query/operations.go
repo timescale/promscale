@@ -4,25 +4,47 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const getOperations = `select array_agg(sn.name), array_agg(s.span_kind::text) from
-_ps_trace.span_name sn inner join _ps_trace.span s
-	on sn.id = s.name_id
-where _ps_trace.val_text(s.resource_tags, 'int18')=$1 and s.span_kind=$2` // change int18 => service.name
+const (
+	getOperations = `SELECT array_agg(sn.name),
+       array_agg(s.span_kind)
+FROM   _ps_trace.span_name sn
+       inner join _ps_trace.span s
+               ON sn.id = s.name_id
+WHERE  _ps_trace.val_text(s.resource_tags, 'service.name') = $1`
+	spanKindSQL = ` AND s.span_kind = $2`
+)
 
 func operations(ctx context.Context, conn pgxconn.PgxConn, query storage_v1.GetOperationsRequest) (storage_v1.GetOperationsResponse, error) {
 	var (
-		operationNames, spanKinds []string
-		operationsResp            storage_v1.GetOperationsResponse
+		pgOperationNames, pgSpanKinds pgtype.TextArray
+		operationsResp                storage_v1.GetOperationsResponse
 	)
-	query.Service = "3"
-	query.SpanKind = "SPAN_KIND_CONSUMER"
-	if err := conn.QueryRow(ctx, getOperations, query.Service, query.SpanKind).Scan(&operationNames, &spanKinds); err != nil {
+	sqlQuery := getOperations
+	// temporary, till the test dataset is being used. It makes m to "m", hence sql result is empty.
+	query.Service = query.Service[1 : len(query.Service)-1]
+	args := []interface{}{query.Service}
+	if len(query.SpanKind) > 0 {
+		sqlQuery = sqlQuery + spanKindSQL
+		args = append(args, query.SpanKind)
+	}
+	if err := conn.QueryRow(ctx, sqlQuery, args...).Scan(&pgOperationNames, &pgSpanKinds); err != nil {
 		return operationsResp, fmt.Errorf("fetching operations: %w", err)
 	}
+
+	operationNames, err := textArraytoStringArr(pgOperationNames)
+	if err != nil {
+		return operationsResp, fmt.Errorf("operation names: text-array-to-string-array: %w", err)
+	}
+	spanKinds, err := textArraytoStringArr(pgOperationNames)
+	if err != nil {
+		return operationsResp, fmt.Errorf("span kinds: text-array-to-string-array: %w", err)
+	}
+
 	if len(operationNames) != len(spanKinds) {
 		return operationsResp, fmt.Errorf("entries not same in operation-name and span-kind")
 	}

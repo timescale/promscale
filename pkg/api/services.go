@@ -17,7 +17,6 @@ func Services(conf *Config, reader *jaeger_query.JaegerQueryReader) http.Handler
 
 func servicesHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("into services")
 		services, err := reader.GetServices(context.Background())
 		if err != nil {
 			log.Error("msg", fmt.Errorf("get services: %w", err))
@@ -31,7 +30,6 @@ func servicesHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc {
 			respondProtoWithErr(w, http.StatusInternalServerError)
 			return
 		}
-		fmt.Println("sending response as", response)
 		respondProto(w, http.StatusOK, bSlice)
 	}
 }
