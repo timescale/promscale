@@ -210,7 +210,7 @@ WITH (timescaledb.continuous,  timescaledb.ignore_invalidation_older_than = '1 m
 				t.Fatalf("unexpected error while creating metric view: %s", err)
 			}
 		}
-		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('cagg_schema', 'cagg')"); err != nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')"); err != nil {
 			t.Fatalf("unexpected error while registering metric view: %s", err)
 		}
 
@@ -411,7 +411,7 @@ WITH (timescaledb.continuous, timescaledb.max_interval_per_job = '1000 weeks', t
 			_, err = db.Exec(context.Background(), `REFRESH MATERIALIZED VIEW cagg_schema.cagg`)
 			require.NoError(t, err)
 		}
-		_, err = db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('cagg_schema', 'cagg')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')")
 		require.NoError(t, err)
 
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('cagg_schema', 'cagg', INTERVAL '180 days')")
@@ -492,7 +492,7 @@ WITH (timescaledb.continuous) AS
 			t.Fatalf("unexpected error while creating metric view: %s", err)
 		}
 
-		if _, err := db.Exec(context.Background(), "SELECT _prom_catalog.register_metric_view('public', 'tw_1hour')"); err != nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('public', 'tw_1hour')"); err != nil {
 			t.Fatalf("unexpected error while registering metric view: %s", err)
 		}
 

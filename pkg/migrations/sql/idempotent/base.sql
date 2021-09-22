@@ -2486,7 +2486,7 @@ SET search_path = pg_temp;
 REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.register_metric_view(schema_name name, view_name name, if_not_exists BOOLEAN = false)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.register_metric_view(schema_name name, view_name name, if_not_exists BOOLEAN = false)
     RETURNS BOOLEAN
 AS $func$
 DECLARE
@@ -2562,10 +2562,10 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.register_metric_view(name, name, boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.register_metric_view(name, name, boolean) TO prom_admin;
+REVOKE ALL ON FUNCTION SCHEMA_PROM.register_metric_view(name, name, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.register_metric_view(name, name, boolean) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.unregister_metric_view(schema_name name, view_name name, if_exists BOOLEAN = false)
+CREATE OR REPLACE FUNCTION SCHEMA_PROM.unregister_metric_view(schema_name name, view_name name, if_exists BOOLEAN = false)
     RETURNS BOOLEAN
 AS $func$
 DECLARE
@@ -2594,8 +2594,8 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.unregister_metric_view(name, name, boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unregister_metric_view(name, name, boolean) TO prom_admin;
+REVOKE ALL ON FUNCTION SCHEMA_PROM.unregister_metric_view(name, name, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_PROM.unregister_metric_view(name, name, boolean) TO prom_admin;
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(name text, series_ids bigint[])
 RETURNS BIGINT
