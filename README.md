@@ -43,6 +43,7 @@ remote storage endpoints. For more information about prom-migrator, visit
 # Documentation
 
 * **[About TimescaleDB](#-about-timescaledb)**
+* **[Timescale cloud](#-timescale-cloud)**
 * **[Features](#-features)**
 * **[Installation](#-choose-your-own-installation-adventure)**
   * [The Observability Suite for Kubernetes][tobs]
@@ -96,6 +97,14 @@ time-series data. AppDynamics (now part of Cisco Systems and one of the
 largest application performance monitoring providers) relies on TimescaleDB
 as its main metrics database. TimescaleDB is also the preferred (recommended)
 backend datasource for Zabbix users and is natively supported in Grafana.
+
+## 🚀 Timescale Cloud
+
+**[Timescale cloud](https://www.timescale.com/cloud)** offers you an unrivalled experience of TimescaleDB.
+All you have to do to integrate with Timescale cloud is configure the db uri using `-db-uri` flag in Promscale to database 
+instance running in Timescale cloud.
+
+**Note:** Timescale cloud offers a 30-day free trial.  
 
 ## 🌟 Features
 
