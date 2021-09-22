@@ -3,7 +3,6 @@ package jaeger_query
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -82,70 +81,38 @@ func prepareDemoTrace() pdata.Traces {
 	return td
 }
 
-// todo
-// 1. tags
-// 2. question: the received params are start time min & start time max of trace, but we are storing start time in & max of span, but since its an 'and' condition, its should be all good, right?
-
-// real one
-// const getTraces = `
-// SELECT s.trace_id,
-//        s.span_id,
-//        s.parent_span_id,
-//        s.start_time,
-//        s.end_time,
-// 	   s.end_time - s.start_time duration,
-//        s.span_kind,
-//        s.dropped_tags_count,
-//        s.dropped_events_count,
-//        s.dropped_link_count,
-//        s.trace_state,
-//        sch_url.url schema_url,
-//        sn.name     span_name
-// FROM   _ps_trace.span s
-//        INNER JOIN _ps_trace.schema_url sch_url
-//                ON s.resource_schema_url_id = sch_url.id
-//        INNER JOIN _ps_trace.span_name sn
-//                ON s.name_id = sn.id
-// WHERE
-// 		_ps_trace.val_text(s.resource_tags, 'service.name') = $1
-// 	AND
-// 		sn.name = $2
-// 	AND
-// 		s.start_time BETWEEN $3 AND $4
-// 	AND
-// 		s.duration BETWEEN $5 AND $6
-// GROUP BY s.trace_id LIMIT $7
-// 	`
-
-const getTraces = `
-SELECT s.trace_id,
-	   array_agg(s.span_id) span_ids,
-       array_agg(s.parent_span_id) parent_span_ids,
-       array_agg(s.start_time) start_times,
-       array_agg(s.end_time) end_times,
-       array_agg(s.span_kind) span_kinds,
-       array_agg(s.dropped_tags_count) dropped_tags_counts,
-       array_agg(s.dropped_events_count) dropped_events_counts,
-       array_agg(s.dropped_link_count) dropped_link_counts,
-       array_agg(s.trace_state) trace_states,
-       array_agg(sch_url.url) schema_urls,
-       array_agg(sn.name)     span_names
-FROM   _ps_trace.span s
-       INNER JOIN _ps_trace.schema_url sch_url
-               ON s.resource_schema_url_id = sch_url.id
-       INNER JOIN _ps_trace.span_name sn
-               ON s.name_id = sn.id
-WHERE
-		
-		s.start_time BETWEEN $1::timestamptz AND $2::timestamptz
-	AND
-	(s.end_time - s.start_time) BETWEEN $3 AND $4
-GROUP BY s.trace_id LIMIT $5`
-
-func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQueryParameters) ([]model.Trace, error) {
+func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQueryParameters) ([]*model.Batch, error) {
 	fmt.Println("query parameters", q)
-	fmt.Println("operation name", q.OperationName)
-	rawTracesIterator, err := conn.Query(ctx, getTraces, q.StartTimeMin, q.StartTimeMax, q.DurationMin, q.DurationMax, q.NumTraces)
+
+	builder := newFindtracesQueryBuilder()
+	if len(q.ServiceName) > 0 {
+		q.ServiceName = q.ServiceName[1 : len(q.ServiceName)-1] // temporary, based on trace gen behaviour
+		builder.withWhere().withServiceName(q.ServiceName)
+	}
+	if len(q.OperationName) > 0 {
+		builder.withOperationName(q.OperationName)
+	}
+	if len(q.Tags) > 0 {
+		builder.withResourceTags(q.Tags)
+	}
+	var defaultTime time.Time
+	if q.StartTimeMin != defaultTime && q.StartTimeMax != defaultTime {
+		builder.withStartRange(q.StartTimeMin, q.StartTimeMax)
+	}
+	var defaultDuration time.Duration
+	if q.DurationMin != defaultDuration && q.DurationMax != defaultDuration {
+		builder.withDurationRange(q.DurationMin, q.DurationMax)
+	}
+	if q.NumTraces == 0 {
+		builder.groupBy()
+	} else {
+		builder.groupBy().withNumTraces(q.NumTraces)
+	}
+
+	query := builder.query()
+	fmt.Println("build query=>\n", query)
+
+	rawTracesIterator, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("querying traces: %w", err)
 	}
@@ -203,7 +170,6 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 			return nil, fmt.Errorf("span-ids: make-span-ids: %w", err)
 		}
 
-		fmt.Println("parent spans", parentSpanIds)
 		parentSpanIds_, err := makeSpanIds(parentSpanIds) // todo
 		if err != nil {
 			return nil, fmt.Errorf("parent-span-ids: make-span-ids: %w", err)
@@ -272,20 +238,7 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
 	}
 	fmt.Println("elements in batch", len(batch))
-	// query
-	bSlice, err := json.Marshal(batch)
-	if err != nil {
-		return nil, fmt.Errorf("json marshaling: %w", err)
-	}
-	fmt.Println("num bytes", len(bSlice))
-
-	var receivingSide []*model.Batch
-	if err := json.Unmarshal(bSlice, &receivingSide); err != nil {
-		return nil, fmt.Errorf("json unmarshaling: %w", err)
-	}
-	fmt.Println("after: elements in batch", len(batch))
-	fmt.Println(batch[0].Process.ServiceName)
-	return nil, nil
+	return batch, nil
 }
 
 func int8ArraytoInt64Arr(s pgtype.Int8Array) ([]*int64, error) {

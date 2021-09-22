@@ -3,6 +3,7 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	"github.com/timescale/promscale/pkg/api"
@@ -159,30 +160,40 @@ func (p *Plugin) FindTraces(ctx context.Context, query *spanstore.TraceQueryPara
 			NumTraces:     int32(query.NumTraces),
 		},
 	}
-	response, err := p.waitForResponse(ctx, request, api.JaegerQueryTracesEndpoint)
+	resp, err := p.waitForResponse(ctx, request, api.JaegerQueryTracesEndpoint)
 	if err != nil {
 		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("wait for response: %w", err))
 	}
 
-	var resp storage_v1.SpansResponseChunk
-	if err = resp.Unmarshal(response); err != nil {
-		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("unmarshalling response: %w", err))
+	var r []*model.Batch
+	if err = json.Unmarshal(resp, &r); err != nil {
+		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("unmarshalling json response: %w", err))
 	}
+
+	p.logger.Warn("batches", len(r))
 
 	// Copied from Jaeger's grpc_client.go
 	// https://github.com/jaegertracing/jaeger/blob/067dff713ab635ade66315bbd05518d7b28f40c6/plugin/storage/grpc/shared/grpc_client.go#L179
-	var traces []*model.Trace
-	var trace *model.Trace
-	var traceID model.TraceID
-	for i, span := range resp.Spans {
-		if span.TraceID != traceID {
-			trace = &model.Trace{}
-			traceID = span.TraceID
-			traces = append(traces, trace)
+	traces := make([]*model.Trace, 0)
+	//var traceID model.TraceID
+	for _, batch := range r {
+		trace := new(model.Trace)
+		p.logger.Warn("into", len(batch.Spans))
+		for _, span := range batch.Spans {
+			//if span.TraceID != traceID {
+			//	trace = &model.Trace{}
+			//	traceID = span.TraceID
+			//	p.logger.Warn("into", len(trace.Spans))
+			//	traces = append(traces, trace)
+			//}
+			//trace.Spans = append(trace.Spans, batch.Spans[i])
+			trace.Spans = append(trace.Spans, span)
 		}
-		trace.Spans = append(trace.Spans, &resp.Spans[i])
+		traces = append(traces, trace)
+		p.logger.Warn("appending a trace")
 	}
-	return nil, nil
+	p.logger.Warn("count", len(traces))
+	return traces, nil
 }
 
 func (p *Plugin) FindTraceIDs(ctx context.Context, traceQueryParameters *spanstore.TraceQueryParameters) ([]model.TraceID, error) {

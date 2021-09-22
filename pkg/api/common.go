@@ -226,14 +226,23 @@ func respond(w http.ResponseWriter, status int, message interface{}) {
 	})
 }
 
-func respondProto(w http.ResponseWriter, status int, data []byte) {
+func respondWithByteSlice(w http.ResponseWriter, status int, data []byte) {
 	w.WriteHeader(status)
 	if _, err := w.Write(data); err != nil {
 		log.Error("msg", "error writing proto response to jaeger plugin: "+err.Error())
 	}
 }
 
-func respondProtoWithErr(w http.ResponseWriter, status int) {
+func respondWithByteSliceJSON(w http.ResponseWriter, status int, data []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	if _, err := w.Write(data); err != nil {
+		log.Error("msg", "error writing proto response to jaeger plugin: "+err.Error())
+	}
+}
+
+func respondWithStatusOnly(w http.ResponseWriter, status int) {
 	w.WriteHeader(status)
 	if _, err := w.Write(nil); err != nil {
 		log.Error("msg", "error writing proto response to jaeger plugin: "+err.Error())

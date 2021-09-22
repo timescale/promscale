@@ -30,7 +30,7 @@ func (r *JaegerQueryReader) GetTrace(ctx context.Context, traceID storage_v1.Get
 	return singleTrace(ctx, r.conn, traceID)
 }
 
-func (r *JaegerQueryReader) FindTraces(ctx context.Context, query *storage_v1.TraceQueryParameters) ([]model.Trace, error) {
+func (r *JaegerQueryReader) FindTraces(ctx context.Context, query *storage_v1.TraceQueryParameters) ([]*model.Batch, error) {
 	return findTraces(ctx, r.conn, query)
 }
 

@@ -27,9 +27,9 @@ func servicesHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc {
 		bSlice, err := response.Marshal()
 		if err != nil {
 			log.Error("msg", fmt.Errorf("marshal response: %w", err))
-			respondProtoWithErr(w, http.StatusInternalServerError)
+			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
-		respondProto(w, http.StatusOK, bSlice)
+		respondWithByteSlice(w, http.StatusOK, bSlice)
 	}
 }

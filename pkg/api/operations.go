@@ -23,29 +23,29 @@ func operationsHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc 
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			log.Error("msg", fmt.Errorf("reading body: %w", err))
-			respondProtoWithErr(w, http.StatusInternalServerError)
+			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
 		var request storage_v1.GetOperationsRequest
 		if err = request.Unmarshal(b); err != nil {
 			log.Error("msg", fmt.Errorf("unmarshalling request: %w", err))
-			respondProtoWithErr(w, http.StatusInternalServerError)
+			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
 		response, err := reader.GetOperations(context.Background(), request)
 		if err != nil {
 			log.Error("msg", fmt.Errorf("get operations: %w", err))
-			respondProtoWithErr(w, http.StatusInternalServerError)
+			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
 		b, err = response.Marshal()
 		if err != nil {
 			log.Error("msg", fmt.Errorf("marshal operations: %w", err))
-			respondProtoWithErr(w, http.StatusInternalServerError)
+			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
 		fmt.Println("sending operations response as", response)
-		respondProto(w, http.StatusOK, b)
+		respondWithByteSlice(w, http.StatusOK, b)
 	}
 }
 
