@@ -170,29 +170,25 @@ func (p *Plugin) FindTraces(ctx context.Context, query *spanstore.TraceQueryPara
 		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("unmarshalling json response: %w", err))
 	}
 
-	p.logger.Warn("batches", len(r))
-
 	// Copied from Jaeger's grpc_client.go
 	// https://github.com/jaegertracing/jaeger/blob/067dff713ab635ade66315bbd05518d7b28f40c6/plugin/storage/grpc/shared/grpc_client.go#L179
 	traces := make([]*model.Trace, 0)
-	//var traceID model.TraceID
+	var traceID model.TraceID
+	numSpans := 0
 	for _, batch := range r {
 		trace := new(model.Trace)
-		p.logger.Warn("into", len(batch.Spans))
 		for _, span := range batch.Spans {
-			//if span.TraceID != traceID {
-			//	trace = &model.Trace{}
-			//	traceID = span.TraceID
-			//	p.logger.Warn("into", len(trace.Spans))
-			//	traces = append(traces, trace)
-			//}
-			//trace.Spans = append(trace.Spans, batch.Spans[i])
+			if span.TraceID != traceID {
+				trace = &model.Trace{}
+				traceID = span.TraceID
+				traces = append(traces, trace)
+			}
+			numSpans++
 			trace.Spans = append(trace.Spans, span)
+			trace.ProcessMap = append(trace.ProcessMap, model.Trace_ProcessMapping{Process: *span.Process, ProcessID: span.ProcessID})
 		}
 		traces = append(traces, trace)
-		p.logger.Warn("appending a trace")
 	}
-	p.logger.Warn("count", len(traces))
 	return traces, nil
 }
 

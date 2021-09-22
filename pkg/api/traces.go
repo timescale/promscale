@@ -63,7 +63,6 @@ func findTracesHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc 
 			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
-
 		var findTracesReq storage_v1.FindTracesRequest
 		if err = findTracesReq.Unmarshal(b); err != nil {
 			log.Error("msg", fmt.Errorf("unmarshalling request: %w", err))
@@ -76,16 +75,12 @@ func findTracesHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc 
 			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
-		if len(traces) > 0 {
-			fmt.Println("api-traces num spans", len(traces[0].Spans))
-		}
 		bSlice, err := json.Marshal(traces)
 		if err != nil {
 			log.Error("msg", fmt.Errorf("json marshal: %w", err))
 			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
-		fmt.Println("slice length", len(bSlice))
 		respondWithByteSliceJSON(w, http.StatusOK, bSlice)
 	}
 }

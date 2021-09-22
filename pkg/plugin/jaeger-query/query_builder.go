@@ -2,6 +2,7 @@ package jaeger_query
 
 import (
 	"fmt"
+	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	"strings"
 	"time"
 )
@@ -16,7 +17,7 @@ type builder struct {
 	numTracesFormat     string
 }
 
-// newFindtracesQueryBuilder returns a find-traces query builder.
+// newFindTracesQueryBuilder returns a find-traces query builder.
 //
 // The order of call should be strictly:
 // 0. withWhere
@@ -30,34 +31,33 @@ type builder struct {
 // Note: You can skip some functions from calling, depending on the query parameters
 // while maintaining the order. For applying anything from 1 to 5, you need to first call
 // withWhere.
-func newFindtracesQueryBuilder() *builder {
-	// todo: apply resource and span tags
-	//	array_agg(s.resource_tags) resource_tags_arr,
-	//	array_agg(s.span_tags) span_tags_arr
+func newFindTracesQueryBuilder() *builder {
 	return &builder{
 		base: `
 SELECT s.trace_id,
-	   array_agg(s.span_id) span_ids,
-       array_agg(s.parent_span_id) parent_span_ids,
-       array_agg(s.start_time) start_times,
-       array_agg(s.end_time) end_times,
-       array_agg(s.span_kind) span_kinds,
-       array_agg(s.dropped_tags_count) dropped_tags_counts,
-       array_agg(s.dropped_events_count) dropped_events_counts,
-       array_agg(s.dropped_link_count) dropped_link_counts,
-       array_agg(s.trace_state) trace_states,
-       array_agg(sch_url.url) schema_urls,
-       array_agg(sn.name)     span_names
+	   s.span_id,
+       s.parent_span_id,
+       s.start_time start_times,
+       s.end_time end_times,
+       s.span_kind,
+       s.dropped_tags_count dropped_tags_counts,
+       s.dropped_events_count dropped_events_counts,
+       s.dropped_link_count dropped_link_counts,
+       s.trace_state trace_states,
+       sch_url.url schema_urls,
+       sn.name     span_names,
+	   _ps_trace.jsonb(s.resource_tags) resource_tags,
+	   _ps_trace.jsonb(s.span_tags) span_tags
 FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
        INNER JOIN _ps_trace.span_name sn
    ON s.name_id = sn.id`,
 		serviceNameFormat:   `_ps_trace.val_text(s.resource_tags, 'service.name')='%s' AND `,
-		operationNameFormat: `sn.name='%s' `,
+		operationNameFormat: `sn.name='%s' AND `,
 		tagsFormat:          `_ps_trace.val_text(s.resource_tags, '%s')='%s' AND `,
 		startRangeFormat:    `s.start_time BETWEEN '%s'::timestamptz AND '%s'::timestamptz AND `,
-		durationRangeFormat: `(s.end_time - s.start_time) BETWEEN %s AND %s `,
+		durationRangeFormat: `(s.end_time - s.start_time) BETWEEN $1 AND $2 `,
 		numTracesFormat:     `LIMIT %d`,
 	}
 }
@@ -68,9 +68,7 @@ func (b *builder) query() string {
 }
 
 func (b *builder) trimANDIfExists() *builder {
-	if strings.HasSuffix(b.base, "AND ") {
-		b.base = strings.TrimSuffix(b.base, "AND ")
-	}
+	b.base = strings.TrimSuffix(b.base, "AND ")
 	return b
 }
 
@@ -79,9 +77,9 @@ func (b *builder) withWhere() *builder {
 	return b
 }
 
-func (b *builder) groupBy() *builder {
+func (b *builder) orderBy() *builder {
 	b.trimANDIfExists()
-	b.base += " GROUP BY s.trace_id "
+	b.base += " ORDER BY s.trace_id "
 	return b
 }
 
@@ -107,8 +105,9 @@ func (b *builder) withStartRange(min, max time.Time) *builder {
 	return b
 }
 
-func (b *builder) withDurationRange(min, max time.Duration) *builder {
-	b.base += fmt.Sprintf(b.durationRangeFormat, min, max)
+// withDurationRange when using this function, provide the min and max duration in args.
+func (b *builder) withDurationRange() *builder {
+	b.base += b.durationRangeFormat
 	return b
 }
 
@@ -116,4 +115,36 @@ func (b *builder) withNumTraces(n int32) *builder {
 	b.trimANDIfExists()
 	b.base += fmt.Sprintf(b.numTracesFormat, n)
 	return b
+}
+
+func buildQuery(q *storage_v1.TraceQueryParameters) (query string, hasDuration bool) {
+	builder := newFindTracesQueryBuilder()
+	if len(q.ServiceName) > 0 {
+		q.ServiceName = q.ServiceName[1 : len(q.ServiceName)-1] // temporary, based on trace gen behaviour
+		builder.withWhere().withServiceName(q.ServiceName)
+	}
+	if len(q.OperationName) > 0 {
+		builder.withOperationName(q.OperationName)
+	}
+	if len(q.Tags) > 0 {
+		builder.withResourceTags(q.Tags)
+	}
+
+	var defaultTime time.Time
+	if q.StartTimeMin != defaultTime && q.StartTimeMax != defaultTime {
+		builder.withStartRange(q.StartTimeMin, q.StartTimeMax)
+	}
+
+	var defaultDuration time.Duration
+	if q.DurationMin != defaultDuration && q.DurationMax != defaultDuration {
+		hasDuration = true
+		builder.withDurationRange()
+	}
+
+	builder.orderBy()
+	if q.NumTraces != 0 {
+		builder.withNumTraces(q.NumTraces)
+	}
+
+	return builder.query(), hasDuration
 }

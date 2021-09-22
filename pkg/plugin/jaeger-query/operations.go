@@ -62,3 +62,11 @@ func operations(ctx context.Context, conn pgxconn.PgxConn, query storage_v1.GetO
 
 	return operationsResp, nil
 }
+
+func textArraytoStringArr(s pgtype.TextArray) ([]string, error) {
+	var d []string
+	if err := s.AssignTo(&d); err != nil {
+		return []string{}, fmt.Errorf("assign to: %w", err)
+	}
+	return d, nil
+}

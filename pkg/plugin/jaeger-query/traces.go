@@ -25,14 +25,9 @@ func singleTrace(ctx context.Context, conn pgxconn.PgxConn, traceID storage_v1.G
 	//if err := conn.QueryRow(ctx, getTrace, traceID).Scan(trace); err != nil {
 	//	return nil, fmt.Errorf("fetching a trace with %s as ID: %w", traceID.String(), err)
 	//}
-	sample := prepareDemoTrace()
-	jaegerTrace, err := toJaeger(sample)
-	if err != nil {
-		return nil, fmt.Errorf("converting to jaeger trace: %w", err)
-	}
-	if err = batchToSingleTrace(trace, jaegerTrace); err != nil {
-		return nil, fmt.Errorf("batch to single trace: %w", err)
-	}
+	// if err := batchToSingleTrace(trace, jaegerTrace); err != nil {
+	// 	return nil, fmt.Errorf("batch to single trace: %w", err)
+	// }
 	return trace, nil
 }
 
@@ -57,62 +52,13 @@ func toJaeger(pTraces pdata.Traces) ([]*model.Batch, error) {
 	return jaegerTrace, nil
 }
 
-func prepareDemoTrace() pdata.Traces {
-	td := pdata.NewTraces()
-	rs := td.ResourceSpans().AppendEmpty()
-	rs.SetSchemaUrl("http://schema_url")
-	s := rs.InstrumentationLibrarySpans().AppendEmpty().Spans().AppendEmpty()
-	s.SetName("mock_span")
-	traceID := pdata.NewTraceID([16]byte{0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
-	s.SetTraceID(traceID)
-	emptySpanID := pdata.NewSpanID([8]byte{0, 0, 1, 0, 0, 0, 1, 0})
-	s.SetSpanID(emptySpanID)
-	startTime := pdata.NewTimestampFromTime(time.Now())
-	s.SetStartTimestamp(startTime)
-	endTime := pdata.NewTimestampFromTime(time.Now().Add(time.Minute))
-	s.SetEndTimestamp(endTime)
-	s.SetKind(pdata.SpanKindConsumer)
-
-	s.SetParentSpanID(emptySpanID)
-	s.SetDroppedAttributesCount(1)
-	s.SetDroppedEventsCount(1)
-	s.SetDroppedLinksCount(1)
-	s.SetTraceState("tracestate_1")
-	return td
-}
-
 func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQueryParameters) ([]*model.Batch, error) {
-	fmt.Println("query parameters", q)
-
-	builder := newFindtracesQueryBuilder()
-	if len(q.ServiceName) > 0 {
-		q.ServiceName = q.ServiceName[1 : len(q.ServiceName)-1] // temporary, based on trace gen behaviour
-		builder.withWhere().withServiceName(q.ServiceName)
+	query, hasDuration := buildQuery(q)
+	var args []interface{}
+	if hasDuration {
+		args = []interface{}{q.DurationMin, q.DurationMax}
 	}
-	if len(q.OperationName) > 0 {
-		builder.withOperationName(q.OperationName)
-	}
-	if len(q.Tags) > 0 {
-		builder.withResourceTags(q.Tags)
-	}
-	var defaultTime time.Time
-	if q.StartTimeMin != defaultTime && q.StartTimeMax != defaultTime {
-		builder.withStartRange(q.StartTimeMin, q.StartTimeMax)
-	}
-	var defaultDuration time.Duration
-	if q.DurationMin != defaultDuration && q.DurationMax != defaultDuration {
-		builder.withDurationRange(q.DurationMin, q.DurationMax)
-	}
-	if q.NumTraces == 0 {
-		builder.groupBy()
-	} else {
-		builder.groupBy().withNumTraces(q.NumTraces)
-	}
-
-	query := builder.query()
-	fmt.Println("build query=>\n", query)
-
-	rawTracesIterator, err := conn.Query(ctx, query)
+	rawTracesIterator, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying traces: %w", err)
 	}
@@ -121,21 +67,23 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 	var (
 		// Iteration vars.
 		// Each element in the array corresponds to one span, of a trace.
-		traceId             pgtype.Bytea // The value is received in uuid.
-		spanIds             pgtype.Int8Array
-		parentSpanIds       pgtype.Int8Array
-		startTimes          pgtype.TimestamptzArray
-		endTimes            pgtype.TimestamptzArray
-		kinds               pgtype.TextArray
-		droppedTagsCounts   pgtype.Int4Array
-		droppedEventsCounts pgtype.Int4Array
-		droppedLinkCounts   pgtype.Int4Array
-		traceStates         pgtype.TextArray
-		schemaUrls          pgtype.TextArray
-		spanNames           pgtype.TextArray
+		traceId             pgtype.UUID
+		spanId              int64
+		parentSpanId        pgtype.Int8
+		startTime           time.Time
+		endTime             time.Time
+		kind                string
+		droppedTagsCounts   int
+		droppedEventsCounts int
+		droppedLinkCounts   int
+		traceState          pgtype.Text
+		schemaUrl           pgtype.Text
+		spanName            string
 
-		traces        = pdata.NewTraces()
-		resourceSpans = traces.ResourceSpans().AppendEmpty()
+		resourceTags = make(map[string]interface{})
+		spanTags     = make(map[string]interface{})
+
+		traces = pdata.NewTraces()
 	)
 	for rawTracesIterator.Next() {
 		// Each iteration in this block represents one trace.
@@ -148,184 +96,168 @@ func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQu
 		// it contains data from multiple spans, and hence, an array.
 		if err = rawTracesIterator.Scan(
 			&traceId,
-			&spanIds,
-			&parentSpanIds,
-			&startTimes,
-			&endTimes,
-			&kinds,
+			&spanId,
+			&parentSpanId,
+			&startTime,
+			&endTime,
+			&kind,
 			&droppedTagsCounts,
 			&droppedEventsCounts,
 			&droppedLinkCounts,
-			&traceStates,
-			&schemaUrls,
-			&spanNames); err != nil {
+			&traceState,
+			&schemaUrl,
+			&spanName,
+			&resourceTags,
+			&spanTags); err != nil {
 			err = fmt.Errorf("scanning raw-traces: %w", err)
 			break
 		}
 
-		libSpans := resourceSpans.InstrumentationLibrarySpans().AppendEmpty()
-
-		spanIds_, err := makeSpanIds(spanIds)
-		if err != nil {
-			return nil, fmt.Errorf("span-ids: make-span-ids: %w", err)
+		if err = makeSpan(traces.ResourceSpans().AppendEmpty(),
+			traceId, spanId, parentSpanId,
+			startTime, endTime,
+			kind,
+			droppedTagsCounts, droppedEventsCounts, droppedLinkCounts,
+			traceState, schemaUrl, spanName,
+			resourceTags, spanTags); err != nil {
+			return nil, fmt.Errorf("make span: %w", err)
 		}
-
-		parentSpanIds_, err := makeSpanIds(parentSpanIds) // todo
-		if err != nil {
-			return nil, fmt.Errorf("parent-span-ids: make-span-ids: %w", err)
-		}
-
-		startTimes_, err := timestamptzArraytoTimeArr(startTimes)
-		if err != nil {
-			return nil, fmt.Errorf("start time: timestamptz-array-to-time-array: %w", err)
-		}
-
-		endTimes_, err := timestamptzArraytoTimeArr(endTimes)
-		if err != nil {
-			return nil, fmt.Errorf("start time: timestamptz-array-to-time-array: %w", err)
-		}
-
-		droppedTagsCounts_, err := int4ArraytoIntArr(droppedTagsCounts)
-		if err != nil {
-			return nil, fmt.Errorf("droppedTagsCounts: int4ArraytoIntArr: %w", err)
-		}
-		droppedEventsCounts_, err := int4ArraytoIntArr(droppedEventsCounts)
-		if err != nil {
-			return nil, fmt.Errorf("droppedEventsCounts: int4ArraytoIntArr: %w", err)
-		}
-		droppedLinkCounts_, err := int4ArraytoIntArr(droppedLinkCounts)
-		if err != nil {
-			return nil, fmt.Errorf("droppedTagsCounts: int4ArraytoIntArr: %w", err)
-		}
-
-		kinds_, err := textArraytoStringArr(kinds)
-		if err != nil {
-			return nil, fmt.Errorf("kinds: text-array-to-string-array: %w", err)
-		}
-		traceStates_, err := textArraytoStringArr(traceStates)
-		if err != nil {
-			return nil, fmt.Errorf("traceStates: text-array-to-string-array: %w", err)
-		}
-		schemaUrls_, err := textArraytoStringArr(schemaUrls)
-		if err != nil {
-			return nil, fmt.Errorf("schemaUrls: text-array-to-string-array: %w", err)
-		}
-		spanNames_, err := textArraytoStringArr(spanNames)
-		if err != nil {
-			return nil, fmt.Errorf("spanNames: text-array-to-string-array: %w", err)
-		}
-
-		makeSpans(libSpans,
-			makeTraceId(traceId),
-			spanIds_,
-			parentSpanIds_,
-			startTimes_,
-			endTimes_,
-			kinds_,
-			droppedTagsCounts_,
-			droppedEventsCounts_,
-			droppedLinkCounts_,
-			traceStates_,
-			schemaUrls_,
-			spanNames_)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("iterating raw-traces: %w", err)
 	}
-	fmt.Println("total spans are", traces.SpanCount())
+
 	batch, err := jaegertranslator.InternalTracesToJaegerProto(traces)
 	if err != nil {
 		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
 	}
-	fmt.Println("elements in batch", len(batch))
-	return batch, nil
+	return applyProcess(batch), nil
 }
 
-func int8ArraytoInt64Arr(s pgtype.Int8Array) ([]*int64, error) {
-	var d []*int64
-	if err := s.AssignTo(&d); err != nil {
-		return nil, fmt.Errorf("assign to: %w", err)
+func applyProcess(b []*model.Batch) []*model.Batch {
+	for i := range b {
+		p := b[i].Process
+		for j := range b[i].Spans {
+			b[i].Spans[j].Process = p
+		}
 	}
-	return d, nil
+	return b
 }
 
-func int4ArraytoIntArr(s pgtype.Int4Array) ([]int32, error) {
-	var d []int32
-	if err := s.AssignTo(&d); err != nil {
-		return nil, fmt.Errorf("assign to: %w", err)
+// makeSpan makes a span by populating the pdata.Span with provided params.
+func makeSpan(
+	resourceSpan pdata.ResourceSpans,
+	rawTraceId pgtype.UUID, rawId int64, rawParentId pgtype.Int8,
+	startTime, endTime time.Time,
+	kind string,
+	droppedTagsCounts, droppedEventsCounts, droppedLinkCounts int,
+	rawTraceState, rawSchemaUrl pgtype.Text,
+	name string,
+	resourceTags, spanTags map[string]interface{}) error {
+	// todo: links, events
+	resourceSpan.Resource().Attributes().InitFromMap(makeAttributes(resourceTags))
+
+	// Type preprocessing.
+	var traceIdByteSlice [16]byte
+	if err := rawTraceId.AssignTo(&traceIdByteSlice); err != nil {
+		return fmt.Errorf("rawTraceId: assign to: %w", err)
 	}
-	return d, nil
-}
+	traceId := pdata.NewTraceID(traceIdByteSlice)
 
-func textArraytoStringArr(s pgtype.TextArray) ([]string, error) {
-	var d []string
-	if err := s.AssignTo(&d); err != nil {
-		return nil, fmt.Errorf("assign to: %w", err)
-	}
-	return d, nil
-}
-
-func timestamptzArraytoTimeArr(s pgtype.TimestamptzArray) ([]time.Time, error) {
-	var d []time.Time
-	if err := s.AssignTo(&d); err != nil {
-		return nil, fmt.Errorf("assign to: %w", err)
-	}
-	return d, nil
-}
-
-func makeSpans(
-	libSpans pdata.InstrumentationLibrarySpans,
-	traceId pdata.TraceID, spanIds, parentSpanIds []pdata.SpanID,
-	startTime, endTime []time.Time, spanKind []string,
-	droppedTagsCounts, droppedEventsCounts, droppedLinkCounts []int32,
-	traceStates, schemaUrls, spanNames []string) {
-	// todo: schemaUrls
-	num := len(spanIds)
-	for i := 0; i < num; i++ {
-		s := libSpans.Spans().AppendEmpty()
-		s.SetTraceID(traceId)
-		s.SetSpanID(spanIds[i])
-		s.SetParentSpanID(parentSpanIds[i])
-
-		s.SetStartTimestamp(pdata.NewTimestampFromTime(startTime[i]))
-		s.SetEndTimestamp(pdata.NewTimestampFromTime(endTime[i]))
-		s.SetKind(makeKind(spanKind[i]))
-
-		s.SetDroppedAttributesCount(uint32(droppedTagsCounts[i]))
-		s.SetDroppedEventsCount(uint32(droppedEventsCounts[i]))
-		s.SetDroppedLinksCount(uint32(droppedLinkCounts[i]))
-
-		s.SetTraceState(pdata.TraceState(traceStates[i]))
-		s.SetName(spanNames[i])
-	}
-}
-
-func makeTraceId(s pgtype.Bytea) pdata.TraceID {
-	b := s.Get().([]byte)
-	var b16 [16]byte
-	copy(b16[:16], b)
-	return pdata.NewTraceID(b16)
-}
-
-func makeSpanIds(s pgtype.Int8Array) ([]pdata.SpanID, error) {
-	tmp, err := int8ArraytoInt64Arr(s)
+	id, err := makeSpanId(&rawId)
 	if err != nil {
-		return nil, fmt.Errorf("int8ArraytoInt64Arr: %w", err)
+		return fmt.Errorf("id: makeSpanId: %w", err)
+	}
+
+	// We use a pointer since parent id can be nil. If we use normal int64, we can get parsing errors.
+	var temp *int64
+	if err := rawParentId.AssignTo(&temp); err != nil {
+		return fmt.Errorf("rawParentId assign to: %w", err)
+	}
+	parentId, err := makeSpanId(temp) // todo
+	if err != nil {
+		return fmt.Errorf("parent-id: makeSpanId: %w", err)
+	}
+
+	traceState, err := textArraytoString(rawTraceState)
+	if err != nil {
+		return fmt.Errorf("traceState: text-to-string: %w", err)
+	}
+	schemaURL, err := textArraytoString(rawSchemaUrl)
+	if err != nil {
+		return fmt.Errorf("schemaURl: text-to-string: %w", err)
+	}
+
+	resourceSpan.SetSchemaUrl(schemaURL)
+
+	instrumentationLibSpan := resourceSpan.InstrumentationLibrarySpans().AppendEmpty()
+	instrumentationLibSpan.SetSchemaUrl(schemaURL)
+
+	// Populating a span.
+	ref := instrumentationLibSpan.Spans().AppendEmpty()
+	ref.SetTraceID(traceId)
+	ref.SetSpanID(id)
+	ref.SetParentSpanID(parentId)
+
+	ref.SetName(name)
+	ref.SetKind(makeKind(kind))
+
+	ref.SetStartTimestamp(pdata.NewTimestampFromTime(startTime))
+	ref.SetEndTimestamp(pdata.NewTimestampFromTime(endTime))
+
+	ref.SetTraceState(pdata.TraceState(traceState))
+
+	ref.SetDroppedAttributesCount(uint32(droppedTagsCounts))
+	ref.SetDroppedEventsCount(uint32(droppedEventsCounts))
+	ref.SetDroppedLinksCount(uint32(droppedLinkCounts))
+
+	ref.Attributes().InitFromMap(makeAttributes(spanTags))
+
+	return nil
+}
+
+// makeAttributes makes attribute map using tags.
+func makeAttributes(tags map[string]interface{}) map[string]pdata.AttributeValue {
+	m := make(map[string]pdata.AttributeValue, len(tags))
+	// todo: attribute val as array?
+	for k, v := range tags {
+		switch val := v.(type) {
+		case int64:
+			m[k] = pdata.NewAttributeValueInt(val)
+		case bool:
+			m[k] = pdata.NewAttributeValueBool(val)
+		case string:
+			m[k] = pdata.NewAttributeValueString(val)
+		case float64:
+			m[k] = pdata.NewAttributeValueDouble(val)
+		case []byte:
+			m[k] = pdata.NewAttributeValueBytes(val)
+		default:
+			m[k] = pdata.NewAttributeValueEmpty()
+		}
+	}
+	return m
+}
+
+func makeTraceId(s pgtype.UUID) (pdata.TraceID, error) {
+	var bSlice [16]byte
+	if err := s.AssignTo(&bSlice); err != nil {
+		return pdata.TraceID{}, fmt.Errorf("trace id assign to: %w", err)
+	}
+	return pdata.NewTraceID(bSlice), nil
+}
+
+func makeSpanId(s *int64) (pdata.SpanID, error) {
+	if s == nil {
+		// Send an empty Span ID.
+		return pdata.NewSpanID([8]byte{0, 0, 0, 0, 0, 0, 0}), nil
 	}
 	b := make([]byte, 8)
-	spanIds := make([]pdata.SpanID, len(tmp))
-	for i := range tmp {
-		if tmp[i] == nil {
-			spanIds[i] = pdata.NewSpanID([8]byte{0, 0, 0, 0, 0, 0, 0, 0}) // Empty span id.
-			continue
-		}
-		binary.BigEndian.PutUint64(b, uint64(*tmp[i]))
-		var b8 [8]byte
-		copy(b8[:8], b)
-		spanIds[i] = pdata.NewSpanID(b8)
-	}
+	binary.BigEndian.PutUint64(b, uint64(*s))
+	var b8 [8]byte
+	copy(b8[:8], b)
 
-	return spanIds, nil
+	return pdata.NewSpanID(b8), nil
 }
 
 func makeKind(s string) pdata.SpanKind {
@@ -343,6 +275,14 @@ func makeKind(s string) pdata.SpanKind {
 	default:
 		return pdata.SpanKindUnspecified
 	}
+}
+
+func textArraytoString(s pgtype.Text) (string, error) {
+	var d string
+	if err := s.AssignTo(&d); err != nil {
+		return "", fmt.Errorf("assign to: %w", err)
+	}
+	return d, nil
 }
 
 func findTraceIDs(ctx context.Context, conn pgxconn.PgxConn, query *storage_v1.TraceQueryParameters) ([]model.TraceID, error) {
