@@ -1364,7 +1364,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, TEXT, IN
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
 AS $func$
-    SELECT SCHEMA_PROM.set_metric_retention_period('SCHEMA_PROM', metric_name, new_retention_period);
+    SELECT SCHEMA_PROM.set_metric_retention_period('SCHEMA_DATA', metric_name, new_retention_period);
 $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)
@@ -1423,7 +1423,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT, TEXT) 
 CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
-    SELECT SCHEMA_PROM.reset_metric_retention_period('SCHEMA_PROM', metric_name);
+    SELECT SCHEMA_PROM.reset_metric_retention_period('SCHEMA_DATA', metric_name);
 $func$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT)
