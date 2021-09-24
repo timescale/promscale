@@ -44,7 +44,7 @@ EXPLAIN (costs off) SELECT time, value, jsonb(labels), val(namespace_id) FROM cp
                Sort Key: data."time", data.series_id
                ->  Hash Join
                      Hash Cond: (data.series_id = series.id)
-                     ->  Seq Scan on _hyper_1_1_chunk data
+                     ->  Seq Scan on _hyper_4_1_chunk data
                      ->  Hash
                            ->  Seq Scan on cpu_usage series
                                  Filter: (NOT ((labels)::integer[] && ($0)::integer[]))

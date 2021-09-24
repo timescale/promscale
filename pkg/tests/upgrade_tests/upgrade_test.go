@@ -592,28 +592,6 @@ func TestMigrationFailure(t *testing.T) {
 
 	defer closer.Close()
 
-	// start promscale & test upgrade-extensions as false
-	func() {
-		connectorImage := "timescale/promscale:latest"
-		databaseName := "postgres"
-		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, []string{}, databaseName)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
-
-		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		db.Close(ctx)
-		if version != "2.0.0-rc4" {
-			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
-		}
-		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions false.")
-	}()
-
 	// As the timescaleDB installed version is rc4, lets install the 1.7.3 ext version
 	extVersion := "1.7.3"
 	dropAndCreateExt(t, ctx, extVersion)
@@ -632,6 +610,34 @@ func TestMigrationFailure(t *testing.T) {
 	if version != extVersion {
 		t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
 	}
+
+	// start promscale & test upgrade-extensions as false
+	func() {
+		connectorImage := "timescale/promscale:latest"
+		databaseName := "postgres"
+		flags := []string{"-upgrade-extensions", "false"}
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, flags, databaseName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+
+		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+		if err != nil {
+			t.Fatal(err)
+
+		}
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		db.Close(ctx)
+		if version != "1.7.3" {
+			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
+		}
+		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions false.")
+	}()
 
 	// start a new connector and test --upgrade-extensions as true which is by default set in flags
 	// the migration should fail (upgrade path in tsdb isn't available) but promscale should be running.
