@@ -140,6 +140,7 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 }
 
 var replaceChildren = regexp.MustCompile("timescaledb_internal\\._hyper_.*\n")
+var replaceDistChildren = regexp.MustCompile("timescaledb_internal\\._dist_hyper_.*\n")
 var replaceSatisfiesOID = regexp.MustCompile("satisfies_hash_partition.{3,20}::oid")
 
 func expectedSchemas(extstate testhelpers.ExtensionState) []string {
@@ -181,6 +182,7 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 		info.name = schema
 		info.tables = getPsqlInfo(t, container, dbName, outputDir, "\\d+ "+schema+".*")
 		info.tables = replaceChildren.ReplaceAllLiteralString(info.tables, "timescaledb_internal._hyper_*\n")
+		info.tables = replaceDistChildren.ReplaceAllLiteralString(info.tables, "timescaledb_internal._dist_hyper_*\n")
 		info.tables = replaceSatisfiesOID.ReplaceAllLiteralString(info.tables, "satisfies_hash_partition('xxx'::oid")
 		info.functions = getPsqlInfo(t, container, dbName, outputDir, "\\df+ "+schema+".*")
 		info.privileges = getPsqlInfo(t, container, dbName, outputDir, "\\dp "+schema+".*")
