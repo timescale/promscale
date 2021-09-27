@@ -209,7 +209,11 @@ BEGIN
             ('bool'            ),
             ('real'            ),
             ('double precision'),
-            ('numeric'         )
+            ('numeric'         ),
+            ('timestamptz'     ),
+            ('timestamp'       ),
+            ('time'            ),
+            ('date'            )
         ) t(type)
         CROSS JOIN
         (
