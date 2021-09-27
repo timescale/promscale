@@ -29,6 +29,8 @@ func singleTrace(ctx context.Context, conn pgxconn.PgxConn, traceID storage_v1.G
 
 func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQueryParameters) ([]*model.Trace, error) {
 	query, hasDuration := buildQuery(spansQuery, q)
+	fmt.Println("has dur", hasDuration)
+	fmt.Println("query=>\n", query)
 	var args []interface{}
 	if hasDuration {
 		args = []interface{}{q.DurationMin, q.DurationMax}

@@ -49,14 +49,14 @@ FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
        INNER JOIN _ps_trace.span_name sn
-   ON s.name_id = sn.id`
+   ON s.name_id = sn.id `
 	selectForTraceIds = `
 SELECT s.trace_id
 FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
        INNER JOIN _ps_trace.span_name sn
-   ON s.name_id = sn.id`
+   ON s.name_id = sn.id `
 )
 
 // newTracesQueryBuilder returns a find-traces query builder. Depending on kind, the builder.query()
