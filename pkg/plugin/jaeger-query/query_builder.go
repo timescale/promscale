@@ -1,10 +1,15 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package jaeger_query
 
 import (
 	"fmt"
-	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	"strings"
 	"time"
+
+	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 )
 
 type builder struct {

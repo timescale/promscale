@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package jaeger_query
 
 import (
@@ -6,16 +10,13 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/collector/model/pdata"
+
 	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"go.opentelemetry.io/collector/model/pdata"
-)
-
-const (
-	getTrace = "select 1"
 )
 
 func singleTrace(ctx context.Context, conn pgxconn.PgxConn, traceID storage_v1.GetTraceRequest) (*model.Trace, error) {
@@ -29,27 +30,6 @@ func singleTrace(ctx context.Context, conn pgxconn.PgxConn, traceID storage_v1.G
 	// 	return nil, fmt.Errorf("batch to single trace: %w", err)
 	// }
 	return trace, nil
-}
-
-func batchToSingleTrace(trace *model.Trace, batch []*model.Batch) error {
-	if len(batch) == 0 {
-		return fmt.Errorf("empty batch")
-	}
-	if len(batch) > 1 {
-		// We are asked to send one trace, since a single TraceID can have only a single element in batch.
-		// If more than one, there are semantic issues with this trace, hence error out.
-		return fmt.Errorf("a single TraceID must contain a single batch of spans. But, found %d", len(batch))
-	}
-	trace.Spans = batch[0].Spans
-	return nil
-}
-
-func toJaeger(pTraces pdata.Traces) ([]*model.Batch, error) {
-	jaegerTrace, err := jaegertranslator.InternalTracesToJaegerProto(pTraces)
-	if err != nil {
-		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
-	}
-	return jaegerTrace, nil
 }
 
 func findTraces(ctx context.Context, conn pgxconn.PgxConn, q *storage_v1.TraceQueryParameters) ([]*model.Batch, error) {
@@ -158,11 +138,10 @@ func makeSpan(
 	resourceSpan.Resource().Attributes().InitFromMap(makeAttributes(resourceTags))
 
 	// Type preprocessing.
-	var traceIdByteSlice [16]byte
-	if err := rawTraceId.AssignTo(&traceIdByteSlice); err != nil {
-		return fmt.Errorf("rawTraceId: assign to: %w", err)
+	traceId, err := makeTraceId(rawTraceId)
+	if err != nil {
+		return fmt.Errorf("makeTraceId: %w", err)
 	}
-	traceId := pdata.NewTraceID(traceIdByteSlice)
 
 	id, err := makeSpanId(&rawId)
 	if err != nil {

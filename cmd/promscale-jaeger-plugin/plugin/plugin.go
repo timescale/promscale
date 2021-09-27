@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package plugin
 
 import (
@@ -5,8 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
-	"github.com/timescale/promscale/pkg/api"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -15,6 +17,8 @@ import (
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
+	api "github.com/timescale/promscale/pkg/api/jaeger_plugin_endpoints"
 )
 
 type Plugin struct {

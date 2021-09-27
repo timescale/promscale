@@ -1,13 +1,18 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package main
 
 import (
 	"flag"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/url"
 	"os"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc"
