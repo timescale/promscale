@@ -1,0 +1,3 @@
+promscale-host: http://localhost
+promscale-port: 9201
+timeout: 10s

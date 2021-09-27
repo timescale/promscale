@@ -34,7 +34,6 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20210605142932-7bc11dcb0664
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
-	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514
 	github.com/thanos-io/thanos v0.20.1
@@ -42,6 +41,7 @@ require (
 	go.opentelemetry.io/collector/model v0.35.0
 	go.uber.org/goleak v1.1.10
 	google.golang.org/grpc v1.40.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 // Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
