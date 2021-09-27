@@ -43,8 +43,8 @@ SELECT s.trace_id,
        s.trace_state trace_states,
        sch_url.url schema_urls,
        sn.name     span_names,
-	   _ps_trace.jsonb(s.resource_tags) resource_tags,
-	   _ps_trace.jsonb(s.span_tags) span_tags
+	   ps_trace.jsonb(s.resource_tags) resource_tags,
+	   ps_trace.jsonb(s.span_tags) span_tags
 FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
@@ -77,9 +77,9 @@ FROM   _ps_trace.span s
 func newTracesQueryBuilder(kind queryKind) *builder {
 	b := &builder{
 		base:                ``,
-		serviceNameFormat:   `_ps_trace.val_text(s.resource_tags, 'service.name')='%s' AND `,
+		serviceNameFormat:   `ps_trace.val_text(s.resource_tags, 'service.name')='%s' AND `,
 		operationNameFormat: `sn.name='%s' AND `,
-		tagsFormat:          `_ps_trace.val_text(s.resource_tags, '%s')='%s' AND `,
+		tagsFormat:          `ps_trace.val_text(s.resource_tags, '%s')='%s' AND `,
 		startRangeFormat:    `s.start_time BETWEEN '%s'::timestamptz AND '%s'::timestamptz AND `,
 		durationRangeFormat: `(s.end_time - s.start_time) BETWEEN $1 AND $2 `,
 		numTracesFormat:     `LIMIT %d`,

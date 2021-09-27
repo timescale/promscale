@@ -19,7 +19,7 @@ const (
 FROM   _ps_trace.span_name sn
        inner join _ps_trace.span s
                ON sn.id = s.name_id
-WHERE  _ps_trace.val_text(s.resource_tags, 'service.name') = $1`
+WHERE  ps_trace.val_text(s.resource_tags, 'service.name') = $1`
 	spanKindSQL = ` AND s.span_kind = $2`
 )
 

@@ -38,9 +38,9 @@ var (
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 
-	Promscale                           = "0.6.1-dev.3"
-	PromMigrator                        = "0.0.2"
-	JaegerPluginVersion 				= "0.0.1-dev.0"
+	Promscale           = "0.6.1-dev.3"
+	PromMigrator        = "0.0.2"
+	JaegerPluginVersion = "0.0.1-dev.0"
 	// CompatibleJaegerPluginVersion is the version that Promscale expects the plugin to have in headers of
 	// the HTTP request. This is important to track, otherwise user might have one version
 	// of plugin, and he is trying to connect with some other version of Promscale.

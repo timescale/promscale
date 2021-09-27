@@ -22,7 +22,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
-	"github.com/timescale/promscale/pkg/log"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/tenancy"
