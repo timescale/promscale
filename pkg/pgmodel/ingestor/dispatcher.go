@@ -20,10 +20,17 @@ import (
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
 
+type TagType uint
+
 const (
 	MetricBatcherChannelCap = 1000
 	finalizeMetricCreation  = "CALL " + schema.Catalog + ".finalize_metric_creation()"
 	getEpochSQL             = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
+
+	SpanTagType TagType = 1 << iota
+	ResourceTagType
+	EventTagType
+	LinkTagType
 )
 
 // pgxDispatcher redirects incoming samples to the appropriate metricBatcher

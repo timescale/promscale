@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
@@ -353,6 +355,10 @@ type mockInserter struct {
 	ts     []prompb.TimeSeries
 	result int64
 	err    error
+}
+
+func (m *mockInserter) IngestTraces(_ context.Context, _ pdata.Traces) error {
+	panic("not implemented") // TODO: Implement
 }
 
 func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, uint64, error) {

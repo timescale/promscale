@@ -38,8 +38,10 @@ require (
 	github.com/testcontainers/testcontainers-go v0.10.1-0.20210318151656-2bbeb1e04514
 	github.com/thanos-io/thanos v0.20.1
 	github.com/uber/jaeger-client-go v2.28.0+incompatible
+	go.opentelemetry.io/collector/model v0.36.0
+	go.opentelemetry.io/proto/otlp v0.9.0 // indirect
 	go.uber.org/goleak v1.1.10
-	google.golang.org/grpc v1.37.0
+	google.golang.org/grpc v1.40.0
 )
 
 // Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
