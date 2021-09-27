@@ -22,23 +22,15 @@ type builder struct {
 	numTracesFormat     string
 }
 
-// newFindTracesQueryBuilder returns a find-traces query builder.
-//
-// The order of call should be strictly:
-// 0. withWhere
-// 1. withServiceName
-// 2. withOperationName
-// 3. withResourceTags
-// 4. withStartRange
-// 5. withDurationRange
-// 6. withNumTraces
-//
-// Note: You can skip some functions from calling, depending on the query parameters
-// while maintaining the order. For applying anything from 1 to 5, you need to first call
-// withWhere.
-func newFindTracesQueryBuilder() *builder {
-	return &builder{
-		base: `
+type queryKind uint8
+
+const (
+	spansQuery queryKind = iota
+	traceIdsQuery
+)
+
+const (
+	selectForSpans = `
 SELECT s.trace_id,
 	   s.span_id,
        s.parent_span_id,
@@ -57,7 +49,34 @@ FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
        INNER JOIN _ps_trace.span_name sn
-   ON s.name_id = sn.id`,
+   ON s.name_id = sn.id`
+	selectForTraceIds = `
+SELECT s.trace_id
+FROM   _ps_trace.span s
+	   INNER JOIN _ps_trace.schema_url sch_url
+   ON s.resource_schema_url_id = sch_url.id
+       INNER JOIN _ps_trace.span_name sn
+   ON s.name_id = sn.id`
+)
+
+// newTracesQueryBuilder returns a find-traces query builder. Depending on kind, the builder.query()
+// gives out the type of query, i.e., whether to fetch spans or to fetch traceIds.
+//
+// The order of call should be strictly:
+// 0. withWhere
+// 1. withServiceName
+// 2. withOperationName
+// 3. withResourceTags
+// 4. withStartRange
+// 5. withDurationRange
+// 6. withNumTraces
+//
+// Note: You can skip some functions from calling, depending on the query parameters
+// while maintaining the order. For applying anything from 1 to 5, you need to first call
+// withWhere.
+func newTracesQueryBuilder(kind queryKind) *builder {
+	b := &builder{
+		base:                ``,
 		serviceNameFormat:   `_ps_trace.val_text(s.resource_tags, 'service.name')='%s' AND `,
 		operationNameFormat: `sn.name='%s' AND `,
 		tagsFormat:          `_ps_trace.val_text(s.resource_tags, '%s')='%s' AND `,
@@ -65,6 +84,15 @@ FROM   _ps_trace.span s
 		durationRangeFormat: `(s.end_time - s.start_time) BETWEEN $1 AND $2 `,
 		numTracesFormat:     `LIMIT %d`,
 	}
+	switch kind {
+	case spansQuery:
+		b.base = selectForSpans
+	case traceIdsQuery:
+		b.base = selectForTraceIds
+	default:
+		panic("wrong query kind")
+	}
+	return b
 }
 
 func (b *builder) query() string {
@@ -82,9 +110,15 @@ func (b *builder) withWhere() *builder {
 	return b
 }
 
-func (b *builder) orderBy() *builder {
+func (b *builder) orderByTraceId() *builder {
 	b.trimANDIfExists()
 	b.base += " ORDER BY s.trace_id "
+	return b
+}
+
+func (b *builder) groupByTraceId() *builder {
+	b.trimANDIfExists()
+	b.base += " GROUP BY s.trace_id"
 	return b
 }
 
@@ -122,8 +156,8 @@ func (b *builder) withNumTraces(n int32) *builder {
 	return b
 }
 
-func buildQuery(q *storage_v1.TraceQueryParameters) (query string, hasDuration bool) {
-	builder := newFindTracesQueryBuilder()
+func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query string, hasDuration bool) {
+	builder := newTracesQueryBuilder(kind)
 	if len(q.ServiceName) > 0 {
 		q.ServiceName = q.ServiceName[1 : len(q.ServiceName)-1] // temporary, based on trace gen behaviour
 		builder.withWhere().withServiceName(q.ServiceName)
@@ -146,7 +180,15 @@ func buildQuery(q *storage_v1.TraceQueryParameters) (query string, hasDuration b
 		builder.withDurationRange()
 	}
 
-	builder.orderBy()
+	switch kind {
+	case spansQuery:
+		builder.orderByTraceId()
+	case traceIdsQuery:
+		builder.groupByTraceId()
+	default:
+		panic("wrong query kind")
+	}
+
 	if q.NumTraces != 0 {
 		builder.withNumTraces(q.NumTraces)
 	}

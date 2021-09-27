@@ -15,9 +15,9 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/jaegertracing/jaeger/model"
+	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
-	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	api "github.com/timescale/promscale/pkg/api/jaeger_plugin_endpoints"
 )
 
@@ -169,29 +169,9 @@ func (p *Plugin) FindTraces(ctx context.Context, query *spanstore.TraceQueryPara
 		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("wait for response: %w", err))
 	}
 
-	var r []*model.Batch
-	if err = json.Unmarshal(resp, &r); err != nil {
-		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("unmarshalling json response: %w", err))
-	}
-
-	// Copied from Jaeger's grpc_client.go
-	// https://github.com/jaegertracing/jaeger/blob/067dff713ab635ade66315bbd05518d7b28f40c6/plugin/storage/grpc/shared/grpc_client.go#L179
 	traces := make([]*model.Trace, 0)
-	var traceID model.TraceID
-	numSpans := 0
-	for _, batch := range r {
-		trace := new(model.Trace)
-		for _, span := range batch.Spans {
-			if span.TraceID != traceID {
-				trace = &model.Trace{}
-				traceID = span.TraceID
-				traces = append(traces, trace)
-			}
-			numSpans++
-			trace.Spans = append(trace.Spans, span)
-			trace.ProcessMap = append(trace.ProcessMap, model.Trace_ProcessMapping{Process: *span.Process, ProcessID: span.ProcessID})
-		}
-		traces = append(traces, trace)
+	if err = json.Unmarshal(resp, &traces); err != nil {
+		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("unmarshalling json response: %w", err))
 	}
 	return traces, nil
 }

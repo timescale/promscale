@@ -52,4 +52,3 @@ func operationsHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc 
 		respondWithByteSlice(w, http.StatusOK, b)
 	}
 }
-

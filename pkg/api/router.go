@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
+	"github.com/timescale/promscale/pkg/api/jaeger_plugin_endpoints"
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/ha"
 	haClient "github.com/timescale/promscale/pkg/ha/client"
@@ -23,7 +24,6 @@ import (
 	jaeger_query "github.com/timescale/promscale/pkg/plugin/jaeger-query"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/util"
-	"github.com/timescale/promscale/pkg/api/jaeger_plugin_endpoints"
 )
 
 func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
