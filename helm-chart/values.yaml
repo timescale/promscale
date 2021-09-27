@@ -23,6 +23,16 @@ upgradeStrategy: Recreate
 # More info about HA: https://github.com/timescale/promscale/blob/master/docs/high-avaliability/prometheus-HA.md
 args: []
 
+# To enable tracing in Promscale configure args as
+#args:
+#- -otlp-grpc-server-listen-address=:9202
+
+# Currently tracing support is in beta
+# so tracing features needs to be explicitly enabled.
+tracing:
+  # tracing is only enabled if below field is configured true
+  enabled: false
+
 # connection options to connect to a target db
 connection:
   # connection string settings, it is pulled
@@ -76,6 +86,7 @@ prometheus:
 # the promscale deployment
 service:
   port: 9201
+  tracesPort: 9202
   loadBalancer:
     # If not enabled, we still expose the connector using a so called Headless Service
     # https://kubernetes.io/docs/concepts/services-networking/service/#headless-services

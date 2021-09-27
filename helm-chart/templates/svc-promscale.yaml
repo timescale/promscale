@@ -22,3 +22,8 @@ spec:
   - name: connector-port
     port: {{ .Values.service.port }}
     protocol: TCP
+  {{ if .Values.tracing.enabled }}
+  - name: traces-port
+    port: {{ .Values.service.tracesPort }}
+    protocol: TCP
+  {{- end }}

@@ -40,6 +40,10 @@ spec:
           ports:
             - containerPort: 9201
               name: connector-port
+          {{ if .Values.tracing.enabled }}
+            - containerPort: 9202
+              name: traces-port
+          {{- end }}
           env:
             {{- if not .Values.connection.uri.secretTemplate }}
             - name: PROMSCALE_DB_PORT

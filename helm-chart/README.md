@@ -43,7 +43,7 @@ data:
 where `PATRONI_SUPERUSER_PASSWORD` references the default `postgres` user that the Connector will use to connect to the
 database. By default the *'postgres'* user is used, so we are configuring secret key as `PATRONI_SUPERUSER_PASSWORD`.
 
-OR 
+OR
 
 You can use db uri to connect to TimescaleDB is stored in a
 Kubernetes Secret created before the chart is deployed.
@@ -85,7 +85,7 @@ You can also install by referencing the db uri secret created previously:
 helm install --name my-release . \
       --set connection.dbURI.secretTemplate="timescale-secret"
 ```
- 
+
 Alternatively, a YAML file the specifies the values for the parameters can be provided
 while installing the chart. For example:
 ```shell script
@@ -110,6 +110,7 @@ helm install --name my-release -f myvalues.yaml .
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
 | `connection.sslMode`              | SSL mode for connection                     | `require`                          |
 | `service.port`                    | Port the connector pods will accept connections on | `9201`                      |
+| `service.tracesPort`              | Port the connector pods will accept traces connections on | `9202`                      |
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |
 | `maintenance.enabled`             | Option to enable maintenance cronjob, Enable maintenance cronjob only if you are using TimescaleDB < `2.0`   | `false` |
@@ -125,5 +126,7 @@ helm install --name my-release -f myvalues.yaml .
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 | `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
 | `affinity`                        | PodAffinity and PodAntiAffinity for scheduling           | `{}`                               |
+| `tracing.enabled`                 | Enable tracing support in Promscale, exposes container, service ports to default 9202 (in future releases tracing support will be enabled by default)           | `false`                               |
+| `tracing.args`                    | Promscale args to enable tracing               | `-otlp-grpc-server-listen-address=:9202`                               |
 
 [docker-image]: https://hub.docker.com/timescale/promscale
