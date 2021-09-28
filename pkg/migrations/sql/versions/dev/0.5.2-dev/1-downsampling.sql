@@ -1,4 +1,3 @@
-BEGIN; -- need to run in a single transaction to set series_table column defaults to table_name
 ALTER TABLE SCHEMA_CATALOG.metric
     ADD COLUMN table_schema name NOT NULL DEFAULT 'SCHEMA_DATA',
     ADD COLUMN series_table name, -- series_table stores the name of the table used to store the series data for this metric.
@@ -10,11 +9,10 @@ ALTER TABLE SCHEMA_CATALOG.metric
 
 UPDATE SCHEMA_CATALOG.metric SET series_table = table_name;
 ALTER TABLE SCHEMA_CATALOG.metric ALTER COLUMN series_table SET NOT NULL;
-COMMIT;
 
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_metric_table_name_if_exists(TEXT);
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_confirmed_unused_series( TEXT, BIGINT[], TIMESTAMPTZ);
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.mark_unused_series(TEXT, TIMESTAMPTZ, TIMESTAMPTZ);
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.delete_expired_series(TEXT, TIMESTAMPTZ, BIGINT, TIMESTAMPTZ);
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.drop_metric_chunk_data(TEXT, TIMESTAMPTZ);
-DROP FUNCTION IF EXISTS SCHEMA_CATALOG.drop_metric_chunks(TEXT, TIMESTAMPTZ, TIMESTAMPTZ, BOOLEAN);
+DROP PROCEDURE IF EXISTS SCHEMA_CATALOG.drop_metric_chunks(TEXT, TIMESTAMPTZ, TIMESTAMPTZ, BOOLEAN);

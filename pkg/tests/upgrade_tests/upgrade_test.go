@@ -85,7 +85,7 @@ func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean 
 }
 
 func TestUpgradeFromPrev(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t, false, baseExtensionState)
+	upgradedDbInfo := getUpgradedDbInfo(t, false, false, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, false, baseExtensionState)
 
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
@@ -93,10 +93,19 @@ func TestUpgradeFromPrev(t *testing.T) {
 	}
 }
 
-func TestUpgradeFromPrevMultinode(t *testing.T) {
+func TestUpgradeFromEarliest(t *testing.T) {
+	upgradedDbInfo := getUpgradedDbInfo(t, false, true, baseExtensionState)
+	pristineDbInfo := getPristineDbInfo(t, false, baseExtensionState)
+
+	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
+		PrintDbSnapshotDifferences(t, pristineDbInfo, upgradedDbInfo)
+	}
+}
+
+func TestUpgradeFromEarliestMultinode(t *testing.T) {
 	extState := baseExtensionState
 	extState.UseMultinode()
-	upgradedDbInfo := getUpgradedDbInfo(t, false, extState)
+	upgradedDbInfo := getUpgradedDbInfo(t, false, true, extState)
 	pristineDbInfo := getPristineDbInfo(t, false, extState)
 
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
@@ -106,8 +115,8 @@ func TestUpgradeFromPrevMultinode(t *testing.T) {
 
 // TestUpgradeFromPrevNoData tests migrations with no ingested data.
 // See issue: https://github.com/timescale/promscale/issues/330
-func TestUpgradeFromPrevNoData(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t, true, baseExtensionState)
+func TestUpgradeFromEarliestNoData(t *testing.T) {
+	upgradedDbInfo := getUpgradedDbInfo(t, true, true, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, true, baseExtensionState)
 
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
@@ -115,12 +124,24 @@ func TestUpgradeFromPrevNoData(t *testing.T) {
 	}
 }
 
-func getUpgradedDbInfo(t *testing.T, noData bool, extensionState testhelpers.ExtensionState) (upgradedDbInfo dbSnapshot) {
-	// we test that upgrading from the previous version gives the correct output
-	// by induction, this property should hold true for any chain of versions
-	prevVersion := semver.MustParse(version.EarliestUpgradeTestVersion)
-	if extensionState.UsesMultinode() || extensionState.UsesTimescale2() {
-		prevVersion = semver.MustParse(version.EarliestUpgradeTestVersionMultinode)
+func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionState testhelpers.ExtensionState) (upgradedDbInfo dbSnapshot) {
+	// We test that upgrading from both the earliest and the directly-previous versions works
+	// While it may seem that the earliest version is sufficient, idempotent scripts are only
+	// run on each completed updated and so testing the upgrade as it relates to the last idempotent
+	// state is important. To see why we need both tests, think of the following example:
+	//
+	// Say you have an earliest version 1 and a new version 3. In version 2 you introduce procedure foo(). that you
+	// drop in version 3.
+	// DROP FUNCTION IF EXISTS foo() (wrong since foo is procedure not function), would pass the earlier->latest test since
+	// version 1 has no function foo, and would only be caught in prev->latest test.
+	// DROP PROCEDURE foo() (wrong since missing IF NOT EXISTS), would pass the prev->latest test but would be caught in the
+	// earliest->latest test.
+	prevVersion := semver.MustParse(version.PrevReleaseVersion)
+	if useEarliest {
+		prevVersion = semver.MustParse(version.EarliestUpgradeTestVersion)
+		if extensionState.UsesMultinode() || extensionState.UsesTimescale2() {
+			prevVersion = semver.MustParse(version.EarliestUpgradeTestVersionMultinode)
+		}
 	}
 	// TODO we could probably improve performance of this test by 2x if we
 	//      gathered the db info in parallel. Unfortunately our db runner doesn't
