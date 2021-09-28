@@ -22,7 +22,6 @@ import (
 )
 
 type Plugin struct {
-	name       string
 	url        string
 	httpClient *http.Client
 

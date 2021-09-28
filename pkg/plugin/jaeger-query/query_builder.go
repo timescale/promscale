@@ -13,7 +13,7 @@ import (
 )
 
 type builder struct {
-	base                string
+	base                *strings.Builder
 	serviceNameFormat   string
 	operationNameFormat string
 	tagsFormat          string
@@ -30,8 +30,7 @@ const (
 )
 
 const (
-	selectForSpans = `
-SELECT s.trace_id,
+	selectForSpans = `SELECT s.trace_id,
 	   s.span_id,
        s.parent_span_id,
        s.start_time start_times,
@@ -46,12 +45,11 @@ SELECT s.trace_id,
 	   ps_trace.jsonb(s.resource_tags) resource_tags,
 	   ps_trace.jsonb(s.span_tags) span_tags
 FROM   _ps_trace.span s
-	   INNER JOIN _ps_trace.schema_url sch_url
+	   LEFT JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
        INNER JOIN _ps_trace.span_name sn
    ON s.name_id = sn.id `
-	selectForTraceIds = `
-SELECT s.trace_id
+	selectForTraceIds = `SELECT s.trace_id
 FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
@@ -76,7 +74,7 @@ FROM   _ps_trace.span s
 // withWhere.
 func newTracesQueryBuilder(kind queryKind) *builder {
 	b := &builder{
-		base:                ``,
+		base:                new(strings.Builder),
 		serviceNameFormat:   `ps_trace.val_text(s.resource_tags, 'service.name')='%s' AND `,
 		operationNameFormat: `sn.name='%s' AND `,
 		tagsFormat:          `ps_trace.val_text(s.resource_tags, '%s')='%s' AND `,
@@ -86,9 +84,9 @@ func newTracesQueryBuilder(kind queryKind) *builder {
 	}
 	switch kind {
 	case spansQuery:
-		b.base = selectForSpans
+		expandAndWrite(b.base, selectForSpans)
 	case traceIdsQuery:
-		b.base = selectForTraceIds
+		expandAndWrite(b.base, selectForTraceIds)
 	default:
 		panic("wrong query kind")
 	}
@@ -97,63 +95,75 @@ func newTracesQueryBuilder(kind queryKind) *builder {
 
 func (b *builder) query() string {
 	b.trimANDIfExists()
-	return b.base
+	return strings.TrimSpace(b.base.String())
 }
 
+const and = "AND "
+
 func (b *builder) trimANDIfExists() *builder {
-	b.base = strings.TrimSuffix(b.base, "AND ")
+	existing := b.base.String()
+	if strings.HasSuffix(existing, and) {
+		newStr := strings.TrimSuffix(b.base.String(), "AND ")
+		b.base.Reset()
+		expandAndWrite(b.base, newStr)
+	}
 	return b
 }
 
 func (b *builder) withWhere() *builder {
-	b.base += " WHERE "
+	expandAndWrite(b.base, " WHERE ")
 	return b
 }
 
 func (b *builder) orderByTraceId() *builder {
 	b.trimANDIfExists()
-	b.base += " ORDER BY s.trace_id "
+	expandAndWrite(b.base, " ORDER BY s.trace_id ")
 	return b
 }
 
 func (b *builder) groupByTraceId() *builder {
 	b.trimANDIfExists()
-	b.base += " GROUP BY s.trace_id"
+	expandAndWrite(b.base, " GROUP BY s.trace_id")
 	return b
 }
 
 func (b *builder) withServiceName(s string) *builder {
-	b.base += fmt.Sprintf(b.serviceNameFormat, s)
+	expandAndWrite(b.base, fmt.Sprintf(b.serviceNameFormat, s))
 	return b
 }
 
 func (b *builder) withOperationName(s string) *builder {
-	b.base += fmt.Sprintf(b.operationNameFormat, s)
+	expandAndWrite(b.base, fmt.Sprintf(b.operationNameFormat, s))
 	return b
 }
 
 func (b *builder) withResourceTags(tags map[string]string) *builder {
 	for k, v := range tags {
-		b.base += fmt.Sprintf(b.tagsFormat, k, v)
+		expandAndWrite(b.base, fmt.Sprintf(b.tagsFormat, k, v))
 	}
 	return b
 }
 
 func (b *builder) withStartRange(min, max time.Time) *builder {
-	b.base += fmt.Sprintf(b.startRangeFormat, min.Format(time.RFC3339), max.Format(time.RFC3339))
+	expandAndWrite(b.base, fmt.Sprintf(b.startRangeFormat, min.Format(time.RFC3339), max.Format(time.RFC3339)))
 	return b
 }
 
 // withDurationRange when using this function, provide the min and max duration in args.
 func (b *builder) withDurationRange() *builder {
-	b.base += b.durationRangeFormat
+	expandAndWrite(b.base, b.durationRangeFormat)
 	return b
 }
 
 func (b *builder) withNumTraces(n int32) *builder {
 	b.trimANDIfExists()
-	b.base += fmt.Sprintf(b.numTracesFormat, n)
+	expandAndWrite(b.base, fmt.Sprintf(b.numTracesFormat, n))
 	return b
+}
+
+func expandAndWrite(b *strings.Builder, s string) {
+	b.Grow(len(s))
+	b.WriteString(s)
 }
 
 func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query string, hasDuration bool) {
@@ -193,5 +203,5 @@ func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query strin
 		builder.withNumTraces(q.NumTraces)
 	}
 
-	return builder.query(), hasDuration
+	return strings.TrimSpace(builder.query()), hasDuration
 }

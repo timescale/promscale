@@ -19,7 +19,7 @@ func makeSpan(
 	resourceSpan pdata.ResourceSpans,
 	rawTraceId pgtype.UUID, rawId int64, rawParentId pgtype.Int8,
 	startTime, endTime time.Time,
-	kind string,
+	rawKind pgtype.Text,
 	droppedTagsCounts, droppedEventsCounts, droppedLinkCounts int,
 	rawTraceState, rawSchemaUrl pgtype.Text,
 	name string,
@@ -69,6 +69,11 @@ func makeSpan(
 	ref.SetParentSpanID(parentId)
 
 	ref.SetName(name)
+
+	kind, err := textArraytoString(rawKind)
+	if err != nil {
+		return fmt.Errorf("kind: text-to-string: %w", err)
+	}
 	ref.SetKind(makeKind(kind))
 
 	ref.SetStartTimestamp(pdata.NewTimestampFromTime(startTime))

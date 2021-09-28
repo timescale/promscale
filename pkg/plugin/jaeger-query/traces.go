@@ -27,7 +27,7 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 		parentSpanId        pgtype.Int8
 		startTime           time.Time
 		endTime             time.Time
-		kind                string
+		kind                pgtype.Text
 		droppedTagsCounts   int
 		droppedEventsCounts int
 		droppedLinkCounts   int
