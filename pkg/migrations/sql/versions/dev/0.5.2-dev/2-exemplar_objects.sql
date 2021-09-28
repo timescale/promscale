@@ -1,5 +1,5 @@
 -- delete the get_new_label_pos so that base.sql creates the new one.
-DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean);
+DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_new_pos_for_key(text, text[]);
 
 CREATE DOMAIN SCHEMA_PROM.label_value_array AS TEXT[];
 
