@@ -15,12 +15,12 @@ import (
 	jaeger_query "github.com/timescale/promscale/pkg/plugin/jaeger-query"
 )
 
-func Services(conf *Config, reader *jaeger_query.JaegerQueryReader) http.Handler {
+func Services(conf *Config, reader jaeger_query.JaegerReaderPlugin) http.Handler {
 	hf := corsWrapper(conf, servicesHandler(reader))
 	return gziphandler.GzipHandler(hf)
 }
 
-func servicesHandler(reader *jaeger_query.JaegerQueryReader) http.HandlerFunc {
+func servicesHandler(reader jaeger_query.JaegerReaderPlugin) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		services, err := reader.GetServices(context.Background())
 		if err != nil {

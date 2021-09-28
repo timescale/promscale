@@ -102,8 +102,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	// Serve Jaeger plugin endpoints.
 	// Todo 1: (incremental optimizations):
 	// 1. Support bearer_token & TLS between jaeger-query-plugin and Promscale.
-	// 2. Protocol buffers as encoding layer.
-	// 3. gRPC calls instead of JSON.
+	// 2. gRPC calls instead of JSON.
 	// Todo 2: (refactor): pkg/api => pkg/api/handlers/traces & pkg/api/handlers/metrics & pkg/api/router.go
 	jaegerQueryReader := jaeger_query.NewReader(client.Connection)
 

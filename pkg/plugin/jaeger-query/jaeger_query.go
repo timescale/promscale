@@ -12,32 +12,40 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-type JaegerQueryReader struct {
+type JaegerReaderPlugin interface {
+	GetServices(context.Context) ([]string, error)
+	GetOperations(context.Context, storage_v1.GetOperationsRequest) (storage_v1.GetOperationsResponse, error)
+	GetTrace(context.Context, storage_v1.GetTraceRequest) (*model.Trace, error)
+	FindTraces(context.Context, *storage_v1.TraceQueryParameters) ([]*model.Trace, error)
+	FindTraceIDs(context.Context, *storage_v1.TraceQueryParameters) ([]model.TraceID, error)
+}
+
+type jaegerQueryReader struct {
 	conn pgxconn.PgxConn
 }
 
-func NewReader(conn pgxconn.PgxConn) *JaegerQueryReader {
-	return &JaegerQueryReader{
+func NewReader(conn pgxconn.PgxConn) JaegerReaderPlugin {
+	return &jaegerQueryReader{
 		conn: conn,
 	}
 }
 
-func (r *JaegerQueryReader) GetServices(ctx context.Context) ([]string, error) {
+func (r *jaegerQueryReader) GetServices(ctx context.Context) ([]string, error) {
 	return services(ctx, r.conn)
 }
 
-func (r *JaegerQueryReader) GetOperations(ctx context.Context, query storage_v1.GetOperationsRequest) (storage_v1.GetOperationsResponse, error) {
+func (r *jaegerQueryReader) GetOperations(ctx context.Context, query storage_v1.GetOperationsRequest) (storage_v1.GetOperationsResponse, error) {
 	return operations(ctx, r.conn, query)
 }
 
-func (r *JaegerQueryReader) GetTrace(ctx context.Context, traceID storage_v1.GetTraceRequest) (*model.Trace, error) {
+func (r *jaegerQueryReader) GetTrace(ctx context.Context, traceID storage_v1.GetTraceRequest) (*model.Trace, error) {
 	return singleTrace(ctx, r.conn, traceID)
 }
 
-func (r *JaegerQueryReader) FindTraces(ctx context.Context, query *storage_v1.TraceQueryParameters) ([]*model.Trace, error) {
+func (r *jaegerQueryReader) FindTraces(ctx context.Context, query *storage_v1.TraceQueryParameters) ([]*model.Trace, error) {
 	return findTraces(ctx, r.conn, query)
 }
 
-func (r *JaegerQueryReader) FindTraceIDs(ctx context.Context, query *storage_v1.TraceQueryParameters) ([]model.TraceID, error) {
+func (r *jaegerQueryReader) FindTraceIDs(ctx context.Context, query *storage_v1.TraceQueryParameters) ([]model.TraceID, error) {
 	return findTraceIDs(ctx, r.conn, query)
 }
