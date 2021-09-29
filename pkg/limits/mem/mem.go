@@ -1,3 +1,4 @@
+//go:build !linux
 // +build !linux
 
 // This file and its contents are licensed under the Apache License 2.0.

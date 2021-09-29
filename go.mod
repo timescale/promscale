@@ -1,6 +1,6 @@
 module github.com/timescale/promscale
 
-go 1.15
+go 1.14
 
 require (
 	github.com/NYTimes/gziphandler v1.1.1
@@ -15,7 +15,6 @@ require (
 	github.com/golang/snappy v0.0.3
 	github.com/hashicorp/go-hclog v0.12.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
-	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
 	github.com/jackc/pgconn v1.8.1
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6

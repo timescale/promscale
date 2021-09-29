@@ -50,7 +50,7 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 			// Note: Prometheus does not implement timeout for querying exemplars.
 			// But we should keep this as optional.
 			var cancel context.CancelFunc
-			timeout, err := parseDuration(timeout)
+			timeout, err := ParseDuration(timeout)
 			if err != nil {
 				log.Info("msg", "Exemplar query bad request:", "error", err)
 				respondError(w, http.StatusBadRequest, err, "bad_data")

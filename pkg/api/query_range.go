@@ -45,7 +45,7 @@ func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Query
 			return
 		}
 
-		step, err := parseDuration(r.FormValue("step"))
+		step, err := ParseDuration(r.FormValue("step"))
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, errors.Wrap(err, "param step"), "bad_data")
@@ -75,7 +75,7 @@ func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Query
 		ctx := r.Context()
 		if to := r.FormValue("timeout"); to != "" {
 			var cancel context.CancelFunc
-			timeout, err := parseDuration(to)
+			timeout, err := ParseDuration(to)
 			if err != nil {
 				log.Info("msg", "Query bad request"+err.Error())
 				respondError(w, http.StatusBadRequest, err, "bad_data")

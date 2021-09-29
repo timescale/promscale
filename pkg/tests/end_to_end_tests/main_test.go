@@ -17,18 +17,13 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel"
-	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
-	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/runner"
+	"github.com/timescale/promscale/pkg/tests/common"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
-	"github.com/timescale/promscale/pkg/version"
-
-	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 var (
@@ -206,7 +201,7 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 /* When testing with multinode always add data node 2 after installing the extension, as that tests a strictly harder case */
 func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAddNode func(db *pgxpool.Pool, t testing.TB), afterAddNode func(db *pgxpool.Pool, t testing.TB)) {
 	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, extensionState, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
-		performMigrate(t, connectURL, testhelpers.PgConnectURL(DBName, testhelpers.Superuser))
+		common.PerformMigrate(t, connectURL, testhelpers.PgConnectURL(DBName, testhelpers.Superuser), *useTimescaleDB, *useExtension)
 
 		if beforeAddNode != nil {
 			if !*useMultinode {
@@ -243,38 +238,6 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 
 		afterAddNode(pool, t)
 	})
-}
-
-func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
-	extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true}
-	if *useTimescaleDB {
-		migrateURL := connectURL
-		if !*useExtension {
-			// The docker image without an extension does not have pgextwlist
-			// Thus, you have to use the superuser to install TimescaleDB
-			migrateURL = superConnectURL
-		}
-		err := extension.InstallUpgradeTimescaleDBExtensions(migrateURL, extOptions)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer migratePool.Close()
-	conn, err := migratePool.Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Release()
-	err = runner.SetupDBState(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 }
 
 func generatePGTestDirFiles() string {
@@ -339,9 +302,5 @@ func copyFile(src string, dest string) error {
 
 // newWriteRequestWithTs returns a new *prompb.WriteRequest from the pool and applies ts to it if ts is not nil.
 func newWriteRequestWithTs(ts []prompb.TimeSeries) *prompb.WriteRequest {
-	wr := ingstr.NewWriteRequest()
-	if ts != nil {
-		wr.Timeseries = ts
-	}
-	return wr
+	return common.NewWriteRequestWithTs(ts)
 }

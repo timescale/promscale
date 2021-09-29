@@ -13,6 +13,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 var readRequest *prompb.ReadRequest
@@ -27,7 +28,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		}
 		defer pgClient.Close()
 
-		metrics := generateLargeTimeseries()
+		metrics := common.GenerateLargeTimeseries()
 		readRequest = &prompb.ReadRequest{
 			Queries: []*prompb.Query{
 				{

@@ -25,6 +25,7 @@ import (
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/common"
 )
 
 type deleteStr struct {
@@ -100,9 +101,9 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
 		defer db.Close()
 
-		ts := generateLargeTimeseries()
+		ts := common.GenerateLargeTimeseries()
 		if *extendedTest {
-			ts = generateRealTimeseries()
+			ts = common.GenerateRealTimeseries()
 		}
 
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
@@ -213,9 +214,9 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
 		defer db.Close()
 
-		ts := generateLargeTimeseries()
+		ts := common.GenerateLargeTimeseries()
 		if *extendedTest {
-			ts = generateRealTimeseries()
+			ts = common.GenerateRealTimeseries()
 		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
@@ -319,9 +320,9 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
 		defer db.Close()
 
-		ts := generateLargeTimeseries()
+		ts := common.GenerateLargeTimeseries()
 		if *extendedTest {
-			ts = generateRealTimeseries()
+			ts = common.GenerateRealTimeseries()
 		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {
@@ -469,9 +470,9 @@ func TestDeleteMixins(t *testing.T) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_modifier")
 		defer db.Close()
 
-		ts := generateLargeTimeseries()
+		ts := common.GenerateLargeTimeseries()
 		if *extendedTest {
-			ts = generateRealTimeseries()
+			ts = common.GenerateRealTimeseries()
 		}
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		if err != nil {

@@ -160,6 +160,7 @@ func PgConnectURLUser(dbName string, user string) string {
 func getRoleUser(role string) string {
 	return role + "_user"
 }
+
 func setupRole(t testing.TB, dbName string, role string) {
 	user := getRoleUser(role)
 	dbOwner, err := pgx.Connect(context.Background(), PgConnectURL(dbName, NoSuperuser))
