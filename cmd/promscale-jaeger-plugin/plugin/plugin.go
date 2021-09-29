@@ -172,6 +172,10 @@ func (p *Plugin) FindTraces(ctx context.Context, query *spanstore.TraceQueryPara
 	if err = json.Unmarshal(resp, &traces); err != nil {
 		return nil, wrapErr(api.JaegerQueryTracesEndpoint, fmt.Errorf("unmarshalling json response: %w", err))
 	}
+	p.logger.Warn("len received traces slice", len(traces))
+	if len(traces) == 0 {
+		return nil, nil
+	}
 	return traces, nil
 }
 

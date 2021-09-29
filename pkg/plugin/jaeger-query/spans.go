@@ -57,10 +57,10 @@ func makeSpan(
 		return fmt.Errorf("schemaURl: text-to-string: %w", err)
 	}
 
-	resourceSpan.SetSchemaUrl(schemaURL)
+	resourceSpan.SetSchemaUrl(stringOrEmpty(schemaURL))
 
 	instrumentationLibSpan := resourceSpan.InstrumentationLibrarySpans().AppendEmpty()
-	instrumentationLibSpan.SetSchemaUrl(schemaURL)
+	instrumentationLibSpan.SetSchemaUrl(stringOrEmpty(schemaURL))
 
 	// Populating a span.
 	ref := instrumentationLibSpan.Spans().AppendEmpty()
@@ -74,12 +74,12 @@ func makeSpan(
 	if err != nil {
 		return fmt.Errorf("kind: text-to-string: %w", err)
 	}
-	ref.SetKind(makeKind(kind))
+	ref.SetKind(makeKind(stringOrEmpty(kind)))
 
 	ref.SetStartTimestamp(pdata.NewTimestampFromTime(startTime))
 	ref.SetEndTimestamp(pdata.NewTimestampFromTime(endTime))
 
-	ref.SetTraceState(pdata.TraceState(traceState))
+	ref.SetTraceState(pdata.TraceState(stringOrEmpty(traceState)))
 
 	ref.SetDroppedAttributesCount(uint32(droppedTagsCounts))
 	ref.SetDroppedEventsCount(uint32(droppedEventsCounts))
@@ -88,6 +88,13 @@ func makeSpan(
 	ref.Attributes().InitFromMap(makeAttributes(spanTags))
 
 	return nil
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // makeAttributes makes attribute map using tags.
@@ -151,10 +158,10 @@ func makeKind(s string) pdata.SpanKind {
 	}
 }
 
-func textArraytoString(s pgtype.Text) (string, error) {
-	var d string
+func textArraytoString(s pgtype.Text) (*string, error) {
+	var d *string
 	if err := s.AssignTo(&d); err != nil {
-		return "", fmt.Errorf("assign to: %w", err)
+		return nil, fmt.Errorf("assign to: %w", err)
 	}
 	return d, nil
 }
