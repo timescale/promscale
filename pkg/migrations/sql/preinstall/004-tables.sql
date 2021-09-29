@@ -16,6 +16,7 @@ GRANT SELECT ON TABLE public.prom_installation_info TO PUBLIC;
 --all modifications can only be done by owner
 
 INSERT INTO public.prom_installation_info(key, value) VALUES
+    ('tagging schema',          'SCHEMA_TAG'),
     ('catalog schema',          'SCHEMA_CATALOG'),
     ('prometheus API schema',   'SCHEMA_PROM'),
     ('extension schema',        'SCHEMA_EXT'),

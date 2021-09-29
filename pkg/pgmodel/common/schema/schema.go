@@ -5,6 +5,7 @@
 package schema
 
 const (
+	Tag       = "ps_tag"
 	Prom      = "prom_api"
 	Data      = "prom_data"
 	Info      = "prom_info"

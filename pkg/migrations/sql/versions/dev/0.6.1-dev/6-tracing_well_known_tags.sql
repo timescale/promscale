@@ -1,4 +1,3 @@
-
 /*
     15 = resource | span | event | link
 */
