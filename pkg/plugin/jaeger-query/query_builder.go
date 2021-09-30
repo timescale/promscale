@@ -33,22 +33,29 @@ const (
 	selectForSpans = `SELECT s.trace_id,
 	   s.span_id,
        s.parent_span_id,
-       s.start_time start_times,
-       s.end_time end_times,
+       s.start_time 						start_times,
+       s.end_time 							end_times,
        s.span_kind,
-       s.dropped_tags_count dropped_tags_counts,
-       s.dropped_events_count dropped_events_counts,
-       s.dropped_link_count dropped_link_counts,
-       s.trace_state trace_states,
-       sch_url.url schema_urls,
-       sn.name     span_names,
-	   ps_trace.jsonb(s.resource_tags) resource_tags,
-	   ps_trace.jsonb(s.span_tags) span_tags
+       s.dropped_tags_count 				dropped_tags_counts,
+       s.dropped_events_count 				dropped_events_counts,
+       s.dropped_link_count 				dropped_link_counts,
+       s.trace_state 						trace_states,
+       sch_url.url 							schema_urls,
+       sn.name     							span_names,
+	   ps_trace.jsonb(s.resource_tags) 		resource_tags,
+	   ps_trace.jsonb(s.span_tags) 			span_tags,
+	   array_agg(e.name)                 	event_names,
+       array_agg(e.time)                 	event_times,
+	   array_agg(e.dropped_tags_count)   	event_dropped_tags_count,
+	   jsonb_agg(ps_trace.jsonb(e.tags)) 	event_tags
 FROM   _ps_trace.span s
 	   LEFT JOIN _ps_trace.schema_url sch_url
    ON s.resource_schema_url_id = sch_url.id
        INNER JOIN _ps_trace.span_name sn
-   ON s.name_id = sn.id `
+   ON s.name_id = sn.id
+	   LEFT JOIN _ps_trace.event e
+   ON e.span_id = s.span_id
+	   AND e.trace_id = s.trace_id `
 	selectForTraceIds = `SELECT s.trace_id
 FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
@@ -127,6 +134,12 @@ func (b *builder) groupByTraceId() *builder {
 	return b
 }
 
+func (b *builder) groupBySpanTableAttributes() *builder {
+	b.trimANDIfExists()
+	expandAndWrite(b.base, " GROUP BY s.trace_id, s.span_id, s.parent_span_id, s.start_time, s.end_time, sch_url.url, sn.name, s.resource_tags, s.span_tags ")
+	return b
+}
+
 func (b *builder) withServiceName(s string) *builder {
 	expandAndWrite(b.base, fmt.Sprintf(b.serviceNameFormat, s))
 	return b
@@ -192,7 +205,7 @@ func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query strin
 
 	switch kind {
 	case spansQuery:
-		builder.orderByTraceId()
+		builder.groupBySpanTableAttributes().orderByTraceId()
 	case traceIdsQuery:
 		builder.groupByTraceId()
 	default:

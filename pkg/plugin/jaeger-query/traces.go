@@ -22,6 +22,8 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 	var (
 		// Iteration vars.
 		// Each element in the array corresponds to one span, of a trace.
+
+		// From span table.
 		traceId             pgtype.UUID
 		spanId              int64
 		parentSpanId        pgtype.Int8
@@ -34,11 +36,17 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 		traceState          pgtype.Text
 		schemaUrl           pgtype.Text
 		spanName            string
+		resourceTags        = make(map[string]interface{})
+		spanTags            = make(map[string]interface{})
+
+		// From events table.
+		// We need Slice of pointers since any individual element can be nil.
+		eventNames            = &[]*string{}
+		eventTimes            = &[]*time.Time{}
+		eventDroppedTagsCount = &[]*int{}
+		eventTags             = make([]map[string]interface{}, 0)
 
 		err error
-
-		resourceTags = make(map[string]interface{})
-		spanTags     = make(map[string]interface{})
 
 		traces = pdata.NewTraces()
 	)
@@ -53,6 +61,7 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 		// Each scan is a scan for a complete Trace. This means,
 		// it contains data from multiple spans, and hence, an array.
 		if err = itr.Scan(
+			// Span table.
 			&traceId,
 			&spanId,
 			&parentSpanId,
@@ -66,18 +75,34 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 			&schemaUrl,
 			&spanName,
 			&resourceTags,
-			&spanTags); err != nil {
+			&spanTags,
+
+			// Event table.
+			&eventNames, // 14
+			&eventTimes,
+			&eventDroppedTagsCount,
+			&eventTags,
+		); err != nil {
 			err = fmt.Errorf("scanning raw-traces: %w", err)
 			break
 		}
 
-		if err = makeSpan(traces.ResourceSpans().AppendEmpty(),
+		if err = makeSpan(
+			// From span table.
+			traces.ResourceSpans().AppendEmpty(),
 			traceId, spanId, parentSpanId,
 			startTime, endTime,
 			kind,
 			droppedTagsCounts, droppedEventsCounts, droppedLinkCounts,
 			traceState, schemaUrl, spanName,
-			resourceTags, spanTags); err != nil {
+			resourceTags, spanTags,
+
+			// From event table.
+			eventNames,
+			eventTimes,
+			eventDroppedTagsCount,
+			eventTags,
+		); err != nil {
 			return nil, fmt.Errorf("make span: %w", err)
 		}
 	}

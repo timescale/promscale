@@ -16,14 +16,25 @@ import (
 
 // makeSpan makes a span by populating the pdata.ResourceSpans with provided params.
 func makeSpan(
+	// From span table.
 	resourceSpan pdata.ResourceSpans,
-	rawTraceId pgtype.UUID, rawId int64, rawParentId pgtype.Int8,
-	startTime, endTime time.Time,
+	rawTraceId pgtype.UUID,
+	rawId int64,
+	rawParentId pgtype.Int8,
+	startTime,
+	endTime time.Time,
 	rawKind pgtype.Text,
 	droppedTagsCounts, droppedEventsCounts, droppedLinkCounts int,
 	rawTraceState, rawSchemaUrl pgtype.Text,
 	name string,
-	resourceTags, spanTags map[string]interface{}) error {
+	resourceTags, spanTags map[string]interface{},
+
+	// From event table.
+	eventNames *[]*string,
+	eventTimes *[]*time.Time,
+	eventDroppedTagsCount *[]*int,
+	eventTags []map[string]interface{},
+) error {
 	// todo: links, events
 	resourceSpan.Resource().Attributes().InitFromMap(makeAttributes(resourceTags))
 
@@ -86,6 +97,8 @@ func makeSpan(
 	ref.SetDroppedLinksCount(uint32(droppedLinkCounts))
 
 	ref.Attributes().InitFromMap(makeAttributes(spanTags))
+
+	makeEvents(ref.Events(), eventNames, eventTimes, eventDroppedTagsCount, eventTags)
 
 	return nil
 }
