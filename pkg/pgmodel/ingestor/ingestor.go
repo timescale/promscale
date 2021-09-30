@@ -5,14 +5,17 @@
 package ingestor
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"go.opentelemetry.io/collector/model/pdata"
 )
 
 type Cfg struct {
@@ -27,6 +30,7 @@ type Cfg struct {
 type DBIngestor struct {
 	sCache     cache.SeriesCache
 	dispatcher model.Dispatcher
+	tWriter    traceWriter
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
@@ -39,6 +43,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 	return &DBIngestor{
 		sCache:     sCache,
 		dispatcher: dispatcher,
+		tWriter:    newTraceWriter(conn),
 	}, nil
 }
 
@@ -65,6 +70,52 @@ type result struct {
 	id      int8
 	numRows uint64
 	err     error
+}
+
+func (ingestor *DBIngestor) IngestTraces(ctx context.Context, r pdata.Traces) error {
+	rSpans := r.ResourceSpans()
+	for i := 0; i < rSpans.Len(); i++ {
+		rSpan := rSpans.At(i)
+
+		var rSchemaURLID pgtype.Int8
+		var err error
+		rSchemaURLID, err = ingestor.tWriter.InsertSchemaURL(ctx, rSpan.SchemaUrl())
+		if err != nil {
+			return err
+		}
+
+		instLibSpans := rSpan.InstrumentationLibrarySpans()
+		for j := 0; j < instLibSpans.Len(); j++ {
+			instLibSpan := instLibSpans.At(j)
+			instLib := instLibSpan.InstrumentationLibrary()
+			instLibID, err := ingestor.tWriter.InsertInstrumentationLibrary(ctx, instLib.Name(), instLib.Version(), instLibSpan.SchemaUrl())
+			if err != nil {
+				return err
+			}
+
+			spans := instLibSpan.Spans()
+
+			for k := 0; k < spans.Len(); k++ {
+				span := spans.At(k)
+
+				nameID, err := ingestor.tWriter.InsertSpanName(ctx, span.Name())
+				if err != nil {
+					return err
+				}
+				if err = ingestor.tWriter.InsertSpanEvents(ctx, span.Events(), span.TraceID().Bytes(), span.SpanID().Bytes()); err != nil {
+					return err
+				}
+				if err = ingestor.tWriter.InsertSpanLinks(ctx, span.Links(), span.TraceID().Bytes(), span.SpanID().Bytes(), span.StartTimestamp().AsTime()); err != nil {
+					return err
+				}
+				if err = ingestor.tWriter.InsertSpan(ctx, span, nameID, instLibID, rSchemaURLID, rSpan.Resource().Attributes()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.

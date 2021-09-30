@@ -20,6 +20,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
+	"go.opentelemetry.io/collector/model/otlpgrpc"
 	"google.golang.org/grpc"
 )
 
@@ -82,6 +83,26 @@ func Run(cfg *Config) error {
 			log.Info("msg", "Start thanos-store")
 			if err := grpcServer.Serve(listener); err != nil {
 				log.Error("msg", "Starting the Thanos store failed", "err", err)
+				return
+			}
+		}()
+	}
+
+	if len(cfg.OTLPGRPCListenAddr) > 0 {
+		grpcServer := grpc.NewServer()
+		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
+
+		go func() {
+			log.Info("msg", fmt.Sprintf("Start listening for OTLP GRPC server on %s", cfg.OTLPGRPCListenAddr))
+			listener, err := net.Listen("tcp", cfg.OTLPGRPCListenAddr)
+			if err != nil {
+				log.Error("msg", "Listening for OTLP GRPC server failed", "err", err)
+				return
+			}
+
+			log.Info("msg", "Start OTLP GRPC server")
+			if err := grpcServer.Serve(listener); err != nil {
+				log.Error("msg", "Starting the OTLP GRPC server failed", "err", err)
 				return
 			}
 		}()

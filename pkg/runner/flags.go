@@ -24,6 +24,7 @@ import (
 type Config struct {
 	ListenAddr                  string
 	ThanosStoreAPIListenAddr    string
+	OTLPGRPCListenAddr          string
 	PgmodelCfg                  pgclient.Config
 	LogCfg                      log.Config
 	APICfg                      api.Config
@@ -62,6 +63,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
 	fs.StringVar(&cfg.ThanosStoreAPIListenAddr, "thanos-store-api-listen-address", "", "Address to listen on for Thanos Store API endpoints.")
+	fs.StringVar(&cfg.OTLPGRPCListenAddr, "otlp-grpc-server-listen-address", "", "Address to listen on for OTLP GRPC server.")
 	fs.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	fs.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "(DEPRECATED) Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
 	fs.DurationVar(&cfg.ThroughputInterval, "tput-report", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")

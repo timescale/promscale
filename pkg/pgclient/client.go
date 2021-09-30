@@ -23,6 +23,7 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/tenancy"
+	"go.opentelemetry.io/collector/model/pdata"
 )
 
 // Client sends Prometheus samples to TimescaleDB
@@ -195,6 +196,11 @@ func (c *Client) Ingestor() *ingestor.DBIngestor {
 // Ingest writes the timeseries object into the DB
 func (c *Client) Ingest(r *prompb.WriteRequest) (uint64, uint64, error) {
 	return c.ingestor.Ingest(r)
+}
+
+// IngestTraces writes the traces object into the DB.
+func (c *Client) IngestTraces(ctx context.Context, tr pdata.Traces) error {
+	return c.ingestor.IngestTraces(ctx, tr)
 }
 
 // Read returns the promQL query results
