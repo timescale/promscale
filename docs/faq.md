@@ -68,7 +68,7 @@
 
 14. How can I find out more about Promscale?
 
-    If you have any questions, please join the #prometheus channel on [TimescaleDB Slack](https://slack.timescale.com/), or the [Promscale Users Google Group](https://groups.google.com/forum/#!forum/promscale-users). You can also join our users & community meeting ([details here](https://tsdb.co/promscale-agenda)).
+    If you have any questions, please join the #prometheus channel on [TimescaleDB Slack](https://slack.timescale.com/). You're also welcome to schedule a 1-to-1 with members of the Promscale team using ([our office hours calendar](https://calendly.com/promscale)).
 
 
 15. Does Promscale need a database superuser to run?
