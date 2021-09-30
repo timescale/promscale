@@ -46,6 +46,11 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 		eventDroppedTagsCount = &[]*int{}
 		eventTags             = make([]map[string]interface{}, 0)
 
+		// From instrumentation lib table.
+		instLibName      = new(string)
+		instLibVersion   = new(string)
+		instLibSchemaUrl = new(string)
+
 		err error
 
 		traces = pdata.NewTraces()
@@ -82,6 +87,11 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 			&eventTimes,
 			&eventDroppedTagsCount,
 			&eventTags,
+
+			// Instrumentation lib table.
+			&instLibName,
+			&instLibVersion,
+			&instLibSchemaUrl,
 		); err != nil {
 			err = fmt.Errorf("scanning raw-traces: %w", err)
 			break
@@ -102,6 +112,11 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 			eventTimes,
 			eventDroppedTagsCount,
 			eventTags,
+
+			// From instrumentation lib table.
+			instLibName,
+			instLibVersion,
+			instLibSchemaUrl,
 		); err != nil {
 			return nil, fmt.Errorf("make span: %w", err)
 		}

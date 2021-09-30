@@ -34,6 +34,11 @@ func makeSpan(
 	eventTimes *[]*time.Time,
 	eventDroppedTagsCount *[]*int,
 	eventTags []map[string]interface{},
+
+	// From instrumentation lib table.
+	instName *string,
+	instVersion *string,
+	instSchemaUrl *string,
 ) error {
 	// todo: links, events
 	resourceSpan.Resource().Attributes().InitFromMap(makeAttributes(resourceTags))
@@ -71,7 +76,11 @@ func makeSpan(
 	resourceSpan.SetSchemaUrl(stringOrEmpty(schemaURL))
 
 	instrumentationLibSpan := resourceSpan.InstrumentationLibrarySpans().AppendEmpty()
-	instrumentationLibSpan.SetSchemaUrl(stringOrEmpty(schemaURL))
+	instrumentationLibSpan.SetSchemaUrl(stringOrEmpty(instSchemaUrl))
+
+	instLib := instrumentationLibSpan.InstrumentationLibrary()
+	instLib.SetName(stringOrEmpty(instName))
+	instLib.SetVersion(stringOrEmpty(instVersion))
 
 	// Populating a span.
 	ref := instrumentationLibSpan.Spans().AppendEmpty()
