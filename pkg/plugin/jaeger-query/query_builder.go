@@ -50,7 +50,12 @@ const (
 	   	jsonb_agg(ps_trace.jsonb(e.tags)) 	event_tags,
 	   	inst_l.name 						library_name,
 	   	inst_l.version 						library_version,
-		sch_url_2.url 						library_schema_url
+		sch_url_2.url 						library_schema_url,
+		array_agg(lk.linked_trace_id) 		links_linked_trace_ids,
+		array_agg(lk.linked_span_id) 		links_linked_span_ids,
+		array_agg(lk.trace_state) 			links_trace_states,
+		array_agg(lk.dropped_tags_count) 	links_dropped_tags_count,
+		jsonb_agg(lk.tags) 					links_tags
 FROM   _ps_trace.span s
 	   	LEFT JOIN _ps_trace.schema_url sch_url
    	ON s.resource_schema_url_id = sch_url.id
@@ -62,7 +67,10 @@ FROM   _ps_trace.span s
 		LEFT JOIN _ps_trace.instrumentation_lib inst_l
 	ON s.instrumentation_lib_id = inst_l.id
 		LEFT JOIN _ps_trace.schema_url sch_url_2
-	ON sch_url_2.id = inst_l.schema_url_id `
+	ON sch_url_2.id = inst_l.schema_url_id
+		LEFT JOIN _ps_trace.link lk
+	ON lk.trace_id = s.trace_id
+	   AND lk.span_id = s.span_id `
 	selectForTraceIds = `SELECT s.trace_id
 FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url

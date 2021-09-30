@@ -39,7 +39,13 @@ func makeSpan(
 	instName *string,
 	instVersion *string,
 	instSchemaUrl *string,
-) error {
+
+	// From link table.
+	linksLinkedTraceIds pgtype.UUIDArray,
+	linksLinkedSpanIds *[]*int64,
+	linksTraceStates *[]*string,
+	linksDroppedTagsCount *[]*int,
+	linksTags []map[string]interface{}) error {
 	// todo: links, events
 	resourceSpan.Resource().Attributes().InitFromMap(makeAttributes(resourceTags))
 
@@ -108,6 +114,11 @@ func makeSpan(
 	ref.Attributes().InitFromMap(makeAttributes(spanTags))
 
 	makeEvents(ref.Events(), eventNames, eventTimes, eventDroppedTagsCount, eventTags)
+
+	err = makeLinks(ref.Links(), linksLinkedTraceIds, linksLinkedSpanIds, linksTraceStates, linksDroppedTagsCount, linksTags)
+	if err != nil {
+		return fmt.Errorf("make links: %w", err)
+	}
 
 	return nil
 }

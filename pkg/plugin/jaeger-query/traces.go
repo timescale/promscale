@@ -37,7 +37,7 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 		schemaUrl           pgtype.Text
 		spanName            string
 		resourceTags        = make(map[string]interface{})
-		spanTags            = make(map[string]interface{})
+		spanTags            = make(map[string]interface{}, 0)
 
 		// From events table.
 		// We need Slice of pointers since any individual element can be nil.
@@ -50,6 +50,13 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 		instLibName      = new(string)
 		instLibVersion   = new(string)
 		instLibSchemaUrl = new(string)
+
+		// From link table.
+		linksLinkedTraceIds   pgtype.UUIDArray
+		linksLinkedSpanIds    = &[]*int64{}
+		linksTraceStates      = &[]*string{}
+		linksDroppedTagsCount = &[]*int{}
+		linksTags             = make([]map[string]interface{}, 0)
 
 		err error
 
@@ -92,6 +99,13 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 			&instLibName,
 			&instLibVersion,
 			&instLibSchemaUrl,
+
+			// Link table.
+			&linksLinkedTraceIds,
+			&linksLinkedSpanIds,
+			&linksTraceStates,
+			&linksDroppedTagsCount,
+			&linksTags,
 		); err != nil {
 			err = fmt.Errorf("scanning raw-traces: %w", err)
 			break
@@ -117,7 +131,13 @@ func getTraces(itr traceRowsIterator) ([]*model.Batch, error) {
 			instLibName,
 			instLibVersion,
 			instLibSchemaUrl,
-		); err != nil {
+
+			// From link table.
+			linksLinkedTraceIds,
+			linksLinkedSpanIds,
+			linksTraceStates,
+			linksDroppedTagsCount,
+			linksTags); err != nil {
 			return nil, fmt.Errorf("make span: %w", err)
 		}
 	}
