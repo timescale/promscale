@@ -167,20 +167,16 @@ func batchSliceToTraceSlice(bSlice []*model.Batch) []*model.Trace {
 	// https://github.com/jaegertracing/jaeger/blob/067dff713ab635ade66315bbd05518d7b28f40c6/plugin/storage/grpc/shared/grpc_client.go#L179
 	traces := make([]*model.Trace, 0)
 	var traceID model.TraceID
-	numSpans := 0
+	var trace *model.Trace
 	for _, batch := range bSlice {
-		trace := new(model.Trace)
-		for _, span := range batch.Spans {
+		for i, span := range batch.Spans {
 			if span.TraceID != traceID {
 				trace = &model.Trace{}
 				traceID = span.TraceID
 				traces = append(traces, trace)
 			}
-			numSpans++
-			trace.Spans = append(trace.Spans, span)
-			trace.ProcessMap = append(trace.ProcessMap, model.Trace_ProcessMapping{Process: *span.Process, ProcessID: span.ProcessID})
+			trace.Spans = append(trace.Spans, batch.Spans[i])
 		}
-		traces = append(traces, trace)
 	}
 	return traces
 }

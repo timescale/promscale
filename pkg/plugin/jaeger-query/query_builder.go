@@ -25,8 +25,9 @@ type builder struct {
 type queryKind uint8
 
 const (
-	spansQuery queryKind = iota
-	traceIdsQuery
+	queryFindTraces queryKind = iota
+	queryFindTraceIds
+	queryGetTrace
 )
 
 const (
@@ -70,15 +71,13 @@ FROM   _ps_trace.span s
 	ON sch_url_2.id = inst_l.schema_url_id
 		LEFT JOIN _ps_trace.link lk
 	ON lk.trace_id = s.trace_id
-	   AND lk.span_id = s.span_id WHERE s.trace_id IN (
+	   AND lk.span_id = s.span_id WHERE s.trace_id `
+	selectForTraceIds = `SELECT trace_id FROM _ps_trace.span qs INNER JOIN _ps_trace.span_name qsn
+		ON qs.name_id = qsn.id `
+
+	traceIdSubquery = ` IN (
 	SELECT trace_id FROM _ps_trace.span qs INNER JOIN _ps_trace.span_name qsn
 		ON qs.name_id = qsn.id `
-	selectForTraceIds = `SELECT s.trace_id
-FROM   _ps_trace.span s
-	   INNER JOIN _ps_trace.schema_url sch_url
-   ON s.resource_schema_url_id = sch_url.id
-       INNER JOIN _ps_trace.span_name sn
-   ON s.name_id = sn.id `
 )
 
 // newTracesQueryBuilder returns a find-traces query builder. Depending on kind, the builder.query()
@@ -107,9 +106,9 @@ func newTracesQueryBuilder(kind queryKind) *builder {
 		numTracesFormat:     `LIMIT %d`,
 	}
 	switch kind {
-	case spansQuery:
+	case queryFindTraces, queryGetTrace:
 		expandAndWrite(b.base, selectForSpans)
-	case traceIdsQuery:
+	case queryFindTraceIds:
 		expandAndWrite(b.base, selectForTraceIds)
 	default:
 		panic("wrong query kind")
@@ -134,8 +133,13 @@ func (b *builder) trimANDIfExists() *builder {
 	return b
 }
 
-func (b *builder) withSubqueryWhere() *builder {
+func (b *builder) withWhere() *builder {
 	expandAndWrite(b.base, " WHERE ")
+	return b
+}
+
+func (b *builder) withTraceId(id string) *builder {
+	expandAndWrite(b.base, " = '"+id+"'")
 	return b
 }
 
@@ -157,7 +161,7 @@ func (b *builder) groupByTraceId() *builder {
 	return b
 }
 
-func (b *builder) subqueryGroupBy1() *builder {
+func (b *builder) groupBy1() *builder {
 	b.trimANDIfExists()
 	expandAndWrite(b.base, " GROUP BY 1 ")
 	return b
@@ -219,11 +223,25 @@ func expandAndWrite(b *strings.Builder, s string) {
 	b.WriteString(s)
 }
 
-func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query string, hasDuration bool) {
+func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters, traceId *string) (query string, hasDuration bool) {
 	builder := newTracesQueryBuilder(kind)
+	switch kind {
+	case queryGetTrace:
+		if traceId == nil {
+			panic("trace id cannot be nil in getTrace API")
+		}
+		builder.withTraceId(*traceId).groupBySpanTableAttributes()
+		return strings.TrimSpace(builder.query()), false
+	case queryFindTraces:
+		expandAndWrite(builder.base, traceIdSubquery)
+	default:
+		if q == nil {
+			panic("trace query parameters cannot be nil for findTraces or findTraceIds API")
+		}
+	}
 	if len(q.ServiceName) > 0 {
 		q.ServiceName = q.ServiceName[1 : len(q.ServiceName)-1] // temporary, based on trace gen behaviour
-		builder.withSubqueryWhere().withServiceName(q.ServiceName)
+		builder.withWhere().withServiceName(q.ServiceName)
 	}
 	if len(q.OperationName) > 0 {
 		builder.withOperationName(q.OperationName)
@@ -243,17 +261,16 @@ func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query strin
 		builder.withDurationRange()
 	}
 
-	builder.subqueryGroupBy1()
+	builder.groupBy1()
 
 	if q.NumTraces != 0 {
 		builder.withNumTraces(q.NumTraces)
 	}
 
 	switch kind {
-	case spansQuery:
+	case queryFindTraces:
 		builder.subqueryClose().groupBySpanTableAttributes().orderByTraceId()
-	case traceIdsQuery:
-		builder.groupByTraceId()
+	case queryFindTraceIds:
 	default:
 		panic("wrong query kind")
 	}
