@@ -166,12 +166,15 @@ func makeSpanId(s *int64) (pdata.SpanID, error) {
 		// Send an empty Span ID.
 		return pdata.NewSpanID([8]byte{0, 0, 0, 0, 0, 0, 0}), nil
 	}
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(*s))
-	var b8 [8]byte
-	copy(b8[:8], b)
 
+	b8 := Int64ToByteArray(*s)
 	return pdata.NewSpanID(b8), nil
+}
+
+func Int64ToByteArray(x int64) [8]byte {
+	var res [8]byte
+	binary.BigEndian.PutUint64(res[:], uint64(x))
+	return res
 }
 
 func makeKind(s string) pdata.SpanKind {
