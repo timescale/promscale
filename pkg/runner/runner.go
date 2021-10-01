@@ -16,7 +16,7 @@ import (
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/timescale/promscale/pkg/api"
-	"github.com/timescale/promscale/pkg/jaegerquery"
+	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/util"
@@ -95,7 +95,7 @@ func Run(cfg *Config) error {
 		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
 
 		queryPlugin := shared.StorageGRPCPlugin{
-			Impl: &jaegerquery.Query{},
+			Impl: query.New(client.QuerierConnection),
 		}
 		err := queryPlugin.GRPCServer(nil, grpcServer)
 		if err != nil {

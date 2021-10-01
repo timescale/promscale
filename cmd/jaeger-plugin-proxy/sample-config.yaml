@@ -1,3 +1,0 @@
-promscale-tls: false
-promscale-server: localhost:9202
-timeout: 10s

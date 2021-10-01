@@ -1,0 +1,44 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
+package query
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/jackc/pgtype"
+	"github.com/jaegertracing/jaeger/model"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/timescale/promscale/pkg/pgxconn"
+)
+
+func findTraceIDs(ctx context.Context, conn pgxconn.PgxConn, q *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
+	query, params := findTraceIDsQuery(q)
+	rows, err := conn.Query(ctx, query, params...)
+	if err != nil {
+		return nil, fmt.Errorf("querying traces: %w", err)
+	}
+	defer rows.Close()
+
+	traceIds := make([]model.TraceID, 0)
+	var traceIdUUID pgtype.UUID
+	for rows.Next() {
+		if rows.Err() != nil {
+			return nil, fmt.Errorf("trace ids row iterator: %w", rows.Err())
+		}
+		if err = rows.Scan(&traceIdUUID); err != nil {
+			return nil, fmt.Errorf("scanning trace ids: %w", err)
+		}
+		trace_id, err := model.TraceIDFromBytes(traceIdUUID.Bytes[:])
+		if err != nil {
+			return nil, fmt.Errorf("converting trace_id UUID->model: %w", err)
+		}
+		traceIds = append(traceIds, trace_id)
+	}
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("trace ids row iterator: %w", rows.Err())
+	}
+	return traceIds, nil
+}

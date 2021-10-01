@@ -28,18 +28,19 @@ import (
 
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
-	Connection    pgxconn.PgxConn
-	ingestor      *ingestor.DBIngestor
-	querier       querier.Querier
-	healthCheck   health.HealthCheckerFn
-	queryable     promql.Queryable
-	ConnectionStr string
-	metricCache   cache.MetricCache
-	labelsCache   cache.LabelsCache
-	seriesCache   cache.SeriesCache
-	closePool     bool
-	sigClose      chan struct{}
-	haService     *ha.Service
+	Connection        pgxconn.PgxConn
+	QuerierConnection pgxconn.PgxConn
+	ingestor          *ingestor.DBIngestor
+	querier           querier.Querier
+	healthCheck       health.HealthCheckerFn
+	queryable         promql.Queryable
+	ConnectionStr     string
+	metricCache       cache.MetricCache
+	labelsCache       cache.LabelsCache
+	seriesCache       cache.SeriesCache
+	closePool         bool
+	sigClose          chan struct{}
+	haService         *ha.Service
 }
 
 // Post connect validation function, useful for things such as acquiring locks
@@ -159,15 +160,16 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 
 	healthChecker := health.NewHealthChecker(dbConn)
 	client := &Client{
-		Connection:  dbConn,
-		ingestor:    dbIngestor,
-		querier:     dbQuerier,
-		healthCheck: healthChecker,
-		queryable:   queryable,
-		metricCache: metricsCache,
-		labelsCache: labelsCache,
-		seriesCache: seriesCache,
-		sigClose:    sigClose,
+		Connection:        dbConn,
+		QuerierConnection: dbQuerierConn,
+		ingestor:          dbIngestor,
+		querier:           dbQuerier,
+		healthCheck:       healthChecker,
+		queryable:         queryable,
+		metricCache:       metricsCache,
+		labelsCache:       labelsCache,
+		seriesCache:       seriesCache,
+		sigClose:          sigClose,
 	}
 
 	InitClientMetrics(client)

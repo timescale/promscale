@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
-	"github.com/timescale/promscale/pkg/jaegerproxy"
+	"github.com/timescale/promscale/pkg/jaeger/proxy"
 	"google.golang.org/grpc"
 )
 
@@ -38,18 +38,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	conf := new(jaegerproxy.ProxyConfig)
+	conf := new(proxy.ProxyConfig)
 	if err = yaml.Unmarshal(bSlice, conf); err != nil {
 		logger.Error("Unmarshalling configuration file contents", "err", err.Error())
 		os.Exit(1)
 	}
+	logger.Warn("configuration", "config", fmt.Sprintf("%#v", conf))
 
-	//todo: Remove later
-	logger.Warn("configuration", "conf", fmt.Sprintf("%v", conf))
-
-	promscalePlugin, err := jaegerproxy.New(*conf, logger)
+	promscalePlugin, err := proxy.New(*conf, logger)
 	if err != nil {
-		logger.Error("could not start jaegerproxy: ", err)
+		logger.Error("could not start jaeger proxy: ", err)
 		os.Exit(1)
 	}
 	defer promscalePlugin.Close()
@@ -75,7 +73,7 @@ var _ plugin.GRPCPlugin = (*StorageGRPCPlugin)(nil)
 type StorageGRPCPlugin struct {
 	plugin.Plugin
 	// Concrete implementation, This is only used for plugins that are written in Go.
-	proxy *jaegerproxy.Proxy
+	proxy *proxy.Proxy
 }
 
 // GRPCServer implements plugin.GRPCPlugin. It is used by go-plugin to create a grpc plugin server.

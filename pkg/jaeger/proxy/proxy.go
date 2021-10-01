@@ -2,13 +2,12 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package jaegerproxy
+package proxy
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -20,11 +19,11 @@ import (
 const DefaultTimeout = time.Duration(5 * time.Second)
 
 type ProxyConfig struct {
-	TLS                bool          `yaml:"promscale-tls,omitempty"`
-	CaFile             string        `yaml:"promscale-cafile,omitempty"`
-	ServerAddr         string        `yaml:"promscale-server,omitempty"`
-	ServerHostOverride string        `yaml:"promscale-server-host-override,omitempty"`
-	ConnectTimeout     time.Duration `yaml:"timeout,omitempty"`
+	TLS                bool          `yaml:"tls"`
+	CaFile             string        `yaml:"cafile,omitempty"`
+	ServerAddr         string        `yaml:"grpc-server"`
+	ServerHostOverride string        `yaml:"grpc-server-host-override,omitempty"`
+	ConnectTimeout     time.Duration `yaml:"connection-timeout,omitempty"`
 }
 
 type Proxy struct {
@@ -48,7 +47,7 @@ func New(config ProxyConfig, logger hclog.Logger) (*Proxy, error) {
 		}
 		creds, err := credentials.NewClientTLSFromFile(config.CaFile, config.ServerHostOverride)
 		if err != nil {
-			log.Fatalf("Failed to create TLS credentials %v", err)
+			return nil, fmt.Errorf("failed to create TLS credentials %w", err)
 		}
 		opts = append(opts, grpc.WithTransportCredentials(creds))
 	} else {
@@ -64,7 +63,7 @@ func New(config ProxyConfig, logger hclog.Logger) (*Proxy, error) {
 	defer cancel()
 	conn, err := grpc.DialContext(ctx, config.ServerAddr, opts...)
 	if err != nil {
-		log.Fatalf("fail to dial: %v", err)
+		return nil, fmt.Errorf("error connecting to Promscale GRPC server: %w", err)
 	}
 
 	return &Proxy{
@@ -97,18 +96,7 @@ func (p *Proxy) GetTrace(r *storage_v1.GetTraceRequest, stream storage_v1.SpanRe
 	if err != nil {
 		return err
 	}
-	for {
-		m, err := client.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err = stream.Send(m); err != nil {
-			return err
-		}
-	}
+	return proxyStream(client, stream)
 }
 
 func (p *Proxy) GetServices(ctx context.Context, r *storage_v1.GetServicesRequest) (*storage_v1.GetServicesResponse, error) {
@@ -127,18 +115,7 @@ func (p *Proxy) FindTraces(r *storage_v1.FindTracesRequest, stream storage_v1.Sp
 	if err != nil {
 		return err
 	}
-	for {
-		m, err := client.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err = stream.Send(m); err != nil {
-			return err
-		}
-	}
+	return proxyStream(client, stream)
 }
 
 func (p *Proxy) FindTraceIDs(ctx context.Context, r *storage_v1.FindTraceIDsRequest) (*storage_v1.FindTraceIDsResponse, error) {
@@ -154,20 +131,32 @@ func (p *Proxy) GetArchiveTrace(r *storage_v1.GetTraceRequest, stream storage_v1
 	if err != nil {
 		return err
 	}
+	return proxyStream(client, stream)
+}
+
+func (p *Proxy) WriteArchiveSpan(ctx context.Context, r *storage_v1.WriteSpanRequest) (*storage_v1.WriteSpanResponse, error) {
+	return p.archiveSpanWriterClient.WriteArchiveSpan(ctx, r)
+}
+
+type streamClient interface {
+	Recv() (*storage_v1.SpansResponseChunk, error)
+}
+
+type streamServer interface {
+	Send(*storage_v1.SpansResponseChunk) error
+}
+
+func proxyStream(client streamClient, server streamServer) error {
 	for {
 		m, err := client.Recv()
 		if err == io.EOF {
 			return nil
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("error receiving stream: %w", err)
 		}
-		if err = stream.Send(m); err != nil {
-			return err
+		if err = server.Send(m); err != nil {
+			return fmt.Errorf("error sending stream: %w", err)
 		}
 	}
-}
-
-func (p *Proxy) WriteArchiveSpan(ctx context.Context, r *storage_v1.WriteSpanRequest) (*storage_v1.WriteSpanResponse, error) {
-	return p.archiveSpanWriterClient.WriteArchiveSpan(ctx, r)
 }
