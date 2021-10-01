@@ -70,7 +70,9 @@ FROM   _ps_trace.span s
 	ON sch_url_2.id = inst_l.schema_url_id
 		LEFT JOIN _ps_trace.link lk
 	ON lk.trace_id = s.trace_id
-	   AND lk.span_id = s.span_id `
+	   AND lk.span_id = s.span_id WHERE s.trace_id IN (
+	SELECT trace_id FROM _ps_trace.span qs INNER JOIN _ps_trace.span_name qsn
+		ON qs.name_id = qsn.id `
 	selectForTraceIds = `SELECT s.trace_id
 FROM   _ps_trace.span s
 	   INNER JOIN _ps_trace.schema_url sch_url
@@ -97,11 +99,11 @@ FROM   _ps_trace.span s
 func newTracesQueryBuilder(kind queryKind) *builder {
 	b := &builder{
 		base:                new(strings.Builder),
-		serviceNameFormat:   `ps_trace.val_text(s.resource_tags, 'service.name')='%s' AND `,
-		operationNameFormat: `sn.name='%s' AND `,
-		tagsFormat:          `ps_trace.val_text(s.resource_tags, '%s')='%s' AND `,
-		startRangeFormat:    `s.start_time BETWEEN '%s'::timestamptz AND '%s'::timestamptz AND `,
-		durationRangeFormat: `(s.end_time - s.start_time) BETWEEN $1 AND $2 `,
+		serviceNameFormat:   `ps_trace.val_text(qs.resource_tags, 'service.name')='%s' AND `,
+		operationNameFormat: `qsn.name='%s' AND `,
+		tagsFormat:          `ps_trace.val_text(qs.resource_tags, '%s')='%s' AND `,
+		startRangeFormat:    `qs.start_time BETWEEN '%s'::timestamptz AND '%s'::timestamptz AND `,
+		durationRangeFormat: `(qs.end_time - qs.start_time) BETWEEN $1 AND $2 `,
 		numTracesFormat:     `LIMIT %d`,
 	}
 	switch kind {
@@ -125,15 +127,21 @@ const and = "AND "
 func (b *builder) trimANDIfExists() *builder {
 	existing := b.base.String()
 	if strings.HasSuffix(existing, and) {
-		newStr := strings.TrimSuffix(b.base.String(), "AND ")
+		newStr := strings.TrimSuffix(b.base.String(), and)
 		b.base.Reset()
 		expandAndWrite(b.base, newStr)
 	}
 	return b
 }
 
-func (b *builder) withWhere() *builder {
+func (b *builder) withSubqueryWhere() *builder {
 	expandAndWrite(b.base, " WHERE ")
+	return b
+}
+
+func (b *builder) subqueryClose() *builder {
+	b.trimANDIfExists()
+	expandAndWrite(b.base, " ) ")
 	return b
 }
 
@@ -146,6 +154,12 @@ func (b *builder) orderByTraceId() *builder {
 func (b *builder) groupByTraceId() *builder {
 	b.trimANDIfExists()
 	expandAndWrite(b.base, " GROUP BY s.trace_id")
+	return b
+}
+
+func (b *builder) subqueryGroupBy1() *builder {
+	b.trimANDIfExists()
+	expandAndWrite(b.base, " GROUP BY 1 ")
 	return b
 }
 
@@ -209,7 +223,7 @@ func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query strin
 	builder := newTracesQueryBuilder(kind)
 	if len(q.ServiceName) > 0 {
 		q.ServiceName = q.ServiceName[1 : len(q.ServiceName)-1] // temporary, based on trace gen behaviour
-		builder.withWhere().withServiceName(q.ServiceName)
+		builder.withSubqueryWhere().withServiceName(q.ServiceName)
 	}
 	if len(q.OperationName) > 0 {
 		builder.withOperationName(q.OperationName)
@@ -229,17 +243,19 @@ func buildQuery(kind queryKind, q *storage_v1.TraceQueryParameters) (query strin
 		builder.withDurationRange()
 	}
 
+	builder.subqueryGroupBy1()
+
+	if q.NumTraces != 0 {
+		builder.withNumTraces(q.NumTraces)
+	}
+
 	switch kind {
 	case spansQuery:
-		builder.groupBySpanTableAttributes().orderByTraceId()
+		builder.subqueryClose().groupBySpanTableAttributes().orderByTraceId()
 	case traceIdsQuery:
 		builder.groupByTraceId()
 	default:
 		panic("wrong query kind")
-	}
-
-	if q.NumTraces != 0 {
-		builder.withNumTraces(q.NumTraces)
 	}
 
 	return strings.TrimSpace(builder.query()), hasDuration

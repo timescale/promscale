@@ -79,8 +79,7 @@ func findTracesHandler(reader jaeger_query.JaegerReaderPlugin) http.HandlerFunc 
 			respondWithStatusOnly(w, http.StatusInternalServerError)
 			return
 		}
-		fmt.Println("traces", traces)
-		fmt.Println("traces len", len(traces))
+		fmt.Println("num traces", len(traces))
 
 		bSlice, err := json.Marshal(traces)
 		if err != nil {
