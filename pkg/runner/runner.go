@@ -13,8 +13,10 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/jaegerquery"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/util"
@@ -91,6 +93,15 @@ func Run(cfg *Config) error {
 	if len(cfg.OTLPGRPCListenAddr) > 0 {
 		grpcServer := grpc.NewServer()
 		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
+
+		queryPlugin := shared.StorageGRPCPlugin{
+			Impl: &jaegerquery.Query{},
+		}
+		err := queryPlugin.GRPCServer(nil, grpcServer)
+		if err != nil {
+			log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
+			return err
+		}
 
 		go func() {
 			log.Info("msg", fmt.Sprintf("Start listening for OTLP GRPC server on %s", cfg.OTLPGRPCListenAddr))
