@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/teststorage"
 	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 )
 
@@ -61,9 +62,7 @@ type TestStorage struct {
 // that removes all associated files on closing.
 func NewTestStorage(t testutil.T) *TestStorage {
 	dir, err := ioutil.TempDir("", "test_storage")
-	if err != nil {
-		t.Fatalf("Opening test dir failed: %s", err)
-	}
+	require.NoError(t, err, "opening test dir failed")
 
 	// Tests just load data for a series sequentially. Thus we
 	// need a long appendable window.
@@ -71,9 +70,8 @@ func NewTestStorage(t testutil.T) *TestStorage {
 	opts.MinBlockDuration = int64(24 * time.Hour / time.Millisecond)
 	opts.MaxBlockDuration = int64(24 * time.Hour / time.Millisecond)
 	db, err := tsdb.Open(dir, nil, nil, opts, nil)
-	if err != nil {
-		t.Fatalf("Opening test storage failed: %s", err)
-	}
+	require.NoError(t, err, "opening test storage failed")
+
 	return &TestStorage{DB: db, dir: dir}
 }
 
@@ -654,7 +652,7 @@ func (t *Test) exec(tc testCommand) error {
 				err = cmd.compareResult(vec)
 			}
 			if err != nil {
-				return errors.Wrapf(err, "error in %s %s (line %d) rande mode", cmd, iq.expr, cmd.line)
+				return errors.Wrapf(err, "error in %s %s (line %d) range mode", cmd, iq.expr, cmd.line)
 			}
 
 		}
@@ -668,9 +666,8 @@ func (t *Test) exec(tc testCommand) error {
 // clear the current test storage of all inserted samples.
 func (t *Test) clear() {
 	if t.storage != nil {
-		if err := t.storage.Close(); err != nil {
-			t.T.Fatalf("closing test storage: %s", err)
-		}
+		err := t.storage.Close()
+		require.NoError(t.T, err, "Unexpected error while closing test storage.")
 	}
 	if t.cancelCtx != nil {
 		t.cancelCtx()
@@ -693,10 +690,7 @@ func (t *Test) clear() {
 // Close closes resources associated with the Test.
 func (t *Test) Close() {
 	t.cancelCtx()
-
-	if err := t.storage.Close(); err != nil {
-		t.T.Fatalf("closing test storage: %s", err)
-	}
+	require.NoError(t.T, t.Storage().Close())
 }
 
 // samplesAlmostEqual returns true if the two sample lines only differ by a
@@ -746,10 +740,18 @@ type LazyLoader struct {
 	queryEngine *Engine
 	context     context.Context
 	cancelCtx   context.CancelFunc
+
+	opts LazyLoaderOpts
+}
+
+// LazyLoaderOpts are options for the lazy loader.
+type LazyLoaderOpts struct {
+	// Disabled PromQL engine features.
+	EnableAtModifier, EnableNegativeOffset bool
 }
 
 // NewLazyLoader returns an initialized empty LazyLoader.
-func NewLazyLoader(t testutil.T, input string) (*LazyLoader, error) {
+func NewLazyLoader(t testutil.T, input string, opts LazyLoaderOpts) (*LazyLoader, error) {
 	ll := &LazyLoader{
 		T: t,
 	}
@@ -784,9 +786,8 @@ func (ll *LazyLoader) parse(input string) error {
 // clear the current test storage of all inserted samples.
 func (ll *LazyLoader) clear() {
 	if ll.storage != nil {
-		if err := ll.storage.Close(); err != nil {
-			ll.T.Fatalf("closing test storage: %s", err)
-		}
+		err := ll.storage.Close()
+		require.NoError(ll.T, err, "Unexpected error while closing test storage.")
 	}
 	if ll.cancelCtx != nil {
 		ll.cancelCtx()
@@ -799,7 +800,8 @@ func (ll *LazyLoader) clear() {
 		MaxSamples:               10000,
 		Timeout:                  100 * time.Second,
 		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(ll.SubqueryInterval) },
-		EnableAtModifier:         true,
+		EnableAtModifier:         ll.opts.EnableAtModifier,
+		EnableNegativeOffset:     ll.opts.EnableNegativeOffset,
 	}
 
 	ll.queryEngine = NewEngine(opts)
@@ -859,8 +861,6 @@ func (ll *LazyLoader) Storage() storage.Storage {
 // Close closes resources associated with the LazyLoader.
 func (ll *LazyLoader) Close() {
 	ll.cancelCtx()
-
-	if err := ll.storage.Close(); err != nil {
-		ll.T.Fatalf("closing test storage: %s", err)
-	}
+	err := ll.storage.Close()
+	require.NoError(ll.T, err, "Unexpected error while closing test storage.")
 }
