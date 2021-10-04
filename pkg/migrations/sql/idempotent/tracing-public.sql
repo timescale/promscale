@@ -330,6 +330,67 @@ $func$
 LANGUAGE plpgsql VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_tag(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_v, SCHEMA_TRACING_PUBLIC.tag_type) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.put_operation(_service_name text, _span_name text, _span_kind SCHEMA_TRACING_PUBLIC.span_kind)
+RETURNS bigint
+AS $func$
+DECLARE
+    _service_name_id bigint;
+    _operation_id bigint;
+BEGIN
+    SELECT id INTO _service_name_id
+    FROM SCHEMA_TRACING.tag
+    WHERE key = 'service.name'
+    AND key_id = 1
+    AND value = to_jsonb(_service_name::text)
+    ;
+
+    IF NOT FOUND THEN
+        INSERT INTO SCHEMA_TRACING.tag (tag_type, key, key_id, value)
+        VALUES
+        (
+            SCHEMA_TRACING_PUBLIC.resource_tag_type(),
+            'service.name',
+            1,
+            to_jsonb(_service_name::text)
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING id INTO _service_name_id;
+
+        IF _service_name_id IS NULL THEN
+            SELECT id INTO STRICT _service_name_id
+            FROM SCHEMA_TRACING.tag
+            WHERE key = 'service.name'
+            AND key_id = 1
+            AND value = to_jsonb(_service_name::text)
+            ;
+        END IF;
+    END IF;
+
+    INSERT INTO SCHEMA_TRACING.operation (service_name_id, span_kind, span_name)
+    VALUES
+    (
+        _service_name_id,
+        _span_kind,
+        _span_name
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING id INTO _operation_id;
+
+    IF _operation_id IS NULL THEN
+        SELECT id INTO STRICT _operation_id
+        FROM SCHEMA_TRACING.operation
+        WHERE service_name_id = _service_name_id
+        AND span_kind = _span_kind
+        AND span_name = _span_name
+        ;
+    END IF;
+
+    RETURN _operation_id;
+END;
+$func$
+LANGUAGE plpgsql VOLATILE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_operation(text, text, SCHEMA_TRACING_PUBLIC.span_kind) TO prom_writer;
+
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_map SCHEMA_TRACING_PUBLIC.tag_map)
 RETURNS jsonb
 AS $func$
@@ -417,3 +478,5 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(jsonb) TO prom_reader;
+
+

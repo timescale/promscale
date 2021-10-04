@@ -18,6 +18,11 @@ import (
 	"go.opentelemetry.io/collector/model/pdata"
 )
 
+const (
+	missingServiceName = "OTLPResourceNoServiceName"
+	serviceNameTagKey  = "service.name"
+)
+
 type Cfg struct {
 	AsyncAcks              bool
 	ReportInterval         int
@@ -97,8 +102,12 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, r pdata.Traces) er
 
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
-
-				nameID, err := ingestor.tWriter.InsertSpanName(ctx, span.Name())
+				serviceName := missingServiceName
+				av, found := span.Attributes().Get(serviceNameTagKey)
+				if found {
+					serviceName = av.AsString()
+				}
+				nameID, err := ingestor.tWriter.InsertSpanName(ctx, serviceName, span.Name(), span.Kind().String())
 				if err != nil {
 					return err
 				}
