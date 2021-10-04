@@ -88,7 +88,7 @@ time, roles and permissions, and security.
 
 TimescaleDB has a **large and active user community** (tens of millions
 of downloads, hundreds of thousands of active deployments, Slack channel
-with 4,000+ members). Users include Comcast, Fujitsu,
+with 7,000+ members). Users include Comcast, Fujitsu,
 Schneider Electric, Siemens, Walmart, Warner Music, and thousands of
 others.
 
