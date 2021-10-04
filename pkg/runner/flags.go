@@ -75,8 +75,8 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.BoolVar(&cfg.UpgradeExtensions, "upgrade-extensions", true, "Upgrades TimescaleDB, Promscale extensions.")
 	fs.BoolVar(&cfg.AsyncAcks, "async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
 	fs.BoolVar(&cfg.UpgradePrereleaseExtensions, "upgrade-prerelease-extensions", false, "Upgrades to pre-release TimescaleDB, Promscale extensions.")
-	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file for web server, leave blank to disable TLS.")
-	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for web server, leave blank to disable TLS.")
+	fs.StringVar(&cfg.TLSCertFile, "tls-cert-file", "", "TLS Certificate file used for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")
+	fs.StringVar(&cfg.TLSKeyFile, "tls-key-file", "", "TLS Key file for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")
 
 	if err := util.ParseEnv("PROMSCALE", fs); err != nil {
 		return nil, fmt.Errorf("error parsing env variables: %w", err)

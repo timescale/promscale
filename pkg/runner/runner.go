@@ -22,6 +22,7 @@ import (
 	"github.com/timescale/promscale/pkg/version"
 	"go.opentelemetry.io/collector/model/otlpgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 const promLivenessCheck = time.Second
@@ -69,7 +70,16 @@ func Run(cfg *Config) error {
 
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
 		srv := thanos.NewStorage(client.Queryable())
-		grpcServer := grpc.NewServer()
+		options := make([]grpc.ServerOption, 0)
+		if cfg.TLSCertFile != "" {
+			creds, err := credentials.NewServerTLSFromFile(cfg.TLSCertFile, cfg.TLSKeyFile)
+			if err != nil {
+				log.Error("msg", "Setting up TLS credentials for Thanos StoreAPI failed", "err", err)
+				return err
+			}
+			options = append(options, grpc.Creds(creds))
+		}
+		grpcServer := grpc.NewServer(options...)
 		storepb.RegisterStoreServer(grpcServer, srv)
 
 		go func() {
@@ -89,7 +99,16 @@ func Run(cfg *Config) error {
 	}
 
 	if len(cfg.OTLPGRPCListenAddr) > 0 {
-		grpcServer := grpc.NewServer()
+		options := make([]grpc.ServerOption, 0)
+		if cfg.TLSCertFile != "" {
+			creds, err := credentials.NewServerTLSFromFile(cfg.TLSCertFile, cfg.TLSKeyFile)
+			if err != nil {
+				log.Error("msg", "Setting up TLS credentials for OTLP GRPC server failed", "err", err)
+				return err
+			}
+			options = append(options, grpc.Creds(creds))
+		}
+		grpcServer := grpc.NewServer(options...)
 		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
 
 		go func() {
