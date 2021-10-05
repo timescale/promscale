@@ -523,12 +523,16 @@ func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
 func TestExtensionUpgrade(t *testing.T) {
 	var err error
 	var version string
+
+	if true {
+		t.Skip("Temporarily disabled test")
+	}
+
 	ctx := context.Background()
+
 	buildPromscaleImageFromRepo(t)
 	_, dbContainer, closer := startDB(t, ctx)
 	defer closer.Close()
-
-	defer testhelpers.StopContainer(ctx, dbContainer, false)
 
 	// as the default installed version ext is rc4 in the test image downgrade it to rc2
 	// to test upgrade flow.
@@ -604,13 +608,16 @@ func TestExtensionUpgrade(t *testing.T) {
 }
 
 func TestMigrationFailure(t *testing.T) {
-	ctx := context.Background()
 	var err error
 	var version string
+
+	if true {
+		t.Skip("Temporarily disabled test")
+	}
+	ctx := context.Background()
+
 	buildPromscaleImageFromRepo(t)
 	db, dbContainer, closer := startDB(t, ctx)
-	defer testhelpers.StopContainer(ctx, dbContainer, false)
-
 	defer closer.Close()
 
 	// start promscale & test upgrade-extensions as false
