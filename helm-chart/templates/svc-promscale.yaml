@@ -19,6 +19,11 @@ spec:
   type: ClusterIP
 {{- end }}
   ports:
-  - name: connector-port
-    port: {{ .Values.service.port }}
+  - name: metrics-port
+    port: {{ .Values.service.metricsPort }}
     protocol: TCP
+  {{ if .Values.tracing.enabled }}
+  - name: traces-port
+    port: {{ .Values.service.tracesPort }}
+    protocol: TCP
+  {{- end }}

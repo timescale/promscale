@@ -109,7 +109,8 @@ helm install --name my-release -f myvalues.yaml .
 | `connection.port`                 | Port the db listens to                      | `5432`                             |
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
 | `connection.sslMode`              | SSL mode for connection                     | `require`                          |
-| `service.port`                    | Port the connector pods will accept connections on | `9201`                      |
+| `service.metricsPort`             | Port the connector pods will accept metrics connections on | `9201`                      |
+| `service.tracesPort`              | Port the connector pods will accept traces connections on | `9202`                      |
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |
 | `maintenance.enabled`             | Option to enable maintenance cronjob, Enable maintenance cronjob only if you are using TimescaleDB < `2.0`   | `false` |
@@ -125,5 +126,7 @@ helm install --name my-release -f myvalues.yaml .
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 | `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
 | `affinity`                        | PodAffinity and PodAntiAffinity for scheduling           | `{}`                               |
+| `tracing.enabled`                 | Enable tracing support in Promscale, exposes container, service ports to default 9202 (in future releases tracing support will be enabled by default)           | `false`                               |
+| `tracing.args`                    | Promscale args to enable tracing               | `-otlp-grpc-server-listen-address=:9202`                               |
 
 [docker-image]: https://hub.docker.com/timescale/promscale
