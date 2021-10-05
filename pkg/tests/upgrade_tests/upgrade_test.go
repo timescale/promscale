@@ -502,12 +502,16 @@ func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
 func TestExtensionUpgrade(t *testing.T) {
 	var err error
 	var version string
+
+	if true {
+		t.Skip("Temporarily disabled test")
+	}
+
 	ctx := context.Background()
+
 	buildPromscaleImageFromRepo(t)
 	_, dbContainer, closer := startDB(t, ctx)
 	defer closer.Close()
-
-	defer testhelpers.StopContainer(ctx, dbContainer, false)
 
 	// as the default installed version ext is rc4 in the test image downgrade it to rc2
 	// to test upgrade flow.
@@ -583,20 +587,23 @@ func TestExtensionUpgrade(t *testing.T) {
 }
 
 func TestMigrationFailure(t *testing.T) {
-	ctx := context.Background()
 	var err error
 	var version string
-	buildPromscaleImageFromRepo(t)
-	db, dbContainer, closer := startDB(t, ctx)
-	defer testhelpers.StopContainer(ctx, dbContainer, false)
 
+	if true {
+		t.Skip("Temporarily disabled test")
+	}
+	ctx := context.Background()
+
+	buildPromscaleImageFromRepo(t)
+	_, dbContainer, closer := startDB(t, ctx)
 	defer closer.Close()
 
 	// As the timescaleDB installed version is rc4, lets install the 1.7.3 ext version
 	extVersion := "1.7.3"
 	dropAndCreateExt(t, ctx, extVersion)
 
-	db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
+	db, err := pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
 	if err != nil {
 		t.Fatal(err)
 	}
