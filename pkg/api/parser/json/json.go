@@ -54,8 +54,10 @@ func generateProtoLabels(ll map[string]string) []prompb.Label {
 // ParseRequest parses an incoming HTTP request as a JSON payload.
 func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
 	dec := json.NewDecoder(r.Body)
-	var i jsonPayload
 	for {
+		// Create a new map, otherwise previous alloc of map is re-used, leading to
+		// label pairs that do not belong to this iteration, also being re-used.
+		var i jsonPayload
 		if err := dec.Decode(&i); err == io.EOF {
 			break
 		} else if err != nil {
