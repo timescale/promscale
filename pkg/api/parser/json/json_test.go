@@ -49,6 +49,49 @@ func TestParseRequest(t *testing.T) {
 			},
 		},
 		{
+			name: "json streaming with multiple labels",
+			body: `{"labels":{"labelName":"labelValue", "utils": "some_utils"},"samples":[[1,2],[2,2],[3,2]]}
+			{"labels":{"labelName":"otherLabelValue"},"samples":[[1,1],[2,1],[3,1]]}`,
+			response: prompb.WriteRequest{
+				Timeseries: []prompb.TimeSeries{
+					{
+						Labels: []prompb.Label{{Name: "labelName", Value: "labelValue"}, {Name: "utils", Value: "some_utils"}},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1,
+								Value:     2,
+							},
+							{
+								Timestamp: 2,
+								Value:     2,
+							},
+							{
+								Timestamp: 3,
+								Value:     2,
+							},
+						},
+					},
+					{
+						Labels: []prompb.Label{{Name: "labelName", Value: "otherLabelValue"}},
+						Samples: []prompb.Sample{
+							{
+								Timestamp: 1,
+								Value:     1,
+							},
+							{
+								Timestamp: 2,
+								Value:     1,
+							},
+							{
+								Timestamp: 3,
+								Value:     1,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "multiple JSON objects",
 			body: `{"labels":{"labelName":"labelValue"},"samples":[[1,2],[2,2],[3,2]]}
 {"labels":{"labelName":"otherLabelValue"},"samples":[[1,1],[2,1],[3,1]]}`,
