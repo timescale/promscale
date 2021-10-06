@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 
@@ -32,6 +33,7 @@ func main() {
 	flag.StringVar(&configAddr, "config", "", "Configuration file address")
 	flag.Parse()
 
+	configAddr = filepath.Clean(configAddr)
 	bSlice, err := ioutil.ReadFile(configAddr)
 	if err != nil {
 		logger.Error("Invalid configuration file address, exiting.")
