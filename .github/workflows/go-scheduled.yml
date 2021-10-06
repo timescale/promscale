@@ -32,16 +32,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Format
-      run: |
-        make go-fmt
-        git diff --exit-code .
-
-    - name: Lint
-      uses: golangci/golangci-lint-action@v2
-      with:
-        version: ${{ env.golangci-lint-version }}
-
     - name: Build
       run: make build
 
@@ -71,11 +61,6 @@ jobs:
 
     - name: Test extended dataset
       run: go test -v -race -timeout=30m ./pkg/tests/end_to_end_tests/ -extended-test
-
-    - name: Generated
-      run: |
-        make generate
-        git diff --exit-code
 
   test-end-to-end:
     name: Test end-to-end extension combinations
