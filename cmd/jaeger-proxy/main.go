@@ -33,8 +33,8 @@ func main() {
 	flag.StringVar(&configAddr, "config", "", "Configuration file address")
 	flag.Parse()
 
-	configAddr = filepath.Clean(configAddr)
-	bSlice, err := ioutil.ReadFile(configAddr)
+	sanitizedConfigAddr := filepath.Clean(configAddr)
+	bSlice, err := ioutil.ReadFile(sanitizedConfigAddr)
 	if err != nil {
 		logger.Error("Invalid configuration file address, exiting.")
 		os.Exit(1)
@@ -52,7 +52,12 @@ func main() {
 		logger.Error("could not start jaeger proxy: ", err)
 		os.Exit(1)
 	}
-	defer promscalePlugin.Close()
+	defer func() {
+		err = promscalePlugin.Close()
+		if err != nil {
+			logger.Error("error closing the proxy plugin", err)
+		}
+	}()
 	logger.Warn("starting to serve")
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: shared.Handshake,
