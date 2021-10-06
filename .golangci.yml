@@ -1,0 +1,7 @@
+---
+run:
+  timeout: 5m
+  skip-dirs:
+    - pkg/promql
+    - pkg/promb
+

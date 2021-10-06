@@ -18,6 +18,6 @@ go-fmt:
 	gofmt -d .
 
 go-lint:
-	golangci-lint run --timeout=5m --skip-dirs=pkg/promql --skip-dirs=pkg/promb
+	golangci-lint run
 
 all: build test e2e-test go-fmt go-lint
