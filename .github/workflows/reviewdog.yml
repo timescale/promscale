@@ -10,7 +10,7 @@ jobs:
         uses: actions/checkout@v1
 
       - name: golangci-lint w/ github-pr-review
-        uses: reviewdog/action-golangci-lint@v1
+        uses: reviewdog/action-golangci-lint@v2.0.1
         with:
           github_token: ${{ secrets.github_token }}
           golangci_lint_flags: "./..."
