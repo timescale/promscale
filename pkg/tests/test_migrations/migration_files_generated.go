@@ -98,6 +98,20 @@ var MigrationFiles = func() http.FileSystem {
 			modTime: time.Time{},
 			content: []byte("\x49\x4e\x53\x45\x52\x54\x20\x49\x4e\x54\x4f\x20\x6c\x6f\x67\x20\x56\x41\x4c\x55\x45\x53\x28\x27\x6d\x69\x67\x72\x61\x74\x69\x6f\x6e\x20\x30\x2e\x31\x30\x2e\x32\x2d\x62\x65\x74\x61\x3d\x31\x27\x29\x3b\x0a"),
 		},
+		"/versions/dev/0.11.0-dev": &vfsgen۰DirInfo{
+			name:    "0.11.0-dev",
+			modTime: time.Time{},
+		},
+		"/versions/dev/0.11.0-dev/1-migr_98_at.sql": &vfsgen۰FileInfo{
+			name:    "1-migr_98_at.sql",
+			modTime: time.Time{},
+			content: []byte("\x49\x4e\x53\x45\x52\x54\x20\x49\x4e\x54\x4f\x20\x6c\x6f\x67\x20\x56\x41\x4c\x55\x45\x53\x28\x27\x6d\x69\x67\x72\x61\x74\x69\x6f\x6e\x20\x30\x2e\x31\x31\x2e\x30\x3d\x31\x27\x29\x3b\x0a"),
+		},
+		"/versions/dev/0.11.0-dev/2-1_mig.sql": &vfsgen۰FileInfo{
+			name:    "2-1_mig.sql",
+			modTime: time.Time{},
+			content: []byte("\x49\x4e\x53\x45\x52\x54\x20\x49\x4e\x54\x4f\x20\x6c\x6f\x67\x20\x56\x41\x4c\x55\x45\x53\x28\x27\x6d\x69\x67\x72\x61\x74\x69\x6f\x6e\x20\x30\x2e\x31\x30\x2e\x30\x3d\x32\x27\x29\x3b\x0a\x53\x45\x4c\x45\x43\x54\x20\x31\x30\x2f\x30\x3b\x20\x2d\x2d\x77\x69\x6c\x6c\x20\x67\x65\x6e\x65\x72\x61\x74\x65\x20\x65\x72\x72\x6f\x72\x0a"),
+		},
 		"/versions/dev/0.2.0-dev": &vfsgen۰DirInfo{
 			name:    "0.2.0-dev",
 			modTime: time.Time{},
@@ -137,6 +151,7 @@ var MigrationFiles = func() http.FileSystem {
 		fs["/versions/dev/0.10.0-dev"].(os.FileInfo),
 		fs["/versions/dev/0.10.1-dev"].(os.FileInfo),
 		fs["/versions/dev/0.10.2-beta.dev"].(os.FileInfo),
+		fs["/versions/dev/0.11.0-dev"].(os.FileInfo),
 		fs["/versions/dev/0.2.0-dev"].(os.FileInfo),
 		fs["/versions/dev/0.9.0-dev"].(os.FileInfo),
 	}
@@ -153,6 +168,10 @@ var MigrationFiles = func() http.FileSystem {
 	}
 	fs["/versions/dev/0.10.2-beta.dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.10.2-beta.dev/1-migr_98_at.sql"].(os.FileInfo),
+	}
+	fs["/versions/dev/0.11.0-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
+		fs["/versions/dev/0.11.0-dev/1-migr_98_at.sql"].(os.FileInfo),
+		fs["/versions/dev/0.11.0-dev/2-1_mig.sql"].(os.FileInfo),
 	}
 	fs["/versions/dev/0.2.0-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.2.0-dev/1-migration.sql"].(os.FileInfo),
