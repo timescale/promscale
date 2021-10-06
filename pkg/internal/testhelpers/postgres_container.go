@@ -507,7 +507,7 @@ func startPGInstance(
 	}
 
 	if printLogs {
-		container.FollowOutput(stdoutLogConsumer{})
+		container.FollowOutput(stdoutLogConsumer{"postgres"})
 	}
 
 	err = container.Start(context.Background())

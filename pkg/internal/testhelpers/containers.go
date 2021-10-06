@@ -27,13 +27,13 @@ func (c CloseAll) Close() error {
 	return nil
 }
 
-type stdoutLogConsumer struct{}
+type stdoutLogConsumer struct{ service string }
 
 func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 	if l.LogType == testcontainers.StderrLog {
-		fmt.Print(l.LogType, " ", string(l.Content))
+		fmt.Print(l.LogType, " ", "service", s.service, string(l.Content))
 	} else {
-		fmt.Print(string(l.Content))
+		fmt.Print("service", s.service, string(l.Content))
 	}
 }
 

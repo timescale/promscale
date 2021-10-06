@@ -52,7 +52,7 @@ func TestJaegerConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping checking Jaeger connection")
 	}
-	container, host, _, grpcQueryPort, uiPort, err := StartJaegerContainer()
+	container, host, _, grpcQueryPort, uiPort, err := StartJaegerContainer(true)
 	require.NoError(t, err)
 	defer container.Terminate(context.Background())
 

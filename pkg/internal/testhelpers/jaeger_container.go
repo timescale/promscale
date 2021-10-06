@@ -18,7 +18,7 @@ const (
 	envSpanStorageType = "SPAN_STORAGE_TYPE"
 )
 
-func StartJaegerContainer() (container testcontainers.Container, host string, grpcCollectorPort, grpcQueryPort, uiPort nat.Port, err error) {
+func StartJaegerContainer(printLogs bool) (container testcontainers.Container, host string, grpcCollectorPort, grpcQueryPort, uiPort nat.Port, err error) {
 	grpcCollectorPort, grpcQueryPort, uiPort = "14250/tcp", "16685/tcp", "16686/tcp"
 	req := testcontainers.ContainerRequest{
 		Image:        jaegerImage,
@@ -32,6 +32,10 @@ func StartJaegerContainer() (container testcontainers.Container, host string, gr
 	container, err = testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
 	if err != nil {
 		return container, host, grpcCollectorPort, grpcQueryPort, uiPort, fmt.Errorf("creating jaeger all-in-one container: %w", err)
+	}
+
+	if printLogs {
+		container.FollowOutput(stdoutLogConsumer{"jaeger"})
 	}
 
 	host, err = container.Host(context.Background())
