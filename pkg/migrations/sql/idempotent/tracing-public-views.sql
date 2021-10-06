@@ -6,12 +6,13 @@ SELECT
     s.trace_state,
     s.parent_span_id,
     s.parent_span_id is null as is_root_span,
-    n.name,
-    s.span_kind,
+    t.value#>>'{}' as service_name,
+    o.span_name,
+    o.span_kind,
     s.start_time,
     s.end_time,
     tstzrange(s.start_time, s.end_time, '[]') as time_range,
-    s.end_time - s.start_time as duration,
+    s.duration_ms,
     s.span_tags,
     s.dropped_tags_count,
     s.event_time,
@@ -26,7 +27,8 @@ SELECT
     s.resource_dropped_tags_count,
     u2.url as resource_schema_url
 FROM SCHEMA_TRACING.span s
-LEFT OUTER JOIN SCHEMA_TRACING.span_name n ON (s.name_id = n.id)
+LEFT OUTER JOIN SCHEMA_TRACING.operation o ON (s.operation_id = o.id)
+LEFT OUTER JOIN SCHEMA_TRACING.tag t ON (o.service_name_id = t.id AND t.key = 'service.name') -- partition elimination
 LEFT OUTER JOIN SCHEMA_TRACING.instrumentation_lib il ON (s.instrumentation_lib_id = il.id)
 LEFT OUTER JOIN SCHEMA_TRACING.schema_url u1 on (il.schema_url_id = u1.id)
 LEFT OUTER JOIN SCHEMA_TRACING.schema_url u2 on (il.schema_url_id = u2.id)
@@ -42,12 +44,13 @@ SELECT
     e.tags as event_tags,
     e.dropped_tags_count,
     s.trace_state,
-    n.name as span_name,
-    s.span_kind,
+    t.value#>>'{}' as service_name,
+    o.span_name,
+    o.span_kind,
     s.start_time as span_start_time,
     s.end_time as span_end_time,
     tstzrange(s.start_time, s.end_time, '[]') as span_time_range,
-    s.end_time - s.start_time as span_duration,
+    s.duration_ms as span_duration_ms,
     s.span_tags,
     s.dropped_tags_count as dropped_span_tags_count,
     s.resource_tags,
@@ -56,7 +59,8 @@ SELECT
     s.status_message
 FROM SCHEMA_TRACING.event e
 LEFT OUTER JOIN SCHEMA_TRACING.span s on (e.span_id = s.span_id AND e.trace_id = s.trace_id)
-LEFT OUTER JOIN SCHEMA_TRACING.span_name n ON (s.name_id = n.id)
+LEFT OUTER JOIN SCHEMA_TRACING.operation o ON (s.operation_id = o.id)
+LEFT OUTER JOIN SCHEMA_TRACING.tag t ON (o.service_name_id = t.id AND t.key = 'service.name') -- partition elimination
 ;
 GRANT SELECT ON SCHEMA_TRACING_PUBLIC.event to prom_reader;
 
@@ -67,12 +71,13 @@ SELECT
     s1.trace_state                      ,
     s1.parent_span_id                   ,
     s1.is_root_span                     ,
-    s1.name                             ,
+    s1.service_name                     ,
+    s1.span_name                        ,
     s1.span_kind                        ,
     s1.start_time                       ,
     s1.end_time                         ,
     s1.time_range                       ,
-    s1.duration                         ,
+    s1.duration_ms                      ,
     s1.span_tags                        ,
     s1.dropped_tags_count               ,
     s1.event_time                       ,
@@ -91,12 +96,13 @@ SELECT
     s2.trace_state                      as linked_trace_state                ,
     s2.parent_span_id                   as linked_parent_span_id             ,
     s2.is_root_span                     as linked_is_root_span               ,
-    s2.name                             as linked_name                       ,
+    s2.service_name                     as linked_service_name               ,
+    s2.span_name                        as linked_span_name                  ,
     s2.span_kind                        as linked_span_kind                  ,
     s2.start_time                       as linked_start_time                 ,
     s2.end_time                         as linked_end_time                   ,
     s2.time_range                       as linked_time_range                 ,
-    s2.duration                         as linked_duration                   ,
+    s2.duration_ms                      as linked_duration_ms                ,
     s2.span_tags                        as linked_span_tags                  ,
     s2.dropped_tags_count               as linked_dropped_tags_count         ,
     s2.event_time                       as linked_event_time                 ,

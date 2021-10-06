@@ -14,21 +14,20 @@ import (
 )
 
 const (
-	insertSchemaURLSQL = `INSERT INTO %s.schema_url (url) 
+	insertSchemaURLSQL = `INSERT INTO %s.schema_url (url)
 		VALUES ($1) RETURNING (id)`
-	insertSpanNameSQL = `INSERT INTO %s.span_name (name) 
-		VALUES ($1) ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name RETURNING (id)`
-	insertInstrumentationLibSQL = `INSERT INTO %s.instrumentation_lib (name, version, schema_url_id) 
+	insertOperationSQL          = `SELECT %s.put_operation($1, $2, $3)`
+	insertInstrumentationLibSQL = `INSERT INTO %s.instrumentation_lib (name, version, schema_url_id)
 		VALUES ($1, $2, $3) RETURNING (id)`
 	insertTagKeySQL   = "SELECT %s.put_tag_key($1, $2::%s.tag_type)"
 	insertTagSQL      = "SELECT %s.put_tag($1, $2, $3::%s.tag_type)"
-	insertSpanLinkSQL = `INSERT INTO %s.link (trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, trace_state, tags, dropped_tags_count, link_nbr) 
+	insertSpanLinkSQL = `INSERT INTO %s.link (trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, trace_state, tags, dropped_tags_count, link_nbr)
 		VALUES ($1, $2, $3, $4, $5, $6, %s.get_tag_map($7), $8, $9)`
-	insertSpanEventSQL = `INSERT INTO %s.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count) 
+	insertSpanEventSQL = `INSERT INTO %s.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count)
 		VALUES ($1, $2, $3, $4, $5, %s.get_tag_map($6), $7)`
-	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, name_id, span_kind, start_time, end_time, span_tags, dropped_tags_count,
-		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, %s.get_tag_map($9), $10, $11, $12, $13, $14, $15, $16, %s.get_tag_map($17), $18, $19)`
+	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
+		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, %s.get_tag_map($8), $9, $10, $11, $12, $13, $14, $15, %s.get_tag_map($16), $17, $18)`
 )
 
 type traceWriter interface {
@@ -36,7 +35,7 @@ type traceWriter interface {
 	InsertSpanEvents(ctx context.Context, events pdata.SpanEventSlice, traceID [16]byte, spanID [8]byte) error
 	InsertSpan(ctx context.Context, span pdata.Span, nameID, instLibID, rSchemaURLID pgtype.Int8, resourceTags pdata.AttributeMap) error
 	InsertSchemaURL(ctx context.Context, sURL string) (id pgtype.Int8, err error)
-	InsertSpanName(ctx context.Context, name string) (id pgtype.Int8, err error)
+	InsertSpanName(ctx context.Context, serviceName, spanName, spanKind string) (id pgtype.Int8, err error)
 	InsertInstrumentationLibrary(ctx context.Context, name, version, sURL string) (id pgtype.Int8, err error)
 }
 
@@ -59,12 +58,12 @@ func (t *traceWriterImpl) InsertSchemaURL(ctx context.Context, sURL string) (id 
 	return id, err
 }
 
-func (t *traceWriterImpl) InsertSpanName(ctx context.Context, name string) (id pgtype.Int8, err error) {
-	if name == "" {
+func (t *traceWriterImpl) InsertSpanName(ctx context.Context, serviceName, spanName, spanKind string) (id pgtype.Int8, err error) {
+	if serviceName == "" || spanName == "" || spanKind == "" {
 		id.Status = pgtype.Null
 		return id, nil
 	}
-	err = t.conn.QueryRow(ctx, fmt.Sprintf(insertSpanNameSQL, schema.Trace), name).Scan(&id)
+	err = t.conn.QueryRow(ctx, fmt.Sprintf(insertOperationSQL, schema.TracePublic), serviceName, spanName, spanKind).Scan(&id)
 	return id, err
 }
 
@@ -210,7 +209,6 @@ func (t *traceWriterImpl) InsertSpan(ctx context.Context, span pdata.Span, nameI
 		getTraceStateValue(span.TraceState()),
 		parentSpanIDInt,
 		nameID,
-		span.Kind().String(),
 		span.StartTimestamp().AsTime(),
 		span.EndTimestamp().AsTime(),
 		string(jsonTags),

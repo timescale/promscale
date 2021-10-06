@@ -22,13 +22,13 @@ const (
        		s.parent_span_id,
        		s.start_time start_times,
        		s.end_time end_times,
-       		s.span_kind,
+       		o.span_kind,
        		s.dropped_tags_count 			dropped_tags_counts,
        		s.dropped_events_count 			dropped_events_counts,
        		s.dropped_link_count 			dropped_link_counts,
        		s.trace_state 				trace_states,
        		s_url.url 				schema_urls,
-       		sn.name     				span_names,
+       		o.span_name     			span_names,
 	   	ps_trace.jsonb(s.resource_tags) 	resource_tags,
 	   	ps_trace.jsonb(s.span_tags) 		span_tags,
 	   	array_agg(e.name) FILTER(WHERE e IS NOT NULL)			event_names,
@@ -46,7 +46,7 @@ const (
 	FROM
 		_ps_trace.span s
 	INNER JOIN
-		_ps_trace.span_name sn ON s.name_id = sn.id
+		_ps_trace.operation o ON (s.operation_id = o.id)
 	LEFT JOIN
 		_ps_trace.schema_url s_url ON s.resource_schema_url_id = s_url.id
 	LEFT JOIN
@@ -67,7 +67,8 @@ const (
 	  s.end_time,
 	  s.resource_tags,
 	  s.span_tags,
-	  sn.name,
+	  o.span_name,
+	  o.span_kind,
 	  s_url.url,
 	  inst_lib.name,
 	  inst_lib.version,
@@ -144,24 +145,38 @@ func buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interfac
 	clauses := make([]string, 0, 15)
 	params := make([]interface{}, 0, 15)
 
+	operation_clauses := make([]string, 0, 2)
 	if len(q.ServiceName) > 0 {
 		params = append(params, q.ServiceName)
-		qual := fmt.Sprintf(`s.resource_tags OPERATOR(ps_trace.?) ('service.name' OPERATOR(ps_trace.==) $%d)`, len(params))
-		clauses = append(clauses, qual)
+		qual := fmt.Sprintf(`
+		service_name_id = (
+			SELECT id
+			FROM _ps_trace.tag
+			WHERE key = 'service.name'
+			AND key_id = 1
+			AND value = to_jsonb($%d::text)
+		)`, len(params))
+		operation_clauses = append(operation_clauses, qual)
 	}
 	if len(q.OperationName) > 0 {
 		params = append(params, q.OperationName)
-		qual := fmt.Sprintf(`s.name_id =
-		(
-			SELECT
-				id
-			FROM
-				_ps_trace.span_name sn
-			WHERE
-				name = $%d
-		)`, len(params))
+		qual := fmt.Sprintf(`span_name = $%d`, len(params))
+		operation_clauses = append(operation_clauses, qual)
+	}
+
+	if len(operation_clauses) > 0 {
+		qual := fmt.Sprintf(`
+		   s.operation_id IN (
+			   SELECT
+			     id
+			   FROM _ps_trace.operation
+			   WHERE
+			      %s
+		   )
+		`, strings.Join(operation_clauses, " AND "))
 		clauses = append(clauses, qual)
 	}
+
 	if len(q.Tags) > 0 {
 		for k, v := range q.Tags {
 			params = append(params, k, v)
@@ -183,12 +198,23 @@ func buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interfac
 
 	var defaultDuration time.Duration
 	if q.DurationMin != defaultDuration {
-		params = append(params, q.DurationMin)
-		clauses = append(clauses, fmt.Sprintf(`(s.end_time - s.start_time) >= $%d`, len(params)))
+		if q.DurationMin%time.Millisecond == 0 {
+			params = append(params, q.DurationMin.Milliseconds())
+			clauses = append(clauses, fmt.Sprintf(`duration_ms >= $%d`, len(params)))
+		} else {
+			params = append(params, q.DurationMin)
+			clauses = append(clauses, fmt.Sprintf(`(end_time - start_time ) >= $%d`, len(params)))
+		}
 	}
 	if q.DurationMax != defaultDuration {
-		params = append(params, q.DurationMax)
-		clauses = append(clauses, fmt.Sprintf(`(s.end_time - s.start_time) <= $%d`, len(params)))
+		if q.DurationMax%time.Millisecond == 0 {
+			params = append(params, q.DurationMax.Milliseconds())
+			clauses = append(clauses, fmt.Sprintf(`duration_ms <= $%d`, len(params)))
+		} else {
+			params = append(params, q.DurationMax)
+			clauses = append(clauses, fmt.Sprintf(`(end_time - start_time ) <= $%d`, len(params)))
+		}
+
 	}
 
 	query := ""

@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/jaeger/query"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"go.opentelemetry.io/collector/model/pdata"
@@ -16,16 +18,20 @@ import (
 var (
 	traceID1               = [16]byte{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
 	traceID2               = [16]byte{'0', '2', '3', '4', '0', '6', '7', '8', '9', '0', '0', '2', '3', '4', '0', '6'}
-	testSpanStartTime      = time.Date(2020, 2, 11, 20, 26, 12, 321, time.UTC)
+	testSpanStartTime      = time.Date(2020, 2, 11, 20, 26, 12, 321000, time.UTC)
 	testSpanStartTimestamp = pdata.NewTimestampFromTime(testSpanStartTime)
 
-	testSpanEventTime      = time.Date(2020, 2, 11, 20, 26, 13, 123, time.UTC)
+	testSpanEventTime      = time.Date(2020, 2, 11, 20, 26, 13, 123000, time.UTC)
 	testSpanEventTimestamp = pdata.NewTimestampFromTime(testSpanEventTime)
 
-	testSpanEndTime      = time.Date(2020, 2, 11, 20, 26, 13, 789, time.UTC)
+	testSpanEndTime      = time.Date(2020, 2, 11, 20, 26, 13, 789000, time.UTC)
 	testSpanEndTimestamp = pdata.NewTimestampFromTime(testSpanEndTime)
 
-	resourceAttributes  = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"resource-attr": pdata.NewAttributeValueString("resource-attr-val-1")})
+	resourceAttributes = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{
+		"resource-attr": pdata.NewAttributeValueString("resource-attr-val-1"),
+		"service.name":  pdata.NewAttributeValueString("service1"),
+	})
+	spanAttributes      = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-attr": pdata.NewAttributeValueString("span-attr-val")})
 	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-event-attr": pdata.NewAttributeValueString("span-event-attr-val")})
 	spanLinkAttributes  = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-link-attr": pdata.NewAttributeValueString("span-link-attr-val")})
 )
@@ -76,6 +82,11 @@ func initSpanEventAttributes(dest pdata.AttributeMap) {
 	spanEventAttributes.CopyTo(dest)
 }
 
+func initSpanAttributes(dest pdata.AttributeMap) {
+	dest.Clear()
+	spanAttributes.CopyTo(dest)
+}
+
 func initSpanLinkAttributes(dest pdata.AttributeMap) {
 	dest.Clear()
 	spanLinkAttributes.CopyTo(dest)
@@ -94,7 +105,7 @@ func fillSpanOne(span pdata.Span) {
 	span.SetEndTimestamp(testSpanEndTimestamp)
 	span.SetDroppedAttributesCount(1)
 	span.SetTraceState("span-trace-state1")
-	initSpanEventAttributes(span.Attributes())
+	initSpanAttributes(span.Attributes())
 	evs := span.Events()
 	ev0 := evs.AppendEmpty()
 	ev0.SetTimestamp(testSpanEventTimestamp)
@@ -118,7 +129,7 @@ func fillSpanTwo(span pdata.Span) {
 	span.SetStartTimestamp(testSpanStartTimestamp)
 	span.SetEndTimestamp(testSpanEndTimestamp)
 	span.SetTraceState("span-trace-state2")
-	initSpanEventAttributes(span.Attributes())
+	initSpanAttributes(span.Attributes())
 	link0 := span.Links().AppendEmpty()
 	initSpanLinkAttributes(link0.Attributes())
 	link0.SetTraceID(pdata.NewTraceID([16]byte{'1'}))
@@ -131,4 +142,218 @@ func fillSpanTwo(span pdata.Span) {
 	link1.SetSpanID(pdata.NewSpanID(generateRandSpanID()))
 	link1.SetTraceState("link-trace-state2")
 	span.SetDroppedLinksCount(3)
+}
+
+func TestQueryTraces(t *testing.T) {
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		require.NoError(t, err)
+		defer ingestor.Close()
+		traces := generateTestTrace()
+		err = ingestor.IngestTraces(context.Background(), traces)
+		require.NoError(t, err)
+
+		q := query.New(pgxconn.NewQueryLoggingPgxConn(db))
+
+		getOperationsTest(t, q)
+		findTraceTest(t, q)
+
+	})
+}
+
+func getOperationsTest(t testing.TB, q *query.Query) {
+	request := spanstore.OperationQueryParameters{
+		ServiceName: "service1",
+	}
+	ops, err := q.GetOperations(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(ops))
+
+	request = spanstore.OperationQueryParameters{
+		ServiceName: "service never existed",
+	}
+	ops, err = q.GetOperations(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(ops))
+
+	request = spanstore.OperationQueryParameters{
+		ServiceName: "service1",
+		SpanKind:    "SPAN_KIND_UNSPECIFIED",
+	}
+	ops, err = q.GetOperations(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(ops))
+
+	request = spanstore.OperationQueryParameters{
+		ServiceName: "service1",
+		SpanKind:    "SPAN_KIND_CLIENT",
+	}
+	ops, err = q.GetOperations(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(ops))
+}
+
+func findTraceTest(t testing.TB, q *query.Query) {
+	request := &spanstore.TraceQueryParameters{
+		ServiceName: "service1",
+	}
+
+	traces, err := q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+	}
+
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val-not-actually",
+		},
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime.Add(time.Second),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime.Add(-time.Second),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime) + (1 * time.Millisecond),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+		DurationMax:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+		DurationMax:  testSpanEndTime.Sub(testSpanStartTime) - time.Millisecond,
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service1",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+		DurationMax:  testSpanEndTime.Sub(testSpanStartTime),
+		NumTraces:    2,
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
 }

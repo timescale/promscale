@@ -192,8 +192,9 @@ def save_instrumentation_lib(instrumentation_lib: InstrumentationLib, cur) -> No
         ''', (instrumentation_lib.name, instrumentation_lib.version, instrumentation_lib.schema_url))
 
 
-def save_span_name(name: str, cur) -> None:
-    cur.execute('insert into _ps_trace.span_name (name) values (%s) on conflict (name) do nothing', (name,))
+def save_span_name(service_name: str, span_name: str, span_kind: str, cur) -> int:
+    cur.execute('select ps_trace.put_operation(service_name, span_name, span_kind)', (span_name, span_kind, service_name))
+    return cur.fetchone()[0]
 
 
 def save_span(span: Span, cur) -> None:
@@ -209,8 +210,7 @@ def save_span(span: Span, cur) -> None:
         span_id,
         trace_state,
         parent_span_id,
-        name_id,
-        span_kind,
+        operation_id,
         start_time,
         end_time,
         span_tags,
@@ -229,8 +229,15 @@ def save_span(span: Span, cur) -> None:
         %(span_id)s,
         %(trace_state)s,
         %(parent_span_id)s,
-        (select id from _ps_trace.span_name where name = %(name)s limit 1),
-        %(span_kind)s,
+        (
+            select n.id 
+            from _ps_trace.operation n
+            inner join _ps_trace.tag t on (t.key = 'service.name' and n.service_name_id = t.id) 
+            where n.span_name = %(span_name)s 
+            and n.span_kind = %(span_kind)s
+            and t.value = to_jsonb(%(service_name)s::text)
+            limit 1
+        ),
         %(start_time)s,
         %(end_time)s,
         ps_trace.get_tag_map(%(span_tags)s),
@@ -249,7 +256,8 @@ def save_span(span: Span, cur) -> None:
         'span_id': span.span_id,
         'trace_state': span.trace_state,
         'parent_span_id': span.parent_span_id,
-        'name': span.name,
+        'service_name': span.resource.tags['service.name'],
+        'span_name': span.name,
         'span_kind': span.span_kind,
         'start_time': span.start_time,
         'end_time': span.end_time,
@@ -279,7 +287,7 @@ def save_trace(trace: Trace, cur, con) -> None:
         save_tags(tags, cur)
 
         save_instrumentation_lib(span.instrumentation_lib, cur)
-        save_span_name(span.name, cur)
+        save_span_name(span.resource.tags['service.name'], span.name, span.span_kind, cur)
         save_span(span, cur)
 
         print('.', end='', flush=True)
