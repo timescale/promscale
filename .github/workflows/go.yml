@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: ['**']
 
+env:
+  golang-version: '1.15'
+
 jobs:
 
   build:
@@ -13,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Set up Go 1.14
+    - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
       with:
-        go-version: 1.14
+        go-version: ${{ env.golang-version }}
       id: go
 
     - name: Check out code into the Go module directory
@@ -55,10 +58,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Set up Go 1.14
+    - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
       with:
-        go-version: 1.14
+        go-version: ${{ env.golang-version }}
       id: go
 
     - name: Check out code into the Go module directory
@@ -114,10 +117,10 @@ jobs:
         - {name: "TimescaleDB-OSS",          shortname: "tsdb-oss",     ext: false, tsdb: true,  tsdb2: true,  tsdboss: true,  multi: false, pg: 13}
     steps:
 
-    - name: Set up Go 1.14
+    - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
       with:
-        go-version: 1.14
+        go-version: ${{ env.golang-version }}
       id: go
 
     - name: Check out code into the Go module directory
