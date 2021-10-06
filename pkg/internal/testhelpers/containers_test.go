@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,9 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jaegertracing/jaeger/proto-gen/api_v3"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -42,6 +46,34 @@ func TestPGConnection(t *testing.T) {
 	if res != 1 {
 		t.Errorf("Res is not 1 but %d", res)
 	}
+}
+
+func TestJaegerConnection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping checking Jaeger connection")
+	}
+	container, host, _, grpcQueryPort, uiPort, err := StartJaegerContainer()
+	require.NoError(t, err)
+	defer container.Terminate(context.Background())
+
+	const servicesEndpoint = "api/services"
+
+	resp, err := http.Get(fmt.Sprintf("http://%s:%s/%s", host, uiPort, servicesEndpoint))
+	require.NoError(t, err)
+	require.True(t, resp.StatusCode == http.StatusOK)
+
+	bSlice, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.True(t, len(bSlice) > 0)
+
+	opts := []grpc.DialOption{grpc.WithBlock(), grpc.WithInsecure()}
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", host, grpcQueryPort.Port()), opts...)
+	require.NoError(t, err)
+
+	c := api_v3.NewQueryServiceClient(conn)
+	services, err := c.GetServices(context.Background(), &api_v3.GetServicesRequest{})
+	require.NoError(t, err)
+	require.Equal(t, 0, len(services.Services)) // As the database is empty.
 }
 
 func TestWithDB(t *testing.T) {
