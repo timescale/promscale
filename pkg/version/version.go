@@ -39,6 +39,7 @@ var (
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 
 	Promscale                           = "0.6.1-dev.3"
+	PrevReleaseVersion                  = "0.5.1"
 	PromMigrator                        = "0.0.2"
 	CommitHash                          = ""
 	EarliestUpgradeTestVersion          = "0.1.0"
