@@ -35,7 +35,8 @@ jobs:
 
     - name: Format
       run: |
-        diff -u <(echo -n) <(gofmt -d .)
+        make go-fmt
+        git diff --exit-code .
 
     - name: Lint
       uses: golangci/golangci-lint-action@v2
@@ -43,7 +44,7 @@ jobs:
         version: ${{ env.golangci-lint-version }}
 
     - name: Build
-      run: go build -v ./...
+      run: make build
 
   test:
     name: Go Tests
@@ -67,7 +68,7 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Test
-      run: go test -v -race ./... -timeout 40m > complete-test-run.log  2>&1
+      run: make test > complete-test-run.log  2>&1
 
     - name: 'Print failure logs'
       if: ${{ failure() }}
