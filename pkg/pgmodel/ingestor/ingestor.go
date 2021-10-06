@@ -103,7 +103,7 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, r pdata.Traces) er
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
 				serviceName := missingServiceName
-				av, found := span.Attributes().Get(serviceNameTagKey)
+				av, found := rSpan.Resource().Attributes().Get(serviceNameTagKey)
 				if found {
 					serviceName = av.AsString()
 				}

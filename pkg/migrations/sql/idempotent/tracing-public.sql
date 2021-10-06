@@ -361,28 +361,34 @@ BEGIN
             FROM SCHEMA_TRACING.tag
             WHERE key = 'service.name'
             AND key_id = 1
-            AND value = to_jsonb(_service_name::text)
-            ;
+            AND value = to_jsonb(_service_name::text);
         END IF;
     END IF;
 
-    INSERT INTO SCHEMA_TRACING.operation (service_name_id, span_kind, span_name)
-    VALUES
-    (
-        _service_name_id,
-        _span_kind,
-        _span_name
-    )
-    ON CONFLICT DO NOTHING
-    RETURNING id INTO _operation_id;
+    SELECT id INTO _operation_id
+    FROM SCHEMA_TRACING.operation
+    WHERE service_name_id = _service_name_id
+    AND span_kind = _span_kind
+    AND span_name = _span_name;
 
-    IF _operation_id IS NULL THEN
-        SELECT id INTO STRICT _operation_id
-        FROM SCHEMA_TRACING.operation
-        WHERE service_name_id = _service_name_id
-        AND span_kind = _span_kind
-        AND span_name = _span_name
-        ;
+    IF NOT FOUND THEN
+        INSERT INTO SCHEMA_TRACING.operation (service_name_id, span_kind, span_name)
+        VALUES
+        (
+            _service_name_id,
+            _span_kind,
+            _span_name
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING id INTO _operation_id;
+
+        IF _operation_id IS NULL THEN
+            SELECT id INTO STRICT _operation_id
+            FROM SCHEMA_TRACING.operation
+            WHERE service_name_id = _service_name_id
+            AND span_kind = _span_kind
+            AND span_name = _span_name;
+        END IF;
     END IF;
 
     RETURN _operation_id;

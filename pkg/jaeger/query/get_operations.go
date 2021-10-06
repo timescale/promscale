@@ -16,19 +16,19 @@ import (
 const (
 	getOperationsSQLFormat = `
 SELECT
-	array_agg(name),
-	array_agg(span_kind)
+	array_agg(o.span_name),
+	array_agg(o.span_kind)
 FROM
-	(
-	SELECT
-		DISTINCT s.name_id, s.span_kind
-	FROM
-		_ps_trace.span s
-	WHERE
-		s.resource_tags OPERATOR(ps_trace.?) ('service.name' OPERATOR(ps_trace.==) $1) AND %s
-	) as dist_list
-INNER JOIN
-	_ps_trace.span_name sn ON sn.id = dist_list.name_id
+	_ps_trace.operation o
+WHERE
+	service_name_id = (
+		SELECT id
+		FROM _ps_trace.tag
+		WHERE key = 'service.name'
+		AND key_id = 1
+		AND value = to_jsonb($1::text)
+	)
+	AND %s
 `
 )
 
@@ -42,7 +42,7 @@ func getOperations(ctx context.Context, conn pgxconn.PgxConn, query spanstore.Op
 	kindQual := "TRUE"
 	if len(query.SpanKind) > 0 {
 		args = append(args, query.SpanKind)
-		kindQual = "s.span_kind = $2"
+		kindQual = "o.span_kind = $2"
 	}
 
 	sqlQuery := fmt.Sprintf(getOperationsSQLFormat, kindQual)
