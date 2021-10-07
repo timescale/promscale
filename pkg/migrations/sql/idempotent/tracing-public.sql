@@ -330,6 +330,41 @@ $func$
 LANGUAGE plpgsql VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_tag(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_v, SCHEMA_TRACING_PUBLIC.tag_type) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_operation(_service_name text, _span_name text, _span_kind SCHEMA_TRACING_PUBLIC.span_kind)
+RETURNS bigint
+AS $func$
+DECLARE
+    _service_name_id bigint;
+    _operation_id bigint;
+BEGIN
+    SELECT id INTO _service_name_id
+    FROM SCHEMA_TRACING.tag
+    WHERE key = 'service.name'
+    AND key_id = 1
+    AND value = to_jsonb(_service_name::text);
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Cannot find ID for specified service name';
+        RETURN NULL;
+    END IF;
+
+    SELECT id INTO _operation_id
+    FROM SCHEMA_TRACING.operation
+    WHERE service_name_id = _service_name_id
+    AND span_kind = _span_kind
+    AND span_name = _span_name;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Cannot find operation with the specified details.';
+        RETURN NULL;
+    END IF;
+
+    RETURN _operation_id;
+END;
+$func$
+LANGUAGE plpgsql VOLATILE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.get_operation(text, text, SCHEMA_TRACING_PUBLIC.span_kind) TO prom_reader;
+
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.put_operation(_service_name text, _span_name text, _span_kind SCHEMA_TRACING_PUBLIC.span_kind)
 RETURNS bigint
 AS $func$

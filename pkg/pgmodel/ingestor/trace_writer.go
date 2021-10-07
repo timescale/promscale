@@ -25,16 +25,13 @@ const (
 		VALUES ($1, $2, $3, $4, $5, %s.get_tag_map($6), $7)`
 	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
 		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, %s.get_tag_map($8), $9, $10, $11, $12, $13, $14, $15, %s.get_tag_map($16), $17, $18)
+		VALUES ($1, $2, $3, $4, %s.get_operation($5, $6, $7), $8, $9, %s.get_tag_map($10), $11, $12, $13, $14, $15, $16, $17, %s.get_tag_map($18), $19, $20)
 		ON CONFLICT DO NOTHING`  // Most cases conflict only happens on retries, safe to ignore duplicate data.
 )
 
 type traceWriter interface {
-	InsertSpanLinks(ctx context.Context, links pdata.SpanLinkSlice, traceID [16]byte, spanID [8]byte, spanStartTime time.Time) error
-	InsertSpanEvents(ctx context.Context, events pdata.SpanEventSlice, traceID [16]byte, spanID [8]byte) error
-	InsertSpan(ctx context.Context, span pdata.Span, nameID, instLibID, rSchemaURLID pgtype.Int8, resourceTags pdata.AttributeMap) error
+	InsertSpans(ctx context.Context, spans pdata.SpanSlice, serviceName string, instLibID, rSchemaURLID pgtype.Int8, resourceTags pdata.AttributeMap) error
 	InsertSchemaURL(ctx context.Context, sURL string) (id pgtype.Int8, err error)
-	InsertSpanName(ctx context.Context, serviceName, spanName, spanKind string) (id pgtype.Int8, err error)
 	InsertInstrumentationLibrary(ctx context.Context, name, version, sURL string) (id pgtype.Int8, err error)
 }
 
@@ -57,13 +54,8 @@ func (t *traceWriterImpl) InsertSchemaURL(ctx context.Context, sURL string) (id 
 	return id, err
 }
 
-func (t *traceWriterImpl) InsertSpanName(ctx context.Context, serviceName, spanName, spanKind string) (id pgtype.Int8, err error) {
-	if serviceName == "" || spanName == "" || spanKind == "" {
-		id.Status = pgtype.Null
-		return id, nil
-	}
-	err = t.conn.QueryRow(ctx, fmt.Sprintf(insertOperationSQL, schema.TracePublic), serviceName, spanName, spanKind).Scan(&id)
-	return id, err
+func (t *traceWriterImpl) queueOperation(operationBatch pgxconn.PgxBatch, serviceName, spanName, spanKind string) {
+	operationBatch.Queue(fmt.Sprintf(insertOperationSQL, schema.TracePublic), serviceName, spanName, spanKind)
 }
 
 func (t *traceWriterImpl) InsertInstrumentationLibrary(ctx context.Context, name, version, schemaURL string) (id pgtype.Int8, err error) {
@@ -89,48 +81,39 @@ func (t *traceWriterImpl) InsertInstrumentationLibrary(ctx context.Context, name
 	return id, err
 }
 
-func (t *traceWriterImpl) insertTags(ctx context.Context, tags map[string]interface{}, typ TagType) error {
+func (t *traceWriterImpl) queueTags(tagBatch pgxconn.PgxBatch, tags map[string]interface{}, typ TagType) error {
 	for k, v := range tags {
-		_, err := t.conn.Exec(ctx, fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic), k, typ)
-
-		if err != nil {
-			return err
-		}
+		tagBatch.Queue(fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic), k, typ)
 
 		val, err := json.Marshal(v)
 		if err != nil {
 			return err
 		}
 
-		_, err = t.conn.Exec(ctx, fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+		tagBatch.Queue(fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
 			k,
 			string(val),
 			typ,
 		)
-
-		if err != nil {
-			return err
-		}
 	}
-
 	return nil
 }
 
-func (t *traceWriterImpl) InsertSpanLinks(ctx context.Context, links pdata.SpanLinkSlice, traceID [16]byte, spanID [8]byte, spanStartTime time.Time) error {
+func (t *traceWriterImpl) queueSpanLinks(linkBatch, tagBatch pgxconn.PgxBatch, links pdata.SpanLinkSlice, traceID [16]byte, spanID [8]byte, spanStartTime time.Time) error {
 	spanIDInt := ByteArrayToInt64(spanID)
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
 		linkedSpanIDInt := ByteArrayToInt64(link.SpanID().Bytes())
 
 		rawTags := link.Attributes().AsRaw()
-		if err := t.insertTags(ctx, rawTags, LinkTagType); err != nil {
+		if err := t.queueTags(tagBatch, rawTags, LinkTagType); err != nil {
 			return err
 		}
 		jsonTags, err := json.Marshal(rawTags)
 		if err != nil {
 			return err
 		}
-		_, err = t.conn.Exec(ctx, fmt.Sprintf(insertSpanLinkSQL, schema.Trace, schema.TracePublic),
+		linkBatch.Queue(fmt.Sprintf(insertSpanLinkSQL, schema.Trace, schema.TracePublic),
 			TraceIDToUUID(traceID),
 			spanIDInt,
 			spanStartTime,
@@ -141,27 +124,23 @@ func (t *traceWriterImpl) InsertSpanLinks(ctx context.Context, links pdata.SpanL
 			link.DroppedAttributesCount(),
 			i,
 		)
-
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
 
-func (t *traceWriterImpl) InsertSpanEvents(ctx context.Context, events pdata.SpanEventSlice, traceID [16]byte, spanID [8]byte) error {
+func (t *traceWriterImpl) queueSpanEvents(eventBatch, tagBatch pgxconn.PgxBatch, events pdata.SpanEventSlice, traceID [16]byte, spanID [8]byte) error {
 	spanIDInt := ByteArrayToInt64(spanID)
 	for i := 0; i < events.Len(); i++ {
 		event := events.At(i)
 		rawTags := event.Attributes().AsRaw()
-		if err := t.insertTags(ctx, rawTags, EventTagType); err != nil {
+		if err := t.queueTags(tagBatch, rawTags, EventTagType); err != nil {
 			return err
 		}
 		jsonTags, err := json.Marshal(rawTags)
 		if err != nil {
 			return err
 		}
-		_, err = t.conn.Exec(ctx, fmt.Sprintf(insertSpanEventSQL, schema.Trace, schema.TracePublic),
+		eventBatch.Queue(fmt.Sprintf(insertSpanEventSQL, schema.Trace, schema.TracePublic),
 			event.Timestamp().AsTime(),
 			TraceIDToUUID(traceID),
 			spanIDInt,
@@ -178,52 +157,88 @@ func (t *traceWriterImpl) InsertSpanEvents(ctx context.Context, events pdata.Spa
 	return nil
 }
 
-func (t *traceWriterImpl) InsertSpan(ctx context.Context, span pdata.Span, nameID, instLibID, rSchemaURLID pgtype.Int8, resourceTags pdata.AttributeMap) error {
-	spanIDInt := ByteArrayToInt64(span.SpanID().Bytes())
-	parentSpanIDInt := ByteArrayToInt64(span.ParentSpanID().Bytes())
-	rawResourceTags := resourceTags.AsRaw()
-	if err := t.insertTags(ctx, rawResourceTags, ResourceTagType); err != nil {
-		return err
-	}
-	jsonResourceTags, err := json.Marshal(rawResourceTags)
-	if err != nil {
-		return err
-	}
-	rawTags := span.Attributes().AsRaw()
-	if err := t.insertTags(ctx, rawTags, SpanTagType); err != nil {
-		return err
-	}
-	jsonTags, err := json.Marshal(rawTags)
-	if err != nil {
-		return err
+func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice, serviceName string, instLibID, rSchemaURLID pgtype.Int8, resourceTags pdata.AttributeMap) error {
+	spanBatch := t.conn.NewBatch()
+	linkBatch := t.conn.NewBatch()
+	eventBatch := t.conn.NewBatch()
+	tagBatch := t.conn.NewBatch()
+	operationBatch := t.conn.NewBatch()
+	for k := 0; k < spans.Len(); k++ {
+		span := spans.At(k)
+		traceID := span.TraceID().Bytes()
+		spanID := span.SpanID().Bytes()
+		spanName := span.Name()
+		spanKind := span.Kind().String()
+
+		t.queueOperation(operationBatch, serviceName, spanName, spanKind)
+
+		if err := t.queueSpanEvents(eventBatch, tagBatch, span.Events(), traceID, spanID); err != nil {
+			return err
+		}
+		if err := t.queueSpanLinks(linkBatch, tagBatch, span.Links(), traceID, spanID, span.StartTimestamp().AsTime()); err != nil {
+			return err
+		}
+		spanIDInt := ByteArrayToInt64(spanID)
+		parentSpanIDInt := ByteArrayToInt64(span.ParentSpanID().Bytes())
+		rawResourceTags := resourceTags.AsRaw()
+		if err := t.queueTags(tagBatch, rawResourceTags, ResourceTagType); err != nil {
+			return err
+		}
+		jsonResourceTags, err := json.Marshal(rawResourceTags)
+		if err != nil {
+			return err
+		}
+		rawTags := span.Attributes().AsRaw()
+		if err := t.queueTags(tagBatch, rawTags, SpanTagType); err != nil {
+			return err
+		}
+		jsonTags, err := json.Marshal(rawTags)
+		if err != nil {
+			return err
+		}
+
+		eventTimeRange := getEventTimeRange(span.Events())
+
+		spanBatch.Queue(
+			fmt.Sprintf(insertSpanSQL, schema.Trace, schema.TracePublic, schema.TracePublic, schema.TracePublic),
+			TraceIDToUUID(traceID),
+			spanIDInt,
+			getTraceStateValue(span.TraceState()),
+			parentSpanIDInt,
+			serviceName,
+			spanName,
+			spanKind,
+			span.StartTimestamp().AsTime(),
+			span.EndTimestamp().AsTime(),
+			string(jsonTags),
+			span.DroppedAttributesCount(),
+			eventTimeRange,
+			span.DroppedEventsCount(),
+			span.DroppedLinksCount(),
+			span.Status().Code().String(),
+			span.Status().Message(),
+			instLibID,
+			string(jsonResourceTags),
+			0, // TODO: Add resource_dropped_tags_count when it gets exposed upstream.
+			rSchemaURLID,
+		)
 	}
 
-	eventTimeRange := getEventTimeRange(span.Events())
+	return t.sendBatches(ctx, operationBatch, tagBatch, eventBatch, linkBatch, spanBatch)
 
-	_, err = t.conn.Exec(
-		ctx,
-		fmt.Sprintf(insertSpanSQL, schema.Trace, schema.TracePublic, schema.TracePublic),
-		TraceIDToUUID(span.TraceID().Bytes()),
-		spanIDInt,
-		getTraceStateValue(span.TraceState()),
-		parentSpanIDInt,
-		nameID,
-		span.StartTimestamp().AsTime(),
-		span.EndTimestamp().AsTime(),
-		string(jsonTags),
-		span.DroppedAttributesCount(),
-		eventTimeRange,
-		span.DroppedEventsCount(),
-		span.DroppedLinksCount(),
-		span.Status().Code().String(),
-		span.Status().Message(),
-		instLibID,
-		string(jsonResourceTags),
-		0, // TODO: Add resource_dropped_tags_count when it gets exposed upstream.
-		rSchemaURLID,
-	)
+}
 
-	return err
+func (t *traceWriterImpl) sendBatches(ctx context.Context, batches ...pgxconn.PgxBatch) error {
+	for _, batch := range batches {
+		br, err := t.conn.SendBatch(ctx, batch)
+		if err != nil {
+			return err
+		}
+		if err = br.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ByteArrayToInt64(buf [8]byte) int64 {
