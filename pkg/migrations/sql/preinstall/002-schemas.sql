@@ -1,4 +1,5 @@
 CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
+
     CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
     GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
 
@@ -27,6 +28,9 @@ CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
     GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
     GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
 
+    CREATE SCHEMA IF NOT EXISTS SCHEMA_TAG;
+    GRANT USAGE ON SCHEMA SCHEMA_TAG TO prom_reader;
+
     CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
     GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
 
@@ -41,7 +45,7 @@ DO $$
 DECLARE
    new_path text;
 BEGIN
-   new_path := current_setting('search_path') || format(',%L,%L,%L,%L', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG');
+   new_path := current_setting('search_path') || format(',%L,%L,%L,%L,%L,%L', 'SCHEMA_TAG', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG', 'SCHEMA_TRACING_PUBLIC');
    execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
    execute format('SET search_path = %s', new_path);
 END

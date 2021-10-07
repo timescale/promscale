@@ -61,6 +61,7 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_contains(SCHEMA_PROM.label_array, jsonb) TO prom_reader;
 
+
 --------------------- op ? ------------------------
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_array, matchers SCHEMA_PROM.matcher_positive)
@@ -70,7 +71,6 @@ AS $func$
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_match(SCHEMA_PROM.label_array, SCHEMA_PROM.matcher_positive) TO prom_reader;
-
 
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_match(labels SCHEMA_PROM.label_array, matchers SCHEMA_PROM.matcher_negative)
 RETURNS BOOLEAN
@@ -121,3 +121,37 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_find_key_not_regex(SCHEMA_PROM.label_key, SCHEMA_PROM.pattern) TO prom_reader;
+
+--------------------- op == !== ==~ !=~ ------------------------
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_equals(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_equals)
+RETURNS boolean
+AS $func$
+    SELECT labels && label_find_key_equal(_op.tag_key, (_op.value#>>'{}'))::int[]
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.match_equals(SCHEMA_PROM.label_array, SCHEMA_TAG.tag_op_equals) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_not_equals(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_not_equals)
+RETURNS boolean
+AS $func$
+    SELECT NOT (labels && label_find_key_not_equal(_op.tag_key, (_op.value#>>'{}'))::int[])
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.match_not_equals(SCHEMA_PROM.label_array, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_regexp_matches(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_regexp_matches)
+RETURNS boolean
+AS $func$
+    SELECT labels && label_find_key_regex(_op.tag_key, _op.value)::int[]
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.match_regexp_matches(SCHEMA_PROM.label_array, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_regexp_not_matches(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_regexp_not_matches)
+RETURNS boolean
+AS $func$
+    SELECT NOT (labels && label_find_key_not_regex(_op.tag_key, _op.value)::int[])
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.match_regexp_not_matches(SCHEMA_PROM.label_array, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;

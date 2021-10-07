@@ -43,6 +43,7 @@ var (
 	tableOfContents = map[string][]string{
 		"idempotent": {
 			"base.sql",
+			"tag-operators.sql",
 			"matcher-functions.sql",
 			"ha.sql",
 			"metric-metadata.sql",
@@ -382,6 +383,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 		return "", err
 	}
 	s := buf.String()
+	s = strings.ReplaceAll(s, "SCHEMA_TAG", schema.Tag)
 	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", schema.Catalog)
 	s = strings.ReplaceAll(s, "SCHEMA_LOCK_ID", strconv.FormatInt(schema.LockID, 10))
 	s = strings.ReplaceAll(s, "SCHEMA_EXT", schema.Ext)

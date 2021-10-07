@@ -130,26 +130,54 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
-CREATE OPERATOR SCHEMA_PROM.== (
-    LEFTARG = SCHEMA_PROM.label_key,
-    RIGHTARG = SCHEMA_PROM.pattern,
-    FUNCTION = SCHEMA_CATALOG.label_find_key_equal
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_equals(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_equals)
+RETURNS boolean
+AS $func$
+    SELECT labels && label_find_key_equal(_op.tag_key, (_op.value#>>'{}'))::int[]
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+
+CREATE OPERATOR SCHEMA_CATALOG.? (
+    LEFTARG = SCHEMA_PROM.label_array,
+    RIGHTARG = SCHEMA_TAG.tag_op_equals,
+    FUNCTION = SCHEMA_CATALOG.match_equals
 );
 
-CREATE OPERATOR SCHEMA_PROM.!== (
-    LEFTARG = SCHEMA_PROM.label_key,
-    RIGHTARG = SCHEMA_PROM.pattern,
-    FUNCTION = SCHEMA_CATALOG.label_find_key_not_equal
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_not_equals(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_not_equals)
+RETURNS boolean
+AS $func$
+    SELECT NOT (labels && label_find_key_not_equal(_op.tag_key, (_op.value#>>'{}'))::int[])
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+
+CREATE OPERATOR SCHEMA_CATALOG.? (
+    LEFTARG = SCHEMA_PROM.label_array,
+    RIGHTARG = SCHEMA_TAG.tag_op_not_equals,
+    FUNCTION = SCHEMA_CATALOG.match_not_equals
 );
 
-CREATE OPERATOR SCHEMA_PROM.==~ (
-    LEFTARG = SCHEMA_PROM.label_key,
-    RIGHTARG = SCHEMA_PROM.pattern,
-    FUNCTION = SCHEMA_CATALOG.label_find_key_regex
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_regexp_matches(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_regexp_matches)
+RETURNS boolean
+AS $func$
+    SELECT labels && label_find_key_regex(_op.tag_key, _op.value)::int[]
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+
+CREATE OPERATOR SCHEMA_CATALOG.? (
+    LEFTARG = SCHEMA_PROM.label_array,
+    RIGHTARG = SCHEMA_TAG.tag_op_regexp_matches,
+    FUNCTION = SCHEMA_CATALOG.match_regexp_matches
 );
 
-CREATE OPERATOR SCHEMA_PROM.!=~ (
-    LEFTARG = SCHEMA_PROM.label_key,
-    RIGHTARG = SCHEMA_PROM.pattern,
-    FUNCTION = SCHEMA_CATALOG.label_find_key_not_regex
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.match_regexp_not_matches(labels SCHEMA_PROM.label_array, _op SCHEMA_TAG.tag_op_regexp_not_matches)
+RETURNS boolean
+AS $func$
+    SELECT NOT (labels && label_find_key_not_regex(_op.tag_key, _op.value)::int[])
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE; -- do not make strict. it disables function inlining
+
+CREATE OPERATOR SCHEMA_CATALOG.? (
+    LEFTARG = SCHEMA_PROM.label_array,
+    RIGHTARG = SCHEMA_TAG.tag_op_regexp_not_matches,
+    FUNCTION = SCHEMA_CATALOG.match_regexp_not_matches
 );

@@ -1,91 +1,3 @@
-CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
-    GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- public functions
-    GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
-    GRANT USAGE ON SCHEMA SCHEMA_EXT TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES; -- series views
-    GRANT USAGE ON SCHEMA SCHEMA_SERIES TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC; -- metric views
-    GRANT USAGE ON SCHEMA SCHEMA_METRIC TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_SERIES;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
-    GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
-    GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
-END $$ $ee$);
-
-INSERT INTO public.prom_installation_info(key, value) VALUES
-    ('tracing schema',          'SCHEMA_TRACING_PUBLIC'),
-    ('tracing schema private',  'SCHEMA_TRACING');
-
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
-GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
-
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
-GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
-
-CALL SCHEMA_CATALOG.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.trace_id uuid NOT NULL CHECK (value != '00000000-0000-0000-0000-000000000000');
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.trace_id TO prom_reader;
-
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_k text NOT NULL CHECK (value != '');
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_k TO prom_reader;
-
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_v jsonb NOT NULL;
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_v TO prom_reader;
-
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_map jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(value) = 'object');
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_map TO prom_reader;
-
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_matchers SCHEMA_TRACING_PUBLIC.tag_map[] NOT NULL;
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_matchers TO prom_reader;
-
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_type smallint NOT NULL; --bitmap, may contain several types
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_type TO prom_reader;
-
-    CREATE TYPE SCHEMA_TRACING_PUBLIC.span_kind AS ENUM
-    (
-        'SPAN_KIND_UNSPECIFIED',
-        'SPAN_KIND_INTERNAL',
-        'SPAN_KIND_SERVER',
-        'SPAN_KIND_CLIENT',
-        'SPAN_KIND_PRODUCER',
-        'SPAN_KIND_CONSUMER'
-    );
-    GRANT USAGE ON TYPE SCHEMA_TRACING_PUBLIC.span_kind TO prom_reader;
-
-    CREATE TYPE SCHEMA_TRACING_PUBLIC.status_code AS ENUM
-    (
-        'STATUS_CODE_UNSET',
-        'STATUS_CODE_OK',
-        'STATUS_CODE_ERROR'
-    );
-    GRANT USAGE ON TYPE SCHEMA_TRACING_PUBLIC.status_code TO prom_reader;
-END $$ $ee$);
-
-UPDATE SCHEMA_CATALOG.remote_commands SET seq = seq+1 WHERE seq >= 8;
-UPDATE SCHEMA_CATALOG.remote_commands SET seq = 8 WHERE key='tracing_types';
-
 CREATE TABLE SCHEMA_TRACING.tag_key
 (
     id BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -245,6 +157,7 @@ DECLARE
     _is_timescaledb_installed boolean = false;
     _timescaledb_major_version int;
     _is_multinode boolean = false;
+    _saved_search_path text;
 BEGIN
     /*
         These functions do not exist until the
@@ -274,6 +187,12 @@ BEGIN
     END IF;
     IF _is_timescaledb_installed THEN
         IF _is_multinode THEN
+            --need to clear the search path while creating distributed
+            --hypertables because otherwise the datanodes don't find
+            --the right column types since type names are not schema
+            --qualified if in search path.
+            _saved_search_path := current_setting('search_path');
+            SET search_path = pg_temp;
             PERFORM SCHEMA_TIMESCALE.create_distributed_hypertable(
                 'SCHEMA_TRACING.span'::regclass,
                 'start_time'::name,
@@ -298,6 +217,7 @@ BEGIN
                 chunk_time_interval=>'07:59:48.644258'::interval,
                 create_default_indexes=>false
             );
+            execute format('SET search_path = %s', _saved_search_path);
         ELSE
             PERFORM SCHEMA_TIMESCALE.create_hypertable(
                 'SCHEMA_TRACING.span'::regclass,

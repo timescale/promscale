@@ -302,7 +302,7 @@ func TestExtensionFunctions(t *testing.T) {
 		searchPath := ""
 		// right now the schemas in this test are hardcoded, if we ever allow
 		// user-defined schemas we will need to test those as well
-		expected := `"$user", public, _prom_ext, prom_api, prom_metric, _prom_catalog`
+		expected := `"$user", public, ps_tag, _prom_ext, prom_api, prom_metric, _prom_catalog, ps_trace`
 		err := db.QueryRow(context.Background(), "SHOW search_path;").Scan(&searchPath)
 		if err != nil {
 			t.Fatal(err)

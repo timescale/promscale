@@ -180,7 +180,7 @@ func buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interfac
 	if len(q.Tags) > 0 {
 		for k, v := range q.Tags {
 			params = append(params, k, v)
-			qual := fmt.Sprintf(`s.span_tags OPERATOR(ps_trace.?) ($%d OPERATOR(ps_trace.==) $%d)`, len(params)-1, len(params))
+			qual := fmt.Sprintf(`s.span_tags ? ($%d == $%d)`, len(params)-1, len(params))
 			clauses = append(clauses, qual)
 		}
 	}
