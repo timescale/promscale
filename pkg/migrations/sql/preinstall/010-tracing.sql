@@ -239,6 +239,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.link TO prom_writer
 
 /*
     If "vanilla" postgres is installed, do nothing.
+    If timescaledb is installed, turn on compression for tracing tables.
     If timescaledb is installed and multinode is set up,
     turn span, event, and link into distributed hypertables.
     If timescaledb is installed but multinode is NOT set up,
@@ -247,7 +248,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.link TO prom_writer
 DO $block$
 DECLARE
     _is_timescaledb_installed boolean = false;
+    _is_timescaledb_oss boolean = true;
+    _timescaledb_version_text text;
     _timescaledb_major_version int;
+    _timescaledb_minor_version int;
+    _is_compression_available boolean = false;
     _is_multinode boolean = false;
     _saved_search_path text;
 BEGIN
@@ -256,6 +261,7 @@ BEGIN
         idempotent scripts are executed, so we have
         to deal with it "manually"
         SCHEMA_CATALOG.get_timescale_major_version()
+        SCHEMA_CATALOG.is_timescaledb_oss()
         SCHEMA_CATALOG.is_timescaledb_installed()
         SCHEMA_CATALOG.is_multinode()
         SCHEMA_CATALOG.get_default_chunk_interval()
@@ -265,18 +271,35 @@ BEGIN
     INTO STRICT _is_timescaledb_installed
     FROM pg_extension
     WHERE extname='timescaledb';
+
     IF _is_timescaledb_installed THEN
-        SELECT split_part(extversion, '.', 1)::INT
-        INTO STRICT _timescaledb_major_version
+        SELECT extversion INTO STRICT _timescaledb_version_text
         FROM pg_catalog.pg_extension
         WHERE extname='timescaledb'
         LIMIT 1;
+
+        _timescaledb_major_version = split_part(_timescaledb_version_text, '.', 1)::INT;
+        _timescaledb_minor_version = split_part(_timescaledb_version_text, '.', 2)::INT;
+
+        _is_compression_available = CASE
+            WHEN _timescaledb_major_version >= 2 THEN true
+            WHEN _timescaledb_major_version = 1 and _timescaledb_minor_version >= 5 THEN true
+            ELSE false
+        END;
+
+        IF _timescaledb_major_version >= 2 THEN
+            _is_timescaledb_oss = (current_setting('timescaledb.license') = 'apache');
+        ELSE
+            _is_timescaledb_oss = (SELECT edition = 'apache' FROM timescaledb_information.license);
+        END IF;
+
         IF _timescaledb_major_version >= 2 THEN
             SELECT count(*) > 0
             INTO STRICT _is_multinode
             FROM timescaledb_information.data_nodes;
         END IF;
     END IF;
+
     IF _is_timescaledb_installed THEN
         IF _is_multinode THEN
             --need to clear the search path while creating distributed
@@ -310,7 +333,7 @@ BEGIN
                 create_default_indexes=>false
             );
             execute format('SET search_path = %s', _saved_search_path);
-        ELSE
+        ELSE -- not multinode
             PERFORM SCHEMA_TIMESCALE.create_hypertable(
                 'SCHEMA_TRACING.span'::regclass,
                 'start_time'::name,
@@ -335,6 +358,24 @@ BEGIN
                 chunk_time_interval=>'07:59:48.644258'::interval,
                 create_default_indexes=>false
             );
+        END IF;
+
+        IF (NOT _is_timescaledb_oss) AND _is_compression_available THEN
+            -- turn on compression
+            ALTER TABLE SCHEMA_TRACING.span SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
+            ALTER TABLE SCHEMA_TRACING.event SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
+            ALTER TABLE SCHEMA_TRACING.link SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
+
+            IF _timescaledb_major_version < 2 THEN
+                BEGIN
+                    PERFORM SCHEMA_TIMESCALE.add_compression_policy('SCHEMA_TRACING.span', INTERVAL '1 hour');
+                    PERFORM SCHEMA_TIMESCALE.add_compression_policy('SCHEMA_TRACING.event', INTERVAL '1 hour');
+                    PERFORM SCHEMA_TIMESCALE.add_compression_policy('SCHEMA_TRACING.link', INTERVAL '1 hour');
+                EXCEPTION
+                    WHEN undefined_function THEN
+                        RAISE NOTICE 'add_compression_policy does not exist';
+                END;
+            END IF;
         END IF;
     END IF;
 END;

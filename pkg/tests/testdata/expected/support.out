@@ -1,13 +1,13 @@
 \set ON_ERROR_STOP 1
 SELECT _prom_catalog.get_or_create_metric_table_name('cpu_usage');
-psql:/testdata/sql/support.sql:4: NOTICE:  adding index _compressed_hypertable_5_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_5 USING BTREE(series_id, _ts_meta_sequence_num)
+psql:/testdata/sql/support.sql:4: NOTICE:  adding index _compressed_hypertable_8_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_8 USING BTREE(series_id, _ts_meta_sequence_num)
  get_or_create_metric_table_name 
 ---------------------------------
  (1,cpu_usage,t)
 (1 row)
 
 SELECT _prom_catalog.get_or_create_metric_table_name('cpu_total');
-psql:/testdata/sql/support.sql:5: NOTICE:  adding index _compressed_hypertable_7_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_7 USING BTREE(series_id, _ts_meta_sequence_num)
+psql:/testdata/sql/support.sql:5: NOTICE:  adding index _compressed_hypertable_10_series_id__ts_meta_sequence_num_idx ON _timescaledb_internal._compressed_hypertable_10 USING BTREE(series_id, _ts_meta_sequence_num)
  get_or_create_metric_table_name 
 ---------------------------------
  (2,cpu_total,t)
@@ -46,7 +46,7 @@ EXPLAIN (costs off) SELECT time, value, jsonb(labels), val(namespace_id) FROM cp
                Sort Key: data."time", data.series_id
                ->  Hash Join
                      Hash Cond: (data.series_id = series.id)
-                     ->  Seq Scan on _hyper_4_1_chunk data
+                     ->  Seq Scan on _hyper_7_1_chunk data
                      ->  Hash
                            ->  Seq Scan on cpu_usage series
                                  Filter: (NOT ((labels)::integer[] && ($0)::integer[]))
