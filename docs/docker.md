@@ -10,8 +10,10 @@ section of Promscale github repository.
 
 A docker image of TimescaleDB with the `promscale`
 extension is available at on Docker Hub at
-[`timescaledev/promscale-extension:latest-pg12`](https://hub.docker.com/r/timescaledev/promscale-extension). You can
-install this via `docker pull timescaledev/promscale-extension:latest-pg12`.
+[`timescaledev/promscale-extension:latest-ts2-pg13`](https://hub.docker.com/r/timescaledev/promscale-extension). You can
+install this via `docker pull timescaledev/promscale-extension:latest-ts2-pg13`.
+
+The `ts2-pg13` suffix means TimescaleDB version 2 on PostgreSQL version 13. We also publish images to DockerHub for other combinations of TimescaleDB and PostgreSQL versions in case you have specific version requirements.
 
 **Example using docker:**
 
@@ -23,13 +25,15 @@ docker network create --driver bridge promscale-timescaledb
 
 Install and run TimescaleDB with Promscale extension:
 ```dockerfile
-docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --network promscale-timescaledb timescaledev/promscale-extension:latest-pg12 postgres -csynchronous_commit=off
+docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --network promscale-timescaledb timescaledev/promscale-extension:latest-ts2-pg13 postgres -csynchronous_commit=off
 ```
 
 Finally, let's run Promscale:
 ```dockerfile
-docker run --name promscale -d -p 9201:9201 --network promscale-timescaledb timescale/promscale:<version-tag> -db-password=<password> -db-port=5432 -db-name=postgres -db-host=timescaledb -db-ssl-mode=allow
+docker run --name promscale -d -p 9201:9201 --network promscale-timescaledb timescale/promscale:latest -db-password=<password> -db-port=5432 -db-name=postgres -db-host=timescaledb -db-ssl-mode=allow
 ```
+If you want to run a specific version of Promscale, replace latest with the specific version you want to run. You can see all versions available in [DockerHub](https://hub.docker.com/r/timescale/promscale/tags)
+
 
 **Note:** `db-ssl-mode=allow` is just for explanatory purposes. In production environments,
 we advise you to use `db-ssl-mode=require` for security purposes.
