@@ -7,7 +7,7 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.6.0
+    chart: promscale-0.6.1
     release: promscale
     heritage: Helm
   annotations:
@@ -29,7 +29,7 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.6.0
+    chart: promscale-0.6.1
     release: promscale
     heritage: Helm
 spec:
