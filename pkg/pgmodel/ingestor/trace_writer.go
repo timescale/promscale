@@ -27,7 +27,8 @@ const (
 		VALUES ($1, $2, $3, $4, $5, %s.get_tag_map($6), $7)`
 	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
 		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, %s.get_tag_map($8), $9, $10, $11, $12, $13, $14, $15, %s.get_tag_map($16), $17, $18)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, %s.get_tag_map($8), $9, $10, $11, $12, $13, $14, $15, %s.get_tag_map($16), $17, $18)
+		ON CONFLICT DO NOTHING`  // Most cases conflict only happens on retries, safe to ignore duplicate data.
 )
 
 type traceWriter interface {
