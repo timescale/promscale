@@ -193,7 +193,7 @@ def save_instrumentation_lib(instrumentation_lib: InstrumentationLib, cur) -> No
 
 
 def save_span_name(service_name: str, span_name: str, span_kind: str, cur) -> int:
-    cur.execute('select ps_trace.put_operation(service_name, span_name, span_kind)', (span_name, span_kind, service_name))
+    cur.execute('select ps_trace.put_operation(%s, %s, %s)', (service_name, span_name, span_kind))
     return cur.fetchone()[0]
 
 
