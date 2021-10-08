@@ -193,14 +193,22 @@ docker_manifests:
   image_templates:
   - 'timescale/promscale:{{ .Tag }}-amd64'
   - 'timescale/promscale:{{ .Tag }}-arm64'
+- name_template: 'timescale/promscale:0.7.0-beta.latest'
+  image_templates:
+  - 'timescale/promscale:{{ .Tag }}-amd64'
+  - 'timescale/promscale:{{ .Tag }}-arm64'
 - name_template: 'timescale/promscale:{{ .Major }}.{{ .Minor }}'
   image_templates:
   - 'timescale/promscale:{{ .Tag }}-amd64'
   - 'timescale/promscale:{{ .Tag }}-arm64'
+  # skip_push=auto prevents push for pre-release tags
+  skip_push: auto
 - name_template: 'timescale/promscale:latest'
   image_templates:
   - 'timescale/promscale:{{ .Tag }}-amd64'
   - 'timescale/promscale:{{ .Tag }}-arm64'
+  # skip_push=auto prevents push for pre-release tags
+  skip_push: auto
 
 release:
   extra_files:
