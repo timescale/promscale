@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgtype"
@@ -54,10 +55,6 @@ func (t *traceWriterImpl) InsertSchemaURL(ctx context.Context, sURL string) (id 
 	return id, err
 }
 
-func (t *traceWriterImpl) queueOperation(operationBatch pgxconn.PgxBatch, serviceName, spanName, spanKind string) {
-	operationBatch.Queue(fmt.Sprintf(insertOperationSQL, schema.TracePublic), serviceName, spanName, spanKind)
-}
-
 func (t *traceWriterImpl) InsertInstrumentationLibrary(ctx context.Context, name, version, schemaURL string) (id pgtype.Int8, err error) {
 	if name == "" || version == "" {
 		id.Status = pgtype.Null
@@ -81,32 +78,14 @@ func (t *traceWriterImpl) InsertInstrumentationLibrary(ctx context.Context, name
 	return id, err
 }
 
-func (t *traceWriterImpl) queueTags(tagBatch pgxconn.PgxBatch, tags map[string]interface{}, typ TagType) error {
-	for k, v := range tags {
-		tagBatch.Queue(fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic), k, typ)
-
-		val, err := json.Marshal(v)
-		if err != nil {
-			return err
-		}
-
-		tagBatch.Queue(fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
-			k,
-			string(val),
-			typ,
-		)
-	}
-	return nil
-}
-
-func (t *traceWriterImpl) queueSpanLinks(linkBatch, tagBatch pgxconn.PgxBatch, links pdata.SpanLinkSlice, traceID [16]byte, spanID [8]byte, spanStartTime time.Time) error {
+func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagBatch TagBatch, links pdata.SpanLinkSlice, traceID [16]byte, spanID [8]byte, spanStartTime time.Time) error {
 	spanIDInt := ByteArrayToInt64(spanID)
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
 		linkedSpanIDInt := ByteArrayToInt64(link.SpanID().Bytes())
 
 		rawTags := link.Attributes().AsRaw()
-		if err := t.queueTags(tagBatch, rawTags, LinkTagType); err != nil {
+		if err := tagBatch.Queue(rawTags, LinkTagType); err != nil {
 			return err
 		}
 		jsonTags, err := json.Marshal(rawTags)
@@ -128,12 +107,12 @@ func (t *traceWriterImpl) queueSpanLinks(linkBatch, tagBatch pgxconn.PgxBatch, l
 	return nil
 }
 
-func (t *traceWriterImpl) queueSpanEvents(eventBatch, tagBatch pgxconn.PgxBatch, events pdata.SpanEventSlice, traceID [16]byte, spanID [8]byte) error {
+func (t *traceWriterImpl) queueSpanEvents(eventBatch pgxconn.PgxBatch, tagBatch TagBatch, events pdata.SpanEventSlice, traceID [16]byte, spanID [8]byte) error {
 	spanIDInt := ByteArrayToInt64(spanID)
 	for i := 0; i < events.Len(); i++ {
 		event := events.At(i)
 		rawTags := event.Attributes().AsRaw()
-		if err := t.queueTags(tagBatch, rawTags, EventTagType); err != nil {
+		if err := tagBatch.Queue(rawTags, EventTagType); err != nil {
 			return err
 		}
 		jsonTags, err := json.Marshal(rawTags)
@@ -161,8 +140,8 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 	spanBatch := t.conn.NewBatch()
 	linkBatch := t.conn.NewBatch()
 	eventBatch := t.conn.NewBatch()
-	tagBatch := t.conn.NewBatch()
-	operationBatch := t.conn.NewBatch()
+	tagBatch := NewTagBatch()
+	operationBatch := NewOperationBatch()
 	for k := 0; k < spans.Len(); k++ {
 		span := spans.At(k)
 		traceID := span.TraceID().Bytes()
@@ -170,7 +149,7 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 		spanName := span.Name()
 		spanKind := span.Kind().String()
 
-		t.queueOperation(operationBatch, serviceName, spanName, spanKind)
+		operationBatch.Queue(Operation{serviceName, spanName, spanKind})
 
 		if err := t.queueSpanEvents(eventBatch, tagBatch, span.Events(), traceID, spanID); err != nil {
 			return err
@@ -181,7 +160,7 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 		spanIDInt := ByteArrayToInt64(spanID)
 		parentSpanIDInt := ByteArrayToInt64(span.ParentSpanID().Bytes())
 		rawResourceTags := resourceTags.AsRaw()
-		if err := t.queueTags(tagBatch, rawResourceTags, ResourceTagType); err != nil {
+		if err := tagBatch.Queue(rawResourceTags, ResourceTagType); err != nil {
 			return err
 		}
 		jsonResourceTags, err := json.Marshal(rawResourceTags)
@@ -189,7 +168,7 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 			return err
 		}
 		rawTags := span.Attributes().AsRaw()
-		if err := t.queueTags(tagBatch, rawTags, SpanTagType); err != nil {
+		if err := tagBatch.Queue(rawTags, SpanTagType); err != nil {
 			return err
 		}
 		jsonTags, err := json.Marshal(rawTags)
@@ -224,7 +203,13 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 		)
 	}
 
-	return t.sendBatches(ctx, operationBatch, tagBatch, eventBatch, linkBatch, spanBatch)
+	if err := operationBatch.SendBatch(ctx, t.conn); err != nil {
+		return err
+	}
+	if err := tagBatch.SendBatch(ctx, t.conn); err != nil {
+		return err
+	}
+	return t.sendBatches(ctx, eventBatch, linkBatch, spanBatch)
 
 }
 
@@ -297,4 +282,117 @@ func getTraceStateValue(ts pdata.TraceState) (result pgtype.Text) {
 	}
 
 	return result
+}
+
+type Operation struct {
+	serviceName string
+	spanName    string
+	spanKind    string
+}
+
+//Operation batch queues up items to send to the db but it sorts before sending
+//this avoids deadlocks in the db
+type OperationBatch map[Operation]struct{}
+
+func NewOperationBatch() OperationBatch {
+	return make(map[Operation]struct{})
+}
+
+func (o OperationBatch) Queue(op Operation) {
+	o[op] = struct{}{}
+}
+
+func (batch OperationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
+	ops := make([]Operation, len(batch))
+	i := 0
+	for op := range batch {
+		ops[i] = op
+		i++
+	}
+	sort.Slice(ops, func(i, j int) bool {
+		if ops[i].serviceName == ops[j].serviceName {
+			if ops[i].spanName == ops[j].spanName {
+				return ops[i].spanKind < ops[j].spanKind
+			}
+			return ops[i].spanName < ops[j].spanName
+		}
+		return ops[i].serviceName < ops[j].serviceName
+	})
+
+	dbBatch := conn.NewBatch()
+	for _, op := range ops {
+		dbBatch.Queue(fmt.Sprintf(insertOperationSQL, schema.TracePublic), op.serviceName, op.spanName, op.spanKind)
+	}
+
+	br, err := conn.SendBatch(ctx, dbBatch)
+	if err != nil {
+		return err
+	}
+	if err = br.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type Tag struct {
+	key   string
+	value string
+	typ   TagType
+}
+
+//TagBatch queues up items to send to the db but it sorts before sending
+//this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
+type TagBatch map[Tag]struct{}
+
+func NewTagBatch() TagBatch {
+	return make(map[Tag]struct{})
+}
+
+func (batch TagBatch) Queue(tags map[string]interface{}, typ TagType) error {
+	for k, v := range tags {
+		byteVal, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		batch[Tag{k, string(byteVal), typ}] = struct{}{}
+	}
+	return nil
+}
+
+func (batch TagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
+	tags := make([]Tag, len(batch))
+	i := 0
+	for op := range batch {
+		tags[i] = op
+		i++
+	}
+	sort.Slice(tags, func(i, j int) bool {
+		if tags[i].key == tags[j].key {
+			if tags[i].value == tags[j].value {
+				return tags[i].typ < tags[j].typ
+			}
+			return tags[i].value < tags[j].value
+		}
+		return tags[i].key < tags[j].key
+	})
+
+	dbBatch := conn.NewBatch()
+	for _, tag := range tags {
+		dbBatch.Queue(fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic), tag.key, tag.typ)
+		dbBatch.Queue(fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+			tag.key,
+			tag.value,
+			tag.typ,
+		)
+	}
+
+	br, err := conn.SendBatch(ctx, dbBatch)
+	if err != nil {
+		return err
+	}
+	if err = br.Close(); err != nil {
+		fmt.Println(err)
+		return err
+	}
+	return nil
 }
