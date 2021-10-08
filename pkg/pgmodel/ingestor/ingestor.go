@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -77,39 +76,8 @@ type result struct {
 	err     error
 }
 
-func (ingestor *DBIngestor) IngestTraces(ctx context.Context, r pdata.Traces) error {
-	rSpans := r.ResourceSpans()
-	for i := 0; i < rSpans.Len(); i++ {
-		rSpan := rSpans.At(i)
-
-		var rSchemaURLID pgtype.Int8
-		var err error
-		rSchemaURLID, err = ingestor.tWriter.InsertSchemaURL(ctx, rSpan.SchemaUrl())
-		if err != nil {
-			return err
-		}
-		serviceName := missingServiceName
-		av, found := rSpan.Resource().Attributes().Get(serviceNameTagKey)
-		if found {
-			serviceName = av.AsString()
-		}
-
-		instLibSpans := rSpan.InstrumentationLibrarySpans()
-		for j := 0; j < instLibSpans.Len(); j++ {
-			instLibSpan := instLibSpans.At(j)
-			instLib := instLibSpan.InstrumentationLibrary()
-			instLibID, err := ingestor.tWriter.InsertInstrumentationLibrary(ctx, instLib.Name(), instLib.Version(), instLibSpan.SchemaUrl())
-			if err != nil {
-				return err
-			}
-
-			if err = ingestor.tWriter.InsertSpans(ctx, instLibSpan.Spans(), serviceName, instLibID, rSchemaURLID, rSpan.Resource().Attributes()); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces pdata.Traces) error {
+	return ingestor.tWriter.InsertTraces(ctx, traces)
 }
 
 // Ingest transforms and ingests the timeseries data into Timescale database.
