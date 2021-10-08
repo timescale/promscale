@@ -14,14 +14,12 @@ import (
 )
 
 const (
-	insertSchemaURLSQL = `INSERT INTO %s.schema_url (url)
-		VALUES ($1) RETURNING (id)`
+	insertSchemaURLSQL          = `SELECT %s.put_schema_url($1)`
 	insertOperationSQL          = `SELECT %s.put_operation($1, $2, $3)`
-	insertInstrumentationLibSQL = `INSERT INTO %s.instrumentation_lib (name, version, schema_url_id)
-		VALUES ($1, $2, $3) RETURNING (id)`
-	insertTagKeySQL   = "SELECT %s.put_tag_key($1, $2::%s.tag_type)"
-	insertTagSQL      = "SELECT %s.put_tag($1, $2, $3::%s.tag_type)"
-	insertSpanLinkSQL = `INSERT INTO %s.link (trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, trace_state, tags, dropped_tags_count, link_nbr)
+	insertInstrumentationLibSQL = `SELECT %s.put_instrumentation_lib($1, $2, $3)`
+	insertTagKeySQL             = "SELECT %s.put_tag_key($1, $2::%s.tag_type)"
+	insertTagSQL                = "SELECT %s.put_tag($1, $2, $3::%s.tag_type)"
+	insertSpanLinkSQL           = `INSERT INTO %s.link (trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, trace_state, tags, dropped_tags_count, link_nbr)
 		VALUES ($1, $2, $3, $4, $5, $6, %s.get_tag_map($7), $8, $9)`
 	insertSpanEventSQL = `INSERT INTO %s.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count)
 		VALUES ($1, $2, $3, $4, $5, %s.get_tag_map($6), $7)`
@@ -55,7 +53,7 @@ func (t *traceWriterImpl) InsertSchemaURL(ctx context.Context, sURL string) (id 
 		id.Status = pgtype.Null
 		return id, nil
 	}
-	err = t.conn.QueryRow(ctx, fmt.Sprintf(insertSchemaURLSQL, schema.Trace), sURL).Scan(&id)
+	err = t.conn.QueryRow(ctx, fmt.Sprintf(insertSchemaURLSQL, schema.TracePublic), sURL).Scan(&id)
 	return id, err
 }
 
@@ -87,7 +85,7 @@ func (t *traceWriterImpl) InsertInstrumentationLibrary(ctx context.Context, name
 		sID.Status = pgtype.Null
 	}
 
-	err = t.conn.QueryRow(ctx, fmt.Sprintf(insertInstrumentationLibSQL, schema.Trace), name, version, sID).Scan(&id)
+	err = t.conn.QueryRow(ctx, fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic), name, version, sID).Scan(&id)
 	return id, err
 }
 
