@@ -4,7 +4,7 @@
 
 ## Overview
 
-Promscale has native support for OpenTelemetry traces via the OpenTelemetry protocol (OTLP). Promscale supports the entire OpenTelemetry trace data model including spans, events and links.
+Promscale has native support for [OpenTelemetry](https://opentelemetry.io/) traces via the OpenTelemetry protocol (OTLP). Promscale supports the entire OpenTelemetry trace data model including spans, events and links.
 
 Promscale also supports Jaeger and Zipkin traces via the OpenTelemetry Collector. The OpenTelemetry Collector ingests data from Jaeger and Zipkin instrumentation, converts it to OpenTelemetry and sends it to Promscale using OTLP.
 
@@ -24,7 +24,7 @@ First, install tobs:
 curl --proto '=https' --tlsv1.2 -sSLf  https://tsdb.co/install-tobs-sh |sh
 ```
 
-Once installed make sure tobs, the executable, it’s in your path. When you install it you’ll see some output asking you to copy the file your system bin folder or to add it to your path. This is important because if you installed tobs in the past you may run the older version without noticing which doesn’t include tracing support. To check which version of tobs you’re running use the following command:
+Once installed make sure tobs, the executable, is in your path. When you install it you’ll see some output asking you to copy the file to your system bin folder or to add it to your path. This is important because if you installed tobs in the past you may run the older version without noticing which doesn’t include tracing support. To check which version of tobs you’re running use the following command:
 
 ```bash
 tobs version
@@ -36,15 +36,15 @@ You will see an output similar to
 Tobs CLI Version: 0.7.0, latest tobs helm chart version: 0.7.0
 ```
 
-Make sure both the CLI and the help chart version are 0.7.0 or higher.
+Make sure both the CLI and the helm chart version are 0.7.0 or higher.
 
-Then use tobs to deploy a full observability stack with a single command to your Kubernetes cluster. Note that tobs requires `kubectl` installed and configured to connect to the cluster on the same host where you want to deploy Promscale.
+Then use tobs to deploy a full observability stack with a single command to your Kubernetes cluster. Note that tobs requires `kubectl` installed and configured to connect to the cluster where you want to deploy Promscale.
 
 ```bash
 tobs install --tracing
 ```
 
-Notice the --tracing parameter. This will install the latest beta version of Promscale with tracing support. If you omit this parameter tobs will install the latest stable version of Promscale which does not include tracing support.
+Notice the `--tracing` parameter. This will install the latest beta version of Promscale with tracing support. If you omit this parameter tobs will install the latest stable version of Promscale which does not include tracing support.
 
 And that’s it!
 
@@ -54,13 +54,13 @@ Next step is to configure your services to [send traces to Promscale](#ingest-tr
 
 Promscale consists of the Promscale Connector and TimescaleDB.
 
-There are images on DockerHub for both the [Promscale Connector](https://hub.docker.com/r/timescale/promscale/tags) and [TimescaleDB with the Promscale extension] (https://hub.docker.com/r/timescaledev/promscale-extension).
+There are images on DockerHub for both the [Promscale Connector](https://hub.docker.com/r/timescale/promscale/tags) and [TimescaleDB with the Promscale extension](https://hub.docker.com/r/timescaledev/promscale-extension).
 
-For the Promscale Connector we recommend using the latest version with tracing support (`0.7.0-beta.latest`). For TimescaleDB the latest version with more recent TimescaleDB and Postgres versions (`latest-ts2-pg13`).
+For the Promscale Connector we recommend using the latest version with tracing support (`0.7.0-beta.latest`). For TimescaleDB with the Promscale extension the latest version with more recent TimescaleDB and Postgres versions (`latest-ts2-pg13`).
 
-There are many different ways to deploy Docker images that we will not cover here but here is an example to run Promscale using Docker on a host:
+There are many different ways to deploy Docker images that we will not cover here. Below we provide an example of how to run Promscale using Docker on a host.
 
-First, let's create a network specific to Promscale-TimescaleDB:
+First, let's create a network specific to Promscale:
 
 ```bash
 docker network create --driver bridge promscale-timescaledb
@@ -83,7 +83,7 @@ docker run --name promscale -d -p 9201:9201 -p 9202:9202 --network promscale-tim
 
 There are three main trace data formats: OpenTelemetry, Jaeger and Zipkin.
 
-Promscale has native support for ingesting OpenTelemetry traces which means you can send traces directly from your services to Promscale or via the OpenTelemetry Collector. For anything beyond a simple evaluation using the OpenTelemetry Collector is recommended. It centralizes management of all your telemetry data so you can easily define processing rules and where you want to send the data.
+Promscale has native support for ingesting OpenTelemetry traces which means you can send OpenTelemetry traces directly to Promscale using the correponding OTLP exporters. You can send OpenTelemetry traces directly or via the [OpenTelemetry Collector](https://github.com/open-telemetry/opentelemetry-collector). For anything beyond a simple evaluation using the OpenTelemetry Collector is recommended. It centralizes management of all your telemetry data so you can easily define processing rules and where you want to send the data.
 
 Jaeger and Zipkin trace formats are supported via the OpenTelemetry Collector only.
 
@@ -91,11 +91,11 @@ Let’s look first at how to set up the OpenTelemetry Collector and then at how 
 
 ## OpenTelemetry Collector
 
-If you used tobs to deploy Promscale, then the OpenTelemetry Collector has already been deployed into your cluster an you can move to the OpenTelemetry instrumentation section. Tobs does not currently configure the OpenTelemetry Collector to ingest Zipkin traces (coming soon).
+If you used tobs to deploy Promscale, then the OpenTelemetry Collector has already been deployed into your cluster and you can move to the OpenTelemetry instrumentation section. Tobs currently configures the OpenTelemetry Collector to ingest OpenTelemetry and Jaeger traces. Support for Zipkin traces will be available soon.
 
-If you decide to use your own OpenTelemetry Collector you must enable the OTLP, Jaeger and Zipkin receivers as well as the OTLP exporter.
+If you decide to use your own OpenTelemetry Collector you must enable the OTLP, Jaeger and/or Zipkin receivers based on the trace formats you want to use. You must also enable the OTLP exporter and point it to the Promscale OTLP endpoint. Promscale listend to OTLP data in the port you specified with the `otlp-grpc-server-listen-address` parameter (9202 if you followed the instructions in this document).
 
-This configuration file will look similar to this:
+Below is an example of the OpenTelemetry Collector configuration file with the OTLP, Jaeger and Zipkin receivers enabled as well as the OTLP exporter. The example also enables the batch processor for improved efficiency when sending data to Promscale which we recommend.
 
 ```yaml
 receivers:
@@ -137,13 +137,11 @@ Promscale’s OTLP ingest endpoint listens to gRPC connections on the address yo
 
 ### Jaeger instrumentation
 
-If your service is instrumented with Jaeger, configure the Jaeger agent to send your traces to the OpenTelemetry Collector by passing [the reporter.grpc.host.port parameter](https://www.jaegertracing.io/docs/1.26/deployment/#discovery-system-integration) at start time with the host:port for the [OpenTelemetry Collector Jaeger Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/jaegerreceiver). By default the receiver listens to gRPC connections on port 14250. Therefore you should point the Jaeger agent to `<opentelemetry-collector-host>:14250`
+If your service is instrumented with Jaeger, configure the Jaeger agent to send your traces to the OpenTelemetry Collector by passing [the reporter.grpc.host.port parameter](https://www.jaegertracing.io/docs/1.26/deployment/#discovery-system-integration) at start time with the host:port where the [OpenTelemetry Collector Jaeger Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/jaegerreceiver) is listening for connections. By default the receiver listens for gRPC connections on port 14250. Therefore you should point the Jaeger agent to `<opentelemetry-collector-host>:14250`
 
 If you used tobs to deploy your observability stack use tobs-opentelemetry-collector.default.svc.cluster.local:14250.
 
-
-
-### Zipkin instrumentation
+### Zipkin instrumentation
 
 If your service is instrumented with Zipkin, configure the Zipkin transport you are using to send traces to the [OpenTelemetry Collector Zipkin Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/zipkinreceiver) endpoint: `<opentelemetry-collector-host>:9411`
 
@@ -153,7 +151,7 @@ Tobs does not currently configure the OpenTelemetry Collector to ingest Zipkin t
 
 ### Instructions for Tobs
 
-If you used tobs to install Promscale and also deployed the other components, everything is already set up for you to access [Grafana](https://github.com/grafana/grafana) and [Jaeger](https://github.com/jaegertracing/jaeger) to explore and visualize your traces.
+If you used tobs to install Promscale and also deployed all the other components it includes, everything is already set up for you to access [Grafana](https://github.com/grafana/grafana) and [Jaeger](https://github.com/jaegertracing/jaeger) to explore and visualize your traces.
 
 To access the Jaeger UI from your machine run
 ```bash
@@ -173,25 +171,28 @@ Then, point your browser to [http://127.0.0.1:8080/] and login with username `ad
 
 ### Setting up Jaeger UI
 
-In order for the Jaeger UI to show traces stored in Promscale we leverage Jaeger’s support for [gRPC storage plugins](https://github.com/jaegertracing/jaeger/tree/master/plugin/storage/grpc). Our plugin acts as a simple proxy between Jaeger and Promscale. It does not contain any logic. All the work is done on the Promscale Connector. This plugin only implements the APIs for Jaeger to read traces from Promscale. It does not implement the APIs for Jaeger to write traces to Promscale. To send Jaeger traces to Promscale use the OpenTelemetry Collector instead as explained [here](#jaeger-instrumentation).
+In order for the Jaeger UI to show traces stored in Promscale we leverage Jaeger’s support for [gRPC storage plugins](https://github.com/jaegertracing/jaeger/tree/master/plugin/storage/grpc). Our plugin acts as a simple proxy between Jaeger and Promscale. It does not contain any logic. All the processing work is done in the Promscale Connector.
 
-The gRPC plugin system that Jaeger uses works by Jaeger executing the binary for the plugin when enabled in the configuration file. For that reason when deploying as a container, Jaeger and the binary need to be on the same container image. And since Jaeger doesn’t package all gRPC storage plugins in its default Docker images, we provide an image that includes the upstream Jaeger Query component (not the rest) and Promscale’s gRPC storage plugin for Jaeger. The image is available on [DockerHub[(https://hub.docker.com/r/timescale/jaeger-query-proxy/tags)].
+This plugin only implements the APIs for Jaeger to read traces from Promscale. It does not implement the APIs for Jaeger to write traces to Promscale. To send Jaeger traces to Promscale use the OpenTelemetry Collector instead as explained [here](#jaeger-instrumentation).
 
-To enable Jaeger to use the plugin you need to pass the following parameters to Jaeger:
+Jaeger's gRPC plugin system works by executing the binary for the plugin when enabled in the configuration file. For that reason when deploying as a container, Jaeger and the binary need to be on the same container image. And since Jaeger doesn’t package all gRPC storage plugins in its default Docker images, we provide an image that includes the upstream Jaeger Query component (not the rest since they are not needed) and Promscale’s gRPC storage plugin for Jaeger. The image is available on [DockerHub](https://hub.docker.com/r/timescale/jaeger-query-proxy/tags). We recomment using the `latest` image
 
-* `--span-storage.type=grpc-plugin`
-* `--grpc-storage-plugin.binary=<path-to-jaeger-query-proxy-binary>`, pointing to the location of the plugin binary
-* `--grpc-storage-plugin.configuration-file=<config_file>`, a path pointing to the plugin's configuration file.
+To enable Jaeger to use the plugin you need to pass the following parameters:
+
+* `span-storage.type=grpc-plugin`
+* `grpc-storage-plugin.binary=<path-to-jaeger-query-proxy-binary>`, pointing to the location of the plugin binary
+* `grpc-storage-plugin.configuration-file=<config_file>`, a path pointing to the plugin's configuration file.
 
 This is how you would run the container with Docker:
 
 ```bash
 docker run --name promscale-jaeger -d -p 16686:16686 -v <path-to-plugin-config-file>:/configs/jaeger-promscale-query.yaml --network promscale-timescaledb timescale/jaeger-query-proxy:latest
 ```
+The container already sets the required values for those parameters.
 
 The Jaeger UI would be accessible on port 16686.
 
-If you run Jaeger directly on a host, you first need to download Promscale’s gRPC storage plugin for Jaeger: jaeger-query-plugin. The binaries are available under the assets of the latest 0.7 Promscale release on [Github](https://github.com/timescale/promscale/releases):
+If you run Jaeger directly on a host, you first need to download the plugin binary for your system. The binaries are available under the assets of the latest 0.7 Promscale release on [Github](https://github.com/timescale/promscale/releases). Then you have to run the binary as follows:
 
 ```bash
 ./jaeger-query-plugin --span-storage.type=grpc-plugin --grpc-storage-plugin.binary=<path-to-jaeger-query-proxy-binary> --grpc-storage-plugin.configuration-file=<config_file>
@@ -231,7 +232,7 @@ Then make this ConfigMap available to the promscale-jaeger container through a v
 
 Grafana can query and visualize traces in Promscale through Jaeger. You’ll need Grafana version 7.4 or higher.
 
-Go into Grafana and configure a Jaeger data source by passing the url of the Jaeger instance and credentials if you have enabled authentication in Jaeger. By default Jaeger listens for requests on port 16686.
+Go into Grafana and configure a Jaeger data source by passing the url of the Jaeger instance and credentials if you have enabled authentication in Jaeger. You have to specify the port you use to access the Jaeger UI which by default is 16686.
 
 You can read more details on how to configure a Jaeger data source in the [Grafana documentation](https://grafana.com/docs/grafana/latest/datasources/jaeger/).
 
