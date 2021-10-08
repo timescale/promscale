@@ -193,10 +193,6 @@ docker_manifests:
   image_templates:
   - 'timescale/promscale:{{ .Tag }}-amd64'
   - 'timescale/promscale:{{ .Tag }}-arm64'
-- name_template: 'timescale/promscale:0.7.0-beta.latest'
-  image_templates:
-  - 'timescale/promscale:{{ .Tag }}-amd64'
-  - 'timescale/promscale:{{ .Tag }}-arm64'
 - name_template: 'timescale/promscale:{{ .Major }}.{{ .Minor }}'
   image_templates:
   - 'timescale/promscale:{{ .Tag }}-amd64'
