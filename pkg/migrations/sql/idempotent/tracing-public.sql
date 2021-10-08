@@ -397,6 +397,76 @@ $func$
 LANGUAGE plpgsql VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_operation(text, text, SCHEMA_TRACING_PUBLIC.span_kind) TO prom_writer;
 
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.put_schema_url(_schema_url text)
+RETURNS bigint
+AS $func$
+DECLARE
+    _schema_url_id bigint;
+BEGIN
+    SELECT id INTO _schema_url_id
+    FROM SCHEMA_TRACING.schema_url
+    WHERE url = _schema_url;
+
+    IF NOT FOUND THEN
+        INSERT INTO SCHEMA_TRACING.schema_url (url)
+        VALUES
+        (
+            _schema_url
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING id INTO _schema_url_id;
+
+        IF _schema_url_id IS NULL THEN
+            SELECT id INTO _schema_url_id
+            FROM SCHEMA_TRACING.schema_url
+            WHERE url = _schema_url;
+        END IF;
+    END IF;
+
+    RETURN _schema_url_id;
+END;
+$func$
+LANGUAGE plpgsql VOLATILE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_schema_url(text) TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.put_instrumentation_lib(_name text, _version text, _schema_url_id bigint)
+RETURNS bigint
+AS $func$
+DECLARE
+    _inst_lib_id bigint;
+BEGIN
+    SELECT id INTO _inst_lib_id
+    FROM SCHEMA_TRACING.instrumentation_lib
+    WHERE name = _name
+    AND version = _version
+    AND schema_url_id = _schema_url_id;
+
+    IF NOT FOUND THEN
+        INSERT INTO SCHEMA_TRACING.instrumentation_lib (name, version, schema_url_id)
+        VALUES
+        (
+            _name,
+            _version,
+            _schema_url_id
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING id INTO _inst_lib_id;
+
+        IF _inst_lib_id IS NULL THEN
+            SELECT id INTO STRICT _inst_lib_id
+            FROM SCHEMA_TRACING.instrumentation_lib
+            WHERE name = _name
+            AND version = _version
+            AND schema_url_id = _schema_url_id;
+        END IF;
+    END IF;
+
+    RETURN _inst_lib_id;
+END;
+$func$
+LANGUAGE plpgsql VOLATILE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_instrumentation_lib(text, text, bigint) TO prom_writer;
+
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_map SCHEMA_TRACING_PUBLIC.tag_map)
 RETURNS jsonb
 AS $func$
