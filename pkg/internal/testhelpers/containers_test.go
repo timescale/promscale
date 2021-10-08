@@ -48,11 +48,35 @@ func TestPGConnection(t *testing.T) {
 	}
 }
 
+func TestOtelCollectorConnection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping checking Jaeger connection")
+	}
+	jContainer, jaegerHost, jaegerContainerIP, jaegerReceivingPort, grpcQueryPort, _, err := StartJaegerContainer(true)
+	require.NoError(t, err)
+	defer jContainer.Terminate(context.Background())
+
+	// Check if Jaeger is up.
+	opts := []grpc.DialOption{grpc.WithBlock(), grpc.WithInsecure()}
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", jaegerHost, grpcQueryPort.Port()), opts...)
+	require.NoError(t, err)
+
+	c := api_v3.NewQueryServiceClient(conn)
+	services, err := c.GetServices(context.Background(), &api_v3.GetServicesRequest{})
+	require.NoError(t, err)
+	require.Equal(t, 0, len(services.Services)) // As the database is empty.
+
+	// Start Otel collector.
+	otelContainer, _, _, err := StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerContainerIP, jaegerReceivingPort.Port()), true)
+	require.NoError(t, err)
+	defer otelContainer.Terminate(context.Background())
+}
+
 func TestJaegerConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping checking Jaeger connection")
 	}
-	container, host, _, grpcQueryPort, uiPort, err := StartJaegerContainer(true)
+	container, host, _, _, grpcQueryPort, uiPort, err := StartJaegerContainer(true)
 	require.NoError(t, err)
 	defer container.Terminate(context.Background())
 

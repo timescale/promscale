@@ -1,0 +1,15 @@
+FROM otel/opentelemetry-collector:v0.36.0 as otel
+
+FROM alpine:3.13
+
+RUN apk add bash
+
+ARG USER_UID=10001
+USER ${USER_UID}
+
+COPY --from=otel /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=otel /otelcol /
+COPY --from=otel /etc/otel/config.yaml /etc/otel/config.yaml
+ENTRYPOINT ["/otelcol"]
+CMD ["--config", "/etc/otel/config.yaml"]
+EXPOSE 4317 55678 55679
