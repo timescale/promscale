@@ -11,15 +11,11 @@ import (
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"go.opentelemetry.io/collector/model/pdata"
-)
-
-const (
-	missingServiceName = "OTLPResourceNoServiceName"
-	serviceNameTagKey  = "service.name"
 )
 
 type Cfg struct {
@@ -34,7 +30,7 @@ type Cfg struct {
 type DBIngestor struct {
 	sCache     cache.SeriesCache
 	dispatcher model.Dispatcher
-	tWriter    traceWriter
+	tWriter    trace.Writer
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
@@ -47,7 +43,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 	return &DBIngestor{
 		sCache:     sCache,
 		dispatcher: dispatcher,
-		tWriter:    newTraceWriter(conn),
+		tWriter:    trace.NewWriter(conn),
 	}, nil
 }
 
