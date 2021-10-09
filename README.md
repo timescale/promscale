@@ -5,18 +5,20 @@
 [![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/promscale/maintainability)
 [![GoDoc](https://godoc.org/github.com/timescale/promscale?status.svg)](https://pkg.go.dev/github.com/timescale/promscale)
 
-Promscale is an open source observability backend for metrics and traces
-powered by SQL. It's build on robust and high-peformance foundation of
-PostgreSQL and TimescaleDB. It has native support for Prometheus metrics and 
-OpenTelemetry traces as well as many other formats like StatsD, Jaeger and Zipkin
-through the OpenTelemetry Collector and is 100% PromQL compliant.
-It's full SQL capabilities enable developers to correlate metrics, traces and also 
-business data to derive new valuable insights not possible when data is siloed in 
+**Promscale is an open source observability backend for metrics and traces
+powered by SQL**.
+
+It's built on the robust and high-peformance foundation of
+**PostgreSQL and TimescaleDB**. It has native support for **Prometheus** metrics and 
+**OpenTelemetry** traces as well as many other formats like StatsD, Jaeger and Zipkin
+through the OpenTelemetry Collector and is **100% PromQL compliant**.
+It's **full SQL** capabilities enable developers to **correlate metrics, traces and also 
+business data** to derive new valuable insights not possible when data is siloed in 
 different systems.
 
 Built on top of PostgreSQL and [TimescaleDB](https://www.timescale.com/) it inherits
-rock-solid reliability, native compression up to 90%, continuous aggregates and the 
-operational maturity of of a system that is run on millions of instances worldwide.
+**rock-solid reliability, native compression up to 90%, continuous aggregates and the 
+operational maturity** of of a system that is run on millions of instances worldwide.
 
 For Prometheus users, Promscale provides a robust and highly scalable long-term storage
 system that is 100% PromQL compliant. 
@@ -28,6 +30,9 @@ each time (with no cross-cutting concerns) from PromLab's
 <img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
 Tracing support is currently in beta. Read [the documentation](docs/tracing.md) to get started.
+
+For a detailed description of the initial architecture of Promscale for Prometheus metrics that covers
+some key design principles, please see [our design doc][design-doc].
 
 If you have any questions, please join the #promscale channel on
 [TimescaleDB Slack](https://slack.timescale.com/).
