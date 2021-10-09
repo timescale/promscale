@@ -5,34 +5,37 @@
 [![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/promscale/maintainability)
 [![GoDoc](https://godoc.org/github.com/timescale/promscale?status.svg)](https://pkg.go.dev/github.com/timescale/promscale)
 
-Promscale is an open-source long-term store for Prometheus data designed for
-analytics. It is a **horizontally scalable**, **highly-compressed**, and
-**operationally mature** platform for Prometheus data that offers the
-combined power of PromQL and SQL, enabling developers to ask any question,
-create any dashboard, and achieve greater visibility into their systems.
-Promscale is built on top of [TimescaleDB](https://www.timescale.com/), the
-leading relational database for time-series.
+**Promscale is an open source observability backend for metrics and traces
+powered by SQL**.
 
+It's built on the robust and high-peformance foundation of
+**PostgreSQL and TimescaleDB**. It has native support for **Prometheus** metrics and 
+**OpenTelemetry** traces as well as many other formats like StatsD, Jaeger and Zipkin
+through the OpenTelemetry Collector and is **100% PromQL compliant**.
+It's **full SQL** capabilities enable developers to **correlate metrics, traces and also 
+business data** to derive new valuable insights not possible when data is siloed in 
+different systems.
 
-<img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
+Built on top of PostgreSQL and [TimescaleDB](https://www.timescale.com/) it inherits
+**rock-solid reliability, native compression up to 90%, continuous aggregates and the 
+operational maturity** of of a system that is run on millions of instances worldwide.
 
-By allowing a user to use SQL, in addition to
-PromQL, this platform empowers the user to ask complex analytical
-queries from their metrics data, and thus extract more meaningful
-insights.
-
+For Prometheus users, Promscale provides a robust and highly scalable long-term storage
+system that is 100% PromQL compliant. 
 ✅  Promscale has consistently been one of the only long-term stores for Prometheus data that continue to maintain its top-performance, receiving
 [100% compliance test score](https://promlabs.com/promql-compliance-test-results/2020-12-01/promscale)
 each time (with no cross-cutting concerns) from PromLab's
 [PromQL Compliance Test Suite](https://promlabs.com/promql-compliance-tests/).
 
-For a detailed description of this architecture, please see [our design
-doc][design-doc].
+<img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
+
+Tracing support is currently in beta. Read [the documentation](docs/tracing.md) to get started.
+
+For a detailed description of the initial architecture of Promscale for Prometheus metrics that covers
+some key design principles, please see [our design doc][design-doc].
 
 If you have any questions, please join the #promscale channel on
-[TimescaleDB Slack](https://slack.timescale.com/), or the
-[Promscale Users Google Group](https://groups.google.com/forum/#!forum/promscale-users).
-
+[TimescaleDB Slack](https://slack.timescale.com/).
 
 This repository also contains the source code for **prom-migrator**. **Prom-migrator** is
 an **open-source**, **community-driven** and **free-to-use**, **universal prometheus
@@ -58,7 +61,8 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Filtering Series](docs/sql_schema.md#filtering-series)
   * [Data Retention](docs/sql_schema.md#data-retention)
   * [Roles and Permissions](docs/sql_permissions.sql)
-* **[Tutorial: Getting Started with Promscale](https://docs.timescale.com/timescaledb/latest/tutorials/promscale/)** 
+* **[Tutorial: Getting Started with Promscale](https://docs.timescale.com/timescaledb/latest/tutorials/promscale/)**
+* **[Tracing (beta)](docs/tracing.md)** 
 * **[High Availability](docs/high-availability/prometheus-HA.md)**
 * **[Multi-tenancy](docs/multi_tenancy.md)**
 * **[Multi-Node TimescaleDB](docs/multinode.md)**
