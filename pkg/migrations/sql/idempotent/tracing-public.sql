@@ -269,7 +269,7 @@ $func$ LANGUAGE sql STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.span_tree(SCHEMA_TRACING_PUBLIC.trace_id, bigint, int) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.put_tag_key(_key SCHEMA_TRACING_PUBLIC.tag_k, _tag_type SCHEMA_TRACING_PUBLIC.tag_type)
-RETURNS VOID
+RETURNS bigint
 AS $func$
 DECLARE
     _tag_key SCHEMA_TRACING.tag_key;
@@ -285,18 +285,24 @@ BEGIN
         ON CONFLICT (key) DO
         UPDATE SET tag_type = k.tag_type | EXCLUDED.tag_type
         WHERE k.tag_type & EXCLUDED.tag_type = 0;
+
+        SELECT * INTO STRICT _tag_key
+        FROM SCHEMA_TRACING.tag_key k
+        WHERE k.key = _key;
     ELSIF _tag_key.tag_type & _tag_type = 0 THEN
         UPDATE SCHEMA_TRACING.tag_key k
         SET tag_type = k.tag_type | _tag_type
         WHERE k.id = _tag_key.id;
     END IF;
+
+    RETURN _tag_key.id;
 END;
 $func$
 LANGUAGE plpgsql VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_tag_key(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_type) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.put_tag(_key SCHEMA_TRACING_PUBLIC.tag_k, _value SCHEMA_TRACING_PUBLIC.tag_v, _tag_type SCHEMA_TRACING_PUBLIC.tag_type)
-RETURNS VOID
+RETURNS BIGINT
 AS $func$
 DECLARE
     _tag SCHEMA_TRACING.tag;
@@ -319,12 +325,19 @@ BEGIN
         ON CONFLICT (key, value) DO
         UPDATE SET tag_type = t.tag_type | EXCLUDED.tag_type
         WHERE t.tag_type & EXCLUDED.tag_type = 0;
+
+        SELECT * INTO STRICT _tag
+        FROM SCHEMA_TRACING.tag
+        WHERE key = _key
+        AND value = _value;
     ELSIF _tag.tag_type & _tag_type = 0 THEN
         UPDATE SCHEMA_TRACING.tag as t
         SET tag_type = t.tag_type | _tag_type
         WHERE t.key = _key -- partition elimination
         AND t.id = _tag.id;
     END IF;
+
+    RETURN _tag.id;
 END;
 $func$
 LANGUAGE plpgsql VOLATILE STRICT;
