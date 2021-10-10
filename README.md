@@ -18,7 +18,7 @@ different systems.
 
 Built on top of PostgreSQL and [TimescaleDB](https://www.timescale.com/) it inherits
 **rock-solid reliability, native compression up to 90%, continuous aggregates and the 
-operational maturity** of of a system that is run on millions of instances worldwide.
+operational maturity** of a system that is run on millions of instances worldwide.
 
 For Prometheus users, Promscale provides a robust and highly scalable long-term storage
 system that is 100% PromQL compliant. 
@@ -29,7 +29,7 @@ each time (with no cross-cutting concerns) from PromLab's
 
 <img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
-Tracing support is currently in beta. Read [the documentation](docs/tracing.md) to get started.
+**Tracing** support is currently in beta. Read [the documentation](docs/tracing.md) to get started.
 
 For a detailed description of the initial architecture of Promscale for Prometheus metrics that covers
 some key design principles, please see [our design doc][design-doc].
