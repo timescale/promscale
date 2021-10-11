@@ -89,7 +89,7 @@ Jaeger and Zipkin trace formats are supported via the OpenTelemetry Collector on
 
 Let’s look first at how to set up the OpenTelemetry Collector and then at how to configure OpenTelemetry, Jaeger and Zipkin instrumentation to send traces to Promscale.
 
-## OpenTelemetry Collector
+### OpenTelemetry Collector
 
 If you used tobs to deploy Promscale, then the OpenTelemetry Collector has already been deployed into your cluster and you can move to the OpenTelemetry instrumentation section. Tobs currently configures the OpenTelemetry Collector to ingest OpenTelemetry and Jaeger traces. Support for Zipkin traces will be available soon.
 
@@ -118,6 +118,8 @@ exporters:
 
 processors:
   batch:
+    send_batch_size: 4
+    send_batch_max_size: 8
 
 service:
   pipelines:
@@ -126,6 +128,23 @@ service:
       exporters: [otlp]
       processors: [batch]
 ```
+
+#### Troubleshooting
+
+If you notice missing span data in Promscale, check the OpenTelemetry logs for errors.
+If you see log lines similar to
+
+```
+2021-10-08T12:34:00.360Z        warn    batchprocessor/batch_processor.go:184   Sender failed   {"kind": "processor", "name": "batch", "error": "sending_queue is full"}
+```
+
+together with
+
+```
+2021-10-10T18:49:23.304Z        info    exporterhelper/queued_retry.go:325      Exporting failed. Will retry the request after interval.        {"kind": "exporter", "name": "otlp", "error": "failed to push trace data via OTLP exporter: rpc error: code = DeadlineExceeded desc = context deadline exceeded", "interval": "5.872756134s"}
+```
+
+try reducing the send_batch_size and send_batch_max_size of the [batch processor](https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/batchprocessor/README.md).
 
 ### OpenTelemetry instrumentation
 
@@ -163,11 +182,11 @@ Then, point your browser to [http://127.0.0.1:16686/] . No login credentials are
 To access the Grafana user interface from your machine run
 
 ```bash
-tobs grafana change-password <new_password>
+tobs grafana get-password
 tobs grafana port-forward
 ```
 
-Then, point your browser to [http://127.0.0.1:8080/] and login with username `admin` and the password you specified in the previous step.
+Then, point your browser to [http://127.0.0.1:8080/] and login with username `admin` and the password you retrieved in the previous step.
 
 ### Setting up Jaeger UI
 
