@@ -88,6 +88,11 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, r pdata.Traces) er
 		if err != nil {
 			return err
 		}
+		serviceName := missingServiceName
+		av, found := rSpan.Resource().Attributes().Get(serviceNameTagKey)
+		if found {
+			serviceName = av.AsString()
+		}
 
 		instLibSpans := rSpan.InstrumentationLibrarySpans()
 		for j := 0; j < instLibSpans.Len(); j++ {
@@ -98,28 +103,8 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, r pdata.Traces) er
 				return err
 			}
 
-			spans := instLibSpan.Spans()
-
-			for k := 0; k < spans.Len(); k++ {
-				span := spans.At(k)
-				serviceName := missingServiceName
-				av, found := rSpan.Resource().Attributes().Get(serviceNameTagKey)
-				if found {
-					serviceName = av.AsString()
-				}
-				nameID, err := ingestor.tWriter.InsertSpanName(ctx, serviceName, span.Name(), span.Kind().String())
-				if err != nil {
-					return err
-				}
-				if err = ingestor.tWriter.InsertSpanEvents(ctx, span.Events(), span.TraceID().Bytes(), span.SpanID().Bytes()); err != nil {
-					return err
-				}
-				if err = ingestor.tWriter.InsertSpanLinks(ctx, span.Links(), span.TraceID().Bytes(), span.SpanID().Bytes(), span.StartTimestamp().AsTime()); err != nil {
-					return err
-				}
-				if err = ingestor.tWriter.InsertSpan(ctx, span, nameID, instLibID, rSchemaURLID, rSpan.Resource().Attributes()); err != nil {
-					return err
-				}
+			if err = ingestor.tWriter.InsertSpans(ctx, instLibSpan.Spans(), serviceName, instLibID, rSchemaURLID, rSpan.Resource().Attributes()); err != nil {
+				return err
 			}
 		}
 	}
