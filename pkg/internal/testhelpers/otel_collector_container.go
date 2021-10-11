@@ -18,32 +18,38 @@ import (
 )
 
 const (
-	// Use custom image as original otel images do not have /bin/sh, hence failing the testcontainers.
+	// Use custom image as original otel images do not have /bin/sh, hence failing the test-containers.
 	otelCollectorImage = "harkishen/otel_collector_with_sh:latest"
 
-	// Below config is valid with otel-collector v0.36.0
-	otelCollectorConfig = `receivers:  
+	// Below config is valid with otel-collector 0.33.0
+	otelCollectorConfig = `receivers:
   otlp:
     protocols:
-      grpc:
+      grpc: null
 
 processors:
-  batch:
+  batch: null
 
 exporters:
   jaeger:
     endpoint: %s
+    insecure: true
 
 extensions:
-      health_check: {}
+  health_check: {}
 
 service:
-  extensions: [health_check]
+  extensions:
+    - health_check
   pipelines:
     traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [jaeger]
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - jaeger
+
 `
 	healthGoodText = "Server available"
 )

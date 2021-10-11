@@ -1,4 +1,6 @@
-FROM otel/opentelemetry-collector:v0.36.0 as otel
+# Otel-collector image with sh.
+
+FROM otel/opentelemetry-collector:0.33.0 as otel
 
 FROM alpine:3.13
 

@@ -15,11 +15,12 @@ import (
 	"runtime"
 	"testing"
 
+	"google.golang.org/grpc"
+
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jaegertracing/jaeger/proto-gen/api_v3"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 )
 
 var (

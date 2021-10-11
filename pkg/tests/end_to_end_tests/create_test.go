@@ -1809,24 +1809,3 @@ func TestRegisterMetricView(t *testing.T) {
 		}
 	})
 }
-
-// deep copy the metrics since we mutate them, and don't want to invalidate the tests
-func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
-	out := make([]prompb.TimeSeries, len(metrics))
-	copy(out, metrics)
-	for i := range out {
-		samples := make([]prompb.Sample, len(out[i].Samples))
-		labels := make([]prompb.Label, len(out[i].Labels))
-		copy(samples, out[i].Samples)
-		copy(labels, out[i].Labels)
-		out[i].Samples = samples
-		out[i].Labels = labels
-	}
-	return out
-}
-
-func copyMetadata(metadata []prompb.MetricMetadata) []prompb.MetricMetadata {
-	out := make([]prompb.MetricMetadata, len(metadata))
-	copy(out, metadata)
-	return out
-}
