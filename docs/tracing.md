@@ -182,11 +182,11 @@ Then, point your browser to [http://127.0.0.1:16686/] . No login credentials are
 To access the Grafana user interface from your machine run
 
 ```bash
-tobs grafana change-password <new_password>
+tobs grafana get-password
 tobs grafana port-forward
 ```
 
-Then, point your browser to [http://127.0.0.1:8080/] and login with username `admin` and the password you specified in the previous step.
+Then, point your browser to [http://127.0.0.1:8080/] and login with username `admin` and the password you retrieved in the previous step.
 
 ### Setting up Jaeger UI
 
