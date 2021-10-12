@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -43,11 +44,19 @@ func (i *jsonSamples) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type byLabelName []prompb.Label
+
+func (ls byLabelName) Len() int           { return len(ls) }
+func (ls byLabelName) Swap(i, j int)      { ls[i], ls[j] = ls[j], ls[i] }
+func (ls byLabelName) Less(i, j int) bool { return ls[i].Name < ls[j].Name }
+
 func generateProtoLabels(ll map[string]string) []prompb.Label {
 	result := make([]prompb.Label, 0, len(ll))
 	for name, value := range ll {
 		result = append(result, prompb.Label{Name: name, Value: value})
 	}
+
+	sort.Sort(byLabelName(result))
 	return result
 }
 
