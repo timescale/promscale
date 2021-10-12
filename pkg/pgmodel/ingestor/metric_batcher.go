@@ -95,7 +95,7 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 		metricName,
 		model.MetricInfo{
 			TableSchema: schema.Data, TableName: tableName,
-			SeriesTable: "",
+			SeriesTable: tableName, // Series table name is always the same for raw metrics.
 		},
 		false,
 	)
