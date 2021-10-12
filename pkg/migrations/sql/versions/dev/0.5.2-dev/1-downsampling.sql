@@ -1,3 +1,18 @@
+DO $$
+BEGIN
+  --This fixes previous updates to 0.6 that were only partially applied. See issue #755
+  --Often this isn't needed and so will error out
+  ALTER TABLE SCHEMA_CATALOG.metric
+  DROP COLUMN table_schema,
+  DROP COLUMN series_table,
+  DROP COLUMN is_view,
+  ADD CONSTRAINT  "metric_metric_name_table_name_key" UNIQUE(metric_name) INCLUDE (table_name),
+  ADD CONSTRAINT  "metric_table_name_key" UNIQUE(table_name);
+EXCEPTION WHEN others THEN --ignore
+    NULL;
+END
+$$;
+
 ALTER TABLE SCHEMA_CATALOG.metric
     ADD COLUMN table_schema name NOT NULL DEFAULT 'SCHEMA_DATA',
     ADD COLUMN series_table name, -- series_table stores the name of the table used to store the series data for this metric.
