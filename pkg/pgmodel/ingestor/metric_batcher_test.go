@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -82,6 +83,35 @@ func TestMetricTableName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInitializeMetricBatcher(t *testing.T) {
+	metricName := "mock_metric"
+	metricTableName := "mock_metric_table_name"
+	sqlQueries := []model.SqlQuery{
+		{
+			Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+			Args:    []interface{}{metricName},
+			Results: model.RowResults{{metricTableName, true}},
+		},
+	}
+	mock := model.NewSqlRecorder(sqlQueries, t)
+	mockMetrics := &model.MockMetricCache{
+		MetricCache: make(map[string]model.MetricInfo),
+	}
+	completeMetricCreation := make(chan struct{}, 1)
+
+	tableName, err := initializeMetricBatcher(mock, metricName, completeMetricCreation, mockMetrics)
+	require.Nil(t, err)
+	require.Equal(t, metricTableName, tableName)
+
+	// Double-check the cache was set properly.
+	mInfo, err := mockMetrics.Get(schema.Data, metricName, false)
+	require.Nil(t, err)
+	require.Equal(t, schema.Data, mInfo.TableSchema)
+	require.Equal(t, metricTableName, mInfo.TableName)
+	require.Equal(t, metricTableName, mInfo.SeriesTable)
+
 }
 
 type insertableVisitor []model.Insertable
