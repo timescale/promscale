@@ -475,7 +475,7 @@ func (m *MockMetricCache) Get(schema, metric string, isExemplar bool) (MetricInf
 }
 
 func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo, isExemplar bool) error {
-	m.MetricCache[schema+"*"+metric] = mInfo
+	m.MetricCache[fmt.Sprintf("%s_%s_%t", schema, metric, isExemplar)] = mInfo
 	return m.SetMetricErr
 }
 
