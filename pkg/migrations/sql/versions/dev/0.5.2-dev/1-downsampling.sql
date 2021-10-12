@@ -22,7 +22,7 @@ ALTER TABLE SCHEMA_CATALOG.metric
     ADD CONSTRAINT metric_metric_name_table_schema_table_name_key UNIQUE (metric_name, table_schema) INCLUDE (table_name),
     ADD CONSTRAINT metric_table_schema_table_name_key UNIQUE(table_schema, table_name);
 
-UPDATE SCHEMA_CATALOG.metric SET series_table = table_name;
+UPDATE SCHEMA_CATALOG.metric SET series_table = table_name WHERE 1 = 1;
 ALTER TABLE SCHEMA_CATALOG.metric ALTER COLUMN series_table SET NOT NULL;
 
 DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_metric_table_name_if_exists(TEXT);
