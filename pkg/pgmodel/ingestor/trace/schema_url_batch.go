@@ -20,15 +20,15 @@ type schemaUrl string
 
 //TagBatch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
-type schemaUrlBatch map[schemaUrl]int64
+type schemaUrlBatch map[schemaUrl]pgtype.Int8
 
 func newSchemaUrlBatch() schemaUrlBatch {
-	return make(map[schemaUrl]int64)
+	return make(map[schemaUrl]pgtype.Int8)
 }
 
 func (batch schemaUrlBatch) Queue(url string) {
 	if url != "" {
-		batch[schemaUrl(url)] = 0
+		batch[schemaUrl(url)] = pgtype.Int8{}
 	}
 }
 
@@ -53,7 +53,7 @@ func (batch schemaUrlBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn)
 		return err
 	}
 	for _, sURL := range urls {
-		var id int64
+		var id pgtype.Int8
 		if err := br.QueryRow().Scan(&id); err != nil {
 			return err
 		}
@@ -70,8 +70,8 @@ func (batch schemaUrlBatch) GetID(url string) (pgtype.Int8, error) {
 		return pgtype.Int8{Status: pgtype.Null}, nil
 	}
 	id, ok := batch[schemaUrl(url)]
-	if id == 0 || !ok {
+	if !ok {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("schema url id not found")
 	}
-	return pgtype.Int8{Int: id, Status: pgtype.Present}, nil
+	return id, nil
 }

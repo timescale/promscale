@@ -24,14 +24,14 @@ type operation struct {
 
 //Operation batch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db
-type operationBatch map[operation]int64
+type operationBatch map[operation]pgtype.Int8
 
 func newOperationBatch() operationBatch {
-	return make(map[operation]int64)
+	return make(map[operation]pgtype.Int8)
 }
 
 func (o operationBatch) Queue(serviceName, spanName, spanKind string) {
-	o[operation{serviceName, spanName, spanKind}] = 0
+	o[operation{serviceName, spanName, spanKind}] = pgtype.Int8{}
 }
 
 func (batch operationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
@@ -60,7 +60,7 @@ func (batch operationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn)
 		return err
 	}
 	for _, op := range ops {
-		var id int64
+		var id pgtype.Int8
 		if err := br.QueryRow().Scan(&id); err != nil {
 			return err
 		}
@@ -73,8 +73,8 @@ func (batch operationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn)
 }
 func (batch operationBatch) GetID(serviceName, spanName, spanKind string) (pgtype.Int8, error) {
 	id, ok := batch[operation{serviceName, spanName, spanKind}]
-	if id == 0 || !ok {
+	if !ok {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("operation id not found: %s %s %s", serviceName, spanName, spanKind)
 	}
-	return pgtype.Int8{Int: id, Status: pgtype.Present}, nil
+	return id, nil
 }

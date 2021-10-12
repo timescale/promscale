@@ -24,15 +24,15 @@ type instrumentationLibrary struct {
 
 //TagBatch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
-type instrumentationLibraryBatch map[instrumentationLibrary]int64
+type instrumentationLibraryBatch map[instrumentationLibrary]pgtype.Int8
 
 func newInstrumentationLibraryBatch() instrumentationLibraryBatch {
-	return make(map[instrumentationLibrary]int64)
+	return make(map[instrumentationLibrary]pgtype.Int8)
 }
 
 func (batch instrumentationLibraryBatch) Queue(name, version string, schemaUrlID pgtype.Int8) {
 	if name != "" {
-		batch[instrumentationLibrary{name, version, schemaUrlID}] = 0
+		batch[instrumentationLibrary{name, version, schemaUrlID}] = pgtype.Int8{}
 	}
 }
 
@@ -66,7 +66,7 @@ func (batch instrumentationLibraryBatch) SendBatch(ctx context.Context, conn pgx
 		return err
 	}
 	for _, lib := range libs {
-		var id int64
+		var id pgtype.Int8
 		if err := br.QueryRow().Scan(&id); err != nil {
 			return err
 		}
@@ -83,8 +83,8 @@ func (batch instrumentationLibraryBatch) GetID(name, version string, schemaUrlID
 		return pgtype.Int8{Status: pgtype.Null}, nil
 	}
 	id, ok := batch[instrumentationLibrary{name, version, schemaUrlID}]
-	if id == 0 || !ok {
+	if !ok {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("instrumention library id not found: %s %s", name, version)
 	}
-	return pgtype.Int8{Int: id, Status: pgtype.Present}, nil
+	return id, nil
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -26,8 +27,8 @@ type tag struct {
 }
 
 type tagIDs struct {
-	keyID   int64
-	valueID int64
+	keyID   pgtype.Int8
+	valueID pgtype.Int8
 }
 
 //tagBatch queues up items to send to the db but it sorts before sending
@@ -81,8 +82,7 @@ func (batch tagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error
 		return err
 	}
 	for _, tag := range tags {
-		var keyID int64
-		var valueID int64
+		var keyID, valueID pgtype.Int8
 		if err := br.QueryRow().Scan(&keyID); err != nil {
 			return err
 		}
@@ -105,11 +105,11 @@ func (batch tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([
 			return nil, err
 		}
 		ids, ok := batch[tag{k, string(byteVal), typ}]
-		if !ok || ids.keyID == 0 || ids.valueID == 0 {
+		if !ok {
 			return nil, fmt.Errorf("tag id not found: %s %v(rendered as %s) %v", k, v, string(byteVal), typ)
 
 		}
-		tagMap[ids.keyID] = ids.valueID
+		tagMap[ids.keyID.Int] = ids.valueID.Int
 	}
 
 	jsonBytes, err := json.Marshal(tagMap)
