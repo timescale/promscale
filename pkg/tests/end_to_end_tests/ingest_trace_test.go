@@ -11,13 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/collector/model/pdata"
+
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"go.opentelemetry.io/collector/model/pdata"
+	
 )
 
 var (
