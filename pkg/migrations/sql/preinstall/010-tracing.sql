@@ -176,8 +176,8 @@ GRANT USAGE ON SEQUENCE SCHEMA_TRACING.instrumentation_lib_id_seq TO prom_writer
 CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
 (
     trace_id SCHEMA_TRACING_PUBLIC.trace_id NOT NULL,
-    span_id bigint NOT NULL,
-    parent_span_id bigint NULL,
+    span_id bigint NOT NULL CHECK (span_id != 0),
+    parent_span_id bigint NULL CHECK (parent_span_id != 0),
     operation_id bigint NOT NULL,
     start_time timestamptz NOT NULL,
     end_time timestamptz NOT NULL,
@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.event
 (
     time timestamptz NOT NULL,
     trace_id SCHEMA_TRACING_PUBLIC.trace_id NOT NULL,
-    span_id bigint NOT NULL,
+    span_id bigint NOT NULL CHECK (span_id != 0),
     event_nbr int NOT NULL DEFAULT 0,
     name text NOT NULL CHECK (name != ''),
     tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
@@ -223,10 +223,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.event TO prom_write
 CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.link
 (
     trace_id SCHEMA_TRACING_PUBLIC.trace_id NOT NULL,
-    span_id bigint NOT NULL,
+    span_id bigint NOT NULL CHECK (span_id != 0),
     span_start_time timestamptz NOT NULL,
     linked_trace_id SCHEMA_TRACING_PUBLIC.trace_id NOT NULL,
-    linked_span_id bigint NOT NULL,
+    linked_span_id bigint NOT NULL CHECK (linked_span_id != 0),
     link_nbr int NOT NULL DEFAULT 0,
     trace_state text CHECK (trace_state != ''),
     tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,

@@ -62,6 +62,18 @@ BEGIN
                 RAISE NOTICE 'add_compression_policy does not exist';
         END;
     END IF;
+
+    ALTER TABLE SCHEMA_TRACING.span 
+        ADD CONSTRAINT span_span_id_check CHECK (span_id != 0),
+        ADD CONSTRAINT span_parent_span_id_check CHECK (parent_span_id != 0);
+
+    ALTER TABLE SCHEMA_TRACING.event 
+        ADD CONSTRAINT event_span_id_check CHECK (span_id != 0);
+
+    ALTER TABLE SCHEMA_TRACING.link 
+        ADD CONSTRAINT link_span_id_check CHECK (span_id != 0),
+        ADD CONSTRAINT link_linked_span_id_check CHECK (linked_span_id != 0);
 END;
 $block$
 ;
+
