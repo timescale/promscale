@@ -42,13 +42,13 @@ func (batch operationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn)
 		i++
 	}
 	sort.Slice(ops, func(i, j int) bool {
-		if ops[i].serviceName == ops[j].serviceName {
-			if ops[i].spanName == ops[j].spanName {
-				return ops[i].spanKind < ops[j].spanKind
-			}
+		if ops[i].serviceName != ops[j].serviceName {
+			return ops[i].serviceName < ops[j].serviceName
+		}
+		if ops[i].spanName != ops[j].spanName {
 			return ops[i].spanName < ops[j].spanName
 		}
-		return ops[i].serviceName < ops[j].serviceName
+		return ops[i].spanKind < ops[j].spanKind
 	})
 
 	dbBatch := conn.NewBatch()
@@ -75,6 +75,12 @@ func (batch operationBatch) GetID(serviceName, spanName, spanKind string) (pgtyp
 	id, ok := batch[operation{serviceName, spanName, spanKind}]
 	if !ok {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("operation id not found: %s %s %s", serviceName, spanName, spanKind)
+	}
+	if id.Status != pgtype.Present {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("operation id is null")
+	}
+	if id.Int == 0 {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("operation id is 0")
 	}
 	return id, nil
 }

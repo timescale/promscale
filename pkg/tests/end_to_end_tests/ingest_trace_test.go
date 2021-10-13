@@ -28,14 +28,6 @@ var (
 	testSpanEndTime      = time.Date(2020, 2, 11, 20, 26, 13, 789000, time.UTC)
 	testSpanEndTimestamp = pdata.NewTimestampFromTime(testSpanEndTime)
 
-	resourceAttributes1 = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{
-		"resource-attr": pdata.NewAttributeValueString("resource-attr-val-1"),
-		"service.name":  pdata.NewAttributeValueString("service1"),
-	})
-	resourceAttributes2 = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{
-		"resource-attr": pdata.NewAttributeValueString("resource-attr-val-2"),
-		"service.name":  pdata.NewAttributeValueString("service2"),
-	})
 	spanAttributes      = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-attr": pdata.NewAttributeValueString("span-attr-val")})
 	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-event-attr": pdata.NewAttributeValueString("span-event-attr-val")})
 	spanLinkAttributes  = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-link-attr": pdata.NewAttributeValueString("span-link-attr-val")})

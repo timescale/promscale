@@ -58,13 +58,14 @@ func (batch tagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error
 		i++
 	}
 	sort.Slice(tags, func(i, j int) bool {
-		if tags[i].key == tags[j].key {
-			if tags[i].value == tags[j].value {
-				return tags[i].typ < tags[j].typ
-			}
+		if tags[i].key != tags[j].key {
+			return tags[i].key < tags[j].key
+		}
+		if tags[i].value != tags[j].value {
 			return tags[i].value < tags[j].value
 		}
-		return tags[i].key < tags[j].key
+		return tags[i].typ < tags[j].typ
+
 	})
 
 	dbBatch := conn.NewBatch()
@@ -108,6 +109,12 @@ func (batch tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([
 		if !ok {
 			return nil, fmt.Errorf("tag id not found: %s %v(rendered as %s) %v", k, v, string(byteVal), typ)
 
+		}
+		if ids.keyID.Status != pgtype.Present || ids.valueID.Status != pgtype.Present {
+			return nil, fmt.Errorf("tag ids have NULL values: %#v", ids)
+		}
+		if ids.keyID.Int == 0 || ids.valueID.Int == 0 {
+			return nil, fmt.Errorf("tag ids have 0 values: %#v", ids)
 		}
 		tagMap[ids.keyID.Int] = ids.valueID.Int
 	}

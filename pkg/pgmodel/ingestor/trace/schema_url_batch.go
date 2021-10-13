@@ -16,24 +16,24 @@ import (
 
 const insertSchemaURLSQL = `SELECT %s.put_schema_url($1)`
 
-type schemaUrl string
+type schemaURL string
 
-//TagBatch queues up items to send to the db but it sorts before sending
-//this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
-type schemaUrlBatch map[schemaUrl]pgtype.Int8
+//schemaURLBatch queues up items to send to the DB but it sorts before sending
+//this avoids deadlocks in the DB. It also avoids sending the same URLs repeatedly.
+type schemaURLBatch map[schemaURL]pgtype.Int8
 
-func newSchemaUrlBatch() schemaUrlBatch {
-	return make(map[schemaUrl]pgtype.Int8)
+func newSchemaUrlBatch() schemaURLBatch {
+	return make(map[schemaURL]pgtype.Int8)
 }
 
-func (batch schemaUrlBatch) Queue(url string) {
+func (batch schemaURLBatch) Queue(url string) {
 	if url != "" {
-		batch[schemaUrl(url)] = pgtype.Int8{}
+		batch[schemaURL(url)] = pgtype.Int8{}
 	}
 }
 
-func (batch schemaUrlBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
-	urls := make([]schemaUrl, len(batch))
+func (batch schemaURLBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
+	urls := make([]schemaURL, len(batch))
 	i := 0
 	for url := range batch {
 		urls[i] = url
@@ -65,13 +65,19 @@ func (batch schemaUrlBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn)
 	return nil
 }
 
-func (batch schemaUrlBatch) GetID(url string) (pgtype.Int8, error) {
+func (batch schemaURLBatch) GetID(url string) (pgtype.Int8, error) {
 	if url == "" {
 		return pgtype.Int8{Status: pgtype.Null}, nil
 	}
-	id, ok := batch[schemaUrl(url)]
+	id, ok := batch[schemaURL(url)]
 	if !ok {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("schema url id not found")
+	}
+	if id.Status != pgtype.Present {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("schema url id is null")
+	}
+	if id.Int == 0 {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("schema url id is 0")
 	}
 	return id, nil
 }

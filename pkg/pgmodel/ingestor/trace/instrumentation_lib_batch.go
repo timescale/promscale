@@ -22,8 +22,9 @@ type instrumentationLibrary struct {
 	SchemaUrlID pgtype.Int8
 }
 
-//TagBatch queues up items to send to the db but it sorts before sending
-//this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
+//instrumentationLibraryBatch queues up items to send to the DB but it sorts before sending
+//this avoids deadlocks in the DB. It also avoids sending the same instrumentation
+//libraries repeatedly.
 type instrumentationLibraryBatch map[instrumentationLibrary]pgtype.Int8
 
 func newInstrumentationLibraryBatch() instrumentationLibraryBatch {
@@ -44,16 +45,16 @@ func (batch instrumentationLibraryBatch) SendBatch(ctx context.Context, conn pgx
 		i++
 	}
 	sort.Slice(libs, func(i, j int) bool {
-		if libs[i].name == libs[j].name {
-			if libs[i].version == libs[j].version {
-				if libs[i].SchemaUrlID.Status == libs[j].SchemaUrlID.Status {
-					return libs[i].SchemaUrlID.Int < libs[j].SchemaUrlID.Int
-				}
-				return libs[i].SchemaUrlID.Status < libs[j].SchemaUrlID.Status
-			}
+		if libs[i].name != libs[j].name {
+			return libs[i].name < libs[j].name
+		}
+		if libs[i].version != libs[j].version {
 			return libs[i].version < libs[j].version
 		}
-		return libs[i].version < libs[j].version
+		if libs[i].SchemaUrlID.Status != libs[j].SchemaUrlID.Status {
+			return libs[i].SchemaUrlID.Status < libs[j].SchemaUrlID.Status
+		}
+		return libs[i].SchemaUrlID.Int < libs[j].SchemaUrlID.Int
 	})
 
 	dbBatch := conn.NewBatch()
@@ -85,6 +86,12 @@ func (batch instrumentationLibraryBatch) GetID(name, version string, schemaUrlID
 	id, ok := batch[instrumentationLibrary{name, version, schemaUrlID}]
 	if !ok {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("instrumention library id not found: %s %s", name, version)
+	}
+	if id.Status != pgtype.Present {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("instrumention library is null")
+	}
+	if id.Int == 0 {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("instrumention library id is 0")
 	}
 	return id, nil
 }
