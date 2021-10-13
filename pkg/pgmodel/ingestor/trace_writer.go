@@ -78,11 +78,10 @@ func (t *traceWriterImpl) InsertInstrumentationLibrary(ctx context.Context, name
 	return id, err
 }
 
-func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagBatch TagBatch, links pdata.SpanLinkSlice, traceID [16]byte, spanID [8]byte, spanStartTime time.Time) error {
-	spanIDInt := ByteArrayToInt64(spanID)
+func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagBatch TagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
-		linkedSpanIDInt := ByteArrayToInt64(link.SpanID().Bytes())
+		linkedSpanID := getSpanID(link.SpanID().Bytes())
 
 		rawTags := link.Attributes().AsRaw()
 		if err := tagBatch.Queue(rawTags, LinkTagType); err != nil {
@@ -93,11 +92,11 @@ func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagBatch Ta
 			return err
 		}
 		linkBatch.Queue(fmt.Sprintf(insertSpanLinkSQL, schema.Trace, schema.TracePublic),
-			TraceIDToUUID(traceID),
-			spanIDInt,
+			traceID,
+			spanID,
 			spanStartTime,
 			TraceIDToUUID(link.TraceID().Bytes()),
-			linkedSpanIDInt,
+			linkedSpanID,
 			getTraceStateValue(link.TraceState()),
 			string(jsonTags),
 			link.DroppedAttributesCount(),
@@ -107,8 +106,7 @@ func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagBatch Ta
 	return nil
 }
 
-func (t *traceWriterImpl) queueSpanEvents(eventBatch pgxconn.PgxBatch, tagBatch TagBatch, events pdata.SpanEventSlice, traceID [16]byte, spanID [8]byte) error {
-	spanIDInt := ByteArrayToInt64(spanID)
+func (t *traceWriterImpl) queueSpanEvents(eventBatch pgxconn.PgxBatch, tagBatch TagBatch, events pdata.SpanEventSlice, traceID pgtype.UUID, spanID pgtype.Int8) error {
 	for i := 0; i < events.Len(); i++ {
 		event := events.At(i)
 		rawTags := event.Attributes().AsRaw()
@@ -121,8 +119,8 @@ func (t *traceWriterImpl) queueSpanEvents(eventBatch pgxconn.PgxBatch, tagBatch 
 		}
 		eventBatch.Queue(fmt.Sprintf(insertSpanEventSQL, schema.Trace, schema.TracePublic),
 			event.Timestamp().AsTime(),
-			TraceIDToUUID(traceID),
-			spanIDInt,
+			traceID,
+			spanID,
 			event.Name(),
 			i,
 			string(jsonTags),
@@ -144,8 +142,8 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 	operationBatch := NewOperationBatch()
 	for k := 0; k < spans.Len(); k++ {
 		span := spans.At(k)
-		traceID := span.TraceID().Bytes()
-		spanID := span.SpanID().Bytes()
+		traceID := TraceIDToUUID(span.TraceID().Bytes())
+		spanID := getSpanID(span.SpanID().Bytes())
 		spanName := span.Name()
 		spanKind := span.Kind().String()
 
@@ -157,8 +155,7 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 		if err := t.queueSpanLinks(linkBatch, tagBatch, span.Links(), traceID, spanID, span.StartTimestamp().AsTime()); err != nil {
 			return err
 		}
-		spanIDInt := ByteArrayToInt64(spanID)
-		parentSpanIDInt := ByteArrayToInt64(span.ParentSpanID().Bytes())
+		parentSpanID := getSpanID(span.ParentSpanID().Bytes())
 		rawResourceTags := resourceTags.AsRaw()
 		if err := tagBatch.Queue(rawResourceTags, ResourceTagType); err != nil {
 			return err
@@ -180,10 +177,10 @@ func (t *traceWriterImpl) InsertSpans(ctx context.Context, spans pdata.SpanSlice
 
 		spanBatch.Queue(
 			fmt.Sprintf(insertSpanSQL, schema.Trace, schema.TracePublic, schema.TracePublic, schema.TracePublic),
-			TraceIDToUUID(traceID),
-			spanIDInt,
+			traceID,
+			spanID,
 			getTraceStateValue(span.TraceState()),
-			parentSpanIDInt,
+			parentSpanID,
 			serviceName,
 			spanName,
 			spanKind,
@@ -240,6 +237,21 @@ func TraceIDToUUID(buf [16]byte) pgtype.UUID {
 	return pgtype.UUID{
 		Bytes:  buf,
 		Status: pgtype.Present,
+	}
+}
+
+func getSpanID(buf [8]byte) pgtype.Int8 {
+	i := int64(binary.BigEndian.Uint64(buf[:]))
+
+	if i != 0 {
+		return pgtype.Int8{
+			Int:    i,
+			Status: pgtype.Present,
+		}
+	}
+
+	return pgtype.Int8{
+		Status: pgtype.Null,
 	}
 }
 
