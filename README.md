@@ -60,7 +60,7 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Data Model](docs/sql_schema.md#data-model-schema)
   * [Filtering Series](docs/sql_schema.md#filtering-series)
   * [Data Retention](docs/sql_schema.md#data-retention)
-  * [Roles and Permissions](docs/sql_permissions.sql)
+  * [Roles and Permissions](docs/sql_permissions.md)
 * **[Tutorial: Getting Started with Promscale](https://docs.timescale.com/timescaledb/latest/tutorials/promscale/)**
 * **[Tracing (beta)](docs/tracing.md)** 
 * **[High Availability](docs/high-availability/prometheus-HA.md)**
