@@ -24,6 +24,8 @@ type spanDBResult struct {
 	droppedTagsCounts   int
 	droppedEventsCounts int
 	droppedLinkCounts   int
+	statusCode          string
+	statusMessage       pgtype.Text
 	traceState          pgtype.Text
 	schemaUrl           pgtype.Text
 	spanName            string
@@ -64,6 +66,8 @@ func ScanRow(row pgxconn.PgxRows, traces *pdata.Traces) error {
 		&dbRes.droppedTagsCounts,
 		&dbRes.droppedEventsCounts,
 		&dbRes.droppedLinkCounts,
+		&dbRes.statusCode,
+		&dbRes.statusMessage,
 		&dbRes.traceState,
 		&dbRes.schemaUrl,
 		&dbRes.spanName,
@@ -169,6 +173,10 @@ func populateSpan(
 	ref.SetDroppedEventsCount(uint32(dbResult.droppedEventsCounts))
 	ref.SetDroppedLinksCount(uint32(dbResult.droppedLinkCounts))
 
+	if err = setStatus(ref, dbResult); err != nil {
+		return fmt.Errorf("set status: %w", err)
+	}
+
 	attr, err = makeAttributes(dbResult.spanTags)
 	if err != nil {
 		return fmt.Errorf("making span tags: %w", err)
@@ -184,6 +192,28 @@ func populateSpan(
 		if err := populateLinks(ref.Links(), dbResult); err != nil {
 			return fmt.Errorf("populate links error: %w", err)
 		}
+	}
+	return nil
+}
+
+func setStatus(ref pdata.Span, dbRes *spanDBResult) error {
+	if dbRes.statusCode != "" {
+		var code pdata.StatusCode
+		switch dbRes.statusCode {
+		case pdata.StatusCodeOk.String():
+			code = pdata.StatusCodeOk
+		case pdata.StatusCodeError.String():
+			code = pdata.StatusCodeError
+		case pdata.StatusCodeUnset.String():
+			code = pdata.StatusCodeUnset
+		default:
+			return fmt.Errorf("invalid status-code received: %s", dbRes.statusCode)
+		}
+		ref.Status().SetCode(code)
+	}
+	if dbRes.statusMessage.Status != pgtype.Null {
+		message := dbRes.statusMessage.String
+		ref.Status().SetMessage(message)
 	}
 	return nil
 }

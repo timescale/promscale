@@ -21,19 +21,20 @@ const (
 	// Use custom image as original otel images do not have /bin/sh, hence failing the test-containers.
 	otelCollectorImage = "harkishen/otel_collector_with_sh:latest"
 
-	// Below config is valid with otel-collector 0.33.0
+	// Below config is valid with otel-collector 0.37.0
 	otelCollectorConfig = `receivers:
   otlp:
     protocols:
-      grpc: null
+      grpc:
 
 processors:
-  batch: null
+  batch:
 
 exporters:
   jaeger:
     endpoint: %s
-    insecure: true
+    tls:
+      insecure: true
 
 extensions:
   health_check: {}
@@ -80,39 +81,42 @@ func StartOtelCollectorContainer(urlJaeger string, printLogs bool) (container te
 	}
 	container, err = testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req})
 	if err != nil {
-		return container, host, port, fmt.Errorf("creating otel-collector container: %w", err)
+		return container, host, port, fmt.Errorf("error creating otel-collector container: %w", err)
 	}
 	if err = container.Start(context.Background()); err != nil {
-		return nil, "", "", fmt.Errorf("starting otel container: %w", err)
+		return nil, "", "", fmt.Errorf("error starting otel container: %w", err)
 	}
 
 	if printLogs {
-		container.StartLogProducer(context.Background())
+		if err = container.StartLogProducer(context.Background()); err != nil {
+			return nil, "", "", fmt.Errorf("error starting log producer: %w", err)
+		}
 		container.FollowOutput(stdoutLogConsumer{"otel-collector"})
 	}
 
 	host, err = container.Host(context.Background())
 	if err != nil {
-		return container, host, port, fmt.Errorf("host: %w", err)
+		return container, host, port, fmt.Errorf("error getting container host: %w", err)
 	}
 
 	port, err = container.MappedPort(context.Background(), grpcReceivingPort)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("mapped port: %w", err)
+		return nil, "", "", fmt.Errorf("error mapping port: %w", err)
 	}
 
+	// Do a quick health check to make sure everything is right.
 	healthCheck, err := container.MappedPort(context.Background(), healthCheckPort)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("mapped health-check port: %w", err)
+		return nil, "", "", fmt.Errorf("error mapping health-check port: %w", err)
 	}
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s", healthCheck.Port()))
 	if err != nil {
-		return nil, "", "", fmt.Errorf("health-check response: %w", err)
+		return nil, "", "", fmt.Errorf("error checking health response: %w", err)
 	}
 
 	bSlice, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("reading health-check response: %w", err)
+		return nil, "", "", fmt.Errorf("error reading health-check response: %w", err)
 	}
 	// Health check.
 	if !strings.Contains(string(bSlice), healthGoodText) {

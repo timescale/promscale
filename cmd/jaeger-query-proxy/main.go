@@ -52,12 +52,14 @@ func main() {
 		logger.Error("could not start jaeger proxy: ", err)
 		os.Exit(1)
 	}
+
 	defer func() {
 		if _, err = promscalePlugin.Close(context.Background(), nil); err != nil {
 			logger.Error("error closing the proxy plugin", err)
 		}
 	}()
-	logger.Warn("starting to serve")
+
+	logger.Warn("starting to serve jaeger proxy")
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: shared.Handshake,
 		VersionedPlugins: map[int]plugin.PluginSet{
@@ -69,7 +71,6 @@ func main() {
 		},
 		GRPCServer: plugin.DefaultGRPCServer,
 	})
-	//grpc.Serve(&shared.PluginServices{Store: promscalePlugin})
 }
 
 // Ensure plugin.GRPCPlugin API match.
@@ -83,7 +84,7 @@ type StorageGRPCPlugin struct {
 }
 
 // GRPCServer implements plugin.GRPCPlugin. It is used by go-plugin to create a grpc plugin server.
-func (p *StorageGRPCPlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Server) error {
+func (p *StorageGRPCPlugin) GRPCServer(_ *plugin.GRPCBroker, s *grpc.Server) error {
 	storage_v1.RegisterSpanReaderPluginServer(s, p.proxy)
 	storage_v1.RegisterSpanWriterPluginServer(s, p.proxy)
 	storage_v1.RegisterArchiveSpanReaderPluginServer(s, p.proxy)

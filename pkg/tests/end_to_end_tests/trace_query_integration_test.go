@@ -5,13 +5,14 @@
 package end_to_end_tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
-	"sync"
+	"sort"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	jaegerquery "github.com/timescale/promscale/pkg/jaeger/query"
@@ -32,15 +34,18 @@ import (
 
 func TestCompareTraceQueryResponse(t *testing.T) {
 	// Start containers.
-	jaegerContainer, _, jaegerIP, jaegerReceivingPort, _, uiPort, err := testhelpers.StartJaegerContainer(false)
+	jaegerContainer, _, jaegerIP, jaegerReceivingPort, uiPort, err := testhelpers.StartJaegerContainer(false)
 	require.NoError(t, err)
-	defer jaegerContainer.Terminate(context.Background())
 
 	otelContainer, otelHost, otelReceivingPort, err := testhelpers.StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerIP, jaegerReceivingPort.Port()), false)
 	require.NoError(t, err)
-	defer otelContainer.Terminate(context.Background())
 
-	// Make clients.
+	defer func() {
+		require.NoError(t, jaegerContainer.Terminate(context.Background()))
+		require.NoError(t, otelContainer.Terminate(context.Background()))
+	}()
+
+	// Make otel client.
 	otelIngestClient, err := getOtelIngestClient(fmt.Sprintf("%s:%s", otelHost, otelReceivingPort.Port()))
 	require.NoError(t, err)
 
@@ -59,21 +64,23 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
-		//time.Sleep(time.Hour)
-
 		// Create Promscale proxy to query traces data.
 		promscaleProxy := jaegerquery.New(pgxconn.NewPgxConn(db))
 
-		wg := new(sync.WaitGroup)
-		promscaleJSONWrapper := getPromscaleTraceQueryJSONServer(promscaleProxy, wg, ":9203")
-		wg.Add(1)
-		// Run the JSON wrapper server.
-		go promscaleJSONWrapper()
-		// Wait for JSON wrapper to be up.
-		wg.Wait()
+		runPromscaleTraceQueryJSONServer(promscaleProxy, ":9203")
 
 		promscaleClient := httpClient{"http://localhost:9203"}
 		jaegerClient := httpClient{"http://localhost:" + uiPort.Port()}
+
+		validateStringSliceResp := func(promscaleResp, jaegerResp *structuredResponse) {
+			a := convertToStringArr(promscaleResp.Data.([]interface{}))
+			b := convertToStringArr(jaegerResp.Data.([]interface{}))
+
+			sort.Strings(a)
+			sort.Strings(b)
+
+			require.Equal(t, b, a)
+		}
 
 		// Verify services.
 		promscaleResp, err := promscaleClient.getServices()
@@ -82,38 +89,172 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		jaegerResp, err := jaegerClient.getServices()
 		require.NoError(t, err)
 
-		require.Equal(t, jaegerResp, promscaleResp)
+		validateStringSliceResp(promscaleResp, jaegerResp)
 
 		// Verify Operations.
-		promscaleResp, err = promscaleClient.getOperations("service1")
+		promscaleResp, err = promscaleClient.getOperations(service0)
 		require.NoError(t, err)
 
-		fmt.Println("operation p", promscaleResp)
-
-		jaegerResp, err = jaegerClient.getOperations("service1")
+		jaegerResp, err = jaegerClient.getOperations(service0)
 		require.NoError(t, err)
-		fmt.Println("operation j", jaegerResp)
 
-		require.Equal(t, jaegerResp, promscaleResp)
+		validateStringSliceResp(promscaleResp, jaegerResp)
 
 		// Verify a single trace fetch.
-		promscaleResp, err = promscaleClient.getTrace("31323334353637383930313233343536")
+		promscaleResp, err = promscaleClient.getTrace(getTraceId(traceID1))
 		require.NoError(t, err)
+		pTrace := convertToTrace(promscaleResp.Data.([]interface{})[0])
 
-		fmt.Println("trace p", promscaleResp)
-
-		jaegerResp, err = jaegerClient.getTrace("31323334353637383930313233343536")
+		jaegerResp, err = jaegerClient.getTrace(getTraceId(traceID1))
 		require.NoError(t, err)
-		fmt.Println("trace j", jaegerResp)
+		jTrace := convertToTrace(jaegerResp.Data.([]interface{})[0])
 
-		require.Equal(t, jaegerResp, promscaleResp)
+		compareTraces(t, jTrace, pTrace)
+
+		// Verify fetch traces API.
+		traceStart := timestamp.FromTime(testSpanStartTime) * 1000
+		traceEnd := timestamp.FromTime(testSpanEndTime) * 1000
+
+		promscaleResp, err = promscaleClient.fetchTraces(traceStart, traceEnd, service0)
+		require.NoError(t, err)
+		pTraces := convertToTraces(promscaleResp.Data.([]interface{}))
+
+		jaegerResp, err = jaegerClient.fetchTraces(traceStart, traceEnd, service0)
+		require.NoError(t, err)
+		jTraces := convertToTraces(jaegerResp.Data.([]interface{}))
+
+		// Sort traces.
+		sort.SliceStable(pTraces, func(i, j int) bool {
+			return pTraces[i].TraceID < pTraces[j].TraceID
+		})
+		sort.SliceStable(jTraces, func(i, j int) bool {
+			return jTraces[i].TraceID < jTraces[j].TraceID
+		})
+
+		require.Equal(t, len(jTraces), len(pTraces), "num of traces returned in fetch traces API")
+
+		// Traces are now one-to-one aligned. Let's compare their internals now.
+		for i := 0; i < len(jTraces); i++ {
+			compareTraces(t, jTraces[i], pTraces[i])
+		}
 	})
 }
 
-// getPromscaleTraceQueryJSONServer returns a wrapper around promscale trace query module, that responds into
-// Jaeger JSON responses. It reuses Jaeger's JSON layer as a wrapper so that the outputs from
-// Jaeger's `/api` endpoints can be directly compared with Promscale's output from query endpoints.
-func getPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, wg *sync.WaitGroup, port string) (concurrentServer func()) {
+var skipTags = map[string]struct{}{
+	"internal.span.format": {},
+	"otel.status_code":     {},
+}
+
+func compareTraces(t testing.TB, a, b jaegerJSONModel.Trace) {
+	require.Equal(t, len(a.Spans), len(b.Spans), "num spans")
+
+	require.Equal(t, a.TraceID, b.TraceID, "trace id")
+
+	sort.Strings(a.Warnings)
+	sort.Strings(b.Warnings)
+	require.Equal(t, a.Warnings, b.Warnings, "warnings")
+
+	require.Equal(t, a.Processes, b.Processes, "processes")
+
+	sortSpanContents(a.Spans, skipTags)
+	sortSpanContents(b.Spans, skipTags)
+
+	require.Equal(t, a.Spans, b.Spans, "spans")
+}
+
+func sortSpanContents(spans []jaegerJSONModel.Span, ignoreTags map[string]struct{}) {
+	sort.SliceStable(spans, func(i, j int) bool {
+		return spans[i].SpanID < spans[j].SpanID
+	})
+
+	for index := range spans {
+		// Sort references.
+		sort.SliceStable(spans[index].References, func(i, j int) bool {
+			return spans[index].References[i].RefType < spans[index].References[j].RefType
+		})
+
+		spans[index].Tags = trimIgnoredTags(spans[index].Tags[:], ignoreTags)
+		sort.SliceStable(spans[index].Tags, func(i, j int) bool {
+			return spans[index].Tags[i].Key < spans[index].Tags[j].Key
+		})
+
+		// Sort warnings.
+		sort.Strings(spans[index].Warnings)
+
+		if spans[index].Process != nil {
+			// Sort processes tags.
+			sort.SliceStable(spans[index].Process.Tags, func(i, j int) bool {
+				return spans[index].Process.Tags[i].Key < spans[index].Process.Tags[j].Key
+			})
+		}
+
+		// Sort logs.
+		sort.SliceStable(spans[index].Logs, func(i, j int) bool {
+			return spans[index].Logs[i].Timestamp < spans[index].Logs[j].Timestamp
+		})
+		// Sort tags in each log.
+		for logIndex := range spans[index].Logs {
+			// Sort tags belonging to a log.
+			sort.SliceStable(spans[index].Logs[logIndex].Fields, func(i, j int) bool {
+				return spans[index].Logs[logIndex].Fields[i].Key < spans[index].Logs[logIndex].Fields[j].Key
+			})
+		}
+	}
+}
+
+func trimIgnoredTags(tags []jaegerJSONModel.KeyValue, ignoreTags map[string]struct{}) (trimmedTags []jaegerJSONModel.KeyValue) {
+	trimmedTags = make([]jaegerJSONModel.KeyValue, 0)
+	for _, tag := range tags {
+		if _, ignore := ignoreTags[tag.Key]; !ignore {
+			trimmedTags = append(trimmedTags, tag)
+		}
+	}
+	return
+}
+
+func convertToStringArr(arr []interface{}) []string {
+	// API: Services, Operations.
+	bSlice, err := json.Marshal(arr)
+	if err != nil {
+		panic("err while re-marshaling 'Data' for map type conversion: " + err.Error())
+	}
+	tmp := make([]string, 0)
+	if err = json.Unmarshal(bSlice, &tmp); err != nil {
+		panic(err)
+	}
+	return tmp
+}
+
+func convertToTrace(i interface{}) jaegerJSONModel.Trace {
+	// API: Get Trace.
+	bSlice, err := json.Marshal(i)
+	if err != nil {
+		panic("err while re-marshaling 'Data' for map type conversion: " + err.Error())
+	}
+	var tmp jaegerJSONModel.Trace
+	if err = json.Unmarshal(bSlice, &tmp); err != nil {
+		panic(err)
+	}
+	return tmp
+}
+
+func convertToTraces(arr []interface{}) []jaegerJSONModel.Trace {
+	// API: Fetch traces.
+	bSlice, err := json.Marshal(arr)
+	if err != nil {
+		panic("err while re-marshaling 'Data' for map type conversion: " + err.Error())
+	}
+	tmp := make([]jaegerJSONModel.Trace, 0)
+	if err = json.Unmarshal(bSlice, &tmp); err != nil {
+		panic(err)
+	}
+	return tmp
+}
+
+// runPromscaleTraceQueryJSONServer starts a server that acts as a wrapper around promscale trace query module, responding in
+// Jaeger JSON format. It reuses Jaeger's JSON layer as a wrapper so that the outputs from Jaeger's `/api` endpoints
+// can be directly compared with Promscale's output from query endpoints.
+func runPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, port string) {
 	promscaleQueryHandler := jaegerQueryApp.NewAPIHandler(jaegerQueryService.NewQueryService(
 		proxy,
 		proxy,
@@ -124,19 +265,47 @@ func getPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, wg *sync.WaitGro
 
 	server := http.Server{Handler: r}
 
-	return func() {
+	runServer := func() {
 		listener, err := net.Listen("tcp", port)
 		if err != nil {
 			panic(err)
 		}
-
-		go func() {
-			// Wait for a second for server to serve and then mark done.
-			time.Sleep(time.Second)
-			wg.Done()
-		}()
 		if err := server.Serve(listener); err != nil {
 			panic(err)
+		}
+	}
+
+	go runServer()
+
+	// Wait for server to be up.
+	check := time.NewTicker(time.Second / 2)
+	timeout, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	for {
+		select {
+		case <-timeout.Done():
+			panic("Promscale trace JSON server could not be up within the given timeout")
+		case <-check.C:
+			// Simple get request.
+			req, err := http.NewRequestWithContext(timeout, "GET", fmt.Sprintf("http://localhost%s/api/services", port), nil)
+			if err != nil {
+				panic(err)
+			}
+
+			client := http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				panic(err)
+			}
+
+			bSlice, err := ioutil.ReadAll(resp.Body)
+			if err != nil || string(bSlice) == "" {
+				panic(fmt.Errorf("empty bSlice or err: %w", err))
+			}
+
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
 		}
 	}
 }
@@ -173,6 +342,7 @@ const (
 	servicesEndpoint    = "%s/api/services"
 	operationsEndpoint  = "%s/api/services/%s/operations"
 	singleTraceEndpoint = "%s/api/traces/%s"
+	fetchTraces         = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
 )
 
 func (c httpClient) getServices() (*structuredResponse, error) {
@@ -192,8 +362,16 @@ func (c httpClient) getOperations(service string) (*structuredResponse, error) {
 }
 
 func (c httpClient) getTrace(traceId string) (*structuredResponse, error) {
-	fmt.Println("url", fmt.Sprintf(singleTraceEndpoint, c.url, traceId))
 	resp, err := do(fmt.Sprintf(singleTraceEndpoint, c.url, traceId))
+	if err != nil {
+		return nil, fmt.Errorf("do: %w", err)
+	}
+	return resp, nil
+}
+
+// http://0.0.0.0:49602/api/traces?end=1634211840000000&limit=20&lookback=custom&maxDuration&minDuration&service=service1&start=1581273000000000
+func (c httpClient) fetchTraces(start, end int64, service string) (*structuredResponse, error) {
+	resp, err := do(fmt.Sprintf(fetchTraces, c.url, start, end, service))
 	if err != nil {
 		return nil, fmt.Errorf("do: %w", err)
 	}
@@ -210,7 +388,7 @@ func do(url string) (*structuredResponse, error) {
 		return nil, fmt.Errorf("read all: %w", err)
 	}
 	var r structuredResponse
-	if err = json.Unmarshal(b, &r); err != nil {
+	if err = json.NewDecoder(bytes.NewReader(b)).Decode(&r); err != nil {
 		return nil, fmt.Errorf("json unmarshal: %w", err)
 	}
 	return &r, nil

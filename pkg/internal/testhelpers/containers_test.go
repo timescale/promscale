@@ -15,11 +15,8 @@ import (
 	"runtime"
 	"testing"
 
-	"google.golang.org/grpc"
-
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/jaegertracing/jaeger/proto-gen/api_v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,52 +50,35 @@ func TestOtelCollectorConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping checking Jaeger connection")
 	}
-	jContainer, jaegerHost, jaegerContainerIP, jaegerReceivingPort, grpcQueryPort, _, err := StartJaegerContainer(true)
+	jContainer, _, jaegerContainerIP, jaegerReceivingPort, _, err := StartJaegerContainer(true)
 	require.NoError(t, err)
-	defer jContainer.Terminate(context.Background())
-
-	// Check if Jaeger is up.
-	opts := []grpc.DialOption{grpc.WithBlock(), grpc.WithInsecure()}
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", jaegerHost, grpcQueryPort.Port()), opts...)
-	require.NoError(t, err)
-
-	c := api_v3.NewQueryServiceClient(conn)
-	services, err := c.GetServices(context.Background(), &api_v3.GetServicesRequest{})
-	require.NoError(t, err)
-	require.Equal(t, 0, len(services.Services)) // As the database is empty.
 
 	// Start Otel collector.
 	otelContainer, _, _, err := StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerContainerIP, jaegerReceivingPort.Port()), true)
 	require.NoError(t, err)
-	defer otelContainer.Terminate(context.Background())
+	require.NoError(t, jContainer.Terminate(context.Background()))
+	require.NoError(t, otelContainer.Terminate(context.Background()))
 }
 
 func TestJaegerConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping checking Jaeger connection")
 	}
-	container, host, _, _, grpcQueryPort, uiPort, err := StartJaegerContainer(true)
+	container, host, _, _, uiPort, err := StartJaegerContainer(true)
 	require.NoError(t, err)
-	defer container.Terminate(context.Background())
+	defer func() {
+		require.NoError(t, container.Terminate(context.Background()))
+	}()
 
 	const servicesEndpoint = "api/services"
 
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/%s", host, uiPort, servicesEndpoint))
+	resp, err := http.Get(fmt.Sprintf("http://%s:%s/%s", host, uiPort.Port(), servicesEndpoint))
 	require.NoError(t, err)
-	require.True(t, resp.StatusCode == http.StatusOK)
+	require.Equal(t, resp.StatusCode, http.StatusOK)
 
 	bSlice, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.True(t, len(bSlice) > 0)
-
-	opts := []grpc.DialOption{grpc.WithBlock(), grpc.WithInsecure()}
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", host, grpcQueryPort.Port()), opts...)
-	require.NoError(t, err)
-
-	c := api_v3.NewQueryServiceClient(conn)
-	services, err := c.GetServices(context.Background(), &api_v3.GetServicesRequest{})
-	require.NoError(t, err)
-	require.Equal(t, 0, len(services.Services)) // As the database is empty.
+	require.Greater(t, len(bSlice), 0)
 }
 
 func TestWithDB(t *testing.T) {

@@ -1,6 +1,8 @@
 # Otel-collector image with sh.
+# Built with `docker build -t <account_name>/otel_collector_with_sh -f pkg/internal/custom_images/otel_collector_with_sh .`
+# The image is pushed to harkishen/otel_collector_with_sh and not built during the test.
 
-FROM otel/opentelemetry-collector:0.33.0 as otel
+FROM otel/opentelemetry-collector:0.37.0 as otel
 
 FROM alpine:3.13
 

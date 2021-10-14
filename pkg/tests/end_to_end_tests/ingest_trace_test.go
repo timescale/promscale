@@ -11,32 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/collector/model/pdata"
-
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	
-)
-
-var (
-	traceID1               = [16]byte{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
-	traceID2               = [16]byte{'0', '2', '3', '4', '0', '6', '7', '8', '9', '0', '0', '2', '3', '4', '0', '6'}
-	testSpanStartTime      = time.Date(2020, 2, 11, 20, 26, 12, 321000, time.UTC)
-	testSpanStartTimestamp = pdata.NewTimestampFromTime(testSpanStartTime)
-
-	testSpanEventTime      = time.Date(2020, 2, 11, 20, 26, 13, 123000, time.UTC)
-	testSpanEventTimestamp = pdata.NewTimestampFromTime(testSpanEventTime)
-
-	testSpanEndTime      = time.Date(2020, 2, 11, 20, 26, 13, 789000, time.UTC)
-	testSpanEndTimestamp = pdata.NewTimestampFromTime(testSpanEndTime)
-
-	spanAttributes      = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-attr": pdata.NewAttributeValueString("span-attr-val")})
-	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-event-attr": pdata.NewAttributeValueString("span-event-attr-val")})
-	spanLinkAttributes  = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-link-attr": pdata.NewAttributeValueString("span-link-attr-val")})
+	"go.opentelemetry.io/collector/model/pdata"
 )
 
 func TestIngestTraces(t *testing.T) {
