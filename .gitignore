@@ -1,6 +1,9 @@
 *~
 /promscale*
 /prom-migrator*
+/cmd/promscale/promscale
+/cmd/prom-migrator/prom-migrator
+/cmd/jaeger-query-proxy/jaeger-query-proxy
 /dist
 /vendor
 /version.properties
