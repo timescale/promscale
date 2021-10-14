@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgtype"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"go.opentelemetry.io/collector/model/pdata"
 )
@@ -277,7 +277,7 @@ func makeSpanId(s *int64) pdata.SpanID {
 		return pdata.NewSpanID([8]byte{})
 	}
 
-	b8 := ingestor.Int64ToByteArray(*s)
+	b8 := trace.Int64ToByteArray(*s)
 	return pdata.NewSpanID(b8)
 }
 

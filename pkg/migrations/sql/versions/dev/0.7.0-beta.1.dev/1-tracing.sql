@@ -63,17 +63,19 @@ BEGIN
         END;
     END IF;
 
-    ALTER TABLE SCHEMA_TRACING.span 
+    ALTER TABLE SCHEMA_TRACING.span
         ADD CONSTRAINT span_span_id_check CHECK (span_id != 0),
         ADD CONSTRAINT span_parent_span_id_check CHECK (parent_span_id != 0);
 
-    ALTER TABLE SCHEMA_TRACING.event 
+    ALTER TABLE SCHEMA_TRACING.event
         ADD CONSTRAINT event_span_id_check CHECK (span_id != 0);
 
-    ALTER TABLE SCHEMA_TRACING.link 
+    ALTER TABLE SCHEMA_TRACING.link
         ADD CONSTRAINT link_span_id_check CHECK (span_id != 0),
         ADD CONSTRAINT link_linked_span_id_check CHECK (linked_span_id != 0);
 END;
 $block$
 ;
 
+DROP FUNCTION IF EXISTS SCHEMA_TRACING_PUBLIC.put_tag_key(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_type);
+DROP FUNCTION IF EXISTS SCHEMA_TRACING_PUBLIC.put_tag(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_v, SCHEMA_TRACING_PUBLIC.tag_type);

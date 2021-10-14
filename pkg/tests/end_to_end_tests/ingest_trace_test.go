@@ -2,6 +2,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -27,10 +28,6 @@ var (
 	testSpanEndTime      = time.Date(2020, 2, 11, 20, 26, 13, 789000, time.UTC)
 	testSpanEndTimestamp = pdata.NewTimestampFromTime(testSpanEndTime)
 
-	resourceAttributes = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{
-		"resource-attr": pdata.NewAttributeValueString("resource-attr-val-1"),
-		"service.name":  pdata.NewAttributeValueString("service1"),
-	})
 	spanAttributes      = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-attr": pdata.NewAttributeValueString("span-attr-val")})
 	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-event-attr": pdata.NewAttributeValueString("span-event-attr-val")})
 	spanLinkAttributes  = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-link-attr": pdata.NewAttributeValueString("span-link-attr-val")})
@@ -47,34 +44,74 @@ func TestIngestTraces(t *testing.T) {
 	})
 }
 
+func TestIngestTracesMultiTraces(t *testing.T) {
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		require.NoError(t, err)
+		defer ingestor.Close()
+		traces := generateTestTraceManyRS()
+		for traceIndex := 0; traceIndex < len(traces); traceIndex++ {
+			err = ingestor.IngestTraces(context.Background(), traces[traceIndex])
+		}
+		require.NoError(t, err)
+	})
+}
+
 func generateTestTrace() pdata.Traces {
 	spanCount := 4
 	td := pdata.NewTraces()
 	td.ResourceSpans().AppendEmpty()
 	rs0 := td.ResourceSpans().At(0)
-	initResourceAttributes1(rs0.Resource().Attributes())
-	td.ResourceSpans().At(0).InstrumentationLibrarySpans().AppendEmpty()
-	initInstLib(td.ResourceSpans().At(0).InstrumentationLibrarySpans())
-	rs0ils0 := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0)
+	initResourceAttributes(rs0.Resource().Attributes(), 0)
+	libSpans := rs0.InstrumentationLibrarySpans().AppendEmpty()
+	initInstLib(libSpans, 0)
 	for i := 0; i < spanCount; i++ {
-		fillSpanOne(rs0ils0.Spans().AppendEmpty())
+		fillSpanOne(libSpans.Spans().AppendEmpty())
 	}
 	for i := 0; i < spanCount; i++ {
-		fillSpanTwo(rs0ils0.Spans().AppendEmpty())
+		fillSpanTwo(libSpans.Spans().AppendEmpty())
 	}
 
 	return td
 }
 
-func initInstLib(dest pdata.InstrumentationLibrarySpansSlice) {
-	dest.At(0).SetSchemaUrl("test")
-	dest.At(0).InstrumentationLibrary().SetName("inst_lib")
-	dest.At(0).InstrumentationLibrary().SetVersion("1")
+func generateTestTraceManyRS() []pdata.Traces {
+	traces := make([]pdata.Traces, 5)
+	for traceIndex := 0; traceIndex < len(traces); traceIndex++ {
+		spanCount := 5
+		td := pdata.NewTraces()
+		for resourceIndex := 0; resourceIndex < 5; resourceIndex++ {
+			rs := td.ResourceSpans().AppendEmpty()
+			initResourceAttributes(rs.Resource().Attributes(), resourceIndex)
+			for libIndex := 0; libIndex < 5; libIndex++ {
+				libSpans := rs.InstrumentationLibrarySpans().AppendEmpty()
+				initInstLib(libSpans, libIndex)
+				for i := 0; i < spanCount; i++ {
+					fillSpanOne(libSpans.Spans().AppendEmpty())
+				}
+				for i := 0; i < spanCount; i++ {
+					fillSpanTwo(libSpans.Spans().AppendEmpty())
+				}
+			}
+		}
+		traces[traceIndex] = td
+	}
+	return traces
 }
 
-func initResourceAttributes1(dest pdata.AttributeMap) {
+func initInstLib(dest pdata.InstrumentationLibrarySpans, index int) {
+	dest.SetSchemaUrl(fmt.Sprintf("url-%d", index%2))
+	dest.InstrumentationLibrary().SetName(fmt.Sprintf("inst-lib-name-%d", index))
+	dest.InstrumentationLibrary().SetVersion(fmt.Sprintf("1.%d.0", index%2))
+}
+
+func initResourceAttributes(dest pdata.AttributeMap, index int) {
+	tmpl := pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{
+		"resource-attr": pdata.NewAttributeValueString(fmt.Sprintf("resource-attr-val-%d", index%2)),
+		"service.name":  pdata.NewAttributeValueString(fmt.Sprintf("service-name-%d", index)),
+	})
 	dest.Clear()
-	resourceAttributes.CopyTo(dest)
+	tmpl.CopyTo(dest)
 }
 
 func initSpanEventAttributes(dest pdata.AttributeMap) {
@@ -163,7 +200,7 @@ func TestQueryTraces(t *testing.T) {
 
 func getOperationsTest(t testing.TB, q *query.Query) {
 	request := spanstore.OperationQueryParameters{
-		ServiceName: "service1",
+		ServiceName: "service-name-0",
 	}
 	ops, err := q.GetOperations(context.Background(), request)
 	require.NoError(t, err)
@@ -177,7 +214,7 @@ func getOperationsTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 0, len(ops))
 
 	request = spanstore.OperationQueryParameters{
-		ServiceName: "service1",
+		ServiceName: "service-name-0",
 		SpanKind:    "SPAN_KIND_UNSPECIFIED",
 	}
 	ops, err = q.GetOperations(context.Background(), request)
@@ -185,7 +222,7 @@ func getOperationsTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 2, len(ops))
 
 	request = spanstore.OperationQueryParameters{
-		ServiceName: "service1",
+		ServiceName: "servic-name-0",
 		SpanKind:    "SPAN_KIND_CLIENT",
 	}
 	ops, err = q.GetOperations(context.Background(), request)
@@ -195,7 +232,7 @@ func getOperationsTest(t testing.TB, q *query.Query) {
 
 func findTraceTest(t testing.TB, q *query.Query) {
 	request := &spanstore.TraceQueryParameters{
-		ServiceName: "service1",
+		ServiceName: "service-name-0",
 	}
 
 	traces, err := q.FindTraces(context.Background(), request)
@@ -203,7 +240,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 2, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 	}
 
@@ -212,7 +249,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -223,7 +260,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val-not-actually",
@@ -234,7 +271,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 0, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -246,7 +283,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -258,7 +295,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 0, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -271,7 +308,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -284,7 +321,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 0, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -298,7 +335,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -312,7 +349,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 0, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -327,7 +364,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",
@@ -342,7 +379,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 0, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
-		ServiceName:   "service1",
+		ServiceName:   "service-name-0",
 		OperationName: "operationA",
 		Tags: map[string]string{
 			"span-attr": "span-attr-val",

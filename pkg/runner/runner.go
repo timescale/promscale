@@ -7,6 +7,7 @@ package runner
 // documentation/examples/remote_storage/remote_storage_adapter/main.go
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -33,6 +34,22 @@ var (
 	elector      *util.Elector
 	startupError = fmt.Errorf("startup error")
 )
+
+func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	m, err := handler(ctx, req)
+	if err != nil {
+		log.Error("msg", "error in GRPC call", "err", err)
+	}
+	return m, err
+}
+
+func loggingStreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	err := handler(srv, ss)
+	if err != nil {
+		log.Error("msg", "error in GRPC call", "err", err)
+	}
+	return err
+}
 
 func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Promscale+"; Commit Hash: "+version.CommitHash)
@@ -101,7 +118,10 @@ func Run(cfg *Config) error {
 	}
 
 	if len(cfg.OTLPGRPCListenAddr) > 0 {
-		options := make([]grpc.ServerOption, 0)
+		options := []grpc.ServerOption{
+			grpc.UnaryInterceptor(loggingUnaryInterceptor),
+			grpc.StreamInterceptor(loggingStreamInterceptor),
+		}
 		if cfg.TLSCertFile != "" {
 			creds, err := credentials.NewServerTLSFromFile(cfg.TLSCertFile, cfg.TLSKeyFile)
 			if err != nil {
