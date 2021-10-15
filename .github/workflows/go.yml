@@ -8,7 +8,7 @@ on:
 
 env:
   golang-version: '1.15'
-  golangci-lint-version: 'v1.30.0'
+  golangci-lint-version: 'v1.42.1'
 
 jobs:
 
@@ -33,15 +33,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Format
-      run: |
-        make go-fmt
-        git diff --exit-code .
-
     - name: Lint
       uses: golangci/golangci-lint-action@v2
       with:
         version: ${{ env.golangci-lint-version }}
+
+    - name: Format
+      run: |
+        make go-fmt
+        git diff --exit-code .
 
     - name: Build
       run: make build
