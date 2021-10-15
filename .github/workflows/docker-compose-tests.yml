@@ -6,21 +6,23 @@ on:
   pull_request:
     branches: [master, main, force_test, release-*]
 
+env:
+  golang-version: '1.15'
+
 jobs:
 
   build:
     name: Run
     runs-on: ubuntu-latest
     steps:
-
-    - name: Set up Go 1.14
-      uses: actions/setup-go@v2.1.4
-      with:
-        go-version: 1.14
-      id: go
-
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
+
+    - name: Set up Go ${{ env.golang-version }}
+      uses: actions/setup-go@v2.1.4
+      with:
+        go-version: ${{ env.golang-version }}
+      id: go
 
     - name: Test docker-compose setup referenced in docs
       run: ./docker-compose/test.sh

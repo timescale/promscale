@@ -3,7 +3,7 @@ build:
 	go build -o dist/promscale ./cmd/promscale
 
 test:
-	go test -v -race ./...
+	go test -v -race ./... -timeout 40m
 
 e2e-test:
 	go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false
@@ -15,9 +15,12 @@ e2e-test:
 
 
 go-fmt:
-	gofmt -d .
+	go fmt ./...
 
 go-lint:
-	golangci-lint run --timeout=5m --skip-dirs=pkg/promql --skip-dirs=pkg/promb
+	golangci-lint run
+
+generate:
+	go generate ./...
 
 all: build test e2e-test go-fmt go-lint
