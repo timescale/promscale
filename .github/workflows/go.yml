@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: ['**']
 
-env:
-  golang-version: '1.15'
-  golangci-lint-version: 'v1.42.1'
-
 jobs:
 
   build:
@@ -18,6 +14,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
+
+    - name: Import environment variables
+      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
@@ -52,6 +51,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
+
+    - name: Import environment variables
+      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
@@ -102,6 +104,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
+
+    - name: Import environment variables
+      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
