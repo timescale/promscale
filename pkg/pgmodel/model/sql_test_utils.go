@@ -25,10 +25,11 @@ import (
 )
 
 type SqlRecorder struct {
-	queries   []SqlQuery
-	nextQuery int
-	lock      sync.Mutex
-	t         *testing.T
+	queries        []SqlQuery
+	sendBatchError error
+	nextQuery      int
+	lock           sync.Mutex
+	t              *testing.T
 }
 
 type SqlQuery struct {
@@ -44,6 +45,10 @@ type RowResults [][]interface{}
 
 func NewSqlRecorder(queries []SqlQuery, t *testing.T) *SqlRecorder {
 	return &SqlRecorder{queries: queries, t: t}
+}
+
+func NewErrorSqlRecorder(queries []SqlQuery, err error, t *testing.T) *SqlRecorder {
+	return &SqlRecorder{queries: queries, sendBatchError: err, t: t}
 }
 
 func (r *SqlRecorder) Close() {
@@ -101,6 +106,11 @@ func (r *SqlRecorder) NewBatch() pgxconn.PgxBatch {
 func (r *SqlRecorder) SendBatch(ctx context.Context, b pgxconn.PgxBatch) (pgx.BatchResults, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
+
+	if r.sendBatchError != nil {
+		return nil, r.sendBatchError
+	}
+
 	batch := b.(*MockBatch)
 
 	start := r.nextQuery
@@ -399,6 +409,12 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetUint(m.results[m.idx][i].(uint64))
 		case int64:
+			if d, ok := dest[i].(pgtype.Value); ok {
+				if err := d.Set(m.results[m.idx][i]); err != nil {
+					return err
+				}
+				continue
+			}
 			_, ok1 := dest[i].(*int64)
 			_, ok2 := dest[i].(*SeriesID)
 			_, ok3 := dest[i].(*SeriesEpoch)
@@ -409,6 +425,12 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetInt(m.results[m.idx][i].(int64))
 		case string:
+			if d, ok := dest[i].(pgtype.Value); ok {
+				if err := d.Set(m.results[m.idx][i]); err != nil {
+					return err
+				}
+				continue
+			}
 			if _, ok := dest[i].(*string); ok {
 				dv := reflect.ValueOf(dest[i])
 				dvp := reflect.Indirect(dv)
@@ -424,6 +446,14 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				continue
 			}
 			return fmt.Errorf("wrong value type: neither 'string' or 'pgutf8str'")
+		case nil:
+			if d, ok := dest[i].(pgtype.Value); ok {
+				if err := d.Set(m.results[m.idx][i]); err != nil {
+					return err
+				}
+				continue
+			}
+			panic(fmt.Sprintf("unhandled %T", m.results[m.idx][i]))
 		default:
 			panic(fmt.Sprintf("unhandled %T", m.results[m.idx][i]))
 		}
