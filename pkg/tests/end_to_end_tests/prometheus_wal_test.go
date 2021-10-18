@@ -45,9 +45,10 @@ func generatePrometheusWAL(withExemplars bool) ([]prompb.TimeSeries, string, err
 	}
 
 	st, err := tsdb.Open(dbPath, nil, nil, &tsdb.Options{
-		RetentionDuration: 15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
-		NoLockfile:        true,
-		MaxExemplars:      10000000,
+		RetentionDuration:     15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
+		NoLockfile:            true,
+		EnableExemplarStorage: true,
+		MaxExemplars:          10000000,
 	}, nil)
 	if err != nil {
 		return nil, "", err

@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"go.uber.org/goleak"
@@ -74,7 +74,7 @@ func TestQueryConcurrency(t *testing.T) {
 		case <-processing:
 			// Expected.
 		case <-time.After(20 * time.Millisecond):
-			t.Fatalf("Query within concurrency threshold not being executed")
+			require.Fail(t, "Query within concurrency threshold not being executed")
 		}
 	}
 
@@ -83,7 +83,7 @@ func TestQueryConcurrency(t *testing.T) {
 
 	select {
 	case <-processing:
-		t.Fatalf("Query above concurrency threshold being executed")
+		require.Fail(t, "Query above concurrency threshold being executed")
 	case <-time.After(20 * time.Millisecond):
 		// Expected.
 	}
@@ -95,7 +95,7 @@ func TestQueryConcurrency(t *testing.T) {
 	case <-processing:
 		// Expected.
 	case <-time.After(20 * time.Millisecond):
-		t.Fatalf("Query within concurrency threshold not being executed")
+		require.Fail(t, "Query within concurrency threshold not being executed")
 	}
 
 	// Terminate remaining queries.
@@ -200,8 +200,10 @@ func (q *errQuerier) Select(bool, *storage.SelectHints, *querier.QueryHints, []p
 func (*errQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (*errQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
-func (*errQuerier) Close() error                                    { return nil }
+func (*errQuerier) LabelNames(...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+func (*errQuerier) Close() error { return nil }
 
 // errSeriesSet implements storage.SeriesSet which always returns error.
 type errSeriesSet struct {
@@ -620,7 +622,7 @@ func TestEngineShutdown(t *testing.T) {
 	require.Equal(t, errQueryCanceled, res.Err)
 
 	query2 := engine.newTestQuery(func(context.Context) error {
-		t.Fatalf("reached query execution unexpectedly")
+		require.FailNow(t, "reached query execution unexpectedly")
 		return nil
 	})
 
@@ -1140,9 +1142,7 @@ func TestRecoverEvaluatorRuntime(t *testing.T) {
 	//nolint:govet
 	a[123] = 1
 
-	if err.Error() != "unexpected error" {
-		t.Fatalf("wrong error message: %q, expected %q", err, "unexpected error")
-	}
+	require.EqualError(t, err, "unexpected error")
 }
 
 func TestRecoverEvaluatorError(t *testing.T) {
@@ -1152,9 +1152,7 @@ func TestRecoverEvaluatorError(t *testing.T) {
 	e := errors.New("custom error")
 
 	defer func() {
-		if err.Error() != e.Error() {
-			t.Fatalf("wrong error message: %q, expected %q", err, e)
-		}
+		require.EqualError(t, err, e.Error())
 	}()
 	defer ev.recover(nil, &err)
 

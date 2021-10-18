@@ -53,7 +53,8 @@ func (q samplesQuerier) LabelValues(name string) ([]string, storage.Warnings, er
 	return lVals, nil, err
 }
 
-func (q samplesQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (q samplesQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	// todo: implement labels matcher
 	lNames, err := q.labelsReader.LabelNames()
 	return lNames, nil, err
 }

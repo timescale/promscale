@@ -70,7 +70,7 @@ func BenchmarkRangeQuery(b *testing.B) {
 		a := storage.Appender(context.Background())
 		ts := int64(s * 10000) // 10s interval.
 		for i, metric := range metrics {
-			ref, _ := a.Append(refs[i], metric, ts, float64(s))
+			ref, _ := a.Append(refs[i], metric, ts, float64(s)+float64(i)/float64(len(metrics)))
 			refs[i] = ref
 		}
 		if err := a.Commit(); err != nil {
@@ -129,6 +129,9 @@ func BenchmarkRangeQuery(b *testing.B) {
 		{
 			expr: "a_X unless b_X{l=~'.*[0-4]$'}",
 		},
+		{
+			expr: "a_X and b_X{l='notfound'}",
+		},
 		// Simple functions.
 		{
 			expr: "abs(a_X)",
@@ -158,6 +161,9 @@ func BenchmarkRangeQuery(b *testing.B) {
 		{
 			expr: "count_values('value', h_X)",
 		},
+		{
+			expr: "topk(1, a_X)",
+		},
 		// Combinations.
 		{
 			expr: "rate(a_X[1m]) + rate(b_X[1m])",
@@ -170,6 +176,10 @@ func BenchmarkRangeQuery(b *testing.B) {
 		},
 		{
 			expr: "histogram_quantile(0.9, rate(h_X[5m]))",
+		},
+		// Many-to-one join.
+		{
+			expr: "a_X + on(l) group_right a_one",
 		},
 	}
 

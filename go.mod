@@ -5,15 +5,16 @@ go 1.15
 require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/blang/semver/v4 v4.0.0
-	github.com/cespare/xxhash/v2 v2.1.1
-	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68
+	github.com/cespare/xxhash/v2 v2.1.2
+	github.com/containerd/cgroups v1.0.1
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/felixge/fgprof v0.9.1
 	github.com/go-kit/kit v0.10.0
+	github.com/go-kit/log v0.1.0
 	github.com/go-resty/resty/v2 v2.6.0 // indirect
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/snappy v0.0.3
+	github.com/golang/snappy v0.0.4
 	github.com/hashicorp/go-hclog v0.16.2
 	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
 	github.com/hashicorp/go-plugin v1.4.2
@@ -50,4 +51,4 @@ require (
 )
 
 // Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20210605142932-7bc11dcb0664
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20210923143046-587cb950930e
