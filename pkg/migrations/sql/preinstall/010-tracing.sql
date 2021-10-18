@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.operation
 GRANT SELECT ON TABLE SCHEMA_TRACING.operation TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.operation TO prom_writer;
 GRANT USAGE ON SEQUENCE SCHEMA_TRACING.operation_id_seq TO prom_writer;
-/*
+
 CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.schema_url
 (
     id bigint NOT NULL GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -175,36 +175,36 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.instrumentation_lib
 GRANT SELECT ON TABLE SCHEMA_TRACING.instrumentation_lib TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.instrumentation_lib TO prom_writer;
 GRANT USAGE ON SEQUENCE SCHEMA_TRACING.instrumentation_lib_id_seq TO prom_writer;
-*/
+
 CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
 (
     trace_id SCHEMA_TRACING_PUBLIC.trace_id NOT NULL,
     span_id bigint NOT NULL CHECK (span_id != 0),
     parent_span_id bigint NULL CHECK (parent_span_id != 0),
---    operation_id bigint NOT NULL,
+    operation_id bigint NOT NULL,
     start_time timestamptz NOT NULL,
     end_time timestamptz NOT NULL,
     duration_ms double precision NOT NULL GENERATED ALWAYS AS ( extract(epoch from (end_time - start_time)) * 1000.0 ) STORED,
     event_time tstzrange default NULL,
---    trace_state text CHECK (trace_state != ''),
+    trace_state text CHECK (trace_state != ''),
 --    span_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
     dropped_span_tags_count int NOT NULL default 0,
     dropped_resource_tags_count int NOT NULL default 0,
     dropped_events_count int NOT NULL default 0,
     dropped_link_count int NOT NULL default 0,
     tags SCHEMA_TRACING_PUBLIC.tag_maps NOT NULL,
---    status_code SCHEMA_TRACING_PUBLIC.status_code NOT NULL,
---    status_message text,
---    instrumentation_lib_id bigint,
+    status_code SCHEMA_TRACING_PUBLIC.status_code NOT NULL,
+    status_message text,
+    instrumentation_lib_id bigint,
 --    resource_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
---    resource_schema_url_id BIGINT,
+    resource_schema_url_id BIGINT,
     PRIMARY KEY (span_id, trace_id, start_time),
     CHECK (start_time <= end_time)
 );
 CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (trace_id, parent_span_id) INCLUDE (span_id); -- used for recursive CTEs for trace tree queries
 CREATE INDEX ON SCHEMA_TRACING.span USING GIN (tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
 --CREATE INDEX ON SCHEMA_TRACING.span USING GIN (span_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
---CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (operation_id); -- supports filters/joins to operation table
+CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (operation_id); -- supports filters/joins to operation table
 --CREATE INDEX ON SCHEMA_TRACING.span USING GIN (jsonb_object_keys(span_tags) array_ops); -- possible way to index key exists
 --CREATE INDEX ON SCHEMA_TRACING.span USING GIN (resource_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
 GRANT SELECT ON TABLE SCHEMA_TRACING.span TO prom_reader;

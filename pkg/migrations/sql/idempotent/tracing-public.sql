@@ -515,7 +515,7 @@ $func$
 LANGUAGE plpgsql VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_instrumentation_lib(text, text, bigint) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_map SCHEMA_TRACING_PUBLIC.tag_map)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps)
 RETURNS jsonb
 AS $func$
     /*
@@ -523,23 +523,23 @@ AS $func$
     and returns a jsonb object containing the key value pairs of tags
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
+    FROM jsonb_path_query(_tag_maps, '$[*].keyvalue()') x -- all the key value pairs
     INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
             a.key,
             a.value
         FROM SCHEMA_TRACING.tag a
-        WHERE a.id = x.value::text::bigint
+        WHERE a.id = (x->>'value')::bigint
         -- filter on a.key to eliminate all but one partition of the tag table
-        AND a.key = (SELECT k.key from SCHEMA_TRACING.tag_key k WHERE k.id = x.key::bigint)
+        AND a.key = (SELECT k.key from SCHEMA_TRACING.tag_key k WHERE k.id = (x->>'key')::bigint)
         LIMIT 1
     ) a on (true)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(SCHEMA_TRACING_PUBLIC.tag_map) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(SCHEMA_TRACING_PUBLIC.tag_maps) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, VARIADIC _keys SCHEMA_TRACING_PUBLIC.tag_k[])
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, VARIADIC _keys SCHEMA_TRACING_PUBLIC.tag_k[])
 RETURNS jsonb
 AS $func$
     /*
@@ -548,43 +548,55 @@ AS $func$
     only the key/value pairs with keys passed as arguments are included in the output
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
+    FROM jsonb_path_query(_tag_maps, '$[*].*') x -- all the values
     INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
             a.key,
             a.value
         FROM SCHEMA_TRACING.tag a
-        WHERE a.id = x.value::text::bigint
+        WHERE a.id = (x#>>'{}')::bigint
         AND a.key = ANY(_keys) -- ANY works with partition elimination
     ) a on (true)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(SCHEMA_TRACING_PUBLIC.tag_map) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS SCHEMA_TRACING_PUBLIC.tag_v
 AS $func$
     SELECT a.value
     FROM SCHEMA_TRACING.tag a
     WHERE a.key = _key -- partition elimination
-    AND a.id = (_tag_map->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
+    AND a.id = (
+        jsonb_path_query_first
+        (   _tag_maps,
+            '$[*].keyvalue() ? (@ == $key) .value',
+            jsonb_build_object('key', (SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))
+        )
+    )::bigint
     LIMIT 1
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val_text(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val_text(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS text
 AS $func$
     SELECT a.value#>>'{}'
     FROM SCHEMA_TRACING.tag a
     WHERE a.key = _key -- partition elimination
-    AND a.id = (_tag_map->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
+    AND a.id = (
+        jsonb_path_query_first
+        (   _tag_maps,
+            '$[*].keyvalue() ? (@ == $key) .value',
+            jsonb_build_object('key', (SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))
+        )
+    )::bigint
     LIMIT 1
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val_text(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val_text(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(_tags jsonb)
 RETURNS SCHEMA_TRACING_PUBLIC.tag_map
