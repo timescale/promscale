@@ -61,6 +61,9 @@ CALL SCHEMA_CATALOG.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
     CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_map jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(value) = 'object');
     GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_map TO prom_reader;
 
+    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_maps jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(value) = 'array');
+    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_maps TO prom_reader;
+
     CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_type smallint NOT NULL; --bitmap, may contain several types
     GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_type TO prom_reader;
 
@@ -151,7 +154,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.operation
 GRANT SELECT ON TABLE SCHEMA_TRACING.operation TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.operation TO prom_writer;
 GRANT USAGE ON SEQUENCE SCHEMA_TRACING.operation_id_seq TO prom_writer;
-
+/*
 CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.schema_url
 (
     id bigint NOT NULL GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -172,36 +175,38 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.instrumentation_lib
 GRANT SELECT ON TABLE SCHEMA_TRACING.instrumentation_lib TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.instrumentation_lib TO prom_writer;
 GRANT USAGE ON SEQUENCE SCHEMA_TRACING.instrumentation_lib_id_seq TO prom_writer;
-
+*/
 CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
 (
     trace_id SCHEMA_TRACING_PUBLIC.trace_id NOT NULL,
     span_id bigint NOT NULL CHECK (span_id != 0),
     parent_span_id bigint NULL CHECK (parent_span_id != 0),
-    operation_id bigint NOT NULL,
+--    operation_id bigint NOT NULL,
     start_time timestamptz NOT NULL,
     end_time timestamptz NOT NULL,
     duration_ms double precision NOT NULL GENERATED ALWAYS AS ( extract(epoch from (end_time - start_time)) * 1000.0 ) STORED,
-    trace_state text CHECK (trace_state != ''),
-    span_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
-    dropped_tags_count int NOT NULL default 0,
     event_time tstzrange default NULL,
+--    trace_state text CHECK (trace_state != ''),
+--    span_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
+    dropped_span_tags_count int NOT NULL default 0,
+    dropped_resource_tags_count int NOT NULL default 0,
     dropped_events_count int NOT NULL default 0,
     dropped_link_count int NOT NULL default 0,
-    status_code SCHEMA_TRACING_PUBLIC.status_code NOT NULL,
-    status_message text,
-    instrumentation_lib_id bigint,
-    resource_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
-    resource_dropped_tags_count int NOT NULL default 0,
-    resource_schema_url_id BIGINT,
+    tags SCHEMA_TRACING_PUBLIC.tag_maps NOT NULL,
+--    status_code SCHEMA_TRACING_PUBLIC.status_code NOT NULL,
+--    status_message text,
+--    instrumentation_lib_id bigint,
+--    resource_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
+--    resource_schema_url_id BIGINT,
     PRIMARY KEY (span_id, trace_id, start_time),
     CHECK (start_time <= end_time)
 );
 CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (trace_id, parent_span_id) INCLUDE (span_id); -- used for recursive CTEs for trace tree queries
-CREATE INDEX ON SCHEMA_TRACING.span USING GIN (span_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
-CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (operation_id); -- supports filters/joins to operation table
+CREATE INDEX ON SCHEMA_TRACING.span USING GIN (tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
+--CREATE INDEX ON SCHEMA_TRACING.span USING GIN (span_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
+--CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (operation_id); -- supports filters/joins to operation table
 --CREATE INDEX ON SCHEMA_TRACING.span USING GIN (jsonb_object_keys(span_tags) array_ops); -- possible way to index key exists
-CREATE INDEX ON SCHEMA_TRACING.span USING GIN (resource_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
+--CREATE INDEX ON SCHEMA_TRACING.span USING GIN (resource_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
 GRANT SELECT ON TABLE SCHEMA_TRACING.span TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.span TO prom_writer;
 
@@ -212,7 +217,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.event
     span_id bigint NOT NULL CHECK (span_id != 0),
     event_nbr int NOT NULL DEFAULT 0,
     name text NOT NULL CHECK (name != ''),
-    tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
+    tags SCHEMA_TRACING_PUBLIC.tag_maps NOT NULL,
     dropped_tags_count int NOT NULL DEFAULT 0
 );
 CREATE INDEX ON SCHEMA_TRACING.event USING GIN (tags jsonb_path_ops);
@@ -229,7 +234,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.link
     linked_span_id bigint NOT NULL CHECK (linked_span_id != 0),
     link_nbr int NOT NULL DEFAULT 0,
     trace_state text CHECK (trace_state != ''),
-    tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
+    tags SCHEMA_TRACING_PUBLIC.tag_maps NOT NULL,
     dropped_tags_count int NOT NULL DEFAULT 0
 );
 CREATE INDEX ON SCHEMA_TRACING.link USING BTREE (trace_id, span_id);
