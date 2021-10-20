@@ -571,7 +571,7 @@ AS $func$
     AND a.id = (
         jsonb_path_query_first
         (   _tag_maps,
-            '$[*].keyvalue() ? (@ == $key) .value',
+            '$[*].keyvalue() ? (@.key == $key) .value',
             jsonb_build_object('key', (SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))
         )
     )::bigint
@@ -589,7 +589,7 @@ AS $func$
     AND a.id = (
         jsonb_path_query_first
         (   _tag_maps,
-            '$[*].keyvalue() ? (@ == $key) .value',
+            '$[*].keyvalue() ? (@.key == $key) .value',
             jsonb_build_object('key', (SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))
         )
     )::bigint
