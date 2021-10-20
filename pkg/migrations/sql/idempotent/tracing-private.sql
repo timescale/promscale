@@ -115,7 +115,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_equals(SCHEMA_TAG.tag_op_equals) T
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_equals(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_equals)
 RETURNS boolean
 AS $func$
-    SELECT _tag_map @> (SCHEMA_TRACING.eval_equals(_op))
+    SELECT _tag_maps @> (SCHEMA_TRACING.eval_equals(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_equals(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_equals) TO prom_reader;
