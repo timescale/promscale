@@ -1,16 +1,3 @@
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.get_tag_id(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
-RETURNS jsonb
-AS $func$
-    SELECT jsonb_path_query_first
-    (   _tag_maps,
-        $qry$  $[*].keyvalue() ? (@ == $key) .value  $qry$,
-        jsonb_build_object('key', (SELECT k.id::text from _ps_trace.tag_key k WHERE k.key = _key LIMIT 1))
-    )
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.get_tag_id(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.get_tag_id IS $$This function supports the # operator.$$;
-
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_tags_by_key(_key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS jsonb[]
 AS $func$
@@ -20,15 +7,6 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_tags_by_key(SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.has_tag(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_tags_by_key(_key))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.has_tag(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.has_tag IS $$This function supports the #? operator.$$;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_jsonb_path_exists(_op SCHEMA_TAG.tag_op_jsonb_path_exists)
 RETURNS jsonb[]
@@ -40,15 +18,6 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_jsonb_path_exists(SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_jsonb_path_exists(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_jsonb_path_exists(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_jsonb_path_exists(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_jsonb_path_exists IS $$This function supports the @? operator.$$;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_regexp_matches(_op SCHEMA_TAG.tag_op_regexp_matches)
 RETURNS jsonb[]
@@ -66,15 +35,6 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_regexp_matches(SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_regexp_matches(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_regexp_matches)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_regexp_matches(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_regexp_matches(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_regexp_matches IS $$This function supports the ==~ operator.$$;
-
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_regexp_not_matches(_op SCHEMA_TAG.tag_op_regexp_not_matches)
 RETURNS jsonb[]
 AS $func$
@@ -91,15 +51,6 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_regexp_not_matches(SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_regexp_not_matches(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_regexp_not_matches)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_regexp_not_matches(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_regexp_not_matches(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_regexp_not_matches IS $$This function supports the !=~ operator.$$;
-
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_equals(_op SCHEMA_TAG.tag_op_equals)
 RETURNS jsonb
 AS $func$
@@ -112,15 +63,6 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_equals(SCHEMA_TAG.tag_op_equals) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_equals(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_equals)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> (SCHEMA_TRACING.eval_equals(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_equals(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_equals) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_equals IS $$This function supports the == operator.$$;
-
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_not_equals(_op SCHEMA_TAG.tag_op_not_equals)
 RETURNS jsonb[]
 AS $func$
@@ -131,15 +73,6 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_not_equals(SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_not_equals(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_not_equals)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_not_equals(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_not_equals(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_not_equals IS $$This function supports the !== operator.$$;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_less_than(_op SCHEMA_TAG.tag_op_less_than)
 RETURNS jsonb[]
@@ -152,15 +85,6 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_less_than(SCHEMA_TAG.tag_op_less_than) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_less_than(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_less_than)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_less_than(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_less_than(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_less_than IS $$This function supports the #< operator.$$;
-
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_less_than_or_equal(_op SCHEMA_TAG.tag_op_less_than_or_equal)
 RETURNS jsonb[]
 AS $func$
@@ -171,15 +95,6 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_less_than_or_equal(SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_less_than_or_equal(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_less_than_or_equal)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_less_than_or_equal(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_less_than_or_equal(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_less_than_or_equal IS $$This function supports the #<= operator.$$;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_greater_than(_op SCHEMA_TAG.tag_op_greater_than)
 RETURNS jsonb[]
@@ -192,15 +107,6 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_greater_than(SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_greater_than(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_greater_than)
-RETURNS boolean
-AS $func$
-    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_greater_than(_op))
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_greater_than(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_greater_than IS $$This function supports the #> operator.$$;
-
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.eval_greater_than_or_equal(_op SCHEMA_TAG.tag_op_greater_than_or_equal)
 RETURNS jsonb[]
 AS $func$
@@ -212,11 +118,105 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.eval_greater_than_or_equal(SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.match_greater_than_or_equal(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_get_tag_id(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
+RETURNS jsonb
+AS $func$
+    SELECT jsonb_path_query_first
+    (   _tag_maps,
+        $qry$  $[*].keyvalue() ? (@ == $key) .value  $qry$,
+        jsonb_build_object('key', (SELECT k.id::text from _ps_trace.tag_key k WHERE k.key = _key LIMIT 1))
+    )
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_get_tag_id(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_get_tag_id IS $$This function supports the # operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_has_tag(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_tags_by_key(_key))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_has_tag(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_has_tag IS $$This function supports the #? operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_jsonb_path_exists(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_jsonb_path_exists(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_jsonb_path_exists(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_jsonb_path_exists IS $$This function supports the @? operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_regexp_matches(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_regexp_matches)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_regexp_matches(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_regexp_matches(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_regexp_matches IS $$This function supports the ==~ operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_regexp_not_matches(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_regexp_not_matches)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_regexp_not_matches(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_regexp_not_matches(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_regexp_not_matches IS $$This function supports the !=~ operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_equals(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_equals)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> (SCHEMA_TRACING.eval_equals(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_equals(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_equals) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_equals IS $$This function supports the == operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_not_equals(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_not_equals)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_not_equals(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_not_equals(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_not_equals IS $$This function supports the !== operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_less_than(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_less_than)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_less_than(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_less_than(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_less_than IS $$This function supports the #< operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_less_than_or_equal(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_less_than_or_equal)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_less_than_or_equal(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_less_than_or_equal(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_less_than_or_equal IS $$This function supports the #<= operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_greater_than(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_greater_than)
+RETURNS boolean
+AS $func$
+    SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_greater_than(_op))
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_greater_than(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_greater_than IS $$This function supports the #> operator.$$;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tags_maps_match_greater_than_or_equal(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
 RETURNS boolean
 AS $func$
     SELECT _tag_maps @> ANY(SCHEMA_TRACING.eval_greater_than_or_equal(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.match_greater_than_or_equal(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
-COMMENT ON FUNCTION SCHEMA_TRACING.match_greater_than_or_equal IS $$This function supports the #>= operator.$$;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.tags_maps_match_greater_than_or_equal(SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING.tags_maps_match_greater_than_or_equal IS $$This function supports the #>= operator.$$;

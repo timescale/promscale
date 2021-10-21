@@ -55,70 +55,196 @@ ALTER TABLE SCHEMA_TRACING.link DROP COLUMN IF EXISTS old_tags;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS link_tags_idx ON SCHEMA_TRACING.link USING gin (tags jsonb_path_ops);
 
 /******************************************************************************
-    DROP OLD FUNCTIONS AND OPERATORS
+    STUB OUT NEW FUNCTIONS AND OPERATORS
 ******************************************************************************/
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.get_tag_id(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.# (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TRACING_PUBLIC.tag_k
-) CASCADE;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_id                  (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k                 ) RENAME TO tag_map_get_tag_id                  ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.has_tag                     (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TRACING_PUBLIC.tag_k                 ) RENAME TO tag_map_has_tag                     ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_equals                (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_equals                ) RENAME TO tag_map_match_equals                ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_greater_than          (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_greater_than          ) RENAME TO tag_map_match_greater_than          ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_greater_than_or_equal (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_greater_than_or_equal ) RENAME TO tag_map_match_greater_than_or_equal ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_jsonb_path_exists     (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_jsonb_path_exists     ) RENAME TO tag_map_match_jsonb_path_exists     ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_less_than             (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_less_than             ) RENAME TO tag_map_match_less_than             ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_less_than_or_equal    (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_less_than_or_equal    ) RENAME TO tag_map_match_less_than_or_equal    ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_not_equals            (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_not_equals            ) RENAME TO tag_map_match_not_equals            ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_regexp_matches        (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_regexp_matches        ) RENAME TO tag_map_match_regexp_matches        ;
+ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_regexp_not_matches    (SCHEMA_TRACING_PUBLIC.tag_maps, SCHEMA_TAGGING.tag_op_regexp_not_matches    ) RENAME TO tag_map_match_regexp_not_matches    ;
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.has_tag(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.#? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TRACING_PUBLIC.tag_k
-) CASCADE;
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_element(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _index int)
+RETURNS SCHEMA_TRACING_PUBLIC.tag_map
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT null::SCHEMA_TRACING_PUBLIC.tag_map
+$func$
+LANGUAGE sql STABLE PARALLEL SAFE;
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_jsonb_path_exists(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_jsonb_path_exists);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TAG.tag_op_jsonb_path_exists
-) CASCADE;
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.-> (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = int,
+    FUNCTION = SCHEMA_TRACING.tag_maps_element
+);
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_regexp_matches(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_regexp_matches);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TAG.tag_op_regexp_matches
-) CASCADE;
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_get_tag_id(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
+RETURNS jsonb
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT null::jsonb
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_regexp_not_matches(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_regexp_not_matches);
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.# (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
+    FUNCTION = SCHEMA_TRACING.tag_maps_get_tag_id
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_has_tag(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _key SCHEMA_TRACING_PUBLIC.tag_k)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.#? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
+    FUNCTION = SCHEMA_TRACING.tag_maps_has_tag
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_jsonb_path_exists(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
 CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TAG.tag_op_regexp_not_matches
-) CASCADE;
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_jsonb_path_exists,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_jsonb_path_exists
+);
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_equals(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_equals);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_maps,
-    SCHEMA_TAG.tag_op_equals
-) CASCADE;
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_regexp_matches(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_regexp_matches)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_not_equals(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_not_equals);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_maps,
-    SCHEMA_TAG.tag_op_not_equals
-) CASCADE;
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_regexp_matches,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_regexp_matches
+);
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_less_than(SCHEMA_TRACING_PUBLIC.tag_map, _op SCHEMA_TAG.tag_op_less_than);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TAG.tag_op_less_than
-) CASCADE;
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_regexp_not_matches(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_regexp_not_matches)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_less_than_or_equal(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_less_than_or_equal);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TAG.tag_op_less_than_or_equal
-) CASCADE;
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_regexp_not_matches,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_regexp_not_matches
+);
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_greater_than(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_greater_than);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TAG.tag_op_greater_than
-) CASCADE;
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_equals(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_equals)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.match_greater_than_or_equal(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_greater_than_or_equal);
-DROP OPERATOR IF EXISTS SCHEMA_TRACING_PUBLIC.? (
-    SCHEMA_TRACING_PUBLIC.tag_map,
-    SCHEMA_TAG.tag_op_greater_than_or_equal
-) CASCADE;
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_equals,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_equals
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_not_equals(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_not_equals)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_not_equals,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_not_equals
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_less_than(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_less_than)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_less_than,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_less_than
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_less_than_or_equal(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_less_than_or_equal)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_less_than_or_equal,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_less_than_or_equal
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_greater_than(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_greater_than)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_greater_than,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_greater_than
+);
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.tag_maps_match_greater_than_or_equal(_tag_maps SCHEMA_TRACING_PUBLIC.tag_maps, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
+RETURNS boolean
+AS $func$
+    -- this function body will be replaced later in idempotent script
+    -- it's only here so we can create the operators (no "if not exists" for operators)
+    SELECT false
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE;
+
+CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
+    LEFTARG = SCHEMA_TRACING_PUBLIC.tag_maps,
+    RIGHTARG = SCHEMA_TAG.tag_op_greater_than_or_equal,
+    FUNCTION = SCHEMA_TRACING.tag_maps_match_greater_than_or_equal
+);
