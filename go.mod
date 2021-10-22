@@ -10,7 +10,6 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/felixge/fgprof v0.9.1
-	github.com/go-kit/kit v0.10.0
 	github.com/go-kit/log v0.1.0
 	github.com/go-resty/resty/v2 v2.6.0 // indirect
 	github.com/gogo/protobuf v1.3.2
@@ -34,7 +33,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.30.0
+	github.com/prometheus/common v0.32.1
 	github.com/prometheus/prometheus v1.8.2-0.20210605142932-7bc11dcb0664
 	github.com/schollz/progressbar/v3 v3.8.3
 	github.com/sergi/go-diff v1.2.0
