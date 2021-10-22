@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.event
     span_id bigint NOT NULL CHECK (span_id != 0),
     event_nbr int NOT NULL DEFAULT 0,
     name text NOT NULL CHECK (name != ''),
-    tags SCHEMA_TRACING_PUBLIC.tag_maps NOT NULL,
+    tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
     dropped_tags_count int NOT NULL DEFAULT 0
 );
 CREATE INDEX ON SCHEMA_TRACING.event USING GIN (tags jsonb_path_ops);
@@ -234,7 +234,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.link
     linked_span_id bigint NOT NULL CHECK (linked_span_id != 0),
     link_nbr int NOT NULL DEFAULT 0,
     trace_state text CHECK (trace_state != ''),
-    tags SCHEMA_TRACING_PUBLIC.tag_maps NOT NULL,
+    tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
     dropped_tags_count int NOT NULL DEFAULT 0
 );
 CREATE INDEX ON SCHEMA_TRACING.link USING BTREE (trace_id, span_id);
