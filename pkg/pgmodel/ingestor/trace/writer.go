@@ -7,6 +7,7 @@ package trace
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -34,9 +35,9 @@ const (
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	insertSpanEventSQL = `INSERT INTO %s.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
-		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, tags, dropped_tags_count,
+		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_dropped_tags_count, resource_schema_url_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, %s.get_tag_map($8), $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT DO NOTHING`  // Most cases conflict only happens on retries, safe to ignore duplicate data.
 )
 
@@ -109,6 +110,23 @@ func getServiceName(rSpan pdata.ResourceSpans) string {
 		serviceName = av.AsString()
 	}
 	return serviceName
+}
+
+func getMergedTagsJSON(resourceTags, spanTags map[string]interface{}) ([]byte, error) {
+	// note: if a tag is present in both, prefer the span version since it is likely
+	// more specific
+	tagMap := make(map[string]interface{})
+	for k, v := range resourceTags {
+		tagMap[k] = v
+	}
+	for k, v := range spanTags {
+		tagMap[k] = v
+	}
+	jsonBytes, err := json.Marshal(tagMap)
+	if err != nil {
+		return nil, err
+	}
+	return jsonBytes, nil
 }
 
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
@@ -241,12 +259,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					return err
 				}
 
-				jsonResourceTags, err := tagsBatch.GetTagMapJSON(rSpan.Resource().Attributes().AsRaw(), ResourceTagType)
-				if err != nil {
-					return err
-				}
+				resourceTags := rSpan.Resource().Attributes().AsRaw()
+				spanTags := span.Attributes().AsRaw()
 
-				jsonTags, err := tagsBatch.GetTagMapJSON(span.Attributes().AsRaw(), SpanTagType)
+				jsonTags, err := getMergedTagsJSON(resourceTags, spanTags)
 				if err != nil {
 					return err
 				}
@@ -254,7 +270,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 				eventTimeRange := getEventTimeRange(span.Events())
 
 				spanBatch.Queue(
-					fmt.Sprintf(insertSpanSQL, schema.Trace),
+					fmt.Sprintf(insertSpanSQL, schema.Trace, schema.Trace),
 					traceID,
 					spanID,
 					getTraceStateValue(span.TraceState()),
@@ -270,7 +286,6 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					span.Status().Code().String(),
 					span.Status().Message(),
 					instLibID,
-					string(jsonResourceTags),
 					0, // TODO: Add resource_dropped_tags_count when it gets exposed upstream.
 					rSchemaURLID,
 				)
