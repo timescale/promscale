@@ -64,15 +64,13 @@ remote storage endpoints. For more information about prom-migrator, visit
 * **[Tutorial: Getting Started with Promscale](https://docs.timescale.com/timescaledb/latest/tutorials/promscale/)**
 * **[Tracing (beta)](docs/tracing.md)** 
 * **[High Availability](docs/high-availability/prometheus-HA.md)**
-* **[Multi-tenancy](docs/multi_tenancy.md)**
 * **[Multi-Node TimescaleDB](docs/multinode.md)**
-* **[Writing Data to Promscale](docs/writing_to_promscale.md)**
+* **[Multi-tenancy](docs/multi_tenancy.md)**
+* **[Writing Metric Data](docs/writing_to_promscale.md)**
+* **[Downsampling](docs/downsampling.md)**
 * **[Alerting & Recording Rules](docs/alerting-recording.md)**
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
 * **[Quick Tips](#-quick-tips)**
-* **[High Availability](docs/high-availability/prometheus-HA.md)**
-* **[Multi-Node TimescaleDB](docs/multinode.md)**
-* **[Downsampling in Promscale](docs/downsampling.md)**
 * **[FAQ](docs/faq.md)**
 * **[Contributing](#%EF%B8%8F-contributing)**
 
