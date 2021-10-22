@@ -9,19 +9,19 @@
 powered by SQL**.
 
 It's built on the robust and high-peformance foundation of
-**PostgreSQL and TimescaleDB**. It has native support for **Prometheus** metrics and 
+**PostgreSQL and TimescaleDB**. It has native support for **Prometheus** metrics and
 **OpenTelemetry** traces as well as many other formats like StatsD, Jaeger and Zipkin
 through the OpenTelemetry Collector and is **100% PromQL compliant**.
-It's **full SQL** capabilities enable developers to **correlate metrics, traces and also 
-business data** to derive new valuable insights not possible when data is siloed in 
+It's **full SQL** capabilities enable developers to **correlate metrics, traces and also
+business data** to derive new valuable insights not possible when data is siloed in
 different systems.
 
 Built on top of PostgreSQL and [TimescaleDB](https://www.timescale.com/) it inherits
-**rock-solid reliability, native compression up to 90%, continuous aggregates and the 
+**rock-solid reliability, native compression up to 90%, continuous aggregates and the
 operational maturity** of a system that is run on millions of instances worldwide.
 
 For Prometheus users, Promscale provides a robust and highly scalable long-term storage
-system that is 100% PromQL compliant. 
+system that is 100% PromQL compliant.
 ✅  Promscale has consistently been one of the only long-term stores for Prometheus data that continue to maintain its top-performance, receiving
 [100% compliance test score](https://promlabs.com/promql-compliance-test-results/2020-12-01/promscale)
 each time (with no cross-cutting concerns) from PromLab's
@@ -62,16 +62,15 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Data Retention](docs/sql_schema.md#data-retention)
   * [Roles and Permissions](docs/sql_permissions.md)
 * **[Tutorial: Getting Started with Promscale](https://docs.timescale.com/timescaledb/latest/tutorials/promscale/)**
-* **[Tracing (beta)](docs/tracing.md)** 
+* **[Tracing (beta)](docs/tracing.md)**
 * **[High Availability](docs/high-availability/prometheus-HA.md)**
-* **[Multi-tenancy](docs/multi_tenancy.md)**
 * **[Multi-Node TimescaleDB](docs/multinode.md)**
-* **[Writing Data to Promscale](docs/writing_to_promscale.md)**
-* **[Alerting & Recording Rules](docs/alerting-recording.md)**
+* **[Multi-tenancy](docs/multi_tenancy.md)**
+* **[Writing Metric Data](docs/writing_to_promscale.md)**
+* **[Alerting](docs/alerting.md)**
+* **[Downsampling](docs/downsampling.md)**
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
 * **[Quick Tips](#-quick-tips)**
-* **[High Availability](docs/high-availability/prometheus-HA.md)**
-* **[Multi-Node TimescaleDB](docs/multinode.md)**
 * **[FAQ](docs/faq.md)**
 * **[Contributing](#%EF%B8%8F-contributing)**
 
@@ -105,7 +104,7 @@ backend datasource for Zabbix users and is natively supported in Grafana.
 ## 🚀 Timescale Cloud
 
 **[Timescale cloud](https://www.timescale.com/cloud)** offers you an unrivalled experience of TimescaleDB.
-All you have to do to integrate with Timescale cloud is configure the db uri using `-db-uri` flag in Promscale to database 
+All you have to do to integrate with Timescale cloud is configure the db uri using `-db-uri` flag in Promscale to database
 instance running in Timescale cloud.
 
 **Note:** Timescale cloud offers a 30-day free trial.  
