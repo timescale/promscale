@@ -40,7 +40,7 @@ WITH (timescaledb.continuous) AS
 For Promscale to be able to use a continuous aggregate as a metric view it must meet the following requirements:
 * It must be based on a raw metric series ingested by Promscale that is specified in the FROM clause.
 * It must include a column named `time` of type `timestamptz` that corresponds to the time associated to each aggregated metric sample. Note we add 1 hour to time_bucket in the SELECT clause to match the PromQL semantics of representing a bucket with the timestamp at the end of the bucket instead of the start of the bucket.
-* It must include a column named `series_id` of type bigint that corresponds to the series_id from the raw metrics.
+* It must include a column named `series_id` of type `bigint`  that corresponds to the `series_id`  from the raw metrics.
 * A number of additional columns of type `double precision`  that correspond to the metric values you want to store.
 
 Currently continuous aggregates only supports one metric metric series in the FROM clause and can only generate aggregations within the same series_id (a series_id corresponds to a specific metric name and set of labels).
