@@ -18,7 +18,7 @@ Benefits of continous aggregates:
  
 
 
-Creating a continuous aggregate in Promscale consists of two operations: creating a TimescaleDB continuous aggregate and registering the new metric so it's available to PromQL queries. If you don't use PromQL to query the data, then the second step is not needed. Let's use an example to illustrate how this works.
+Creating a continuous aggregate in Promscale consists of two operations: creating a TimescaleDB continuous aggregate and registering the new metric so it's available to PromQL queries and other Promscale functions like the one used to configure retention. Let's use an example to illustrate how this works.
 
 ### Usage example
 
@@ -37,7 +37,7 @@ WITH (timescaledb.continuous) AS
     GROUP BY time_bucket('1 hour', time), series_id
 ```
 
-For more information on continuous aggregates and all their options, refer to the [documentation](https://docs.timescale.com/timescaledb/latest/how-to-guides/continuous-aggregates/). This continuous aggregate can now be queried via SQL. To make it possible to query the data with PromQL, we have to register it with Promscale as a PromQL metric view:
+For more information on continuous aggregates and all their options, refer to the [documentation](https://docs.timescale.com/timescaledb/latest/how-to-guides/continuous-aggregates/). This continuous aggregate can now be queried via SQL. To make it possible to query the data with PromQL, we have to register it with Promscale as a metric view:
 
 ```
 SELECT register_metric_view('public', 'node_memfree_1hour');
@@ -90,7 +90,7 @@ which is equivalent to
 node_memfree_1hour{__column__="value"}
 ```
 
-Promscale also adds a new tag called `__schema__` which will help you identify in which schema the PromQL metric view is registered. Generally you would not need to use this but in cases where you may have two metrics with the same name in different schemas (which we strongly discourage but it may happen by mistake), you would need to select which one you want to use. If you don't, then Promscale will query the metric in the prom_data schema which is the one used for all ingested metrics. An easy way to avoid those issues would be to make sure you name your continuous aggregate views with a name that raw ingested metrics will not have, like `node_memfree_**1hour**`.
+Promscale also adds a new tag called `__schema__` which will help you identify in which schema the metric view is registered. Generally you would not need to use this but in cases where you may have two metrics with the same name in different schemas (which we strongly discourage but it may happen by mistake), you would need to select which one you want to use. If you don't, then Promscale will query the metric in the prom_data schema which is the one used for all ingested metrics. An easy way to avoid those issues would be to make sure you name your continuous aggregate views with a name that raw ingested metrics will not have, like `node_memfree_**1hour**`.
 
 Finally, note that both the `__schema__` and `__column__` label matchers support only exact matching, no regex or other multi value matchers allowed. Also, metric views are excluded from queries that match multiple metrics (i.e., matching on metric names with a regex).
 
@@ -100,9 +100,9 @@ Finally, note that both the `__schema__` and `__column__` label matchers support
 
 ### Deleting a Continuous Aggregate
 
-To delete a Promscale continuous aggregate, you have to delete the PromQL metric view (if you created it) and then remove the continuous aggregate.
+To delete a Promscale continuous aggregate, you have to delete the metric view and then remove the continuous aggregate.
 
-So continuing with our example, we would first remove the PromQL metric view:
+So continuing with our example, we would first remove the metric view:
 
 ```
 unregister_metric_view('public', 'node_memfree_1hour');
@@ -113,14 +113,6 @@ And then we would delete the continuous aggregate:
 ```
 DROP MATERIALIZED VIEW node_memfree_1hour;
 ```
-
-### Function index
-
- Name | Arguments | Return type | Description
- --- | --- | --- | ---
- register_metric_view           | schema_name text, view_name text, if_not_exists boolean                                                        | boolean                  | Register metric view with Promscale. This will enable you to query the data and set data retention policies through Promscale. Schema name and view name should be set to the desired schema and view you want to use. Note: underlying view needs to be based on an existing metric in Promscale (should use its table in the FROM clause). 
- unregister_metric_view           | schema_name text, view_name text, if_not_exists boolean                                                        | boolean                  | Unregister metric view with Promscale. Schema name and view name should be set to the metric view already registered in Promscale. 
-
 
 ## Prometheus Recording Rules
 
