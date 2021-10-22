@@ -8,7 +8,15 @@ You can use two downsampling methods with Promscale: Promscale continuous aggreg
 
 **Note**: this feature is currently in beta.
 
-Promscale continuous aggregates leverage a [TimescaleDB feature of the same name](https://docs.timescale.com/timescaledb/latest/overview/core-concepts/continuous-aggregates/#refresh-cagg) to have the database manage data downsampling and materialization. Continuous aggre
+Promscale continuous aggregates leverage a [TimescaleDB feature of the same name](https://docs.timescale.com/timescaledb/latest/overview/core-concepts/continuous-aggregates/#refresh-cagg) to have the database manage data downsampling and materialization.
+
+Benefits of continous aggregates:
+* **Timeliness**: continuous aggregates have a feature called real-time aggregates (enabled by default) where the database automatically combines the materialized results with a query over the newest not-yet-materialized data to provide an accurate up-to-the-second view of your data. 
+* **Rollups**: continuous aggregates store the intermediate state of an aggregate in the materialization, making further rollups possible. Read more about the way you define aggregates in this [blog post](https://blog.timescale.com/blog/how-postgresql-aggregation-works-and-how-it-inspired-our-hyperfunctions-design-2/).
+* **Query flexibility for retrospective analysis**: continuous aggregates allows for multi-purpose aggregates. For instance, Timescale’s toolkit extension has aggregates that support percentile queries on any percentile, and statistical aggregates supporting multiple summary aggregates. The aggregates that you define when you configure the materialization are much more flexible in what data you can derive at query time.
+* **Backfilling**: Continuous aggregates automatically downsample all data available including past data so that you can start benefiting from the performance improvements the aggregated metric brings as soon as it is created.  
+ 
+
 
 Creating a continuous aggregate in Promscale consists of two operations: creating a TimescaleDB continuous aggregate and registering the new metric so it's available to PromQL queries. If you don't use PromQL to query the data, then the second step is not needed. Let's use an example to illustrate how this works.
 
@@ -157,7 +165,9 @@ To learn more about recording rules check the [Prometheus documentation](https:/
 
 ## Data Retention
 
-All metrics in Promscale use the default retention period when they are created but you can change both the default retention period as well as the retention period for individual metrics which Prometheus doesn't provide. A typical use case is to retain aggregated metrics for longer for trend analysis. 
+All metrics in Promscale use the default retention period when they are created but you can change both the default retention period as well as the retention period for individual metrics which Prometheus doesn't provide. A typical use case is to retain aggregated metrics for longer for trend analysis.
+
+Read more in the [metric retention documentation](metric_deletion_and_retention.md#metric-retention).
 
 ## Choosing a downsampling method
 
