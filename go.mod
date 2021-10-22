@@ -46,7 +46,7 @@ require (
 	go.opentelemetry.io/collector/model v0.36.0
 	go.uber.org/goleak v1.1.11-0.20210813005559-691160354723
 	golang.org/x/net v0.0.0-20211005001312-d4b1ae081e3b // indirect
-	google.golang.org/grpc v1.40.0
+	google.golang.org/grpc v1.41.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
