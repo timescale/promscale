@@ -72,6 +72,7 @@ remote storage endpoints. For more information about prom-migrator, visit
 * **[Quick Tips](#-quick-tips)**
 * **[High Availability](docs/high-availability/prometheus-HA.md)**
 * **[Multi-Node TimescaleDB](docs/multinode.md)**
+* **[Downsampling in Promscale](docs/downsampling.md)**
 * **[FAQ](docs/faq.md)**
 * **[Contributing](#%EF%B8%8F-contributing)**
 
