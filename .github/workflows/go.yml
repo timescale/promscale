@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: ['**']
 
-env:
-  golang-version: '1.15'
-  golangci-lint-version: 'v1.30.0'
-
 jobs:
 
   build:
@@ -19,29 +15,24 @@ jobs:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
 
+    - name: Import environment variables
+      run: cat ".github/env" >> $GITHUB_ENV
+
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
       with:
         go-version: ${{ env.golang-version }}
       id: go
 
-    - name: Use Go module caching
-      uses: actions/cache@v2
+    - name: Lint
+      uses: golangci/golangci-lint-action@v2
       with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+        version: ${{ env.golangci-lint-version }}
 
     - name: Format
       run: |
         make go-fmt
         git diff --exit-code .
-
-    - name: Lint
-      uses: golangci/golangci-lint-action@v2
-      with:
-        version: ${{ env.golangci-lint-version }}
 
     - name: Build
       run: make build
@@ -52,6 +43,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
+
+    - name: Import environment variables
+      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4
@@ -102,6 +96,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
+
+    - name: Import environment variables
+      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.1.4

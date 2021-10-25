@@ -9,3 +9,7 @@ package migrations
 // of the binary
 
 //go:generate go run -tags=dev generate.go
+
+// pin vfsgen version in go mod. It's used in generate.go but that isn't picked up
+// because it uses "ignore" tag. See https://github.com/shurcooL/vfsgen/issues/83
+import _ "github.com/shurcooL/vfsgen"
