@@ -32,18 +32,26 @@ func InitWatcher(calculateEvery time.Duration) {
 }
 
 type throughputCalc struct {
-	every    time.Duration
-	maxTs    int64
-	samples  *ewma.Rate
-	metadata *ewma.Rate
+	every time.Duration
+
+	// Metrics telemetry.
+	samples          *ewma.Rate
+	metadata         *ewma.Rate
+	metricsMaxSentTs int64
+
+	// Traces telemetry.
+	spans            *ewma.Rate
+	spansLastWriteOn int64
 }
 
 func newThroughputCal(every time.Duration) *throughputCalc {
 	return &throughputCalc{
-		every:    every,
-		maxTs:    0,
-		samples:  ewma.NewEWMARate(1, every),
-		metadata: ewma.NewEWMARate(1, every),
+		every:            every,
+		metricsMaxSentTs: 0,
+		samples:          ewma.NewEWMARate(1, every),
+		metadata:         ewma.NewEWMARate(1, every),
+		spans:            ewma.NewEWMARate(1, every),
+		spansLastWriteOn: 0,
 	}
 }
 
@@ -52,24 +60,48 @@ func (tc *throughputCalc) run() {
 	for range t.C {
 		tc.samples.Tick()
 		tc.metadata.Tick()
+		tc.spans.Tick()
+
 		samplesRate := tc.samples.Rate()
 		metadataRate := tc.metadata.Rate()
-		if samplesRate+metadataRate == 0 {
+		spansRate := tc.spans.Rate()
+
+		if samplesRate+metadataRate+spansRate == 0 {
 			continue
 		}
-		ts := timestamp.Time(atomic.LoadInt64(&tc.maxTs))
-		log.Info("msg", "Samples write throughput", "samples/sec", int(samplesRate), "metadata/sec", int(metadataRate), "max-sent-ts", ts)
+
+		if samplesRate+metadataRate != 0 {
+			// Metric data ingested.
+			maxSentTs := timestamp.Time(atomic.LoadInt64(&tc.metricsMaxSentTs))
+			log.Info("msg", "ingestor throughput", "samples/sec", int(samplesRate), "metrics-max-sent-ts", maxSentTs)
+		}
+
+		if spansRate != 0 {
+			// Spans ingested.
+			spansLastWriteOn := timestamp.Time(atomic.LoadInt64(&tc.spansLastWriteOn))
+			log.Info("msg", "ingestor throughput", "spans/sec", int(spansRate), "spans-last-write-on", spansLastWriteOn)
+		}
 	}
 }
 
-func ReportDataProcessed(maxTs int64, numSamples, numMetadata uint64) {
+func ReportMetricsProcessed(maxTs int64, numSamples, numMetadata uint64) {
 	if throughputWatcher == nil {
 		// Throughput watcher is disabled.
 		return
 	}
 	throughputWatcher.samples.Incr(int64(numSamples))
 	throughputWatcher.metadata.Incr(int64(numMetadata))
-	if maxTs != 0 && atomic.LoadInt64(&throughputWatcher.maxTs) < maxTs {
-		atomic.StoreInt64(&throughputWatcher.maxTs, maxTs)
+	if maxTs != 0 && atomic.LoadInt64(&throughputWatcher.metricsMaxSentTs) < maxTs {
+		atomic.StoreInt64(&throughputWatcher.metricsMaxSentTs, maxTs)
+	}
+}
+
+func ReportSpansProcessed(lastWriteTs int64, numSpans int) {
+	if throughputWatcher == nil {
+		return
+	}
+	throughputWatcher.spans.Incr(int64(numSpans))
+	if lastWriteTs != 0 && atomic.LoadInt64(&throughputWatcher.spansLastWriteOn) < lastWriteTs {
+		atomic.StoreInt64(&throughputWatcher.spansLastWriteOn, lastWriteTs)
 	}
 }

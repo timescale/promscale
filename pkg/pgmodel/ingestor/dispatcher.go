@@ -221,7 +221,7 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 		case err = <-errChan:
 		default:
 		}
-		postIngestTasks(maxt, numRows, 0)
+		reportMetricsTelemetry(maxt, numRows, 0)
 		close(errChan)
 	} else {
 		go func() {
@@ -235,7 +235,7 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 			if err != nil {
 				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "err", err)
 			}
-			postIngestTasks(maxt, numRows, 0)
+			reportMetricsTelemetry(maxt, numRows, 0)
 		}()
 	}
 
@@ -248,16 +248,15 @@ func (p *pgxDispatcher) InsertMetadata(metadata []model.Metadata) (uint64, error
 	if err != nil {
 		return insertedRows, err
 	}
-	postIngestTasks(0, 0, insertedRows)
+	reportMetricsTelemetry(0, 0, insertedRows)
 	if totalRows != insertedRows {
 		return insertedRows, fmt.Errorf("failed to insert all metadata: inserted %d rows out of %d rows in total", insertedRows, totalRows)
 	}
 	return insertedRows, nil
 }
 
-// postIngestTasks performs a set of tasks that are due after ingesting series data.
-func postIngestTasks(maxTs int64, numSamples, numMetadata uint64) {
-	tput.ReportDataProcessed(maxTs, numSamples, numMetadata)
+func reportMetricsTelemetry(maxTs int64, numSamples, numMetadata uint64) {
+	tput.ReportMetricsProcessed(maxTs, numSamples, numMetadata)
 
 	// Max_sent_timestamp stats.
 	if maxTs < atomic.LoadInt64(&MaxSentTimestamp) {

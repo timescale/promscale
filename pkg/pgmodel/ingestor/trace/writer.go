@@ -10,10 +10,13 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/collector/model/pdata"
+
 	"github.com/jackc/pgtype"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"go.opentelemetry.io/collector/model/pdata"
+	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
 
 type TagType uint
@@ -278,8 +281,13 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		}
 	}
 
-	return t.sendBatches(ctx, eventBatch, linkBatch, spanBatch)
+	if err := t.sendBatches(ctx, eventBatch, linkBatch, spanBatch); err != nil {
+		return fmt.Errorf("error sending trace batches: %w", err)
+	}
 
+	// Only report telemetry if ingestion successful.
+	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
+	return nil
 }
 
 func (t *traceWriterImpl) sendBatches(ctx context.Context, batches ...pgxconn.PgxBatch) error {
