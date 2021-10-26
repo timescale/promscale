@@ -53,7 +53,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() {
-		err = promscalePlugin.Close()
+		_, err = promscalePlugin.Close(context.Background(), nil)
 		if err != nil {
 			logger.Error("error closing the proxy plugin", err)
 		}
