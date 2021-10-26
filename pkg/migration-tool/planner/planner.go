@@ -154,7 +154,10 @@ func (p *Plan) LastMemoryFootprint() int64 {
 
 // NextSlab returns a new slab after allocating the time-range for fetch.
 func (p *Plan) NextSlab() (reference *Slab, err error) {
-	timeDelta := p.config.determineTimeDelta(atomic.LoadInt64(&p.lastNumBytes), p.config.SlabSizeLimitBytes, p.lastTimeRangeDelta)
+	timeDelta, err := p.config.determineTimeDelta(atomic.LoadInt64(&p.lastNumBytes), p.config.SlabSizeLimitBytes, p.lastTimeRangeDelta)
+	if err != nil {
+		return nil, fmt.Errorf("determine time delta: %w", err)
+	}
 	mint := p.nextMint
 	maxt := mint + timeDelta
 	if maxt > p.config.Maxt {
@@ -164,7 +167,7 @@ func (p *Plan) NextSlab() (reference *Slab, err error) {
 	p.lastTimeRangeDelta = timeDelta
 	bRef, err := p.createSlab(mint, maxt)
 	if err != nil {
-		return nil, fmt.Errorf("next-slab: %w", err)
+		return nil, fmt.Errorf("create-slab: %w", err)
 	}
 	return bRef, nil
 }
@@ -231,17 +234,28 @@ func (p *Plan) validateT(mint, maxt int64) error {
 	return nil
 }
 
-func (c *Config) determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) int64 {
+func (c *Config) determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) (int64, error) {
+	errOnBelowMinute := func(delta int64) (int64, error) {
+		if delta/minute < 1 {
+			// This results in an infinite loop, if not errored out. Occurs when the max number of bytes is so low
+			// that even the size of 1 minute slab of migration exceeds the bytes limit, resulting in further (exponential)
+			// decrease of time-range.
+			//
+			// Hence, stop migration and report in logs.
+			return delta, fmt.Errorf("slab time-range less than a minute. Please increase slab/read limitations")
+		}
+		return delta, nil
+	}
 	switch {
 	case numBytes <= limit/2:
 		// deltaIncreaseRegion.
 		// We increase the time-range linearly for the next fetch if the current time-range fetch resulted in size that is
 		// less than half the max read size. This continues till we reach the maximum time-range delta.
-		return c.clampTimeDelta(prevTimeDelta + c.LaIncrement.Milliseconds())
+		return errOnBelowMinute(c.clampTimeDelta(prevTimeDelta + c.LaIncrement.Milliseconds()))
 	case numBytes > limit:
-		// Down size the time exponentially so that bytes size can be controlled (preventing OOM).
+		// Decrease size the time exponentially so that bytes size can be controlled (preventing OOM).
 		log.Info("msg", fmt.Sprintf("decreasing time-range delta to %d minute(s) since size beyond permittable limits", prevTimeDelta/(2*minute)))
-		return prevTimeDelta / 2
+		return errOnBelowMinute(prevTimeDelta / 2)
 	}
 	// Here, the numBytes is between the max increment-time size limit (i.e., limit/2) and the max read limit
 	// (i.e., increment-time size limit < numBytes <= max read limit). This region is an ideal case of
@@ -251,7 +265,7 @@ func (c *Config) determineTimeDelta(numBytes, limit int64, prevTimeDelta int64) 
 	// 250MB, the time-range for next fetch will continue to increase by 1 minute (on the previous fetch time-range). However,
 	// the moment any slab comes between 250MB and 500MB, we stop to increment the time-range delta further. This helps
 	// keeping the migration tool in safe memory limits.
-	return prevTimeDelta
+	return prevTimeDelta, nil
 }
 
 func (c *Config) clampTimeDelta(t int64) int64 {

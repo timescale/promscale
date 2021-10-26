@@ -5,10 +5,11 @@
 package planner
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )
 
@@ -20,6 +21,8 @@ func TestTimeDeltaDetermination(t *testing.T) {
 		numBytes           int
 		prevTimeDelta      int64
 		expOutputTimeDelta int64
+		shouldErr          bool
+		err                error
 	}{
 		{
 			name:               "start_case",
@@ -117,13 +120,25 @@ func TestTimeDeltaDetermination(t *testing.T) {
 			prevTimeDelta:      200 * minute,
 			expOutputTimeDelta: 100 * minute,
 		},
+		{
+			name:          "read limit bytes too low that even 1 min slab violates bytes limit",
+			numBytes:      10,
+			prevTimeDelta: int64(1.5 * float64(minute)),
+			shouldErr:     true,
+			err:           fmt.Errorf("read limit bytes too low that even 1 min slab violates bytes limit"),
+		},
 	}
 	cfg := new(Config)
 	cfg.LaIncrement = time.Minute
 	cfg.MaxReadDuration = time.Hour * 2
 	for _, c := range cases {
-		outTimeDelta := cfg.determineTimeDelta(int64(c.numBytes), slabSizeLimit, c.prevTimeDelta)
-		assert.Equal(t, c.expOutputTimeDelta, outTimeDelta, c.name)
+		outTimeDelta, err := cfg.determineTimeDelta(int64(c.numBytes), slabSizeLimit, c.prevTimeDelta)
+		if c.shouldErr {
+			require.Error(t, c.err, err)
+			continue
+		}
+		require.NoError(t, err)
+		require.Equal(t, c.expOutputTimeDelta, outTimeDelta, c.name)
 	}
 }
 
@@ -265,11 +280,11 @@ func TestNumSlabCreation(t *testing.T) {
 		}
 		plan, _, err := Init(planConfig)
 		if c.fails {
-			assert.Error(t, err, c.name)
+			require.Error(t, err, c.name)
 			continue
 		}
 		plan.Quiet = true
-		assert.NoError(t, err, c.name)
+		require.NoError(t, err, c.name)
 		slabCount := 0
 		var bytesPrev int64 = 0
 		for plan.ShouldProceed() {
@@ -284,8 +299,8 @@ func TestNumSlabCreation(t *testing.T) {
 				// In ideal condition, the drop in time range will drop the size by the same amount.
 				bytesPrev /= 2
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
-		assert.Equal(t, c.expectedNumSlabsCreations, slabCount, c.name)
+		require.Equal(t, c.expectedNumSlabsCreations, slabCount, c.name)
 	}
 }

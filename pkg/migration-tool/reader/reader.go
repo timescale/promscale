@@ -77,7 +77,7 @@ func (r *Read) Run(errChan chan<- error) {
 			}
 			slabRef, err = r.Plan.NextSlab()
 			if err != nil {
-				errChan <- fmt.Errorf("remote-run run: %w", err)
+				errChan <- fmt.Errorf("remote-read run: %w", err)
 				return
 			}
 			ms := r.Config.MetricsMatchers
@@ -87,7 +87,7 @@ func (r *Read) Run(errChan chan<- error) {
 			}
 			err = slabRef.Fetch(r.Context, r.client, slabRef.Mint(), slabRef.Maxt(), ms)
 			if err != nil {
-				errChan <- fmt.Errorf("remote-run run: %w", err)
+				errChan <- fmt.Errorf("remote-read run: %w", err)
 				return
 			}
 			if slabRef.IsEmpty() {
