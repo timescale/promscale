@@ -70,3 +70,8 @@ require (
 
 // Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20210923143046-587cb950930e
+
+// needed for security (even though only run in tests)
+replace github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.2
+
+replace github.com/containerd/containerd => github.com/containerd/containerd v1.5.7
