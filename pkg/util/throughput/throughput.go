@@ -70,23 +70,17 @@ func (tc *throughputCalc) run() {
 			continue
 		}
 
-		logContent := []interface{}{"msg", "ingestor throughput"}
-
 		if samplesRate+metadataRate != 0 {
 			// Metric data ingested.
-			logContent = append(logContent, []interface{}{"samples/sec", int(samplesRate)}...)
-			metricsMaxTsSent := timestamp.Time(atomic.LoadInt64(&tc.metricsMaxSentTs))
-			logContent = append(logContent, []interface{}{"metrics-max-sent-ts", metricsMaxTsSent}...)
+			maxSentTs := timestamp.Time(atomic.LoadInt64(&tc.metricsMaxSentTs))
+			log.Info("msg", "ingestor throughput", "samples/sec", int(samplesRate), "metrics-max-sent-ts", maxSentTs)
 		}
 
 		if spansRate != 0 {
-			// Traces ingested.
-			logContent = append(logContent, []interface{}{"spans/sec", int(spansRate)}...)
+			// Spans ingested.
 			spansLastWriteOn := timestamp.Time(atomic.LoadInt64(&tc.spansLastWriteOn))
-			logContent = append(logContent, []interface{}{"spans-last-write-on", spansLastWriteOn}...)
+			log.Info("msg", "ingestor throughput", "spans/sec", int(spansRate), "spans-last-write-on", spansLastWriteOn)
 		}
-
-		log.Info(logContent...)
 	}
 }
 
