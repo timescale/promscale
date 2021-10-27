@@ -34,14 +34,14 @@ import (
 
 func TestCompareTraceQueryResponse(t *testing.T) {
 	// Start containers.
-	jaegerContainer, _, jaegerIP, jaegerReceivingPort, uiPort, err := testhelpers.StartJaegerContainer(false)
+	jaegerContainer, err := testhelpers.StartJaegerContainer(false)
 	require.NoError(t, err)
 
-	otelContainer, otelHost, otelReceivingPort, err := testhelpers.StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerIP, jaegerReceivingPort.Port()), false)
+	otelContainer, otelHost, otelReceivingPort, err := testhelpers.StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerContainer.ContainerIp, jaegerContainer.GrpcReceivingPort.Port()), false)
 	require.NoError(t, err)
 
 	defer func() {
-		require.NoError(t, jaegerContainer.Terminate(context.Background()))
+		require.NoError(t, jaegerContainer.Container.Terminate(context.Background()))
 		require.NoError(t, otelContainer.Terminate(context.Background()))
 	}()
 
@@ -70,7 +70,7 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		runPromscaleTraceQueryJSONServer(promscaleProxy, ":9203")
 
 		promscaleClient := httpClient{"http://localhost:9203"}
-		jaegerClient := httpClient{"http://localhost:" + uiPort.Port()}
+		jaegerClient := httpClient{"http://localhost:" + jaegerContainer.UIPort.Port()}
 
 		validateStringSliceResp := func(promscaleResp, jaegerResp *structuredResponse) {
 			a := convertToStringArr(promscaleResp.Data.([]interface{}))
@@ -109,7 +109,10 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		require.NoError(t, err)
 		jTrace := convertToTrace(jaegerResp.Data.([]interface{})[0])
 
-		compareTraces(t, jTrace, pTrace)
+		sortTraceContents(&jTrace)
+		sortTraceContents(&pTrace)
+
+		require.ElementsMatch(t, jTrace, pTrace)
 
 		// Verify fetch traces API.
 		traceStart := timestamp.FromTime(testSpanStartTime) * 1000
@@ -133,10 +136,18 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 
 		require.Equal(t, len(jTraces), len(pTraces), "num of traces returned in fetch traces API")
 
-		// Traces are now one-to-one aligned. Let's compare their internals now.
+		// Sort the trace contents and prepare them to compare.
 		for i := 0; i < len(jTraces); i++ {
-			compareTraces(t, jTraces[i], pTraces[i])
+			a := &jTraces[i]
+			b := &pTraces[i]
+
+			require.Equalf(t, len(a.Spans), len(b.Spans), "num spans of %d", i)
+			require.Equalf(t, a.TraceID, b.TraceID, "trace id of %d", i)
+
+			sortTraceContents(a)
+			sortTraceContents(b)
 		}
+		require.Exactly(t, jTraces, pTraces)
 	})
 }
 
@@ -145,21 +156,10 @@ var skipTags = map[string]struct{}{
 	"otel.status_code":     {},
 }
 
-func compareTraces(t testing.TB, a, b jaegerJSONModel.Trace) {
-	require.Equal(t, len(a.Spans), len(b.Spans), "num spans")
+func sortTraceContents(t *jaegerJSONModel.Trace) {
+	sort.Strings(t.Warnings)
 
-	require.Equal(t, a.TraceID, b.TraceID, "trace id")
-
-	sort.Strings(a.Warnings)
-	sort.Strings(b.Warnings)
-	require.Equal(t, a.Warnings, b.Warnings, "warnings")
-
-	require.Equal(t, a.Processes, b.Processes, "processes")
-
-	sortSpanContents(a.Spans, skipTags)
-	sortSpanContents(b.Spans, skipTags)
-
-	require.Equal(t, a.Spans, b.Spans, "spans")
+	sortSpanContents(t.Spans, skipTags)
 }
 
 func sortSpanContents(spans []jaegerJSONModel.Span, ignoreTags map[string]struct{}) {
@@ -318,6 +318,10 @@ func getOtelIngestClient(url string) (client otlpgrpc.TracesClient, err error) {
 	client = otlpgrpc.NewTracesClient(grpcConn)
 	return
 }
+
+// Note: Promscale responds by default in GRPC. But, Jaeger responds in JSON. Since the final rendering layer of UI
+// is JSON, we must compare both Promscale and Jaeger responses in JSON only. Hence, we wrap outputs from Promscale's GRPC API
+// and use the code from Jaeger in.
 
 // From jaeger. https://github.com/jaegertracing/jaeger/blob/6a35ad526c2dad575513f2d6a9c87899f9d733d8/cmd/query/app/http_handler.go#L63
 type structuredResponse struct {

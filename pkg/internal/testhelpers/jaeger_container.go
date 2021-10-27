@@ -18,8 +18,14 @@ const (
 	envSpanStorageType = "SPAN_STORAGE_TYPE"
 )
 
-func StartJaegerContainer(printLogs bool) (container testcontainers.Container, host, containerIP string, grpcReceivingPort, uiPort nat.Port, err error) {
-	grpcReceivingPort, uiPort = "14250/tcp", "16686/tcp"
+type JaegerContainer struct {
+	Container                 testcontainers.Container
+	Host, ContainerIp         string
+	GrpcReceivingPort, UIPort nat.Port
+}
+
+func StartJaegerContainer(printLogs bool) (jaegerContainer *JaegerContainer, err error) {
+	grpcReceivingPort, uiPort := nat.Port("14250/tcp"), nat.Port("16686/tcp")
 	req := testcontainers.ContainerRequest{
 		Image:        jaegerImage,
 		ExposedPorts: []string{string(grpcReceivingPort), string(uiPort)},
@@ -28,33 +34,39 @@ func StartJaegerContainer(printLogs bool) (container testcontainers.Container, h
 			envSpanStorageType: "memory",
 		},
 	}
-	container, err = testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
+	container, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
 	if err != nil {
-		return container, host, containerIP, grpcReceivingPort, uiPort, fmt.Errorf("creating jaeger all-in-one container: %w", err)
+		return nil, fmt.Errorf("creating jaeger all-in-one container: %w", err)
 	}
 
 	if printLogs {
 		if err = container.StartLogProducer(context.Background()); err != nil {
-			return nil, "", "", "", "", fmt.Errorf("error starting log producer: %w", err)
+			return nil, fmt.Errorf("error starting log producer: %w", err)
 		}
 		container.FollowOutput(stdoutLogConsumer{"jaeger"})
 	}
 
-	host, err = container.Host(context.Background())
+	host, err := container.Host(context.Background())
 	if err != nil {
-		return container, host, containerIP, grpcReceivingPort, uiPort, fmt.Errorf("error getting container host: %w", err)
+		return nil, fmt.Errorf("error getting container host: %w", err)
 	}
 
-	containerIP, err = container.ContainerIP(context.Background())
+	containerIP, err := container.ContainerIP(context.Background())
 	if err != nil {
-		return nil, host, "", "", "", fmt.Errorf("error getting container ip: %w", err)
+		return nil, fmt.Errorf("error getting container ip: %w", err)
 	}
 
 	mappedUIPort, err := container.MappedPort(context.Background(), uiPort)
 	if err != nil {
-		return container, host, containerIP, grpcReceivingPort, uiPort, fmt.Errorf("error mapping ui-port: %w", err)
+		return nil, fmt.Errorf("error mapping ui-port: %w", err)
 	}
 
 	// We send actual `containerIP` & `grpcReceivingPort` grpc port, since this will be used internally in docker network.
-	return container, host, containerIP, grpcReceivingPort, mappedUIPort, nil
+	return &JaegerContainer{
+		Container:         container,
+		Host:              host,
+		ContainerIp:       containerIP,
+		GrpcReceivingPort: grpcReceivingPort,
+		UIPort:            mappedUIPort,
+	}, nil
 }

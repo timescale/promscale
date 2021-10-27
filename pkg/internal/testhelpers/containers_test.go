@@ -50,13 +50,13 @@ func TestOtelCollectorConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping checking Jaeger connection")
 	}
-	jContainer, _, jaegerContainerIP, jaegerReceivingPort, _, err := StartJaegerContainer(true)
+	jContainer, err := StartJaegerContainer(true)
 	require.NoError(t, err)
 
 	// Start Otel collector.
-	otelContainer, _, _, err := StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerContainerIP, jaegerReceivingPort.Port()), true)
+	otelContainer, _, _, err := StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jContainer.ContainerIp, jContainer.GrpcReceivingPort.Port()), true)
 	require.NoError(t, err)
-	require.NoError(t, jContainer.Terminate(context.Background()))
+	require.NoError(t, jContainer.Container.Terminate(context.Background()))
 	require.NoError(t, otelContainer.Terminate(context.Background()))
 }
 
@@ -64,15 +64,15 @@ func TestJaegerConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping checking Jaeger connection")
 	}
-	container, host, _, _, uiPort, err := StartJaegerContainer(true)
+	jContainer, err := StartJaegerContainer(true)
 	require.NoError(t, err)
 	defer func() {
-		require.NoError(t, container.Terminate(context.Background()))
+		require.NoError(t, jContainer.Container.Terminate(context.Background()))
 	}()
 
 	const servicesEndpoint = "api/services"
 
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/%s", host, uiPort.Port(), servicesEndpoint))
+	resp, err := http.Get(fmt.Sprintf("http://%s:%s/%s", jContainer.Host, jContainer.UIPort.Port(), servicesEndpoint))
 	require.NoError(t, err)
 	require.Equal(t, resp.StatusCode, http.StatusOK)
 

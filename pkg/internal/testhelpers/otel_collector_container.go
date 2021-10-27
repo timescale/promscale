@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	// Use custom image as original otel images do not have /bin/sh, hence failing the test-containers.
-	otelCollectorImage = "harkishen/otel_collector_with_sh:latest"
+	otelCollectorImage = "otel/opentelemetry-collector:0.37.0"
 
 	// Below config is valid with otel-collector 0.37.0
 	otelCollectorConfig = `receivers:
@@ -70,15 +69,20 @@ func StartOtelCollectorContainer(urlJaeger string, printLogs bool) (container te
 	}
 
 	grpcReceivingPort, healthCheckPort := nat.Port("4317/tcp"), nat.Port("13133/tcp")
+
+	waitFor := wait.ForHTTP("")
+	waitFor.Port = healthCheckPort // By default, wait.ForHTTP waits on :80, but since health check in otel-collector is on :13133, we override here.
+
 	req := testcontainers.ContainerRequest{
 		Image:        otelCollectorImage,
 		ExposedPorts: []string{string(grpcReceivingPort), string(healthCheckPort)},
-		WaitingFor:   wait.ForListeningPort(grpcReceivingPort),
+		WaitingFor:   waitFor,
 		BindMounts: map[string]string{
 			configFile: "/otel-local-config.yaml",
 		},
 		Cmd: []string{"--config=otel-local-config.yaml"},
 	}
+
 	container, err = testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req})
 	if err != nil {
 		return container, host, port, fmt.Errorf("error creating otel-collector container: %w", err)
