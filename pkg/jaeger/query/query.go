@@ -61,9 +61,8 @@ func (p *Query) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryPar
 }
 
 func (p *Query) GetDependencies(ctx context.Context, endTs time.Time, lookback time.Duration) ([]model.DependencyLink, error) {
-	//query db using pgx here
-	log.Warn("getDependencies")
-	return nil, nil
+	res, err := getDependencies(ctx, p.conn, endTs, lookback)
+	return res, logError(err)
 }
 
 func logError(err error) error {
