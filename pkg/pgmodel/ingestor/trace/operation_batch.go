@@ -7,9 +7,9 @@ package trace
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/jackc/pgtype"
+	pgx "github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -22,65 +22,59 @@ type operation struct {
 	spanKind    string
 }
 
+func (o operation) SizeInCache() uint64 {
+	return uint64(len(o.serviceName) + len(o.spanName) + len(o.spanKind) + 9) // 9 bytes for pgtype.Int8
+}
+
+func (o operation) Before(item sortable) bool {
+	otherOp, ok := item.(operation)
+	if !ok {
+		panic(fmt.Sprintf("cannot use Before function on operation with a different type: %T", item))
+	}
+	if o.serviceName != otherOp.serviceName {
+		return o.serviceName < otherOp.serviceName
+	}
+	if o.spanName != otherOp.spanName {
+		return o.spanName < otherOp.spanName
+	}
+	return o.spanKind < otherOp.spanKind
+}
+
+func (o operation) AddToDBBatch(batch pgxconn.PgxBatch) {
+	batch.Queue(fmt.Sprintf(insertOperationSQL, schema.TracePublic), o.serviceName, o.spanName, o.spanKind)
+}
+
+func (o operation) ScanIDs(r pgx.BatchResults) (interface{}, error) {
+	var id pgtype.Int8
+	err := r.QueryRow().Scan(&id)
+	return id, err
+}
+
 //Operation batch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db
-type operationBatch map[operation]pgtype.Int8
+type operationBatch struct {
+	b batcher
+}
 
-func newOperationBatch() operationBatch {
-	return make(map[operation]pgtype.Int8)
+func newOperationBatch(cache cache) operationBatch {
+	return operationBatch{
+		b: newBatcher(cache),
+	}
 }
 
 func (o operationBatch) Queue(serviceName, spanName, spanKind string) {
-	o[operation{serviceName, spanName, spanKind}] = pgtype.Int8{}
+	o.b.Queue(operation{serviceName, spanName, spanKind})
 }
 
-func (batch operationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
-	ops := make([]operation, len(batch))
-	i := 0
-	for op := range batch {
-		ops[i] = op
-		i++
-	}
-	sort.Slice(ops, func(i, j int) bool {
-		if ops[i].serviceName != ops[j].serviceName {
-			return ops[i].serviceName < ops[j].serviceName
-		}
-		if ops[i].spanName != ops[j].spanName {
-			return ops[i].spanName < ops[j].spanName
-		}
-		return ops[i].spanKind < ops[j].spanKind
-	})
-
-	dbBatch := conn.NewBatch()
-	for _, op := range ops {
-		dbBatch.Queue(fmt.Sprintf(insertOperationSQL, schema.TracePublic), op.serviceName, op.spanName, op.spanKind)
-	}
-	br, err := conn.SendBatch(ctx, dbBatch)
+func (o operationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error) {
+	return o.b.SendBatch(ctx, conn)
+}
+func (o operationBatch) GetID(serviceName, spanName, spanKind string) (pgtype.Int8, error) {
+	op := operation{serviceName, spanName, spanKind}
+	id, err := o.b.GetID(op)
 	if err != nil {
-		return err
+		return id, fmt.Errorf("error getting ID for operation %v: %w", op, err)
 	}
-	for _, op := range ops {
-		var id pgtype.Int8
-		if err := br.QueryRow().Scan(&id); err != nil {
-			return err
-		}
-		batch[op] = id
-	}
-	if err = br.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-func (batch operationBatch) GetID(serviceName, spanName, spanKind string) (pgtype.Int8, error) {
-	id, ok := batch[operation{serviceName, spanName, spanKind}]
-	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("operation id not found: %s %s %s", serviceName, spanName, spanKind)
-	}
-	if id.Status != pgtype.Present {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("operation id is null")
-	}
-	if id.Int == 0 {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("operation id is 0")
-	}
+
 	return id, nil
 }

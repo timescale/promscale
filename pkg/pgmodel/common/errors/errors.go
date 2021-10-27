@@ -10,6 +10,7 @@ var (
 	ErrNoMetricName                = fmt.Errorf("metric name missing")
 	ErrNoClausesGen                = fmt.Errorf("no clauses generated")
 	ErrEntryNotFound               = fmt.Errorf("entry not found")
+	ErrInvalidCacheEntryType       = fmt.Errorf("invalid cache entry type stored")
 	ErrInvalidRowData              = fmt.Errorf("invalid row data, length of arrays does not match")
 	ErrExtUnavailable              = fmt.Errorf("the extension is not available")
 	ErrMissingTableName            = fmt.Errorf("missing metric table name")

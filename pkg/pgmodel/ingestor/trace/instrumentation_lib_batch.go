@@ -7,9 +7,9 @@ package trace
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/jackc/pgtype"
+	pgx "github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -19,79 +19,71 @@ const insertInstrumentationLibSQL = `SELECT %s.put_instrumentation_lib($1, $2, $
 type instrumentationLibrary struct {
 	name        string
 	version     string
-	SchemaUrlID pgtype.Int8
+	schemaURLID pgtype.Int8
 }
 
-//instrumentationLibraryBatch queues up items to send to the DB but it sorts before sending
-//this avoids deadlocks in the DB. It also avoids sending the same instrumentation
-//libraries repeatedly.
-type instrumentationLibraryBatch map[instrumentationLibrary]pgtype.Int8
-
-func newInstrumentationLibraryBatch() instrumentationLibraryBatch {
-	return make(map[instrumentationLibrary]pgtype.Int8)
+func (il instrumentationLibrary) SizeInCache() uint64 {
+	return uint64(len(il.name) + len(il.version) + 18) // 9 bytes per pgtype.Int8
 }
 
-func (batch instrumentationLibraryBatch) Queue(name, version string, schemaUrlID pgtype.Int8) {
-	if name != "" {
-		batch[instrumentationLibrary{name, version, schemaUrlID}] = pgtype.Int8{}
+func (il instrumentationLibrary) Before(item sortable) bool {
+	otherIl, ok := item.(instrumentationLibrary)
+	if !ok {
+		panic(fmt.Sprintf("cannot use Before method on instrumentationLibrary with a different type: %T", item))
+	}
+	if il.name != otherIl.name {
+		return il.name < otherIl.name
+	}
+	if il.version != otherIl.version {
+		return il.version < otherIl.version
+	}
+	if il.schemaURLID.Status != otherIl.schemaURLID.Status {
+		return il.schemaURLID.Status < otherIl.schemaURLID.Status
+	}
+	return il.schemaURLID.Int < otherIl.schemaURLID.Int
+}
+
+func (il instrumentationLibrary) AddToDBBatch(batch pgxconn.PgxBatch) {
+	batch.Queue(fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic), il.name, il.version, il.schemaURLID)
+}
+
+func (il instrumentationLibrary) ScanIDs(r pgx.BatchResults) (interface{}, error) {
+	var id pgtype.Int8
+	err := r.QueryRow().Scan(&id)
+	return id, err
+}
+
+// instrumentationLibraryBatch queues up items to send to the db but it sorts before sending
+//this avoids deadlocks in the db
+type instrumentationLibraryBatch struct {
+	b batcher
+}
+
+func newInstrumentationLibraryBatch(cache cache) instrumentationLibraryBatch {
+	return instrumentationLibraryBatch{
+		b: newBatcher(cache),
 	}
 }
 
-func (batch instrumentationLibraryBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
-	libs := make([]instrumentationLibrary, len(batch))
-	i := 0
-	for lib := range batch {
-		libs[i] = lib
-		i++
+func (lib instrumentationLibraryBatch) Queue(name, version string, schemaURLID pgtype.Int8) {
+	if name == "" {
+		return
 	}
-	sort.Slice(libs, func(i, j int) bool {
-		if libs[i].name != libs[j].name {
-			return libs[i].name < libs[j].name
-		}
-		if libs[i].version != libs[j].version {
-			return libs[i].version < libs[j].version
-		}
-		if libs[i].SchemaUrlID.Status != libs[j].SchemaUrlID.Status {
-			return libs[i].SchemaUrlID.Status < libs[j].SchemaUrlID.Status
-		}
-		return libs[i].SchemaUrlID.Int < libs[j].SchemaUrlID.Int
-	})
-
-	dbBatch := conn.NewBatch()
-	for _, lib := range libs {
-		dbBatch.Queue(fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic), lib.name, lib.version, lib.SchemaUrlID)
-	}
-
-	br, err := conn.SendBatch(ctx, dbBatch)
-	if err != nil {
-		return err
-	}
-	for _, lib := range libs {
-		var id pgtype.Int8
-		if err := br.QueryRow().Scan(&id); err != nil {
-			return err
-		}
-		batch[lib] = id
-	}
-	if err = br.Close(); err != nil {
-		return err
-	}
-	return nil
+	lib.b.Queue(instrumentationLibrary{name, version, schemaURLID})
 }
 
-func (batch instrumentationLibraryBatch) GetID(name, version string, schemaUrlID pgtype.Int8) (pgtype.Int8, error) {
+func (lib instrumentationLibraryBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error) {
+	return lib.b.SendBatch(ctx, conn)
+}
+func (lib instrumentationLibraryBatch) GetID(name, version string, schemaURLID pgtype.Int8) (pgtype.Int8, error) {
 	if name == "" {
 		return pgtype.Int8{Status: pgtype.Null}, nil
 	}
-	id, ok := batch[instrumentationLibrary{name, version, schemaUrlID}]
-	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("instrumention library id not found: %s %s", name, version)
+	il := instrumentationLibrary{name, version, schemaURLID}
+	id, err := lib.b.GetID(il)
+	if err != nil {
+		return id, fmt.Errorf("error getting ID for instrumentation library %v: %w", il, err)
 	}
-	if id.Status != pgtype.Present {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("instrumention library is null")
-	}
-	if id.Int == 0 {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("instrumention library id is 0")
-	}
+
 	return id, nil
 }

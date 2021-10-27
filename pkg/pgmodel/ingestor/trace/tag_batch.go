@@ -8,9 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 
 	"github.com/jackc/pgtype"
+	pgx "github.com/jackc/pgx/v4"
+	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -26,6 +27,42 @@ type tag struct {
 	typ   TagType
 }
 
+func (t tag) SizeInCache() uint64 {
+	return uint64(len(t.key) + len(t.value) + 1 + 18) // 1 byte for TagType and 9 bytes per pgtype.Int8
+}
+
+func (t tag) Before(item sortable) bool {
+	otherTag, ok := item.(tag)
+	if !ok {
+		panic(fmt.Sprintf("cannot use Before function on tag with a different type: %T", item))
+	}
+	if t.key != otherTag.key {
+		return t.key < otherTag.key
+	}
+	if t.value != otherTag.value {
+		return t.value < otherTag.value
+	}
+	return t.typ < otherTag.typ
+}
+
+func (t tag) AddToDBBatch(batch pgxconn.PgxBatch) {
+	batch.Queue(fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic), t.key, t.typ)
+	batch.Queue(fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic), t.key, t.value, t.typ)
+}
+
+func (t tag) ScanIDs(r pgx.BatchResults) (interface{}, error) {
+	var id tagIDs
+	err := r.QueryRow().Scan(&id.keyID)
+	if err != nil {
+		return nil, fmt.Errorf("error scanning key ID: %w", err)
+	}
+	err = r.QueryRow().Scan(&id.valueID)
+	if err != nil {
+		return nil, fmt.Errorf("error scanning value ID: %w", err)
+	}
+	return id, nil
+}
+
 type tagIDs struct {
 	keyID   pgtype.Int8
 	valueID pgtype.Int8
@@ -33,90 +70,54 @@ type tagIDs struct {
 
 //tagBatch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
-type tagBatch map[tag]tagIDs
-
-func newTagBatch() tagBatch {
-	return make(map[tag]tagIDs)
+type tagBatch struct {
+	b batcher
 }
 
-func (batch tagBatch) Queue(tags map[string]interface{}, typ TagType) error {
+func newTagBatch(cache cache) tagBatch {
+	return tagBatch{
+		b: newBatcher(cache),
+	}
+}
+
+func (t tagBatch) Queue(tags map[string]interface{}, typ TagType) error {
 	for k, v := range tags {
 		byteVal, err := json.Marshal(v)
 		if err != nil {
 			return err
 		}
-		batch[tag{k, string(byteVal), typ}] = tagIDs{}
+		t.b.Queue(tag{k, string(byteVal), typ})
 	}
 	return nil
 }
 
-func (batch tagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) error {
-	tags := make([]tag, len(batch))
-	i := 0
-	for op := range batch {
-		tags[i] = op
-		i++
-	}
-	sort.Slice(tags, func(i, j int) bool {
-		if tags[i].key != tags[j].key {
-			return tags[i].key < tags[j].key
-		}
-		if tags[i].value != tags[j].value {
-			return tags[i].value < tags[j].value
-		}
-		return tags[i].typ < tags[j].typ
-
-	})
-
-	dbBatch := conn.NewBatch()
-	for _, tag := range tags {
-		dbBatch.Queue(fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic), tag.key, tag.typ)
-		dbBatch.Queue(fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
-			tag.key,
-			tag.value,
-			tag.typ,
-		)
-	}
-
-	br, err := conn.SendBatch(ctx, dbBatch)
-	if err != nil {
-		return err
-	}
-	for _, tag := range tags {
-		var keyID, valueID pgtype.Int8
-		if err := br.QueryRow().Scan(&keyID); err != nil {
-			return err
-		}
-		if err := br.QueryRow().Scan(&valueID); err != nil {
-			return err
-		}
-		batch[tag] = tagIDs{keyID: keyID, valueID: valueID}
-	}
-	if err = br.Close(); err != nil {
-		return err
-	}
-	return nil
+func (t tagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error) {
+	return t.b.SendBatch(ctx, conn)
 }
 
-func (batch tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]byte, error) {
+func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]byte, error) {
 	tagMap := make(map[int64]int64)
 	for k, v := range tags {
 		byteVal, err := json.Marshal(v)
 		if err != nil {
 			return nil, err
 		}
-		ids, ok := batch[tag{k, string(byteVal), typ}]
+		t := tag{k, string(byteVal), typ}
+		ids, err := tb.b.Get(t)
+		if err != nil {
+			return nil, fmt.Errorf("error getting tag from batch %v: %w", t, err)
+		}
+		tagIDs, ok := ids.(tagIDs)
 		if !ok {
-			return nil, fmt.Errorf("tag id not found: %s %v(rendered as %s) %v", k, v, string(byteVal), typ)
-
+			return nil, fmt.Errorf("error getting tag %v from batch: %w", t, errors.ErrInvalidCacheEntryType)
 		}
-		if ids.keyID.Status != pgtype.Present || ids.valueID.Status != pgtype.Present {
-			return nil, fmt.Errorf("tag ids have NULL values: %#v", ids)
+		if tagIDs.keyID.Status != pgtype.Present || tagIDs.valueID.Status != pgtype.Present {
+			return nil, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)
 		}
-		if ids.keyID.Int == 0 || ids.valueID.Int == 0 {
-			return nil, fmt.Errorf("tag ids have 0 values: %#v", ids)
+		if tagIDs.keyID.Int == 0 || tagIDs.valueID.Int == 0 {
+			return nil, fmt.Errorf("tag IDs have 0 values: %#v", tagIDs)
 		}
-		tagMap[ids.keyID.Int] = ids.valueID.Int
+		tagMap[tagIDs.keyID.Int] = tagIDs.valueID.Int
 	}
 
 	jsonBytes, err := json.Marshal(tagMap)
