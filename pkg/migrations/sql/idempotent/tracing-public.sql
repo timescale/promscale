@@ -512,7 +512,7 @@ BEGIN
     RETURN _inst_lib_id;
 END;
 $func$
-LANGUAGE plpgsql VOLATILE STRICT;
+LANGUAGE plpgsql VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_instrumentation_lib(text, text, bigint) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_map SCHEMA_TRACING_PUBLIC.tag_map)

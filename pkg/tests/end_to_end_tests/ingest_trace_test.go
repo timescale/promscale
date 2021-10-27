@@ -100,7 +100,10 @@ func generateTestTraceManyRS() []pdata.Traces {
 }
 
 func initInstLib(dest pdata.InstrumentationLibrarySpans, index int) {
-	dest.SetSchemaUrl(fmt.Sprintf("url-%d", index%2))
+	// Only add schema URL on half of instrumentation libs.
+	if index%2 == 0 {
+		dest.SetSchemaUrl(fmt.Sprintf("url-%d", index%2))
+	}
 	dest.InstrumentationLibrary().SetName(fmt.Sprintf("inst-lib-name-%d", index))
 	dest.InstrumentationLibrary().SetVersion(fmt.Sprintf("1.%d.0", index%2))
 }
