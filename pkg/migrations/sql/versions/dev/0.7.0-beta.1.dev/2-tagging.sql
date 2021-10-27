@@ -1,7 +1,7 @@
 /******************************************************************************
     CREATE NEW DOMAIN FOR TAGS
 ******************************************************************************/
-CALL SCHEMA_CATALOG.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
+CALL SCHEMA_CATALOG.execute_everywhere('tag_maps', $ee$ DO $$ BEGIN
     CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_maps jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(value) = 'array');
     GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_maps TO prom_reader;
 END $$ $ee$);
@@ -19,34 +19,62 @@ SET tags = jsonb_build_array(
 WHERE true
 ;
 ALTER TABLE SCHEMA_TRACING.span
-    DROP COLUMN IF EXISTS span_tags CASCADE ,
+    DROP COLUMN IF EXISTS span_tags CASCADE,
     DROP COLUMN IF EXISTS resource_tags CASCADE
 ;
 CREATE INDEX IF NOT EXISTS span_tags_idx ON SCHEMA_TRACING.span USING gin (tags jsonb_path_ops);
 
 /******************************************************************************
-    RENAME OLD FUNCTIONS TO "MAKE ROOM" FOR NEW FUNCTIONS
+    DROP OLD OPERATORS AND FUNCTIONS TO "MAKE ROOM" FOR NEW FUNCTIONS
 ******************************************************************************/
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_equals                 (SCHEMA_TAG.tag_op_equals                                               ) RENAME TO tag_map_eval_equals                 ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_greater_than           (SCHEMA_TAG.tag_op_greater_than                                         ) RENAME TO tag_map_eval_greater_than           ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_greater_than_or_equal  (SCHEMA_TAG.tag_op_greater_than_or_equal                                ) RENAME TO tag_map_eval_greater_than_or_equal  ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_jsonb_path_exists      (SCHEMA_TAG.tag_op_jsonb_path_exists                                    ) RENAME TO tag_map_eval_jsonb_path_exists      ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_less_than              (SCHEMA_TAG.tag_op_less_than                                            ) RENAME TO tag_map_eval_less_than              ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_less_than_or_equal     (SCHEMA_TAG.tag_op_less_than_or_equal                                   ) RENAME TO tag_map_eval_less_than_or_equal     ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_not_equals             (SCHEMA_TAG.tag_op_not_equals                                           ) RENAME TO tag_map_eval_not_equals             ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_regexp_matches         (SCHEMA_TAG.tag_op_regexp_matches                                       ) RENAME TO tag_map_eval_regexp_matches         ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_regexp_not_matches     (SCHEMA_TAG.tag_op_regexp_not_matches                                   ) RENAME TO tag_map_eval_regexp_not_matches     ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.eval_tags_by_key            (SCHEMA_TRACING_PUBLIC.tag_k                                            ) RENAME TO tag_map_eval_tags_by_key            ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_id                  (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k             ) RENAME TO tag_map_get_tag_id                  ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.has_tag                     (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k             ) RENAME TO tag_map_has_tag                     ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_equals                (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_equals                ) RENAME TO tag_map_match_equals                ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_greater_than          (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_greater_than          ) RENAME TO tag_map_match_greater_than          ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_greater_than_or_equal (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_greater_than_or_equal ) RENAME TO tag_map_match_greater_than_or_equal ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_jsonb_path_exists     (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_jsonb_path_exists     ) RENAME TO tag_map_match_jsonb_path_exists     ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_less_than             (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_less_than             ) RENAME TO tag_map_match_less_than             ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_less_than_or_equal    (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_less_than_or_equal    ) RENAME TO tag_map_match_less_than_or_equal    ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_not_equals            (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_not_equals            ) RENAME TO tag_map_match_not_equals            ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_regexp_matches        (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_regexp_matches        ) RENAME TO tag_map_match_regexp_matches        ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
-DO $do$ BEGIN ALTER FUNCTION SCHEMA_TRACING_PUBLIC.match_regexp_not_matches    (SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TAG.tag_op_regexp_not_matches    ) RENAME TO tag_map_match_regexp_not_matches    ; EXCEPTION WHEN SQLSTATE '42883' THEN null; END; $do$;
 
+DO $do$
+DECLARE
+    _sql text;
+BEGIN
+    FOR _sql IN
+    (
+        SELECT format('DROP OPERATOR IF EXISTS %I.%s (%I, %I)',
+            n.nspname,
+            o.oprname,
+            coalesce(l.typname, 'NONE'),
+            coalesce(r.typname, 'NONE')
+        )
+        FROM pg_operator o
+        INNER JOIN pg_namespace n on (o.oprnamespace = n.oid)
+        LEFT OUTER JOIN pg_type l on (o.oprleft = l.oid)
+        LEFT OUTER JOIN pg_type r on (o.oprright = r.oid)
+        LEFT OUTER JOIN pg_type x on (o.oprresult = x.oid)
+        WHERE n.nspname in ('_ps_trace', 'ps_trace')
+    )
+    LOOP
+        EXECUTE _sql;
+    END LOOP;
+END;
+$do$;
+
+DO $do$
+DECLARE
+    _sql text;
+BEGIN
+    FOR _sql IN
+    (
+        SELECT format('DROP FUNCTION IF EXISTS %I.%I(%s)',
+        n.nspname,
+        p.proname,
+        (
+            SELECT string_agg(t.typname, ', ' order by ordinality)
+            FROM unnest(p.proargtypes) with ORDINALITY x
+            INNER JOIN pg_type t on (x = t.oid)
+        ))
+        FROM pg_catalog.pg_proc p
+        INNER JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname in ('SCHEMA_TRACING_PUBLIC', 'SCHEMA_TRACING')
+        and p.prokind = 'f'
+    )
+    LOOP
+        EXECUTE _sql;
+    END LOOP;
+END;
+$do$;
 
