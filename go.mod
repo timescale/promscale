@@ -19,11 +19,11 @@ require (
 	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
 	github.com/hashicorp/go-plugin v1.4.3
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
-	github.com/jackc/pgconn v1.8.1
+	github.com/jackc/pgconn v1.10.0
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
-	github.com/jackc/pgproto3/v2 v2.0.6
-	github.com/jackc/pgtype v1.4.2
-	github.com/jackc/pgx/v4 v4.8.0
+	github.com/jackc/pgproto3/v2 v2.1.1
+	github.com/jackc/pgtype v1.8.1
+	github.com/jackc/pgx/v4 v4.13.0
 	github.com/jaegertracing/jaeger v1.26.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.36.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
