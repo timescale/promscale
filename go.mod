@@ -10,7 +10,7 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/felixge/fgprof v0.9.1
-	github.com/go-kit/kit v0.10.0
+	github.com/go-kit/kit v0.11.0
 	github.com/go-kit/log v0.2.0
 	github.com/go-resty/resty/v2 v2.6.0 // indirect
 	github.com/gogo/protobuf v1.3.2
@@ -24,7 +24,7 @@ require (
 	github.com/jackc/pgproto3/v2 v2.1.1
 	github.com/jackc/pgtype v1.8.1
 	github.com/jackc/pgx/v4 v4.13.0
-	github.com/jaegertracing/jaeger v1.26.0
+	github.com/jaegertracing/jaeger v1.27.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.36.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
