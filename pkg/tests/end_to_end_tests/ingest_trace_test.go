@@ -60,16 +60,25 @@ func TestIngestTracesMultiTraces(t *testing.T) {
 func generateTestTrace() pdata.Traces {
 	spanCount := 4
 	td := pdata.NewTraces()
-	td.ResourceSpans().AppendEmpty()
-	rs0 := td.ResourceSpans().At(0)
-	initResourceAttributes(rs0.Resource().Attributes(), 0)
-	libSpans := rs0.InstrumentationLibrarySpans().AppendEmpty()
+	rs := td.ResourceSpans().AppendEmpty()
+	initResourceAttributes(rs.Resource().Attributes(), 0)
+	libSpans := rs.InstrumentationLibrarySpans().AppendEmpty()
 	initInstLib(libSpans, 0)
 	for i := 0; i < spanCount; i++ {
 		fillSpanOne(libSpans.Spans().AppendEmpty())
 	}
+	ids := make([]pdata.SpanID, 0)
 	for i := 0; i < spanCount; i++ {
-		fillSpanTwo(libSpans.Spans().AppendEmpty())
+		sid := pdata.NewSpanID(generateRandSpanID())
+		fillSpanTwo(libSpans.Spans().AppendEmpty(), sid)
+		ids = append(ids, sid)
+	}
+	rs = td.ResourceSpans().AppendEmpty()
+	initResourceAttributes(rs.Resource().Attributes(), 1)
+	libSpans = rs.InstrumentationLibrarySpans().AppendEmpty()
+	initInstLib(libSpans, 1)
+	for _, parentID := range ids {
+		fillSpanThree(libSpans.Spans().AppendEmpty(), parentID)
 	}
 
 	return td
@@ -90,7 +99,7 @@ func generateTestTraceManyRS() []pdata.Traces {
 					fillSpanOne(libSpans.Spans().AppendEmpty())
 				}
 				for i := 0; i < spanCount; i++ {
-					fillSpanTwo(libSpans.Spans().AppendEmpty())
+					fillSpanTwo(libSpans.Spans().AppendEmpty(), pdata.NewSpanID(generateRandSpanID()))
 				}
 			}
 		}
@@ -162,9 +171,9 @@ func fillSpanOne(span pdata.Span) {
 	status.SetMessage("status-cancelled")
 }
 
-func fillSpanTwo(span pdata.Span) {
+func fillSpanTwo(span pdata.Span, spanID pdata.SpanID) {
 	span.SetTraceID(pdata.NewTraceID(traceID2))
-	span.SetSpanID(pdata.NewSpanID(generateRandSpanID()))
+	span.SetSpanID(spanID)
 	span.SetName("operationB")
 	span.SetStartTimestamp(testSpanStartTimestamp)
 	span.SetEndTimestamp(testSpanEndTimestamp)
@@ -184,6 +193,15 @@ func fillSpanTwo(span pdata.Span) {
 	span.SetDroppedLinksCount(3)
 }
 
+func fillSpanThree(span pdata.Span, parentSpanID pdata.SpanID) {
+	span.SetTraceID(pdata.NewTraceID(traceID2))
+	span.SetSpanID(pdata.NewSpanID(generateRandSpanID()))
+	span.SetParentSpanID(parentSpanID)
+	span.SetName("operationC")
+	span.SetStartTimestamp(testSpanStartTimestamp)
+	span.SetEndTimestamp(testSpanEndTimestamp)
+}
+
 func TestQueryTraces(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
@@ -197,7 +215,7 @@ func TestQueryTraces(t *testing.T) {
 
 		getOperationsTest(t, q)
 		findTraceTest(t, q)
-
+		getDependenciesTest(t, q)
 	})
 }
 
@@ -396,4 +414,13 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	traces, err = q.FindTraces(context.Background(), request)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(traces))
+}
+
+func getDependenciesTest(t testing.TB, q *query.Query) {
+	deps, err := q.GetDependencies(context.Background(), testSpanEndTime, 2*testSpanEndTime.Sub(testSpanStartTime))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(deps))
+	require.Equal(t, "service-name-0", deps[0].Parent)
+	require.Equal(t, "service-name-1", deps[0].Child)
+	require.Equal(t, uint64(4), deps[0].CallCount)
 }

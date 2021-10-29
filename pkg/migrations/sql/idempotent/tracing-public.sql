@@ -236,6 +236,35 @@ AS $func$
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.sibling_spans(SCHEMA_TRACING_PUBLIC.trace_id, bigint) TO prom_reader;
 
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.operation_calls(_start_time_min timestamptz, _start_time_max timestamptz)
+RETURNS TABLE
+(
+    parent_operation_id bigint,
+    child_operation_id bigint,
+    cnt bigint
+)
+AS $func$
+	SELECT
+		parent.operation_id as parent_operation_id,
+		child.operation_id as child_operation_id,
+	  	count(*) as cnt
+	FROM
+		_ps_trace.span child
+	INNER JOIN
+		_ps_trace.span parent ON (parent.span_id = child.parent_span_id AND parent.trace_id = child.trace_id)
+	WHERE
+      		child.start_time > _start_time_min AND child.start_time <_start_time_max AND
+      		parent.start_time > _start_time_min AND child.start_time < _start_time_max
+	GROUP BY parent.operation_id, child.operation_id
+$func$ LANGUAGE sql
+--Always prefer a mergejoin here since this is a rollup over a lot of data.
+--a nested loop is sometimes preferred by the planner but is almost never right
+--(it may only be right in cases where there is not a lot of data, and then it does
+-- not matter)
+SET  enable_nestloop = off
+STABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.operation_calls(timestamptz, timestamptz) TO prom_reader;
+
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.span_tree(_trace_id SCHEMA_TRACING_PUBLIC.trace_id, _span_id bigint, _max_dist int default null)
 RETURNS TABLE
 (
