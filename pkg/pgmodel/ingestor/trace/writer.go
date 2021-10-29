@@ -38,9 +38,9 @@ const (
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	insertSpanEventSQL = `INSERT INTO %s.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
-		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, tags, dropped_tags_count,
+		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_dropped_tags_count, resource_schema_url_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT DO NOTHING`  // Most cases conflict only happens on retries, safe to ignore duplicate data.
 )
 
@@ -254,12 +254,18 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					return err
 				}
 
-				jsonResourceTags, err := tagsBatch.GetTagMapJSON(rSpan.Resource().Attributes().AsRaw(), ResourceTagType)
+				// reserved, span, and resource tags are stored in a single column in the
+				// database as a jsonb array of objects
+				sTagMap, err := tagsBatch.GetTagMap(span.Attributes().AsRaw(), SpanTagType)
 				if err != nil {
 					return err
 				}
-
-				jsonTags, err := tagsBatch.GetTagMapJSON(span.Attributes().AsRaw(), SpanTagType)
+				rTagMap, err := tagsBatch.GetTagMap(rSpan.Resource().Attributes().AsRaw(), ResourceTagType)
+				if err != nil {
+					return err
+				}
+				// the first slot in the array is reserved for internal use
+				jsonTags, err := tagsBatch.GetTagMapArrayJSON(make(map[int64]int64), sTagMap, rTagMap)
 				if err != nil {
 					return err
 				}
@@ -283,7 +289,6 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					span.Status().Code().String(),
 					span.Status().Message(),
 					instLibID,
-					string(jsonResourceTags),
 					0, // TODO: Add resource_dropped_tags_count when it gets exposed upstream.
 					rSchemaURLID,
 				)

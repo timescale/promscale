@@ -95,7 +95,7 @@ func (t tagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err erro
 	return t.b.SendBatch(ctx, conn)
 }
 
-func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]byte, error) {
+func (tb tagBatch) GetTagMap(tags map[string]interface{}, typ TagType) (map[int64]int64, error) {
 	tagMap := make(map[int64]int64)
 	for k, v := range tags {
 		byteVal, err := json.Marshal(v)
@@ -119,8 +119,24 @@ func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]by
 		}
 		tagMap[tagIDs.keyID.Int] = tagIDs.valueID.Int
 	}
+	return tagMap, nil
+}
+
+func (batch tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]byte, error) {
+	tagMap, err := batch.GetTagMap(tags, typ)
+	if err != nil {
+		return nil, err
+	}
 
 	jsonBytes, err := json.Marshal(tagMap)
+	if err != nil {
+		return nil, err
+	}
+	return jsonBytes, nil
+}
+
+func (batch tagBatch) GetTagMapArrayJSON(tagMaps ...map[int64]int64) ([]byte, error) {
+	jsonBytes, err := json.Marshal(tagMaps)
 	if err != nil {
 		return nil, err
 	}
