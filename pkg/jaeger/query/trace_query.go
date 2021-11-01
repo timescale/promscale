@@ -18,25 +18,25 @@ const (
 	completeTraceSQLFormat = `
 	SELECT
 		s.trace_id,
-	   	s.span_id,
-       		s.parent_span_id,
-       		s.start_time start_times,
-       		s.end_time end_times,
-       		o.span_kind,
-       		s.dropped_tags_count 			dropped_tags_counts,
-       		s.dropped_events_count 			dropped_events_counts,
-       		s.dropped_link_count 			dropped_link_counts,
-       		s.trace_state 				trace_states,
-       		s_url.url 				schema_urls,
-       		o.span_name     			span_names,
-	   	ps_trace.jsonb(s.resource_tags) 	resource_tags,
-	   	ps_trace.jsonb(s.span_tags) 		span_tags,
-	   	array_agg(e.name) FILTER(WHERE e IS NOT NULL)			event_names,
-       		array_agg(e.time) FILTER(WHERE e IS NOT NULL)			event_times,
-	   	array_agg(e.dropped_tags_count) FILTER(WHERE e IS NOT NULL)	event_dropped_tags_count,
-	   	jsonb_agg(ps_trace.jsonb(e.tags)) FILTER(WHERE e IS NOT NULL)	event_tags,
-	   	inst_lib.name 				library_name,
-	   	inst_lib.version 			library_version,
+		s.span_id,
+		s.parent_span_id,
+		s.start_time start_times,
+		s.end_time end_times,
+		o.span_kind,
+		s.dropped_tags_count 		dropped_tags_counts,
+		s.dropped_events_count		dropped_events_counts,
+		s.dropped_link_count		dropped_link_counts,
+		s.trace_state 				trace_states,
+		s_url.url 					schema_urls,
+		o.span_name					span_names,
+		ps_trace.tag_map_jsonb(s.tags->2)	resource_tags,
+		ps_trace.tag_map_jsonb(s.tags->1)	span_tags,
+		array_agg(e.name) FILTER(WHERE e IS NOT NULL)			event_names,
+		array_agg(e.time) FILTER(WHERE e IS NOT NULL)			event_times,
+		array_agg(e.dropped_tags_count) FILTER(WHERE e IS NOT NULL)	event_dropped_tags_count,
+		jsonb_agg(ps_trace.tag_map_jsonb(e.tags)) FILTER(WHERE e IS NOT NULL)	event_tags,
+		inst_lib.name 				library_name,
+		inst_lib.version 			library_version,
 		inst_lib_url.url 			library_schema_url,
 		array_agg(lk.linked_trace_id) FILTER(WHERE lk IS NOT NULL)	links_linked_trace_ids,
 		array_agg(lk.linked_span_id)  FILTER(WHERE lk IS NOT NULL)	links_linked_span_ids,
@@ -65,8 +65,8 @@ const (
 	  s.parent_span_id,
 	  s.start_time,
 	  s.end_time,
-	  s.resource_tags,
-	  s.span_tags,
+	  s.tags->2,
+	  s.tags->1,
 	  o.span_name,
 	  o.span_kind,
 	  s_url.url,
@@ -180,7 +180,7 @@ func buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interfac
 	if len(q.Tags) > 0 {
 		for k, v := range q.Tags {
 			params = append(params, k, v)
-			qual := fmt.Sprintf(`s.span_tags ? ($%d == $%d)`, len(params)-1, len(params))
+			qual := fmt.Sprintf(`s.tags->1 ? ($%d == $%d)`, len(params)-1, len(params))
 			clauses = append(clauses, qual)
 		}
 	}

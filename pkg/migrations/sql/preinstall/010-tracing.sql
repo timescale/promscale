@@ -1,52 +1,3 @@
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TAG;
-GRANT USAGE ON SCHEMA SCHEMA_TAG TO prom_reader;
-
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
-GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
-
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
-GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
-
-CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
-    GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- public functions
-    GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
-    GRANT USAGE ON SCHEMA SCHEMA_EXT TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES; -- series views
-    GRANT USAGE ON SCHEMA SCHEMA_SERIES TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC; -- metric views
-    GRANT USAGE ON SCHEMA SCHEMA_METRIC TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_SERIES;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
-    GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
-    GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TAG;
-    GRANT USAGE ON SCHEMA SCHEMA_TAG TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
-
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
-END $$ $ee$);
-
 CALL SCHEMA_CATALOG.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
 
     CREATE DOMAIN SCHEMA_TRACING_PUBLIC.trace_id uuid NOT NULL CHECK (value != '00000000-0000-0000-0000-000000000000');
@@ -82,6 +33,11 @@ CALL SCHEMA_CATALOG.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
         'STATUS_CODE_ERROR'
     );
     GRANT USAGE ON TYPE SCHEMA_TRACING_PUBLIC.status_code TO prom_reader;
+END $$ $ee$);
+
+CALL SCHEMA_CATALOG.execute_everywhere('tag_maps', $ee$ DO $$ BEGIN
+    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_maps jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(value) = 'array');
+    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_maps TO prom_reader;
 END $$ $ee$);
 
 INSERT INTO public.prom_installation_info(key, value) VALUES
@@ -183,7 +139,6 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
     end_time timestamptz NOT NULL,
     duration_ms double precision NOT NULL GENERATED ALWAYS AS ( extract(epoch from (end_time - start_time)) * 1000.0 ) STORED,
     trace_state text CHECK (trace_state != ''),
-    span_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
     dropped_tags_count int NOT NULL default 0,
     event_time tstzrange default NULL,
     dropped_events_count int NOT NULL default 0,
@@ -191,17 +146,18 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.span
     status_code SCHEMA_TRACING_PUBLIC.status_code NOT NULL,
     status_message text,
     instrumentation_lib_id bigint,
-    resource_tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
     resource_dropped_tags_count int NOT NULL default 0,
     resource_schema_url_id BIGINT,
+    tags SCHEMA_TRACING_PUBLIC.tag_maps NOT NULL DEFAULT '[{},{},{}]'::jsonb,
     PRIMARY KEY (span_id, trace_id, start_time),
     CHECK (start_time <= end_time)
 );
 CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (trace_id, parent_span_id) INCLUDE (span_id); -- used for recursive CTEs for trace tree queries
-CREATE INDEX ON SCHEMA_TRACING.span USING GIN (span_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
+CREATE INDEX ON SCHEMA_TRACING.span USING GIN (tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
+--CREATE INDEX ON SCHEMA_TRACING.span USING GIN (span_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
 CREATE INDEX ON SCHEMA_TRACING.span USING BTREE (operation_id); -- supports filters/joins to operation table
 --CREATE INDEX ON SCHEMA_TRACING.span USING GIN (jsonb_object_keys(span_tags) array_ops); -- possible way to index key exists
-CREATE INDEX ON SCHEMA_TRACING.span USING GIN (resource_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
+--CREATE INDEX ON SCHEMA_TRACING.span USING GIN (resource_tags jsonb_path_ops); -- supports tag filters. faster ingest than json_ops
 GRANT SELECT ON TABLE SCHEMA_TRACING.span TO prom_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_TRACING.span TO prom_writer;
 
