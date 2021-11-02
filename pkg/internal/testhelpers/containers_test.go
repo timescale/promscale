@@ -52,12 +52,14 @@ func TestOtelCollectorConnection(t *testing.T) {
 	}
 	jContainer, err := StartJaegerContainer(true)
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, jContainer.Close())
+	}()
 
 	// Start Otel collector.
-	otelContainer, _, _, err := StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jContainer.ContainerIp, jContainer.GrpcReceivingPort.Port()), true)
+	otelContainer, err := StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jContainer.ContainerIp, jContainer.GrpcReceivingPort.Port()), true)
 	require.NoError(t, err)
-	require.NoError(t, jContainer.Container.Terminate(context.Background()))
-	require.NoError(t, otelContainer.Terminate(context.Background()))
+	require.NoError(t, otelContainer.Close())
 }
 
 func TestJaegerConnection(t *testing.T) {
@@ -67,7 +69,7 @@ func TestJaegerConnection(t *testing.T) {
 	jContainer, err := StartJaegerContainer(true)
 	require.NoError(t, err)
 	defer func() {
-		require.NoError(t, jContainer.Container.Terminate(context.Background()))
+		require.NoError(t, jContainer.Close())
 	}()
 
 	const servicesEndpoint = "api/services"

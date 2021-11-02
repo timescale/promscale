@@ -54,18 +54,38 @@ service:
 	healthGoodText = "Server available"
 )
 
-func StartOtelCollectorContainer(urlJaeger string, printLogs bool) (container testcontainers.Container, host string, port nat.Port, err error) {
+type OtelContainer struct {
+	Container testcontainers.Container
+	Host      string
+	Port      nat.Port
+	printLogs bool
+}
+
+func (c *OtelContainer) Close() error {
+	if c.printLogs {
+		if err := c.Container.StopLogProducer(); err != nil {
+			return fmt.Errorf("error stopping log producer: %w", err)
+		}
+	}
+	if err := c.Container.Terminate(context.Background()); err != nil {
+		return fmt.Errorf("error terminate container: %w", err)
+	}
+	return nil
+}
+
+func StartOtelCollectorContainer(urlJaeger string, printLogs bool) (otelContainer *OtelContainer, err error) {
 	tempDirPath, err := TempDir("")
 	if err != nil {
-		return nil, host, port, fmt.Errorf("temp dir: %w", err)
+		return nil, fmt.Errorf("temp dir: %w", err)
 	}
 
 	configFile := filepath.Join(tempDirPath, "otel_collector_config.yml")
 	config := fmt.Sprintf(otelCollectorConfig, urlJaeger)
 
+	// #nosec
 	err = ioutil.WriteFile(configFile, []byte(config), 0777)
 	if err != nil {
-		return nil, "", "", err
+		return nil, err
 	}
 
 	grpcReceivingPort, healthCheckPort := nat.Port("4317/tcp"), nat.Port("13133/tcp")
@@ -83,48 +103,54 @@ func StartOtelCollectorContainer(urlJaeger string, printLogs bool) (container te
 		Cmd: []string{"--config=otel-local-config.yaml"},
 	}
 
-	container, err = testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req})
+	container, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req})
 	if err != nil {
-		return container, host, port, fmt.Errorf("error creating otel-collector container: %w", err)
+		return nil, fmt.Errorf("error creating otel-collector container: %w", err)
 	}
 	if err = container.Start(context.Background()); err != nil {
-		return nil, "", "", fmt.Errorf("error starting otel container: %w", err)
+		return nil, fmt.Errorf("error starting otel container: %w", err)
 	}
+
+	otelContainer = new(OtelContainer)
+	otelContainer.Container = container
 
 	if printLogs {
 		if err = container.StartLogProducer(context.Background()); err != nil {
-			return nil, "", "", fmt.Errorf("error starting log producer: %w", err)
+			return nil, fmt.Errorf("error starting log producer: %w", err)
 		}
 		container.FollowOutput(stdoutLogConsumer{"otel-collector"})
+		otelContainer.printLogs = true
 	}
 
-	host, err = container.Host(context.Background())
+	host, err := container.Host(context.Background())
 	if err != nil {
-		return container, host, port, fmt.Errorf("error getting container host: %w", err)
+		return nil, fmt.Errorf("error getting container host: %w", err)
 	}
+	otelContainer.Host = host
 
-	port, err = container.MappedPort(context.Background(), grpcReceivingPort)
+	port, err := container.MappedPort(context.Background(), grpcReceivingPort)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("error mapping port: %w", err)
+		return nil, fmt.Errorf("error mapping port: %w", err)
 	}
+	otelContainer.Port = port
 
 	// Do a quick health check to make sure everything is right.
 	healthCheck, err := container.MappedPort(context.Background(), healthCheckPort)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("error mapping health-check port: %w", err)
+		return nil, fmt.Errorf("error mapping health-check port: %w", err)
 	}
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s", healthCheck.Port()))
 	if err != nil {
-		return nil, "", "", fmt.Errorf("error checking health response: %w", err)
+		return nil, fmt.Errorf("error checking health response: %w", err)
 	}
 
 	bSlice, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("error reading health-check response: %w", err)
+		return nil, fmt.Errorf("error reading health-check response: %w", err)
 	}
 	// Health check.
 	if !strings.Contains(string(bSlice), healthGoodText) {
-		return nil, "", "", fmt.Errorf("health check failed, received '%s' does not contain '%s'", string(bSlice), healthGoodText)
+		return nil, fmt.Errorf("health check failed, received '%s' does not contain '%s'", string(bSlice), healthGoodText)
 	}
 
 	return

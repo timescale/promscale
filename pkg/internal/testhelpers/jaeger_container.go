@@ -22,6 +22,19 @@ type JaegerContainer struct {
 	Container                 testcontainers.Container
 	Host, ContainerIp         string
 	GrpcReceivingPort, UIPort nat.Port
+	printLogs                 bool
+}
+
+func (c *JaegerContainer) Close() error {
+	if c.printLogs {
+		if err := c.Container.StopLogProducer(); err != nil {
+			return fmt.Errorf("error stopping log producer: %w", err)
+		}
+	}
+	if err := c.Container.Terminate(context.Background()); err != nil {
+		return fmt.Errorf("error terminate container: %w", err)
+	}
+	return nil
 }
 
 func StartJaegerContainer(printLogs bool) (jaegerContainer *JaegerContainer, err error) {
@@ -39,34 +52,37 @@ func StartJaegerContainer(printLogs bool) (jaegerContainer *JaegerContainer, err
 		return nil, fmt.Errorf("creating jaeger all-in-one container: %w", err)
 	}
 
+	jaegerContainer = new(JaegerContainer)
+	jaegerContainer.Container = container
+
 	if printLogs {
 		if err = container.StartLogProducer(context.Background()); err != nil {
 			return nil, fmt.Errorf("error starting log producer: %w", err)
 		}
 		container.FollowOutput(stdoutLogConsumer{"jaeger"})
+		jaegerContainer.printLogs = true
 	}
 
 	host, err := container.Host(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("error getting container host: %w", err)
 	}
+	jaegerContainer.Host = host
 
 	containerIP, err := container.ContainerIP(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("error getting container ip: %w", err)
 	}
 
+	// We send actual `containerIP` & `grpcReceivingPort` grpc port, since this will be used internally in docker network.
+	jaegerContainer.ContainerIp = containerIP
+
 	mappedUIPort, err := container.MappedPort(context.Background(), uiPort)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping ui-port: %w", err)
 	}
+	jaegerContainer.UIPort = mappedUIPort
+	jaegerContainer.GrpcReceivingPort = grpcReceivingPort
 
-	// We send actual `containerIP` & `grpcReceivingPort` grpc port, since this will be used internally in docker network.
-	return &JaegerContainer{
-		Container:         container,
-		Host:              host,
-		ContainerIp:       containerIP,
-		GrpcReceivingPort: grpcReceivingPort,
-		UIPort:            mappedUIPort,
-	}, nil
+	return
 }

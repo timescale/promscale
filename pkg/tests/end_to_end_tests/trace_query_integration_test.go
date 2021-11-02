@@ -37,12 +37,15 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 	jaegerContainer, err := testhelpers.StartJaegerContainer(false)
 	require.NoError(t, err)
 
-	otelContainer, otelHost, otelReceivingPort, err := testhelpers.StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerContainer.ContainerIp, jaegerContainer.GrpcReceivingPort.Port()), false)
+	otelContainer, err := testhelpers.StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerContainer.ContainerIp, jaegerContainer.GrpcReceivingPort.Port()), false)
 	require.NoError(t, err)
 
+	otelHost := otelContainer.Host
+	otelReceivingPort := otelContainer.Port
+
 	defer func() {
-		require.NoError(t, jaegerContainer.Container.Terminate(context.Background()))
-		require.NoError(t, otelContainer.Terminate(context.Background()))
+		require.NoError(t, jaegerContainer.Close())
+		require.NoError(t, otelContainer.Close())
 	}()
 
 	// Make otel client.
@@ -112,7 +115,7 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		sortTraceContents(&jTrace)
 		sortTraceContents(&pTrace)
 
-		require.ElementsMatch(t, jTrace, pTrace)
+		require.Exactly(t, jTrace, pTrace)
 
 		// Verify fetch traces API.
 		traceStart := timestamp.FromTime(testSpanStartTime) * 1000
@@ -146,6 +149,9 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 
 			sortTraceContents(a)
 			sortTraceContents(b)
+
+			purgeProcessInformation(a)
+			purgeProcessInformation(b)
 		}
 		require.Exactly(t, jTraces, pTraces)
 	})
@@ -164,13 +170,16 @@ func sortTraceContents(t *jaegerJSONModel.Trace) {
 
 func sortSpanContents(spans []jaegerJSONModel.Span, ignoreTags map[string]struct{}) {
 	sort.SliceStable(spans, func(i, j int) bool {
+		return spans[i].ProcessID < spans[j].ProcessID
+	})
+	sort.SliceStable(spans, func(i, j int) bool {
 		return spans[i].SpanID < spans[j].SpanID
 	})
 
 	for index := range spans {
 		// Sort references.
 		sort.SliceStable(spans[index].References, func(i, j int) bool {
-			return spans[index].References[i].RefType < spans[index].References[j].RefType
+			return spans[index].References[i].SpanID < spans[index].References[j].SpanID
 		})
 
 		spans[index].Tags = trimIgnoredTags(spans[index].Tags[:], ignoreTags)
@@ -199,6 +208,13 @@ func sortSpanContents(spans []jaegerJSONModel.Span, ignoreTags map[string]struct
 				return spans[index].Logs[logIndex].Fields[i].Key < spans[index].Logs[logIndex].Fields[j].Key
 			})
 		}
+	}
+}
+
+func purgeProcessInformation(a *jaegerJSONModel.Trace) {
+	a.Processes = nil
+	for i := range a.Spans {
+		a.Spans[i].ProcessID = ""
 	}
 }
 
