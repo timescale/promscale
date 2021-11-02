@@ -17,9 +17,8 @@ upgradeStrategy: Recreate
 # The list of available cli flags is available at
 # https://github.com/timescale/promscale/blob/master/docs/cli.md
 
-# For example, to activate HA, bump the replicaCount and set those arguments:
-# - -leader-election-pg-advisory-lock-id=1
-# - -leader-election-pg-advisory-lock-prometheus-timeout=6s
+# For example, to activate HA, bump the replicaCount and set those arguments (also, make sure that external labels are configured on the Prometheus side):
+# - -high-availabiliity=1
 # More info about HA: https://github.com/timescale/promscale/blob/master/docs/high-avaliability/prometheus-HA.md
 args: []
 
