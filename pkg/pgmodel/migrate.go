@@ -48,9 +48,9 @@ var (
 			"ha.sql",
 			"metric-metadata.sql",
 			"exemplar.sql",
-			"tracing-private.sql",
-			"tracing-public.sql",
-			"tracing-public-views.sql",
+			"tracing-functions.sql",
+			"tracing-views.sql",
+			"tracing-tags.sql",
 			"apply_permissions.sql", //should be last
 		},
 	}
