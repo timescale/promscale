@@ -123,13 +123,7 @@ jobs:
         MULTI: ${{ matrix.test-setups.multi }}
         TSDBOSS: ${{ matrix.test-setups.tsdboss }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
-      run: go test -race ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-timescaledb-oss=$TSDBOSS -use-multinode=$MULTI -postgres-version-major=$PG > $SHORTNAME-test-run.log  2>&1
-
-    - name: 'Print failure logs'
-      if: ${{ failure() }}
-      env:
-        SHORTNAME: ${{ matrix.test-setups.shortname }}
-      run: grep "^[- F]" $SHORTNAME-test-run.log
+      run: go test -race ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-timescaledb-oss=$TSDBOSS -use-multinode=$MULTI -postgres-version-major=$PG | tee $SHORTNAME-test-run.log  2>&1
 
     - name: 'Upload Log Artifact'
       if: ${{ always() }}
