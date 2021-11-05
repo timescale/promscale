@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -16,8 +17,11 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/collector/model/otlpgrpc"
+	"go.opentelemetry.io/collector/model/pdata"
 	"google.golang.org/grpc"
+
+	jaegerproto "github.com/jaegertracing/jaeger/proto-gen/api_v2"
+	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/prometheus/pkg/timestamp"
@@ -33,44 +37,30 @@ import (
 )
 
 func TestCompareTraceQueryResponse(t *testing.T) {
-	// Start containers.
 	jaegerContainer, err := testhelpers.StartJaegerContainer(false)
 	require.NoError(t, err)
-
-	otelContainer, err := testhelpers.StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jaegerContainer.ContainerIp, jaegerContainer.GrpcReceivingPort.Port()), false)
-	require.NoError(t, err)
-
-	otelHost := otelContainer.Host
-	otelReceivingPort := otelContainer.Port
-
-	defer func() {
-		require.NoError(t, jaegerContainer.Close())
-		require.NoError(t, otelContainer.Close())
-	}()
-
-	// Make otel client.
-	otelIngestClient, err := getOtelIngestClient(fmt.Sprintf("%s:%s", otelHost, otelReceivingPort.Port()))
-	require.NoError(t, err)
+	defer jaegerContainer.Close()
 
 	sampleTraces := generateTestTrace()
+	e2eDb := *testDatabase + "_e2e"
 
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, e2eDb, func(db *pgxpool.Pool, t testing.TB) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 
 		// Ingest traces into Promscale.
 		err = ingestor.IngestTraces(context.Background(), copyTraces(sampleTraces))
 		require.NoError(t, err)
+		defer ingestor.Close()
 
-		// Ingest traces into otel-collector -> Jaeger.
-		resp, err := otelIngestClient.Export(context.Background(), newTracesRequest(copyTraces(sampleTraces)))
+		err = insertDataIntoJaeger(fmt.Sprintf("localhost:%s", jaegerContainer.GrpcReceivingPort.Port()), copyTraces(sampleTraces))
 		require.NoError(t, err)
-		require.NotNil(t, resp)
 
 		// Create Promscale proxy to query traces data.
 		promscaleProxy := jaegerquery.New(pgxconn.NewPgxConn(db))
 
-		runPromscaleTraceQueryJSONServer(promscaleProxy, ":9203")
+		shutdown := runPromscaleTraceQueryJSONServer(promscaleProxy, ":9203")
+		defer shutdown.Close()
 
 		promscaleClient := httpClient{"http://localhost:9203"}
 		jaegerClient := httpClient{"http://localhost:" + jaegerContainer.UIPort.Port()}
@@ -157,6 +147,29 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 	})
 }
 
+func insertDataIntoJaeger(endpoint string, data pdata.Traces) error {
+	opts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithBlock()}
+	conn, err := grpc.Dial(endpoint, opts...)
+	if err != nil {
+		panic(err)
+	}
+
+	client := jaegerproto.NewCollectorServiceClient(conn)
+
+	batches, err := jaegertranslator.InternalTracesToJaegerProto(data)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, batch := range batches {
+		_, err := client.PostSpans(context.Background(), &jaegerproto.PostSpansRequest{Batch: *batch}, grpc.WaitForReady(true))
+		if err != nil {
+			panic(err)
+		}
+	}
+	return nil
+}
+
 var skipTags = map[string]struct{}{
 	"internal.span.format": {},
 	"otel.status_code":     {},
@@ -170,9 +183,6 @@ func sortTraceContents(t *jaegerJSONModel.Trace) {
 
 func sortSpanContents(spans []jaegerJSONModel.Span, ignoreTags map[string]struct{}) {
 	sort.SliceStable(spans, func(i, j int) bool {
-		return spans[i].ProcessID < spans[j].ProcessID
-	})
-	sort.SliceStable(spans, func(i, j int) bool {
 		return spans[i].SpanID < spans[j].SpanID
 	})
 
@@ -182,33 +192,31 @@ func sortSpanContents(spans []jaegerJSONModel.Span, ignoreTags map[string]struct
 			return spans[index].References[i].SpanID < spans[index].References[j].SpanID
 		})
 
-		spans[index].Tags = trimIgnoredTags(spans[index].Tags[:], ignoreTags)
-		sort.SliceStable(spans[index].Tags, func(i, j int) bool {
-			return spans[index].Tags[i].Key < spans[index].Tags[j].Key
-		})
+		spans[index].Tags = sortFields(trimIgnoredTags(spans[index].Tags[:], ignoreTags))
 
 		// Sort warnings.
 		sort.Strings(spans[index].Warnings)
 
 		if spans[index].Process != nil {
 			// Sort processes tags.
-			sort.SliceStable(spans[index].Process.Tags, func(i, j int) bool {
-				return spans[index].Process.Tags[i].Key < spans[index].Process.Tags[j].Key
-			})
+			spans[index].Process.Tags = sortFields(spans[index].Process.Tags[:])
 		}
 
-		// Sort logs.
-		sort.SliceStable(spans[index].Logs, func(i, j int) bool {
-			return spans[index].Logs[i].Timestamp < spans[index].Logs[j].Timestamp
-		})
 		// Sort tags in each log.
 		for logIndex := range spans[index].Logs {
 			// Sort tags belonging to a log.
-			sort.SliceStable(spans[index].Logs[logIndex].Fields, func(i, j int) bool {
-				return spans[index].Logs[logIndex].Fields[i].Key < spans[index].Logs[logIndex].Fields[j].Key
-			})
+			spans[index].Logs[logIndex].Fields = sortFields(spans[index].Logs[logIndex].Fields[:])
 		}
 	}
+}
+
+func sortFields(f []jaegerJSONModel.KeyValue) []jaegerJSONModel.KeyValue {
+	sort.Slice(f, func(i, j int) bool {
+		v1 := fmt.Sprintf("%s%v", f[i].Key, f[i].Value)
+		v2 := fmt.Sprintf("%s%v", f[j].Key, f[j].Value)
+		return v1 < v2
+	})
+	return f
 }
 
 func purgeProcessInformation(a *jaegerJSONModel.Trace) {
@@ -270,7 +278,7 @@ func convertToTraces(arr []interface{}) []jaegerJSONModel.Trace {
 // runPromscaleTraceQueryJSONServer starts a server that acts as a wrapper around promscale trace query module, responding in
 // Jaeger JSON format. It reuses Jaeger's JSON layer as a wrapper so that the outputs from Jaeger's `/api` endpoints
 // can be directly compared with Promscale's output from query endpoints.
-func runPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, port string) {
+func runPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, port string) io.Closer {
 	promscaleQueryHandler := jaegerQueryApp.NewAPIHandler(jaegerQueryService.NewQueryService(
 		proxy,
 		proxy,
@@ -279,14 +287,14 @@ func runPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, port string) {
 	r := jaegerQueryApp.NewRouter()
 	promscaleQueryHandler.RegisterRoutes(r)
 
-	server := http.Server{Handler: r}
+	server := &http.Server{Handler: r}
 
 	runServer := func() {
 		listener, err := net.Listen("tcp", port)
 		if err != nil {
 			panic(err)
 		}
-		if err := server.Serve(listener); err != nil {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			panic(err)
 		}
 	}
@@ -320,19 +328,10 @@ func runPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, port string) {
 			}
 
 			if resp.StatusCode == http.StatusOK {
-				return
+				return server
 			}
 		}
 	}
-}
-
-func getOtelIngestClient(url string) (client otlpgrpc.TracesClient, err error) {
-	grpcConn, err := grpc.DialContext(context.Background(), url, []grpc.DialOption{grpc.WithBlock(), grpc.WithInsecure()}...)
-	if err != nil {
-		return nil, fmt.Errorf("dial with context: %w", err)
-	}
-	client = otlpgrpc.NewTracesClient(grpcConn)
-	return
 }
 
 // Note: Promscale responds by default in GRPC. But, Jaeger responds in JSON. Since the final rendering layer of UI
@@ -389,7 +388,6 @@ func (c httpClient) getTrace(traceId string) (*structuredResponse, error) {
 	return resp, nil
 }
 
-// http://0.0.0.0:49602/api/traces?end=1634211840000000&limit=20&lookback=custom&maxDuration&minDuration&service=service1&start=1581273000000000
 func (c httpClient) fetchTraces(start, end int64, service string) (*structuredResponse, error) {
 	resp, err := do(fmt.Sprintf(fetchTraces, c.url, start, end, service))
 	if err != nil {

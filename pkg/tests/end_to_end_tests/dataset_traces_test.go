@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"time"
 
-	"go.opentelemetry.io/collector/model/otlpgrpc"
 	"go.opentelemetry.io/collector/model/pdata"
 )
 
@@ -185,10 +184,4 @@ func fillSpanThree(span pdata.Span, parentSpanID pdata.SpanID) {
 // deep copy the traces since we mutate them.
 func copyTraces(traces pdata.Traces) pdata.Traces {
 	return traces.Clone()
-}
-
-func newTracesRequest(traces pdata.Traces) (req otlpgrpc.TracesRequest) {
-	req = otlpgrpc.NewTracesRequest()
-	req.SetTraces(traces)
-	return
 }

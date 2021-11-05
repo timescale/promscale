@@ -46,35 +46,17 @@ func TestPGConnection(t *testing.T) {
 	}
 }
 
-func TestOtelCollectorConnection(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping checking Jaeger connection")
-	}
-	jContainer, err := StartJaegerContainer(true)
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, jContainer.Close())
-	}()
-
-	// Start Otel collector.
-	otelContainer, err := StartOtelCollectorContainer(fmt.Sprintf("%s:%s", jContainer.ContainerIp, jContainer.GrpcReceivingPort.Port()), true)
-	require.NoError(t, err)
-	require.NoError(t, otelContainer.Close())
-}
-
 func TestJaegerConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping checking Jaeger connection")
 	}
 	jContainer, err := StartJaegerContainer(true)
 	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, jContainer.Close())
-	}()
+	defer jContainer.Close()
 
 	const servicesEndpoint = "api/services"
 
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/%s", jContainer.Host, jContainer.UIPort.Port(), servicesEndpoint))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/%s", jContainer.UIPort.Port(), servicesEndpoint))
 	require.NoError(t, err)
 	require.Equal(t, resp.StatusCode, http.StatusOK)
 

@@ -20,7 +20,6 @@ const (
 
 type JaegerContainer struct {
 	Container                 testcontainers.Container
-	Host, ContainerIp         string
 	GrpcReceivingPort, UIPort nat.Port
 	printLogs                 bool
 }
@@ -42,7 +41,7 @@ func StartJaegerContainer(printLogs bool) (jaegerContainer *JaegerContainer, err
 	req := testcontainers.ContainerRequest{
 		Image:        jaegerImage,
 		ExposedPorts: []string{string(grpcReceivingPort), string(uiPort)},
-		WaitingFor:   wait.ForListeningPort(grpcReceivingPort),
+		WaitingFor:   wait.ForLog("Channel Connectivity change to IDLE"),
 		Env: map[string]string{
 			envSpanStorageType: "memory",
 		},
@@ -63,26 +62,18 @@ func StartJaegerContainer(printLogs bool) (jaegerContainer *JaegerContainer, err
 		jaegerContainer.printLogs = true
 	}
 
-	host, err := container.Host(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("error getting container host: %w", err)
-	}
-	jaegerContainer.Host = host
-
-	containerIP, err := container.ContainerIP(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("error getting container ip: %w", err)
-	}
-
-	// We send actual `containerIP` & `grpcReceivingPort` grpc port, since this will be used internally in docker network.
-	jaegerContainer.ContainerIp = containerIP
-
 	mappedUIPort, err := container.MappedPort(context.Background(), uiPort)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping ui-port: %w", err)
 	}
+
+	mappedGRPCPort, err := container.MappedPort(context.Background(), grpcReceivingPort)
+	if err != nil {
+		return nil, fmt.Errorf("error mapping grpc-receiving port: %w", err)
+	}
+
 	jaegerContainer.UIPort = mappedUIPort
-	jaegerContainer.GrpcReceivingPort = grpcReceivingPort
+	jaegerContainer.GrpcReceivingPort = mappedGRPCPort
 
 	return
 }
