@@ -6,13 +6,27 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	io_prometheus_client "github.com/prometheus/client_model/go"
+	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+
+	//prom_go "github.com/prometheus/client_model/go"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/promql"
 )
+
+func TestMetricExtraction(t *testing.T) {
+	m := InitMetrics()
+	g := m.LeaderGauge
+	var tmp io_prometheus_client.Metric
+	require.NoError(t, g.Write(&tmp))
+	fmt.Println("gauge", tmp.Gauge)
+	fmt.Println("counter", tmp.Counter)
+}
 
 func TestMarshalVector(t *testing.T) {
 	testCases := []struct {
