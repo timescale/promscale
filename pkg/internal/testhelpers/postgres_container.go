@@ -58,6 +58,7 @@ const (
 	timescale2Bit       = 1 << iota
 	multinodeBit        = 1 << iota
 	postgres12Bit       = 1 << iota
+	postgres13Bit       = 1 << iota
 	timescaleOSSBit     = 1 << iota
 	timescaleNightlyBit = 1 << iota
 )
@@ -104,6 +105,10 @@ func (e *ExtensionState) UsePG12() {
 	*e |= postgres12Bit
 }
 
+func (e *ExtensionState) UsePG13() {
+	*e |= postgres13Bit
+}
+
 func (e *ExtensionState) UseTimescaleDBOSS() {
 	*e |= timescaleBit | timescale2Bit | timescaleOSSBit
 }
@@ -130,6 +135,10 @@ func (e ExtensionState) usesPromscale() bool {
 
 func (e ExtensionState) UsesPG12() bool {
 	return (e & postgres12Bit) != 0
+}
+
+func (e ExtensionState) UsesPG13() bool {
+	return (e & postgres13Bit) != 0
 }
 
 func (e ExtensionState) UsesTimescaleDBOSS() bool {
@@ -294,13 +303,16 @@ func StartPGContainer(
 	printLogs bool,
 ) (testcontainers.Container, io.Closer, error) {
 	var image string
-	PGMajor := "13"
+	PGMajor := "14"
+	if extensionState.UsesPG13() {
+		PGMajor = "13"
+	}
 	if extensionState.UsesPG12() {
 		PGMajor = "12"
 	}
 	PGTag := "pg" + PGMajor
 
-	switch extensionState &^ postgres12Bit {
+	switch extensionState &^ postgres12Bit &^ postgres13Bit {
 	case Timescale1:
 		if PGMajor != "12" {
 			return nil, nil, fmt.Errorf("timescaledb 1.x requires pg12")
@@ -314,7 +326,12 @@ func StartPGContainer(
 	case Timescale2, Multinode:
 		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale2AndPromscale, MultinodeAndPromscale:
-		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
+		if PGMajor == "14" {
+			//TODO: remove split once pg14 ha image published
+			image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
+		} else {
+			image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
+		}
 	case VanillaPostgres:
 		image = "postgres:" + PGMajor
 	case TimescaleOSS:

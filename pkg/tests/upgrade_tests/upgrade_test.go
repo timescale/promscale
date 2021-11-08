@@ -69,8 +69,10 @@ func TestMain(m *testing.M) {
 /* Prev image is the db image with the old promscale extension. We do NOT test timescaleDB extension upgrades here. */
 func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean string) {
 	if !extensionState.UsesPG12() {
-		//TODO add tests after release with PG13 support
-		panic("Can't test PG13 yet because haven't had a PG13 release")
+		//using the oldest supported version of PG seems sufficient.
+		//we don't want to use any features in a newer PG version that isn't available in an older one
+		//but migration code that works in an older PG version should generally work in a newer one.
+		panic("Only use pg12 for upgrade tests")
 	}
 	switch {
 	case extensionState.UsesMultinode():
