@@ -230,8 +230,15 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 
 	comparator := currentVersion.Compare(*newVersion)
 	if comparator > 0 {
-		//currentVersion greater than what we can handle, don't use the extension
-		return fmt.Errorf("the extension at a greater version than supported by the connector: %v > %v", currentVersion, newVersion)
+		//check that we are within the accepted range
+		if !validRange(*newVersion) {
+			//currentVersion greater than what we can handle, don't use the extension
+			return fmt.Errorf("the extension at a greater version than supported by the connector: %v > %v", currentVersion, newVersion)
+		}
+		//we may be at a higher extension version than what we'd auto upgrade to (e.g. higher than the default version)
+		//and that may be fine, so do nothing.
+		log.Info("msg", "using a higher extension version than expected", "extension_name", extName, "current_version", currentVersion, "expected_version", newVersion)
+		return nil
 	} else if comparator == 0 {
 		//Nothing to do we are at the correct version
 		return nil
