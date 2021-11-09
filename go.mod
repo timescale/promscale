@@ -27,7 +27,7 @@ require (
 	github.com/jackc/pgtype v1.8.1
 	github.com/jackc/pgx/v4 v4.13.0
 	github.com/jaegertracing/jaeger v1.28.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.36.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.38.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pbnjay/memory v0.0.0-20201129165224-b12e5d931931
@@ -47,7 +47,6 @@ require (
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
 	go.opentelemetry.io/collector/model v0.38.0
 	go.uber.org/goleak v1.1.12
-	go.uber.org/multierr v1.7.0 // indirect
 	google.golang.org/grpc v1.42.0
 	gopkg.in/yaml.v2 v2.4.0
 )
