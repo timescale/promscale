@@ -78,12 +78,22 @@ func New(config ProxyConfig, logger hclog.Logger) (*Proxy, error) {
 	}, nil
 }
 
-func (p *Proxy) Close() error {
-	err := p.conn.Close()
-	if err != nil {
-		return fmt.Errorf("error closing connection to Promscale GRPC server: %w", err)
+func (p *Proxy) Close(ctx context.Context, _ *storage_v1.CloseWriterRequest) (*storage_v1.CloseWriterResponse, error) {
+	errChan := make(chan error)
+	go func() {
+		errChan <- p.conn.Close()
+		close(errChan)
+	}()
+	var err error
+	select {
+	case err = <-errChan:
+	case <-ctx.Done():
+		err = ctx.Err()
 	}
-	return nil
+	if err != nil {
+		err = fmt.Errorf("error closing connection to Promscale GRPC server: %w", err)
+	}
+	return nil, err
 }
 
 func (p *Proxy) GetDependencies(ctx context.Context, r *storage_v1.GetDependenciesRequest) (*storage_v1.GetDependenciesResponse, error) {
