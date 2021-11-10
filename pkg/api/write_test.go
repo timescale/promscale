@@ -257,7 +257,7 @@ func TestWrite(t *testing.T) {
 				err:    c.inserterErr,
 			}
 			dataParser := parser.NewParser()
-			metrics = &Metrics{
+			APIMetrics = &Metrics{
 				LeaderGauge:       leaderGauge,
 				ReceivedSamples:   receivedSamplesCounter,
 				ReceivedMetadata:  receivedMetadataCounter,

@@ -39,7 +39,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		dataParser.AddPreprocessor(preproc)
 	}
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, dataParser, elector))
+	writeHandler := timeHandler(APIMetrics.HTTPRequestDuration, "write", Write(client, dataParser, elector))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {
@@ -54,11 +54,11 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 
 	router.Post("/write", writeHandler)
 
-	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics))
+	readHandler := timeHandler(APIMetrics.HTTPRequestDuration, "read", Read(apiConf, client, APIMetrics))
 	router.Get("/read", readHandler)
 	router.Post("/read", readHandler)
 
-	deleteHandler := timeHandler(metrics.HTTPRequestDuration, "delete_series", Delete(apiConf, client))
+	deleteHandler := timeHandler(APIMetrics.HTTPRequestDuration, "delete_series", Delete(apiConf, client))
 	router.Put("/delete_series", deleteHandler)
 	router.Post("/delete_series", deleteHandler)
 
@@ -67,31 +67,31 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	if err != nil {
 		return nil, fmt.Errorf("creating query-engine: %w", err)
 	}
-	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, metrics))
+	queryHandler := timeHandler(APIMetrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, APIMetrics))
 	router.Get("/api/v1/query", queryHandler)
 	router.Post("/api/v1/query", queryHandler)
 
-	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, metrics))
+	queryRangeHandler := timeHandler(APIMetrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, APIMetrics))
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
-	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, metrics))
+	exemplarQueryHandler := timeHandler(APIMetrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, APIMetrics))
 	router.Get("/api/v1/query_exemplars", exemplarQueryHandler)
 	router.Post("/api/v1/query_exemplars", exemplarQueryHandler)
 
-	seriesHandler := timeHandler(metrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
+	seriesHandler := timeHandler(APIMetrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
 	router.Get("/api/v1/series", seriesHandler)
 	router.Post("/api/v1/series", seriesHandler)
 
-	labelsHandler := timeHandler(metrics.HTTPRequestDuration, "labels", Labels(apiConf, queryable))
+	labelsHandler := timeHandler(APIMetrics.HTTPRequestDuration, "labels", Labels(apiConf, queryable))
 	router.Get("/api/v1/labels", labelsHandler)
 	router.Post("/api/v1/labels", labelsHandler)
 
-	metadataHandler := timeHandler(metrics.HTTPRequestDuration, "metadata", MetricMetadata(apiConf, client))
+	metadataHandler := timeHandler(APIMetrics.HTTPRequestDuration, "metadata", MetricMetadata(apiConf, client))
 	router.Get("/api/v1/metadata", metadataHandler)
 	router.Post("/api/v1/metadata", metadataHandler)
 
-	labelValuesHandler := timeHandler(metrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
+	labelValuesHandler := timeHandler(APIMetrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
 	router.Get("/api/v1/label/:name/values", labelValuesHandler)
 
 	healthChecker := func() error { return client.HealthCheck() }

@@ -7,7 +7,9 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,23 +24,113 @@ type telemetryEngine struct {
 	conn            pgxconn.PgxConn
 	promqlEngine    *promql.Engine
 	promqlQueryable promql.Queryable
+	uuid            string
 	telemetryLock   util.AdvisoryLock
 	isHouseKeeper   bool
+
+	metricMux sync.RWMutex
+	metrics   []telemetryMetric
+}
+
+type Telemetry interface {
+	StartTelemetrySyncRoutine(context.Context)
+	BecomeHousekeeper() (success bool, err error)
+	DoHouseKeeping(context.Context) error
+	RegisterMetric(statName string, gaugeOrCounterMetric prometheus.Metric) error
 }
 
 const telemetryLockId = 0x2D829A932AAFCEDE // Random.
 
-func NewTelemetryEngine(conn pgxconn.PgxConn, promqlEngine *promql.Engine, promqlQueryable promql.Queryable, connStr string) (*telemetryEngine, error) {
+func NewTelemetryEngine(conn pgxconn.PgxConn, uuid string, connStr string, promqlEngine *promql.Engine, promqlQueryable promql.Queryable) (Telemetry, error) {
 	advisoryLock, err := util.NewPgAdvisoryLock(telemetryLockId, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("error getting pg-advisory-lock: %w", err)
 	}
-	return &telemetryEngine{
+	engine := &telemetryEngine{
 		conn:            conn,
 		promqlEngine:    promqlEngine,
 		promqlQueryable: promqlQueryable,
+		uuid:            uuid,
 		telemetryLock:   advisoryLock,
-	}, nil
+	}
+	if err = engine.writeMetadata(); err != nil {
+		return nil, fmt.Errorf("writing metadata: %w", err)
+	}
+	return engine, nil
+}
+
+// RegisterMetric registers a counter or gauge metric for telemetry purpose.
+func (t *telemetryEngine) RegisterMetric(statsName string, metric prometheus.Metric) error {
+	ok, err := isCounterOrGauge(metric)
+	if err != nil {
+		return fmt.Errorf("is counter or gauge: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("metric should only be of type Counter or Gauge")
+	}
+	t.metricMux.Lock()
+	defer t.metricMux.Unlock()
+	t.metrics = append(t.metrics, telemetryMetric{stat: statsName, metric: metric})
+	return nil
+}
+
+func isCounterOrGauge(metric prometheus.Metric) (bool, error) {
+	var temp io_prometheus_client.Metric
+	if err := metric.Write(&temp); err != nil {
+		return false, fmt.Errorf("writing metric: %w", err)
+	}
+	if temp.Gauge != nil {
+		return true, nil
+	} else if temp.Counter != nil {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (t *telemetryEngine) StartTelemetrySyncRoutine(ctx context.Context) {
+	go t.telemetrySync(ctx)
+}
+
+type telemetryStats struct {
+	samplesIngested       float64
+	promqlQueriesExecuted float64
+	promqlQueriesTimedout float64
+	promqlQueriesFailed   float64
+}
+
+func (t *telemetryEngine) telemetrySync(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second * 5):
+		}
+		t.metricMux.RLock()
+		if len(t.metrics) > 0 {
+			t.metricMux.RUnlock()
+			continue
+		}
+		newStats := telemetryStats{}
+		var err error
+		for _, stat := range t.metrics {
+			underlyingValue, err := extractMetricValue(stat.metric)
+			if err != nil {
+				log.Debug("msg", "error extracting underlying value of a stats metric", "name", stat.Name(), "description", stat.metric.Desc().String(), "error", err.Error())
+				continue
+			}
+			switch stat.Name() {
+			case "telemetry_samples_ingested":
+				newStats.samplesIngested = underlyingValue
+			default:
+				fmt.Println("not registered")
+			}
+		}
+		t.metricMux.RUnlock()
+		fmt.Println("collecting stats", newStats)
+		if err = syncInfoTable(t.conn, t.uuid, newStats); err != nil {
+			log.Debug("msg", "syncing new stats", "error", err.Error())
+		}
+	}
 }
 
 func (t *telemetryEngine) BecomeHousekeeper() (success bool, err error) {
@@ -97,19 +189,14 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 					}
 					newStats[stat.Name()] = floatToString(scalar.V)
 				}
-			case telemetryMetric:
-				metric := stat.Query().(prometheus.Metric)
-				underlyingValue, err := extractMetricValue(metric)
-				if err != nil {
-					log.Debug("msg", "error extracting underlying value of a stats metric", "name", stat.Name(), "description", metric.Desc().String(), "error", err.Error())
-				}
-				newStats[stat.Name()] = floatToString(underlyingValue)
+			default:
+				log.Debug("msg", "invalid telemetry type for housekeeper. Expected telemetrySQL or telemetryPromQL", "received", reflect.TypeOf(stat))
 			}
 		}
 		if len(newStats) == 0 {
 			continue
 		}
-		if err = sync(t.conn, newStats); err != nil {
+		if err = syncTimescaleMetadataTable(t.conn, newStats); err != nil {
 			log.Debug("msg", "syncing new stats", "error", err.Error())
 		}
 	}
@@ -119,24 +206,24 @@ func floatToString(f float64) string {
 	return strconv.FormatFloat(f, 'E', -1, 64)
 }
 
-// WriteMetadata writes Promscale and Tobs metadata. Must be written only by
-func (t *telemetryEngine) WriteMetadata() error {
+// writeMetadata writes Promscale and Tobs metadata. Must be written only by
+func (t *telemetryEngine) writeMetadata() error {
 	promscale := promscaleMetadata()
-	if err := sync(t.conn, Stats(promscale)); err != nil {
+	if err := syncTimescaleMetadataTable(t.conn, Stats(promscale)); err != nil {
 		return fmt.Errorf("writing metadata for promscale: %w", err)
 	}
 
 	tobs := tobsMetadata()
 	if len(tobs) > 0 {
-		if err := sync(t.conn, Stats(tobs)); err != nil {
+		if err := syncTimescaleMetadataTable(t.conn, Stats(tobs)); err != nil {
 			return fmt.Errorf("writing metadata for tobs: %w", err)
 		}
 	}
 	return nil
 }
 
-// sync the metadata/stats and returns the first error if any.
-func sync(conn pgxconn.PgxConn, m Stats) error {
+// syncTimescaleMetadataTable syncs the metadata/stats with telemetry metadata table and returns the last error if any.
+func syncTimescaleMetadataTable(conn pgxconn.PgxConn, m Stats) error {
 	batch := conn.NewBatch()
 	for key, metadata := range m {
 		query := "INSERT INTO _timescaledb_catalog.metadata VALUES ( $1, $2 ) ON CONFLICT DO UPDATE SET value = $2 WHERE key = $1"
@@ -155,6 +242,20 @@ func sync(conn pgxconn.PgxConn, m Stats) error {
 			err = rows.Err()
 		}
 		rows.Close()
+	}
+	return err
+}
+
+// syncInfoTable stats with promscale_instance_information table.
+func syncInfoTable(conn pgxconn.PgxConn, uuid string, s telemetryStats) error {
+	lastUpdated := time.Now()
+	query := `INSERT INTO _ps_catalog.promscale_instance_connections
+		VALUES ($1, $2, $3, $4, $5, $6)
+	ON CONFlICT DO
+		UPDATE SET last_updated = $2, telemetry_ingested_samples = $3, telemetry_queries_executed = $4, telemetry_queries_timed_out = $5, telemetry_queries_failed = $6`
+	_, err := conn.Exec(context.Background(), query, lastUpdated, uuid, s.samplesIngested, s.promqlQueriesExecuted, s.promqlQueriesTimedout, s.promqlQueriesFailed)
+	if err != nil {
+		return fmt.Errorf("executing telemetry sync query: %w", err)
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-var metrics *Metrics
+var APIMetrics *Metrics
 
 type Metrics struct {
 	// Using the first word in struct to ensure proper alignment in 32-bit systems.
@@ -39,30 +39,30 @@ type Metrics struct {
 // InitMetrics sets up and returns the Prometheus metrics which Promscale exposes.
 // This needs to be set before calling objects from the api package.
 func InitMetrics() *Metrics {
-	if metrics != nil {
-		return metrics
+	if APIMetrics != nil {
+		return APIMetrics
 	}
-	metrics = createMetrics()
+	APIMetrics = createMetrics()
 	prometheus.MustRegister(
-		metrics.LeaderGauge,
-		metrics.ReceivedSamples,
-		metrics.ReceivedMetadata,
-		metrics.ReceivedQueries,
-		metrics.SentSamples,
-		metrics.SentMetadata,
-		metrics.FailedSamples,
-		metrics.FailedMetadata,
-		metrics.FailedQueries,
-		metrics.InvalidReadReqs,
-		metrics.InvalidWriteReqs,
-		metrics.SentBatchDuration,
-		metrics.QueryBatchDuration,
-		metrics.QueryDuration,
-		metrics.ExemplarQueryDuration,
-		metrics.HTTPRequestDuration,
+		APIMetrics.LeaderGauge,
+		APIMetrics.ReceivedSamples,
+		APIMetrics.ReceivedMetadata,
+		APIMetrics.ReceivedQueries,
+		APIMetrics.SentSamples,
+		APIMetrics.SentMetadata,
+		APIMetrics.FailedSamples,
+		APIMetrics.FailedMetadata,
+		APIMetrics.FailedQueries,
+		APIMetrics.InvalidReadReqs,
+		APIMetrics.InvalidWriteReqs,
+		APIMetrics.SentBatchDuration,
+		APIMetrics.QueryBatchDuration,
+		APIMetrics.QueryDuration,
+		APIMetrics.ExemplarQueryDuration,
+		APIMetrics.HTTPRequestDuration,
 	)
 
-	return metrics
+	return APIMetrics
 }
 
 func createMetrics() *Metrics {
