@@ -1037,10 +1037,10 @@ $do$;
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_get_tag_id(_span SCHEMA_TRACING_PUBLIC.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS bigint
 AS $func$
-    SELECT SCHEMA_TRACING.get_tag_id(_span.span_tags, _key)
-    UNION ALL
-    SELECT SCHEMA_TRACING.get_tag_id(_span.resource_tags, _key)
-    LIMIT 1
+    SELECT coalesce(
+        SCHEMA_TRACING.get_tag_id(_span.span_tags, _key),
+        SCHEMA_TRACING.get_tag_id(_span.resource_tags, _key)
+    )
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_get_tag_id(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
