@@ -36,6 +36,10 @@ CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
 
     CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
     GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
+
+    CREATE SCHEMA IF NOT EXISTS SCHEMA_PS_CATALOG;
+    GRANT USAGE ON SCHEMA SCHEMA_PS_CATALOG TO prom_reader;
+    GRANT ALL ON SCHEMA SCHEMA_PS_CATALOG TO prom_writer;
 END $$ $ee$);
 
 -- the promscale extension contains optimized version of some

@@ -12,7 +12,10 @@ import (
 	"github.com/timescale/promscale/pkg/version"
 )
 
-type Metadata map[string]string
+type (
+	Metadata map[string]string
+	Stats    map[string]string
+)
 
 func promscaleMetadata() Metadata {
 	return Metadata{
