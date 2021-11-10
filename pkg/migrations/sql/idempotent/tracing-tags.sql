@@ -35,19 +35,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_jsonb_path_exists(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_jsonb_path_exists(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_jsonb_path_exists(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_jsonb_path_exists(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_jsonb_path_exists(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_jsonb_path_exists(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_jsonb_path_exists,
         FUNCTION = SCHEMA_TRACING.span_match_jsonb_path_exists
     );
@@ -57,18 +57,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_jsonb_path_exists(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_jsonb_path_exists(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_jsonb_path_exists(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_jsonb_path_exists(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_jsonb_path_exists(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_jsonb_path_exists,
         FUNCTION = SCHEMA_TRACING.event_match_jsonb_path_exists
     );
@@ -78,18 +78,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_jsonb_path_exists(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_jsonb_path_exists(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_jsonb_path_exists)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_jsonb_path_exists(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_jsonb_path_exists(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_jsonb_path_exists(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_jsonb_path_exists) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_jsonb_path_exists,
         FUNCTION = SCHEMA_TRACING.link_match_jsonb_path_exists
     );
@@ -140,19 +140,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_regexp_matches(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_regexp_matches)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_regexp_matches(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_regexp_matches)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_regexp_matches(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_regexp_matches(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_regexp_matches(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_regexp_matches(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_regexp_matches,
         FUNCTION = SCHEMA_TRACING.span_match_regexp_matches
     );
@@ -162,18 +162,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_regexp_matches(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_regexp_matches)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_regexp_matches(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_regexp_matches)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_regexp_matches(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_regexp_matches(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_regexp_matches(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_regexp_matches,
         FUNCTION = SCHEMA_TRACING.event_match_regexp_matches
     );
@@ -183,18 +183,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_regexp_matches(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_regexp_matches)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_regexp_matches(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_regexp_matches)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_regexp_matches(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_regexp_matches(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_regexp_matches(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_regexp_matches) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_regexp_matches,
         FUNCTION = SCHEMA_TRACING.link_match_regexp_matches
     );
@@ -245,19 +245,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_regexp_not_matches(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_regexp_not_matches)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_regexp_not_matches(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_regexp_not_matches)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_regexp_not_matches(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_regexp_not_matches(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_regexp_not_matches(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_regexp_not_matches(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_regexp_not_matches,
         FUNCTION = SCHEMA_TRACING.span_match_regexp_not_matches
     );
@@ -267,18 +267,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_regexp_not_matches(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_regexp_not_matches)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_regexp_not_matches(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_regexp_not_matches)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_regexp_not_matches(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_regexp_not_matches(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_regexp_not_matches(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_regexp_not_matches,
         FUNCTION = SCHEMA_TRACING.event_match_regexp_not_matches
     );
@@ -288,18 +288,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_regexp_not_matches(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_regexp_not_matches)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_regexp_not_matches(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_regexp_not_matches)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_regexp_not_matches(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_regexp_not_matches(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_regexp_not_matches(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_regexp_not_matches) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_regexp_not_matches,
         FUNCTION = SCHEMA_TRACING.link_match_regexp_not_matches
     );
@@ -346,19 +346,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_equals(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_equals)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_equals(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_equals)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> (SCHEMA_TRACING.eval_equals(_op))
     or _span.resource_tags @> (SCHEMA_TRACING.eval_equals(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_equals(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_equals) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_equals(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_equals) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_equals,
         FUNCTION = SCHEMA_TRACING.span_match_equals
     );
@@ -368,18 +368,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_equals(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_equals)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_equals(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_equals)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> (SCHEMA_TRACING.eval_equals(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_equals(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_equals) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_equals(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_equals) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_equals,
         FUNCTION = SCHEMA_TRACING.event_match_equals
     );
@@ -389,18 +389,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_equals(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_equals)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_equals(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_equals)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> (SCHEMA_TRACING.eval_equals(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_equals(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_equals) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_equals(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_equals) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_equals,
         FUNCTION = SCHEMA_TRACING.link_match_equals
     );
@@ -446,19 +446,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_not_equals(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_not_equals)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_not_equals(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_not_equals)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_not_equals(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_not_equals(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_not_equals(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_not_equals(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_not_equals,
         FUNCTION = SCHEMA_TRACING.span_match_not_equals
     );
@@ -468,18 +468,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_not_equals(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_not_equals)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_not_equals(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_not_equals)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_not_equals(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_not_equals(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_not_equals(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_not_equals,
         FUNCTION = SCHEMA_TRACING.event_match_not_equals
     );
@@ -489,18 +489,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_not_equals(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_not_equals)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_not_equals(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_not_equals)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_not_equals(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_not_equals(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_not_equals(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_not_equals) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_not_equals,
         FUNCTION = SCHEMA_TRACING.link_match_not_equals
     );
@@ -546,19 +546,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_less_than(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_less_than)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_less_than(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_less_than)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_less_than(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_less_than(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_less_than(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_less_than(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_less_than,
         FUNCTION = SCHEMA_TRACING.span_match_less_than
     );
@@ -568,18 +568,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_less_than(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_less_than)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_less_than(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_less_than)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_less_than(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_less_than(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_less_than(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_less_than,
         FUNCTION = SCHEMA_TRACING.event_match_less_than
     );
@@ -589,18 +589,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_less_than(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_less_than)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_less_than(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_less_than)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_less_than(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_less_than(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_less_than(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_less_than) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_less_than,
         FUNCTION = SCHEMA_TRACING.link_match_less_than
     );
@@ -646,19 +646,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_less_than_or_equal(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_less_than_or_equal)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_less_than_or_equal(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_less_than_or_equal)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_less_than_or_equal(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_less_than_or_equal(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_less_than_or_equal(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_less_than_or_equal(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_less_than_or_equal,
         FUNCTION = SCHEMA_TRACING.span_match_less_than_or_equal
     );
@@ -668,18 +668,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_less_than_or_equal(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_less_than_or_equal)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_less_than_or_equal(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_less_than_or_equal)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_less_than_or_equal(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_less_than_or_equal(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_less_than_or_equal(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_less_than_or_equal,
         FUNCTION = SCHEMA_TRACING.event_match_less_than_or_equal
     );
@@ -689,18 +689,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_less_than_or_equal(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_less_than_or_equal)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_less_than_or_equal(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_less_than_or_equal)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_less_than_or_equal(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_less_than_or_equal(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_less_than_or_equal(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_less_than_or_equal) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_less_than_or_equal,
         FUNCTION = SCHEMA_TRACING.link_match_less_than_or_equal
     );
@@ -746,19 +746,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_greater_than(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_greater_than)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_greater_than(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_greater_than)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_greater_than(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_greater_than(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_greater_than(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_greater_than(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_greater_than,
         FUNCTION = SCHEMA_TRACING.span_match_greater_than
     );
@@ -768,18 +768,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_greater_than(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_greater_than)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_greater_than(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_greater_than)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_greater_than(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_greater_than(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_greater_than(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_greater_than,
         FUNCTION = SCHEMA_TRACING.event_match_greater_than
     );
@@ -789,18 +789,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_greater_than(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_greater_than)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_greater_than(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_greater_than)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_greater_than(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_greater_than(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_greater_than(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_greater_than) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_greater_than,
         FUNCTION = SCHEMA_TRACING.link_match_greater_than
     );
@@ -846,19 +846,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_greater_than_or_equal(_span SCHEMA_TRACING.span, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_match_greater_than_or_equal(_span SCHEMA_TRACING_PUBLIC.span, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_greater_than_or_equal(_op))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_greater_than_or_equal(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_greater_than_or_equal(SCHEMA_TRACING.span, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_match_greater_than_or_equal(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TAG.tag_op_greater_than_or_equal,
         FUNCTION = SCHEMA_TRACING.span_match_greater_than_or_equal
     );
@@ -868,18 +868,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_greater_than_or_equal(_event SCHEMA_TRACING.event, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_match_greater_than_or_equal(_event SCHEMA_TRACING_PUBLIC.event, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_greater_than_or_equal(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_greater_than_or_equal(SCHEMA_TRACING.event, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_match_greater_than_or_equal(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TAG.tag_op_greater_than_or_equal,
         FUNCTION = SCHEMA_TRACING.event_match_greater_than_or_equal
     );
@@ -889,18 +889,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_greater_than_or_equal(_link SCHEMA_TRACING.link, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_match_greater_than_or_equal(_link SCHEMA_TRACING_PUBLIC.link, _op SCHEMA_TAG.tag_op_greater_than_or_equal)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_greater_than_or_equal(_op))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_greater_than_or_equal(SCHEMA_TRACING.link, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_match_greater_than_or_equal(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TAG.tag_op_greater_than_or_equal) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TAG.tag_op_greater_than_or_equal,
         FUNCTION = SCHEMA_TRACING.link_match_greater_than_or_equal
     );
@@ -945,19 +945,19 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_tag_exists(_span SCHEMA_TRACING.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_tag_exists(_span SCHEMA_TRACING_PUBLIC.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS boolean
 AS $func$
     SELECT _span.span_tags @> ANY(SCHEMA_TRACING.eval_tags_by_key(_key))
     or _span.resource_tags @> ANY(SCHEMA_TRACING.eval_tags_by_key(_key))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_tag_exists(SCHEMA_TRACING.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_tag_exists(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.span_tag_exists
     );
@@ -967,18 +967,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_tag_exists(_event SCHEMA_TRACING.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_tag_exists(_event SCHEMA_TRACING_PUBLIC.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS boolean
 AS $func$
     SELECT _event.tags @> ANY(SCHEMA_TRACING.eval_tags_by_key(_key))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_tag_exists(SCHEMA_TRACING.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_tag_exists(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.event_tag_exists
     );
@@ -988,18 +988,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_tag_exists(_link SCHEMA_TRACING.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_tag_exists(_link SCHEMA_TRACING_PUBLIC.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS boolean
 AS $func$
     SELECT _link.tags @> ANY(SCHEMA_TRACING.eval_tags_by_key(_key))
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_tag_exists(SCHEMA_TRACING.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_tag_exists(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.? (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.link_tag_exists
     );
@@ -1034,7 +1034,7 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_get_tag_id(_span SCHEMA_TRACING.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_get_tag_id(_span SCHEMA_TRACING_PUBLIC.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS bigint
 AS $func$
     SELECT SCHEMA_TRACING.get_tag_id(_span.span_tags, _key)
@@ -1043,12 +1043,12 @@ AS $func$
     LIMIT 1
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_get_tag_id(SCHEMA_TRACING.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_get_tag_id(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.# (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.span_get_tag_id
     );
@@ -1058,18 +1058,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_get_tag_id(_event SCHEMA_TRACING.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_get_tag_id(_event SCHEMA_TRACING_PUBLIC.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS bigint
 AS $func$
     SELECT SCHEMA_TRACING.get_tag_id(_event.tags, _key)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_get_tag_id(SCHEMA_TRACING.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_get_tag_id(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.# (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.event_get_tag_id
     );
@@ -1079,18 +1079,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_get_tag_id(_link SCHEMA_TRACING.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_get_tag_id(_link SCHEMA_TRACING_PUBLIC.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS bigint
 AS $func$
     SELECT SCHEMA_TRACING.get_tag_id(_link.tags, _key)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_get_tag_id(SCHEMA_TRACING.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_get_tag_id(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.# (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.link_get_tag_id
     );
@@ -1167,7 +1167,7 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_val(_span SCHEMA_TRACING.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_val(_span SCHEMA_TRACING_PUBLIC.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS SCHEMA_TRACING_PUBLIC.tag_v
 AS $func$
     SELECT coalesce(
@@ -1176,12 +1176,12 @@ AS $func$
     )
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_val(SCHEMA_TRACING.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_val(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.-> (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.span_val
     );
@@ -1191,18 +1191,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_val(_event SCHEMA_TRACING.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_val(_event SCHEMA_TRACING_PUBLIC.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS SCHEMA_TRACING_PUBLIC.tag_v
 AS $func$
     SELECT SCHEMA_TRACING_PUBLIC.val(_event.tags, _key)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_val(SCHEMA_TRACING.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_val(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.-> (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.event_val
     );
@@ -1212,18 +1212,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_val(_link SCHEMA_TRACING.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_val(_link SCHEMA_TRACING_PUBLIC.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS SCHEMA_TRACING_PUBLIC.tag_v
 AS $func$
     SELECT SCHEMA_TRACING_PUBLIC.val(_link.tags, _key)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_val(SCHEMA_TRACING.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_val(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.-> (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.link_val
     );
@@ -1249,7 +1249,7 @@ $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val_text(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_val_text(_span SCHEMA_TRACING.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.span_val_text(_span SCHEMA_TRACING_PUBLIC.span, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS text
 AS $func$
     SELECT coalesce(
@@ -1258,12 +1258,12 @@ AS $func$
     )
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_val_text(SCHEMA_TRACING.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.span_val_text(SCHEMA_TRACING_PUBLIC.span, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.->> (
-        LEFTARG = SCHEMA_TRACING.span,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.span,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.span_val_text
     );
@@ -1273,18 +1273,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_val_text(_event SCHEMA_TRACING.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.event_val_text(_event SCHEMA_TRACING_PUBLIC.event, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS text
 AS $func$
     SELECT SCHEMA_TRACING_PUBLIC.val_text(_event.tags, _key)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_val_text(SCHEMA_TRACING.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.event_val_text(SCHEMA_TRACING_PUBLIC.event, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.->> (
-        LEFTARG = SCHEMA_TRACING.event,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.event,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.event_val_text
     );
@@ -1294,18 +1294,18 @@ EXCEPTION
 END;
 $do$;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_val_text(_link SCHEMA_TRACING.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING.link_val_text(_link SCHEMA_TRACING_PUBLIC.link, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS text
 AS $func$
     SELECT SCHEMA_TRACING_PUBLIC.val_text(_link.tags, _key)
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_val_text(SCHEMA_TRACING.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.link_val_text(SCHEMA_TRACING_PUBLIC.link, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
 
 DO $do$
 BEGIN
     CREATE OPERATOR SCHEMA_TRACING_PUBLIC.->> (
-        LEFTARG = SCHEMA_TRACING.link,
+        LEFTARG = SCHEMA_TRACING_PUBLIC.link,
         RIGHTARG = SCHEMA_TRACING_PUBLIC.tag_k,
         FUNCTION = SCHEMA_TRACING.link_val_text
     );
