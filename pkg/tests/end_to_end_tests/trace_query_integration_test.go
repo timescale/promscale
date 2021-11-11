@@ -17,16 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/collector/model/pdata"
-	"google.golang.org/grpc"
-
-	jaegerproto "github.com/jaegertracing/jaeger/proto-gen/api_v2"
-	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
-
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	jaegerquery "github.com/timescale/promscale/pkg/jaeger/query"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -36,11 +29,31 @@ import (
 	jaegerJSONModel "github.com/jaegertracing/jaeger/model/json"
 )
 
-func TestCompareTraceQueryResponse(t *testing.T) {
-	jaegerContainer, err := testhelpers.StartJaegerContainer(false)
-	require.NoError(t, err)
-	defer jaegerContainer.Close()
+type traceQuery struct {
+	name    string
+	start   int64
+	end     int64
+	service string
+	traceID [16]byte // For testing getTrace API.
+}
 
+// To generate Jaeger responses, run the TestGenerateJaegerAPIResponses test function
+// which iterates through these query cases, spins up Jaeger container and store the
+// performed query cases as per their order in the file.
+//
+// To use the generated responses, call loadJaegerQueryResponses() which returns the
+// stored data in the file.
+var traceQueryCases = []traceQuery{
+	{
+		name:    "simple trace",
+		start:   timestamp.FromTime(testSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testSpanEndTime) * 1000,
+		service: service0,
+		traceID: traceID1,
+	},
+}
+
+func TestCompareTraceQueryResponse(t *testing.T) {
 	sampleTraces := generateTestTrace()
 	e2eDb := *testDatabase + "_e2e"
 
@@ -53,9 +66,6 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		err = insertDataIntoJaeger(fmt.Sprintf("localhost:%s", jaegerContainer.GrpcReceivingPort.Port()), copyTraces(sampleTraces))
-		require.NoError(t, err)
-
 		// Create Promscale proxy to query traces data.
 		promscaleProxy := jaegerquery.New(pgxconn.NewPgxConn(db))
 
@@ -63,111 +73,30 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		defer shutdown.Close()
 
 		promscaleClient := httpClient{"http://localhost:9203"}
-		jaegerClient := httpClient{"http://localhost:" + jaegerContainer.UIPort.Port()}
 
-		validateStringSliceResp := func(promscaleResp, jaegerResp *structuredResponse) {
-			a := convertToStringArr(promscaleResp.Data.([]interface{}))
-			b := convertToStringArr(jaegerResp.Data.([]interface{}))
+		jaegerResponse, err := loadJaegerQueryResponses()
+		require.NoError(t, err)
 
-			sort.Strings(a)
-			sort.Strings(b)
+		for i, tc := range traceQueryCases {
+			tcJaegerResponse := jaegerResponse.Responses[i]
 
-			require.Equal(t, b, a)
+			// Verify services.
+			promscaleServices := getServices(t, promscaleClient)
+			require.Equal(t, tcJaegerResponse.Services, promscaleServices, tc.name)
+
+			// Verify Operations.
+			promscaleOps := getOperations(t, promscaleClient, tc.service)
+			require.Equal(t, tcJaegerResponse.Operations, promscaleOps, tc.name)
+
+			// Verify a single trace fetch.
+			promscaleTrace := getTrace(t, promscaleClient, tc.traceID)
+			require.Exactly(t, tcJaegerResponse.Trace, promscaleTrace, tc.name)
+
+			// Verify fetch traces API.
+			promscaleTraces := getTraces(t, promscaleClient, tc.service, tc.start, tc.end)
+			require.Exactly(t, tcJaegerResponse.Traces, promscaleTraces, tc.name)
 		}
-
-		// Verify services.
-		promscaleResp, err := promscaleClient.getServices()
-		require.NoError(t, err)
-
-		jaegerResp, err := jaegerClient.getServices()
-		require.NoError(t, err)
-
-		validateStringSliceResp(promscaleResp, jaegerResp)
-
-		// Verify Operations.
-		promscaleResp, err = promscaleClient.getOperations(service0)
-		require.NoError(t, err)
-
-		jaegerResp, err = jaegerClient.getOperations(service0)
-		require.NoError(t, err)
-
-		validateStringSliceResp(promscaleResp, jaegerResp)
-
-		// Verify a single trace fetch.
-		promscaleResp, err = promscaleClient.getTrace(getTraceId(traceID1))
-		require.NoError(t, err)
-		pTrace := convertToTrace(promscaleResp.Data.([]interface{})[0])
-
-		jaegerResp, err = jaegerClient.getTrace(getTraceId(traceID1))
-		require.NoError(t, err)
-		jTrace := convertToTrace(jaegerResp.Data.([]interface{})[0])
-
-		sortTraceContents(&jTrace)
-		sortTraceContents(&pTrace)
-
-		require.Exactly(t, jTrace, pTrace)
-
-		// Verify fetch traces API.
-		traceStart := timestamp.FromTime(testSpanStartTime) * 1000
-		traceEnd := timestamp.FromTime(testSpanEndTime) * 1000
-
-		promscaleResp, err = promscaleClient.fetchTraces(traceStart, traceEnd, service0)
-		require.NoError(t, err)
-		pTraces := convertToTraces(promscaleResp.Data.([]interface{}))
-
-		jaegerResp, err = jaegerClient.fetchTraces(traceStart, traceEnd, service0)
-		require.NoError(t, err)
-		jTraces := convertToTraces(jaegerResp.Data.([]interface{}))
-
-		// Sort traces.
-		sort.SliceStable(pTraces, func(i, j int) bool {
-			return pTraces[i].TraceID < pTraces[j].TraceID
-		})
-		sort.SliceStable(jTraces, func(i, j int) bool {
-			return jTraces[i].TraceID < jTraces[j].TraceID
-		})
-
-		require.Equal(t, len(jTraces), len(pTraces), "num of traces returned in fetch traces API")
-
-		// Sort the trace contents and prepare them to compare.
-		for i := 0; i < len(jTraces); i++ {
-			a := &jTraces[i]
-			b := &pTraces[i]
-
-			require.Equalf(t, len(a.Spans), len(b.Spans), "num spans of %d", i)
-			require.Equalf(t, a.TraceID, b.TraceID, "trace id of %d", i)
-
-			sortTraceContents(a)
-			sortTraceContents(b)
-
-			purgeProcessInformation(a)
-			purgeProcessInformation(b)
-		}
-		require.Exactly(t, jTraces, pTraces)
 	})
-}
-
-func insertDataIntoJaeger(endpoint string, data pdata.Traces) error {
-	opts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithBlock()}
-	conn, err := grpc.Dial(endpoint, opts...)
-	if err != nil {
-		panic(err)
-	}
-
-	client := jaegerproto.NewCollectorServiceClient(conn)
-
-	batches, err := jaegertranslator.InternalTracesToJaegerProto(data)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, batch := range batches {
-		_, err := client.PostSpans(context.Background(), &jaegerproto.PostSpansRequest{Batch: *batch}, grpc.WaitForReady(true))
-		if err != nil {
-			panic(err)
-		}
-	}
-	return nil
 }
 
 var skipTags = map[string]struct{}{
@@ -289,17 +218,15 @@ func runPromscaleTraceQueryJSONServer(proxy *jaegerquery.Query, port string) io.
 
 	server := &http.Server{Handler: r}
 
-	runServer := func() {
-		listener, err := net.Listen("tcp", port)
-		if err != nil {
-			panic(err)
-		}
+	listener, err := net.Listen("tcp", port)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			panic(err)
 		}
-	}
-
-	go runServer()
+	}()
 
 	// Wait for server to be up.
 	check := time.NewTicker(time.Second / 2)
@@ -361,39 +288,50 @@ const (
 	servicesEndpoint    = "%s/api/services"
 	operationsEndpoint  = "%s/api/services/%s/operations"
 	singleTraceEndpoint = "%s/api/traces/%s"
-	fetchTraces         = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
+	fetchTracesEndpoint = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
 )
 
-func (c httpClient) getServices() (*structuredResponse, error) {
-	resp, err := do(fmt.Sprintf(servicesEndpoint, c.url))
-	if err != nil {
-		return nil, fmt.Errorf("do: %w", err)
-	}
-	return resp, nil
+func getServices(t testing.TB, c httpClient) []string {
+	r, err := do(fmt.Sprintf(servicesEndpoint, c.url))
+	require.NoError(t, err)
+
+	arr := convertToStringArr(r.Data.([]interface{}))
+	sort.Strings(arr)
+	return arr
 }
 
-func (c httpClient) getOperations(service string) (*structuredResponse, error) {
-	resp, err := do(fmt.Sprintf(operationsEndpoint, c.url, service))
-	if err != nil {
-		return nil, fmt.Errorf("do: %w", err)
-	}
-	return resp, nil
+func getOperations(t testing.TB, c httpClient, service string) []string {
+	r, err := do(fmt.Sprintf(operationsEndpoint, c.url, service))
+	require.NoError(t, err)
+
+	arr := convertToStringArr(r.Data.([]interface{}))
+	sort.Strings(arr)
+	return arr
 }
 
-func (c httpClient) getTrace(traceId string) (*structuredResponse, error) {
-	resp, err := do(fmt.Sprintf(singleTraceEndpoint, c.url, traceId))
-	if err != nil {
-		return nil, fmt.Errorf("do: %w", err)
-	}
-	return resp, nil
+func getTrace(t testing.TB, c httpClient, traceId [16]byte) jaegerJSONModel.Trace {
+	r, err := do(fmt.Sprintf(singleTraceEndpoint, c.url, getTraceId(traceId)))
+	require.NoError(t, err)
+
+	trace := convertToTrace(r.Data.([]interface{})[0])
+	sortTraceContents(&trace)
+	purgeProcessInformation(&trace)
+	return trace
 }
 
-func (c httpClient) fetchTraces(start, end int64, service string) (*structuredResponse, error) {
-	resp, err := do(fmt.Sprintf(fetchTraces, c.url, start, end, service))
-	if err != nil {
-		return nil, fmt.Errorf("do: %w", err)
+func getTraces(t testing.TB, c httpClient, service string, start, end int64) []jaegerJSONModel.Trace {
+	r, err := do(fmt.Sprintf(fetchTracesEndpoint, c.url, start, end, service))
+	require.NoError(t, err)
+
+	traces := convertToTraces(r.Data.([]interface{}))
+	sort.SliceStable(traces, func(i, j int) bool {
+		return traces[i].TraceID < traces[j].TraceID
+	})
+	for i := range traces {
+		sortTraceContents(&traces[i])
+		purgeProcessInformation(&traces[i])
 	}
-	return resp, nil
+	return traces
 }
 
 func do(url string) (*structuredResponse, error) {

@@ -37,6 +37,7 @@ func getTraceId(bSlice [16]byte) string {
 }
 
 func generateTestTrace() pdata.Traces {
+	rand.Seed(1)
 	spanCount := 4
 	td := pdata.NewTraces()
 	rs := td.ResourceSpans().AppendEmpty()

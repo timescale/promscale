@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -44,25 +42,6 @@ func TestPGConnection(t *testing.T) {
 	if res != 1 {
 		t.Errorf("Res is not 1 but %d", res)
 	}
-}
-
-func TestJaegerConnection(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping checking Jaeger connection")
-	}
-	jContainer, err := StartJaegerContainer(true)
-	require.NoError(t, err)
-	defer jContainer.Close()
-
-	const servicesEndpoint = "api/services"
-
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/%s", jContainer.UIPort.Port(), servicesEndpoint))
-	require.NoError(t, err)
-	require.Equal(t, resp.StatusCode, http.StatusOK)
-
-	bSlice, err := ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Greater(t, len(bSlice), 0)
 }
 
 func TestWithDB(t *testing.T) {

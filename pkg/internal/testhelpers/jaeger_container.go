@@ -45,6 +45,7 @@ func StartJaegerContainer(printLogs bool) (jaegerContainer *JaegerContainer, err
 		Env: map[string]string{
 			envSpanStorageType: "memory",
 		},
+		AlwaysPullImage: true,
 	}
 	container, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
 	if err != nil {
@@ -75,5 +76,5 @@ func StartJaegerContainer(printLogs bool) (jaegerContainer *JaegerContainer, err
 	jaegerContainer.UIPort = mappedUIPort
 	jaegerContainer.GrpcReceivingPort = mappedGRPCPort
 
-	return
+	return jaegerContainer, nil
 }
