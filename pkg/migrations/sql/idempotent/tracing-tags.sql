@@ -1155,6 +1155,17 @@ GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(SCHEMA_TRACING_PUBLIC.tag_
 -- val ---------------------------------------------------------------
 
 
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val(_tag_id bigint)
+RETURNS SCHEMA_TRACING_PUBLIC.tag_v
+AS $func$
+    SELECT a.value
+    FROM SCHEMA_TRACING.tag a
+    WHERE a.id = _tag_id
+    LIMIT 1
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val(bigint) TO prom_reader;
+
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS SCHEMA_TRACING_PUBLIC.tag_v
 AS $func$
@@ -1236,6 +1247,17 @@ $do$;
 
 -- val text ------------------------------------------------------
 
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val_text(_tag_id bigint)
+RETURNS text
+AS $func$
+    SELECT a.value#>>'{}'
+    FROM SCHEMA_TRACING.tag a
+    WHERE a.id = _tag_id
+    LIMIT 1
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val_text(bigint) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val_text(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS text
