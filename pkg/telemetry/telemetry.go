@@ -108,7 +108,7 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Second * 3):
+		case <-time.After(time.Minute * 55):
 		}
 		t.metricMux.RLock()
 		if len(t.metrics) > 0 {
@@ -183,7 +183,7 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Second * 5):
+		case <-time.After(time.Hour):
 		}
 		var err error
 		newStats := make(Stats)
@@ -222,13 +222,21 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 				log.Debug("msg", "invalid telemetry type for housekeeper. Expected telemetrySQL or telemetryPromQL", "received", reflect.TypeOf(stat))
 			}
 		}
-		if len(newStats) == 0 {
-			continue
+		if len(newStats) > 0 {
+			if err = syncTimescaleMetadataTable(t.conn, newStats); err != nil {
+				log.Debug("msg", "syncing new stats", "error", err.Error())
+			}
 		}
-		if err = syncTimescaleMetadataTable(t.conn, newStats); err != nil {
-			log.Debug("msg", "syncing new stats", "error", err.Error())
+		if err = cleanStalePromscales(t.conn); err != nil {
+			log.Error("msg", "unable to clean stale Promscale instances. Please report to Promscale team as an issue at https://github.com/timescale/promscale/issues/new")
 		}
 	}
+}
+
+func cleanStalePromscales(conn pgxconn.PgxConn) error {
+	query := `DELETE FROM _ps_catalog.promscale_instance_information WHERE current_timestamp - last_updated > interval '1 hour'`
+	_, err := conn.Exec(context.Background(), query)
+	return err
 }
 
 func floatToString(f float64) string {
