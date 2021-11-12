@@ -13,19 +13,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"go.opentelemetry.io/collector/model/otlpgrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/util"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
-	"go.opentelemetry.io/collector/model/otlpgrpc"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 const promLivenessCheck = time.Second
@@ -75,14 +78,36 @@ func Run(cfg *Config) error {
 	if client == nil {
 		return nil
 	}
-
 	defer client.Close()
 
-	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
+	router, promqlEngine, err := api.GenerateRouter(&cfg.APICfg, client, elector)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
 	}
+
+	telemetryEngine, err := telemetry.NewTelemetryEngine(client.Connection, generateUUID(), client.ConnectionStr, promqlEngine, client.Queryable())
+	if err != nil {
+		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
+		return fmt.Errorf("creating telemetry-engine: %w", err)
+	}
+	success, err := telemetryEngine.BecomeHousekeeper()
+	if err != nil {
+		log.Error("msg", "cannot become telemetry housekeeper", "err", err.Error())
+		return fmt.Errorf("become-housekeeper: %w", err)
+	}
+	if success {
+		ctx, stopHousekeeping := context.WithCancel(context.Background())
+		defer stopHousekeeping()
+		if err = telemetryEngine.DoHouseKeepingAsync(ctx); err != nil {
+			log.Error("msg", "error doing housekeeping", "err", err.Error())
+			return fmt.Errorf("do housekeeping: %w", err)
+		}
+		log.Info("msg", "Starting Promscale as telemetry housekeeper")
+	}
+	ctx, stopTelemetryRoutine := context.WithCancel(context.Background())
+	defer stopTelemetryRoutine()
+	telemetryEngine.StartTelemetryRoutineAsync(ctx)
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
@@ -173,4 +198,8 @@ func Run(cfg *Config) error {
 	}
 
 	return nil
+}
+
+func generateUUID() [16]byte {
+	return uuid.New()
 }

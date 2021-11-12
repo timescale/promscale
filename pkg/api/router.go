@@ -20,11 +20,13 @@ import (
 	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
+func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, *promql.Engine, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -39,7 +41,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		dataParser.AddPreprocessor(preproc)
 	}
 
-	writeHandler := timeHandler(APIMetrics.HTTPRequestDuration, "write", Write(client, dataParser, elector))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, dataParser, elector))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {
@@ -54,44 +56,44 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 
 	router.Post("/write", writeHandler)
 
-	readHandler := timeHandler(APIMetrics.HTTPRequestDuration, "read", Read(apiConf, client, APIMetrics))
+	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics))
 	router.Get("/read", readHandler)
 	router.Post("/read", readHandler)
 
-	deleteHandler := timeHandler(APIMetrics.HTTPRequestDuration, "delete_series", Delete(apiConf, client))
+	deleteHandler := timeHandler(metrics.HTTPRequestDuration, "delete_series", Delete(apiConf, client))
 	router.Put("/delete_series", deleteHandler)
 	router.Post("/delete_series", deleteHandler)
 
 	queryable := client.Queryable()
 	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.LookBackDelta, apiConf.SubQueryStepInterval, apiConf.MaxSamples, apiConf.EnabledFeaturesList)
 	if err != nil {
-		return nil, fmt.Errorf("creating query-engine: %w", err)
+		return nil, nil, fmt.Errorf("creating query-engine: %w", err)
 	}
-	queryHandler := timeHandler(APIMetrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, APIMetrics))
+	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, metrics))
 	router.Get("/api/v1/query", queryHandler)
 	router.Post("/api/v1/query", queryHandler)
 
-	queryRangeHandler := timeHandler(APIMetrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, APIMetrics))
+	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, metrics))
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
-	exemplarQueryHandler := timeHandler(APIMetrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, APIMetrics))
+	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, metrics))
 	router.Get("/api/v1/query_exemplars", exemplarQueryHandler)
 	router.Post("/api/v1/query_exemplars", exemplarQueryHandler)
 
-	seriesHandler := timeHandler(APIMetrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
+	seriesHandler := timeHandler(metrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
 	router.Get("/api/v1/series", seriesHandler)
 	router.Post("/api/v1/series", seriesHandler)
 
-	labelsHandler := timeHandler(APIMetrics.HTTPRequestDuration, "labels", Labels(apiConf, queryable))
+	labelsHandler := timeHandler(metrics.HTTPRequestDuration, "labels", Labels(apiConf, queryable))
 	router.Get("/api/v1/labels", labelsHandler)
 	router.Post("/api/v1/labels", labelsHandler)
 
-	metadataHandler := timeHandler(APIMetrics.HTTPRequestDuration, "metadata", MetricMetadata(apiConf, client))
+	metadataHandler := timeHandler(metrics.HTTPRequestDuration, "metadata", MetricMetadata(apiConf, client))
 	router.Get("/api/v1/metadata", metadataHandler)
 	router.Post("/api/v1/metadata", metadataHandler)
 
-	labelValuesHandler := timeHandler(APIMetrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
+	labelValuesHandler := timeHandler(metrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
 	router.Get("/api/v1/label/:name/values", labelValuesHandler)
 
 	healthChecker := func() error { return client.HealthCheck() }
@@ -112,7 +114,18 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 
 	router.Get("/debug/fgprof", fgprof.Handler().ServeHTTP)
 
-	return router, nil
+	return router, queryEngine, nil
+}
+
+func RegisterMetricsForTelemetry(t telemetry.Telemetry) error {
+	var err error
+	if err = t.RegisterMetric("telemetry_ingested_samples", metrics.SentSamples); err != nil {
+		return fmt.Errorf("register 'telemetry_ingested_samples' metric for telemetry: %w", err)
+	}
+	if err = t.RegisterMetric("telemetry_queries_failed", metrics.FailedQueries); err != nil {
+		return fmt.Errorf("register 'telemetry_queries_failed' metric for telemetry: %w", err)
+	}
+	return nil
 }
 
 func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {

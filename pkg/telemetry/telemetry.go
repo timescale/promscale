@@ -8,9 +8,10 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgtype"
 
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
@@ -24,7 +25,7 @@ type telemetryEngine struct {
 	conn            pgxconn.PgxConn
 	promqlEngine    *promql.Engine
 	promqlQueryable promql.Queryable
-	uuid            string
+	uuid            [16]byte
 	telemetryLock   util.AdvisoryLock
 	isHouseKeeper   bool
 
@@ -33,15 +34,19 @@ type telemetryEngine struct {
 }
 
 type Telemetry interface {
-	StartTelemetrySyncRoutine(context.Context)
+	StartTelemetryRoutineAsync(context.Context)
 	BecomeHousekeeper() (success bool, err error)
-	DoHouseKeeping(context.Context) error
+	DoHouseKeepingAsync(context.Context) error
 	RegisterMetric(statName string, gaugeOrCounterMetric prometheus.Metric) error
 }
 
 const telemetryLockId = 0x2D829A932AAFCEDE // Random.
 
-func NewTelemetryEngine(conn pgxconn.PgxConn, uuid string, connStr string, promqlEngine *promql.Engine, promqlQueryable promql.Queryable) (Telemetry, error) {
+func NewTelemetryEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string, promqlEngine *promql.Engine, promqlQueryable promql.Queryable) (Telemetry, error) {
+	// Warn the users about telemetry collection.
+	log.Warn("msg", "Promscale collects anonymous usage telemetry data for project improvements while being GDPR compliant. "+
+		"If you wish not to participate, please turn off sending telemetry in TimescaleDB. "+
+		"Details about the process can be found at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
 	advisoryLock, err := util.NewPgAdvisoryLock(telemetryLockId, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("error getting pg-advisory-lock: %w", err)
@@ -87,7 +92,7 @@ func isCounterOrGauge(metric prometheus.Metric) (bool, error) {
 	return false, nil
 }
 
-func (t *telemetryEngine) StartTelemetrySyncRoutine(ctx context.Context) {
+func (t *telemetryEngine) StartTelemetryRoutineAsync(ctx context.Context) {
 	go t.telemetrySync(ctx)
 }
 
@@ -103,7 +108,7 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Second * 5):
+		case <-time.After(time.Second * 3):
 		}
 		t.metricMux.RLock()
 		if len(t.metrics) > 0 {
@@ -119,16 +124,34 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 				continue
 			}
 			switch stat.Name() {
-			case "telemetry_samples_ingested":
+			case "telemetry_ingested_samples":
 				newStats.samplesIngested = underlyingValue
+			case "telemetry_queries_failed":
+				newStats.promqlQueriesFailed = underlyingValue
 			default:
 				fmt.Println("not registered")
 			}
 		}
 		t.metricMux.RUnlock()
-		fmt.Println("collecting stats", newStats)
 		if err = syncInfoTable(t.conn, t.uuid, newStats); err != nil {
 			log.Debug("msg", "syncing new stats", "error", err.Error())
+		}
+
+		if !t.isHouseKeeper {
+			// Check if housekeeper has died. If yes, then become the housekeeper.
+			success, err := t.BecomeHousekeeper()
+			if err != nil {
+				log.Info("msg", "cannot take the position of telemetry housekeeper", "error", err.Error())
+				continue
+			}
+			if success {
+				// Now we are the housekeeper. Use the context of telemetrySync for graceful shutdowns.
+				if err = t.DoHouseKeepingAsync(ctx); err != nil {
+					log.Error("msg", "unable to do telemetry housekeeping after taking its position", "err", err.Error())
+					continue
+				}
+				log.Info("msg", "Now, I am the telemetry housekeeper")
+			}
 		}
 	}
 }
@@ -144,9 +167,9 @@ func (t *telemetryEngine) BecomeHousekeeper() (success bool, err error) {
 	return acquired, nil
 }
 
-// DoHouseKeeping starts telemetry housekeeping activities async. It must be called after calling BecomeHousekeeper
+// DoHouseKeepingAsync starts telemetry housekeeping activities async. It must be called after calling BecomeHousekeeper
 // and only when the returned result is success.
-func (t *telemetryEngine) DoHouseKeeping(ctx context.Context) error {
+func (t *telemetryEngine) DoHouseKeepingAsync(ctx context.Context) error {
 	if !t.isHouseKeeper {
 		return fmt.Errorf("cannot do house keeping as not a house-keeper")
 	}
@@ -160,7 +183,7 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Minute * 55): // Check for housekeeping every 55 mins, since cleaning of stale data will happen at every 60 minutes.
+		case <-time.After(time.Second * 5):
 		}
 		var err error
 		newStats := make(Stats)
@@ -168,16 +191,22 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 			switch stat.(type) {
 			case telemetrySQL:
 				query := stat.Query().(string)
-				var value float64
+				value := new(float64)
 				if err = t.conn.QueryRow(context.Background(), query).Scan(&value); err != nil {
 					log.Debug("msg", "error scanning sql stats query", "name", stat.Name(), "query", query, "error", err.Error())
+					continue
 				}
-				newStats[stat.Name()] = floatToString(value)
+				if value == nil {
+					// Got NUL as result.
+					continue
+				}
+				newStats[stat.Name()] = floatToString(*value)
 			case telemetryPromQL:
 				query := stat.Query().(string)
 				parsedQuery, err := t.promqlEngine.NewInstantQuery(t.promqlQueryable, query, time.Now())
 				if err != nil {
 					log.Debug("msg", "error parsing PromQL stats query", "name", stat.Name(), "query", query, "error", err.Error())
+					continue
 				}
 				res := parsedQuery.Exec(context.Background())
 				if res.Err != nil {
@@ -203,7 +232,7 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 }
 
 func floatToString(f float64) string {
-	return strconv.FormatFloat(f, 'E', -1, 64)
+	return fmt.Sprint(f)
 }
 
 // writeMetadata writes Promscale and Tobs metadata. Must be written only by
@@ -226,7 +255,7 @@ func (t *telemetryEngine) writeMetadata() error {
 func syncTimescaleMetadataTable(conn pgxconn.PgxConn, m Stats) error {
 	batch := conn.NewBatch()
 	for key, metadata := range m {
-		query := "INSERT INTO _timescaledb_catalog.metadata VALUES ( $1, $2 ) ON CONFLICT DO UPDATE SET value = $2 WHERE key = $1"
+		query := "INSERT INTO _timescaledb_catalog.metadata VALUES ( $1, $2, true ) ON CONFLICT (key) DO UPDATE SET value = $2, include_in_telemetry = true WHERE metadata.key = $1"
 		batch.Queue(query, key, metadata)
 	}
 	results, err := conn.SendBatch(context.Background(), batch)
@@ -247,13 +276,20 @@ func syncTimescaleMetadataTable(conn pgxconn.PgxConn, m Stats) error {
 }
 
 // syncInfoTable stats with promscale_instance_information table.
-func syncInfoTable(conn pgxconn.PgxConn, uuid string, s telemetryStats) error {
+func syncInfoTable(conn pgxconn.PgxConn, uuid [16]byte, s telemetryStats) error {
 	lastUpdated := time.Now()
-	query := `INSERT INTO _ps_catalog.promscale_instance_connections
+
+	pgUUID := new(pgtype.UUID)
+	if err := pgUUID.Set(uuid); err != nil {
+		return fmt.Errorf("setting pg-uuid: %w", err)
+	}
+
+	query := `INSERT INTO _ps_catalog.promscale_instance_information
 		VALUES ($1, $2, $3, $4, $5, $6)
-	ON CONFlICT DO
+	ON CONFlICT (uuid) DO
 		UPDATE SET last_updated = $2, telemetry_ingested_samples = $3, telemetry_queries_executed = $4, telemetry_queries_timed_out = $5, telemetry_queries_failed = $6`
-	_, err := conn.Exec(context.Background(), query, lastUpdated, uuid, s.samplesIngested, s.promqlQueriesExecuted, s.promqlQueriesTimedout, s.promqlQueriesFailed)
+
+	_, err := conn.Exec(context.Background(), query, pgUUID, lastUpdated, s.samplesIngested, s.promqlQueriesExecuted, s.promqlQueriesTimedout, s.promqlQueriesFailed)
 	if err != nil {
 		return fmt.Errorf("executing telemetry sync query: %w", err)
 	}

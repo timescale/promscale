@@ -14,6 +14,6 @@ package telemetry
 var telemetries = []telemetry{
 	telemetrySQL{
 		stat: "promscale_samples_count_last_hour",
-		sql:  "SELECT sum(telemetry_ingested_samples) FROM _ps_catalog.promscale_connection_information",
+		sql:  "SELECT sum(telemetry_ingested_samples) FROM _ps_catalog.promscale_instance_information",
 	},
 }

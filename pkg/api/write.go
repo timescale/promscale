@@ -62,30 +62,30 @@ func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elect
 func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
 	if r.Method != "POST" {
-		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), APIMetrics)
+		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), metrics)
 		return false
 	}
 
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
-		validateError(w, "Error parsing media type from Content-Type header", APIMetrics)
+		validateError(w, "Error parsing media type from Content-Type header", metrics)
 		return false
 	}
 	switch mediaType {
 	case "application/x-protobuf":
 		if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
-			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), APIMetrics)
+			validateError(w, fmt.Sprintf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding")), metrics)
 			return false
 		}
 
 		remoteWriteVersion := r.Header.Get("X-Prometheus-Remote-Write-Version")
 		if remoteWriteVersion == "" {
-			validateError(w, "Missing X-Prometheus-Remote-Write-Version header", APIMetrics)
+			validateError(w, "Missing X-Prometheus-Remote-Write-Version header", metrics)
 			return false
 		}
 
 		if !strings.HasPrefix(remoteWriteVersion, "0.1.") {
-			validateError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion), APIMetrics)
+			validateError(w, fmt.Sprintf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion), metrics)
 			return false
 		}
 	case "application/json":
@@ -93,7 +93,7 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 	case "text/plain", "application/openmetrics":
 		// Don't need any other header checks for text content type.
 	default:
-		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", APIMetrics)
+		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", metrics)
 		return false
 	}
 
@@ -108,21 +108,21 @@ func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Reques
 	return func(w http.ResponseWriter, r *http.Request) bool {
 		// We need to record this time even if we're not the leader as it's
 		// used to determine if we're eligible to become the leader.
-		atomic.StoreInt64(&APIMetrics.LastRequestUnixNano, time.Now().UnixNano())
+		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
 
 		shouldWrite, err := elector.IsLeader()
 		if err != nil {
-			APIMetrics.LeaderGauge.Set(0)
+			metrics.LeaderGauge.Set(0)
 			log.Error("msg", "IsLeader check failed", "err", err)
 			return false
 		}
 		if !shouldWrite {
-			APIMetrics.LeaderGauge.Set(0)
+			metrics.LeaderGauge.Set(0)
 			log.DebugRateLimited("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
 			return false
 		}
 
-		APIMetrics.LeaderGauge.Set(1)
+		metrics.LeaderGauge.Set(1)
 		return true
 	}
 }
@@ -155,7 +155,7 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request) bool {
 	originalBody := r.Body
 	size, err := r.Body.Read(buf)
 	if err != nil {
-		invalidRequestError(w, "snappy decode error", "payload too short or corrupt", APIMetrics)
+		invalidRequestError(w, "snappy decode error", "payload too short or corrupt", metrics)
 		return false
 	}
 
@@ -176,7 +176,7 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request) bool {
 
 	_, err = compressed.ReadFrom(mr)
 	if err != nil {
-		invalidRequestError(w, "request body read error", err.Error(), APIMetrics)
+		invalidRequestError(w, "request body read error", err.Error(), metrics)
 		return false
 	}
 
@@ -184,7 +184,7 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request) bool {
 	b.Reset()
 	n, err := snappy.DecodedLen(compressed.Bytes())
 	if err != nil {
-		invalidRequestError(w, "snappy decode length error", err.Error(), APIMetrics)
+		invalidRequestError(w, "snappy decode length error", err.Error(), metrics)
 		return false
 	}
 	b.Grow(n)
@@ -192,7 +192,7 @@ func decodeSnappy(w http.ResponseWriter, r *http.Request) bool {
 	// Snappy block format.
 	decoded, err := snappy.Decode(b.Bytes()[:n], compressed.Bytes())
 	if err != nil {
-		invalidRequestError(w, "snappy decode error", err.Error(), APIMetrics)
+		invalidRequestError(w, "snappy decode error", err.Error(), metrics)
 		return false
 	}
 
@@ -225,7 +225,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		err := dataParser.ParseRequest(r, req)
 		if err != nil {
 			ingestor.FinishWriteRequest(req)
-			invalidRequestError(w, "parser error", err.Error(), APIMetrics)
+			invalidRequestError(w, "parser error", err.Error(), metrics)
 			return false
 		}
 
@@ -243,22 +243,22 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		}
 		receivedMetadataCount += int64(len(req.Metadata))
 
-		APIMetrics.ReceivedSamples.Add(float64(receivedSamplesCount))
+		metrics.ReceivedSamples.Add(float64(receivedSamplesCount))
 		begin := time.Now()
 
 		numSamples, numMetadata, err := inserter.Ingest(req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			APIMetrics.FailedSamples.Add(float64(uint64(receivedSamplesCount) - numSamples))
-			APIMetrics.FailedMetadata.Add(float64(uint64(receivedMetadataCount) - numMetadata))
+			metrics.FailedSamples.Add(float64(uint64(receivedSamplesCount) - numSamples))
+			metrics.FailedMetadata.Add(float64(uint64(receivedMetadataCount) - numMetadata))
 			return false
 		}
 
 		duration := time.Since(begin).Seconds()
-		APIMetrics.SentSamples.Add(float64(numSamples))
-		APIMetrics.SentMetadata.Add(float64(numMetadata))
-		APIMetrics.SentBatchDuration.Observe(duration)
+		metrics.SentSamples.Add(float64(numSamples))
+		metrics.SentMetadata.Add(float64(numMetadata))
+		metrics.SentBatchDuration.Observe(duration)
 		return true
 	}
 }
