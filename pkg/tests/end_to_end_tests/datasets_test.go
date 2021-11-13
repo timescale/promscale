@@ -129,10 +129,36 @@ func generateLargeTimeseries() []prompb.TimeSeries {
 				{Name: "foo", Value: "bar"},
 			},
 		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "metric_counter"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "1"},
+			},
+			Samples: generateResettingSamples(1, 10),
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "metric_counter"},
+				{Name: "foo", Value: "bar"},
+				{Name: "instance", Value: "2"},
+			},
+			Samples: generateResettingSamples(2, 3),
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "metric_counter"},
+				{Name: "foo", Value: "baz"},
+				{Name: "instance", Value: "1"},
+			},
+			Samples: generateResettingSamples(2, 113),
+		},
 	}
 
 	for i := range metrics {
-		metrics[i].Samples = generateSamples(i + 1)
+		if len(metrics[i].Samples) == 0 {
+			metrics[i].Samples = generateSamples(i + 1)
+		}
 	}
 
 	return metrics
@@ -225,6 +251,33 @@ func generateSamples(index int) []prompb.Sample {
 			Value:     delta * float64(i),
 		})
 		i++
+		time = startTime + (timeDelta * int64(i))
+	}
+
+	return samples
+}
+
+func generateResettingSamples(index int, reset_every int) []prompb.Sample {
+	var (
+		delta           = float64(index * 2)
+		timeDelta int64 = 30000
+	)
+	samples := make([]prompb.Sample, 0, 3)
+	i := 0
+	time := startTime + (timeDelta * int64(i))
+
+	value := float64(0)
+
+	for time < endTime {
+		samples = append(samples, prompb.Sample{
+			Timestamp: time,
+			Value:     value,
+		})
+		i++
+		value += delta
+		if (i % reset_every) == 0 {
+			value = 0
+		}
 		time = startTime + (timeDelta * int64(i))
 	}
 

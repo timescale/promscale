@@ -5,6 +5,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
@@ -64,6 +65,7 @@ func TestSQLGoldenFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			fmt.Println(actualFile, string(actual))
 
 			if i != 0 {
 				t.Logf("Failure in test %s", base)
