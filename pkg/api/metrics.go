@@ -26,6 +26,8 @@ type Metrics struct {
 	SentMetadata          prometheus.Counter
 	SentBatchDuration     prometheus.Histogram
 	ReceivedQueries       prometheus.Counter
+	ExecutedQueries       prometheus.Counter
+	TimedoutQueries       prometheus.Counter
 	FailedQueries         prometheus.Counter
 	QueryBatchDuration    prometheus.Histogram
 	ExemplarQueryDuration prometheus.Histogram
@@ -53,6 +55,8 @@ func InitMetrics() *Metrics {
 		metrics.FailedSamples,
 		metrics.FailedMetadata,
 		metrics.FailedQueries,
+		metrics.ExecutedQueries,
+		metrics.TimedoutQueries,
 		metrics.InvalidReadReqs,
 		metrics.InvalidWriteReqs,
 		metrics.SentBatchDuration,
@@ -182,6 +186,20 @@ func createMetrics() *Metrics {
 				Namespace: util.PromNamespace,
 				Name:      "received_queries_total",
 				Help:      "Total number of received queries.",
+			},
+		),
+		ExecutedQueries: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "executed_queries_total",
+				Help:      "Total number of successfully executed queries.",
+			},
+		),
+		TimedoutQueries: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "timed_out_queries_total",
+				Help:      "Total number of timed out queries.",
 			},
 		),
 		HTTPRequestDuration: prometheus.NewHistogramVec(

@@ -84,4 +84,19 @@ var telemetries = []telemetry{
 		sql:  "SELECT value FROM _prom_catalog.default WHERE key = 'chunk_interval'",
 		typ:  isString,
 	},
+	telemetrySQL{
+		stat: "promscale_promql_executed_queries",
+		sql:  "SELECT sum(telemetry_queries_executed) FROM _ps_catalog.promscale_instance_information",
+		typ:  isInt,
+	},
+	telemetrySQL{
+		stat: "promscale_promql_timed_out_queries",
+		sql:  "select sum(telemetry_queries_timed_out) from _ps_catalog.promscale_instance_information",
+		typ:  isInt,
+	},
+	telemetrySQL{
+		stat: "promscale_promql_failed_queries",
+		sql:  "select sum(telemetry_queries_failed) from _ps_catalog.promscale_instance_information",
+		typ:  isInt,
+	},
 }

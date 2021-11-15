@@ -125,6 +125,12 @@ func RegisterMetricsForTelemetry(t telemetry.Telemetry) error {
 	if err = t.RegisterMetric("telemetry_queries_failed", metrics.FailedQueries); err != nil {
 		return fmt.Errorf("register 'telemetry_queries_failed' metric for telemetry: %w", err)
 	}
+	if err = t.RegisterMetric("telemetry_queries_executed", metrics.ExecutedQueries); err != nil {
+		return fmt.Errorf("register 'telemetry_queries_executed' metric for telemetry: %w", err)
+	}
+	if err = t.RegisterMetric("telemetry_queries_timed_out", metrics.TimedoutQueries); err != nil {
+		return fmt.Errorf("register 'telemetry_queries_timed_out' metric for telemetry: %w", err)
+	}
 	return nil
 }
 
