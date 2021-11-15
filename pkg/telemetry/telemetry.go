@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -201,54 +202,69 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Hour):
+		case <-time.After(time.Second * 2):
 		}
-		var err error
 		newStats := make(Stats)
-		for _, stat := range telemetries {
-			switch stat.(type) {
-			case telemetrySQL:
-				query := stat.Query().(string)
-				value := new(float64)
-				if err = t.conn.QueryRow(context.Background(), query).Scan(&value); err != nil {
-					log.Debug("msg", "error scanning sql stats query", "name", stat.Name(), "query", query, "error", err.Error())
-					continue
-				}
-				if value == nil {
-					// Got NUL as result.
-					continue
-				}
-				newStats[stat.Name()] = floatToString(*value)
-			case telemetryPromQL:
-				query := stat.Query().(string)
-				parsedQuery, err := t.promqlEngine.NewInstantQuery(t.promqlQueryable, query, time.Now())
-				if err != nil {
-					log.Debug("msg", "error parsing PromQL stats query", "name", stat.Name(), "query", query, "error", err.Error())
-					continue
-				}
-				res := parsedQuery.Exec(context.Background())
-				if res.Err != nil {
-					log.Debug("msg", "error evaluating PromQL stats query", "name", stat.Name(), "query", query, "error", err.Error())
-				} else {
-					scalar, err := res.Scalar()
-					if err != nil {
-						log.Debug("msg", "error getting scalar value of evaluated PromQL stats query", "name", stat.Name(), "query", query, "error", err.Error())
-					}
-					newStats[stat.Name()] = floatToString(scalar.V)
-				}
-			default:
-				log.Debug("msg", "invalid telemetry type for housekeeper. Expected telemetrySQL or telemetryPromQL", "received", reflect.TypeOf(stat))
-			}
+		if err := t.telemetryVisitor(newStats); err != nil {
+			log.Debug("msg", "error visiting telemetry", "err", err.Error())
 		}
 		if len(newStats) > 0 {
-			if err = syncTimescaleMetadataTable(t.conn, newStats); err != nil {
+			if err := syncTimescaleMetadataTable(t.conn, newStats); err != nil {
 				log.Debug("msg", "syncing new stats", "error", err.Error())
 			}
 		}
-		if err = cleanStalePromscales(t.conn); err != nil {
+		if err := cleanStalePromscales(t.conn); err != nil {
 			log.Error("msg", "unable to clean stale Promscale instances. Please report to Promscale team as an issue at https://github.com/timescale/promscale/issues/new")
 		}
 	}
+}
+
+func (t *telemetryEngine) telemetryVisitor(newStats Stats) (err error) {
+	for _, stat := range telemetries {
+		switch n := stat.(type) {
+		case telemetrySQL:
+			query := stat.Query().(string)
+			switch n.typ {
+			case isInt:
+				tmp := new(int64)
+				if err := t.conn.QueryRow(context.Background(), query).Scan(&tmp); err != nil {
+					return fmt.Errorf("error scanning sql stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+				}
+				if tmp == nil {
+					continue
+				}
+				newStats[stat.Name()] = strconv.Itoa(int(*tmp))
+			case isString:
+				tmp := new(string)
+				if err := t.conn.QueryRow(context.Background(), query).Scan(&tmp); err != nil {
+					return fmt.Errorf("error scanning sql stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+				}
+				if tmp == nil {
+					continue
+				}
+				newStats[stat.Name()] = *tmp
+			}
+		case telemetryPromQL:
+			query := stat.Query().(string)
+			parsedQuery, err := t.promqlEngine.NewInstantQuery(t.promqlQueryable, query, time.Now())
+			if err != nil {
+				return fmt.Errorf("error parsing PromQL stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+			}
+			res := parsedQuery.Exec(context.Background())
+			if res.Err != nil {
+				return fmt.Errorf("error evaluating PromQL stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+			} else {
+				scalar, err := res.Scalar()
+				if err != nil {
+					return fmt.Errorf("error getting scalar value of evaluated PromQL stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+				}
+				newStats[stat.Name()] = fmt.Sprint(scalar.V)
+			}
+		default:
+			log.Debug("msg", "invalid telemetry type for housekeeper. Expected telemetrySQL or telemetryPromQL", "received", reflect.TypeOf(stat))
+		}
+	}
+	return nil
 }
 
 func cleanStalePromscales(conn pgxconn.PgxConn) error {
@@ -257,17 +273,13 @@ func cleanStalePromscales(conn pgxconn.PgxConn) error {
 	return err
 }
 
-func floatToString(f float64) string {
-	return fmt.Sprint(f)
-}
-
 // writeMetadata writes Promscale and Tobs metadata. Must be written only by
 func (t *telemetryEngine) writeMetadata() error {
 	promscale := promscaleMetadata()
+	promscale["promscale_exec_platform"] = ExecPlatform
 	if err := syncTimescaleMetadataTable(t.conn, Stats(promscale)); err != nil {
 		return fmt.Errorf("writing metadata for promscale: %w", err)
 	}
-	promscale["promscale_exec_platform"] = ExecPlatform
 
 	tobs := tobsMetadata()
 	if len(tobs) > 0 {

@@ -16,6 +16,7 @@ type telemetry interface {
 type telemetrySQL struct {
 	stat string
 	sql  string // Should return only one output as a string.
+	typ  telemetryType
 }
 
 func (t telemetrySQL) Query() interface{} {
