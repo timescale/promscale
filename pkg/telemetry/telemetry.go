@@ -21,6 +21,10 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
+// ExecPlatform To fill this variable in build time, use linker flags.
+// Example: go build -ldflags="-X github.com/timescale/promscale/pkg/telemetry.ExecPlatform=<any_string>" ./cmd/promscale/
+var ExecPlatform string
+
 type telemetryEngine struct {
 	conn            pgxconn.PgxConn
 	promqlEngine    *promql.Engine
@@ -263,6 +267,7 @@ func (t *telemetryEngine) writeMetadata() error {
 	if err := syncTimescaleMetadataTable(t.conn, Stats(promscale)); err != nil {
 		return fmt.Errorf("writing metadata for promscale: %w", err)
 	}
+	promscale["promscale_exec_platform"] = ExecPlatform
 
 	tobs := tobsMetadata()
 	if len(tobs) > 0 {
