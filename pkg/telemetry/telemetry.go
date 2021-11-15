@@ -234,7 +234,7 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 }
 
 func cleanStalePromscales(conn pgxconn.PgxConn) error {
-	query := `DELETE FROM _ps_catalog.promscale_instance_information WHERE current_timestamp - last_updated > interval '1 hour'`
+	query := `DELETE FROM _ps_catalog.promscale_instance_information WHERE deletable = TRUE AND current_timestamp - last_updated > interval '1 hour'`
 	_, err := conn.Exec(context.Background(), query)
 	return err
 }
