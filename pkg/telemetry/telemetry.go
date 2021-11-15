@@ -34,7 +34,10 @@ type telemetryEngine struct {
 }
 
 type Telemetry interface {
-	StartTelemetryRoutineAsync(context.Context)
+	StartRoutineAsync(context.Context)
+	// BecomeHousekeeper tries to become a telemetry housekeeper. If it succeeds,
+	// the caller must call DoHouseKeepingAsync() otherwise the telemetry advisory
+	// lock is unreleased.
 	BecomeHousekeeper() (success bool, err error)
 	DoHouseKeepingAsync(context.Context) error
 	RegisterMetric(statName string, gaugeOrCounterMetric prometheus.Metric) error
@@ -92,7 +95,7 @@ func isCounterOrGauge(metric prometheus.Metric) (bool, error) {
 	return false, nil
 }
 
-func (t *telemetryEngine) StartTelemetryRoutineAsync(ctx context.Context) {
+func (t *telemetryEngine) StartRoutineAsync(ctx context.Context) {
 	go t.telemetrySync(ctx)
 }
 
@@ -116,24 +119,11 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 			continue
 		}
 		newStats := telemetryStats{}
-		var err error
-		for _, stat := range t.metrics {
-			underlyingValue, err := extractMetricValue(stat.metric)
-			if err != nil {
-				log.Debug("msg", "error extracting underlying value of a stats metric", "name", stat.Name(), "description", stat.metric.Desc().String(), "error", err.Error())
-				continue
-			}
-			switch stat.Name() {
-			case "telemetry_ingested_samples":
-				newStats.samplesIngested = underlyingValue
-			case "telemetry_queries_failed":
-				newStats.promqlQueriesFailed = underlyingValue
-			default:
-				fmt.Println("not registered")
-			}
+		if err := t.metricsVisitor(&newStats); err != nil {
+			log.Debug("msg", "error extracting underlying value of a stats metric", "error", err.Error())
+			continue
 		}
-		t.metricMux.RUnlock()
-		if err = syncInfoTable(t.conn, t.uuid, newStats); err != nil {
+		if err := syncInfoTable(t.conn, t.uuid, newStats); err != nil {
 			log.Debug("msg", "syncing new stats", "error", err.Error())
 		}
 
@@ -154,6 +144,30 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// metricsVisitor fills the provided newStats with most recent metric values.
+func (t *telemetryEngine) metricsVisitor(newStats *telemetryStats) error {
+	t.metricMux.RLock()
+	defer t.metricMux.RUnlock()
+	if len(t.metrics) > 0 {
+		return nil
+	}
+	for _, stat := range t.metrics {
+		underlyingValue, err := extractMetricValue(stat.metric)
+		if err != nil {
+			return fmt.Errorf("extracting metric value of stat '%s' with metric '%s': %w", stat.Name(), stat.metric, err)
+		}
+		switch stat.Name() {
+		case "telemetry_ingested_samples":
+			newStats.samplesIngested = underlyingValue
+		case "telemetry_queries_failed":
+			newStats.promqlQueriesFailed = underlyingValue
+		default:
+			log.Error("msg", fmt.Sprintf("unregistered stat name: %s", stat.Name()))
+		}
+	}
+	return nil
 }
 
 func (t *telemetryEngine) BecomeHousekeeper() (success bool, err error) {

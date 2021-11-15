@@ -34,9 +34,16 @@ import (
 const promLivenessCheck = time.Second
 
 var (
-	elector      *util.Elector
+	elector     *util.Elector
+	PromscaleID uuid.UUID
+
 	startupError = fmt.Errorf("startup error")
 )
+
+func init() {
+	// PromscaleID must always be generated on start, so that it remains constant throughout the lifecycle.
+	PromscaleID = generateUUID()
+}
 
 func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	m, err := handler(ctx, req)
@@ -86,7 +93,7 @@ func Run(cfg *Config) error {
 		return fmt.Errorf("generate router: %w", err)
 	}
 
-	telemetryEngine, err := telemetry.NewTelemetryEngine(client.Connection, generateUUID(), client.ConnectionStr, promqlEngine, client.Queryable())
+	telemetryEngine, err := telemetry.NewTelemetryEngine(client.Connection, PromscaleID, client.ConnectionStr, promqlEngine, client.Queryable())
 	if err != nil {
 		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
 		return fmt.Errorf("creating telemetry-engine: %w", err)
@@ -107,7 +114,7 @@ func Run(cfg *Config) error {
 	}
 	ctx, stopTelemetryRoutine := context.WithCancel(context.Background())
 	defer stopTelemetryRoutine()
-	telemetryEngine.StartTelemetryRoutineAsync(ctx)
+	telemetryEngine.StartRoutineAsync(ctx)
 
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
