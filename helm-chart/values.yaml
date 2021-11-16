@@ -32,38 +32,21 @@ tracing:
   # tracing is only enabled if below field is configured true
   enabled: false
 
+# selector used to provision your own Secret containing connection details
+# Use this option with caution
+connectionSecretName: ""
+
 # connection options to connect to a target db
 connection:
   # connection string settings, it is pulled
   # from a Secret object. If `secretTemplate` is not
   # set then the specific user, pass, host, port and
   # sslMode properties are used.
-  uri:
-    key: db-uri
-    # the template for generating the name of
-    # a Secret object containing the URI to
-    # connect to TimescaleDB. The URI should
-    # be indexed with the key in `connection.uri.key`
-    # used in the above name field.
-    secretTemplate:
+  uri: ""
   # user used to connect to TimescaleDB
   user: postgres
-  password:
-    # the template for generating the name of
-    # a Secret object containing the password to
-    # connect to TimescaleDB. The password should
-    # be indexed by the below key
-    timescaleDBSuperUserKey: PATRONI_SUPERUSER_PASSWORD
-    secretTemplate: "{{ .Release.Name }}-credentials"
-  host:
-    # the template for generating the database host
-    # location
-    # for a hardcoded host name from another release, set:
-    #   nameTemplate: "{{ already-deployed-timescale.default.svc.cluster.local }}"
-    # for a host name of a timescaledb instance
-    # deployed in the same release (without a cluster override) set:
-    #   nameTemplate: {{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local
-    nameTemplate: "{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local"
+  password: secretPassword
+  host: db.timescale.svc.cluster.local
   port: 5432
   sslMode: require
   # database name in which to store the metrics

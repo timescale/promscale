@@ -19,9 +19,11 @@ spec:
     metadata:
       labels:
         app: {{ template "promscale.fullname" . }}
-      {{ if .Values.prometheus.enabled }}
-      annotations: {{ .Values.prometheus.annotations | toYaml | nindent 8 }}
-      {{ end }}
+      {{- if .Values.prometheus.enabled }}
+      annotations: 
+        checksum/config: {{ printf "%s" .Values.connection | sha256sum -}}
+        {{ .Values.prometheus.annotations | toYaml | nindent 8 }}
+      {{- end }}
     spec:
       containers:
         - image: {{ .Values.image }}
@@ -33,6 +35,10 @@ spec:
               - {{ . }}
             {{- end }}
           {{- end}}
+          envFrom:
+          - secretRef:
+              {{- $secretName := ternary (include "promscale.fullname" .) .Values.connectionSecretName (eq .Values.connectionSecretName "") }}
+              name: {{ $secretName }}
           {{- if .Values.resources }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
@@ -44,30 +50,6 @@ spec:
             - containerPort: 9202
               name: traces-port
           {{- end }}
-          env:
-            {{- if .Values.connection.uri.secretTemplate }}
-            - name: PROMSCALE_DB_URI
-              valueFrom:
-                secretKeyRef:
-                  name: {{ tpl .Values.connection.uri.secretTemplate . }}
-                  key: {{ .Values.connection.uri.key }}
-            {{- else }}
-            - name: PROMSCALE_DB_PORT
-              value: {{ .Values.connection.port | quote }}
-            - name: PROMSCALE_DB_USER
-              value: {{ .Values.connection.user }}
-            - name: PROMSCALE_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ tpl .Values.connection.password.secretTemplate . }}
-                  key: {{ .Values.connection.password.timescaleDBSuperUserKey }}
-            - name: PROMSCALE_DB_HOST
-              value: {{ tpl .Values.connection.host.nameTemplate . }}
-            - name: PROMSCALE_DB_NAME
-              value: {{ .Values.connection.dbName }}
-            - name: PROMSCALE_DB_SSL_MODE
-              value: {{ .Values.connection.sslMode }}
-            {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
       {{ toYaml . | indent 2 }}
