@@ -45,7 +45,13 @@ spec:
               name: traces-port
           {{- end }}
           env:
-            {{- if not .Values.connection.uri.secretTemplate }}
+            {{- if .Values.connection.uri.secretTemplate }}
+            - name: PROMSCALE_DB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ tpl .Values.connection.uri.secretTemplate . }}
+                  key: {{ .Values.connection.uri.key }}
+            {{- else }}
             - name: PROMSCALE_DB_PORT
               value: {{ .Values.connection.port | quote }}
             - name: PROMSCALE_DB_USER
@@ -61,12 +67,6 @@ spec:
               value: {{ .Values.connection.dbName }}
             - name: PROMSCALE_DB_SSL_MODE
               value: {{ .Values.connection.sslMode }}
-            {{- else }}
-            - name: PROMSCALE_DB_URI
-              valueFrom:
-                secretKeyRef:
-                  name: {{ tpl .Values.connection.uri.secretTemplate . }}
-                  key: {{ .Values.connection.uri.key }}
             {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
