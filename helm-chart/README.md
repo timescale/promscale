@@ -15,52 +15,33 @@ This chart will do the following:
 
 ## Prerequisites
 
-### Database Name
+For promscale to work correctly it needs a set of data to connect to timescale database. This 
+configuration can be supplied in two ways either by using DB URI or by specifying connection
+parameters. Options are mutually exclusive and specifying URI takes priority.
 
-The name of the database the Promscale connector will connect to by default
-is set to `timescale`. You can change it by modifying the `connection.dbName` value.
-The database **must be created before** starting the connector.
+### Using DB URI
 
-### Password
-
-The chart expects that the password used to connect to TimescaleDB is stored in a
-Kubernetes Secret created before the chart is deployed.
-You can set the secret name by modifying the  `connection.password.secretTemplate` value.
-Templating is supported, and you can use:
+You can use db uri to connect to TimescaleDB. To do so, specify the URI in values.yaml as follows:
 ```yaml
 connection:
-  password:
-    secretTemplate: "{{ .Release.Name }}-credentials"
+  uri: <TIMESCALE_DB_URI>
 ```
 
-The data in the Secret object should look like this:
+### Using Connection Parameters
 
-```yaml
-data:
-  PATRONI_SUPERUSER_PASSWORD: base64encodedPassword
-```
+Instead of using db uri, you can specify all parameters necessary for connecting promscale to timescaledb using `connection` map.
+Bear in mind that timescale database should exist before starting promscale or at least credentials should be available.
 
-where `PATRONI_SUPERUSER_PASSWORD` references the default `postgres` user that the Connector will use to connect to the
-database. By default the *'postgres'* user is used, so we are configuring secret key as `PATRONI_SUPERUSER_PASSWORD`.
+Following are the default configuration values:
 
-OR 
-
-You can use db uri to connect to TimescaleDB is stored in a
-Kubernetes Secret created before the chart is deployed.
-You can set the secret name by modifying the  `connection.dburi.secretTemplate` value.
-Templating is supported and you can use:
 ```yaml
 connection:
-  dbURI:
-    secretTemplate: "{{ .Release.Name }}-timescaledb-uri"
-```
-
-
-
-The data in the Secret object should look like this:
-```yaml
-data:
-  db-uri: base64encodedDBURI
+  user: postgres
+  password: ""
+  host: db.timescale.svc.cluster.local
+  port: 5432
+  sslMode: require
+  dbName: timescale
 ```
 
 ## Installing
@@ -101,11 +82,9 @@ helm install --name my-release -f myvalues.yaml .
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
 | `upgradeStrategy`                 | Promscale deployment upgrade strategy, By default set to `Recreate` as during Promscale upgrade we expect no Promscale to be connected to TimescaleDB       | `Recreate`                                |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
-| `connection.password.timescaleDBSuperUserKey`| The DB password key in secret object which will hold the db password for `postgres`  user | `PATRONI_SUPERUSER_PASSWORD` |
-| `connection.password.secretTemplate`| The template for generating the name of a secret object which will hold the db password | `{{ .Release.Name }}-credentials` |
-| `connection.dbURI.name`| DB uri name is used as a key for secret which will hold the db URI value | `db-uri` |
-| `connection.dbURI.secretTemplate`| The template for generating the name of a secret object which will hold the db URI | `` |
-| `connection.host.nameTemplate`    | The template for generating the hostname of the db | `{{ .Release.Name }}.{{ .Release.Namespace}}.svc.cluster.local` |
+| `connection.password`             | The DB password for user specified in `connection.user` | "" |
+| `connection.uri`                  | DB uri string used for database connection. When not empty it takes priority over other settings in `connection` map. | "" |
+| `connection.host`                 | Hostname of timescaledb instance            | `db.timescaledb.svc.cluster.local` |
 | `connection.port`                 | Port the db listens to                      | `5432`                             |
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
 | `connection.sslMode`              | SSL mode for connection                     | `require`                          |
@@ -113,6 +92,7 @@ helm install --name my-release -f myvalues.yaml .
 | `service.tracesPort`              | Port the connector pods will accept traces connections on | `9202`                      |
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |
+| `serviceMonitor.enabled`          | Enable creation of serviceMonitor object used by prometheus-operator. This should be used with `prometheus.enabled: false`. | `false`   |
 | `maintenance.enabled`             | Option to enable maintenance cronjob, Enable maintenance cronjob only if you are using TimescaleDB < `2.0`   | `false` |
 | `maintenance.schedule`            | The schedule with which the Job, that deletes data outside the retention period, runs | `0,30 * * * *` |
 | `maintenance.startingDeadlineSeconds` | If set, CronJob controller counts how many missed jobs occurred from the set value until now | `200` |
