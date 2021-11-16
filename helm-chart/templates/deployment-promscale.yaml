@@ -19,11 +19,11 @@ spec:
     metadata:
       labels:
         app: {{ template "promscale.fullname" . }}
-      {{- if .Values.prometheus.enabled }}
       annotations: 
         checksum/config: {{ printf "%s" .Values.connection | sha256sum -}}
+        {{- if .Values.prometheus.enabled }}
         {{ .Values.prometheus.annotations | toYaml | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       containers:
         - image: {{ .Values.image }}
