@@ -552,7 +552,7 @@ AS $func$
     and returns a jsonb object containing the key value pairs of tags
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
+    FROM jsonb_each(_tag_map.m) x -- key is tag_key.id, value is tag.id
     INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
@@ -577,7 +577,7 @@ AS $func$
     only the key/value pairs with keys passed as arguments are included in the output
     */
     SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
+    FROM jsonb_each(_tag_map.m) x -- key is tag_key.id, value is tag.id
     INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
     (
         SELECT
@@ -597,7 +597,7 @@ AS $func$
     SELECT a.value
     FROM SCHEMA_TRACING.tag a
     WHERE a.key = _key -- partition elimination
-    AND a.id = (_tag_map->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
+    AND a.id = (_tag_map.m->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
     LIMIT 1
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
@@ -609,7 +609,7 @@ AS $func$
     SELECT a.value#>>'{}'
     FROM SCHEMA_TRACING.tag a
     WHERE a.key = _key -- partition elimination
-    AND a.id = (_tag_map->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
+    AND a.id = (_tag_map.m->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
     LIMIT 1
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
@@ -618,7 +618,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val_text(SCHEMA_TRACING_PUBLIC.t
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(_tags jsonb)
 RETURNS SCHEMA_TRACING_PUBLIC.tag_map
 AS $func$
-    SELECT coalesce(jsonb_object_agg(a.key_id, a.id), '{}')::SCHEMA_TRACING_PUBLIC.tag_map
+    SELECT row(coalesce(jsonb_object_agg(a.key_id, a.id), '{}'))::SCHEMA_TRACING_PUBLIC.tag_map
     FROM jsonb_each(_tags) x
     INNER JOIN LATERAL
     (
@@ -631,5 +631,3 @@ AS $func$
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(jsonb) TO prom_reader;
-
-

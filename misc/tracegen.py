@@ -213,14 +213,13 @@ def save_span(span: Span, cur) -> None:
         operation_id,
         start_time,
         end_time,
-        span_tags,
+        tags,
         dropped_tags_count,
         dropped_events_count,
         dropped_link_count,
         status_code,
         status_message,
         instrumentation_lib_id,
-        resource_tags,
         resource_dropped_tags_count,
         resource_schema_url_id
     )
@@ -240,14 +239,17 @@ def save_span(span: Span, cur) -> None:
         ),
         %(start_time)s,
         %(end_time)s,
-        ps_trace.get_tag_map(%(span_tags)s),
+        row(jsonb_build_array
+            (
+                (ps_trace.get_tag_map(%(span_tags)s)).m,
+                (ps_trace.get_tag_map(%(resource_tags)s)).m
+            ))::ps_trace.tag_map,
         %(dropped_tags_count)s,
         %(dropped_events_count)s,
         %(dropped_link_count)s,
         %(status_code)s,
         %(status_message)s,
         (select id from _ps_trace.instrumentation_lib where name = %(instrumentation_lib)s limit 1),
-        ps_trace.get_tag_map(%(resource_tags)s),
         %(resource_dropped_tags_count)s,
         (select id from _ps_trace.schema_url where url = %(resource_schema_url)s limit 1)
     '''
