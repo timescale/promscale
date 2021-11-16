@@ -53,6 +53,10 @@ connection:
   # must be created before start
   dbName: timescale
 
+# Enable ServiceMonitor used by prometheus-operator to configure prometheus for metrics scraping
+serviceMonitor:
+  enabled: false
+
 # Prometheus annotations to configure scraping metrics from the connector
 prometheus:
   enabled: true
