@@ -50,6 +50,7 @@ spec:
             - containerPort: 9202
               name: traces-port
           {{- end }}
+      serviceAccountName: {{ template "promscale.fullname" . }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
       {{ toYaml . | indent 2 }}
