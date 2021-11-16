@@ -21,7 +21,7 @@ const (
 var telemetries = []telemetry{
 	telemetrySQL{
 		stat: "promscale_ingested_samples_total",
-		sql:  "SELECT sum(telemetry_ingested_samples) FROM _ps_catalog.promscale_instance_information",
+		sql:  "SELECT sum(telemetry_metrics_ingested_samples) FROM _ps_catalog.promscale_instance_information",
 		typ:  isInt,
 	}, telemetrySQL{
 		stat: "promscale_instance_count",
@@ -86,17 +86,59 @@ var telemetries = []telemetry{
 	},
 	telemetrySQL{
 		stat: "promscale_promql_executed_queries",
-		sql:  "SELECT sum(telemetry_queries_executed) FROM _ps_catalog.promscale_instance_information",
+		sql:  "SELECT sum(telemetry_metrics_queries_executed) FROM _ps_catalog.promscale_instance_information",
 		typ:  isInt,
 	},
 	telemetrySQL{
 		stat: "promscale_promql_timed_out_queries",
-		sql:  "select sum(telemetry_queries_timed_out) from _ps_catalog.promscale_instance_information",
+		sql:  "SELECT sum(telemetry_metrics_queries_timed_out) FROM _ps_catalog.promscale_instance_information",
 		typ:  isInt,
 	},
 	telemetrySQL{
 		stat: "promscale_promql_failed_queries",
-		sql:  "select sum(telemetry_queries_failed) from _ps_catalog.promscale_instance_information",
+		sql:  "SELECT sum(telemetry_metrics_queries_failed) FROM _ps_catalog.promscale_instance_information",
 		typ:  isInt,
+	},
+	telemetrySQL{
+		stat: "promscale_traces_queries_total",
+		sql:  "SELECT sum(telemetry_traces_queries_executed) FROM _ps_catalog.promscale_instance_information",
+		typ:  isInt,
+	},
+	telemetrySQL{
+		stat: "promscale_traces_dependency_queries_total",
+		sql:  "SELECT sum(telemetry_traces_dependency_queries_executed) FROM _ps_catalog.promscale_instance_information",
+		typ:  isInt,
+	},
+	telemetryPromQL{
+		stat:   "promscale_promql_exeuction_time_p50",
+		promql: "histogram_quantile(0.5, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
+	},
+	telemetryPromQL{
+		stat:   "promscale_promql_exeuction_time_p90",
+		promql: "histogram_quantile(0.9, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
+	},
+	telemetryPromQL{
+		stat:   "promscale_promql_exeuction_time_p95",
+		promql: "histogram_quantile(0.95, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
+	},
+	telemetryPromQL{
+		stat:   "promscale_promql_exeuction_time_p99",
+		promql: "histogram_quantile(0.99, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
+	},
+	telemetryPromQL{
+		stat:   "promscale_trace_query_exeuction_time_p50",
+		promql: "histogram_quantile(0.5, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
+	},
+	telemetryPromQL{
+		stat:   "promscale_trace_query_exeuction_time_p90",
+		promql: "histogram_quantile(0.9, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
+	},
+	telemetryPromQL{
+		stat:   "promscale_trace_query_exeuction_time_p95",
+		promql: "histogram_quantile(0.95, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
+	},
+	telemetryPromQL{
+		stat:   "promscale_trace_query_exeuction_time_p99",
+		promql: "histogram_quantile(0.99, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
 	},
 }

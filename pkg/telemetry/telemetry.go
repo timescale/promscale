@@ -45,6 +45,8 @@ type Telemetry interface {
 	// lock is unreleased.
 	BecomeHousekeeper() (success bool, err error)
 	DoHouseKeepingAsync(context.Context) error
+	// RegisterMetric registers a Prometheus Gauge or Counter metric for telemetry visitor.
+	// It must be called after creating the telemetry engine.
 	RegisterMetric(statName string, gaugeOrCounterMetric prometheus.Metric) error
 }
 
@@ -105,10 +107,12 @@ func (t *telemetryEngine) StartRoutineAsync(ctx context.Context) {
 }
 
 type telemetryStats struct {
-	samplesIngested       float64
-	promqlQueriesExecuted float64
-	promqlQueriesTimedout float64
-	promqlQueriesFailed   float64
+	samplesIngested              float64
+	promqlQueriesExecuted        float64
+	promqlQueriesTimedout        float64
+	promqlQueriesFailed          float64
+	traceRequestsTotal           float64
+	traceDependencyRequestsTotal float64
 }
 
 func (t *telemetryEngine) telemetrySync(ctx context.Context) {
@@ -116,7 +120,7 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Minute * 55):
+		case <-time.After(time.Second * 5):
 		}
 		t.metricMux.RLock()
 		if len(t.metrics) > 0 {
@@ -228,7 +232,7 @@ func (t *telemetryEngine) telemetryVisitor(newStats Stats) (err error) {
 			case isInt:
 				tmp := new(int64)
 				if err := t.conn.QueryRow(context.Background(), query).Scan(&tmp); err != nil {
-					return fmt.Errorf("error scanning sql stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+					return fmt.Errorf("isInt: scanning sql stats '%s' with query '%s': %w", stat.Name(), query, err)
 				}
 				if tmp == nil {
 					continue
@@ -237,7 +241,7 @@ func (t *telemetryEngine) telemetryVisitor(newStats Stats) (err error) {
 			case isString:
 				tmp := new(string)
 				if err := t.conn.QueryRow(context.Background(), query).Scan(&tmp); err != nil {
-					return fmt.Errorf("error scanning sql stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+					return fmt.Errorf("isString: scanning sql stats '%s' with query '%s': %w", stat.Name(), query, err)
 				}
 				if tmp == nil {
 					continue
@@ -254,11 +258,21 @@ func (t *telemetryEngine) telemetryVisitor(newStats Stats) (err error) {
 			if res.Err != nil {
 				return fmt.Errorf("error evaluating PromQL stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
 			} else {
-				scalar, err := res.Scalar()
+				vec, err := res.Vector()
 				if err != nil {
-					return fmt.Errorf("error getting scalar value of evaluated PromQL stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
+					return fmt.Errorf("error getting vector value of PromQL query for stat '%s' with query '%s': %w", stat.Name(), query, err)
 				}
-				newStats[stat.Name()] = fmt.Sprint(scalar.V)
+				// Ensure the evaluated vector has only one or no points.
+				numSamples := len([]promql.Sample(vec))
+				if numSamples > 1 {
+					return fmt.Errorf("more than one sample receied for stat '%s': received %d samples", stat.Name(), numSamples)
+				}
+				// Note: numSamples can be zero, indicating that metric does not exist.
+				var value float64
+				if numSamples == 1 {
+					value = []promql.Sample(vec)[0].V
+				}
+				newStats[stat.Name()] = fmt.Sprint(value)
 			}
 		default:
 			log.Debug("msg", "invalid telemetry type for housekeeper. Expected telemetrySQL or telemetryPromQL", "received", reflect.TypeOf(stat))
@@ -324,11 +338,21 @@ func syncInfoTable(conn pgxconn.PgxConn, uuid [16]byte, s telemetryStats) error 
 	}
 
 	query := `INSERT INTO _ps_catalog.promscale_instance_information
-		VALUES ($1, $2, $3, $4, $5, $6)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	ON CONFlICT (uuid) DO
-		UPDATE SET last_updated = $2, telemetry_ingested_samples = $3, telemetry_queries_executed = $4, telemetry_queries_timed_out = $5, telemetry_queries_failed = $6`
+		UPDATE SET
+			last_updated = $2,
+			telemetry_metrics_ingested_samples = $3,
+			telemetry_metrics_queries_executed = $4,
+			telemetry_metrics_queries_timed_out = $5,
+			telemetry_metrics_queries_failed = $6,
+			telemetry_traces_queries_executed = $7,
+			telemetry_traces_dependency_queries_executed = $8
+`
 
-	_, err := conn.Exec(context.Background(), query, pgUUID, lastUpdated, s.samplesIngested, s.promqlQueriesExecuted, s.promqlQueriesTimedout, s.promqlQueriesFailed)
+	_, err := conn.Exec(context.Background(), query, pgUUID, lastUpdated,
+		s.samplesIngested, s.promqlQueriesExecuted, s.promqlQueriesTimedout, s.promqlQueriesFailed,
+		s.traceRequestsTotal, s.traceDependencyRequestsTotal)
 	if err != nil {
 		return fmt.Errorf("executing telemetry sync query: %w", err)
 	}
@@ -351,3 +375,11 @@ func extractMetricValue(metric prometheus.Metric) (float64, error) {
 func isNil(v interface{}) bool {
 	return v == nil
 }
+
+type noop struct{}
+
+func NewNoopEngine() Telemetry                              { return noop{} }
+func (noop) StartRoutineAsync(context.Context)              {}
+func (noop) BecomeHousekeeper() (bool, error)               { return false, nil }
+func (noop) DoHouseKeepingAsync(context.Context) error      { return nil }
+func (noop) RegisterMetric(string, prometheus.Metric) error { return nil }

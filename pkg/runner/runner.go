@@ -165,11 +165,16 @@ func Run(cfg *Config) error {
 		grpcServer := grpc.NewServer(options...)
 		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
 
-		queryPlugin := shared.StorageGRPCPlugin{
-			Impl: query.New(client.QuerierConnection),
-		}
-		err := queryPlugin.GRPCServer(nil, grpcServer)
+		jaegerQuery, err := query.New(client.QuerierConnection, telemetryEngine)
 		if err != nil {
+			log.Error("msg", "Creating jaeger query failed", "err", err)
+			return err
+		}
+
+		queryPlugin := shared.StorageGRPCPlugin{
+			Impl: jaegerQuery,
+		}
+		if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
 			log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
 			return err
 		}

@@ -13,6 +13,8 @@ type telemetry interface {
 	Query() interface{}
 }
 
+// telemetrySQL fetches telemetry information by evaluating an SQL expression.
+// Only one value must be returned by the query, as telemetry information needs a single value.
 type telemetrySQL struct {
 	stat string
 	sql  string // Should return only one output as a string.
@@ -40,13 +42,16 @@ func (t telemetryMetric) Query() interface{} {
 func (t telemetryMetric) Name() string { return t.stat }
 
 // telemetryPromQL fetches telemetry information by running a PromQL expression.
+// The provided expression must return exactly one sample value.
+// More than one samples will result in an error, as the telemetry will require
+// a single value only.
 type telemetryPromQL struct {
-	stat       string
-	promqlExpr string
+	stat   string
+	promql string
 }
 
 func (t telemetryPromQL) Query() interface{} {
-	return t.promqlExpr
+	return t.promql
 }
 
 func (t telemetryPromQL) Name() string { return t.stat }
