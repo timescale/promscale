@@ -1,0 +1,8 @@
+* @timescale/o11y-eng
+
+# sql related stuff
+*.sql @jgpruitt
+/pkg/migrations/ @jgpruitt
+/pkg/tests/upgrade_tests/ @jgpruitt
+/pkg/tests/testdata/ @jgpruitt
+/pkg/tests/test_migrations/ @jgpruitt
