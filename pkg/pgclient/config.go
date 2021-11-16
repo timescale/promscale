@@ -8,6 +8,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
+	"net/url"
 	"runtime"
 	"strconv"
 	"time"
@@ -119,15 +121,18 @@ func (cfg Config) validateConnectionSettings() error {
 func (cfg *Config) GetConnectionStr() string {
 	// If DB URI is not supplied, generate one from DB flags.
 	if cfg.DbUri == defaultDBUri {
-		return fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?application_name=%s&sslmode=%v&connect_timeout=%d",
-			cfg.User,
-			cfg.Password,
-			cfg.Host,
-			cfg.Port,
-			cfg.Database,
-			cfg.AppName,
-			cfg.SslMode,
-			int(cfg.DbConnectionTimeout.Seconds()))
+		v := url.Values{}
+		v.Set("application_name", cfg.AppName)
+		v.Set("sslmode", cfg.SslMode)
+		v.Set("connect_timeout", strconv.Itoa(int(cfg.DbConnectionTimeout.Seconds())))
+		u := url.URL{
+			Scheme:   "postgresql",
+			User:     url.UserPassword(cfg.User, cfg.Password),
+			Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+			Path:     cfg.Database,
+			RawQuery: v.Encode(),
+		}
+		return u.String()
 	}
 	return cfg.DbUri
 }
