@@ -109,12 +109,12 @@ func (t *telemetryEngine) StartRoutineAsync(ctx context.Context) {
 }
 
 type telemetryStats struct {
-	samplesIngested              float64
-	promqlQueriesExecuted        float64
-	promqlQueriesTimedout        float64
-	promqlQueriesFailed          float64
-	traceRequestsTotal           float64
-	traceDependencyRequestsTotal float64
+	samplesIngested                float64
+	promqlQueriesExecuted          float64
+	promqlQueriesTimedout          float64
+	promqlQueriesFailed            float64
+	traceQueriesExecuted           float64
+	traceDependencyQueriesExecuted float64
 }
 
 func (t *telemetryEngine) telemetrySync(ctx context.Context) {
@@ -122,10 +122,10 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Second * 5):
+		case <-time.After(time.Second * 10):
 		}
 		t.metricMux.RLock()
-		if len(t.metrics) > 0 {
+		if len(t.metrics) == 0 {
 			t.metricMux.RUnlock()
 			continue
 		}
@@ -161,7 +161,7 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 func (t *telemetryEngine) metricsVisitor(newStats *telemetryStats) error {
 	t.metricMux.RLock()
 	defer t.metricMux.RUnlock()
-	if len(t.metrics) > 0 {
+	if len(t.metrics) == 0 {
 		return nil
 	}
 	for _, stat := range t.metrics {
@@ -170,10 +170,18 @@ func (t *telemetryEngine) metricsVisitor(newStats *telemetryStats) error {
 			return fmt.Errorf("extracting metric value of stat '%s' with metric '%s': %w", stat.Name(), stat.metric, err)
 		}
 		switch stat.Name() {
-		case "telemetry_ingested_samples":
+		case "telemetry_metrics_ingested_samples":
 			newStats.samplesIngested = underlyingValue
-		case "telemetry_queries_failed":
+		case "telemetry_metrics_queries_failed":
 			newStats.promqlQueriesFailed = underlyingValue
+		case "telemetry_metrics_queries_executed":
+			newStats.promqlQueriesExecuted = underlyingValue
+		case "telemetry_metrics_queries_timed_out":
+			newStats.promqlQueriesTimedout = underlyingValue
+		case "telemetry_traces_queries_executed":
+			newStats.traceQueriesExecuted = underlyingValue
+		case "telemetry_traces_dependency_queries_executed":
+			newStats.traceDependencyQueriesExecuted = underlyingValue
 		default:
 			log.Error("msg", fmt.Sprintf("unregistered stat name: %s", stat.Name()))
 		}
@@ -208,7 +216,7 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Second * 2):
+		case <-time.After(time.Second * 12):
 		}
 		newStats := make(Stats)
 		if err := t.telemetryVisitor(newStats); err != nil {
@@ -219,8 +227,9 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 				log.Debug("msg", "syncing new stats", "error", err.Error())
 			}
 		}
-		if err := cleanStalePromscales(t.conn); err != nil {
-			log.Error("msg", "unable to clean stale Promscale instances. Please report to Promscale team as an issue at https://github.com/timescale/promscale/issues/new")
+		if err := cleanStalePromscalesAfterCounterReset(t.conn); err != nil {
+			log.Error("msg", "unable to clean stale Promscale instances. Please report to Promscale team as an issue at https://github.com/timescale/promscale/issues/new",
+				"err", err.Error())
 		}
 	}
 }
@@ -283,9 +292,8 @@ func (t *telemetryEngine) telemetryVisitor(newStats Stats) (err error) {
 	return nil
 }
 
-func cleanStalePromscales(conn pgxconn.PgxConn) error {
-	query := `DELETE FROM _ps_catalog.promscale_instance_information WHERE deletable = TRUE AND current_timestamp - last_updated > interval '1 hour'`
-	_, err := conn.Exec(context.Background(), query)
+func cleanStalePromscalesAfterCounterReset(conn pgxconn.PgxConn) error {
+	_, err := conn.Exec(context.Background(), "SELECT _ps_catalog.clean_stale_promscales_after_counter_reset()")
 	return err
 }
 
@@ -361,7 +369,7 @@ func syncInfoTable(conn pgxconn.PgxConn, uuid [16]byte, s telemetryStats) error 
 
 	_, err := conn.Exec(context.Background(), query, pgUUID, lastUpdated,
 		s.samplesIngested, s.promqlQueriesExecuted, s.promqlQueriesTimedout, s.promqlQueriesFailed,
-		s.traceRequestsTotal, s.traceDependencyRequestsTotal)
+		s.traceQueriesExecuted, s.traceDependencyQueriesExecuted)
 	if err != nil {
 		return fmt.Errorf("executing telemetry sync query: %w", err)
 	}
@@ -373,16 +381,12 @@ func extractMetricValue(metric prometheus.Metric) (float64, error) {
 	if err := metric.Write(&internal); err != nil {
 		return 0, fmt.Errorf("error writing metric: %w", err)
 	}
-	if !isNil(internal.Gauge) {
+	if internal.Gauge != nil {
 		return internal.Gauge.GetValue(), nil
-	} else if !isNil(internal.Counter) {
+	} else if internal.Counter != nil {
 		return internal.Counter.GetValue(), nil
 	}
 	return 0, fmt.Errorf("both Gauge and Counter are nil")
-}
-
-func isNil(v interface{}) bool {
-	return v == nil
 }
 
 type noop struct{}

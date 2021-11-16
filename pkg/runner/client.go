@@ -36,7 +36,6 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// (upgrading the DB will force-close all existing connections, so we may
 	// add a reconnect check that the DB has an appropriate version)
 	connStr := cfg.PgmodelCfg.GetConnectionStr()
-	fmt.Println("conn str", connStr)
 	extOptions := extension.ExtensionMigrateOptions{
 		Install:           cfg.InstallExtensions,
 		Upgrade:           cfg.UpgradeExtensions,

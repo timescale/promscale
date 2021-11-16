@@ -116,6 +116,12 @@ func Run(cfg *Config) error {
 	defer stopTelemetryRoutine()
 	telemetryEngine.StartRoutineAsync(ctx)
 
+	err = api.RegisterMetricsForTelemetry(telemetryEngine)
+	if err != nil {
+		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
+		return fmt.Errorf("error registering metrics for telemetry: %w", err)
+	}
+
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 

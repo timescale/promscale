@@ -52,6 +52,7 @@ var (
 			"tracing-public.sql",
 			"tracing-public-views.sql",
 			"remote-commands.sql",
+			"telemetry.sql",
 			"apply_permissions.sql", //should be last
 		},
 	}
