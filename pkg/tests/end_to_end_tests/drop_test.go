@@ -113,11 +113,15 @@ func TestSQLRetentionPeriod(t *testing.T) {
 }
 
 func verifyRetentionPeriod(t testing.TB, db *pgxpool.Pool, metricName string, expectedDuration time.Duration) {
+	verifyRetentionPeriodWithSchema(t, db, "prom_data", metricName, expectedDuration)
+}
+
+func verifyRetentionPeriodWithSchema(t testing.TB, db *pgxpool.Pool, schemaName string, metricName string, expectedDuration time.Duration) {
 	var durS int
 	var dur time.Duration
 
 	err := db.QueryRow(context.Background(),
-		`SELECT EXTRACT(epoch FROM _prom_catalog.get_metric_retention_period('prom_data', $1))`,
+		`SELECT EXTRACT(epoch FROM _prom_catalog.get_metric_retention_period($1, $2))`, schemaName,
 		metricName).Scan(&durS)
 	if err != nil {
 		t.Error(err)

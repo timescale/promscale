@@ -1335,7 +1335,7 @@ BEGIN
     END IF;
 
     --handles 2-step aggregatop
-    RAISE NOTICE 'Setting data retention period for all metrics with underlying continuous aggregate %.%', _cagg_schema, cagg_name;
+    RAISE NOTICE 'Setting data retention period for all metrics with underlying continuous aggregate %.%', _cagg_schema, _cagg_name;
 
     FOR r IN
         SELECT m.*
