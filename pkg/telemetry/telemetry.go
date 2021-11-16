@@ -16,7 +16,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
+
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/util"
@@ -289,7 +291,10 @@ func cleanStalePromscales(conn pgxconn.PgxConn) error {
 
 // writeMetadata writes Promscale and Tobs metadata. Must be written only by
 func (t *telemetryEngine) writeMetadata() error {
-	promscale := promscaleMetadata()
+	promscale, err := promscaleMetadata()
+	if err != nil {
+		return fmt.Errorf("promscale metadata: %w", err)
+	}
 	promscale["promscale_exec_platform"] = ExecPlatform
 	if err := syncTimescaleMetadataTable(t.conn, Stats(promscale)); err != nil {
 		return fmt.Errorf("writing metadata for promscale: %w", err)
@@ -308,8 +313,12 @@ func (t *telemetryEngine) writeMetadata() error {
 func syncTimescaleMetadataTable(conn pgxconn.PgxConn, m Stats) error {
 	batch := conn.NewBatch()
 	for key, metadata := range m {
+		safe := pgutf8str.Text{}
+		if err := safe.Set(metadata); err != nil {
+			return fmt.Errorf("setting in pgutf8 safe string: %w", err)
+		}
 		query := "INSERT INTO _timescaledb_catalog.metadata VALUES ( $1, $2, true ) ON CONFLICT (key) DO UPDATE SET value = $2, include_in_telemetry = true WHERE metadata.key = $1"
-		batch.Queue(query, key, metadata)
+		batch.Queue(query, key, safe)
 	}
 	results, err := conn.SendBatch(context.Background(), batch)
 	if err != nil {
