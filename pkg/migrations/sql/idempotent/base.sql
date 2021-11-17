@@ -2799,7 +2799,7 @@ BEGIN
         -- table_name -> hypertable_name
         -- we use explicit column aliases on _timescaledb_internal.compressed_chunk_stats to rename the
         -- `schema_name` and `table_name` in the older versions to the new names
-        CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.hypertable_compression_stats(schema_name_in name)
+        CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.hypertable_compression_stats_for_schema(schema_name_in name)
         RETURNS TABLE(hypertable_name name, total_chunks bigint, number_compressed_chunks bigint, before_compression_total_bytes bigint, after_compression_total_bytes bigint)
         AS $function$
             SELECT
@@ -2858,8 +2858,8 @@ BEGIN
         SECURITY DEFINER
         --search path must be set for security definer
         SET search_path = pg_temp;
-        REVOKE ALL ON FUNCTION SCHEMA_CATALOG.hypertable_compression_stats(name) FROM PUBLIC;
-        GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.hypertable_compression_stats(name) to prom_reader;
+        REVOKE ALL ON FUNCTION SCHEMA_CATALOG.hypertable_compression_stats_for_schema(name) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.hypertable_compression_stats_for_schema(name) to prom_reader;
 
     END IF;
 END;
@@ -2965,7 +2965,7 @@ BEGIN
             ) hs ON (hs.hypertable_name = m.table_name)
             LEFT JOIN timescaledb_information.dimensions dims ON
                 (dims.hypertable_schema = 'SCHEMA_DATA' AND dims.hypertable_name = m.table_name)
-            LEFT JOIN SCHEMA_CATALOG.hypertable_compression_stats('SCHEMA_DATA') hcs ON (hcs.hypertable_name = m.table_name)
+            LEFT JOIN SCHEMA_CATALOG.hypertable_compression_stats_for_schema('SCHEMA_DATA') hcs ON (hcs.hypertable_name = m.table_name)
             LEFT JOIN ci ON (ci.hypertable_name = m.table_name)
             ;
         ELSE
