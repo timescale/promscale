@@ -124,7 +124,7 @@ func (cfg *Config) GetConnectionStr() string {
 		v := url.Values{}
 		v.Set("application_name", cfg.AppName)
 		v.Set("sslmode", cfg.SslMode)
-		v.Set("connect_timeout", strconv.Itoa(int(cfg.DbConnectionTimeout.Seconds())))
+		v.Set("connect_timeout", fmt.Sprintf("%.f", cfg.DbConnectionTimeout.Seconds()))
 		u := url.URL{
 			Scheme:   "postgresql",
 			User:     url.UserPassword(cfg.User, cfg.Password),
