@@ -1,4 +1,7 @@
 
+-------------------------------------------------------------------------------
+-- tag type functions
+-------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.span_tag_type()
 RETURNS SCHEMA_TRACING_PUBLIC.tag_type
 AS $sql$
@@ -63,6 +66,9 @@ $sql$
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.is_link_tag_type(SCHEMA_TRACING_PUBLIC.tag_type) TO prom_reader;
 
+-------------------------------------------------------------------------------
+-- trace tree functions
+-------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.trace_tree(_trace_id SCHEMA_TRACING_PUBLIC.trace_id)
 RETURNS TABLE
 (
@@ -297,6 +303,9 @@ AS $func$
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.span_tree(SCHEMA_TRACING_PUBLIC.trace_id, bigint, int) TO prom_reader;
 
+-------------------------------------------------------------------------------
+-- get / put functions
+-------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.put_tag_key(_key SCHEMA_TRACING_PUBLIC.tag_k, _tag_type SCHEMA_TRACING_PUBLIC.tag_type)
 RETURNS bigint
 AS $func$
@@ -371,6 +380,23 @@ END;
 $func$
 LANGUAGE plpgsql VOLATILE STRICT;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_tag(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_v, SCHEMA_TRACING_PUBLIC.tag_type) TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(_tags jsonb)
+RETURNS SCHEMA_TRACING_PUBLIC.tag_map
+AS $func$
+    SELECT coalesce(jsonb_object_agg(a.key_id, a.id), '{}')::SCHEMA_TRACING_PUBLIC.tag_map
+    FROM jsonb_each(_tags) x
+    INNER JOIN LATERAL
+    (
+        SELECT a.key_id, a.id
+        FROM SCHEMA_TRACING.tag a
+        WHERE x.key = a.key
+        AND x.value = a.value
+        LIMIT 1
+    ) a on (true)
+$func$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(jsonb) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_operation(_service_name text, _span_name text, _span_kind SCHEMA_TRACING_PUBLIC.span_kind)
 RETURNS bigint
@@ -543,93 +569,3 @@ END;
 $func$
 LANGUAGE plpgsql VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_instrumentation_lib(text, text, bigint) TO prom_writer;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_map SCHEMA_TRACING_PUBLIC.tag_map)
-RETURNS jsonb
-AS $func$
-    /*
-    takes an tag_map which is a map of tag_key.id to tag.id
-    and returns a jsonb object containing the key value pairs of tags
-    */
-    SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
-    INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
-    (
-        SELECT
-            a.key,
-            a.value
-        FROM SCHEMA_TRACING.tag a
-        WHERE a.id = x.value::text::bigint
-        -- filter on a.key to eliminate all but one partition of the tag table
-        AND a.key = (SELECT k.key from SCHEMA_TRACING.tag_key k WHERE k.id = x.key::bigint)
-        LIMIT 1
-    ) a on (true)
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(SCHEMA_TRACING_PUBLIC.tag_map) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, VARIADIC _keys SCHEMA_TRACING_PUBLIC.tag_k[])
-RETURNS jsonb
-AS $func$
-    /*
-    takes an tag_map which is a map of tag_key.id to tag.id
-    and returns a jsonb object containing the key value pairs of tags
-    only the key/value pairs with keys passed as arguments are included in the output
-    */
-    SELECT jsonb_object_agg(a.key, a.value)
-    FROM jsonb_each(_tag_map) x -- key is tag_key.id, value is tag.id
-    INNER JOIN LATERAL -- inner join lateral enables partition elimination at execution time
-    (
-        SELECT
-            a.key,
-            a.value
-        FROM SCHEMA_TRACING.tag a
-        WHERE a.id = x.value::text::bigint
-        AND a.key = ANY(_keys) -- ANY works with partition elimination
-    ) a on (true)
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.jsonb(SCHEMA_TRACING_PUBLIC.tag_map) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, _key SCHEMA_TRACING_PUBLIC.tag_k)
-RETURNS SCHEMA_TRACING_PUBLIC.tag_v
-AS $func$
-    SELECT a.value
-    FROM SCHEMA_TRACING.tag a
-    WHERE a.key = _key -- partition elimination
-    AND a.id = (_tag_map->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
-    LIMIT 1
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.val_text(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, _key SCHEMA_TRACING_PUBLIC.tag_k)
-RETURNS text
-AS $func$
-    SELECT a.value#>>'{}'
-    FROM SCHEMA_TRACING.tag a
-    WHERE a.key = _key -- partition elimination
-    AND a.id = (_tag_map->>(SELECT id::text FROM SCHEMA_TRACING.tag_key WHERE key = _key))::bigint
-    LIMIT 1
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.val_text(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
-
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(_tags jsonb)
-RETURNS SCHEMA_TRACING_PUBLIC.tag_map
-AS $func$
-    SELECT coalesce(jsonb_object_agg(a.key_id, a.id), '{}')::SCHEMA_TRACING_PUBLIC.tag_map
-    FROM jsonb_each(_tags) x
-    INNER JOIN LATERAL
-    (
-        SELECT a.key_id, a.id
-        FROM SCHEMA_TRACING.tag a
-        WHERE x.key = a.key
-        AND x.value = a.value
-        LIMIT 1
-    ) a on (true)
-$func$
-LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.get_tag_map(jsonb) TO prom_reader;
-
-
