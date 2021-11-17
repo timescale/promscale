@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/timescale/promscale/pkg/log"
@@ -16,7 +17,7 @@ import (
 )
 
 func (t *telemetryEngine) BecomeHousekeeper() (success bool, err error) {
-	acquired, err := t.telemetryLock.GetAdvisoryLock()
+	acquired, err := t.housekeeperLock.GetAdvisoryLock()
 	if err != nil {
 		return false, fmt.Errorf("attemping telemetry pg-advisory-lock: %w", err)
 	}
@@ -28,11 +29,19 @@ func (t *telemetryEngine) BecomeHousekeeper() (success bool, err error) {
 
 // DoHouseKeepingAsync starts telemetry housekeeping activities async. It must be called after calling BecomeHousekeeper
 // and only when the returned result is success.
-func (t *telemetryEngine) DoHouseKeepingAsync(ctx context.Context) error {
+func (t *telemetryEngine) DoHouseKeepingAsync() error {
 	if !t.isHouseKeeper {
 		return fmt.Errorf("cannot do house keeping as not a house-keeper")
 	}
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	ctx, stopHousekeeperRoutine := context.WithCancel(context.Background())
+
 	go t.housekeeping(ctx)
+
+	t.stopHousekeeperRoutine = stopHousekeeperRoutine
+	t.wgHousekeeper = wg
 	return nil
 }
 
@@ -41,8 +50,12 @@ func (t *telemetryEngine) housekeeping(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			if _, err := t.housekeeperLock.Unlock(); err != nil {
+				log.Debug("msg", "error releasing housekeeper lock", "err", err.Error())
+			}
+			t.wgHousekeeper.Done()
 			return
-		case <-time.After(time.Second * 12):
+		case <-time.After(time.Hour):
 		}
 		newStats := make(Stats)
 		if err := t.telemetryVisitor(newStats); err != nil {

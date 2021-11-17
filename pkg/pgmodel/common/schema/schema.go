@@ -15,6 +15,7 @@ const (
 	Timescale = "public"
 
 	PromscaleCatalog = "_ps_catalog"
+	TSCatalog        = "_timescaledb_catalog"
 
 	LockID = 0x4D829C732AAFCEDE // Chosen randomly.
 

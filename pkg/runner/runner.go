@@ -104,17 +104,14 @@ func Run(cfg *Config) error {
 		return fmt.Errorf("become-housekeeper: %w", err)
 	}
 	if success {
-		ctx, stopHousekeeping := context.WithCancel(context.Background())
-		defer stopHousekeeping()
-		if err = telemetryEngine.DoHouseKeepingAsync(ctx); err != nil {
+		if err = telemetryEngine.DoHouseKeepingAsync(); err != nil {
 			log.Error("msg", "error doing housekeeping", "err", err.Error())
 			return fmt.Errorf("do housekeeping: %w", err)
 		}
 		log.Info("msg", "Starting Promscale as telemetry housekeeper")
 	}
-	ctx, stopTelemetryRoutine := context.WithCancel(context.Background())
-	defer stopTelemetryRoutine()
-	telemetryEngine.StartRoutineAsync(ctx)
+
+	telemetryEngine.StartRoutineAsync()
 
 	err = api.RegisterMetricsForTelemetry(telemetryEngine)
 	if err != nil {

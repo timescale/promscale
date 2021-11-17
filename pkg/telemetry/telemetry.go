@@ -29,40 +29,46 @@ type telemetryEngine struct {
 	uuid [16]byte
 	conn pgxconn.PgxConn
 
-	isHouseKeeper bool
-	telemetryLock util.AdvisoryLock
+	isHouseKeeper   bool
+	housekeeperLock util.AdvisoryLock
+
+	stopTelemetryRoutine   context.CancelFunc
+	stopHousekeeperRoutine context.CancelFunc
+	wgTelemetryRoutine     *sync.WaitGroup
+	wgHousekeeper          *sync.WaitGroup
 
 	metricMux sync.RWMutex
 	metrics   []telemetryMetric
 }
 
 type Telemetry interface {
-	StartRoutineAsync(context.Context)
+	StartRoutineAsync()
 	// BecomeHousekeeper tries to become a telemetry housekeeper. If it succeeds,
 	// the caller must call DoHouseKeepingAsync() otherwise the telemetry advisory
 	// lock is unreleased.
 	BecomeHousekeeper() (success bool, err error)
-	DoHouseKeepingAsync(context.Context) error
+	DoHouseKeepingAsync() error
 	// RegisterMetric registers a Prometheus Gauge or Counter metric for telemetry visitor.
 	// It must be called after creating the telemetry engine.
 	RegisterMetric(statName string, gaugeOrCounterMetric prometheus.Metric) error
+	Close() error
 }
 
-const telemetryLockId = 0x2D829A932AAFCEDE // Random.
+const telemetryHousekeepingLockId = 0x2D829A932AAFCEDE // Random.
 
 func NewTelemetryEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string) (Telemetry, error) {
 	// Warn the users about telemetry collection.
 	log.Warn("msg", "Promscale collects anonymous usage telemetry data for project improvements while being GDPR compliant. "+
 		"If you wish not to participate, please turn off sending telemetry in TimescaleDB. "+
 		"Details about the process can be found at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
-	advisoryLock, err := util.NewPgAdvisoryLock(telemetryLockId, connStr)
+	advisoryLock, err := util.NewPgAdvisoryLock(telemetryHousekeepingLockId, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("error getting pg-advisory-lock: %w", err)
 	}
 	engine := &telemetryEngine{
-		conn:          conn,
-		uuid:          uuid,
-		telemetryLock: advisoryLock,
+		conn:            conn,
+		uuid:            uuid,
+		housekeeperLock: advisoryLock,
 	}
 	if err = engine.writeMetadata(); err != nil {
 		return nil, fmt.Errorf("writing metadata: %w", err)
@@ -98,8 +104,32 @@ func isCounterOrGauge(metric prometheus.Metric) (bool, error) {
 	return false, nil
 }
 
-func (t *telemetryEngine) StartRoutineAsync(ctx context.Context) {
+func (t *telemetryEngine) StartRoutineAsync() {
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	ctx, stopTelemetryRoutine := context.WithCancel(context.Background())
+
 	go t.telemetrySync(ctx)
+
+	t.stopTelemetryRoutine = stopTelemetryRoutine
+	t.wgTelemetryRoutine = wg
+}
+
+func (t *telemetryEngine) Close() error {
+	if t.stopTelemetryRoutine != nil {
+		t.stopTelemetryRoutine()
+	}
+	if t.stopHousekeeperRoutine != nil {
+		t.stopHousekeeperRoutine()
+	}
+
+	if t.wgTelemetryRoutine != nil {
+		t.wgTelemetryRoutine.Wait()
+	}
+	if t.wgHousekeeper != nil {
+		t.wgHousekeeper.Wait()
+	}
+	return nil
 }
 
 // telemetryStats are collected for telemetry information by all Promscale instances and sorted
@@ -117,8 +147,9 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			t.wgTelemetryRoutine.Done()
 			return
-		case <-time.After(time.Second * 10):
+		case <-time.After(time.Minute * 55):
 		}
 		t.metricMux.RLock()
 		if len(t.metrics) == 0 {
@@ -143,7 +174,7 @@ func (t *telemetryEngine) telemetrySync(ctx context.Context) {
 			}
 			if success {
 				// Now we are the housekeeper. Use the context of telemetrySync for graceful shutdowns.
-				if err = t.DoHouseKeepingAsync(ctx); err != nil {
+				if err = t.DoHouseKeepingAsync(); err != nil {
 					log.Error("msg", "unable to do telemetry housekeeping after taking its position", "err", err.Error())
 					continue
 				}
@@ -280,7 +311,8 @@ func syncInfoTable(conn pgxconn.PgxConn, uuid [16]byte, s telemetryStats) error 
 type noop struct{}
 
 func NewNoopEngine() Telemetry                              { return noop{} }
-func (noop) StartRoutineAsync(context.Context)              {}
+func (noop) StartRoutineAsync()                             {}
 func (noop) BecomeHousekeeper() (bool, error)               { return false, nil }
-func (noop) DoHouseKeepingAsync(context.Context) error      { return nil }
+func (noop) DoHouseKeepingAsync() error                     { return nil }
 func (noop) RegisterMetric(string, prometheus.Metric) error { return nil }
+func (noop) Close() error                                   { return nil }

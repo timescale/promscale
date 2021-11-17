@@ -7,7 +7,7 @@ $$
                 WHERE
                       deletable = TRUE
                   AND
-                      current_timestamp - last_updated > INTERVAL '1 minute') THEN
+                      current_timestamp - last_updated > INTERVAL '1 HOUR') THEN
             RETURN;
         END IF;
 
@@ -48,10 +48,10 @@ $$
                     counter_reset.telemetry_traces_queries_executed,
                     counter_reset.telemetry_traces_dependency_queries_executed
             ) AS subquery
-        WHERE deletable = false AND current_timestamp - last_updated > interval '1 minute';
+        WHERE deletable = false AND current_timestamp - last_updated > interval '1 HOUR';
 
         -- Delete the stale rows.
-        DELETE FROM SCHEMA_PS_CATALOG.promscale_instance_information WHERE deletable = TRUE AND current_timestamp - last_updated > interval '1 minute';
+        DELETE FROM SCHEMA_PS_CATALOG.promscale_instance_information WHERE deletable = TRUE AND current_timestamp - last_updated > interval '1 HOUR';
     END;
 $$
 LANGUAGE PLPGSQL;

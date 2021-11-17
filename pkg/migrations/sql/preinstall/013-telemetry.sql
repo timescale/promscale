@@ -1,3 +1,5 @@
+GRANT SELECT, INSERT, UPDATE ON TABLE TS_CATALOG.metadata TO prom_writer;
+
 CREATE TABLE IF NOT EXISTS SCHEMA_PS_CATALOG.promscale_instance_information (
     uuid                                            UUID NOT NULL PRIMARY KEY,
     last_updated                                    TIMESTAMPTZ NOT NULL,

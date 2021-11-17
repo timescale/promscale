@@ -52,9 +52,15 @@ func tobsMetadata() Metadata {
 	env := os.Environ()
 	metadata := make(Metadata)
 	for _, envVar := range env {
-		if strings.HasPrefix(envVar, tobsMetadataPrefix) {
-			metadata[envVar] = os.Getenv(envVar)
+		k, v := decode(envVar)
+		if strings.HasPrefix(k, tobsMetadataPrefix) {
+			metadata[k] = v
 		}
 	}
 	return metadata
+}
+
+func decode(s string) (key, value string) {
+	arr := strings.Split(s, "=")
+	return arr[0], arr[1]
 }
