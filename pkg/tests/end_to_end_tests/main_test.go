@@ -78,6 +78,7 @@ func setExtensionState() {
 	case 13:
 		extensionState.UsePG13()
 	case 14:
+		//this is the default
 	default:
 		panic("Unknown Postgres version")
 	}

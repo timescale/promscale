@@ -145,6 +145,51 @@ func (e ExtensionState) UsesTimescaleDBOSS() bool {
 	return (e & timescaleOSSBit) != 0
 }
 
+func (e ExtensionState) GetPGMajor() string {
+	PGMajor := "14"
+	if e.UsesPG13() {
+		PGMajor = "13"
+	} else if e.UsesPG12() {
+		PGMajor = "12"
+	}
+	return PGMajor
+}
+
+func (e ExtensionState) GetDockerImageName() (string, error) {
+	var image string
+	PGMajor := e.GetPGMajor()
+	PGTag := "pg" + PGMajor
+
+	switch e &^ postgres12Bit &^ postgres13Bit {
+	case Timescale1:
+		if PGMajor != "12" {
+			return "", fmt.Errorf("timescaledb 1.x requires pg12")
+		}
+		image = "timescale/timescaledb:1.7.4-pg12"
+	case Timescale1AndPromscale:
+		if PGMajor != "12" {
+			return "", fmt.Errorf("timescaledb 1.x requires pg12")
+		}
+		image = LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
+	case Timescale2, Multinode:
+		image = "timescale/timescaledb:latest-" + PGTag
+	case Timescale2AndPromscale, MultinodeAndPromscale:
+		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
+
+		//TODO: remove split once pg14 ha image published
+		if PGMajor == "14" {
+			image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
+		}
+	case VanillaPostgres:
+		image = "postgres:" + PGMajor
+	case TimescaleOSS:
+		image = "timescale/timescaledb:latest-" + PGTag + "-oss"
+	case TimescaleNightly, TimescaleNightlyMultinode:
+		image = "timescaledev/timescaledb:nightly-" + PGTag
+	}
+	return image, nil
+}
+
 var (
 	pgHost          = "localhost"
 	pgPort nat.Port = "5432/tcp"
@@ -302,42 +347,9 @@ func StartPGContainer(
 	testDataDir string,
 	printLogs bool,
 ) (testcontainers.Container, io.Closer, error) {
-	var image string
-	PGMajor := "14"
-	if extensionState.UsesPG13() {
-		PGMajor = "13"
-	}
-	if extensionState.UsesPG12() {
-		PGMajor = "12"
-	}
-	PGTag := "pg" + PGMajor
-
-	switch extensionState &^ postgres12Bit &^ postgres13Bit {
-	case Timescale1:
-		if PGMajor != "12" {
-			return nil, nil, fmt.Errorf("timescaledb 1.x requires pg12")
-		}
-		image = "timescale/timescaledb:1.7.4-pg12"
-	case Timescale1AndPromscale:
-		if PGMajor != "12" {
-			return nil, nil, fmt.Errorf("timescaledb 1.x requires pg12")
-		}
-		image = LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
-	case Timescale2, Multinode:
-		image = "timescale/timescaledb:latest-" + PGTag
-	case Timescale2AndPromscale, MultinodeAndPromscale:
-		if PGMajor == "14" {
-			//TODO: remove split once pg14 ha image published
-			image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
-		} else {
-			image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
-		}
-	case VanillaPostgres:
-		image = "postgres:" + PGMajor
-	case TimescaleOSS:
-		image = "timescale/timescaledb:latest-" + PGTag + "-oss"
-	case TimescaleNightly, TimescaleNightlyMultinode:
-		image = "timescaledev/timescaledb:nightly-" + PGTag
+	image, err := extensionState.GetDockerImageName()
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not determine docker image: %w", err)
 	}
 
 	return StartDatabaseImage(ctx, image, testDataDir, "", printLogs, extensionState)
