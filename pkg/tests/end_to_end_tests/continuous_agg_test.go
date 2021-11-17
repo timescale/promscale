@@ -510,5 +510,9 @@ WITH (timescaledb.continuous) AS
 		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('%s', older_than => NOW())`, caggHypertable)).Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 0, int(cnt), "Expected for cagg to have no chunks, all outside of data retention period")
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('public', 'tw_1hour', INTERVAL '182 days')")
+		require.NoError(t, err)
+		verifyRetentionPeriodWithSchema(t, db, "public", "tw_1hour", time.Hour*24*182)
 	})
 }
