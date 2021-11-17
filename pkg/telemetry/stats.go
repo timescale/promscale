@@ -11,10 +11,10 @@ package telemetry
 // Telemetry is the aggregates that housekeeper performs, the final processing before writing
 // into the _timescaledb_catalog.metadata table.
 
-type telemetryType uint8
+type telemetryResultType uint8
 
 const (
-	isInt telemetryType = iota
+	isInt telemetryResultType = iota
 	isString
 )
 
@@ -108,37 +108,5 @@ var telemetries = []telemetry{
 		stat: "promscale_traces_dependency_queries_total",
 		sql:  "SELECT sum(telemetry_traces_dependency_queries_executed) FROM _ps_catalog.promscale_instance_information",
 		typ:  isInt,
-	},
-	telemetryPromQL{
-		stat:   "promscale_promql_exeuction_time_p50",
-		promql: "histogram_quantile(0.5, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
-	},
-	telemetryPromQL{
-		stat:   "promscale_promql_exeuction_time_p90",
-		promql: "histogram_quantile(0.9, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
-	},
-	telemetryPromQL{
-		stat:   "promscale_promql_exeuction_time_p95",
-		promql: "histogram_quantile(0.95, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
-	},
-	telemetryPromQL{
-		stat:   "promscale_promql_exeuction_time_p99",
-		promql: "histogram_quantile(0.99, sum by(le) (rate(promscale_query_duration_seconds_bucket[1h])))",
-	},
-	telemetryPromQL{
-		stat:   "promscale_trace_query_exeuction_time_p50",
-		promql: "histogram_quantile(0.5, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
-	},
-	telemetryPromQL{
-		stat:   "promscale_trace_query_exeuction_time_p90",
-		promql: "histogram_quantile(0.9, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
-	},
-	telemetryPromQL{
-		stat:   "promscale_trace_query_exeuction_time_p95",
-		promql: "histogram_quantile(0.95, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
-	},
-	telemetryPromQL{
-		stat:   "promscale_trace_query_exeuction_time_p99",
-		promql: "histogram_quantile(0.99, sum by(le) (rate(promscale_trace_query_execution_duration_seconds_bucket[1h])))",
 	},
 }

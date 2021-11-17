@@ -87,13 +87,13 @@ func Run(cfg *Config) error {
 	}
 	defer client.Close()
 
-	router, promqlEngine, err := api.GenerateRouter(&cfg.APICfg, client, elector)
+	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
 	}
 
-	telemetryEngine, err := telemetry.NewTelemetryEngine(client.Connection, PromscaleID, client.ConnectionStr, promqlEngine, client.Queryable())
+	telemetryEngine, err := telemetry.NewTelemetryEngine(client.Connection, PromscaleID, client.ConnectionStr)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
 		return fmt.Errorf("creating telemetry-engine: %w", err)

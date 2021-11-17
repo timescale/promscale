@@ -7,8 +7,6 @@ package telemetry
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"strconv"
 	"sync"
 	"time"
 
@@ -20,7 +18,6 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -29,12 +26,11 @@ import (
 var ExecPlatform string
 
 type telemetryEngine struct {
-	conn            pgxconn.PgxConn
-	promqlEngine    *promql.Engine
-	promqlQueryable promql.Queryable
-	uuid            [16]byte
-	telemetryLock   util.AdvisoryLock
-	isHouseKeeper   bool
+	uuid [16]byte
+	conn pgxconn.PgxConn
+
+	isHouseKeeper bool
+	telemetryLock util.AdvisoryLock
 
 	metricMux sync.RWMutex
 	metrics   []telemetryMetric
@@ -54,7 +50,7 @@ type Telemetry interface {
 
 const telemetryLockId = 0x2D829A932AAFCEDE // Random.
 
-func NewTelemetryEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string, promqlEngine *promql.Engine, promqlQueryable promql.Queryable) (Telemetry, error) {
+func NewTelemetryEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string) (Telemetry, error) {
 	// Warn the users about telemetry collection.
 	log.Warn("msg", "Promscale collects anonymous usage telemetry data for project improvements while being GDPR compliant. "+
 		"If you wish not to participate, please turn off sending telemetry in TimescaleDB. "+
@@ -64,11 +60,9 @@ func NewTelemetryEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string, pro
 		return nil, fmt.Errorf("error getting pg-advisory-lock: %w", err)
 	}
 	engine := &telemetryEngine{
-		conn:            conn,
-		promqlEngine:    promqlEngine,
-		promqlQueryable: promqlQueryable,
-		uuid:            uuid,
-		telemetryLock:   advisoryLock,
+		conn:          conn,
+		uuid:          uuid,
+		telemetryLock: advisoryLock,
 	}
 	if err = engine.writeMetadata(); err != nil {
 		return nil, fmt.Errorf("writing metadata: %w", err)
@@ -108,6 +102,8 @@ func (t *telemetryEngine) StartRoutineAsync(ctx context.Context) {
 	go t.telemetrySync(ctx)
 }
 
+// telemetryStats are collected for telemetry information by all Promscale instances and sorted
+// in the instance information table.
 type telemetryStats struct {
 	samplesIngested                float64
 	promqlQueriesExecuted          float64
@@ -189,112 +185,17 @@ func (t *telemetryEngine) metricsVisitor(newStats *telemetryStats) error {
 	return nil
 }
 
-func (t *telemetryEngine) BecomeHousekeeper() (success bool, err error) {
-	acquired, err := t.telemetryLock.GetAdvisoryLock()
-	if err != nil {
-		return false, fmt.Errorf("attemping telemetry pg-advisory-lock: %w", err)
+func extractMetricValue(metric prometheus.Metric) (float64, error) {
+	var internal io_prometheus_client.Metric
+	if err := metric.Write(&internal); err != nil {
+		return 0, fmt.Errorf("error writing metric: %w", err)
 	}
-	if acquired {
-		t.isHouseKeeper = true
+	if internal.Gauge != nil {
+		return internal.Gauge.GetValue(), nil
+	} else if internal.Counter != nil {
+		return internal.Counter.GetValue(), nil
 	}
-	return acquired, nil
-}
-
-// DoHouseKeepingAsync starts telemetry housekeeping activities async. It must be called after calling BecomeHousekeeper
-// and only when the returned result is success.
-func (t *telemetryEngine) DoHouseKeepingAsync(ctx context.Context) error {
-	if !t.isHouseKeeper {
-		return fmt.Errorf("cannot do house keeping as not a house-keeper")
-	}
-	go t.housekeeping(ctx)
-	return nil
-}
-
-// housekeeping takes all the telemetry stats, evaluates and writes into the database.
-func (t *telemetryEngine) housekeeping(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(time.Second * 12):
-		}
-		newStats := make(Stats)
-		if err := t.telemetryVisitor(newStats); err != nil {
-			log.Debug("msg", "error visiting telemetry", "err", err.Error())
-		}
-		if len(newStats) > 0 {
-			if err := syncTimescaleMetadataTable(t.conn, newStats); err != nil {
-				log.Debug("msg", "syncing new stats", "error", err.Error())
-			}
-		}
-		if err := cleanStalePromscalesAfterCounterReset(t.conn); err != nil {
-			log.Error("msg", "unable to clean stale Promscale instances. Please report to Promscale team as an issue at https://github.com/timescale/promscale/issues/new",
-				"err", err.Error())
-		}
-	}
-}
-
-func (t *telemetryEngine) telemetryVisitor(newStats Stats) (err error) {
-	for _, stat := range telemetries {
-		switch n := stat.(type) {
-		case telemetrySQL:
-			query := stat.Query().(string)
-			switch n.typ {
-			case isInt:
-				tmp := new(int64)
-				if err := t.conn.QueryRow(context.Background(), query).Scan(&tmp); err != nil {
-					return fmt.Errorf("isInt: scanning sql stats '%s' with query '%s': %w", stat.Name(), query, err)
-				}
-				if tmp == nil {
-					continue
-				}
-				newStats[stat.Name()] = strconv.Itoa(int(*tmp))
-			case isString:
-				tmp := new(string)
-				if err := t.conn.QueryRow(context.Background(), query).Scan(&tmp); err != nil {
-					return fmt.Errorf("isString: scanning sql stats '%s' with query '%s': %w", stat.Name(), query, err)
-				}
-				if tmp == nil {
-					continue
-				}
-				newStats[stat.Name()] = *tmp
-			}
-		case telemetryPromQL:
-			query := stat.Query().(string)
-			parsedQuery, err := t.promqlEngine.NewInstantQuery(t.promqlQueryable, query, time.Now())
-			if err != nil {
-				return fmt.Errorf("error parsing PromQL stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
-			}
-			res := parsedQuery.Exec(context.Background())
-			if res.Err != nil {
-				return fmt.Errorf("error evaluating PromQL stats query for stat '%s' with query '%s': %w", stat.Name(), query, err)
-			} else {
-				vec, err := res.Vector()
-				if err != nil {
-					return fmt.Errorf("error getting vector value of PromQL query for stat '%s' with query '%s': %w", stat.Name(), query, err)
-				}
-				// Ensure the evaluated vector has only one or no points.
-				numSamples := len([]promql.Sample(vec))
-				if numSamples > 1 {
-					return fmt.Errorf("more than one sample receied for stat '%s': received %d samples", stat.Name(), numSamples)
-				}
-				// Note: numSamples can be zero, indicating that metric does not exist.
-				var value float64
-				if numSamples == 1 {
-					value = []promql.Sample(vec)[0].V
-				}
-				newStats[stat.Name()] = fmt.Sprint(value)
-			}
-		default:
-			log.Debug("msg", "invalid telemetry type for housekeeper. Expected telemetrySQL or telemetryPromQL", "received", reflect.TypeOf(stat))
-		}
-	}
-	return nil
-}
-
-func cleanStalePromscalesAfterCounterReset(conn pgxconn.PgxConn) error {
-	_, err := conn.Exec(context.Background(), "SELECT _ps_catalog.clean_stale_promscales_after_counter_reset()")
-	return err
+	return 0, fmt.Errorf("both Gauge and Counter are nil")
 }
 
 // writeMetadata writes Promscale and Tobs metadata. Must be written only by
@@ -374,19 +275,6 @@ func syncInfoTable(conn pgxconn.PgxConn, uuid [16]byte, s telemetryStats) error 
 		return fmt.Errorf("executing telemetry sync query: %w", err)
 	}
 	return nil
-}
-
-func extractMetricValue(metric prometheus.Metric) (float64, error) {
-	var internal io_prometheus_client.Metric
-	if err := metric.Write(&internal); err != nil {
-		return 0, fmt.Errorf("error writing metric: %w", err)
-	}
-	if internal.Gauge != nil {
-		return internal.Gauge.GetValue(), nil
-	} else if internal.Counter != nil {
-		return internal.Counter.GetValue(), nil
-	}
-	return 0, fmt.Errorf("both Gauge and Counter are nil")
 }
 
 type noop struct{}

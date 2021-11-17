@@ -4,9 +4,7 @@
 
 package telemetry
 
-import (
-	"github.com/prometheus/client_golang/prometheus"
-)
+import "github.com/prometheus/client_golang/prometheus"
 
 type telemetry interface {
 	Name() string
@@ -18,7 +16,7 @@ type telemetry interface {
 type telemetrySQL struct {
 	stat string
 	sql  string // Should return only one output as a string.
-	typ  telemetryType
+	typ  telemetryResultType
 }
 
 func (t telemetrySQL) Query() interface{} {
@@ -26,6 +24,8 @@ func (t telemetrySQL) Query() interface{} {
 }
 
 func (t telemetrySQL) Name() string { return t.stat }
+
+func (t telemetrySQL) ResultType() telemetryResultType { return t.typ }
 
 // telemetryMetric fetches telemetry information from the underlying Prometheus metric value.
 // The underlying Prometheus metric must be a Counter or a Gauge.
@@ -40,18 +40,3 @@ func (t telemetryMetric) Query() interface{} {
 }
 
 func (t telemetryMetric) Name() string { return t.stat }
-
-// telemetryPromQL fetches telemetry information by running a PromQL expression.
-// The provided expression must return exactly one sample value.
-// More than one samples will result in an error, as the telemetry will require
-// a single value only.
-type telemetryPromQL struct {
-	stat   string
-	promql string
-}
-
-func (t telemetryPromQL) Query() interface{} {
-	return t.promql
-}
-
-func (t telemetryPromQL) Name() string { return t.stat }

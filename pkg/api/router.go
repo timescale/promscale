@@ -20,13 +20,12 @@ import (
 	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
-	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, *promql.Engine, error) {
+func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -67,7 +66,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	queryable := client.Queryable()
 	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.LookBackDelta, apiConf.SubQueryStepInterval, apiConf.MaxSamples, apiConf.EnabledFeaturesList)
 	if err != nil {
-		return nil, nil, fmt.Errorf("creating query-engine: %w", err)
+		return nil, fmt.Errorf("creating query-engine: %w", err)
 	}
 	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, metrics))
 	router.Get("/api/v1/query", queryHandler)
@@ -114,7 +113,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 
 	router.Get("/debug/fgprof", fgprof.Handler().ServeHTTP)
 
-	return router, queryEngine, nil
+	return router, nil
 }
 
 func RegisterMetricsForTelemetry(t telemetry.Telemetry) error {

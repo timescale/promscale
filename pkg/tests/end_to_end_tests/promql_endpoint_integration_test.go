@@ -309,7 +309,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 		return nil, pgClient, fmt.Errorf("Cannot run test, cannot instantiate pgClient")
 	}
 
-	hander, _, err := api.GenerateRouter(cfg, pgClient, nil)
+	hander, err := api.GenerateRouter(cfg, pgClient, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
