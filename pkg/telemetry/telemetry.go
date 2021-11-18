@@ -7,6 +7,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"sync"
 	"time"
 
@@ -58,6 +59,54 @@ func NewTelemetryEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string) (*e
 		return nil, fmt.Errorf("writing metadata: %w", err)
 	}
 	return engine, nil
+}
+
+// writeMetadata writes Promscale and Tobs metadata. Must be written only by
+func (t *engine) writeMetadata() error {
+	promscale, err := promscaleMetadata()
+	if err != nil {
+		return fmt.Errorf("promscale metadata: %w", err)
+	}
+	promscale["promscale_exec_platform"] = ExecPlatform
+	if err := syncTimescaleMetadataTable(t.conn, Stats(promscale)); err != nil {
+		return fmt.Errorf("writing metadata for promscale: %w", err)
+	}
+
+	tobs := tobsMetadata()
+	if len(tobs) > 0 {
+		if err := syncTimescaleMetadataTable(t.conn, Stats(tobs)); err != nil {
+			return fmt.Errorf("writing metadata for tobs: %w", err)
+		}
+	}
+	return nil
+}
+
+// syncTimescaleMetadataTable syncs the metadata/stats with telemetry metadata table and returns the last error if any.
+func syncTimescaleMetadataTable(conn pgxconn.PgxConn, m Stats) error {
+	batch := conn.NewBatch()
+	for key, metadata := range m {
+		safe := pgutf8str.Text{}
+		if err := safe.Set(metadata); err != nil {
+			return fmt.Errorf("setting in pgutf8 safe string: %w", err)
+		}
+		query := "INSERT INTO _timescaledb_catalog.metadata VALUES ( $1, $2, true ) ON CONFLICT (key) DO UPDATE SET value = $2, include_in_telemetry = true WHERE metadata.key = $1"
+		batch.Queue(query, key, safe)
+	}
+	results, err := conn.SendBatch(context.Background(), batch)
+	if err != nil {
+		return fmt.Errorf("error sending batch: %w", err)
+	}
+	rows, err := results.Query()
+	if err != nil {
+		return fmt.Errorf("error querying results: %w", err)
+	}
+	for rows.Next() {
+		if err != nil {
+			err = rows.Err()
+		}
+		rows.Close()
+	}
+	return err
 }
 
 func (t *engine) Close() error {
