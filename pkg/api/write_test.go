@@ -248,7 +248,7 @@ func TestWrite(t *testing.T) {
 			receivedMetadataCounter := &mockMetric{}
 			failedSamplesCounter := &mockMetric{}
 			failedMetadataCounter := &mockMetric{}
-			sentSamplesCounter := &mockMetric{}
+			ingestedSamplesCounter := &mockMetric{}
 			sentMetadataCounter := &mockMetric{}
 			sendBatchHistogram := &mockMetric{}
 			invalidWriteReqs := &mockMetric{}
@@ -263,7 +263,7 @@ func TestWrite(t *testing.T) {
 				ReceivedMetadata:  receivedMetadataCounter,
 				FailedSamples:     failedSamplesCounter,
 				FailedMetadata:    failedMetadataCounter,
-				SentSamples:       sentSamplesCounter,
+				IngestedSamples:   ingestedSamplesCounter,
 				SentMetadata:      sentMetadataCounter,
 				SentBatchDuration: sendBatchHistogram,
 				InvalidWriteReqs:  invalidWriteReqs,
@@ -295,7 +295,7 @@ func TestWrite(t *testing.T) {
 				t.Errorf("leader gauge metric not set correctly: got %f when is not leader", leaderGauge.value)
 			}
 
-			if sentSamplesCounter.value != float64(c.inserterResponse) {
+			if ingestedSamplesCounter.value != float64(c.inserterResponse) {
 				t.Errorf(
 					"num sent samples gauge not set correctly: got %f, expected %d",
 					receivedSamplesCounter.value,

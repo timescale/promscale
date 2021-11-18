@@ -31,20 +31,25 @@ func TestRegisterMetric(t *testing.T) {
 	metric := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "test", Name: "extraction"})
 
 	engine := &engine{}
+	_, has := engine.metrics.Load("some_stats")
+	require.False(t, has)
+
 	require.NoError(t, engine.RegisterMetric("some_stats", metric))
-	require.Len(t, engine.metrics, 1)
+
+	_, has = engine.metrics.Load("some_stats")
+	require.True(t, has)
 
 	wrongMetric := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "test", Name: "wrong", Buckets: prometheus.DefBuckets})
 	wrongMetric.Observe(164)
 
 	require.Error(t, engine.RegisterMetric("some_wrong_stats", wrongMetric))
-	require.Len(t, engine.metrics, 1)
+
+	_, has = engine.metrics.Load("some_wrong_stats")
+	require.False(t, has)
 }
 
-func TestEngineClosePlain(t *testing.T) {
+func TestEngineStop(t *testing.T) {
 	engine := &engine{}
-	require.NoError(t, engine.Close())
-
-	engine.StartRoutineAsync()
-	require.NoError(t, engine.Close())
+	engine.Start()
+	engine.Stop()
 }

@@ -66,9 +66,11 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
 				return
 			case promql.ErrQueryTimeout:
+				metrics.TimedOutQueries.Add(1)
 				respondError(w, http.StatusServiceUnavailable, res.Err, "timeout")
 				return
 			case promql.ErrStorage:
+				metrics.FailedQueries.Add(1)
 				respondError(w, http.StatusInternalServerError, res.Err, "internal")
 				return
 			}

@@ -40,15 +40,16 @@ CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
     GRANT USAGE ON SCHEMA SCHEMA_PS_CATALOG TO prom_reader;
 END $$ $ee$);
 
--- the promscale extension contains optimized version of some
--- of our functions and operators. To ensure the correct version of the are
--- used, SCHEMA_EXT must be before all of our other schemas in the search path
-DO $$
-DECLARE
-   new_path text;
-BEGIN
-   new_path := current_setting('search_path') || format(',%L,%L,%L,%L,%L,%L', 'SCHEMA_TAG', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG', 'SCHEMA_TRACING_PUBLIC');
-   execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
-   execute format('SET search_path = %s', new_path);
-END
-$$;
+CREATE TABLE IF NOT EXISTS SCHEMA_PS_CATALOG.promscale_instance_information (
+    uuid                                                UUID NOT NULL PRIMARY KEY,
+    last_updated                                        TIMESTAMPTZ NOT NULL,
+    promscale_ingested_samples_total                    BIGINT DEFAULT 0,
+    promscale_metrics_queries_executed_total            BIGINT DEFAULT 0,
+    promscale_metrics_queries_timedout_total            BIGINT DEFAULT 0,
+    promscale_metrics_queries_failed_total              BIGINT DEFAULT 0,
+    promscale_trace_query_requests_executed_total       BIGINT DEFAULT 0,
+    promscale_trace_dependency_requests_executed_total  BIGINT DEFAULT 0,
+    is_counter_reset_row                                BOOLEAN DEFAULT FALSE
+);
+GRANT SELECT ON TABLE SCHEMA_PS_CATALOG.promscale_instance_information TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_PS_CATALOG.promscale_instance_information TO prom_writer;

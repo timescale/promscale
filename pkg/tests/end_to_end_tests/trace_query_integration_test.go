@@ -23,6 +23,7 @@ import (
 	jaegerquery "github.com/timescale/promscale/pkg/jaeger/query"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/telemetry"
 
 	jaegerQueryApp "github.com/jaegertracing/jaeger/cmd/query/app"
 	jaegerQueryService "github.com/jaegertracing/jaeger/cmd/query/app/querysvc"
@@ -67,7 +68,8 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		defer ingestor.Close()
 
 		// Create Promscale proxy to query traces data.
-		promscaleProxy := jaegerquery.New(pgxconn.NewPgxConn(db))
+		promscaleProxy, err := jaegerquery.New(pgxconn.NewPgxConn(db), telemetry.NewNoopEngine())
+		require.NoError(t, err)
 
 		shutdown := runPromscaleTraceQueryJSONServer(promscaleProxy, ":9203")
 		defer shutdown.Close()

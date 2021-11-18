@@ -16,6 +16,7 @@ require (
 	github.com/go-resty/resty/v2 v2.6.0 // indirect
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
+	github.com/google/uuid v1.3.0
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.0.0
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
