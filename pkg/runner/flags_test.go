@@ -56,8 +56,10 @@ func TestParseFlags(t *testing.T) {
 			name: "enable disabled-features",
 			args: []string{"-promql-enable-feature", "promql-at-modifier"},
 			result: func(c Config) Config {
-				c.APICfg.EnableFeatures = "promql-at-modifier"
-				c.APICfg.EnabledFeaturesList = []string{"promql-at-modifier"}
+				c.APICfg.EnabledFeatureMap = map[string]struct{}{
+					"promql-at-modifier": {},
+				}
+				c.APICfg.PromQLEnabledFeatureList = []string{"promql-at-modifier"}
 				return c
 			},
 		},
@@ -144,6 +146,40 @@ func TestParseFlags(t *testing.T) {
 				"PROMSCALE_INSTALL_EXTENSIONS": "foobar",
 			},
 			shouldError: true,
+		},
+		{
+			name:        "setting tracing parameter without tracing enabled should fail",
+			args:        []string{"-otlp-grpc-server-listen-address", "bar"},
+			shouldError: true,
+		},
+		{
+			name:        "enable feature should fail on unknown feature",
+			args:        []string{"-enable-feature", "unknown"},
+			shouldError: true,
+		},
+		{
+			name:        "enable tracing should fail without OTLP",
+			args:        []string{"-enable-feature", "tracing"},
+			shouldError: true,
+		},
+		{
+			name:        "OTLP should fail without enable tracing",
+			args:        []string{"-otlp-grpc-server-listen-address", "someaddress"},
+			shouldError: true,
+		},
+		{
+			name: "enable feature should populate map of enabled features",
+			args: []string{"-enable-feature", "tracing,promql-at-modifier,promql-negative-offset", "-otlp-grpc-server-listen-address", "someaddress"},
+			result: func(c Config) Config {
+				c.OTLPGRPCListenAddr = "someaddress"
+				c.APICfg.EnabledFeatureMap = map[string]struct{}{
+					"tracing":                {},
+					"promql-at-modifier":     {},
+					"promql-negative-offset": {},
+				}
+				c.APICfg.PromscaleEnabledFeatureList = []string{"tracing", "promql-at-modifier", "promql-negative-offset"}
+				return c
+			},
 		},
 	}
 

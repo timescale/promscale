@@ -280,7 +280,7 @@ func defaultAPIConfig() *api.Config {
 		TelemetryPath:        "/metrics",
 		MaxQueryTimeout:      time.Minute * 2,
 		SubQueryStepInterval: time.Minute,
-		EnabledFeaturesList:  []string{"promql-at-modifier", "promql-negative-offset"},
+		EnabledFeatureMap:    map[string]struct{}{"promql-at-modifier": {}, "promql-negative-offset": {}},
 		MaxSamples:           math.MaxInt32,
 		MaxPointsPerTs:       11000,
 	}
