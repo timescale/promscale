@@ -12,6 +12,7 @@ const (
 	Exemplar  = "prom_data_exemplar"
 	Ext       = "_prom_ext"
 	Catalog   = "_prom_catalog"
+	PSCatalog = "_ps_catalog"
 	Timescale = "public"
 
 	LockID = 0x4D829C732AAFCEDE // Chosen randomly.

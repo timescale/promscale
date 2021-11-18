@@ -52,6 +52,7 @@ var (
 			"tracing-functions.sql",
 			"tracing-views.sql",
 			"remote-commands.sql",
+			"telemetry.sql",
 			"apply_permissions.sql", //should be last
 		},
 	}
@@ -398,6 +399,7 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 	s = strings.ReplaceAll(s, "SCHEMA_INFO", schema.Info)
 	s = strings.ReplaceAll(s, "SCHEMA_TRACING_PUBLIC", schema.TracePublic)
 	s = strings.ReplaceAll(s, "SCHEMA_TRACING", schema.Trace)
+	s = strings.ReplaceAll(s, "SCHEMA_PS_CATALOG", schema.PSCatalog)
 	s = strings.ReplaceAll(s, "ADVISORY_LOCK_PREFIX_JOB", "12377")
 	s = strings.ReplaceAll(s, "ADVISORY_LOCK_PREFIX_MAINTENACE", "12378")
 	return s, err
