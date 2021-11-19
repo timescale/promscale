@@ -11,6 +11,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/version"
+	_ "go.uber.org/automaxprocs"
 )
 
 func main() {
