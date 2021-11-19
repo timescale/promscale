@@ -123,7 +123,6 @@ RETURNS TABLE
     parent_span_id bigint,
     span_id bigint,
     dist int,
-    idx int,
     path bigint[]
 )
 AS $func$
@@ -133,7 +132,6 @@ AS $func$
           s1.parent_span_id,
           s1.span_id,
           0 as dist,
-          1 as idx,
           array[s1.span_id] as path
         FROM SCHEMA_TRACING.span s1
         WHERE s1.trace_id = _trace_id
@@ -143,8 +141,7 @@ AS $func$
           s2.parent_span_id,
           s2.span_id,
           x.dist + 1 as dist,
-          x.idx + 1 as idx,
-          x.path || s2.span_id as path
+          s2.span_id || x.path as path
         FROM x
         INNER JOIN LATERAL
         (
@@ -162,7 +159,6 @@ AS $func$
         x.parent_span_id,
         x.span_id,
         x.dist,
-        x.idx,
         x.path
     FROM x
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
@@ -175,7 +171,6 @@ RETURNS TABLE
     parent_span_id bigint,
     span_id bigint,
     dist int,
-    idx int,
     path bigint[]
 )
 AS $func$
@@ -185,7 +180,6 @@ AS $func$
           s1.parent_span_id,
           s1.span_id,
           0 as dist,
-          1 as idx,
           array[s1.span_id] as path
         FROM SCHEMA_TRACING.span s1
         WHERE s1.trace_id = _trace_id
@@ -195,7 +189,6 @@ AS $func$
           s2.parent_span_id,
           s2.span_id,
           x.dist + 1 as dist,
-          x.idx + 1 as idx,
           x.path || s2.span_id as path
         FROM x
         INNER JOIN LATERAL
@@ -212,7 +205,6 @@ AS $func$
         x.parent_span_id,
         x.span_id,
         x.dist,
-        x.idx,
         x.path
     FROM x
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
@@ -278,7 +270,8 @@ RETURNS TABLE
     parent_span_id bigint,
     span_id bigint,
     dist int,
-    idx int,
+    is_upstream bool,
+    is_downstream bool,
     path bigint[]
 )
 AS $func$
@@ -286,20 +279,22 @@ AS $func$
         trace_id,
         parent_span_id,
         span_id,
-        dist * -1 as dist,
-        idx,
+        dist,
+        true as is_upstream,
+        false as is_downstream,
         path
-    FROM SCHEMA_TRACING_PUBLIC.upstream_spans(_trace_id, _span_id, _max_dist)
+    FROM SCHEMA_TRACING_PUBLIC.upstream_spans(_trace_id, _span_id, _max_dist) u
+    WHERE u.dist != 0
     UNION ALL
     SELECT
         trace_id,
         parent_span_id,
         span_id,
         dist,
-        idx,
+        false as is_upstream,
+        dist != 0 as is_downstream,
         path
     FROM SCHEMA_TRACING_PUBLIC.downstream_spans(_trace_id, _span_id, _max_dist) d
-    WHERE d.dist != 0
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.span_tree(SCHEMA_TRACING_PUBLIC.trace_id, bigint, int) TO prom_reader;
 
