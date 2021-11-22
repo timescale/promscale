@@ -461,6 +461,10 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
 	}
+	//TODO: remove after pg14 ha image published
+	if *postgresVersion == 14 {
+		t.Skip("PG14 image does not have toolkit")
+	}
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")

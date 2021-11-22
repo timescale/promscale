@@ -45,7 +45,7 @@ var (
 	EarliestUpgradeTestVersion          = "0.1.0"
 	EarliestUpgradeTestVersionMultinode = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0
 
-	PgVersionNumRange       = ">=12.x <14.x" // Corresponds to range within pg 12.0 to pg 13.99
+	PgVersionNumRange       = ">=12.x <15.x" // Corresponds to range within pg 12.0 to pg 14.99
 	pgAcceptedVersionsRange = semver.MustParseRange(PgVersionNumRange)
 
 	TimescaleVersionRangeString = struct {
@@ -61,8 +61,8 @@ var (
 	TimescaleVersionRange           = timescaleVersionSafeRange.OR(timescaleVersionWarnRange)
 
 	// ExtVersionRangeString is a range of required promscale extension versions
-	// support 0.1.x and 0.2.x
-	ExtVersionRangeString = ">=0.1.0 <0.2.99"
+	// support 0.1.x and 0.3.x
+	ExtVersionRangeString = ">=0.1.0 <0.3.99"
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 )
 
