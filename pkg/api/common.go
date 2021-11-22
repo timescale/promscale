@@ -110,11 +110,21 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
 	fs.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
-	fs.StringVar(&cfg.Auth.BasicAuthUsername, "auth-username", "", "Authentication username used for web endpoint authentication. Disabled by default.")
-	fs.StringVar(&cfg.Auth.BasicAuthPassword, "auth-password", "", "Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token flags.")
-	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "auth-password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
-	fs.StringVar(&cfg.Auth.BearerToken, "bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
-	fs.StringVar(&cfg.Auth.BearerTokenFile, "bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
+	fs.StringVar(&cfg.Auth.BasicAuthUsername, "auth-username", "", `Authentication username used for web endpoint authentication.
+Disabled by default.`)
+	fs.StringVar(&cfg.Auth.BasicAuthPassword, "auth-password", "", `Authentication password used for web endpoint authentication.
+This flag should be set together with auth-username.
+Mutually exclusive with auth-password-file and bearer-token flags.`)
+	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "auth-password-file", "", `Path to file containing password used for web endpoint authentication.
+This flag should be set together with auth-username.
+Mutually exclusive with auth-password and bearer-token methods.`)
+	fs.StringVar(&cfg.Auth.BearerToken, "bearer-token", "", `Bearer token (JWT) used for web endpoint authentication.
+Disabled by default.
+Mutually exclusive with bearer-token-file and basic auth methods.`)
+	fs.StringVar(&cfg.Auth.BearerTokenFile, "bearer-token-file", "", `Path to file containing bearer token (JWT) used for web endpoint
+authentication.
+Disabled by default.
+Mutually exclusive with bearer-token and basic auth methods.`)
 
 	// PromQL configuration flags.
 	fs.StringVar(&cfg.EnableFeatures, "promql-enable-feature", "", "[EXPERIMENTAL] Enable optional PromQL features, separated by commas. These are disabled by default in Promscale's PromQL engine. "+
