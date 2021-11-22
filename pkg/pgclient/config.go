@@ -31,7 +31,6 @@ type Config struct {
 	Password                string
 	Database                string
 	SslMode                 string
-	DbConnectRetries        int
 	DbConnectionTimeout     time.Duration
 	IgnoreCompressedChunks  bool
 	AsyncAcks               bool
@@ -72,7 +71,6 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.StringVar(&cfg.Password, "db-password", defaultDBPassword, "Password for connecting to TimescaleDB/Vanilla Postgres.")
 	fs.StringVar(&cfg.Database, "db-name", defaultDBName, "Database name.")
 	fs.StringVar(&cfg.SslMode, "db-ssl-mode", defaultSSLMode, "TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass 'allow' as value.")
-	fs.IntVar(&cfg.DbConnectRetries, "db-connect-retries", 0, "Number of retries Promscale should make for establishing connection with the database.")
 	fs.DurationVar(&cfg.DbConnectionTimeout, "db-connection-timeout", defaultConnectionTime, "Timeout for establishing the connection between Promscale and TimescaleDB.")
 	fs.BoolVar(&cfg.IgnoreCompressedChunks, "ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
 		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
