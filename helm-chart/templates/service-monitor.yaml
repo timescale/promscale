@@ -1,0 +1,23 @@
+{{ if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "promscale.fullname" . }}
+  namespace: {{ template "promscale.namespace" . }}
+  labels:
+    app: {{ template "promscale.fullname" . }}
+    chart: {{ template "promscale.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  endpoints:
+  - interval: 30s
+    port: metrics-port
+    path: /metrics
+  selector:
+    matchLabels:
+      app: {{ template "promscale.fullname" . }}
+      chart: {{ template "promscale.chart" . }}
+      release: {{ .Release.Name }}
+      heritage: {{ .Release.Service }}
+{{- end }}
