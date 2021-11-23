@@ -145,13 +145,6 @@ func TestParseFlags(t *testing.T) {
 			},
 			shouldError: true,
 		},
-		{
-			name: "invalid env variable type causing parse error, TS_PROM prefix",
-			env: map[string]string{
-				"TS_PROM_INSTALL_EXTENSIONS": "foobar",
-			},
-			shouldError: true,
-		},
 	}
 
 	for _, c := range testCases {
@@ -210,31 +203,9 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 			},
 		},
 		{
-			name: "Env variable only, TS_PROM prefix",
-			env: map[string]string{
-				"TS_PROM_WEB_LISTEN_ADDRESS": "localhost:9201",
-			},
-			result: func(c Config) Config {
-				c.ListenAddr = "localhost:9201"
-				return c
-			},
-		},
-		{
 			name: "Env variable only, PROMSCALE prefix",
 			env: map[string]string{
 				"PROMSCALE_WEB_LISTEN_ADDRESS": "localhost:9201",
-			},
-			result: func(c Config) Config {
-				c.ListenAddr = "localhost:9201"
-				return c
-			},
-		},
-		{
-			// In this case, we expect that PROMSCALE prefix gets precedence.
-			name: "Env variable only, both prefixes",
-			env: map[string]string{
-				"PROMSCALE_WEB_LISTEN_ADDRESS": "localhost:9201",
-				"TS_PROM_WEB_LISTEN_ADDRESS":   "127.0.0.1:9201",
 			},
 			result: func(c Config) Config {
 				c.ListenAddr = "localhost:9201"
