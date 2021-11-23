@@ -23,7 +23,7 @@ require (
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
 	github.com/jackc/pgconn v1.10.1
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
-	github.com/jackc/pgproto3/v2 v2.1.1
+	github.com/jackc/pgproto3/v2 v2.2.0
 	github.com/jackc/pgtype v1.9.0
 	github.com/jackc/pgx/v4 v4.13.0
 	github.com/jaegertracing/jaeger v1.28.0
@@ -46,7 +46,7 @@ require (
 	github.com/thanos-io/thanos v0.20.1
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
 	go.opentelemetry.io/collector/model v0.39.0
-	go.uber.org/automaxprocs v1.4.0 // indirect
+	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
 	google.golang.org/grpc v1.42.0
 	gopkg.in/yaml.v2 v2.4.0
