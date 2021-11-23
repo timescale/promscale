@@ -144,7 +144,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	}
 
 	if cfg.HaGroupLockID != 0 {
-		log.Warn("msg", "leader-election-pg-advisory-lock-id is set. Scheduled election is DEPRECATED!")
 		cfg.PgmodelCfg.UsesHA = true
 	}
 	return cfg, nil
