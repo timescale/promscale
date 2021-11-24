@@ -22,7 +22,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 		Password                string
 		Database                string
 		SslMode                 string
-		DbConnectRetries        int
 		DbConnectionTimeout     time.Duration
 		AsyncAcks               bool
 		ReportInterval          int
@@ -51,7 +50,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "Timescale123",
 				Database:                "timescale1",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     time.Minute * 2,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -76,7 +74,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "Timescale123",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -100,7 +97,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "Timescale123",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				AsyncAcks:               false,
 				ReportInterval:          0,
 				LabelsCacheSize:         0,
@@ -125,7 +121,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     time.Hour,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -151,7 +146,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -177,7 +171,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -203,7 +196,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                ":/|thi$ i$ a p@$$w0rd #!***",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -229,7 +221,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "password",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -255,7 +246,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "password",
 				Database:                "%~~ $uP3r Funky d@7@b@$$ ~~%",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -281,7 +271,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                "password",
 				Database:                "timescale",
 				SslMode:                 "require",
-				DbConnectRetries:        0,
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
 				ReportInterval:          0,
@@ -313,7 +302,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Password:                tt.fields.Password,
 				Database:                tt.fields.Database,
 				SslMode:                 tt.fields.SslMode,
-				DbConnectRetries:        tt.fields.DbConnectRetries,
 				DbConnectionTimeout:     tt.fields.DbConnectionTimeout,
 				WriteConnectionsPerProc: tt.fields.WriteConnectionsPerProc,
 				MaxConnections:          tt.fields.MaxConnections,
