@@ -5,7 +5,6 @@
 package query
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -13,7 +12,7 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultStepInterval time.Duration, maxSamples int64, enabledFeatures []string) (*promql.Engine, error) {
+func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultStepInterval time.Duration, maxSamples int64, enabledFeaturesMap map[string]struct{}) (*promql.Engine, error) {
 	engineOpts := promql.EngineOpts{
 		Logger:                   logger,
 		Reg:                      prometheus.NewRegistry(),
@@ -22,16 +21,8 @@ func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultSt
 		LookbackDelta:            lookBackDelta,
 		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(subqueryDefaultStepInterval) },
 	}
-	for _, feature := range enabledFeatures {
-		switch feature {
-		case "promql-at-modifier":
-			engineOpts.EnableAtModifier = true
-		case "promql-negative-offset":
-			engineOpts.EnableNegativeOffset = true
-		default:
-			return nil, fmt.Errorf("invalid feature: %s", feature)
-		}
-	}
+	_, engineOpts.EnableAtModifier = enabledFeaturesMap["promql-at-modifier"]
+	_, engineOpts.EnableNegativeOffset = enabledFeaturesMap["promql-negative-offset"]
 	return promql.NewEngine(engineOpts), nil
 }
 

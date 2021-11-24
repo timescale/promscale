@@ -15,6 +15,7 @@ You can also find information on flags with `promscale_<version> -help`.
 | Flag | Type | Default | Description |
 |:------:|:-----:|:-------:|:-----------|
 | config | string | config.yml | YAML configuration file path for Promscale. |
+| enable-feature | string | "" | Enable one or more experimental promscale features (as a comma-separated list). Current experimental features are `tracing`, `promql-at-modifier`, and `promql-negative-offset`. For more information, please consult the following resources: [tracing](tracing.md), [promql-at-modifier](https://prometheus.io/docs/prometheus/latest/feature_flags/#modifier-in-promql), [promql-negative-offset](https://prometheus.io/docs/prometheus/latest/feature_flags/#negative-offset-in-promql). |
 | install-extensions | boolean | true | Install TimescaleDB & Promscale extensions. |
 | upgrade-extensions | boolean | true | Upgrades TimescaleDB & Promscale extensions. |
 | upgrade-prerelease-extensions | boolean | false | Upgrades to pre-release TimescaleDB, Promscale extensions. |
@@ -86,7 +87,7 @@ You can also find information on flags with `promscale_<version> -help`.
 
 | Flag | Type | Default | Description |
 |:------:|:-----:|:-------:|:-----------|
-| promql-enable-feature | string | "" | [EXPERIMENTAL] Enable optional PromQL features, separated by commas. These are disabled by default in Promscale's PromQL engine. Currently, this includes 'promql-at-modifier' and 'promql-negative-offset'. For more information, see https://github.com/prometheus/prometheus/blob/master/docs/disabled_features.md |
+| promql-enable-feature | string | "" | DEPRECATED: please use `enable-feature`. Enable optional PromQL features, separated by commas. These are disabled by default in Promscale's PromQL engine. Currently, this includes 'promql-at-modifier' and 'promql-negative-offset'. For more information, see https://github.com/prometheus/prometheus/blob/master/docs/disabled_features.md.  |
 | promql-query-timeout | duration | 2 minutes | Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in '/api/v1/query.*' endpoints. |
 | promql-default-subquery-step-interval | duration | 1 minute | Default step interval to be used for PromQL subquery evaluation. This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option. |
 | promql-lookback-delta | duration | 5 minute | The maximum look-back duration for retrieving metrics during expression evaluations and federation. |
