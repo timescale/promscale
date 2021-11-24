@@ -32,30 +32,6 @@ extensions [README](https://github.com/timescale/promscale_extension/blob/master
 does optimize certain queries.
 Please note that the extension requires Postgres version 12 of newer.
 
-## 🕞 Setting up cron jobs
-
-Binary installations also need to make sure the `execute_maintenance()`
-procedure on a regular basis (e.g. via cron). We recommend executing it every
-30 minutes. This is necessary to execute maintenance tasks such as enforcing
-data retention policies according to the configured policy.
-
-Copy the code snippet from the file [docs/scripts/prom-execute-maintenance.sh](/docs/scripts/prom-execute-maintenance.sh) and add the database password in place of `<PASSWORD>`.
-
-Create an other script with the code snippet from the file [docs/scripts/install-crontab.sh](/docs/scripts/install-crontab.sh) and make sure to configure the absolute path to `prom-execute-maintenance.sh` in the script. This script will create a crontab for the above defined task.
-
-Then, grant executable privileges to both files:
-
-```
-chmod +x prom-execute-maintenance.sh
-chmod +x install-crontab.sh
-```
-
-Install the cron job:
-
-```
-./install-crontab.sh
-```
-
 ## 🔥 Configuring Prometheus to use this remote storage connector
 
 You must tell prometheus to use this remote storage connector by adding
