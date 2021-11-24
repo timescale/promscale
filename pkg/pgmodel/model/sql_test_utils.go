@@ -185,6 +185,11 @@ type MockBatchResult struct {
 	t       *testing.T
 }
 
+// QueryFunc reads the results from the next query in the batch as if the query has been sent with Conn.QueryFunc.
+func (m *MockBatchResult) QueryFunc(scans []interface{}, f func(pgx.QueryFuncRow) error) (pgconn.CommandTag, error) {
+	panic("not implemented")
+}
+
 // Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
 func (m *MockBatchResult) Exec() (pgconn.CommandTag, error) {
 	defer func() { m.idx++ }()
