@@ -19,9 +19,9 @@ You can also find information on flags with `promscale_<version> -help`.
 | install-extensions | boolean | true | Install TimescaleDB & Promscale extensions. |
 | upgrade-extensions | boolean | true | Upgrades TimescaleDB & Promscale extensions. |
 | upgrade-prerelease-extensions | boolean | false | Upgrades to pre-release TimescaleDB, Promscale extensions. |
-| leader-election-pg-advisory-lock-id | integer | 0 (disabled) | Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election. |
-| leader-election-pg-advisory-lock-prometheus-timeout | slack/duration | -1 | Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not send any data within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips. |
-| leader-election-scheduled-interval | duration | 5 seconds | Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock. |
+| leader-election-pg-advisory-lock-id | integer | 0 (disabled) | (DEPRECATED) Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election. |
+| leader-election-pg-advisory-lock-prometheus-timeout | slack/duration | -1 | (DEPRECATED) Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not send any data within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips. |
+| leader-election-scheduled-interval | duration | 5 seconds | (DEPRECATED) Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock. |
 | log-format | string | logfmt | Log format to use from [ "logfmt", "json" ]. |
 | log-level | string | debug | Log level to use from [ "error", "warn", "info", "debug" ]. |
 | migrate | string | true | Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. |
