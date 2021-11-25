@@ -1,6 +1,6 @@
 # Tracing
 
-**Note:** tracing support in Promscale was added in version 0.7.0 and is experimental. This means we can’t ensure backwards compatibility with the data model in future versions. It also means that you may experience stability and performance issues. Usage is opt-in with the `-enable-feature=tracing` flag. Please help us improve Promscale by [reporting issues](https://github.com/timescale/promscale/issues/new).
+**Note:** tracing support in Promscale was added in version 0.7.0 and is experimental. This means we can’t ensure backwards compatibility with the data model in future versions. It also means that you may experience stability and performance issues. Usage is opt-in with the `-enable-feature=tracing` flag. Please help us improve Promscale by [sharing your feedback](https://github.com/timescale/promscale/discussions/916) and [reporting issues](https://github.com/timescale/promscale/issues/new).
 
 ## Overview
 
