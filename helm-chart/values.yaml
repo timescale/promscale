@@ -24,6 +24,7 @@ args: []
 
 # To enable tracing in Promscale configure args as
 #args:
+#- -enable-feature=tracing
 #- -otlp-grpc-server-listen-address=:9202
 
 # Currently tracing support is in beta
