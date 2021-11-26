@@ -44,6 +44,37 @@ connection:
   dbName: timescale
 ```
 
+### User-Managed Connection Parameter Secret
+
+**Note:** We primarily provide this feature for workflow convenience, but it is an advanced feature requiring more care to configure correctly. We suggest that you configure the connection options in `values.yaml` instead. If you are using GitOps and do not want to store database passwords unencrypted in your Git repo, you probably want to use tooling like [helm-secrets](https://github.com/jkroepke/helm-secrets) instead.
+
+If you would like to provide connections details via your own secret which is managed outside the lifecycle of this helm chart, you can do so. The secret must contain the environment variables corresponding to Promscale's connection configuration. Additionally, the `connectionSecretName` parameter of this helm chart must be configured with the name of your secret, and your secret must be in the same namespace as the deployment.
+
+An example of what this could look like is as follows:
+```yaml
+# secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-promscale-connection-secret
+stringData:
+  PROMSCALE_DB_PORT: "5432"
+  PROMSCALE_DB_USER: "postgres"
+  PROMSCALE_DB_PASSWORD: "password"
+  PROMSCALE_DB_HOST: "db.timescale.svc.cluster.local"
+  PROMSCALE_DB_NAME: "timescale"
+  PROMSCALE_DB_SSL_MODE: "require"
+```
+
+In the values.yml of the helm chart you would then have the following:
+
+```yaml
+# extract from values.yaml
+connectionSecretName: my-promscale-connection-secret
+```
+
+**Note:** The Promscale pod, once started, will not automatically take on any changes to the contents of `connectionSecretName`.
+
 ## Installing
 
 To install the chart with the release name `my-release`:
@@ -56,15 +87,14 @@ to `helm install`, e.g. to install the chart with specifying a previously create
 secret `timescale-secret` and an existing TimescaleDB instance:
 ```shell script
 helm install --name my-release . \
-      --set connection.password.secretTemplate="timescale-secret"
-      --set connection.host.nameTemplate="timescaledb.default.svc.cluster.local"
+      --set connectionSecretName="promscale-connection-secret"
 ```
 
 You can also install by referencing the db uri secret created previously:
 
 ```shell script
 helm install --name my-release . \
-      --set connection.dbURI.secretTemplate="timescale-secret"
+      --set connectionSecretName="promscale-connection-secret"
 ```
  
 Alternatively, a YAML file the specifies the values for the parameters can be provided
