@@ -8,8 +8,10 @@ metadata:
     chart: {{ template "promscale.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
+  {{- if .Values.service.annotations }}
   annotations:
-{{ .Values.service.annotations | toYaml | indent 4 }}
+    {{- .Values.service.annotations | toYaml | nindent 4 }}
+  {{- end }}
 spec:
   selector:
     app: {{ template "promscale.fullname" . }}
@@ -18,7 +20,7 @@ spec:
   - name: metrics-port
     port: {{ .Values.prometheus.port }}
     protocol: TCP
-  {{ if .Values.tracing.enabled }}
+  {{- if .Values.tracing.enabled }}
   - name: traces-port
     port: {{ .Values.tracing.port }}
     protocol: TCP
