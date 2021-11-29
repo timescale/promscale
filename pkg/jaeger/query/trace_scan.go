@@ -112,7 +112,7 @@ func populateSpan(
 	if err != nil {
 		return fmt.Errorf("making resource tags: %w", err)
 	}
-	resourceSpan.Resource().Attributes().InitFromMap(attr)
+	pdata.NewAttributeMapFromMap(attr).CopyTo(resourceSpan.Resource().Attributes())
 
 	instrumentationLibSpan := resourceSpan.InstrumentationLibrarySpans().AppendEmpty()
 	if dbResult.instLibSchemaUrl != nil {
@@ -181,7 +181,7 @@ func populateSpan(
 	if err != nil {
 		return fmt.Errorf("making span tags: %w", err)
 	}
-	ref.Attributes().InitFromMap(attr)
+	pdata.NewAttributeMapFromMap(attr).CopyTo(ref.Attributes())
 
 	if dbResult.eventNames != nil {
 		if err := populateEvents(ref.Events(), dbResult); err != nil {
@@ -232,7 +232,7 @@ func populateEvents(
 		if err != nil {
 			return fmt.Errorf("making event tags: %w", err)
 		}
-		event.Attributes().InitFromMap(attr)
+		pdata.NewAttributeMapFromMap(attr).CopyTo(event.Attributes())
 	}
 	return nil
 }
@@ -265,7 +265,7 @@ func populateLinks(
 		if err != nil {
 			return fmt.Errorf("making link tags: %w", err)
 		}
-		link.Attributes().InitFromMap(attr)
+		pdata.NewAttributeMapFromMap(attr).CopyTo(link.Attributes())
 	}
 	return nil
 }
