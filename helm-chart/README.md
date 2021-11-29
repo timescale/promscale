@@ -37,8 +37,8 @@ Following are the default configuration values:
 ```yaml
 connection:
   user: postgres
-  password: secretPassword
-  host: timescaledb.monitoring.svc.cluster.local
+  password: ""
+  host: timescaledb.default.svc.cluster.local
   port: 5432
   sslMode: require
   dbName: timescale
