@@ -1,6 +1,6 @@
 # Tracing
 
-**Note:** tracing support in Promscale was added in version 0.7.0 and is currently in beta. This means we can’t ensure backwards compatibility with the data model in future versions. It also means that you may experience stability and performance issues. Please help us improve Promscale by [reporting issues](https://github.com/timescale/promscale/issues/new).
+**Note:** tracing support in Promscale was added in version 0.7.0 and currently in beta. This means we can’t ensure backwards compatibility with the data model in future versions. It also means that you may experience stability and performance issues. Usage is opt-in with the `-enable-feature=tracing` flag. Please help us improve Promscale by [sharing your feedback](https://github.com/timescale/promscale/discussions/916) and [reporting issues](https://github.com/timescale/promscale/issues/new).
 
 ## Overview
 
@@ -74,7 +74,7 @@ docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --
 Finally let’s run the Promscale Connector with tracing enabled (replace `<password>` with the password you selected in the previous step):
 
 ```bash
-docker run --name promscale -d -p 9201:9201 -p 9202:9202 --network promscale-timescaledb timescale/promscale:0.7.0-beta.latest -db-password=<password> -db-port=5432 -db-name=postgres -db-host=timescaledb -db-ssl-mode=allow -otlp-grpc-server-listen-address=:9202
+docker run --name promscale -d -p 9201:9201 -p 9202:9202 --network promscale-timescaledb timescale/promscale:0.7.0-beta.latest -db-password=<password> -db-port=5432 -db-name=postgres -db-host=timescaledb -db-ssl-mode=allow -enable-feature=tracing -otlp-grpc-server-listen-address=:9202
 ```
 
 **Note**: `db-ssl-mode=allow` is just for explanatory purposes. In production environments, we advise you to use `db-ssl-mode=require` for security purposes.
