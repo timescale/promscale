@@ -44,8 +44,8 @@ connection:
   uri: ""
   # user used to connect to TimescaleDB
   user: postgres
-  password: secretPassword
-  host: "timescaledb.monitoring.svc.cluster.local"
+  password: ""
+  host: "timescaledb.default.svc.cluster.local"
   port: 5432
   sslMode: require
   # database name in which to store the metrics

@@ -38,7 +38,7 @@ Following are the default configuration values:
 connection:
   user: postgres
   password: ""
-  host: db.timescale.svc.cluster.local
+  host: timescaledb.default.svc.cluster.local
   port: 5432
   sslMode: require
   dbName: timescale
