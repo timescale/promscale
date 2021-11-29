@@ -13,6 +13,8 @@ This chart will do the following:
   * By default a LoadBalancer, but can be disabled to only a ClusterIP with a configurable port
 * Create a Kubernetes CronJob that deletes the data chunks that fall out of the retention period
 
+**Note:** We have dropped compatibility with TimescaleDB 1.x. If you would like to use Promscale with TimescaleDB 1.x then use the helm charts from Promscale release 0.6.0. 
+
 ## Prerequisites
 
 For promscale to work correctly it needs a set of data to connect to timescale database. This 
