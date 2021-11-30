@@ -203,7 +203,7 @@ func (*errQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
 func (*errQuerier) LabelNames(...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (*errQuerier) Close() error { return nil }
+func (*errQuerier) Close() {}
 
 // errSeriesSet implements storage.SeriesSet which always returns error.
 type errSeriesSet struct {
