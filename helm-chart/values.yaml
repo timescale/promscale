@@ -86,31 +86,6 @@ service:
       # service.beta.kubernetes.io/aws-load-balancer-type: nlb            # Use an NLB instead of ELB
       # service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0  # Internal Load Balancer
 
-# settings for the maintenance CronJob that deletes data outside of
-# the retention period
-maintenance:
-  # if you are using >= TimescaleDB 2.0 you
-  # do not need maintenance job, so by default
-  # maintenance job is disabled
-  enabled: false
-  schedule: "0,30 * * * *"
-  # If startingDeadlineSeconds field is set (not null), the CronJob controller counts how
-  # many missed jobs occurred from the value of startingDeadlineSeconds until now.
-  # For example, if it is set to 200, it counts how many missed schedules occurred in the
-  # last 200 seconds. In that case, if there were more than 100 missed schedules in the
-  # last 200 seconds, the cron job is no longer scheduled.
-  # https://kubernetes.io/docs/tasks/job/automated-tasks-with-cron-jobs/#starting-deadline
-  startingDeadlineSeconds: 200
-  # The number of successful maintenance pods to retain in-cluster
-  successfulJobsHistoryLimit: 3
-  # The number of failed maintenance pods to retain in-cluster
-  failedJobsHistoryLimit: 1
-  # configure cpu, memory requests and limits for maintenance cronjob if needed
-  resources: {}
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
 # set your own limits
 resources: {}
 

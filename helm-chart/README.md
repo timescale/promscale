@@ -13,6 +13,8 @@ This chart will do the following:
   * By default a LoadBalancer, but can be disabled to only a ClusterIP with a configurable port
 * Create a Kubernetes CronJob that deletes the data chunks that fall out of the retention period
 
+**Note:** We have dropped compatibility with TimescaleDB 1.x. If you would like to use Promscale with TimescaleDB 1.x then use the helm charts from Promscale release 0.6.0. 
+
 ## Prerequisites
 
 For promscale to work correctly it needs a set of data to connect to timescale database. This 
@@ -123,15 +125,6 @@ helm install --name my-release -f myvalues.yaml .
 | `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
 | `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |
 | `serviceMonitor.enabled`          | Enable creation of serviceMonitor object used by prometheus-operator. This should be used with `prometheus.enabled: false`. | `false`   |
-| `maintenance.enabled`             | Option to enable maintenance cronjob, Enable maintenance cronjob only if you are using TimescaleDB < `2.0`   | `false` |
-| `maintenance.schedule`            | The schedule with which the Job, that deletes data outside the retention period, runs | `0,30 * * * *` |
-| `maintenance.startingDeadlineSeconds` | If set, CronJob controller counts how many missed jobs occurred from the set value until now | `200` |
-| `maintenance.successfulJobsHistoryLimit` | The number of successful maintenance pods to retain in-cluster | `3`      |
-| `maintenance.failedJobsHistoryLimit` | The number of failed maintenance pods to retain in-cluster | `1`              |
-| `maintenance.resources` | Requests and limits for maintenance cronjob | `{}`              |
-| `maintenance.nodeSelector`                    | Node labels to use for scheduling maintenance cronjob          | `{}`                               |
-| `maintenance.tolerations`                     | Tolerations to use for scheduling maintenance cronjob          | `[]`                               |
-| `maintenance.affinity`                        | PodAffinity and PodAntiAffinity for scheduling maintenance cronjob          | `{}`                               |
 | `resources`                       | Requests and limits for each of the pods    | `{}`                               |
 | `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
 | `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
