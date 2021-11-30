@@ -5,11 +5,13 @@
 package telemetry
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -21,34 +23,27 @@ type (
 
 func promscaleMetadata() (Metadata, error) {
 	metadata := Metadata{
-		"promscale_version":     version.Promscale,
-		"promscale_commit_hash": version.CommitHash,
-		"promscale_arch":        runtime.GOARCH,
-		"promscale_os":          runtime.GOOS,
+		"version":     version.Promscale,
+		"commit_hash": version.CommitHash,
+		"arch":        runtime.GOARCH,
+		"os":          runtime.GOOS,
 	}
-	uname := syscall.Utsname{}
-	if err := syscall.Uname(&uname); err != nil {
+	uname := unix.Utsname{}
+	if err := unix.Uname(&uname); err != nil {
 		return metadata, fmt.Errorf("syscall uname: %w", err)
 	}
-	metadata["promscale_os_sys_name"] = toString(uname.Sysname)
-	metadata["promscale_os_node_name"] = toString(uname.Nodename)
-	metadata["promscale_os_release"] = toString(uname.Release)
-	metadata["promscale_os_version"] = toString(uname.Version)
-	metadata["promscale_os_machine"] = toString(uname.Machine)
-	metadata["promscale_os_domain_name"] = toString(uname.Domainname)
+	// We cannot send [65]byte since its [65]byte for linux and [256]byte for darwin,
+	// leading to type mismatch. Hence, we create a slice to handle both cases.
+	metadata["os_sys_name"] = toString(uname.Sysname[:])
+	metadata["os_node_name"] = toString(uname.Nodename[:])
+	metadata["os_release"] = toString(uname.Release[:])
+	metadata["os_version"] = toString(uname.Version[:])
+	metadata["os_machine"] = toString(uname.Machine[:])
 	return metadata, nil
 }
 
-func toString(prop [65]int8) string {
-	bSlice := make([]byte, 0, 65)
-	for i := 0; i < 65; i++ {
-		if prop[i] == 0 {
-			// Stop on null chars.
-			break
-		}
-		bSlice = append(bSlice, byte(prop[i]))
-	}
-	return string(bSlice)
+func toString(prop []byte) string {
+	return string(prop[:bytes.IndexByte(prop[:], 0)])
 }
 
 const tobsMetadataPrefix = "TOBS_TELEMETRY_"

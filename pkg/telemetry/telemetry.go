@@ -7,6 +7,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"strings"
 	"sync"
 	"time"
@@ -18,13 +19,12 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-// ExecPlatform To fill this variable in build time, use linker flags.
-// Example: go build -ldflags="-X github.com/timescale/promscale/pkg/telemetry.ExecPlatform=<any_string>" ./cmd/promscale/
-var ExecPlatform string
+// BuildPlatform To fill this variable in build time, use linker flags.
+// Example: go build -ldflags="-X github.com/timescale/promscale/pkg/telemetry.BuildPlatform=<any_string>" ./cmd/promscale/
+var BuildPlatform string
 
 type engine struct {
 	uuid [16]byte
@@ -45,9 +45,8 @@ type Telemetry interface {
 
 func NewTelemetryEngine(conn pgxconn.PgxConn, uuid [16]byte) (Telemetry, error) {
 	// Warn the users about telemetry collection.
-	log.Warn("msg", "Promscale collects anonymous usage telemetry data for project improvements while being GDPR compliant. "+
-		"If you wish not to participate, please turn off sending telemetry in TimescaleDB. "+
-		"Details about the process can be found at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
+	log.Warn("msg", "Promscale collects anonymous usage telemetry data to help the Promscale team better understand and assist users. "+
+		"This can be disabled via the process described at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
 	engine := &engine{
 		conn: conn,
 		uuid: uuid,
@@ -64,7 +63,7 @@ func (t *engine) writeMetadata() error {
 	if err != nil {
 		log.Debug("msg", "error fetching complete Promscale metadata", "error", err.Error())
 	}
-	promscale["promscale_exec_platform"] = ExecPlatform
+	promscale["build_platform"] = BuildPlatform
 	if err := writeToTimescaleMetadataTable(t.conn, Stats(promscale)); err != nil {
 		return fmt.Errorf("writing metadata for promscale: %w", err)
 	}
@@ -80,7 +79,7 @@ func (t *engine) writeMetadata() error {
 
 const (
 	metadataUpdateWithExtension = "SELECT update_tsprom_metadata($1, $2, $3)"
-	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
+	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 )
 
 // writeToTimescaleMetadataTable syncs the metadata/stats with telemetry metadata table and returns the last error if any.
@@ -100,18 +99,14 @@ func writeToTimescaleMetadataTable(conn pgxconn.PgxConn, m Stats) error {
 		if err != nil {
 			return fmt.Errorf("error sending batch: %w", err)
 		}
+		defer results.Close()
 
-		rows, err := results.Query()
-		if err != nil {
-			// Metadata table not accessible. Try for func in Promscale extension.
-			return fmt.Errorf("error querying results: %w", err)
-		}
-		err = nil
-		for rows.Next() {
-			if e := rows.Err(); e != nil {
-				err = e
+		for range m {
+			_, err := results.Exec()
+			if err != nil {
+				// Metadata table not accessible. Try for func in Promscale extension.
+				return fmt.Errorf("error querying results: %w", err)
 			}
-			rows.Close()
 		}
 		return err
 	}

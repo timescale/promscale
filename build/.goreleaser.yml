@@ -14,6 +14,8 @@ builds:
   - CGO_ENABLED=0
   main: ./cmd/promscale/
   id: promscale
+  ldflags:
+    - -s -w -X github.com/timescale/promscale/pkg/version.CommitHash={{.Commit}} -X github.com/timescale/promscale/pkg/telemetry.BuildPlatform=goreleaser
 - env:
   - CGO_ENABLED=0
   main: ./cmd/prom-migrator/

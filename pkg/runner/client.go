@@ -287,12 +287,11 @@ func SetupDBState(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *uti
 		return fmt.Errorf("Error while trying to migrate DB: %w", err)
 	}
 
-	installedPromscaleExtension, err := extension.InstallUpgradePromscaleExtensions(conn, extOptions)
+	_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
 	if err != nil {
 		return err
 	}
 
-	pgmodel.UpdateTelemetry(conn, appVersion, installedPromscaleExtension)
 	return nil
 }
 

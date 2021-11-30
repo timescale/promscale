@@ -61,11 +61,11 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 	withDB(t, e2eDb, func(db *pgxpool.Pool, t testing.TB) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
+		defer ingestor.Close()
 
 		// Ingest traces into Promscale.
 		err = ingestor.IngestTraces(context.Background(), copyTraces(sampleTraces))
 		require.NoError(t, err)
-		defer ingestor.Close()
 
 		// Create Promscale proxy to query traces data.
 		promscaleProxy, err := jaegerquery.New(pgxconn.NewPgxConn(db), telemetry.NewNoopEngine())
