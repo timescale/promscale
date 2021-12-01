@@ -8,22 +8,20 @@ metadata:
     chart: {{ template "promscale.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
+  {{- if .Values.service.annotations }}
   annotations:
-{{ .Values.service.loadBalancer.annotations | toYaml | indent 4 }}
+    {{- .Values.service.annotations | toYaml | nindent 4 }}
+  {{- end }}
 spec:
   selector:
     app: {{ template "promscale.fullname" . }}
-{{- if .Values.service.loadBalancer.enabled }}
-  type: LoadBalancer
-{{- else }}
-  type: ClusterIP
-{{- end }}
+  type: {{ .Values.service.type }}
   ports:
   - name: metrics-port
-    port: {{ .Values.service.metricsPort }}
+    port: {{ .Values.prometheus.port }}
     protocol: TCP
-  {{ if .Values.tracing.enabled }}
+  {{- if .Values.tracing.enabled }}
   - name: traces-port
-    port: {{ .Values.service.tracesPort }}
+    port: {{ .Values.tracing.port }}
     protocol: TCP
   {{- end }}

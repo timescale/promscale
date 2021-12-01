@@ -21,8 +21,8 @@ spec:
         app: {{ template "promscale.fullname" . }}
       annotations: 
         checksum/config: {{ printf "%s" .Values.connection | sha256sum -}}
-        {{- if .Values.prometheus.enabled }}
-        {{ .Values.prometheus.annotations | toYaml | nindent 8 }}
+        {{- if .Values.prometheus.annotations }}
+        {{- .Values.prometheus.annotations | toYaml | nindent 8 }}
         {{- end }}
     spec:
       containers:
@@ -46,7 +46,7 @@ spec:
           ports:
             - containerPort: 9201
               name: metrics-port
-          {{ if .Values.tracing.enabled }}
+          {{- if .Values.tracing.enabled }}
             - containerPort: 9202
               name: traces-port
           {{- end }}
