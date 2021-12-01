@@ -37,6 +37,12 @@ const (
 	defaultLaIncrement     = time.Minute
 )
 
+// timeNowUnix returns the current Unix timestamp.
+// time.Now().Unix() call is wrapped so it can be mocked during testing.
+var timeNowUnix = func() int64 {
+	return time.Now().Unix()
+}
+
 type config struct {
 	name    string
 	start   string
@@ -333,7 +339,7 @@ func stripSingleQuotes(s string) string {
 func parseRFC3339(s string) (int64, error) {
 	if s == "" {
 		// When 'end' is not set.
-		return time.Now().Unix(), nil
+		return timeNowUnix(), nil
 	}
 	t, err := time.Parse(time.RFC3339, stripSingleQuotes(s))
 	if err != nil {
@@ -356,7 +362,7 @@ func convertTimeStrFlagsToTs(conf *config) error {
 	}
 	conf.mintSec = int64(v)
 	if conf.end == "" {
-		conf.end = fmt.Sprintf("%d", time.Now().Unix())
+		conf.end = fmt.Sprintf("%d", timeNowUnix())
 	}
 	v, err = strconv.Atoi(conf.end)
 	if err != nil {
