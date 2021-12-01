@@ -17,7 +17,9 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
+	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/runner"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tests/test_migrations"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -207,7 +209,7 @@ func TestMigrateTwice(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
+	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(dbOwner *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
 		if *useExtension && !extension.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
@@ -221,9 +223,16 @@ func TestMigrateTwice(t *testing.T) {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 
-		if *useTimescaleDB {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
+		if *useTimescaleDB && extension.ExtensionIsInstalled {
+			_, err := telemetry.NewEngine(pgxconn.NewPgxConn(db), [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+			if err != nil {
+				t.Fatal("creating telemetry engine: %w", err)
+			}
 			var versionString string
-			err := db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
+			err = db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
 			if err != nil {
 				if err == pgx.ErrNoRows && !*useExtension {
 					//Without an extension, metadata will not be written if running as non-superuser

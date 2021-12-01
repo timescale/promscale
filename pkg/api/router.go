@@ -116,7 +116,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	return router, nil
 }
 
-func RegisterMetricsForTelemetry(t telemetry.Telemetry) error {
+func RegisterMetricsForTelemetry(t telemetry.Engine) error {
 	var err error
 	if err = t.RegisterMetric("promscale_ingested_samples_total", metrics.IngestedSamples); err != nil {
 		return fmt.Errorf("register 'promscale_ingested_samples_total' metric for telemetry: %w", err)

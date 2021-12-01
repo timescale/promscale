@@ -110,13 +110,14 @@ func Run(cfg *Config) error {
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
-	telemetryEngine, err := telemetry.NewTelemetryEngine(client.Connection, PromscaleID)
+	telemetryEngine, err := telemetry.NewEngine(client.Connection, PromscaleID)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
 		return fmt.Errorf("creating telemetry-engine: %w", err)
 	}
-	defer telemetryEngine.Stop()
+
 	telemetryEngine.Start()
+	defer telemetryEngine.Stop()
 
 	err = api.RegisterMetricsForTelemetry(telemetryEngine)
 	if err != nil {

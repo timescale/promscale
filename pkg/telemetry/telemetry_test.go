@@ -30,7 +30,7 @@ func TestExtractMetricValue(t *testing.T) {
 func TestRegisterMetric(t *testing.T) {
 	metric := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "test", Name: "extraction"})
 
-	engine := &engine{}
+	engine := &engineImpl{}
 	_, has := engine.metrics.Load("some_stats")
 	require.False(t, has)
 
@@ -49,7 +49,7 @@ func TestRegisterMetric(t *testing.T) {
 }
 
 func TestEngineStop(t *testing.T) {
-	engine := &engine{}
+	engine := &engineImpl{}
 	engine.Start()
 	engine.Stop()
 }

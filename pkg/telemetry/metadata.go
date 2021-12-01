@@ -6,31 +6,35 @@ package telemetry
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"runtime"
 	"strings"
 
 	"golang.org/x/sys/unix"
 
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/version"
 )
 
-type (
-	Metadata map[string]string
-	Stats    map[string]string
-)
+// BuildPlatform To fill this variable in build time, use linker flags.
+// Example: go build -ldflags="-X github.com/timescale/promscale/pkg/telemetry.BuildPlatform=<any_string>" ./cmd/promscale/
+var BuildPlatform string
 
-func promscaleMetadata() (Metadata, error) {
+type Metadata map[string]string
+
+func promscaleMetadata() Metadata {
 	metadata := Metadata{
-		"version":     version.Promscale,
-		"commit_hash": version.CommitHash,
-		"arch":        runtime.GOARCH,
-		"os":          runtime.GOOS,
+		"version":        version.Promscale,
+		"commit_hash":    version.CommitHash,
+		"arch":           runtime.GOARCH,
+		"os":             runtime.GOOS,
+		"packager":       getPkgEnv(),
+		"build_platform": BuildPlatform,
 	}
 	uname := unix.Utsname{}
 	if err := unix.Uname(&uname); err != nil {
-		return metadata, fmt.Errorf("syscall uname: %w", err)
+		log.Debug("msg", "error fetching uname", "error", err.Error())
+		return metadata
 	}
 	// We cannot send [65]byte since its [65]byte for linux and [256]byte for darwin,
 	// leading to type mismatch. Hence, we create a slice to handle both cases.
@@ -39,7 +43,17 @@ func promscaleMetadata() (Metadata, error) {
 	metadata["os_release"] = toString(uname.Release[:])
 	metadata["os_version"] = toString(uname.Version[:])
 	metadata["os_machine"] = toString(uname.Machine[:])
-	return metadata, nil
+	return metadata
+}
+
+func getPkgEnv() string {
+	pkg := os.Getenv("PROMSCALE_PKG")
+	switch pkg {
+	case "deb", "rpm", "apk":
+		return pkg
+	default:
+		return "unknown"
+	}
 }
 
 func toString(prop []byte) string {
@@ -61,6 +75,6 @@ func tobsMetadata() Metadata {
 }
 
 func decode(s string) (key, value string) {
-	arr := strings.Split(s, "=")
+	arr := strings.SplitN(s, "=", 2)
 	return arr[0], arr[1]
 }

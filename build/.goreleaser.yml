@@ -68,9 +68,15 @@ nfpms:
         dst: /etc/sysconfig/promscale.conf
         type: "config|noreplace"
         packager: rpm
+      - src: build/env/rpm.env
+        dst: /etc/sysconfig/promscale.env
+        packager: rpm
       - src: build/conf/promscale.conf
         dst: /etc/promscale.conf
         type: "config|noreplace"
+        packager: deb
+      - src: build/env/deb.env
+        dst: /etc/promscale.env
         packager: deb
 
     rpm:

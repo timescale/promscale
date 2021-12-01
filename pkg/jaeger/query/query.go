@@ -21,7 +21,7 @@ type Query struct {
 	conn pgxconn.PgxConn
 }
 
-func New(conn pgxconn.PgxConn, t telemetry.Telemetry) (*Query, error) {
+func New(conn pgxconn.PgxConn, t telemetry.Engine) (*Query, error) {
 	if err := registerMetricsForTelemetry(t); err != nil {
 		return nil, fmt.Errorf("register metrics for telemetry: %w", err)
 	}
