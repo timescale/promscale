@@ -1953,7 +1953,7 @@ BEGIN
         PERFORM SCHEMA_CATALOG.set_app_name(format('promscale maintenance: data retention: metric %s: delete expired series', metric_name));
         PERFORM SCHEMA_CATALOG.delete_expired_series(metric_schema, metric_table, metric_series_table, ran_at, present_epoch, last_updated);
         IF log_verbose THEN
-            RAISE LOG 'promscale maintenance: data retention: metric %: done deleting expired series as only action in %', metric_name, clock_timestamp-lastT;
+            RAISE LOG 'promscale maintenance: data retention: metric %: done deleting expired series as only action in %', metric_name, clock_timestamp()-lastT;
             RAISE LOG 'promscale maintenance: data retention: metric %: finished in %', metric_name, clock_timestamp()-startT;
         END IF;
         RETURN;
