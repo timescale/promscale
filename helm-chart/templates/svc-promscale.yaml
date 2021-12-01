@@ -20,8 +20,8 @@ spec:
   - name: metrics-port
     port: {{ .Values.prometheus.port }}
     protocol: TCP
-  {{- if .Values.tracing.enabled }}
-  - name: traces-port
-    port: {{ .Values.tracing.port }}
+  {{- if .Values.openTelemetry.enabled }}
+  - name: otel-port
+    port: {{ .Values.openTelemetry.port }}
     protocol: TCP
   {{- end }}
