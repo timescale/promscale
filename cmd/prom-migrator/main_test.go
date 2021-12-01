@@ -25,6 +25,11 @@ func getReaderLabelsMatcher(matcherType labels.MatchType, labelValue string) []*
 }
 
 func TestParseFlags(t *testing.T) {
+	currentTime := time.Now().Unix()
+	timeNowUnix = func() int64 {
+		return currentTime
+	}
+
 	cases := []struct {
 		name            string
 		input           []string
@@ -481,10 +486,10 @@ func TestParseFlags(t *testing.T) {
 			expectedConf: &config{
 				name:                 "prom-migrator",
 				start:                defaultStartTime,
-				end:                  fmt.Sprintf("%d", time.Now().Unix()),
+				end:                  fmt.Sprintf("%d", timeNowUnix()),
 				humanReadableTime:    true,
-				maxt:                 time.Now().Unix() * 1000,
-				maxtSec:              time.Now().Unix(),
+				maxt:                 timeNowUnix() * 1000,
+				maxtSec:              timeNowUnix(),
 				readerMetricsMatcher: `{__name__=~".+"}`,
 				readerLabelsMatcher:  getReaderLabelsMatcher(labels.MatchRegexp, ".+"),
 				readerClientConfig: utils.ClientConfig{
@@ -519,11 +524,11 @@ func TestParseFlags(t *testing.T) {
 			expectedConf: &config{
 				name:                 "prom-migrator",
 				start:                "1",
-				end:                  fmt.Sprintf("%d", time.Now().Unix()),
+				end:                  fmt.Sprintf("%d", timeNowUnix()),
 				mint:                 1000,
 				mintSec:              1,
-				maxt:                 time.Now().Unix() * 1000,
-				maxtSec:              time.Now().Unix(),
+				maxt:                 timeNowUnix() * 1000,
+				maxtSec:              timeNowUnix(),
 				readerMetricsMatcher: `{__name__=~".+"}`,
 				readerLabelsMatcher:  getReaderLabelsMatcher(labels.MatchRegexp, ".+"),
 				readerClientConfig: utils.ClientConfig{
@@ -558,12 +563,12 @@ func TestParseFlags(t *testing.T) {
 			expectedConf: &config{
 				name:                 "prom-migrator",
 				start:                "'1970-01-01T00:00:01+00:00'",
-				end:                  fmt.Sprintf("%d", time.Now().Unix()),
+				end:                  fmt.Sprintf("%d", timeNowUnix()),
 				humanReadableTime:    true,
 				mint:                 1000,
 				mintSec:              1,
-				maxt:                 time.Now().Unix() * 1000,
-				maxtSec:              time.Now().Unix(),
+				maxt:                 timeNowUnix() * 1000,
+				maxtSec:              timeNowUnix(),
 				readerMetricsMatcher: `{__name__=~".+"}`,
 				readerLabelsMatcher:  getReaderLabelsMatcher(labels.MatchRegexp, ".+"),
 				readerClientConfig: utils.ClientConfig{
@@ -598,12 +603,12 @@ func TestParseFlags(t *testing.T) {
 			expectedConf: &config{
 				name:                 "prom-migrator",
 				start:                "'1970-01-01T00:00:01+00:00'",
-				end:                  fmt.Sprintf("%d", time.Now().Unix()),
+				end:                  fmt.Sprintf("%d", timeNowUnix()),
 				humanReadableTime:    true,
 				mint:                 1000,
 				mintSec:              1,
-				maxt:                 time.Now().Unix() * 1000,
-				maxtSec:              time.Now().Unix(),
+				maxt:                 timeNowUnix() * 1000,
+				maxtSec:              timeNowUnix(),
 				readerMetricsMatcher: `{__name__=~".+"}`,
 				readerLabelsMatcher:  getReaderLabelsMatcher(labels.MatchRegexp, ".+"),
 				readerClientConfig: utils.ClientConfig{
@@ -638,12 +643,12 @@ func TestParseFlags(t *testing.T) {
 			expectedConf: &config{
 				name:                 "prom-migrator",
 				start:                "'1970-01-01T00:00:01+00:00'",
-				end:                  fmt.Sprintf("%d", time.Now().Unix()),
+				end:                  fmt.Sprintf("%d", timeNowUnix()),
 				humanReadableTime:    true,
 				mint:                 1000,
 				mintSec:              1,
-				maxt:                 time.Now().Unix() * 1000,
-				maxtSec:              time.Now().Unix(),
+				maxt:                 timeNowUnix() * 1000,
+				maxtSec:              timeNowUnix(),
 				readerMetricsMatcher: `{__name__=~".+"}`,
 				readerLabelsMatcher:  getReaderLabelsMatcher(labels.MatchRegexp, ".+"),
 				readerClientConfig: utils.ClientConfig{
