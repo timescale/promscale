@@ -66,7 +66,7 @@ type SamplesQuerier interface {
 	LabelNames(...*labels.Matcher) ([]string, storage.Warnings, error)
 
 	// Close releases the resources of the Querier.
-	Close() error
+	Close()
 
 	// Select returns a set of series that matches the given label matchers.
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.

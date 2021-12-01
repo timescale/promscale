@@ -73,6 +73,8 @@ func series(queryable promql.Queryable) http.HandlerFunc {
 			respondError(w, http.StatusUnprocessableEntity, err, "execution")
 			return
 		}
+		defer q.Close()
+
 		var sets []storage.SeriesSet
 		var warnings storage.Warnings
 		for _, mset := range matcherSets {

@@ -39,6 +39,7 @@ func (fc *Storage) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 	if err != nil {
 		return err
 	}
+	defer q.Close()
 
 	ss, _ := q.Select(false, nil, nil, nil, matchers...)
 
@@ -98,6 +99,7 @@ func (fc *Storage) LabelNames(ctx context.Context, req *storepb.LabelNamesReques
 	if err != nil {
 		return nil, err
 	}
+	defer q.Close()
 
 	names, warnings, err := q.LabelNames()
 	if err != nil {
@@ -120,6 +122,7 @@ func (fc *Storage) LabelValues(ctx context.Context, req *storepb.LabelValuesRequ
 	if err != nil {
 		return nil, err
 	}
+	defer q.Close()
 
 	values, warnings, err := q.LabelValues(req.Label)
 	if err != nil {
