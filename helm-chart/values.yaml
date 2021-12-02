@@ -20,17 +20,12 @@ upgradeStrategy: Recreate
 # For example, to activate HA, bump the replicaCount and set those arguments (also, make sure that external labels are configured on the Prometheus side):
 # - --high-availabiliity=1
 # More info about HA: https://github.com/timescale/promscale/blob/master/docs/high-avaliability/prometheus-HA.md
-args: []
+extraArgs: []
 
-# To enable tracing in Promscale configure args as
-#args:
-#- -enable-feature=tracing
-#- -otlp-grpc-server-listen-address=:9202
-
-# Currently tracing support is in beta
+# Currently OpenTelemetry tracing support is in beta
 # so tracing features needs to be explicitly enabled.
-tracing:
-  # tracing is only enabled if below field is configured true
+openTelemetry:
+  # OpenTelemetry tracing is only enabled if below field is configured true
   enabled: false
   port: 9202
 
