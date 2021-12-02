@@ -7,3 +7,6 @@
 /pkg/tests/testdata/ @jgpruitt
 /pkg/tests/test_migrations/ @jgpruitt
 /pkg/pgmodel/ingestor @niksajakovljevic
+
+# helm and kubernetes related parts
+/helm-chart/ @cevian @VineethReddy02 @paulfantom @JamesGuthrie
