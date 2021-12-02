@@ -38,8 +38,8 @@ var (
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 
-	Promscale                           = "0.7.1"
-	PrevReleaseVersion                  = "0.7.0"
+	Promscale                           = "0.7.2-dev.0"
+	PrevReleaseVersion                  = "0.7.1"
 	PromMigrator                        = "0.0.3"
 	CommitHash                          = ""
 	EarliestUpgradeTestVersion          = "0.1.0"
