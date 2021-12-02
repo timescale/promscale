@@ -6,3 +6,4 @@
 /pkg/tests/upgrade_tests/ @jgpruitt
 /pkg/tests/testdata/ @jgpruitt
 /pkg/tests/test_migrations/ @jgpruitt
+/pkg/pgmodel/ingestor @niksajakovljevic
