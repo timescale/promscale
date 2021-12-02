@@ -119,6 +119,10 @@ func (t *QuerierWrapper) LabelValues(n string) ([]string, storage.Warnings, erro
 	return nil, nil, nil
 }
 
+func (t *QuerierWrapper) Close() {
+	_ = t.Querier.Close()
+}
+
 // Test is a sequence of read and write commands that are run
 // against a test storage.
 type Test struct {

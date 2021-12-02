@@ -34,6 +34,8 @@ func labelValues(queryable promql.Queryable) http.HandlerFunc {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return
 		}
+		defer querier.Close()
+
 		var values labelsValue
 		values, warnings, err := querier.LabelValues(name)
 		if err != nil {

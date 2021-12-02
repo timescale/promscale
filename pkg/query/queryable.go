@@ -59,11 +59,10 @@ func (q samplesQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warn
 	return lNames, nil, err
 }
 
-func (q *samplesQuerier) Close() error {
+func (q *samplesQuerier) Close() {
 	for _, ss := range q.seriesSets {
 		ss.Close()
 	}
-	return nil
 }
 
 func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgQuerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {

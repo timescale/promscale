@@ -109,27 +109,28 @@ helm install --name my-release -f myvalues.yaml .
 
 |       Parameter                   |           Description                       |               Default              |
 |-----------------------------------|---------------------------------------------|------------------------------------|
-| `image`                           | The image (with tag) to pull                | `timescale/promscale`   |
-| `imagePullPolicy`                 | The image pull policy                       | `IfNotPresent`   |
+| `image`                           | The image (with tag) to pull                | `timescale/promscale`              |
+| `imagePullPolicy`                 | The image pull policy                       | `IfNotPresent`                     |
 | `replicaCount`                    | Number of pods for the connector            | `1`                                |
-| `upgradeStrategy`                 | Promscale deployment upgrade strategy, By default set to `Recreate` as during Promscale upgrade we expect no Promscale to be connected to TimescaleDB       | `Recreate`                                |
+| `upgradeStrategy`                 | Promscale deployment upgrade strategy, By default set to `Recreate` as during Promscale upgrade we expect no Promscale to be connected to TimescaleDB       | `Recreate` |
+| `resources`                       | Requests and limits for each of the pods    | `{}`                               |
+| `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
+| `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
+| `affinity`                        | PodAffinity and PodAntiAffinity settings    | `{}`                               |
+| `extraArgs`                       | Additional promscale CLI arguments          | `[]`                               |
+| `connection.uri`                  | DB uri string used for database connection. When not empty it takes priority over other settings in `connection` map. | `""` |
 | `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
-| `connection.password`             | The DB password for user specified in `connection.user` | "" |
-| `connection.uri`                  | DB uri string used for database connection. When not empty it takes priority over other settings in `connection` map. | "" |
+| `connection.password`             | The DB password for user specified in `connection.user` | `""`                   |
 | `connection.host`                 | Hostname of timescaledb instance            | `db.timescaledb.svc.cluster.local` |
 | `connection.port`                 | Port the db listens to                      | `5432`                             |
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
 | `connection.sslMode`              | SSL mode for connection                     | `require`                          |
-| `service.metricsPort`             | Port the connector pods will accept metrics connections on | `9201`                      |
-| `service.tracesPort`              | Port the connector pods will accept traces connections on | `9202`                      |
-| `service.loadBalancer.enabled`    | If enabled will create an LB for the connector, ClusterIP otherwise | `true`     |
-| `service.loadBalancer.annotations`| Annotations to set to the LB service        | `service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "4000"` |
-| `serviceMonitor.enabled`          | Enable creation of serviceMonitor object used by prometheus-operator. This should be used with `prometheus.enabled: false`. | `false`   |
-| `resources`                       | Requests and limits for each of the pods    | `{}`                               |
-| `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
-| `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
-| `affinity`                        | PodAffinity and PodAntiAffinity for scheduling           | `{}`                               |
-| `tracing.enabled`                 | Enable tracing support in Promscale, exposes container, service ports to default 9202 (in future releases tracing support will be enabled by default)           | `false`                               |
-| `tracing.args`                    | Promscale args to enable tracing               | `-otlp-grpc-server-listen-address=:9202`                               |
+| `prometheus.port`                 | Port the connector Service accepts prometheus remote_write connections on | `9201`              |
+| `prometheus.annotations`          | Annotations to allow prometheus metrics collection. | `{ "prometheus.io/scrape": 'true', "prometheus.io/port": '9201', "prometheus.io/path": '/metrics'}` |
+| `openTelemetry.enabled`           | Enable OpenTelemetry tracing support in Promscale (in future releases tracing support will be enabled by default) | `false` |
+| `openTelemetry.port`              | Port the connector Service will accept otlp connections on | `9202`               |
+| `service.type`                    | Type of Service to be used                  | `ClusterIP`                        |
+| `service.annotations`             | Annotations to set to the Service           | `{}`                               |
+| `serviceMonitor.enabled`          | Enable creation of serviceMonitor object used by prometheus-operator. `prometheus.annotations` should be set to `{}` when using this option.| `false` |
 
 [docker-image]: https://hub.docker.com/timescale/promscale
