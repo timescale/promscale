@@ -14,3 +14,4 @@
 .DS_Store
 .git
 venv
+/pkg/tests/testdata/traces-dataset.sz
