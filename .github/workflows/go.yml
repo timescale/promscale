@@ -42,11 +42,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
-      with:
-        lfs: true
 
-    - name: Checkout LFS objects
-      run: git lfs checkout
+    - name: Checkout test data files
+      run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
 
     - name: Import environment variables
       run: cat ".github/env" >> $GITHUB_ENV
@@ -101,11 +99,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
-      with:
-        lfs: true
 
-    - name: Checkout LFS objects
-      run: git lfs checkout
+    - name: Checkout test data files
+      run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
 
     - name: Import environment variables
       run: cat ".github/env" >> $GITHUB_ENV
