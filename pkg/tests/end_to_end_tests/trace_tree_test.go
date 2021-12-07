@@ -34,7 +34,7 @@ func TestTraceTreeFuncs(t *testing.T) {
 	var ctx = context.Background()
 	databaseName := fmt.Sprintf("%s_trace_tree", *testDatabase)
 	withDB(t, databaseName, func(db *pgxpool.Pool, tb testing.TB) {
-		inserts(t, ctx, db)
+		testTraceTreeFuncsInserts(t, ctx, db)
 		testTraceTree(t, ctx, db)
 		testUpstreamSpans(t, ctx, db)
 		testDownstreamSpans(t, ctx, db)
@@ -43,7 +43,7 @@ func TestTraceTreeFuncs(t *testing.T) {
 	})
 }
 
-func inserts(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
+func testTraceTreeFuncsInserts(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	var insertSpans = fmt.Sprintf(`
 WITH x(span_id, parent_span_id) AS
 (
