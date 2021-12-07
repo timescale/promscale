@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package runner
 
 // Based on the Prometheus remote storage example:
@@ -13,27 +14,38 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"go.opentelemetry.io/collector/model/otlpgrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/util"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
-	"go.opentelemetry.io/collector/model/otlpgrpc"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 const promLivenessCheck = time.Second
 
 var (
-	elector      *util.Elector
+	elector     *util.Elector
+	PromscaleID uuid.UUID
+
 	startupError = fmt.Errorf("startup error")
 )
+
+func init() {
+	// PromscaleID must always be generated on start, so that it remains constant throughout the lifecycle.
+	PromscaleID = uuid.New()
+}
 
 func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	m, err := handler(ctx, req)
@@ -98,6 +110,21 @@ func Run(cfg *Config) error {
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
+	telemetryEngine, err := telemetry.NewEngine(client.Connection, PromscaleID)
+	if err != nil {
+		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
+		return fmt.Errorf("creating telemetry-engine: %w", err)
+	}
+
+	telemetryEngine.Start()
+	defer telemetryEngine.Stop()
+
+	err = api.RegisterMetricsForTelemetry(telemetryEngine)
+	if err != nil {
+		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
+		return fmt.Errorf("error registering metrics for telemetry: %w", err)
+	}
+
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
 		srv := thanos.NewStorage(client.Queryable())
 		options := make([]grpc.ServerOption, 0)
@@ -144,11 +171,16 @@ func Run(cfg *Config) error {
 		grpcServer := grpc.NewServer(options...)
 		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
 
-		queryPlugin := shared.StorageGRPCPlugin{
-			Impl: query.New(client.QuerierConnection),
-		}
-		err := queryPlugin.GRPCServer(nil, grpcServer)
+		jaegerQuery, err := query.New(client.QuerierConnection, telemetryEngine)
 		if err != nil {
+			log.Error("msg", "Creating jaeger query failed", "err", err)
+			return err
+		}
+
+		queryPlugin := shared.StorageGRPCPlugin{
+			Impl: jaegerQuery,
+		}
+		if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
 			log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
 			return err
 		}

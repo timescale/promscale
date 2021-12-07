@@ -256,7 +256,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		}
 
 		duration := time.Since(begin).Seconds()
-		metrics.SentSamples.Add(float64(numSamples))
+		metrics.IngestedSamples.Add(float64(numSamples))
 		metrics.SentMetadata.Add(float64(numMetadata))
 		metrics.SentBatchDuration.Observe(duration)
 		return true

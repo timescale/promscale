@@ -9,3 +9,6 @@ echo "And then restart the service with: systemctl restart promscale"
 
 
 sed -i "s|__ENV_FILE__|$CONF_FILE|g" /usr/lib/systemd/system/promscale.service
+
+PROMSCALE_ENV_FILE=$(find /etc -name promscale.env 2>/dev/null | head -n 1)
+cat $PROMSCALE_ENV_FILE >> $CONF_FILE

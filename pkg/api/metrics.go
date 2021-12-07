@@ -22,10 +22,12 @@ type Metrics struct {
 	ReceivedMetadata      prometheus.Counter
 	FailedSamples         prometheus.Counter
 	FailedMetadata        prometheus.Counter
-	SentSamples           prometheus.Counter
+	IngestedSamples       prometheus.Counter
 	SentMetadata          prometheus.Counter
 	SentBatchDuration     prometheus.Histogram
 	ReceivedQueries       prometheus.Counter
+	ExecutedQueries       prometheus.Counter
+	TimedOutQueries       prometheus.Counter
 	FailedQueries         prometheus.Counter
 	QueryBatchDuration    prometheus.Histogram
 	ExemplarQueryDuration prometheus.Histogram
@@ -48,11 +50,13 @@ func InitMetrics() *Metrics {
 		metrics.ReceivedSamples,
 		metrics.ReceivedMetadata,
 		metrics.ReceivedQueries,
-		metrics.SentSamples,
+		metrics.IngestedSamples,
 		metrics.SentMetadata,
 		metrics.FailedSamples,
 		metrics.FailedMetadata,
 		metrics.FailedQueries,
+		metrics.ExecutedQueries,
+		metrics.TimedOutQueries,
 		metrics.InvalidReadReqs,
 		metrics.InvalidWriteReqs,
 		metrics.SentBatchDuration,
@@ -102,10 +106,10 @@ func createMetrics() *Metrics {
 				Help:      "Total number of processed metadata which failed on send to remote storage.",
 			},
 		),
-		SentSamples: prometheus.NewCounter(
+		IngestedSamples: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
-				Name:      "sent_samples_total",
+				Name:      "ingested_samples_total",
 				Help:      "Total number of processed samples sent to remote storage.",
 			},
 		),
@@ -152,7 +156,8 @@ func createMetrics() *Metrics {
 		FailedQueries: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
-				Name:      "failed_queries_total",
+				Subsystem: "metrics",
+				Name:      "queries_failed_total",
 				Help:      "Total number of queries which failed on send to remote storage.",
 			},
 		),
@@ -182,6 +187,20 @@ func createMetrics() *Metrics {
 				Namespace: util.PromNamespace,
 				Name:      "received_queries_total",
 				Help:      "Total number of received queries.",
+			},
+		),
+		ExecutedQueries: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "executed_queries_total",
+				Help:      "Total number of successfully executed queries.",
+			},
+		),
+		TimedOutQueries: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Name:      "queries_timed_out_total",
+				Help:      "Total number of timed out queries.",
 			},
 		),
 		HTTPRequestDuration: prometheus.NewHistogramVec(

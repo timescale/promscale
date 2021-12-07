@@ -5,14 +5,15 @@
 package schema
 
 const (
-	Tag       = "ps_tag"
-	Prom      = "prom_api"
-	Data      = "prom_data"
-	Info      = "prom_info"
-	Exemplar  = "prom_data_exemplar"
-	Ext       = "_prom_ext"
-	Catalog   = "_prom_catalog"
-	Timescale = "public"
+	Tag              = "ps_tag"
+	Prom             = "prom_api"
+	Data             = "prom_data"
+	Info             = "prom_info"
+	Exemplar         = "prom_data_exemplar"
+	Ext              = "_prom_ext"
+	Catalog          = "_prom_catalog"
+	PromscaleCatalog = "_ps_catalog"
+	Timescale        = "public"
 
 	LockID = 0x4D829C732AAFCEDE // Chosen randomly.
 

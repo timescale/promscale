@@ -16,6 +16,7 @@ require (
 	github.com/go-resty/resty/v2 v2.6.0 // indirect
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
+	github.com/google/uuid v1.3.0
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.0.0
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
@@ -48,6 +49,7 @@ require (
 	go.opentelemetry.io/collector/model v0.40.0
 	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
+	golang.org/x/sys v0.0.0-20211020174200-9d6173849985
 	google.golang.org/grpc v1.42.0
 	gopkg.in/yaml.v2 v2.4.0
 )
