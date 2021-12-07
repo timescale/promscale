@@ -449,11 +449,11 @@ var MigrationFiles = func() http.FileSystem {
 
 			compressedContent: []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff\x72\x09\xf2\x0f\x50\x70\x0b\xf5\x73\x0e\xf1\xf4\xf7\x53\xf0\x74\x53\x70\x8d\xf0\x0c\x0e\x09\x56\x08\x76\xf6\x70\xf5\x75\x8c\x0f\x09\x72\x74\xf6\xf4\x73\x8f\x0f\x08\x75\xf2\xf1\x74\xd6\x2b\x2d\x28\x2e\x29\x4a\x4d\xcc\x8d\x2f\x2e\x48\xcc\x2b\xd6\xc0\xae\xa8\xa4\x28\x31\x39\x35\x3e\x33\x45\x47\x21\x29\x33\x3d\x33\xaf\x44\x47\x21\x33\xaf\x44\x53\xc1\xd9\x31\xd8\xd9\xd1\xc5\xd5\x9a\x8b\x34\x2b\x53\xf2\xcb\xf3\xe8\x6e\x29\xc8\xa6\xf8\x92\xa2\xd4\x54\x32\x6d\x03\x04\x00\x00\xff\xff\x93\x90\xb3\x4b\x56\x01\x00\x00"),
 		},
-		"/versions/dev/0.7.1-dev": &vfsgen۰DirInfo{
-			name:    "0.7.1-dev",
+		"/versions/dev/0.7.2-dev": &vfsgen۰DirInfo{
+			name:    "0.7.2-dev",
 			modTime: time.Time{},
 		},
-		"/versions/dev/0.7.1-dev/1-telemetry.sql": &vfsgen۰CompressedFileInfo{
+		"/versions/dev/0.7.2-dev/1-telemetry.sql": &vfsgen۰CompressedFileInfo{
 			name:             "1-telemetry.sql",
 			modTime:          time.Time{},
 			uncompressedSize: 2965,
@@ -511,7 +511,7 @@ var MigrationFiles = func() http.FileSystem {
 		fs["/versions/dev/0.5.2-dev"].(os.FileInfo),
 		fs["/versions/dev/0.6.99-dev"].(os.FileInfo),
 		fs["/versions/dev/0.7.0-beta.1.dev"].(os.FileInfo),
-		fs["/versions/dev/0.7.1-dev"].(os.FileInfo),
+		fs["/versions/dev/0.7.2-dev"].(os.FileInfo),
 	}
 	fs["/versions/dev/0.1.0-beta.2.dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.1.0-beta.2.dev/1-drop_procedure_named_drop_chunks.sql"].(os.FileInfo),
@@ -566,8 +566,8 @@ var MigrationFiles = func() http.FileSystem {
 		fs["/versions/dev/0.7.0-beta.1.dev/4-drop_get_operation.sql"].(os.FileInfo),
 		fs["/versions/dev/0.7.0-beta.1.dev/5-drop_trace_tree_funcs.sql"].(os.FileInfo),
 	}
-	fs["/versions/dev/0.7.1-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
-		fs["/versions/dev/0.7.1-dev/1-telemetry.sql"].(os.FileInfo),
+	fs["/versions/dev/0.7.2-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
+		fs["/versions/dev/0.7.2-dev/1-telemetry.sql"].(os.FileInfo),
 	}
 
 	return fs

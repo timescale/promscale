@@ -116,11 +116,11 @@ func TestOnlyOneHousekeeper(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		_, err := conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information VALUES ('00000000-0000-0000-0000-000000000000', current_timestamp)`)
+		_, err := conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information (uuid, last_updated, is_counter_reset_row) VALUES ('00000000-0000-0000-0000-000000000000', current_timestamp, TRUE)`)
 		require.NoError(t, err)
 
 		// Should error due to unique constraint for counter_reset_row.
-		_, err = conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information VALUES ('00000000-0000-0000-0000-000000000000', current_timestamp)`)
+		_, err = conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information (uuid, last_updated, is_counter_reset_row) VALUES ('00000000-0000-0000-0000-000000000000', current_timestamp, TRUE)`)
 		require.Error(t, err)
 		require.True(t, strings.Contains(err.Error(), `violates unique constraint "promscale_instance_information_pkey"`))
 	})
