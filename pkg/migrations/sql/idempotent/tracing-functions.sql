@@ -242,18 +242,18 @@ RETURNS TABLE
     cnt bigint
 )
 AS $func$
-	SELECT
-		parent.operation_id as parent_operation_id,
-		child.operation_id as child_operation_id,
-	  	count(*) as cnt
-	FROM
-		_ps_trace.span child
-	INNER JOIN
-		_ps_trace.span parent ON (parent.span_id = child.parent_span_id AND parent.trace_id = child.trace_id)
-	WHERE
-      		child.start_time > _start_time_min AND child.start_time <_start_time_max AND
-      		parent.start_time > _start_time_min AND child.start_time < _start_time_max
-	GROUP BY parent.operation_id, child.operation_id
+    SELECT
+        parent.operation_id as parent_operation_id,
+        child.operation_id as child_operation_id,
+        count(*) as cnt
+    FROM
+        _ps_trace.span child
+    INNER JOIN
+        _ps_trace.span parent ON (parent.span_id = child.parent_span_id AND parent.trace_id = child.trace_id)
+    WHERE
+        child.start_time > _start_time_min AND child.start_time < _start_time_max AND
+        parent.start_time > _start_time_min AND parent.start_time < _start_time_max
+    GROUP BY parent.operation_id, child.operation_id
 $func$ LANGUAGE sql
 --Always prefer a mergejoin here since this is a rollup over a lot of data.
 --a nested loop is sometimes preferred by the planner but is almost never right
