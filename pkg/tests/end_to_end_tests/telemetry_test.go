@@ -40,7 +40,7 @@ func TestPromscaleTobsMetadata(t *testing.T) {
 		require.NoError(t, setTobsEnv("random"))
 		conn := pgxconn.NewPgxConn(db)
 
-		_, err := telemetry.NewEngine(conn, generateUUID())
+		_, err := telemetry.NewEngine(conn, generateUUID(), "")
 		require.NoError(t, err)
 
 		// Check if metadata is written.
@@ -63,7 +63,7 @@ func TestTelemetryInfoTableWrite(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID())
+		engine, err := telemetry.NewEngine(conn, generateUUID(), "")
 		require.NoError(t, err)
 
 		engine.Start()
