@@ -37,7 +37,7 @@ jobs:
       run: make build
 
   test:
-    name: Go Tests
+    name: unit
     runs-on: ubuntu-latest
     steps:
     - name: Check out code into the Go module directory
@@ -86,7 +86,7 @@ jobs:
         git diff --exit-code
 
   test-end-to-end:
-    name: Go End-to-End Tests
+    name: e2e
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -143,12 +143,10 @@ jobs:
         path: ${{ matrix.test-setups.shortname }}-test-run.log
         retention-days: 5
 
-
-
   # Added to summarize the matrix (otherwise we would need to list every single
   # job in bors.toml)
   tests-result:
-    name: Go End-to-End Test Results
+    name: e2e results
     if: always()
     needs:
       - test-end-to-end
