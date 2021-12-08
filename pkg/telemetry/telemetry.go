@@ -20,6 +20,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 type Engine interface {
@@ -73,15 +74,11 @@ func isTelemetryOff(conn pgxconn.PgxConn) (bool, error) {
 // writeMetadata writes Promscale and Tobs metadata.
 func (t *engineImpl) writeMetadata() error {
 	promscale := promscaleMetadata()
-	if err := t.writeToTimescaleMetadataTable(promscale); err != nil {
-		return fmt.Errorf("writing metadata for promscale: %w", err)
-	}
+	t.writeToTimescaleMetadataTable(promscale)
 
 	tobs := tobsMetadata()
 	if len(tobs) > 0 {
-		if err := t.writeToTimescaleMetadataTable(tobs); err != nil {
-			return fmt.Errorf("writing metadata for tobs: %w", err)
-		}
+		t.writeToTimescaleMetadataTable(tobs)
 	}
 	return nil
 }
@@ -92,15 +89,13 @@ const (
 )
 
 // writeToTimescaleMetadataTable syncs the metadata/stats with telemetry metadata table and returns the last error if any.
-func (t *engineImpl) writeToTimescaleMetadataTable(m Metadata) error {
+func (t *engineImpl) writeToTimescaleMetadataTable(m Metadata) {
 	// Try to update via Promscale extension.
 	if err := t.syncWithMetadataTable(metadataUpdateWithExtension, m); err != nil {
 		// Promscale extension not installed. Try to attempt to write directly as a rare attempt
 		// in case we fix the _timescaledb_catalog.metadata permissions in the future.
 		_ = t.syncWithMetadataTable(metadataUpdateNoExtension, m)
 	}
-
-	return nil
 }
 
 func (t *engineImpl) syncWithMetadataTable(queryFormat string, m Metadata) error {
@@ -158,12 +153,14 @@ func (t *engineImpl) Start() {
 	}()
 }
 
+type Stats map[string]float64
+
 func (t *engineImpl) syncWithInfoTable() error {
 	var (
 		err             error
 		underlyingValue float64
 
-		newStats = make(map[string]float64)
+		newStats = make(Stats)
 	)
 	t.metrics.Range(func(statName, metric interface{}) bool {
 		columnName := statName.(string)
@@ -209,6 +206,17 @@ func (t *engineImpl) RegisterMetric(columnName string, gaugeOrCounterMetric prom
 	return nil
 }
 
+func (t *engineImpl) Housekeeper(connStr string) (*housekeeper, error) {
+	advisoryLock, err := util.NewPgAdvisoryLock(housekeeperLockId, connStr)
+	if err != nil {
+		return nil, fmt.Errorf("creating advisory lock: %w", err)
+	}
+	return &housekeeper{
+		conn: t.conn,
+		lock: advisoryLock,
+	}, nil
+}
+
 func isCounterOrGauge(metric prometheus.Metric) bool {
 	switch metric.(type) {
 	case prometheus.Counter, prometheus.Gauge:
@@ -219,7 +227,7 @@ func isCounterOrGauge(metric prometheus.Metric) bool {
 }
 
 // syncInfoTable stats with promscale_instance_information table.
-func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
+func (t *engineImpl) syncInfoTable(stats Stats) error {
 	lastUpdated := time.Now()
 
 	pgUUID := new(pgtype.UUID)
