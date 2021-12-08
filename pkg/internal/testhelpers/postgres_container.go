@@ -175,11 +175,6 @@ func (e ExtensionState) GetDockerImageName() (string, error) {
 		image = "timescale/timescaledb:latest-" + PGTag
 	case Timescale2AndPromscale, MultinodeAndPromscale:
 		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
-
-		//TODO: remove split once pg14 ha image published
-		if PGMajor == "14" {
-			image = "timescaledev/promscale-extension:latest-ts2-" + PGTag
-		}
 	case VanillaPostgres:
 		image = "postgres:" + PGMajor
 	case TimescaleOSS:
