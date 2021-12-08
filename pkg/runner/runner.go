@@ -89,7 +89,7 @@ func Run(cfg *Config) error {
 	}
 
 	promMetrics := api.InitMetrics()
-	client, err := CreateClient(cfg, promMetrics)
+	client, connStr, err := CreateClient(cfg, promMetrics)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", err.Error())
 		return startupError
@@ -123,6 +123,24 @@ func Run(cfg *Config) error {
 	if err != nil {
 		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
 		return fmt.Errorf("error registering metrics for telemetry: %w", err)
+	}
+
+	housekeeper, err := telemetryEngine.Housekeeper(connStr)
+	if err != nil {
+		log.Error("msg", "error creating telemetry housekeeper", "err", err.Error())
+		return fmt.Errorf("error creating telemetry housekeeper: %w", err)
+	}
+
+	success, err := housekeeper.Try()
+	if err != nil {
+		log.Error("msg", "error trying to become housekeeper", "err", err.Error())
+		return fmt.Errorf("error trying to become housekeeper: %w", err)
+	}
+	if success {
+		if err = housekeeper.Start(); err != nil {
+			return fmt.Errorf("start housekeeper: %w", err)
+		}
+		defer housekeeper.Stop()
 	}
 
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {

@@ -28,7 +28,7 @@ var (
 	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
 )
 
-func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
+func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, string, error) {
 	// The TimescaleDB migration has to happen before other connections
 	// are open, also it has to happen as the first command on a connection.
 	// Thus we cannot rely on the migration lock here. Instead we assume
@@ -45,7 +45,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	if cfg.InstallExtensions {
 		err := extension.InstallUpgradeTimescaleDBExtensions(connStr, extOptions)
 		if err != nil {
-			return nil, err
+			return nil, connStr, err
 		}
 	}
 
@@ -59,7 +59,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	schemaVersionLease, err := util.NewPgAdvisoryLock(schema.LockID, connStr)
 	if err != nil {
 		log.Error("msg", "error creating schema version lease", "err", err)
-		return nil, startupError
+		return nil, connStr, startupError
 	}
 	// after the client has started it's in charge of maintaining the leases
 	defer schemaVersionLease.Close()
@@ -68,7 +68,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	if cfg.Migrate {
 		conn, err := schemaVersionLease.Conn()
 		if err != nil {
-			return nil, fmt.Errorf("migration error: %w", err)
+			return nil, connStr, fmt.Errorf("migration error: %w", err)
 		}
 		lease := schemaVersionLease
 		if !cfg.UseVersionLease {
@@ -77,15 +77,15 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		err = SetupDBState(conn, appVersion, lease, extOptions)
 		migrationFailedDueToLockError = err == migrationLockError
 		if err != nil && err != migrationLockError {
-			return nil, fmt.Errorf("migration error: %w", err)
+			return nil, connStr, fmt.Errorf("migration error: %w", err)
 		}
 
 		if cfg.StopAfterMigrate {
 			if err != nil {
-				return nil, err
+				return nil, connStr, err
 			}
 			log.Info("msg", "Migration successful, exiting")
-			return nil, nil
+			return nil, connStr, nil
 		}
 	} else {
 		log.Info("msg", "Skipping migration")
@@ -96,10 +96,10 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		// lease will be released when the schemaVersionLease is closed.
 		locked, err := schemaVersionLease.GetSharedAdvisoryLock()
 		if err != nil {
-			return nil, fmt.Errorf("could not acquire schema version lease due to: %w", err)
+			return nil, connStr, fmt.Errorf("could not acquire schema version lease due to: %w", err)
 		}
 		if !locked {
-			return nil, fmt.Errorf("could not acquire schema version lease. is a migration in progress?")
+			return nil, connStr, fmt.Errorf("could not acquire schema version lease. is a migration in progress?")
 		}
 	} else {
 		log.Warn("msg", "skipping schema version lease")
@@ -112,7 +112,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// extension metadata
 	conn, err := schemaVersionLease.Conn()
 	if err != nil {
-		return nil, fmt.Errorf("Dependency checking error while trying to open DB connection: %w", err)
+		return nil, connStr, fmt.Errorf("Dependency checking error while trying to open DB connection: %w", err)
 	}
 	err = pgmodel.CheckDependencies(conn, appVersion, migrationFailedDueToLockError, extOptions)
 	if err != nil {
@@ -120,13 +120,13 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		if migrationFailedDueToLockError {
 			log.Error("msg", "Unable to run migrations; failed to acquire the lock. If the database is on an incorrect version, ensure there are no other connectors running and try again.", "err", err)
 		}
-		return nil, err
+		return nil, connStr, err
 	}
 
 	if cfg.InstallExtensions {
 		// Only check for background workers if TimessaleDB is installed.
 		if notOk, err := isBGWLessThanDBs(conn); err != nil {
-			return nil, fmt.Errorf("Error checking the number of background workers: %w", err)
+			return nil, connStr, fmt.Errorf("Error checking the number of background workers: %w", err)
 		} else if notOk {
 			log.Warn("msg", "Maximum background worker setting is too low for the number of databases in your system. "+
 				"Please increase your timescaledb.max_background_workers setting. See https://docs.timescale.com/latest/getting-started/configuring#workers for more information.")
@@ -135,7 +135,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 
 	isLicenseOSS, err := isTimescaleDBOSS(conn)
 	if err != nil {
-		return nil, fmt.Errorf("fetching license information: %w", err)
+		return nil, connStr, fmt.Errorf("fetching license information: %w", err)
 	}
 	if isLicenseOSS {
 		log.Warn("msg", "WARNING: Using the Apache2 version of TimescaleDB. This version does not include "+
@@ -147,7 +147,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	elector, err = initElector(cfg, promMetrics)
 
 	if err != nil {
-		return nil, fmt.Errorf("elector init error: %w", err)
+		return nil, connStr, fmt.Errorf("elector init error: %w", err)
 	}
 
 	if (elector == nil && !cfg.APICfg.HighAvailability) && !cfg.APICfg.ReadOnly {
@@ -170,7 +170,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		}
 		multiTenancy, err = tenancy.NewAuthorizer(multiTenancyConfig)
 		if err != nil {
-			return nil, fmt.Errorf("new tenancy: %w", err)
+			return nil, connStr, fmt.Errorf("new tenancy: %w", err)
 		}
 		cfg.APICfg.MultiTenancy = multiTenancy
 	}
@@ -179,10 +179,10 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	// can change database GUC settings
 	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly)
 	if err != nil {
-		return nil, fmt.Errorf("client creation error: %w", err)
+		return nil, connStr, fmt.Errorf("client creation error: %w", err)
 	}
 
-	return client, nil
+	return client, connStr, nil
 }
 
 func isTimescaleDBOSS(conn *pgx.Conn) (bool, error) {

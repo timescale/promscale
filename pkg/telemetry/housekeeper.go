@@ -75,10 +75,12 @@ func (t *housekeeper) housekeeping() {
 	}
 }
 
+type Stats map[string]int64
+
 func convertStatsToMetadata(s Stats) Metadata {
 	m := make(Metadata, len(s))
 	for k, v := range s {
-		m[k] = strconv.FormatFloat(v, 'f', 2, 64)
+		m[k] = strconv.FormatInt(v, 10)
 	}
 	return m
 }
@@ -86,12 +88,12 @@ func convertStatsToMetadata(s Stats) Metadata {
 func getInstanceInformationStats(conn pgxconn.PgxConn) (Stats, error) {
 	stats := make(Stats)
 	var (
-		samples        float64
-		queriesExec    float64
-		queriesTimeout float64
-		queriesFailed  float64
-		traceQueryReqs float64
-		traceDepReqs   float64
+		samples        int64
+		queriesExec    int64
+		queriesTimeout int64
+		queriesFailed  int64
+		traceQueryReqs int64
+		traceDepReqs   int64
 	)
 	if err := conn.QueryRow(context.Background(), `
 	SELECT

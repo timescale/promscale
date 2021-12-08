@@ -40,8 +40,8 @@ $$
                     counter_reset.promscale_trace_dependency_requests_executed_total    counter_reset_traces_dependency_queries_executed
                 FROM
                     SCHEMA_PS_CATALOG.promscale_instance_information stale INNER JOIN SCHEMA_PS_CATALOG.promscale_instance_information counter_reset ON true
-                WHERE
-                    counter_reset.is_counter_reset_row = TRUE AND stale.is_counter_reset_row = FALSE
+                WHERE 
+                    counter_reset.is_counter_reset_row = TRUE AND (stale.is_counter_reset_row = FALSE AND current_timestamp - stale.last_updated > interval '1 HOUR') -- consider only those rows as stale who were last updated beyond an hour.
                 GROUP BY
                     counter_reset.promscale_ingested_samples_total,
                     counter_reset.promscale_metrics_queries_executed_total,
@@ -50,10 +50,10 @@ $$
                     counter_reset.promscale_trace_query_requests_executed_total,
                     counter_reset.promscale_trace_dependency_requests_executed_total
             ) AS subquery
-        WHERE deletable = false AND current_timestamp - last_updated > interval '1 HOUR';
+        WHERE is_counter_reset_row = TRUE;
 
         -- Delete the stale rows.
-        DELETE FROM SCHEMA_PS_CATALOG.promscale_instance_information WHERE deletable = TRUE AND current_timestamp - last_updated > interval '1 HOUR';
+        DELETE FROM SCHEMA_PS_CATALOG.promscale_instance_information WHERE is_counter_reset_row = FALSE AND current_timestamp - last_updated > interval '1 HOUR';
     END;
 $$
 LANGUAGE PLPGSQL;
