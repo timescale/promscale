@@ -89,7 +89,7 @@ func Run(cfg *Config) error {
 	}
 
 	promMetrics := api.InitMetrics()
-	client, connStr, err := CreateClient(cfg, promMetrics)
+	client, err := CreateClient(cfg, promMetrics)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", err.Error())
 		return startupError
@@ -110,7 +110,7 @@ func Run(cfg *Config) error {
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
-	telemetryEngine, err := telemetry.NewEngine(client.Connection, PromscaleID, connStr)
+	telemetryEngine, err := telemetry.NewEngine(client.Connection, PromscaleID, cfg.PgmodelCfg.GetConnectionStr())
 	if err != nil {
 		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
 		return fmt.Errorf("creating telemetry-engine: %w", err)
@@ -136,7 +136,9 @@ func Run(cfg *Config) error {
 			log.Error("msg", "error starting housekeeping for telemetry", "err", err.Error())
 			return fmt.Errorf("start housekeeper: %w", err)
 		}
-		defer housekeeper.Stop()
+		defer func() {
+			_ = housekeeper.Stop()
+		}()
 	}
 
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
