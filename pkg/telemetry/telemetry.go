@@ -33,12 +33,15 @@ type engineImpl struct {
 	uuid [16]byte
 	conn pgxconn.PgxConn
 
+	stopHousekeeping func()
+	keeper           housekeeper
+
 	stop chan struct{}
 
 	metrics sync.Map
 }
 
-func NewEngine(conn pgxconn.PgxConn, uuid [16]byte) (*engineImpl, error) {
+func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string) (*engineImpl, error) {
 	isTelemetryOff, err := isTelemetryOff(conn)
 	if err != nil {
 		log.Debug("msg", "unable to get TimescaleDB telemetry configuration. Maybe TimescaleDB is not installed", "err", err.Error())
@@ -48,10 +51,21 @@ func NewEngine(conn pgxconn.PgxConn, uuid [16]byte) (*engineImpl, error) {
 		log.Warn("msg", "Promscale collects anonymous usage telemetry data to help the Promscale team better understand and assist users. "+
 			"This can be disabled via the process described at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
 	}
+
+	advisoryLock, err := util.NewPgAdvisoryLock(housekeeperLockId, connStr)
+	if err != nil {
+		return nil, fmt.Errorf("creating advisory lock: %w", err)
+	}
+
 	t := &engineImpl{
 		conn: conn,
 		uuid: uuid,
 	}
+	t.keeper = housekeeper{
+		engineCopy: t,
+		lock:       advisoryLock,
+	}
+
 	if err := t.writeMetadata(); err != nil {
 		return nil, fmt.Errorf("writing metadata: %w", err)
 	}
@@ -132,6 +146,11 @@ func (t *engineImpl) Sync() error {
 func (t *engineImpl) Stop() {
 	t.stop <- struct{}{}
 	close(t.stop)
+
+	// If we started housekeeping in the current session, then we need to stop it.
+	if t.stopHousekeeping != nil {
+		t.stopHousekeeping()
+	}
 }
 
 func (t *engineImpl) Start() {
@@ -149,8 +168,31 @@ func (t *engineImpl) Start() {
 			if err := t.syncWithInfoTable(); err != nil {
 				log.Debug("msg", "error syncing with info table", "err", err.Error())
 			}
+
+			// Check and try to become housekeeper for telemetry if the housekeeper has died.
+			// Note: housekeeper is (only) 1 promscale out of a set of promscales connected to TimescaleDB.
+			// It may happen that one Promscale that was housekeeping has been killed by the kubernetes scheduler,
+			// hence, lets try to take that position now.
+			success, err := t.keeper.Try()
+			if err != nil {
+				log.Debug("msg", "error when trying for housekeeper advisory lock", "err", err.Error())
+				continue
+			}
+			if success {
+				// Become the housekeeper as the previous housekeeper has died.
+				log.Debug("msg", "now I am the telemetry-housekeeper")
+				err := t.doHousekeeping()
+				if err != nil {
+					log.Debug("msg", "error doing housekeeping after taking over", "err", err.Error())
+				}
+			}
 		}
 	}()
+}
+
+func (t *engineImpl) doHousekeeping() error {
+	t.stopHousekeeping = t.keeper.Stop
+	return t.keeper.Start()
 }
 
 func (t *engineImpl) syncWithInfoTable() error {
@@ -204,16 +246,8 @@ func (t *engineImpl) RegisterMetric(columnName string, gaugeOrCounterMetric prom
 	return nil
 }
 
-func (t *engineImpl) Housekeeper(connStr string) (*housekeeper, error) {
-	advisoryLock, err := util.NewPgAdvisoryLock(housekeeperLockId, connStr)
-	if err != nil {
-		return nil, fmt.Errorf("creating advisory lock: %w", err)
-	}
-	return &housekeeper{
-		conn:       t.conn,
-		lock:       advisoryLock,
-		engineCopy: t,
-	}, nil
+func (t *engineImpl) Housekeeper() *housekeeper {
+	return &t.keeper
 }
 
 func isCounterOrGauge(metric prometheus.Metric) bool {

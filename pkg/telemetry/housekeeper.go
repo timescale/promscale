@@ -18,15 +18,20 @@ import (
 const housekeeperLockId = 0x2D829A932AAFCEDE // Random.
 
 type housekeeper struct {
-	conn          pgxconn.PgxConn
+	engineCopy    *engineImpl
 	lock          util.AdvisoryLock
 	isHousekeeper bool
-	engineCopy    *engineImpl
 	stop          chan struct{}
 }
 
 // Try tries to become a housekeeper of the current Promscale session.
 func (t *housekeeper) Try() (success bool, err error) {
+	if t.isHousekeeper {
+		// If already a housekeeper, we need to explicitly say that Try was false,
+		// since pg_try_advisory_lock() returns true for the same lockID for that
+		// Promscale session.
+		return false, nil
+	}
 	acquired, err := t.lock.GetAdvisoryLock()
 	if err != nil {
 		return false, fmt.Errorf("attemping telemetry pg-advisory-lock: %w", err)
@@ -51,6 +56,7 @@ func (t *housekeeper) Start() error {
 func (t *housekeeper) Stop() {
 	t.stop <- struct{}{}
 	close(t.stop)
+	_, _ = t.lock.Unlock()
 }
 
 const housekeepingDuration = time.Hour
@@ -62,14 +68,14 @@ func (t *housekeeper) housekeeping() {
 			return
 		case <-time.After(housekeepingDuration):
 		}
-		informationTableStats, err := getInstanceInformationStats(t.conn)
+		informationTableStats, err := getInstanceInformationStats(t.engineCopy.conn)
 		if err == nil {
 			t.engineCopy.writeToTimescaleMetadataTable(convertStatsToMetadata(informationTableStats))
 		} else {
 			log.Debug("msg", "error getting instance information table stats", "error", err.Error())
 		}
 
-		if err = cleanStalePromscalesAfterCounterReset(t.conn); err != nil {
+		if err = cleanStalePromscalesAfterCounterReset(t.engineCopy.conn); err != nil {
 			log.Debug("msg", "error cleaning stale Promscale rows", "error", err.Error())
 		}
 	}

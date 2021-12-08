@@ -110,7 +110,7 @@ func Run(cfg *Config) error {
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
-	telemetryEngine, err := telemetry.NewEngine(client.Connection, PromscaleID)
+	telemetryEngine, err := telemetry.NewEngine(client.Connection, PromscaleID, connStr)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
 		return fmt.Errorf("creating telemetry-engine: %w", err)
@@ -125,12 +125,7 @@ func Run(cfg *Config) error {
 		return fmt.Errorf("error registering metrics for telemetry: %w", err)
 	}
 
-	housekeeper, err := telemetryEngine.Housekeeper(connStr)
-	if err != nil {
-		log.Error("msg", "error creating telemetry housekeeper", "err", err.Error())
-		return fmt.Errorf("error creating telemetry housekeeper: %w", err)
-	}
-
+	housekeeper := telemetryEngine.Housekeeper()
 	success, err := housekeeper.Try()
 	if err != nil {
 		log.Error("msg", "error trying to become housekeeper", "err", err.Error())
@@ -138,6 +133,7 @@ func Run(cfg *Config) error {
 	}
 	if success {
 		if err = housekeeper.Start(); err != nil {
+			log.Error("msg", "error starting housekeeping for telemetry", "err", err.Error())
 			return fmt.Errorf("start housekeeper: %w", err)
 		}
 		defer housekeeper.Stop()
