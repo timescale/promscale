@@ -86,14 +86,14 @@ func TestMigrateLock(t *testing.T) {
 		}
 		conn.Release()
 		metrics := api.InitMetrics()
-		reader, err := runner.CreateClient(&cfg, metrics)
+		reader, _, err := runner.CreateClient(&cfg, metrics)
 		// reader on its own should start
 		if err != nil {
 			t.Fatal(err)
 		}
 		cfg2 := cfg
 		cfg2.Migrate = true
-		migrator, err := runner.CreateClient(&cfg2, metrics)
+		migrator, _, err := runner.CreateClient(&cfg2, metrics)
 		// a regular migrator will just become a reader
 		if err != nil {
 			t.Fatal(err)
@@ -101,7 +101,7 @@ func TestMigrateLock(t *testing.T) {
 
 		cfg3 := cfg2
 		cfg3.StopAfterMigrate = true
-		_, err = runner.CreateClient(&cfg3, metrics)
+		_, _, err = runner.CreateClient(&cfg3, metrics)
 		if err == nil {
 			t.Fatalf("migration should fail due to lock")
 		}
@@ -112,7 +112,7 @@ func TestMigrateLock(t *testing.T) {
 		reader.Close()
 		migrator.Close()
 
-		onlyMigrator, err := runner.CreateClient(&cfg3, metrics)
+		onlyMigrator, _, err := runner.CreateClient(&cfg3, metrics)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,14 +120,14 @@ func TestMigrateLock(t *testing.T) {
 			t.Fatal(onlyMigrator)
 		}
 
-		migrator, err = runner.CreateClient(&cfg2, metrics)
+		migrator, _, err = runner.CreateClient(&cfg2, metrics)
 		// a regular migrator should still start
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer migrator.Close()
 
-		reader, err = runner.CreateClient(&cfg, metrics)
+		reader, _, err = runner.CreateClient(&cfg, metrics)
 		// reader should still be able to start
 		if err != nil {
 			t.Fatal(err)
@@ -187,7 +187,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 
 		metrics := api.InitMetrics()
 		cfg.InstallExtensions = false
-		migrator, err := runner.CreateClient(&cfg, metrics)
+		migrator, _, err := runner.CreateClient(&cfg, metrics)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +196,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 		verifyExtensionExists(t, db, "promscale", false)
 
 		cfg.InstallExtensions = true
-		migrator, err = runner.CreateClient(&cfg, metrics)
+		migrator, _, err = runner.CreateClient(&cfg, metrics)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -153,14 +153,12 @@ func (t *engineImpl) Start() {
 	}()
 }
 
-type Stats map[string]float64
-
 func (t *engineImpl) syncWithInfoTable() error {
 	var (
 		err             error
 		underlyingValue float64
 
-		newStats = make(Stats)
+		newStats = make(map[string]float64)
 	)
 	t.metrics.Range(func(statName, metric interface{}) bool {
 		columnName := statName.(string)
@@ -212,8 +210,9 @@ func (t *engineImpl) Housekeeper(connStr string) (*housekeeper, error) {
 		return nil, fmt.Errorf("creating advisory lock: %w", err)
 	}
 	return &housekeeper{
-		conn: t.conn,
-		lock: advisoryLock,
+		conn:       t.conn,
+		lock:       advisoryLock,
+		engineCopy: t,
 	}, nil
 }
 
@@ -227,7 +226,7 @@ func isCounterOrGauge(metric prometheus.Metric) bool {
 }
 
 // syncInfoTable stats with promscale_instance_information table.
-func (t *engineImpl) syncInfoTable(stats Stats) error {
+func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
 	lastUpdated := time.Now()
 
 	pgUUID := new(pgtype.UUID)
