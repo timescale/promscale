@@ -1,4 +1,4 @@
-name: Integration test
+name: Integration
 
 on:
   push:
@@ -7,9 +7,7 @@ on:
     branches: [master, main, force_test, release-*]
 
 jobs:
-
-  build:
-    name: Integration Tests
+  run:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,4 +33,3 @@ jobs:
     - name: ${{ matrix.test-setups.name }}
       run: ./scripts/end_to_end_tests.sh ${{ matrix.test-setups.image }}
       shell: bash
-
