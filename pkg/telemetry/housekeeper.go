@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/timescale/promscale/pkg/log"
@@ -53,10 +54,24 @@ func (t *housekeeper) Start() error {
 	return nil
 }
 
-func (t *housekeeper) Stop() {
+func (t *housekeeper) Stop() error {
 	t.stop <- struct{}{}
 	close(t.stop)
-	_, _ = t.lock.Unlock()
+	_, err := t.lock.Unlock()
+	if err != nil {
+		return fmt.Errorf("unlock: %w", err)
+	}
+	t.lock.Close()
+	return nil
+}
+
+func (t *housekeeper) Sync() error {
+	informationTableStats, err := getInstanceInformationStats(t.engineCopy.conn)
+	if err != nil {
+		return fmt.Errorf("get instance stats: %w", err)
+	}
+	t.engineCopy.writeToTimescaleMetadataTable(convertStatsToMetadata(informationTableStats))
+	return nil
 }
 
 const housekeepingDuration = time.Hour
@@ -75,7 +90,7 @@ func (t *housekeeper) housekeeping() {
 			log.Debug("msg", "error getting instance information table stats", "error", err.Error())
 		}
 
-		if err = cleanStalePromscalesAfterCounterReset(t.engineCopy.conn); err != nil {
+		if err = CleanStalePromscalesAfterCounterReset(t.engineCopy.conn); err != nil {
 			log.Debug("msg", "error cleaning stale Promscale rows", "error", err.Error())
 		}
 	}
@@ -86,9 +101,13 @@ type Stats map[string]int64
 func convertStatsToMetadata(s Stats) Metadata {
 	m := make(Metadata, len(s))
 	for k, v := range s {
-		m[k] = strconv.FormatInt(v, 10)
+		m[trim(k, "promscale_")] = strconv.FormatInt(v, 10) // trim 'promscale_' since that will be added by the extension.
 	}
 	return m
+}
+
+func trim(s, trimStr string) string {
+	return strings.TrimPrefix(s, trimStr)
 }
 
 func getInstanceInformationStats(conn pgxconn.PgxConn) (Stats, error) {
@@ -123,7 +142,7 @@ func getInstanceInformationStats(conn pgxconn.PgxConn) (Stats, error) {
 	return stats, nil
 }
 
-func cleanStalePromscalesAfterCounterReset(conn pgxconn.PgxConn) error {
+func CleanStalePromscalesAfterCounterReset(conn pgxconn.PgxConn) error {
 	_, err := conn.Exec(context.Background(), "SELECT _ps_catalog.clean_stale_promscales_after_counter_reset()")
 	return err
 }

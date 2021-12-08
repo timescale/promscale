@@ -33,8 +33,8 @@ type engineImpl struct {
 	uuid [16]byte
 	conn pgxconn.PgxConn
 
-	stopHousekeeping func()
 	keeper           housekeeper
+	stopHousekeeping func() error
 
 	stop chan struct{}
 
@@ -149,7 +149,7 @@ func (t *engineImpl) Stop() {
 
 	// If we started housekeeping in the current session, then we need to stop it.
 	if t.stopHousekeeping != nil {
-		t.stopHousekeeping()
+		_ = t.stopHousekeeping()
 	}
 }
 

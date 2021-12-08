@@ -20,4 +20,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_PS_CATALOG.promscale_instan
 -- To avoid this loss of data, we treat the first row as immutable, and use it for incrementing
 -- the attributes of this row, with the values of the stale rows before they are deleted.
 INSERT INTO SCHEMA_PS_CATALOG.promscale_instance_information (uuid, last_updated, is_counter_reset_row)
-    VALUES ('00000000-0000-0000-0000-000000000000', current_timestamp, TRUE);
+    VALUES ('00000000-0000-0000-0000-000000000000', '2021-12-09 00:00:00'::TIMESTAMPTZ, TRUE);

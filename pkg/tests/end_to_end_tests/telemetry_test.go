@@ -116,12 +116,99 @@ func TestOnlyOneHousekeeper(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
+		// Should error due to unique constraint for counter_reset_row, as there already exists a counter reset row.
 		_, err := conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information (uuid, last_updated, is_counter_reset_row) VALUES ('00000000-0000-0000-0000-000000000000', current_timestamp, TRUE)`)
-		require.NoError(t, err)
-
-		// Should error due to unique constraint for counter_reset_row.
-		_, err = conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information (uuid, last_updated, is_counter_reset_row) VALUES ('00000000-0000-0000-0000-000000000000', current_timestamp, TRUE)`)
 		require.Error(t, err)
 		require.True(t, strings.Contains(err.Error(), `violates unique constraint "promscale_instance_information_pkey"`))
+	})
+}
+
+func TestHousekeeper(t *testing.T) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
+		conn := pgxconn.NewPgxConn(db)
+
+		connStr := testhelpers.PgConnectURLUser(*testDatabase, "prom_writer_user")
+		engine, err := telemetry.NewEngine(conn, generateUUID(), connStr)
+		require.NoError(t, err)
+
+		engine.Start()
+		defer engine.Stop()
+
+		mockMetric := prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "test",
+			Name:      "counter",
+		})
+		require.NoError(t, engine.RegisterMetric("promscale_ingested_samples_total", mockMetric))
+
+		var val string
+		err = conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_ingested_samples_total'").Scan(&val)
+		require.Error(t, err)
+		require.Equal(t, "no rows in result set", err.Error())
+
+		h := engine.Housekeeper()
+
+		success, err := h.Try()
+		require.NoError(t, err)
+		require.True(t, success)
+
+		require.NoError(t, h.Start())
+		defer func() {
+			require.NoError(t, h.Stop())
+		}()
+
+		require.NoError(t, h.Sync())
+
+		err = conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_ingested_samples_total'").Scan(&val)
+		require.NoError(t, err)
+		require.Equal(t, "0", val)
+
+		mockMetric.Add(100)
+
+		require.NoError(t, engine.Sync())
+		require.NoError(t, h.Sync())
+
+		err = conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_ingested_samples_total'").Scan(&val)
+		require.NoError(t, err)
+		require.Equal(t, "100", val)
+	})
+}
+
+func TestCleanStalePromscales(t *testing.T) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
+		conn := pgxconn.NewPgxConn(db)
+
+		var cnt int64
+		err := conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 1, int(cnt)) // The counter reset row.
+
+		// Insert a stale Promscale instance row.
+		_, err = conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information (uuid, last_updated, promscale_ingested_samples_total, is_counter_reset_row) VALUES ('10000000-0000-0000-0000-000000000000', current_timestamp - INTERVAL '1 DAY', 100, FALSE)`)
+		require.NoError(t, err)
+
+		err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 2, int(cnt)) // The counter reset row + promscale instance row added above.
+
+		err = conn.QueryRow(context.Background(), "SELECT promscale_ingested_samples_total FROM _ps_catalog.promscale_instance_information WHERE is_counter_reset_row = TRUE").Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 0, int(cnt))
+
+		// Clean up stale promscale rows.
+		require.NoError(t, telemetry.CleanStalePromscalesAfterCounterReset(conn))
+
+		err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 1, int(cnt)) // The counter reset row.
+
+		err = conn.QueryRow(context.Background(), "SELECT promscale_ingested_samples_total FROM _ps_catalog.promscale_instance_information WHERE is_counter_reset_row = TRUE").Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 100, int(cnt))
 	})
 }
