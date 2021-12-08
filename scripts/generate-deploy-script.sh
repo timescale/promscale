@@ -5,7 +5,7 @@ if [ -n "$DEBUG" ]; then
 fi
 
 DIR=$(cd $(dirname "${BASH_SOURCE}") && pwd -P)
-HELMDIR="${DIR}/../helm-chart"
+HELMDIR="${DIR}/../deploy/helm-chart"
 
 # Default values.yaml file to provide to helm template command.
 FILE_ARG="${HELMDIR}/values.yaml"

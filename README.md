@@ -53,7 +53,7 @@ remote storage endpoints. For more information about prom-migrator, visit
   * [Docker](docs/docker.md)
   * [Binaries](docs/binary.md)
   * [Source](docs/binary.md#building-from-source)
-  * [Helm](helm-chart/README.md)
+  * [Helm](deploy/helm-chart/README.md)
   * [Tutorial: Bare Metal Setup for a Monitoring Suite](docs/bare-metal-promscale-stack.md)
   * [Configuring Prometheus](docs/configuring_prometheus.md)
 * **[Analyzing Data Using SQL](docs/sql_schema.md)**
@@ -167,7 +167,7 @@ You can also [build binaries from source](docs/binary.md#building-from-source).
 #### ⎈ Helm (sub)chart for Promscale Connector only
 
 A Helm chart for only the Promscale Connector is available in
-the [helm-chart directory](helm-chart/README.md) of this repository.
+the [helm-chart directory](deploy/helm-chart/README.md) of this repository.
 
 This is used as a Helm dependency from the `tobs`
 [Helm chart](https://github.com/timescale/tobs/tree/master/chart) and can be used as a dependency in your own custom Helm chart as well.
