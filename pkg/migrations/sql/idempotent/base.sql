@@ -2879,21 +2879,21 @@ BEGIN
         IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
             RETURN QUERY
                 SELECT
-                   id,
-                   metric_name,
-                   table_name,
-                   label_keys,
-                   retention_period,
-                   chunk_interval,
+                   i.id,
+                   i.metric_name,
+                   i.table_name,
+                   i.label_keys,
+                   i.retention_period,
+                   i.chunk_interval,
                    NULL::interval compressed_interval,
                    NULL::interval total_interval,
-                   pg_size_bytes(total_size) as before_compression_bytes,
+                   pg_size_bytes(i.total_size) as before_compression_bytes,
                    NULL::bigint as after_compression_bytes,
-                   pg_size_bytes(total_size) as total_size_bytes,
-                   total_size,
-                   compression_ratio,
-                   total_chunks,
-                   compressed_chunks
+                   pg_size_bytes(i.total_size) as total_size_bytes,
+                   i.total_size,
+                   i.compression_ratio,
+                   i.total_chunks,
+                   i.compressed_chunks
                 FROM
                 (
                     SELECT
