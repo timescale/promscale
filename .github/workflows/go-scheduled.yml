@@ -1,5 +1,9 @@
 name: Daily scheduled extended Go tests
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -eo pipefail {0}
+
 on:
   push:
     branches: [force_test, release-*]

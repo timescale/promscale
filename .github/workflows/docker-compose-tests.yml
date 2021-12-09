@@ -1,5 +1,9 @@
 name: Docker Compose tests
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -eo pipefail {0}
+
 on:
   push:
     branches: [master, main, force_test, release-*]
@@ -26,8 +30,6 @@ jobs:
 
     - name: Test docker-compose setup referenced in docs
       run: ./docker-compose/test.sh
-      shell: bash
 
     - name: Test high-availability docker-compose setup
       run: ./docker-compose/high-availability/test.sh
-      shell: bash
