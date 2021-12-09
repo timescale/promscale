@@ -2,11 +2,17 @@
 
 # sql related stuff
 *.sql @jgpruitt
+
+# Go packages
+/pkg/api @antekresic
+/pkg/ha @antekresic
+/pkg/internal @antekresic
 /pkg/migrations/ @jgpruitt
-/pkg/tests/upgrade_tests/ @jgpruitt
-/pkg/tests/testdata/ @jgpruitt
+/pkg/pgmodel/ingestor @niksajakovljevic @antekresic
+/pkg/runner @antekresic
 /pkg/tests/test_migrations/ @jgpruitt
-/pkg/pgmodel/ingestor @niksajakovljevic
+/pkg/tests/testdata/ @jgpruitt
+/pkg/tests/upgrade_tests/ @jgpruitt
 
 # helm and kubernetes related parts
 /helm-chart/ @cevian @VineethReddy02 @paulfantom @JamesGuthrie
