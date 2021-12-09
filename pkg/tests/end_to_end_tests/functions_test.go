@@ -21,6 +21,33 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
+func TestMetricView(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
+		defer db.Close()
+		dbWriter := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer dbWriter.Close()
+
+		_, err := dbWriter.Exec(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name(metric_name => $1)", "test_metric_name")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var res string
+		err = dbWriter.QueryRow(context.Background(), "SELECT metric_name FROM _prom_catalog.metric_view()").Scan(&res)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res != "test_metric_name" {
+			t.Fatal("Fail")
+		}
+	})
+}
+
 func TestSQLJsonLabelArray(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
