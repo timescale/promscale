@@ -6,7 +6,6 @@ package testhelpers
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -18,19 +17,20 @@ import (
 const prometheusImage = "prom/prometheus:main"
 
 // StartPromContainer starts a Prometheus container for use in testing
-// #nosec
 func StartPromContainer(storagePath string, ctx context.Context) (testcontainers.Container, string, nat.Port, error) {
 	// Set the storage directories permissions so Prometheus can write to them.
-	err := os.Chmod(storagePath, 0777)
+	err := os.Chmod(storagePath, 0777) // #nosec
 	if err != nil {
 		return nil, "", "", err
 	}
-	if err := os.Chmod(filepath.Join(storagePath, "wal"), 0777); err != nil {
+
+	err = os.Chmod(filepath.Join(storagePath, "wal"), 0777) // #nosec
+	if err != nil {
 		return nil, "", "", err
 	}
 
 	promConfigFile := filepath.Join(storagePath, "prometheus.yml")
-	err = ioutil.WriteFile(promConfigFile, []byte(emptyPromConfig), 0777)
+	err = os.WriteFile(promConfigFile, []byte(emptyPromConfig), 0777) // #nosec
 	if err != nil {
 		return nil, "", "", err
 	}
