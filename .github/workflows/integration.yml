@@ -1,5 +1,9 @@
 name: Integration
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -eo pipefail {0}
+
 on:
   push:
     branches: [master, main, force_test, release-*, staging, trying]
