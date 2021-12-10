@@ -3,13 +3,20 @@
 # sql related stuff
 *.sql @jgpruitt
 
+/cmd/prom-migrator @Harkishen-Singh
+
 # Go packages
-/pkg/api @antekresic
+/pkg/api @antekresic @Harkishen-Singh
+/pkg/ewma @Harkishen-Singh
 /pkg/ha @antekresic
 /pkg/internal @antekresic
 /pkg/migrations/ @jgpruitt
-/pkg/pgmodel/ingestor @niksajakovljevic @antekresic
+/pkg/migration-tool @Harkishen-Singh
+/pkg/pgmodel/ingestor @niksajakovljevic @antekresic @Harkishen-Singh
+/pkg/promql @Harkishen-Singh
 /pkg/runner @antekresic
+/pkg/telemetry @Harkishen-Singh
+/pkg/tenancy @Harkishen-Singh
 /pkg/tests/test_migrations/ @jgpruitt
 /pkg/tests/testdata/ @jgpruitt
 /pkg/tests/upgrade_tests/ @jgpruitt
