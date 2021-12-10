@@ -7,6 +7,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,9 +21,12 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/util"
 )
 
+// Engine for telemetry performs activities like inserting metadata of Promscale and Tobs (env vars with 'TOBS_TELEMETRY_')
+// into the _timescaledb_catalog.metadata table. It allows the caller to register Prometheus Counter & Gauge metrics
+// that will be monitored every hour and filled into _ps_catalog.promscale_instance_information table and then into
+// the _timescaledb_catalog.metadata table.
 type Engine interface {
 	RegisterMetric(columnName string, gaugeOrCounterMetric prometheus.Metric) error
 	Start()
@@ -33,37 +37,27 @@ type engineImpl struct {
 	uuid [16]byte
 	conn pgxconn.PgxConn
 
-	keeper           housekeeper
-	stopHousekeeping func() error
-
 	stop chan struct{}
 
 	metrics sync.Map
 }
 
-func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, connStr string) (*engineImpl, error) {
+func NewEngine(conn pgxconn.PgxConn, uuid [16]byte) (*engineImpl, error) {
 	isTelemetryOff, err := isTelemetryOff(conn)
 	if err != nil {
 		log.Debug("msg", "unable to get TimescaleDB telemetry configuration. Maybe TimescaleDB is not installed", "err", err.Error())
 	}
-	if !isTelemetryOff {
+	if isTelemetryOff {
+		return nil, nil
+	} else {
 		// Warn the users about telemetry collection only if telemetry collection is enabled.
 		log.Warn("msg", "Promscale collects anonymous usage telemetry data to help the Promscale team better understand and assist users. "+
 			"This can be disabled via the process described at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
 	}
 
-	advisoryLock, err := util.NewPgAdvisoryLock(housekeeperLockId, connStr)
-	if err != nil {
-		return nil, fmt.Errorf("creating advisory lock: %w", err)
-	}
-
 	t := &engineImpl{
 		conn: conn,
 		uuid: uuid,
-	}
-	t.keeper = housekeeper{
-		engineCopy: t,
-		lock:       advisoryLock,
 	}
 
 	if err := t.writeMetadata(); err != nil {
@@ -102,7 +96,7 @@ const (
 	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 )
 
-// writeToTimescaleMetadataTable syncs the metadata/stats with telemetry metadata table and returns the last error if any.
+// writeToTimescaleMetadataTable syncs the metadata/stats with telemetry metadata table.
 func (t *engineImpl) writeToTimescaleMetadataTable(m Metadata) {
 	// Try to update via Promscale extension.
 	if err := t.syncWithMetadataTable(metadataUpdateWithExtension, m); err != nil {
@@ -140,23 +134,24 @@ func (t *engineImpl) syncWithMetadataTable(queryFormat string, m Metadata) error
 }
 
 func (t *engineImpl) Sync() error {
-	return t.syncWithInfoTable()
+	if err := t.syncWithInfoTable(); err != nil {
+		return err
+	}
+	t.housekeeping()
+	return nil
 }
 
 func (t *engineImpl) Stop() {
 	t.stop <- struct{}{}
 	close(t.stop)
-
-	// If we started housekeeping in the current session, then we need to stop it.
-	if t.stopHousekeeping != nil {
-		_ = t.stopHousekeeping()
-	}
 }
+
+const telemetrySync = time.Hour
 
 func (t *engineImpl) Start() {
 	t.stop = make(chan struct{})
 	go func() {
-		collect := time.NewTicker(time.Minute * 55) // Collect telemetry info every 55 minutes since housekeeper fills the _timescaledb_catalog.metadata table every 1 hour.
+		collect := time.NewTicker(telemetrySync) // Collect telemetry info every hour.
 		defer collect.Stop()
 
 		for {
@@ -165,34 +160,11 @@ func (t *engineImpl) Start() {
 				return
 			case <-collect.C:
 			}
-			if err := t.syncWithInfoTable(); err != nil {
-				log.Debug("msg", "error syncing with info table", "err", err.Error())
-			}
-
-			// Check and try to become housekeeper for telemetry if the housekeeper has died.
-			// Note: housekeeper is (only) 1 promscale out of a set of promscales connected to TimescaleDB.
-			// It may happen that one Promscale that was housekeeping has been killed by the kubernetes scheduler,
-			// hence, lets try to take that position now.
-			success, err := t.keeper.Try()
-			if err != nil {
-				log.Debug("msg", "error when trying for housekeeper advisory lock", "err", err.Error())
-				continue
-			}
-			if success {
-				// Become the housekeeper as the previous housekeeper has died.
-				log.Debug("msg", "now I am the telemetry-housekeeper")
-				err := t.doHousekeeping()
-				if err != nil {
-					log.Debug("msg", "error doing housekeeping after taking over", "err", err.Error())
-				}
+			if err := t.Sync(); err != nil {
+				log.Debug("msg", "error syncing telemetry", "err", err.Error())
 			}
 		}
 	}()
-}
-
-func (t *engineImpl) doHousekeeping() error {
-	t.stopHousekeeping = t.keeper.Stop
-	return t.keeper.Start()
 }
 
 func (t *engineImpl) syncWithInfoTable() error {
@@ -246,10 +218,6 @@ func (t *engineImpl) RegisterMetric(columnName string, gaugeOrCounterMetric prom
 	return nil
 }
 
-func (t *engineImpl) Housekeeper() *housekeeper {
-	return &t.keeper
-}
-
 func isCounterOrGauge(metric prometheus.Metric) bool {
 	switch metric.(type) {
 	case prometheus.Counter, prometheus.Gauge:
@@ -285,7 +253,7 @@ func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
 	// Sample query:
 	// INSERT INTO _ps_catalog.promscale_instance_information
 	//	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	//		ON CONFlICT (uuid) DO
+	//		ON CONFLICT (uuid) DO
 	//	UPDATE SET
 	//		last_updated = $2,
 	//		promscale_ingested_samples_total = $3,
@@ -307,6 +275,60 @@ func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
 		return fmt.Errorf("executing telemetry sync query: %w", err)
 	}
 	return nil
+}
+
+func (t *engineImpl) housekeeping() {
+	var updateInformationStats bool
+	err := t.conn.QueryRow(context.Background(), "SELECT _ps_catalog.promscale_telemetry_housekeeping($1)", telemetrySync).Scan(&updateInformationStats)
+	if err != nil {
+		log.Debug("msg", "error performing promscale telemetry housekeeping", "err", err.Error())
+	}
+	// Update information stats only when last run was beyond telemetrySync.
+	if !updateInformationStats {
+		return
+	}
+	stats, err := t.getInstanceInformationStats()
+	if err != nil {
+		log.Debug("msg", "error getting instance information stats", "err", err.Error())
+		return
+	}
+	t.writeToTimescaleMetadataTable(stats)
+}
+
+func (t *engineImpl) getInstanceInformationStats() (Metadata, error) {
+	stats := make(Metadata)
+	var (
+		samples        int64
+		queriesExec    int64
+		queriesTimeout int64
+		queriesFailed  int64
+		traceQueryReqs int64
+		traceDepReqs   int64
+	)
+	if err := t.conn.QueryRow(context.Background(), `
+	SELECT
+		sum(promscale_ingested_samples_total),
+		sum(promscale_metrics_queries_executed_total),
+		sum(promscale_metrics_queries_timedout_total),
+		sum(promscale_metrics_queries_failed_total),
+		sum(promscale_trace_query_requests_executed_total),
+		sum(promscale_trace_dependency_requests_executed_total)
+	FROM _ps_catalog.promscale_instance_information`).Scan(
+		&samples, &queriesExec, &queriesTimeout, &queriesFailed, &traceQueryReqs, &traceDepReqs,
+	); err != nil {
+		return nil, fmt.Errorf("querying values from information table: %w", err)
+	}
+	stats["ingested_samples_total"] = convertIntToString(samples)
+	stats["metrics_queries_executed_total"] = convertIntToString(queriesExec)
+	stats["metrics_queries_timedout_total"] = convertIntToString(queriesTimeout)
+	stats["metrics_queries_failed_total"] = convertIntToString(queriesFailed)
+	stats["trace_query_requests_executed_total"] = convertIntToString(traceQueryReqs)
+	stats["trace_dependency_requests_executed_total"] = convertIntToString(traceDepReqs)
+	return stats, nil
+}
+
+func convertIntToString(i int64) string {
+	return strconv.FormatInt(i, 10)
 }
 
 type noop struct{}

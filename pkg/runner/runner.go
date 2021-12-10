@@ -110,10 +110,18 @@ func Run(cfg *Config) error {
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
-	telemetryEngine, err := telemetry.NewEngine(client.Connection, PromscaleID, cfg.PgmodelCfg.GetConnectionStr())
+	var telemetryEngine telemetry.Engine
+
+	engine, err := telemetry.NewEngine(client.Connection, PromscaleID)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
 		return fmt.Errorf("creating telemetry-engine: %w", err)
+	}
+
+	if engine != nil {
+		telemetryEngine = engine
+	} else {
+		telemetryEngine = telemetry.NewNoopEngine()
 	}
 
 	telemetryEngine.Start()
@@ -123,22 +131,6 @@ func Run(cfg *Config) error {
 	if err != nil {
 		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
 		return fmt.Errorf("error registering metrics for telemetry: %w", err)
-	}
-
-	housekeeper := telemetryEngine.Housekeeper()
-	success, err := housekeeper.Try()
-	if err != nil {
-		log.Error("msg", "error trying to become housekeeper", "err", err.Error())
-		return fmt.Errorf("error trying to become housekeeper: %w", err)
-	}
-	if success {
-		if err = housekeeper.Start(); err != nil {
-			log.Error("msg", "error starting housekeeping for telemetry", "err", err.Error())
-			return fmt.Errorf("start housekeeper: %w", err)
-		}
-		defer func() {
-			_ = housekeeper.Stop()
-		}()
 	}
 
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {

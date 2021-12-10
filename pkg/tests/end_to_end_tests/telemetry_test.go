@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -40,7 +41,7 @@ func TestPromscaleTobsMetadata(t *testing.T) {
 		require.NoError(t, setTobsEnv("random"))
 		conn := pgxconn.NewPgxConn(db)
 
-		_, err := telemetry.NewEngine(conn, generateUUID(), "")
+		_, err := telemetry.NewEngine(conn, generateUUID())
 		require.NoError(t, err)
 
 		// Check if metadata is written.
@@ -63,7 +64,7 @@ func TestTelemetryInfoTableWrite(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID(), "")
+		engine, err := telemetry.NewEngine(conn, generateUUID())
 		require.NoError(t, err)
 
 		engine.Start()
@@ -130,8 +131,7 @@ func TestHousekeeper(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		connStr := testhelpers.PgConnectURLUser(*testDatabase, "prom_writer_user")
-		engine, err := telemetry.NewEngine(conn, generateUUID(), connStr)
+		engine, err := telemetry.NewEngine(conn, generateUUID())
 		require.NoError(t, err)
 
 		engine.Start()
@@ -148,27 +148,9 @@ func TestHousekeeper(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, "no rows in result set", err.Error())
 
-		h := engine.Housekeeper()
-
-		success, err := h.Try()
-		require.NoError(t, err)
-		require.True(t, success)
-
-		require.NoError(t, h.Start())
-		defer func() {
-			require.NoError(t, h.Stop())
-		}()
-
-		require.NoError(t, h.Sync())
-
-		err = conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_ingested_samples_total'").Scan(&val)
-		require.NoError(t, err)
-		require.Equal(t, "0", val)
-
 		mockMetric.Add(100)
 
 		require.NoError(t, engine.Sync())
-		require.NoError(t, h.Sync())
 
 		err = conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_ingested_samples_total'").Scan(&val)
 		require.NoError(t, err)
@@ -183,10 +165,26 @@ func TestCleanStalePromscales(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
+		engine, err := telemetry.NewEngine(conn, generateUUID())
+		require.NoError(t, err)
+
+		engine.Start()
+		defer engine.Stop()
+
 		var cnt int64
-		err := conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
+		err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 1, int(cnt)) // The counter reset row.
+
+		require.NoError(t, engine.Sync())
+
+		err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
+		require.NoError(t, err)
+		require.Equal(t, 2, int(cnt)) // The counter reset row.
+
+		// Update the last_updated of counter_reset row as it just got updated, otherwise the next allowed run would be after 1 hour.
+		_, err = conn.Exec(context.Background(), "UPDATE _ps_catalog.promscale_instance_information SET last_updated = current_timestamp - INTERVAL '1 HOUR' WHERE is_counter_reset_row = TRUE")
+		require.NoError(t, err)
 
 		// Insert a stale Promscale instance row.
 		_, err = conn.Exec(context.Background(), `INSERT INTO _ps_catalog.promscale_instance_information (uuid, last_updated, promscale_ingested_samples_total, is_counter_reset_row) VALUES ('10000000-0000-0000-0000-000000000000', current_timestamp - INTERVAL '1 DAY', 100, FALSE)`)
@@ -194,21 +192,58 @@ func TestCleanStalePromscales(t *testing.T) {
 
 		err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
 		require.NoError(t, err)
-		require.Equal(t, 2, int(cnt)) // The counter reset row + promscale instance row added above.
+		require.Equal(t, 3, int(cnt)) // The counter reset row + row added due to Sync() + promscale instance row added above.
 
 		err = conn.QueryRow(context.Background(), "SELECT promscale_ingested_samples_total FROM _ps_catalog.promscale_instance_information WHERE is_counter_reset_row = TRUE").Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 0, int(cnt))
 
-		// Clean up stale promscale rows.
-		require.NoError(t, telemetry.CleanStalePromscalesAfterCounterReset(conn))
-
-		err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
+		exists := false
+		err = conn.QueryRow(context.Background(), "SELECT count(*) > 0 FROM _ps_catalog.promscale_instance_information WHERE uuid = '10000000-0000-0000-0000-000000000000'").Scan(&exists)
 		require.NoError(t, err)
-		require.Equal(t, 1, int(cnt)) // The counter reset row.
+		require.True(t, exists)
 
+		// Clean up stale promscale rows.
+		require.NoError(t, engine.Sync())
+
+		err = conn.QueryRow(context.Background(), "SELECT count(*) > 0 FROM _ps_catalog.promscale_instance_information WHERE uuid = '10000000-0000-0000-0000-000000000000'").Scan(&exists)
+		require.NoError(t, err)
+		require.False(t, exists)
+
+		// Check counter reset row's value.
 		err = conn.QueryRow(context.Background(), "SELECT promscale_ingested_samples_total FROM _ps_catalog.promscale_instance_information WHERE is_counter_reset_row = TRUE").Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 100, int(cnt))
+
+		var lastRunWasAt time.Time
+		err = conn.QueryRow(context.Background(), "SELECT last_updated FROM _ps_catalog.promscale_instance_information WHERE is_counter_reset_row = TRUE").Scan(&lastRunWasAt)
+		require.NoError(t, err)
+
+		require.NoError(t, engine.Sync())
+
+		// Check if everything is same, when the last run is not beyond the 1 hour.
+		expected := lastRunWasAt
+		err = conn.QueryRow(context.Background(), "SELECT promscale_ingested_samples_total, last_updated FROM _ps_catalog.promscale_instance_information WHERE is_counter_reset_row = TRUE").Scan(&cnt, &lastRunWasAt)
+		require.NoError(t, err)
+		require.Equal(t, 100, int(cnt))
+		require.Equal(t, expected, lastRunWasAt)
+	})
+}
+
+func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
+		conn := pgxconn.NewPgxConn(db)
+
+		// Do not check the error since this test will run in plain postgres as well,
+		// where it will error out, but we are fine with it.
+		_, err2 := conn.Exec(context.Background(), "SELECT set_config('timescaledb.telemetry_level', 'off', false)")
+		require.NoError(t, err2)
+
+		engine, err := telemetry.NewEngine(conn, generateUUID())
+		require.NoError(t, err)
+		require.Nil(t, engine)
 	})
 }

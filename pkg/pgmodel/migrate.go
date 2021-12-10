@@ -51,9 +51,9 @@ var (
 			"tracing-tags.sql",
 			"tracing-functions.sql",
 			"tracing-views.sql",
-			"remote-commands.sql",
 			"telemetry.sql",
-			"apply_permissions.sql", //should be last
+			"remote-commands.sql",   // should be just above apply_permissions.sql
+			"apply_permissions.sql", //	should be last
 		},
 	}
 	migrateMutex = &sync.Mutex{}
