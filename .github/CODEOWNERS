@@ -16,3 +16,4 @@
 
 # helm and kubernetes related parts
 /helm-chart/ @cevian @VineethReddy02 @paulfantom @JamesGuthrie
+/deploy/static/ @cevian @VineethReddy02 @paulfantom @JamesGuthrie
