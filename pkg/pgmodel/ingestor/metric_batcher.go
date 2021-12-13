@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -204,6 +205,11 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			),
 			trace.WithAttributes(attribute.Int("insertable_count", len(req.data))),
 		)
+		cnt := 0
+		for _, ins := range req.data {
+			cnt += ins.Count()
+		}
+		atomic.AddInt64(&metrics.BatchingPoints, int64(cnt))
 		buf.addReq(req)
 		addSpan.End()
 	}
@@ -220,48 +226,69 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 	copierReadRequestCh <- readRequest
 	span.AddEvent("Sent a read request")
 
-	for {
-		if pending.IsEmpty() {
-			span.AddEvent("Buffer is empty")
-			req, ok := <-input
-			if !ok {
-				return
-			}
-			addReq(req, pending)
-			copierReadRequestCh <- readRequest
-			span.AddEvent("Sent a read request")
-		}
+	doneRecv := make(chan struct{}, 1)
+	const (
+		WaitingSendData = iota
+		WaitingRecvDone
+	)
+	state := WaitingSendData
 
+	for {
 		recvCh := input
 		if pending.IsFull() {
 			span.AddEvent("Buffer is full")
 			recvCh = nil
 		}
-
-		numSeries := pending.batch.CountSeries()
-
-		select {
-		//try to send first, if not then keep batching
-		case copySender <- copyRequest{pending, info}:
-			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
-			span.SetAttributes(attribute.Int("num_series", numSeries))
-			span.End()
-			pending = NewPendingBuffer()
-			pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
-			span.SetAttributes(attribute.String("metric", info.TableName))
-		case req, ok := <-recvCh:
-			if !ok {
-				if !pending.IsEmpty() {
-					span.AddEvent("Sending last non-empty batch")
-					copySender <- copyRequest{pending, info}
-					metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
-				}
-				span.AddEvent("Exiting metric batcher batch loop")
+		switch state {
+		case WaitingSendData:
+			//assert: pending is not empty
+			select {
+			//try to send first, if not then keep batching
+			case copySender <- copyRequest{pending, info, doneRecv}:
+				numSeries := pending.batch.CountSeries()
+				metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
 				span.SetAttributes(attribute.Int("num_series", numSeries))
-				span.End()
-				return
+				pending = NewPendingBuffer()
+				state = WaitingRecvDone
+			case req, ok := <-recvCh:
+				if !ok {
+					input = nil
+				} else {
+					addReq(req, pending)
+				}
 			}
-			addReq(req, pending)
+		case WaitingRecvDone:
+			select {
+			case <-doneRecv:
+				if input == nil && pending.IsEmpty() {
+					span.AddEvent("Exiting metric batcher batch loop")
+					span.End()
+					return
+				}
+				span.End()
+
+				pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
+				span.SetAttributes(attribute.String("metric", info.TableName))
+				if pending.IsEmpty() {
+					span.AddEvent("Buffer is empty")
+					req, ok := <-input
+					if !ok {
+						span.AddEvent("Exiting metric batcher batch loop")
+						span.End()
+						return
+					}
+					addReq(req, pending)
+				}
+				copierReadRequestCh <- readRequest
+				span.AddEvent("Sent a read request")
+				state = WaitingSendData
+			case req, ok := <-recvCh:
+				if !ok {
+					input = nil
+				} else {
+					addReq(req, pending)
+				}
+			}
 		}
 	}
 }

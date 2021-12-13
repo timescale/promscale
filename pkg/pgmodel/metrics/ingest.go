@@ -17,12 +17,13 @@ const (
 	// FlushSize defines the batch size. It is the maximum number of samples/exemplars per insert batch.
 	// This translates to the max array size that we pass into `insert_metric_row`
 	FlushSize           = 2000
-	MaxInsertStmtPerTxn = 100
+	MaxInsertStmtPerTxn = 10000
 )
 
 var (
 	// MaxSentTs is the max timestamp sent to the database.
 	MaxSentTs          = int64(0)
+	BatchingPoints     = int64(0)
 	IngestorDuplicates = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
