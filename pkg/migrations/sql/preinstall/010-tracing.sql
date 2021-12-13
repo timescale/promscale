@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS SCHEMA_TRACING.event
     trace_id SCHEMA_TRACING_PUBLIC.trace_id NOT NULL,
     span_id bigint NOT NULL CHECK (span_id != 0),
     event_nbr int NOT NULL DEFAULT 0,
-    name text NOT NULL CHECK (name != ''),
+    name text NOT NULL,
     tags SCHEMA_TRACING_PUBLIC.tag_map NOT NULL,
     dropped_tags_count int NOT NULL DEFAULT 0
 );

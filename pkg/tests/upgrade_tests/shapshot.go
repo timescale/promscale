@@ -39,9 +39,7 @@ var schemas = []string{
 	"_timescaledb_internal",
 	"information_schema",
 	"pg_catalog",
-	"pg_temp_1",
 	"pg_toast",
-	"pg_toast_temp_1",
 	"prom_api",
 	"prom_data",
 	"prom_data_exemplar",
@@ -62,9 +60,7 @@ var schemasWOTimescaleDB = []string{
 	"_ps_trace",
 	"information_schema",
 	"pg_catalog",
-	"pg_temp_1",
 	"pg_toast",
-	"pg_toast_temp_1",
 	"prom_api",
 	"prom_data",
 	"prom_data_exemplar",
@@ -154,16 +150,6 @@ func expectedSchemas(extstate testhelpers.ExtensionState) []string {
 	if !extstate.UsesTimescaleDB() {
 		considerSchemas = schemasWOTimescaleDB
 	}
-	if !extstate.UsesPG12() {
-		filtered := make([]string, 0, len(considerSchemas))
-		for _, s := range considerSchemas {
-			//these schemas don't exist in PG version > 12
-			if s != "pg_temp_1" && s != "pg_toast_temp_1" {
-				filtered = append(filtered, s)
-			}
-		}
-		considerSchemas = filtered
-	}
 	return considerSchemas
 }
 
@@ -224,7 +210,10 @@ func ClearTableFromSnapshot(snap dbSnapshot, schemaName, tableName string) dbSna
 func getSchemas(t *testing.T, db *pgxpool.Pool) (out []string) {
 	row := db.QueryRow(
 		context.Background(),
-		"SELECT array_agg(nspname::TEXT order by nspname::TEXT) FROM pg_namespace WHERE nspname::TEXT != 'timescaledb_experimental'",
+		`SELECT array_agg(nspname::TEXT order by nspname::TEXT) FROM pg_namespace 
+				WHERE nspname::TEXT != 'timescaledb_experimental'
+				AND nspname::TEXT NOT LIKE 'pg_temp%'
+				AND nspname::TEXT NOT LIKE 'pg_toast_temp%'`,
 	)
 	err := row.Scan(&out)
 	if err != nil {
