@@ -33,3 +33,18 @@ jobs:
     - name: ${{ matrix.test-setups.name }}
       run: ./scripts/end_to_end_tests.sh ${{ matrix.test-setups.image }}
       shell: bash
+
+  # Added to summarize the matrix (otherwise we would need to list every single job in branch protection rules)
+  run-result:
+    name: integration results
+    if: always()
+    needs:
+      - run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark the job as a success
+        if: needs.run.result == 'success'
+        run: exit 0
+      - name: Mark the job as a failure
+        if: needs.run.result != 'success'
+        run: exit 1
