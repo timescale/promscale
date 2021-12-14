@@ -185,14 +185,11 @@ func TestConcurrentUpdateLease(t *testing.T) {
 			firstLockCountersArr[i] = 0
 			firstLockCounters[c] = &(firstLockCountersArr[i])
 			for _, w := range writers {
-				writer := w
-				cluster := c
-				go func() {
+				go func(cluster, writer string, counterForCluster *int32) {
 					minT := time.Unix(0, 0)
 					maxT := time.Unix(2, 0)
 					firstLockRes, firstErr := callUpdateLease(db, cluster, writer, minT, maxT)
 					if firstLockRes != nil {
-						counterForCluster := firstLockCounters[cluster]
 						atomic.AddInt32(counterForCluster, 1)
 					}
 					for i := 0; i < numCallsToCheck; i++ {
@@ -212,7 +209,7 @@ func TestConcurrentUpdateLease(t *testing.T) {
 						}
 					}
 					wg.Done()
-				}()
+				}(c, w, firstLockCounters[c])
 			}
 		}
 		wg.Wait()
