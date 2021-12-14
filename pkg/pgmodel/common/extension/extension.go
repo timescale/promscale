@@ -43,7 +43,7 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMig
 	}
 	defer func() { _ = db.Close(context.Background()) }()
 
-	err = MigrateExtension(db, "timescaledb", "public", version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
+	err = MigrateExtension(db, "timescaledb", schema.Timescale, version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
 	if err != nil {
 		return fmt.Errorf("could not install timescaledb: %w", err)
 	}
