@@ -76,7 +76,7 @@ You can also find information on flags with `promscale_<version> -help`.
 | db-connection-timeout | duration | 60 seconds | Timeout for establishing the connection between Promscale and TimescaleDB. |
 | db-connections-max | integer | 80% of possible connections db | Maximum number of connections to the database that should be opened at once. It defaults to 80% of the maximum connections that the database can handle. |
 | db-ssl-mode | string | require | TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass `allow` as value. |
-| db-writer-connection-concurrency | integer | 4 | Maximum number of database connections for writing per go process. |
+| db-writer-connection-concurrency | integer | 1 | Maximum number of database connections for writing per go thread (as configured via GOMAXPROCS) |
 | db-uri | string | | TimescaleDB/Vanilla PostgresSQL URI. Example:`postgres://postgres:password@localhost:5432/timescale?sslmode=require` |
 | db-statements-cache | boolean | true | Whether database connection pool should use cached prepared statements. Disable if using PgBouncer. |
 | ignore-samples-written-to-compressed-chunks | boolean | false | Ignore/drop samples that are being written to compressed chunks. Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. However, setting this to true will save your resources that may be required during decompression. |
