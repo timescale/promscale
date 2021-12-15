@@ -6,7 +6,7 @@ servers. Each Prometheus server will indicate the tenant it is writing using
 either custom headers or external labels.
 
 When executing PromQL queries, a Promscale server can be configured to either
-return data for all tenants or to restrict its answers to a particular tenant or set or tenants.
+return data for all tenants or to restrict its answers to a particular tenant or set of tenants.
 In this way, a tenant can be given access to a particular Promscale PromQL endpoint for
 querying its own data while being sure that it could not access other tenant's data.
 
@@ -86,7 +86,7 @@ global:
 ## Querying multi-tenant data
 
 Since data from any tenant is kept with a `__tenant__` label key, it can be used to query any tenant data.
-Please note only those tenants are allowed in the query, that is authorized under `-multi-tenancy-valid-tenants`
+Please note only those tenants are allowed in the query that is authorized under `-multi-tenancy-valid-tenants`
 flag. Moreover, data without a tenant label can be queried only if `-multi-tenancy-allow-non-tenants` is applied.
 
 If a query aims to be evaluated across multiple tenants (say tenant-A and tenant-B), it can be done
