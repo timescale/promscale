@@ -5,7 +5,7 @@
 CREATE OR REPLACE FUNCTION SCHEMA_TRACING.get_tag_id(_tag_map SCHEMA_TRACING_PUBLIC.tag_map, _key SCHEMA_TRACING_PUBLIC.tag_k)
 RETURNS bigint
 AS $func$
-    SELECT (_tag_map->(SELECT k.id::text from _ps_trace.tag_key k WHERE k.key = _key LIMIT 1))::bigint
+    SELECT (_tag_map->(SELECT k.id::text from SCHEMA_TRACING.tag_key k WHERE k.key = _key LIMIT 1))::bigint
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING.get_tag_id(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) TO prom_reader;
