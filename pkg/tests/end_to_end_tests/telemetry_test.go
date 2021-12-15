@@ -247,3 +247,47 @@ func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
 		require.Nil(t, engine)
 	})
 }
+
+func TestTelemetrySQLStats(t *testing.T) {
+	if !*useExtension {
+		t.Skip("test will give wrong result without promscale_extension. Hence, skipping")
+	}
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+		defer db.Close()
+
+		conn := pgxconn.NewPgxConn(db)
+
+		engine, err := telemetry.NewEngine(conn, generateUUID())
+		require.NoError(t, err)
+
+		engine.Start()
+		defer engine.Stop()
+
+		// Verify that no SQL stats have been written yet.
+		var metrics string
+		err = conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
+		require.Error(t, err) // No such rows exists.
+		require.Equal(t, "no rows in result set", err.Error())
+
+		require.NoError(t, engine.Sync())
+
+		err = conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
+		require.NoError(t, err)
+		require.Equal(t, "0", metrics) // Without promscale_extension, this will give error saying "no rows in result set".
+
+		// Add dummy metric.
+		_, err = conn.Exec(context.Background(), "SELECT create_metric_table('test_metric')")
+		require.NoError(t, err)
+
+		// Update the last_updated of counter_reset row so that it allows us to scan. Otherwise, the next scan allowed would be after 1 hour.
+		_, err = conn.Exec(context.Background(), "UPDATE _ps_catalog.promscale_instance_information SET last_updated = current_timestamp - INTERVAL '1 HOUR' WHERE is_counter_reset_row = TRUE")
+		require.NoError(t, err)
+
+		require.NoError(t, engine.Sync())
+
+		err = conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
+		require.NoError(t, err)
+		require.Equal(t, "1", metrics)
+	})
+}

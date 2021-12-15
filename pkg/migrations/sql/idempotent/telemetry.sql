@@ -60,3 +60,80 @@ $$
     END;
 $$
 LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_PS_CATALOG.promscale_telemetry_housekeeping(INTERVAL) TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PS_CATALOG.promscale_sql_telemetry() RETURNS VOID AS
+$$
+    DECLARE result TEXT;
+    BEGIN
+        -- Metrics telemetry.
+        SELECT count(*)::TEXT INTO result FROM SCHEMA_CATALOG.metric;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_total', result);
+
+        SELECT sum(hypertable_size(format('SCHEMA_DATA.%I', table_name)))::TEXT INTO result FROM SCHEMA_CATALOG.metric;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_bytes_total', result);
+
+        SELECT approximate_row_count('SCHEMA_CATALOG.series')::TEXT INTO result;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_series_total_approx', result);
+
+        SELECT count(*)::TEXT INTO result FROM SCHEMA_CATALOG.label WHERE key = '__tenant__';
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_multi_tenancy_tenant_count', result);
+
+        SELECT count(*)::TEXT INTO result FROM SCHEMA_CATALOG.label_key WHERE key = '__cluster__';
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_ha_cluster_count', result);
+
+        SELECT count(*)::TEXT INTO result FROM SCHEMA_CATALOG.metric WHERE is_view IS true;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_registered_views', result);
+
+        SELECT count(*)::TEXT INTO result FROM SCHEMA_CATALOG.exemplar;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_exemplar_total', result);
+
+        SELECT count(*)::TEXT INTO result FROM SCHEMA_CATALOG.metadata;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_metadata_total', result);
+
+        SELECT value INTO result FROM SCHEMA_CATALOG.default WHERE key = 'retention_period';
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_default_retention', result);
+
+        SELECT value INTO result FROM SCHEMA_CATALOG.default WHERE key = 'chunk_interval';
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_default_chunk_interval', result);
+
+        -- Traces telemetry.
+        SELECT n_distinct::TEXT INTO result FROM pg_stats WHERE schemaname='SCHEMA_TRACING' AND tablename='span' AND attname='trace_id';
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('traces_total_approx', result);
+
+        SELECT approximate_row_count('SCHEMA_TRACING.span')::TEXT INTO result;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('traces_spans_total_approx', result);
+
+        SELECT hypertable_size('SCHEMA_TRACING.span')::TEXT INTO result;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('traces_spans_bytes_total', result);
+
+        -- Others.
+        -- The -1 is to ignore the row summing deleted rows i.e., the counter reset row. 
+        SELECT (count(*) - 1)::TEXT INTO result FROM SCHEMA_PS_CATALOG.promscale_instance_information;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('connector_instance_total', result);
+
+        SELECT count(*)::TEXT INTO result FROM timescaledb_information.data_nodes;
+        PERFORM SCHEMA_PS_CATALOG.apply_telemetry('db_node_count', result);
+    END;
+$$
+LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_PS_CATALOG.promscale_sql_telemetry() TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_PS_CATALOG.apply_telemetry(telemetry_name TEXT, telemetry_value TEXT) RETURNS VOID AS
+$$
+    BEGIN
+        IF telemetry_value IS NULL THEN
+            telemetry_value := '0';
+        END IF;
+
+        -- First try to use promscale_extension to fill the metadata table.
+        PERFORM update_tsprom_metadata(telemetry_name, telemetry_value, TRUE);
+
+        -- If promscale_extension is not installed, the above line will fail. Hence, catch the exception and try the manual way.
+        EXCEPTION WHEN OTHERS THEN
+            -- If this fails, throw an error so that the connector can log (or not) as appropriate.
+            INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || telemetry_name, telemetry_value, TRUE) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry;
+    END;
+$$
+LANGUAGE PLPGSQL;
+GRANT EXECUTE ON FUNCTION SCHEMA_PS_CATALOG.apply_telemetry(TEXT, TEXT) TO prom_writer;
