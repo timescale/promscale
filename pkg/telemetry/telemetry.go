@@ -293,6 +293,14 @@ func (t *engineImpl) housekeeping() {
 		return
 	}
 	t.writeToTimescaleMetadataTable(stats)
+	t.syncSQLStats()
+}
+
+func (t *engineImpl) syncSQLStats() {
+	_, err := t.conn.Exec(context.Background(), "SELECT _ps_catalog.promscale_sql_telemetry()")
+	if err != nil {
+		log.Debug("msg", "error getting or setting sql based telemetry stats", "err", err.Error())
+	}
 }
 
 func (t *engineImpl) getInstanceInformationStats() (Metadata, error) {
