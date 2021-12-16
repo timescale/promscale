@@ -87,6 +87,11 @@ func Run(cfg *Config) error {
 
 	defer client.Close()
 
+	if cfg.StartupOnly {
+		log.Info("msg", "Promscale in startup-only mode (using flag `-startup.only`), exiting post startup...")
+		return nil
+	}
+
 	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))

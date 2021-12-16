@@ -115,7 +115,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 		cfg.targetMemoryFlag.SetBytes(1e9)
 	}
 
-	fs.Var(&cfg.targetMemoryFlag, "memory-target", "Target for max amount of memory to use. "+
+	fs.Var(&cfg.targetMemoryFlag, "cache.memory-target", "Target for max amount of memory to use. "+
 		"Specified in bytes or as a percentage of system memory (e.g. 80%).")
 	return cfg
 }

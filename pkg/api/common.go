@@ -119,28 +119,28 @@ type Config struct {
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	cfg.Auth = &Auth{}
 
-	fs.BoolVar(&cfg.ReadOnly, "read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
-	fs.BoolVar(&cfg.HighAvailability, "high-availability", false, "Enable external_labels based HA.")
+	fs.BoolVar(&cfg.ReadOnly, "db.read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
+	fs.BoolVar(&cfg.HighAvailability, "metrics.high-availability", false, "Enable external_labels based HA.")
 	fs.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
 	fs.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
-	fs.StringVar(&cfg.Auth.BasicAuthUsername, "auth-username", "", "Authentication username used for web endpoint authentication. Disabled by default.")
-	fs.StringVar(&cfg.Auth.BasicAuthPassword, "auth-password", "", "Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token flags.")
-	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "auth-password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
-	fs.StringVar(&cfg.Auth.BearerToken, "bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
-	fs.StringVar(&cfg.Auth.BearerTokenFile, "bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
+	fs.StringVar(&cfg.Auth.BasicAuthUsername, "web.auth.username", "", "Authentication username used for web endpoint authentication. Disabled by default.")
+	fs.StringVar(&cfg.Auth.BasicAuthPassword, "web.auth.password", "", "Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token flags.")
+	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "web.auth.password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
+	fs.StringVar(&cfg.Auth.BearerToken, "web.auth.bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
+	fs.StringVar(&cfg.Auth.BearerTokenFile, "web.auth.bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
 
 	fs.Var(&cfg.PromscaleEnabledFeatureList, "enable-feature", "Enable beta/experimental features as a comma-separated list. Currently the following values can be passed: tracing, promql-at-modifier, promql-negative-offset")
 
-	fs.DurationVar(&cfg.MaxQueryTimeout, "promql-query-timeout", 2*time.Minute, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
+	fs.DurationVar(&cfg.MaxQueryTimeout, "metrics.promql.query-timeout", 2*time.Minute, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
 		"'/api/v1/query.*' endpoints.")
-	fs.DurationVar(&cfg.SubQueryStepInterval, "promql-default-subquery-step-interval", 1*time.Minute, "Default step interval to be used for PromQL subquery evaluation. "+
+	fs.DurationVar(&cfg.SubQueryStepInterval, "metrics.promql.default-subquery-step-interval", 1*time.Minute, "Default step interval to be used for PromQL subquery evaluation. "+
 		"This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option.")
-	fs.DurationVar(&cfg.LookBackDelta, "promql-lookback-delta", time.Minute*5, "Maximum lookback duration for retrieving metrics during expression evaluations and federation.")
-	fs.Int64Var(&cfg.MaxSamples, "promql-max-samples", 50000000, "Maximum number of samples a single "+
+	fs.DurationVar(&cfg.LookBackDelta, "metrics.promql.lookback-delta", time.Minute*5, "Maximum lookback duration for retrieving metrics during expression evaluations and federation.")
+	fs.Int64Var(&cfg.MaxSamples, "metrics.promql.max-samples", 50000000, "Maximum number of samples a single "+
 		"query can load into memory. Note that queries will fail if they try to load more samples than this into memory, "+
 		"so this also limits the number of samples a query can return.")
-	fs.Int64Var(&cfg.MaxPointsPerTs, "promql-max-points-per-ts", 11000, "Maximum number of points per time-series in a query-range request. "+
+	fs.Int64Var(&cfg.MaxPointsPerTs, "metrics.promql.max-points-per-ts", 11000, "Maximum number of points per time-series in a query-range request. "+
 		"This calculation is an estimation, that happens as (start - end)/step where start and end are the 'start' and 'end' timestamps of the query_range.")
 	return cfg
 }

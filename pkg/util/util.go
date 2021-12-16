@@ -11,7 +11,10 @@ import (
 	"strings"
 )
 
-const PromNamespace = "promscale"
+const (
+	PromNamespace     = "promscale"
+	aliasDescTemplate = "Alias for -%s flag. "
+)
 
 // ParseEnv takes a prefix string p and *flag.FlagSet. Each flag
 // in the FlagSet is exposed as an upper case environment variable
@@ -38,6 +41,7 @@ func ParseEnv(p string, fs *flag.FlagSet) error {
 		// based on the supplied prefix.
 		envVar := fmt.Sprintf("%s_%s", p, strings.ToUpper(f.Name))
 		envVar = strings.Replace(envVar, "-", "_", -1)
+		envVar = strings.Replace(envVar, ".", "_", -1)
 
 		// Update the Flag.Value if the
 		// env var is non "".
@@ -61,4 +65,15 @@ func ParseEnv(p string, fs *flag.FlagSet) error {
 	})
 
 	return err
+}
+
+func AddAliases(fs *flag.FlagSet, aliases map[string][]string, descSuffix string) {
+	aliasDescFormat := aliasDescTemplate + descSuffix
+	fs.VisitAll(func(f *flag.Flag) {
+		if flagAliases, ok := aliases[f.Name]; ok {
+			for _, alias := range flagAliases {
+				fs.Var(f.Value, alias, fmt.Sprintf(aliasDescFormat, f.Name))
+			}
+		}
+	})
 }
