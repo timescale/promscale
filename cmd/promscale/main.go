@@ -32,7 +32,6 @@ func main() {
 		fmt.Println("Fatal error: cannot start logger: ", err)
 		os.Exit(1)
 	}
-	runner.WarnOnDeprecatedConfig(cfg)
 	err = runner.Run(cfg)
 	if err != nil {
 		os.Exit(1)
