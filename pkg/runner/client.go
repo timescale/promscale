@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"sync/atomic"
-	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/api"
@@ -137,24 +135,14 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	if err != nil {
 		return nil, fmt.Errorf("fetching license information: %w", err)
 	}
+
 	if isLicenseOSS {
 		log.Warn("msg", "WARNING: Using the Apache2 version of TimescaleDB. This version does not include "+
 			"compression and thus performance and disk usage will be significantly negatively effected.")
 	}
 
-	// Election must be done after migration and version-checking: if we're on
-	// the wrong version we should not participate in leader-election.
-	elector, err = initElector(cfg, promMetrics)
-
-	if err != nil {
-		return nil, fmt.Errorf("elector init error: %w", err)
-	}
-
-	if (elector == nil && !cfg.APICfg.HighAvailability) && !cfg.APICfg.ReadOnly {
-		log.Info(
-			"msg",
-			"Prometheus HA is not enabled",
-		)
+	if !cfg.APICfg.HighAvailability && !cfg.APICfg.ReadOnly {
+		log.Info("msg", "Prometheus HA is not enabled")
 	}
 
 	leasingFunction := getSchemaLease
@@ -228,33 +216,6 @@ func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
 		return true, nil
 	}
 	return false, nil
-}
-
-func initElector(cfg *Config, metrics *api.Metrics) (*util.Elector, error) {
-	if cfg.HaGroupLockID == 0 {
-		return nil, nil
-	}
-	if cfg.PrometheusTimeout == -1 {
-		return nil, fmt.Errorf("Prometheus timeout configuration must be set when using PG advisory lock")
-	}
-
-	connStr := cfg.PgmodelCfg.GetConnectionStr()
-	lock, err := util.NewPgLeaderLock(cfg.HaGroupLockID, connStr, getSchemaLease)
-	if err != nil {
-		return nil, fmt.Errorf("Error creating advisory lock\nhaGroupLockId: %d\nerr: %s\n", cfg.HaGroupLockID, err)
-	}
-	log.Info("msg", "Initializing leader election based on PostgreSQL advisory lock")
-	scheduledElector := util.NewScheduledElector(lock, cfg.ElectionInterval)
-	if cfg.PrometheusTimeout != 0 {
-		go func() {
-			ticker := time.NewTicker(promLivenessCheck)
-			for range ticker.C {
-				lastReq := atomic.LoadInt64(&metrics.LastRequestUnixNano)
-				scheduledElector.PrometheusLivenessCheck(lastReq, cfg.PrometheusTimeout)
-			}
-		}()
-	}
-	return &scheduledElector.Elector, nil
 }
 
 func SetupDBState(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock, extOptions extension.ExtensionMigrateOptions) error {

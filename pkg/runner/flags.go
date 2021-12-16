@@ -33,10 +33,7 @@ type Config struct {
 	ConfigFile                  string
 	TLSCertFile                 string
 	TLSKeyFile                  string
-	HaGroupLockID               int64
 	ThroughputInterval          time.Duration
-	PrometheusTimeout           time.Duration
-	ElectionInterval            time.Duration
 	AsyncAcks                   bool
 	Migrate                     bool
 	StopAfterMigrate            bool
@@ -65,10 +62,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.ThanosStoreAPIListenAddr, "thanos-store-api-listen-address", "", "Address to listen on for Thanos Store API endpoints.")
 	fs.StringVar(&cfg.OTLPGRPCListenAddr, "otlp-grpc-server-listen-address", "", "Address to listen on for OTLP GRPC server.")
 	fs.StringVar(&corsOriginFlag, "web-cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	fs.Int64Var(&cfg.HaGroupLockID, "leader-election-pg-advisory-lock-id", 0, "(DEPRECATED) Leader-election based high-availability. It is based on PostgreSQL advisory lock and requires a unique advisory lock ID per high-availability group. Only a single connector in each high-availability group will write data at one time. A value of 0 disables leader election.")
 	fs.DurationVar(&cfg.ThroughputInterval, "tput-report", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
-	fs.DurationVar(&cfg.PrometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "(DEPRECATED) Prometheus timeout duration for leader-election high-availability. The connector will resign if the associated Prometheus instance does not respond within the given timeout. This value should be a low multiple of the Prometheus scrape interval, big enough to prevent random flips.")
-	fs.DurationVar(&cfg.ElectionInterval, "leader-election-scheduled-interval", 5*time.Second, "(DEPRECATED) Interval at which scheduled election runs. This is used to select a leader and confirm that we still holding the advisory lock.")
 	fs.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. (DEPRECATED) Will be removed in version 0.9.0")
 	fs.BoolVar(&cfg.UseVersionLease, "use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
 	fs.BoolVar(&cfg.InstallExtensions, "install-extensions", true, "Install TimescaleDB, Promscale extension.")
@@ -133,9 +127,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		if (flagset["migrate"] && cfg.Migrate) || (flagset["use-schema-version-lease"] && cfg.UseVersionLease) {
 			return nil, fmt.Errorf("Migration flags not supported in read-only mode")
 		}
-		if flagset["leader-election-pg-advisory-lock-id"] && cfg.HaGroupLockID != 0 {
-			return nil, fmt.Errorf("Invalid option for HA group lock ID, cannot enable HA mode and read-only mode")
-		}
 		if flagset["install-extensions"] && cfg.InstallExtensions {
 			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
 		}
@@ -146,7 +137,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		cfg.UpgradeExtensions = false
 	}
 
-	if cfg.HaGroupLockID != 0 {
+	if cfg.APICfg.HighAvailability {
 		cfg.PgmodelCfg.UsesHA = true
 	}
 	return cfg, nil
