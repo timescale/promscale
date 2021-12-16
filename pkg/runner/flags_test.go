@@ -53,13 +53,20 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
+			name:        "test removed promql flags",
+			args:        []string{"-promql-enable-feature", "promql-at-modifier"},
+			shouldError: true,
+		},
+		{
 			name: "enable disabled-features",
-			args: []string{"-promql-enable-feature", "promql-at-modifier"},
+			args: []string{"-enable-feature", "promql-at-modifier,tracing", "-tracing.otlp.server-address", ":8080"},
 			result: func(c Config) Config {
+				c.OTLPGRPCListenAddr = ":8080"
+				c.APICfg.PromscaleEnabledFeatureList = []string{"promql-at-modifier", "tracing"}
 				c.APICfg.EnabledFeatureMap = map[string]struct{}{
 					"promql-at-modifier": {},
+					"tracing":            {},
 				}
-				c.APICfg.PromQLEnabledFeatureList = []string{"promql-at-modifier"}
 				return c
 			},
 		},
@@ -141,7 +148,7 @@ func TestParseFlags(t *testing.T) {
 			shouldError: true,
 		},
 		{
-			name: "invalid env variable type causing parse error, PROMSCALE prefix",
+			name: "invalid env variable type causing parse error",
 			env: map[string]string{
 				"PROMSCALE_INSTALL_EXTENSIONS": "foobar",
 			},

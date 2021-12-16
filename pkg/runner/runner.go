@@ -63,17 +63,6 @@ func loggingStreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.
 	return err
 }
 
-// WarnOnDeprecatedConfig prints warnings to the log for every deprecated configuration parameter which is used.
-// Logging is not activated during the argument-parsing phase, so this work must be performed afterwards.
-func WarnOnDeprecatedConfig(cfg *Config) {
-	if cfg.HaGroupLockID != 0 {
-		log.Warn("msg", "Deprecated flag 'leader-election-pg-advisory-lock-id' was used. Please use label-based leader election: https://github.com/timescale/promscale/blob/master/docs/high-availability/prometheus-HA.md#prometheus-leader-election-via-external-labels")
-	}
-	if len(cfg.APICfg.PromQLEnabledFeatureList) > 0 {
-		log.Warn("msg", "Deprecated cli flag 'promql-enable-feature' used. Use 'enable-feature' instead.")
-	}
-}
-
 func Run(cfg *Config) error {
 	log.Info("msg", "Version:"+version.Promscale+"; Commit Hash: "+version.CommitHash)
 
