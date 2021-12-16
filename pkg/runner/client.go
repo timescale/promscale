@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/dataset"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
@@ -163,6 +164,13 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 		cfg.APICfg.MultiTenancy = multiTenancy
 	}
 
+	if cfg.DatasetConfig != "" {
+		err = ApplyDatasetConfig(conn, cfg.DatasetConfig)
+		if err != nil {
+			return nil, fmt.Errorf("error applying dataset configuration: %w", err)
+		}
+	}
+
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
 	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly)
@@ -254,6 +262,15 @@ func SetupDBState(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *uti
 	}
 
 	return nil
+}
+
+func ApplyDatasetConfig(conn *pgx.Conn, cfgFilename string) error {
+	cfg, err := dataset.NewConfig(cfgFilename)
+	if err != nil {
+		return err
+	}
+
+	return cfg.Apply(conn)
 }
 
 func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {

@@ -31,6 +31,7 @@ type Config struct {
 	LimitsCfg                   limits.Config
 	TenancyCfg                  tenancy.Config
 	ConfigFile                  string
+	DatasetConfig               string
 	TLSCertFile                 string
 	TLSKeyFile                  string
 	ThroughputInterval          time.Duration
@@ -117,6 +118,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&corsOriginFlag, "web.cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	fs.DurationVar(&cfg.ThroughputInterval, "log.throughput-report-interval", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
 	fs.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. (DEPRECATED) Will be removed in version 0.9.0")
+	fs.StringVar(&cfg.DatasetConfig, "startup.dataset.config", "", "Dataset configuration in YAML format for Promscale. It is used for setting various dataset configuration like default metric chunk interval")
 	fs.BoolVar(&cfg.StartupOnly, "startup.only", false, "Only run startup configuration with Promscale (i.e. migrate) and exit. Can be used to run promscale as an init container for HA setups.")
 	fs.BoolVar(&skipMigrate, "startup.skip-migrate", false, "Skip migrating Promscale SQL schema to latest version on startup.")
 
