@@ -81,6 +81,7 @@ You can also find information on flags with `promscale_<version> -help`.
 
 | Flag | Type | Default | Description |
 |------|:-----:|:-------:|:-----------|
+| startup.dataset.config | string | "" (disabled) | Dataset configuration in YAML format for Promscale. It is used for setting various dataset configuration like default metric chunk interval. For more information, please consult the following resources: [dataset](dataset.md)  |
 | startup.install-extensions | boolean | true | Install TimescaleDB & Promscale extensions. |
 | startup.only | boolean | false | Only run startup configuration with Promscale (i.e. migrate) and exit. Can be used to run promscale as an init container for HA setups. |
 | startup.skip-migrate | boolean | false | Skip migrating Promscale SQL schema to latest version on startup. |
