@@ -45,12 +45,12 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	/* set defaults */
 	cfg.seriesCacheMemoryMaxFlag.SetPercent(50)
 
-	fs.Uint64Var(&cfg.MetricsCacheSize, "metrics-cache-size", DefaultMetricCacheSize, "Maximum number of metric names to cache.")
-	fs.Uint64Var(&cfg.SeriesCacheInitialSize, "series-cache-initial-size", DefaultSeriesCacheSize, "Maximum number of series to cache.")
-	fs.Uint64Var(&cfg.LabelsCacheSize, "labels-cache-size", 10000, "Maximum number of labels to cache.")
-	fs.Uint64Var(&cfg.ExemplarKeyPosCacheSize, "exemplar-cache-size", DefaultExemplarKeyPosCacheSize, "Maximum number of exemplar metrics key-position to cache. "+
+	fs.Uint64Var(&cfg.MetricsCacheSize, "metrics.cache.metrics.size", DefaultMetricCacheSize, "Maximum number of metric names to cache.")
+	fs.Uint64Var(&cfg.SeriesCacheInitialSize, "metrics.cache.series.initial-size", DefaultSeriesCacheSize, "Maximum number of series to cache.")
+	fs.Uint64Var(&cfg.LabelsCacheSize, "metrics.cache.labels.size", 10000, "Maximum number of labels to cache.")
+	fs.Uint64Var(&cfg.ExemplarKeyPosCacheSize, "metrics.cache.exemplar.size", DefaultExemplarKeyPosCacheSize, "Maximum number of exemplar metrics key-position to cache. "+
 		"It has one-to-one mapping with number of metrics that have exemplar, as key positions are saved per metric basis.")
-	fs.Var(&cfg.seriesCacheMemoryMaxFlag, "series-cache-max-bytes", "Initial number of elements in the series cache. "+
+	fs.Var(&cfg.seriesCacheMemoryMaxFlag, "metrics.cache.series.max-bytes", "Initial number of elements in the series cache. "+
 		"Specified in bytes or as a percentage of the memory-target (e.g. 50%).")
 	return cfg
 }

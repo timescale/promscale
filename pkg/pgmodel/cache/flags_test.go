@@ -35,11 +35,11 @@ func TestParse(t *testing.T) {
 	config := fullyParse(t, []string{}, &limits.Config{TargetMemoryBytes: 100000}, false)
 	require.Equal(t, uint64(50000), config.SeriesCacheMemoryMaxBytes)
 
-	config = fullyParse(t, []string{"-series-cache-max-bytes", "60%"}, &limits.Config{TargetMemoryBytes: 200000}, false)
+	config = fullyParse(t, []string{"-metrics.cache.series.max-bytes", "60%"}, &limits.Config{TargetMemoryBytes: 200000}, false)
 	require.Equal(t, uint64(120000), config.SeriesCacheMemoryMaxBytes)
 
-	fullyParse(t, []string{"-series-cache-max-bytes", "60"}, &limits.Config{TargetMemoryBytes: 100000}, true)
+	fullyParse(t, []string{"-metrics.cache.series.max-bytes", "60"}, &limits.Config{TargetMemoryBytes: 100000}, true)
 
-	config = fullyParse(t, []string{"-series-cache-max-bytes", "60000"}, &limits.Config{TargetMemoryBytes: 200000}, false)
+	config = fullyParse(t, []string{"-metrics.cache.series.max-bytes", "60000"}, &limits.Config{TargetMemoryBytes: 200000}, false)
 	require.Equal(t, uint64(60000), config.SeriesCacheMemoryMaxBytes)
 }

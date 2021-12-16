@@ -104,13 +104,13 @@ func TestParse(t *testing.T) {
 	require.Equal(t, PercentageAbsoluteBytesFlag{value: 80, kind: Percentage}, config.targetMemoryFlag)
 	require.Equal(t, uint64(float64(mem.SystemMemory())*0.8), config.TargetMemoryBytes)
 
-	config = fullyParse(t, []string{"-memory-target", "60%"}, false)
+	config = fullyParse(t, []string{"-cache.memory-target", "60%"}, false)
 	require.Equal(t, PercentageAbsoluteBytesFlag{value: 60, kind: Percentage}, config.targetMemoryFlag)
 	require.Equal(t, uint64(float64(mem.SystemMemory())*0.6), config.TargetMemoryBytes)
 
-	fullyParse(t, []string{"-memory-target", "60"}, true)
+	fullyParse(t, []string{"-cache.memory-target", "60"}, true)
 
-	config = fullyParse(t, []string{"-memory-target", "60000"}, false)
+	config = fullyParse(t, []string{"-cache.memory-target", "60000"}, false)
 	require.Equal(t, PercentageAbsoluteBytesFlag{value: 60000, kind: Absolute}, config.targetMemoryFlag)
 	require.Equal(t, uint64(60000), config.TargetMemoryBytes)
 }
