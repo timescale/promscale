@@ -14,6 +14,7 @@ import (
 	"github.com/jaegertracing/jaeger/proto-gen/storage_v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const DefaultTimeout = time.Duration(5 * time.Second)
@@ -41,18 +42,17 @@ type Proxy struct {
 func New(config ProxyConfig, logger hclog.Logger) (*Proxy, error) {
 	var opts []grpc.DialOption
 	var err error
+	creds := insecure.NewCredentials()
 	if config.TLS {
 		if config.CaFile == "" {
 			return nil, fmt.Errorf("ca file is required with TLS")
 		}
-		creds, err := credentials.NewClientTLSFromFile(config.CaFile, config.ServerHostOverride)
+		creds, err = credentials.NewClientTLSFromFile(config.CaFile, config.ServerHostOverride)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create TLS credentials %w", err)
 		}
-		opts = append(opts, grpc.WithTransportCredentials(creds))
-	} else {
-		opts = append(opts, grpc.WithInsecure())
 	}
+	opts = append(opts, grpc.WithTransportCredentials(creds))
 
 	if config.ConnectTimeout == 0 {
 		config.ConnectTimeout = DefaultTimeout
