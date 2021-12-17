@@ -17,8 +17,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
+	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
@@ -41,7 +44,7 @@ func TestPromscaleTobsMetadata(t *testing.T) {
 		require.NoError(t, setTobsEnv("random"))
 		conn := pgxconn.NewPgxConn(db)
 
-		_, err := telemetry.NewEngine(conn, generateUUID())
+		_, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
 
 		// Check if metadata is written.
@@ -64,7 +67,7 @@ func TestTelemetryInfoTableWrite(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID())
+		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
 
 		engine.Start()
@@ -131,7 +134,7 @@ func TestHousekeeper(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID())
+		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
 
 		engine.Start()
@@ -165,7 +168,7 @@ func TestCleanStalePromscales(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID())
+		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
 
 		engine.Start()
@@ -242,7 +245,7 @@ func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
 		_, err2 := conn.Exec(context.Background(), "SELECT set_config('timescaledb.telemetry_level', 'off', false)")
 		require.NoError(t, err2)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID())
+		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
 		require.Nil(t, engine)
 	})
@@ -258,7 +261,7 @@ func TestTelemetrySQLStats(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID())
+		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
 
 		engine.Start()
@@ -289,5 +292,56 @@ func TestTelemetrySQLStats(t *testing.T) {
 		err = conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
 		require.NoError(t, err)
 		require.Equal(t, "1", metrics)
+	})
+}
+
+func TestPromQLBasedTelemetry(t *testing.T) {
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		conn, err := dbOwner.Acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		pgxcfg := conn.Conn().Config()
+		cfg := runner.Config{
+			Migrate:          false,
+			StopAfterMigrate: false,
+			UseVersionLease:  true,
+			PgmodelCfg: pgclient.Config{
+				AppName:                 pgclient.DefaultApp,
+				Database:                *testDatabase,
+				Host:                    pgxcfg.Host,
+				Port:                    int(pgxcfg.Port),
+				User:                    pgxcfg.User,
+				Password:                pgxcfg.Password,
+				SslMode:                 "allow",
+				MaxConnections:          -1,
+				WriteConnectionsPerProc: 1,
+			},
+		}
+		defer conn.Release()
+
+		metrics := api.InitMetrics()
+		reader, err := runner.CreateClient(&cfg, metrics)
+		require.NoError(t, err)
+		defer reader.Close()
+
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+
+		c := pgxconn.NewPgxConn(db)
+
+		engine, err := telemetry.NewEngine(c, generateUUID(), reader.Queryable())
+		require.NoError(t, err)
+
+		var value string
+		err = c.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_promql_query_execution_time_p99' AND value IS NOT NULL").Scan(&value)
+		require.Error(t, err)
+		require.Equal(t, "no rows in result set", err.Error())
+
+		require.NoError(t, engine.Sync())
+
+		err = c.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_promql_query_execution_time_p99' AND value IS NOT NULL").Scan(&value)
+		require.NoError(t, err)
+		require.Equal(t, "0.0000", value)
 	})
 }

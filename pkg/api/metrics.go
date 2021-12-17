@@ -140,6 +140,7 @@ func createMetrics() *Metrics {
 		QueryDuration: prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Namespace: util.PromNamespace,
+				Subsystem: "metrics",
 				Name:      "query_duration_seconds",
 				Help:      "Duration of query batch read calls to the PromQL engine.",
 				Buckets:   prometheus.DefBuckets,
