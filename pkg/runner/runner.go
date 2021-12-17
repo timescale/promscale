@@ -112,7 +112,7 @@ func Run(cfg *Config) error {
 
 	var telemetryEngine telemetry.Engine
 
-	engine, err := telemetry.NewEngine(client.Connection, PromscaleID)
+	engine, err := telemetry.NewEngine(client.Connection, PromscaleID, client.Queryable())
 	if err != nil {
 		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
 		return fmt.Errorf("creating telemetry-engine: %w", err)

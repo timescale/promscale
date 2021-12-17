@@ -227,7 +227,7 @@ func TestMigrateTwice(t *testing.T) {
 		defer db.Close()
 
 		if *useTimescaleDB && extension.ExtensionIsInstalled {
-			_, err := telemetry.NewEngine(pgxconn.NewPgxConn(db), [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+			_, err := telemetry.NewEngine(pgxconn.NewPgxConn(db), [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, nil)
 			if err != nil {
 				t.Fatal("creating telemetry engine: %w", err)
 			}

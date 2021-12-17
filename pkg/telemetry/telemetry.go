@@ -21,6 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/promql"
 )
 
 // Engine for telemetry performs activities like inserting metadata of Promscale and Tobs (env vars with 'TOBS_TELEMETRY_')
@@ -39,10 +40,13 @@ type engineImpl struct {
 
 	stop chan struct{}
 
+	promqlEngine    *promql.Engine
+	promqlQueryable promql.Queryable
+
 	metrics sync.Map
 }
 
-func NewEngine(conn pgxconn.PgxConn, uuid [16]byte) (*engineImpl, error) {
+func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Queryable) (*engineImpl, error) {
 	isTelemetryOff, err := isTelemetryOff(conn)
 	if err != nil {
 		log.Debug("msg", "unable to get TimescaleDB telemetry configuration. Maybe TimescaleDB is not installed", "err", err.Error())
@@ -58,6 +62,16 @@ func NewEngine(conn pgxconn.PgxConn, uuid [16]byte) (*engineImpl, error) {
 	t := &engineImpl{
 		conn: conn,
 		uuid: uuid,
+		promqlEngine: promql.NewEngine(promql.EngineOpts{
+			// Similar to prometheus defaults, except the timeout.
+			Logger:                   log.GetLogger(),
+			Reg:                      prometheus.NewRegistry(),
+			MaxSamples:               50000000,
+			Timeout:                  promqlQueryTimeout,
+			LookbackDelta:            5 * time.Minute,
+			NoStepSubqueryIntervalFn: func(int64) int64 { return time.Minute.Milliseconds() },
+		}),
+		promqlQueryable: promqlQueryable,
 	}
 
 	if err := t.writeMetadata(); err != nil {
@@ -287,6 +301,7 @@ func (t *engineImpl) housekeeping() {
 	if !updateInformationStats {
 		return
 	}
+
 	stats, err := t.getInstanceInformationStats()
 	if err != nil {
 		log.Debug("msg", "error getting instance information stats", "err", err.Error())
@@ -294,6 +309,7 @@ func (t *engineImpl) housekeeping() {
 	}
 	t.writeToTimescaleMetadataTable(stats)
 	t.syncSQLStats()
+	t.syncPromqlTelemetry()
 }
 
 func (t *engineImpl) syncSQLStats() {
@@ -333,6 +349,31 @@ func (t *engineImpl) getInstanceInformationStats() (Metadata, error) {
 	stats["trace_query_requests_executed_total"] = convertIntToString(traceQueryReqs)
 	stats["trace_dependency_requests_executed_total"] = convertIntToString(traceDepReqs)
 	return stats, nil
+}
+
+// Let's keep this high as large systems can take a good time evaluating histograms.
+const promqlQueryTimeout = time.Minute * 10
+
+func (t *engineImpl) syncPromqlTelemetry() {
+	if t.promqlQueryable == nil {
+		// When not testing PromQL stats, let's skip this function.
+		return
+	}
+	stats := make(Metadata)
+	start := time.Now()
+	for _, query := range promqlStats {
+		value, err := query.execute(t.promqlEngine, t.promqlQueryable)
+		if err != nil {
+			log.Debug("msg", "error executing promql expression", "err", err.Error())
+			continue
+		}
+		stats[query.name] = fmt.Sprintf("%.4f", value)
+	}
+
+	evalDuration := time.Since(start)
+	stats["promql_telemetry_evaluation_duration_seconds"] = evalDuration.String()
+
+	t.writeToTimescaleMetadataTable(stats)
 }
 
 func convertIntToString(i int64) string {
