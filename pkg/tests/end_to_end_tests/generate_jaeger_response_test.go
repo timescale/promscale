@@ -16,6 +16,7 @@ import (
 
 	"go.opentelemetry.io/collector/model/pdata"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	jaegerproto "github.com/jaegertracing/jaeger/proto-gen/api_v2"
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
@@ -61,7 +62,7 @@ func TestGenerateJaegerAPIResponses(t *testing.T) {
 }
 
 func insertDataIntoJaeger(endpoint string, data pdata.Traces) error {
-	opts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithBlock()}
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock()}
 	conn, err := grpc.Dial(endpoint, opts...)
 	if err != nil {
 		panic(err)
