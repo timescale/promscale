@@ -50,10 +50,15 @@ For updating Promscale in this method, you need to stop the Promscale that is cu
 `docker-compose stop` and then pull the image with the tag you want to upgrade to with `docker pull timescale/promscale:<version-tag>`.
 This will pull the respective image to your local docker registry. You can then run the updated image with `docker-compose up`.
 
-## 🕞 Setting up cron jobs
+## 🕞 Setting up cron jobs for Timescale DB 1.X
 
-Docker installations also need to make sure the `execute_maintenance()`
-procedure on a regular basis (e.g. via cron). We recommend executing it every
+If you are using TimescaleDB 1.X you need to make sure the `execute_maintenance()`
+procedure is run on a regular basis (e.g. via cron). This is not needed if you are
+using TimescaleDB 2.X because it has native support for task scheduling which
+is automatically configured by Promscale to run the `execute_maintenance()`
+procedure.
+
+We recommend executing it every
 30 minutes. This is necessary to execute maintenance tasks such as enforcing
 data retention policies according to the configured policy.
 
