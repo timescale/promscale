@@ -50,13 +50,6 @@ For updating Promscale in this method, you need to stop the Promscale that is cu
 `docker-compose stop` and then pull the image with the tag you want to upgrade to with `docker pull timescale/promscale:<version-tag>`.
 This will pull the respective image to your local docker registry. You can then run the updated image with `docker-compose up`.
 
-## 🕞 Setting up cron jobs
-
-Docker installations also need to make sure the `execute_maintenance()`
-procedure on a regular basis (e.g. via cron). We recommend executing it every
-30 minutes. This is necessary to execute maintenance tasks such as enforcing
-data retention policies according to the configured policy.
-
 **Example:**
 
 ```bash
