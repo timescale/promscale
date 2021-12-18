@@ -50,16 +50,6 @@ For updating Promscale in this method, you need to stop the Promscale that is cu
 `docker-compose stop` and then pull the image with the tag you want to upgrade to with `docker pull timescale/promscale:<version-tag>`.
 This will pull the respective image to your local docker registry. You can then run the updated image with `docker-compose up`.
 
-**Example:**
-
-```bash
-docker exec \
-   --user postgres \
-   timescaledb \
-      psql \
-        -c "CALL execute_maintenance();"
-```
-
 ## 🔥 Configuring Prometheus to use this remote storage connector
 
 You must tell prometheus to use this remote storage connector by adding
