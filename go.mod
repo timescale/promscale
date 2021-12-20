@@ -10,7 +10,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/containerd/cgroups v1.0.2
 	github.com/docker/go-connections v0.4.0
-	github.com/edsrzf/mmap-go v1.0.0
+	github.com/edsrzf/mmap-go v1.1.0
 	github.com/felixge/fgprof v0.9.1
 	github.com/go-kit/log v0.2.0
 	github.com/go-resty/resty/v2 v2.6.0 // indirect
@@ -49,7 +49,7 @@ require (
 	go.opentelemetry.io/collector/model v0.41.0
 	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
-	golang.org/x/sys v0.0.0-20211020174200-9d6173849985
+	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
 	google.golang.org/grpc v1.43.0
 	gopkg.in/yaml.v2 v2.4.0
 )
