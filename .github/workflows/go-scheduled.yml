@@ -19,7 +19,7 @@ jobs:
       run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v2.1.4
+      uses: actions/setup-go@v2.1.5
       with:
         go-version: ${{ env.golang-version }}
       id: go
@@ -51,7 +51,7 @@ jobs:
       run: cat ".github/env" >> $GITHUB_ENV      
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v2.1.4
+      uses: actions/setup-go@v2.1.5
       with:
         go-version: ${{ env.golang-version }}
       id: go
@@ -96,7 +96,7 @@ jobs:
       run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v2.1.4
+      uses: actions/setup-go@v2.1.5
       with:
         go-version: ${{ env.golang-version }}
       id: go
