@@ -7,6 +7,8 @@ package model
 import (
 	"fmt"
 	"time"
+
+	"github.com/timescale/promscale/pkg/log"
 )
 
 // Data wraps incoming data with its in-timestamp. It is used to warn if the rate
@@ -67,4 +69,24 @@ func (t *Batch) Visitor() *batchVisitor {
 
 func (t *Batch) Absorb(other Batch) {
 	t.AppendSlice(other.data)
+}
+
+func (t *Batch) Len() int {
+	return t.CountSeries()
+}
+
+func (t *Batch) Swap(i, j int) {
+	t.data[i], t.data[j] = t.data[j], t.data[i]
+}
+
+func (t *Batch) Less(i, j int) bool {
+	s1, _, err := t.data[i].Series().GetSeriesID()
+	if err != nil {
+		log.Warn("seriesID", "not set but being sorted on")
+	}
+	s2, _, err := t.data[j].Series().GetSeriesID()
+	if err != nil {
+		log.Warn("seriesID", "not set but being sorted on")
+	}
+	return s1 < s2
 }
