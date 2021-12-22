@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -112,6 +113,35 @@ func TestInitializeMetricBatcher(t *testing.T) {
 	require.Equal(t, metricTableName, mInfo.TableName)
 	require.Equal(t, metricTableName, mInfo.SeriesTable)
 
+}
+
+func TestSendBatches(t *testing.T) {
+	makeSeries := func(seriesID int) *model.Series {
+		l := &model.Series{}
+		l.SetSeriesID(pgmodel.SeriesID(seriesID), 1)
+		return l
+	}
+	var workFinished sync.WaitGroup
+	errChan := make(chan error, 1)
+	data := []model.Insertable{
+		model.NewPromSamples(makeSeries(1), make([]prompb.Sample, 1)),
+		model.NewPromSamples(makeSeries(2), make([]prompb.Sample, 1)),
+		model.NewPromSamples(makeSeries(3), make([]prompb.Sample, 1)),
+	}
+	firstReq := &insertDataRequest{metric: "test", data: data, finished: &workFinished, errChan: errChan}
+	copierCh := make(chan readRequest)
+	go sendBatches(firstReq, nil, nil, "test", copierCh)
+	copierReq := <-copierCh
+	batch := <-copierReq.copySender
+
+	// we make sure that we receive batch data
+	for i := 0; i < 3; i++ {
+		id, _, err := batch.data.batch.Data()[i].Series().GetSeriesID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		require.Equal(t, fmt.Sprintf("%v", i+1), id.String())
+	}
 }
 
 type insertableVisitor []model.Insertable
