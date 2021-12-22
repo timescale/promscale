@@ -132,28 +132,10 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	labelArrayOID uint32) {
 
 	var (
-		tableName            string
-		firstReq             *insertDataRequest
-		firstReqSet          = false
-		exemplarsInitialized = false
+		tableName   string
+		firstReq    *insertDataRequest
+		firstReqSet = false
 	)
-
-	addReq := func(req *insertDataRequest, buf *pendingBuffer) {
-		if !exemplarsInitialized && containsExemplars(req.data) {
-			if err := initializeExemplars(conn, metricName); err != nil {
-				log.Error("msg", err)
-				req.reportResult(err)
-				return
-			}
-			exemplarsInitialized = true
-		}
-		buf.addReq(req)
-	}
-	//This channel in synchronous (no buffering). This provides backpressure
-	//to the batcher to keep batching until the copier is ready to read.
-	copySender := make(chan copyRequest)
-	defer close(copySender)
-	readRequest := readRequest{copySender: copySender}
 
 	for firstReq = range input {
 		var err error
@@ -172,21 +154,42 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	if !firstReqSet {
 		return
 	}
+	sendBatches(firstReq, input, conn, tableName, copierReadRequestCh)
+}
 
-	//the basic structure of communication from the batcher to the copier is as follows:
-	// 1. the batcher gets a request from the input channel
-	// 2. the batcher sends a readRequest to the copier on a channel shared by all the metric batchers
-	// 3. the batcher keeps on batching together requests from the input channel as long as the copier isn't ready to receive the batch
-	// 4. the copier catches up and gets the read request from the shared channel
-	// 5. the copier reads from the channel specified in the read request
-	// 6. the batcher is able to send it's batch to the copier
+//the basic structure of communication from the batcher to the copier is as follows:
+// 1. the batcher gets a request from the input channel
+// 2. the batcher sends a readRequest to the copier on a channel shared by all the metric batchers
+// 3. the batcher keeps on batching together requests from the input channel as long as the copier isn't ready to receive the batch
+// 4. the copier catches up and gets the read request from the shared channel
+// 5. the copier reads from the channel specified in the read request
+// 6. the batcher is able to send it's batch to the copier
 
-	// Notice some properties:
-	// 1. The shared channel in step 2 acts as a queue between metric batchers where the priority is approximately the earliest arrival time of any
-	//     request in the batch (that's why we only do step 2 after step 1). Note this means we probably want a single copier reading a batch
-	//     of requests consecutively so as to minimize processing delays. That's what the mutex in the copier does.
-	// 2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
-	// 3. The batcher has only a single read request out at a time.
+// Notice some properties:
+// 1. The shared channel in step 2 acts as a queue between metric batchers where the priority is approximately the earliest arrival time of any
+//     request in the batch (that's why we only do step 2 after step 1). Note this means we probably want a single copier reading a batch
+//     of requests consecutively so as to minimize processing delays. That's what the mutex in the copier does.
+// 2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
+// 3. The batcher has only a single read request out at a time.
+func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, tableName string, copierReadRequestCh chan<- readRequest) {
+	var exemplarsInitialized = false
+
+	addReq := func(req *insertDataRequest, buf *pendingBuffer) {
+		if !exemplarsInitialized && containsExemplars(req.data) {
+			if err := initializeExemplars(conn, tableName); err != nil {
+				log.Error("msg", err)
+				req.reportResult(err)
+				return
+			}
+			exemplarsInitialized = true
+		}
+		buf.addReq(req)
+	}
+	//This channel in synchronous (no buffering). This provides backpressure
+	//to the batcher to keep batching until the copier is ready to read.
+	copySender := make(chan copyRequest)
+	defer close(copySender)
+	readRequest := readRequest{copySender: copySender}
 
 	pending := NewPendingBuffer()
 	addReq(firstReq, pending)
@@ -208,6 +211,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		}
 
 		numSeries := pending.batch.CountSeries()
+
 		select {
 		//try to send first, if not then keep batching
 		case copySender <- copyRequest{pending, tableName}:
