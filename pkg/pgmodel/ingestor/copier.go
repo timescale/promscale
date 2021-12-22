@@ -274,6 +274,10 @@ func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
 	lowestMinTime := int64(math.MaxInt64)
 	for r := range reqs {
 		req := &reqs[r]
+		// Since seriesId order is not guaranteed we need to sort it to avoid row deadlock when duplicates are sent (eg. Prometheus retry)
+		// Samples inside series should be sorted by Prometheus
+		// We sort after WriteSeries call because we now have guarantees that all seriesIDs have been populated
+		sort.Sort(&req.data.batch)
 		numSamples, numExemplars := req.data.batch.Count()
 		NumRowsPerInsert.Observe(float64(numSamples + numExemplars))
 
