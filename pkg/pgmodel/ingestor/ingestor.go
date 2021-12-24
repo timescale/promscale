@@ -20,7 +20,6 @@ import (
 
 type Cfg struct {
 	AsyncAcks              bool
-	ReportInterval         int
 	NumCopiers             int
 	DisableEpochSync       bool
 	IgnoreCompressedChunks bool

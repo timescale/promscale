@@ -34,7 +34,6 @@ type Config struct {
 	DbConnectionTimeout     time.Duration
 	IgnoreCompressedChunks  bool
 	AsyncAcks               bool
-	ReportInterval          int
 	WriteConnectionsPerProc int
 	MaxConnections          int
 	UsesHA                  bool
@@ -82,6 +81,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 		"Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	fs.BoolVar(&cfg.EnableStatementsCache, "db.statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
 		"Disable if using PgBouncer")
+	fs.BoolVar(&cfg.AsyncAcks, "metrics.async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
 	return cfg
 }
 

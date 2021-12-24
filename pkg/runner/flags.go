@@ -35,7 +35,6 @@ type Config struct {
 	TLSCertFile                 string
 	TLSKeyFile                  string
 	ThroughputInterval          time.Duration
-	AsyncAcks                   bool
 	Migrate                     bool
 	StopAfterMigrate            bool
 	UseVersionLease             bool
@@ -125,7 +124,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.BoolVar(&cfg.UseVersionLease, "startup.use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
 	fs.BoolVar(&cfg.InstallExtensions, "startup.install-extensions", true, "Install TimescaleDB, Promscale extension.")
 	fs.BoolVar(&cfg.UpgradeExtensions, "startup.upgrade-extensions", true, "Upgrades TimescaleDB, Promscale extensions.")
-	fs.BoolVar(&cfg.AsyncAcks, "metrics.async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
 	fs.BoolVar(&cfg.UpgradePrereleaseExtensions, "startup.upgrade-prerelease-extensions", false, "Upgrades to pre-release TimescaleDB, Promscale extensions.")
 	fs.StringVar(&cfg.TLSCertFile, "auth.tls-cert-file", "", "TLS Certificate file used for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")
 	fs.StringVar(&cfg.TLSKeyFile, "auth.tls-key-file", "", "TLS Key file for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")

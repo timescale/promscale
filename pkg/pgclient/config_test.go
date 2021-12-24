@@ -24,7 +24,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 		SslMode                 string
 		DbConnectionTimeout     time.Duration
 		AsyncAcks               bool
-		ReportInterval          int
 		LabelsCacheSize         uint64
 		MetricsCacheSize        uint64
 		SeriesCacheSize         uint64
@@ -52,7 +51,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     time.Minute * 2,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -75,7 +73,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale",
 				SslMode:                 "require",
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -98,7 +95,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				Database:                "timescale",
 				SslMode:                 "require",
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -123,7 +119,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     time.Hour,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -148,7 +143,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -173,7 +167,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -198,7 +191,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -223,7 +215,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -248,7 +239,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
@@ -273,7 +263,6 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				SslMode:                 "require",
 				DbConnectionTimeout:     defaultConnectionTime,
 				AsyncAcks:               false,
-				ReportInterval:          0,
 				LabelsCacheSize:         0,
 				MetricsCacheSize:        0,
 				SeriesCacheSize:         0,
