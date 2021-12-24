@@ -137,6 +137,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 	c := ingestor.Cfg{
 		NumCopiers:             numCopiers,
 		IgnoreCompressedChunks: cfg.IgnoreCompressedChunks,
+		AsyncAcks:              cfg.AsyncAcks,
 	}
 
 	var (
