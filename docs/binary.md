@@ -32,12 +32,15 @@ extensions [README](https://github.com/timescale/promscale_extension/blob/master
 does optimize certain queries.
 Please note that the extension requires Postgres version 12 of newer.
 
-## 🕞 Setting up cron jobs
+## 🕞 Setting up cron jobs for Timescale DB 1.X
 
-Binary installations also need to make sure the `execute_maintenance()`
+If you are using TimescaleDB 1.X you need to make sure the `execute_maintenance()`
 procedure on a regular basis (e.g. via cron). We recommend executing it every
 30 minutes. This is necessary to execute maintenance tasks such as enforcing
 data retention policies according to the configured policy.
+
+**Note:** This is not needed if you are using TimescaleDB 2.X because it has native support for task scheduling which
+is automatically configured by Promscale to run the `execute_maintenance()` procedure.
 
 Copy the code snippet from the file [docs/scripts/prom-execute-maintenance.sh](/docs/scripts/prom-execute-maintenance.sh) and add the database password in place of `<PASSWORD>`.
 
