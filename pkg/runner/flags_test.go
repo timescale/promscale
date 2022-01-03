@@ -188,6 +188,14 @@ func TestParseFlags(t *testing.T) {
 				return c
 			},
 		},
+		{
+			name: "test deprecated CLI flag",
+			args: []string{"-db-writer-connection-concurrency", "10"},
+			result: func(c Config) Config {
+				c.PgmodelCfg.WriteConnectionsPerProc = 10
+				return c
+			},
+		},
 	}
 
 	for _, c := range testCases {

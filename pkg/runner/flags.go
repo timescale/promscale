@@ -60,6 +60,7 @@ var flagAliases = map[string][]string{
 	"db.statements-cache":               {"db-statements-cache"},
 	"db.uri":                            {"db-uri"},
 	"db.user":                           {"db-user"},
+	"db.num-writer-connections":         {"db-writer-connection-concurrency"},
 	"log.format":                        {"log-format"},
 	"log.level":                         {"log-level"},
 	"log.throughput-report-interval":    {"tput-report"},
