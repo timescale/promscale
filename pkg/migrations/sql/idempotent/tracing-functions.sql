@@ -529,3 +529,21 @@ END;
 $func$
 LANGUAGE plpgsql VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.put_instrumentation_lib(text, text, bigint) TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.delete_all_traces()
+RETURNS void
+AS $func$
+    TRUNCATE SCHEMA_TRACING.link;
+    TRUNCATE SCHEMA_TRACING.event;
+    TRUNCATE SCHEMA_TRACING.span;
+    TRUNCATE SCHEMA_TRACING.instrumentation_lib RESTART IDENTITY;
+    TRUNCATE SCHEMA_TRACING.operation RESTART IDENTITY;
+    TRUNCATE SCHEMA_TRACING.schema_url RESTART IDENTITY CASCADE;
+    TRUNCATE SCHEMA_TRACING.tag RESTART IDENTITY;
+    DELETE FROM SCHEMA_TRACING.tag_key WHERE id >= 1000; -- keep the "standard" tag keys
+    SELECT setval('SCHEMA_TRACING.tag_key_id_seq', 1000);
+$func$
+LANGUAGE sql VOLATILE;
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.delete_all_traces() TO prom_writer;
+COMMENT ON FUNCTION SCHEMA_TRACING_PUBLIC.delete_all_traces IS
+$$WARNING: this function deletes all spans and related tracing data in the system and restores it to a "just installed" state.$$;
