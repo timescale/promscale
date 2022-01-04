@@ -108,6 +108,7 @@ func TestDeleteSpans(t *testing.T) {
 		`, schema.Trace)
 		rows, err := db.Query(ctx, qry)
 		require.NoError(t, err, "Failed to list tables in trace schema.")
+		defer rows.Close()
 		results := make([]result, 0)
 		for rows.Next() {
 			result := result{}

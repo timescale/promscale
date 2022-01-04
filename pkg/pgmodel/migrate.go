@@ -52,6 +52,7 @@ var (
 			"tracing-functions.sql",
 			"tracing-views.sql",
 			"telemetry.sql",
+			"maintenance.sql",
 			"remote-commands.sql",   // should be just above apply_permissions.sql
 			"apply_permissions.sql", //	should be last
 		},

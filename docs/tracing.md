@@ -166,6 +166,33 @@ If your service is instrumented with Zipkin, configure the Zipkin transport you 
 
 Tobs does not currently configure the OpenTelemetry Collector to ingest Zipkin traces (coming soon).
 
+## Manage Your Traces in Promscale
+
+### Compression
+
+The `_ps_trace.span`, `_ps_trace.event`, and `_ps_trace.link` tables are [hypertables](https://docs.timescale.com/timescaledb/latest/how-to-guides/hypertables/#hypertables).
+These hypertables have [compression](https://docs.timescale.com/timescaledb/latest/how-to-guides/compression/about-compression/) enabled by default if available.
+
+### Retention
+
+The `_ps_trace.span`, `_ps_trace.event`, and `_ps_trace.link` hypertables have an automated data retention policy which will
+drop chunks beyond a certain age. This policy is driven by the `span_retention_period` which is defaulted to 30 days in 
+new installations. The `ps_trace.set_span_retention_period(_span_retention_period INTERVAL)` function can be used to change
+this value. The `ps_trace.get_span_retention_period()` function can be used to get the current span retention period.
+
+```postgresql
+SELECT ps_trace.set_span_retention_period(30 * INTERVAL '1 day');
+
+SELECT ps_trace.get_span_retention_period();
+```
+
+### Deleting ALL Trace Data
+
+The `ps_trace.delete_all_traces()` function can be used to delete all trace data from the database, effectively restoring
+the schema to a "freshly installed" state. Beware, this function will truncate the tables in the `_ps_trace` schema, 
+deleting all the data. There is no "undo" for this aside from restoring from a database backup, which depending on your
+backup strategy may still result in some data loss.
+
 ## Visualizing your traces in Promscale
 
 ### Instructions for Tobs
