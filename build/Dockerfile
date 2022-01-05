@@ -9,6 +9,7 @@ COPY ./pkg pkg/
 COPY ./cmd cmd/
 ARG TARGETOS
 ARG TARGETARCH
+RUN go generate ./...
 RUN GIT_COMMIT=$(git rev-list -1 HEAD) \
     && GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} CGO_ENABLED=0 go build -a \
     --ldflags '-w' --ldflags "-X version.CommitHash=$GIT_COMMIT" \
