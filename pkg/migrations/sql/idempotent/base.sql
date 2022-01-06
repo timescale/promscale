@@ -457,7 +457,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key(TEXT) to prom_w
 -- Get a new label array position for a label key. For any metric,
 -- we want the positions to be as compact as possible.
 -- This uses some pretty heavy locks so use sparingly.
--- locks: label_key_position, data table, series partition (in view creation),
+-- locks: takes advisory lock for metric to provide safety when getting key position
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(
         metric_name text, key_name_array text[], is_for_exemplar boolean)
     RETURNS int[]
@@ -472,6 +472,7 @@ DECLARE
     max_position int;
     metric_table name;
     position_table_name text;
+    metric_name_hash int;
 BEGIN
     If is_for_exemplar THEN
         position_table_name := 'exemplar_label_key_position';
@@ -498,17 +499,9 @@ BEGIN
         RETURN position_array;
     END IF;
 
-    -- Lock tables for exclusiveness.
-    IF NOT is_for_exemplar THEN
-        SELECT table_name
-        FROM SCHEMA_CATALOG.get_or_create_metric_table_name(get_new_pos_for_key.metric_name)
-        INTO metric_table;
-        --lock as for ALTER TABLE because we are in effect changing the schema here
-        --also makes sure the next_position below is correct in terms of concurrency
-        EXECUTE format('LOCK TABLE prom_data_series.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
-    ELSE
-        LOCK TABLE SCHEMA_CATALOG.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
-    END IF;
+    -- Grab advisory lock to make sure next_position is correct in terms of concurrency
+    EXECUTE FORMAT('SELECT hashtext(%L)', metric_name) INTO metric_name_hash;
+    EXECUTE FORMAT('SELECT pg_advisory_xact_lock(%s)', metric_name_hash);
 
     max_position := NULL;
     EXECUTE FORMAT('SELECT max(pos) + 1
@@ -1162,12 +1155,6 @@ BEGIN
    --need to make sure the series partition exists
    SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
    INTO metric_id, table_name;
-
-   -- the data table could be locked during label key creation
-   -- and must be locked before the series parent according to lock ordering
-   EXECUTE format($query$
-        LOCK TABLE ONLY SCHEMA_DATA.%1$I IN ACCESS SHARE MODE
-    $query$, table_name);
 
    EXECUTE format($query$
     WITH existing AS (
