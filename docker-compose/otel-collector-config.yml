@@ -1,0 +1,27 @@
+receivers:
+  jaeger:
+    protocols:
+      thrift_http:
+        endpoint: "0.0.0.0:14268"
+
+exporters:
+  logging:
+  otlp:
+    endpoint: promscale:9202
+    tls:
+      insecure: true
+
+processors:
+  batch:
+
+service:
+  telemetry:
+    logs:
+      level: "debug"
+
+  pipelines:
+    traces:
+      receivers: [jaeger]
+      exporters: [otlp, logging]
+      processors: [batch]
+

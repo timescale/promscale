@@ -34,6 +34,7 @@ We use the following categories for changes:
 - Add `ps_trace.get_trace_retention_period()` database function to get current trace retention period [#1015]
 - Add ability to set additional environment variables in helm chart [#1041]
 - Add OpenTelemetry tracing instrumentation to metric ingest codepath
+- Add example tracing setup to docker-compose [#1024]
 
 ### Changed
 - Rename CLI flags to improve user interface [#964]
