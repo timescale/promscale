@@ -20,6 +20,7 @@ services:
     image: timescale/promscale:latest
     ports:
       - 9201:9201/tcp
+      - 9202:9202/tcp
     restart: on-failure
     depends_on:
       - db
@@ -28,6 +29,29 @@ services:
       PROMSCALE_DB_CONNECT_RETRIES: 10
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
+      PROMSCALE_ENABLE_FEATURE: tracing
+      PROMSCALE_OTLP_GRPC_SERVER_LISTEN_ADDRESS: ":9202"
+      PROMSCALE_TELEMETRY_TRACE_JAEGER_ENDPOINT: "http://otel-collector:14268/api/traces"
+      PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
+
+  otel-collector:
+    platform: linux/amd64
+    image: "otel/opentelemetry-collector:0.41.0"
+    command: [ "--config=/etc/otel-collector-config.yml" ]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "14268:14268" # jaeger http
+
+  jaeger:
+    image: jaegertracing/jaeger-query:1.30.0
+    environment:
+      SPAN_STORAGE_TYPE: grpc-plugin
+    command: [
+      "--grpc-storage.server=promscale:9202",
+    ]
+    ports:
+      - "16686:16686"
 
   node_exporter:
     image: quay.io/prometheus/node-exporter
