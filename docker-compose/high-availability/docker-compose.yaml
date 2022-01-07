@@ -2,7 +2,7 @@ version: '3.0'
 
 services:
   db:
-    image: timescaledev/promscale-extension:latest-pg12
+    image: timescale/timescaledb-ha:pg14-latest
     ports:
       - 5432:5432/tcp
     environment:

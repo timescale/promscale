@@ -2,7 +2,7 @@ version: '3.0'
 
 services:
   db:
-    image: timescaledev/timescaledb-ha:pg12-latest
+    image: timescale/timescaledb-ha:pg14-latest
     ports:
       - 5432:5432/tcp
     environment:
