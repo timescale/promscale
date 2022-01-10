@@ -9,6 +9,10 @@ metadata:
     chart: {{ template "promscale.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
+    app.kubernetes.io/name: "promscale-connector"
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/part-of: "promscale-connector"
+    app.kubernetes.io/component: "connector"
 spec:
   endpoints:
   - interval: 30s

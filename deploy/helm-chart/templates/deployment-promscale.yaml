@@ -8,6 +8,10 @@ metadata:
     chart: {{ template "promscale.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
+    app.kubernetes.io/name: "promscale-connector"
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/part-of: "promscale-connector"
+    app.kubernetes.io/component: "connector"
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
@@ -19,6 +23,12 @@ spec:
     metadata:
       labels:
         app: {{ template "promscale.fullname" . }}
+        chart: {{ template "promscale.chart" . }}
+        release: {{ .Release.Name }}
+        app.kubernetes.io/name: "promscale-connector"
+        app.kubernetes.io/version: {{ .Chart.AppVersion }}
+        app.kubernetes.io/part-of: "promscale-connector"
+        app.kubernetes.io/component: "connector"
       annotations: 
         checksum/config: {{ printf "%s" .Values.connection | sha256sum -}}
         {{- if .Values.prometheus.annotations }}
