@@ -56,3 +56,38 @@ jobs:
 
       - name: Run chart-testing (install)
         run: ct install --config ct.yaml
+
+  publish-chart:
+    runs-on: ubuntu-latest
+    needs: [generate, lint-test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.7.1
+
+      - name: Create package
+        env:
+          AWS_REGION: 'us-east-1'
+          AWS_ACCESS_KEY_ID: ${{ secrets.ORG_AWS_HELM_CHART_BUCKET_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ORG_AWS_HELM_CHART_BUCKET_SECRET_ACCESS_KEY }}
+        run: |
+            mkdir -p chart_release
+            helm package deploy/helm-chart -d chart_release/
+            helm plugin install https://github.com/hypnoglow/helm-s3.git          
+            helm repo add tscharts s3://charts.timescale.com
+            helm s3 push chart_release/* tscharts --acl public-read --dry-run 
+
+      - name: push package
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          AWS_REGION: 'us-east-1'
+          AWS_ACCESS_KEY_ID: ${{ secrets.ORG_AWS_HELM_CHART_BUCKET_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ORG_AWS_HELM_CHART_BUCKET_SECRET_ACCESS_KEY }}
+        run: |
+          helm s3 push chart_release/* tscharts --acl public-read
