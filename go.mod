@@ -5,7 +5,6 @@ go 1.15
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/armon/go-metrics v0.3.9 // indirect
 	github.com/blang/semver/v4 v4.0.0
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/containerd/cgroups v1.0.2
@@ -16,7 +15,6 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.3.0
-	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.0.0
 	github.com/hashicorp/go-plugin v1.4.3
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
@@ -26,7 +24,7 @@ require (
 	github.com/jackc/pgtype v1.9.1
 	github.com/jackc/pgx/v4 v4.14.1
 	github.com/jaegertracing/jaeger v1.29.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.41.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.42.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pbnjay/memory v0.0.0-20201129165224-b12e5d931931
