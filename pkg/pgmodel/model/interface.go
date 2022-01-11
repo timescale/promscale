@@ -5,6 +5,7 @@
 package model
 
 import (
+	"context"
 	"math"
 	"time"
 
@@ -31,9 +32,9 @@ type Metadata struct {
 
 // Dispatcher is responsible for inserting label, series and data into the storage.
 type Dispatcher interface {
-	InsertTs(rows Data) (uint64, error)
-	InsertMetadata([]Metadata) (uint64, error)
-	CompleteMetricCreation() error
+	InsertTs(ctx context.Context, rows Data) (uint64, error)
+	InsertMetadata(context.Context, []Metadata) (uint64, error)
+	CompleteMetricCreation(context.Context) error
 	Close()
 }
 

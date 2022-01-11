@@ -524,14 +524,14 @@ type MockInserter struct {
 func (m *MockInserter) Close() {}
 
 func (m *MockInserter) InsertNewData(data Data) (uint64, error) {
-	return m.InsertTs(data)
+	return m.InsertTs(context.Background(), data)
 }
 
-func (m *MockInserter) CompleteMetricCreation() error {
+func (m *MockInserter) CompleteMetricCreation(context.Context) error {
 	return nil
 }
 
-func (m *MockInserter) InsertTs(data Data) (uint64, error) {
+func (m *MockInserter) InsertTs(_ context.Context, data Data) (uint64, error) {
 	rows := data.Rows
 	for _, v := range rows {
 		for i, si := range v {
@@ -560,6 +560,6 @@ func (m *MockInserter) InsertTs(data Data) (uint64, error) {
 	return uint64(ret), m.InsertDataErr
 }
 
-func (m *MockInserter) InsertMetadata(metadata []Metadata) (uint64, error) {
+func (m *MockInserter) InsertMetadata(_ context.Context, metadata []Metadata) (uint64, error) {
 	return uint64(len(metadata)), nil
 }

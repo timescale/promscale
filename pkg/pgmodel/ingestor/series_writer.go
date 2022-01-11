@@ -13,6 +13,8 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tracer"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -54,7 +56,9 @@ type perMetricInfo struct {
 
 // Set all seriesIds for a samples, fetching any missing ones from the DB,
 // and repopulating the cache accordingly.
-func (h *seriesWriter) WriteSeries(sv SeriesVisitor) error {
+func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error {
+	ctx, span := tracer.Default().Start(ctx, "write-series")
+	defer span.End()
 	infos := make(map[string]*perMetricInfo)
 	seriesCount := 0
 	err := sv.VisitSeries(func(series *model.Series) error {
@@ -76,6 +80,8 @@ func (h *seriesWriter) WriteSeries(sv SeriesVisitor) error {
 	if len(infos) == 0 {
 		return nil
 	}
+
+	span.SetAttributes(attribute.Int("series_count", seriesCount))
 
 	labelMap := make(map[labelKey]labelInfo, seriesCount)
 	//logically should be a separate function but we want
@@ -110,13 +116,13 @@ func (h *seriesWriter) WriteSeries(sv SeriesVisitor) error {
 	//the labels for multiple series in same txn as we are creating the series,
 	//the ordering of label creation can only be canonical within a series and
 	//not across series.
-	dbEpoch, err := h.fillLabelIDs(infos, labelMap)
+	dbEpoch, err := h.fillLabelIDs(ctx, infos, labelMap)
 	if err != nil {
 		return fmt.Errorf("error setting series ids: %w", err)
 	}
 
 	//create the label arrays
-	err = h.buildLabelArrays(infos, labelMap)
+	err = h.buildLabelArrays(ctx, infos, labelMap)
 	if err != nil {
 		return fmt.Errorf("error setting series ids: %w", err)
 	}
@@ -182,7 +188,9 @@ func (h *seriesWriter) WriteSeries(sv SeriesVisitor) error {
 	return nil
 }
 
-func (h *seriesWriter) fillLabelIDs(infos map[string]*perMetricInfo, labelMap map[labelKey]labelInfo) (model.SeriesEpoch, error) {
+func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[labelKey]labelInfo) (model.SeriesEpoch, error) {
+	_, span := tracer.Default().Start(ctx, "fill-label-ids")
+	defer span.End()
 	//we cannot use the label cache here because that maps label ids => name, value.
 	//what we need here is name, value => id.
 	//we may want a new cache for that, at a later time.
@@ -290,7 +298,9 @@ func (h *seriesWriter) fillLabelIDs(infos map[string]*perMetricInfo, labelMap ma
 	return dbEpoch, nil
 }
 
-func (h *seriesWriter) buildLabelArrays(infos map[string]*perMetricInfo, labelMap map[labelKey]labelInfo) error {
+func (h *seriesWriter) buildLabelArrays(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[labelKey]labelInfo) error {
+	_, span := tracer.Default().Start(ctx, "build-label-arrays")
+	defer span.End()
 	for _, info := range infos {
 		labelArraySet, newSeries, err := createLabelArrays(info.series, labelMap, info.maxPos)
 		if err != nil {

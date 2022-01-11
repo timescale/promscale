@@ -12,10 +12,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"go.opentelemetry.io/collector/model/otlpgrpc"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -29,6 +31,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/thanos"
+	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
@@ -74,6 +77,31 @@ func Run(cfg *Config) error {
 		log.Info("msg", "Migrations disabled for read-only mode")
 	} else {
 		tput.InitWatcher(cfg.ThroughputInterval)
+	}
+
+	if cfg.TracerCfg.JaegerCollectorEndpoint != "" {
+		tp, err := tracer.InitProvider(&cfg.TracerCfg)
+		if err != nil {
+			log.Error("msg", "aborting startup due to tracer provider error", "err", err.Error())
+			return startupError
+		}
+
+		// Register our TracerProvider as the global so any imported
+		// instrumentation in the future will default to using it.
+		otel.SetTracerProvider(tp)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Cleanly shutdown and flush telemetry when the application exits.
+		defer func(ctx context.Context) {
+			// Do not make the application hang when it is shutdown.
+			ctx, cancel = context.WithTimeout(ctx, time.Second*5)
+			defer cancel()
+			if err := tp.Shutdown(ctx); err != nil {
+				log.Fatal(err)
+			}
+		}(ctx)
 	}
 
 	promMetrics := api.InitMetrics()
