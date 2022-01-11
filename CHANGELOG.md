@@ -16,6 +16,7 @@ We use the following categories for changes:
 
 ### Added
 - Add ability to configure chunk interval on startup
+- Add function ps_trace.delete_all_traces() to delete all trace data
 
 ### Changed
 - Rename CLI flags to improve user interface
