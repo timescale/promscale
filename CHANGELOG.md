@@ -15,24 +15,24 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ### Added
-- Add ability to configure chunk interval on startup
-- Add function ps_trace.delete_all_traces() to delete all trace data
+- Add ability to configure chunk interval on startup [#991]
+- Add function ps_trace.delete_all_traces() to delete all trace data [#1012]
 
 ### Changed
-- Rename CLI flags to improve user interface
+- Rename CLI flags to improve user interface [#964]
 
 ### Deprecated
-- Deprecate `migrate` flag
+- Deprecate `migrate` flag [#964]
 
 ### Removed
-- Remove deprecated `-promql-enable-feature` flag
-- Remove deprecated leader election
+- Remove deprecated `-promql-enable-feature` flag [#964]
+- Remove deprecated leader election [#964]
 
 ### Fixed
-- helm-charts: use fixed target port on svc-promscale
-- Fix passing of async flag
-- Remove the event_name_check constraint
-- Fix _prom_catalog.metric_view() function on non-tsdb installs
+- helm-charts: use fixed target port on svc-promscale [#1009]
+- Fix passing of async flag [#1008]
+- Remove the event_name_check constraint [#979]
+- Fix _prom_catalog.metric_view() function on non-tsdb installs [#958]
 
 ## [0.7.1] - 2021-12-03
 
