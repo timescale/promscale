@@ -45,6 +45,8 @@ func promscaleMetadata() Metadata {
 	metadata["os_machine"] = toString(uname.Machine[:])
 
 	turnOffPackageLogging()
+	// uname gives off values for os_version, hence we need to use /etc/os-releases
+	// to get the expected results.
 	distro := linux.DiscoverDistro()
 	metadata["os_version"] = distro.Version
 	metadata["os_id"] = distro.ID

@@ -72,6 +72,7 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler 
 			metrics.FailedQueries.Add(queryCount)
 			return
 		}
+		metrics.ExecutedQueries.Add(queryCount)
 
 		duration := time.Since(begin).Seconds()
 		metrics.QueryBatchDuration.Observe(duration)
