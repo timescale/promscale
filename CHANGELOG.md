@@ -14,6 +14,8 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+## [0.8.0] - 2022-01-18
+
 ### Added
 - Allow templating host and uri connection strings in helm chart [#1055]
 - Add ability to configure the default chunk interval on startup [#991]

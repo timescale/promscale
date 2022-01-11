@@ -8,9 +8,13 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.7.1
+    chart: promscale-0.8.0
     release: promscale
     heritage: Helm
+    app.kubernetes.io/name: "promscale-connector"
+    app.kubernetes.io/version: 0.8.0
+    app.kubernetes.io/part-of: "promscale-connector"
+    app.kubernetes.io/component: "connector"
 ---
 # Source: promscale/templates/secret-connection.yaml
 apiVersion: v1
@@ -20,15 +24,19 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.7.1
+    chart: promscale-0.8.0
     release: promscale
     heritage: Helm
+    app.kubernetes.io/name: "promscale-connector"
+    app.kubernetes.io/version: 0.8.0
+    app.kubernetes.io/part-of: "promscale-connector"
+    app.kubernetes.io/component: "connector"
 stringData:
   PROMSCALE_DB_PORT: "5432"
   PROMSCALE_DB_USER: "postgres"
   PROMSCALE_DB_PASSWORD: ""
   PROMSCALE_DB_HOST: "timescaledb.default.svc.cluster.local"
-  PROMSCALE_DB_NAME: "timescale"
+  PROMSCALE_DB_NAME: "tsdb"
   PROMSCALE_DB_SSL_MODE: "require"
 ---
 # Source: promscale/templates/svc-promscale.yaml
@@ -39,9 +47,13 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.7.1
+    chart: promscale-0.8.0
     release: promscale
     heritage: Helm
+    app.kubernetes.io/name: "promscale-connector"
+    app.kubernetes.io/version: 0.8.0
+    app.kubernetes.io/part-of: "promscale-connector"
+    app.kubernetes.io/component: "connector"
 spec:
   selector:
     app: promscale
@@ -49,6 +61,7 @@ spec:
   ports:
   - name: metrics-port
     port: 9201
+    targetPort: metrics-port
     protocol: TCP
 ---
 # Source: promscale/templates/deployment-promscale.yaml
@@ -59,9 +72,13 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.7.1
+    chart: promscale-0.8.0
     release: promscale
     heritage: Helm
+    app.kubernetes.io/name: "promscale-connector"
+    app.kubernetes.io/version: 0.8.0
+    app.kubernetes.io/part-of: "promscale-connector"
+    app.kubernetes.io/component: "connector"
 spec:
   replicas: 1
   strategy:
@@ -73,8 +90,14 @@ spec:
     metadata:
       labels:
         app: promscale
+        chart: promscale-0.8.0
+        release: promscale
+        app.kubernetes.io/name: "promscale-connector"
+        app.kubernetes.io/version: 0.8.0
+        app.kubernetes.io/part-of: "promscale-connector"
+        app.kubernetes.io/component: "connector"
       annotations: 
-        checksum/config: 88c801c7dcedfa1badfb9c718a5de2a2e4bacb8ba3126b7b43fc40ab0b356fc4
+        checksum/config: af0eae966aacabe43c12f83955e5a5cbf0c4853b5678c536b9f84d83b9d658b7
         prometheus.io/path: /metrics
         prometheus.io/port: "9201"
         prometheus.io/scrape: "true"
