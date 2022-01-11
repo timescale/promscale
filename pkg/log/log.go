@@ -38,8 +38,8 @@ type Config struct {
 
 // ParseFlags parses the configuration flags for logging.
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
-	fs.StringVar(&cfg.Level, "log.level", "info", "Log level to use from [ 'error', 'warn', 'info', 'debug' ].")
-	fs.StringVar(&cfg.Format, "log.format", "logfmt", "The log format to use [ 'logfmt', 'json' ].")
+	fs.StringVar(&cfg.Level, "telemetry.log.level", "info", "Log level to use from [ 'error', 'warn', 'info', 'debug' ].")
+	fs.StringVar(&cfg.Format, "telemetry.log.format", "logfmt", "The log format to use [ 'logfmt', 'json' ].")
 	return cfg
 }
 
