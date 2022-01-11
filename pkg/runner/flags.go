@@ -53,6 +53,7 @@ var flagAliases = map[string][]string{
 	"db.connections-max":                {"db-connections-max"},
 	"db.host":                           {"db-host"},
 	"db.name":                           {"db-name"},
+	"db.num-writer-connections":         {"db-writer-connection-concurrency"},
 	"db.password":                       {"db-password"},
 	"db.port":                           {"db-port"},
 	"db.read-only":                      {"read-only"},
@@ -60,13 +61,9 @@ var flagAliases = map[string][]string{
 	"db.statements-cache":               {"db-statements-cache"},
 	"db.uri":                            {"db-uri"},
 	"db.user":                           {"db-user"},
-	"db.num-writer-connections":         {"db-writer-connection-concurrency"},
-	"log.format":                        {"log-format"},
-	"log.level":                         {"log-level"},
-	"log.throughput-report-interval":    {"tput-report"},
 	"metrics.async-acks":                {"async-acks"},
-	"metrics.cache.labels.size":         {"labels-cache-size"},
 	"metrics.cache.exemplar.size":       {"exemplar-cache-size"},
+	"metrics.cache.labels.size":         {"labels-cache-size"},
 	"metrics.cache.metrics.size":        {"metrics-cache-size"},
 	"metrics.cache.series.initial-size": {"series-cache-initial-size"},
 	"metrics.cache.series.max-bytes":    {"series-cache-max-bytes"},
@@ -83,16 +80,19 @@ var flagAliases = map[string][]string{
 	"startup.upgrade-extensions":                          {"upgrade-extensions"},
 	"startup.upgrade-prerelease-extensions":               {"upgrade-prerelease-extensions"},
 	"startup.use-schema-version-lease":                    {"use-schema-version-lease"},
+	"telemetry.log.format":                                {"log-format"},
+	"telemetry.log.level":                                 {"log-level"},
+	"telemetry.log.throughput-report-interval":            {"tput-report"},
 	"thanos.store-api.server-address":                     {"thanos-store-api-listen-address"},
 	"tracing.otlp.server-address":                         {"otlp-grpc-server-listen-address"},
-	"web.cors-origin":                                     {"web-cors-origin"},
-	"web.listen-address":                                  {"web-listen-address"},
-	"web.auth.bearer-token-file":                          {"bearer-token-file"},
 	"web.auth.bearer-token":                               {"bearer-token"},
-	"web.auth.password-file":                              {"auth-password-file"},
+	"web.auth.bearer-token-file":                          {"bearer-token-file"},
 	"web.auth.password":                                   {"auth-password"},
+	"web.auth.password-file":                              {"auth-password-file"},
 	"web.auth.username":                                   {"auth-username"},
+	"web.cors-origin":                                     {"web-cors-origin"},
 	"web.enable-admin-api":                                {"web-enable-admin-api"},
+	"web.listen-address":                                  {"web-listen-address"},
 	"web.telemetry-path":                                  {"web-telemetry-path"},
 }
 
@@ -116,7 +116,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.ThanosStoreAPIListenAddr, "thanos.store-api.server-address", "", "Address to listen on for Thanos Store API endpoints.")
 	fs.StringVar(&cfg.OTLPGRPCListenAddr, "tracing.otlp.server-address", "", "Address to listen on for OTLP GRPC server.")
 	fs.StringVar(&corsOriginFlag, "web.cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
-	fs.DurationVar(&cfg.ThroughputInterval, "log.throughput-report-interval", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
+	fs.DurationVar(&cfg.ThroughputInterval, "telemetry.log.throughput-report-interval", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
 	fs.StringVar(&migrateOption, "migrate", "true", "Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. (DEPRECATED) Will be removed in version 0.9.0")
 	fs.StringVar(&cfg.DatasetConfig, "startup.dataset.config", "", "Dataset configuration in YAML format for Promscale. It is used for setting various dataset configuration like default metric chunk interval")
 	fs.BoolVar(&cfg.StartupOnly, "startup.only", false, "Only run startup configuration with Promscale (i.e. migrate) and exit. Can be used to run promscale as an init container for HA setups.")
