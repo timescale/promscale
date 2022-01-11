@@ -24,6 +24,8 @@ We use the following categories for changes:
 ### Changed
 - Rename CLI flags to improve user interface [#964]
 - BREAKING: Enable and configure 30 day default retention period for span data [#1015]
+- The `query_batch_duration_seconds` metric was renamed to `query_remote_read_batch_duration_seconds`
+  to clarify what it represents. [#1040]
 
 ### Deprecated
 - Deprecate `migrate` flag [#964]

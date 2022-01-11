@@ -16,26 +16,26 @@ var metrics *Metrics
 type Metrics struct {
 	// Using the first word in struct to ensure proper alignment in 32-bit systems.
 	// Reference: https://golang.org/pkg/sync/atomic/#pkg-note-BUG
-	LastRequestUnixNano   int64
-	LeaderGauge           prometheus.Gauge
-	ReceivedSamples       prometheus.Counter
-	ReceivedMetadata      prometheus.Counter
-	FailedSamples         prometheus.Counter
-	FailedMetadata        prometheus.Counter
-	IngestedSamples       prometheus.Counter
-	SentMetadata          prometheus.Counter
-	SentBatchDuration     prometheus.Histogram
-	ReceivedQueries       prometheus.Counter
-	ExecutedQueries       prometheus.Counter
-	TimedOutQueries       prometheus.Counter
-	FailedQueries         prometheus.Counter
-	QueryBatchDuration    prometheus.Histogram
-	ExemplarQueryDuration prometheus.Histogram
-	QueryDuration         prometheus.Histogram
-	InvalidReadReqs       prometheus.Counter
-	InvalidWriteReqs      prometheus.Counter
-	InvalidQueryReqs      prometheus.Counter
-	HTTPRequestDuration   *prometheus.HistogramVec
+	LastRequestUnixNano          int64
+	LeaderGauge                  prometheus.Gauge
+	ReceivedSamples              prometheus.Counter
+	ReceivedMetadata             prometheus.Counter
+	FailedSamples                prometheus.Counter
+	FailedMetadata               prometheus.Counter
+	IngestedSamples              prometheus.Counter
+	SentMetadata                 prometheus.Counter
+	SentBatchDuration            prometheus.Histogram
+	ReceivedQueries              prometheus.Counter
+	ExecutedQueries              prometheus.Counter
+	TimedOutQueries              prometheus.Counter
+	FailedQueries                prometheus.Counter
+	QueryRemoteReadBatchDuration prometheus.Histogram
+	ExemplarQueryDuration        prometheus.Histogram
+	QueryDuration                prometheus.Histogram
+	InvalidReadReqs              prometheus.Counter
+	InvalidWriteReqs             prometheus.Counter
+	InvalidQueryReqs             prometheus.Counter
+	HTTPRequestDuration          *prometheus.HistogramVec
 }
 
 // InitMetrics sets up and returns the Prometheus metrics which Promscale exposes.
@@ -60,7 +60,7 @@ func InitMetrics() *Metrics {
 		metrics.InvalidReadReqs,
 		metrics.InvalidWriteReqs,
 		metrics.SentBatchDuration,
-		metrics.QueryBatchDuration,
+		metrics.QueryRemoteReadBatchDuration,
 		metrics.QueryDuration,
 		metrics.ExemplarQueryDuration,
 		metrics.HTTPRequestDuration,
@@ -129,10 +129,10 @@ func createMetrics() *Metrics {
 			},
 		),
 		LastRequestUnixNano: time.Now().UnixNano(),
-		QueryBatchDuration: prometheus.NewHistogram(
+		QueryRemoteReadBatchDuration: prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Namespace: util.PromNamespace,
-				Name:      "query_batch_duration_seconds",
+				Name:      "query_remote_read_batch_duration_seconds",
 				Help:      "Duration of query batch read calls to the remote storage.",
 				Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 50, 100, 250, 500, 1000, 2500},
 			},
