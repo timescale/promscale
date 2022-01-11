@@ -71,6 +71,18 @@ var promqlStats = []promqlTelemetry{
 		name:  "promql_query_execution_time_p99",
 		query: "histogram_quantile(0.99, sum by(le) (rate(promscale_metrics_query_duration_seconds_bucket[1h])))",
 	}, {
+		name:  "promql_query_remote_read_batch_execution_time_p50",
+		query: "histogram_quantile(0.5, sum by(le) (rate(promscale_metrics_query_remote_read_batch_duration_seconds_bucket[1h])))",
+	}, {
+		name:  "promql_query_remote_read_batch_execution_time_p90",
+		query: "histogram_quantile(0.9, sum by(le) (rate(promscale_metrics_query_remote_read_batch_duration_seconds_bucket[1h])))",
+	}, {
+		name:  "promql_query_remote_read_batch_execution_time_p95",
+		query: "histogram_quantile(0.95, sum by(le) (rate(promscale_metrics_query_remote_read_batch_duration_seconds_bucket[1h])))",
+	}, {
+		name:  "promql_query_remote_read_batch_execution_time_p99",
+		query: "histogram_quantile(0.99, sum by(le) (rate(promscale_metrics_query_remote_read_batch_duration_seconds_bucket[1h])))",
+	}, {
 		name:  "trace_query_execution_time_p50",
 		query: "histogram_quantile(0.5, sum by(le) (rate(promscale_trace_fetch_traces_api_execution_duration_seconds_bucket[1h])))",
 	}, {

@@ -75,7 +75,7 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler 
 		metrics.ExecutedQueries.Add(queryCount)
 
 		duration := time.Since(begin).Seconds()
-		metrics.QueryBatchDuration.Observe(duration)
+		metrics.QueryRemoteReadBatchDuration.Observe(duration)
 
 		data, err := proto.Marshal(resp)
 		if err != nil {
