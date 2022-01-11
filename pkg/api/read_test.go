@@ -87,6 +87,7 @@ func TestRead(t *testing.T) {
 				FailedQueries:      failedQueriesCounter,
 				ReceivedQueries:    receivedQueriesCounter,
 				InvalidReadReqs:    invalidReadReqs,
+				ExecutedQueries:    &mockMetric{},
 			}
 			handler := Read(config, mockReader, metrics)
 

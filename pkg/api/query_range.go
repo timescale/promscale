@@ -125,6 +125,7 @@ func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Query
 			metrics.FailedQueries.Add(1)
 			return
 		}
+		metrics.ExecutedQueries.Add(1)
 
 		respondQuery(w, res, res.Warnings)
 	}

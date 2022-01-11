@@ -78,6 +78,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 			metrics.FailedQueries.Add(1)
 			return
 		}
+		metrics.ExecutedQueries.Add(1)
 
 		respondQuery(w, res, res.Warnings)
 	}
