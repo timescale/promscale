@@ -501,11 +501,11 @@ func doIngest(t *testing.T, ingstr *ingestor.DBIngestor, data ...[]prompb.TimeSe
 	for _, data := range data {
 		wr := ingestor.NewWriteRequest()
 		wr.Timeseries = copyMetrics(data)
-		_, _, err := ingstr.Ingest(wr)
+		_, _, err := ingstr.Ingest(context.Background(), wr)
 		if err != nil {
 			t.Fatalf("ingest error: %v", err)
 		}
-		_ = ingstr.CompleteMetricCreation()
+		_ = ingstr.CompleteMetricCreation(context.Background())
 	}
 }
 

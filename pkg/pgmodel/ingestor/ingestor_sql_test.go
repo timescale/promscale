@@ -5,6 +5,7 @@
 package ingestor
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -266,7 +267,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				lsi = append(lsi, model.NewPromExemplars(ls, nil))
 			}
 
-			err := sw.WriteSeries(sVisitor(lsi))
+			err := sw.WriteSeries(context.Background(), sVisitor(lsi))
 			if err != nil {
 				foundErr := false
 				for _, q := range c.sqlQueries {
@@ -428,7 +429,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	samples := makeSamples(series)
-	err := sw.WriteSeries(sVisitor(samples))
+	err := sw.WriteSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +455,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	require.NoError(t, err)
 
 	samples = makeSamples(series)
-	err = sw.WriteSeries(sVisitor(samples))
+	err = sw.WriteSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +477,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	// retrying rechecks the DB and uses the new IDs
 	samples = makeSamples(series)
-	err = sw.WriteSeries(sVisitor(samples))
+	err = sw.WriteSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -798,6 +799,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 		},
 	}
 
+	ctx := context.Background()
+
 	for _, co := range testCases {
 		c := co
 		t.Run(c.name, func(t *testing.T) {
@@ -825,7 +828,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 			defer inserter.Close()
 
-			_, err = inserter.InsertTs(model.Data{Rows: c.rows})
+			_, err = inserter.InsertTs(ctx, model.Data{Rows: c.rows})
 
 			var expErr error
 			switch {

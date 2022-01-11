@@ -43,6 +43,11 @@ require (
 	github.com/thanos-io/thanos v0.24.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	go.opentelemetry.io/collector/model v0.42.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.28.0
+	go.opentelemetry.io/otel v1.3.0
+	go.opentelemetry.io/otel/exporters/jaeger v1.3.0
+	go.opentelemetry.io/otel/sdk v1.3.0
+	go.opentelemetry.io/otel/trace v1.3.0
 	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9

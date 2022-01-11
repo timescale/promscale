@@ -45,7 +45,7 @@ func TestOperationWithNullChars(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		require.NoError(t, err)
 
 		// Verify sanitization is ingested in the db.

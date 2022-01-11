@@ -173,7 +173,7 @@ func TestSQLChunkInterval(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -432,7 +432,7 @@ func TestSQLIngest(t *testing.T) {
 				}
 				defer ingestor.Close()
 
-				cnt, _, err := ingestor.Ingest(newWriteRequestWithTs(copyMetrics(tcase.metrics)))
+				cnt, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(tcase.metrics)))
 				if err != nil && err != tcase.expectErr {
 					t.Fatalf("got an unexpected error %v", err)
 				}
@@ -482,7 +482,7 @@ func TestSQLIngest(t *testing.T) {
 					t.Fatalf("counts not equal: got %v expected %v\n", totalRows, tcase.count)
 				}
 
-				err = ingestor.CompleteMetricCreation()
+				err = ingestor.CompleteMetricCreation(context.Background())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -529,11 +529,11 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -560,11 +560,11 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			},
 		}
 
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -595,7 +595,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		}
 
 		//ingest duplicate after compression
-		_, _, err = ingestor.Ingest(&prompb.WriteRequest{Timeseries: copyMetrics(ts)})
+		_, _, err = ingestor.Ingest(context.Background(), &prompb.WriteRequest{Timeseries: copyMetrics(ts)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -663,11 +663,11 @@ func TestMetricBatcherLabelsBatching(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -726,11 +726,11 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -750,7 +750,7 @@ func TestInsertCompressed(t *testing.T) {
 			}
 		}
 		//ingest after compression
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -829,11 +829,11 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -871,11 +871,11 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 				t.Fatal(err)
 			}
 			defer ingestor.Close()
-			_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+			_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = ingestor.CompleteMetricCreation()
+			err = ingestor.CompleteMetricCreation(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -961,11 +961,11 @@ func TestCompressionSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1067,11 +1067,11 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 		defer ingestor.Close()
 
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1155,7 +1155,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		// decompress the first chunk
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1293,11 +1293,11 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 		defer ingestor.Close()
 
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1356,7 +1356,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 
 		// decompress the first chunk
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1461,11 +1461,11 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 		}
 		defer ingestor.Close()
 
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1717,11 +1717,11 @@ func TestRegisterMetricView(t *testing.T) {
 		}
 		defer ingestor.Close()
 
-		_, _, err = ingestor.Ingest(newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation()
+		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}

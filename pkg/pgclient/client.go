@@ -197,8 +197,8 @@ func (c *Client) Ingestor() *ingestor.DBIngestor {
 }
 
 // Ingest writes the timeseries object into the DB
-func (c *Client) Ingest(r *prompb.WriteRequest) (uint64, uint64, error) {
-	return c.ingestor.Ingest(r)
+func (c *Client) Ingest(ctx context.Context, r *prompb.WriteRequest) (uint64, uint64, error) {
+	return c.ingestor.Ingest(ctx, r)
 }
 
 // IngestTraces writes the traces object into the DB.

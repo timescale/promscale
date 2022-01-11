@@ -5,6 +5,7 @@
 package ingestor
 
 import (
+	"context"
 	"sync"
 
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -35,6 +36,7 @@ func (idt *insertDataTask) reportResult(err error) {
 }
 
 type pendingBuffer struct {
+	spanCtx       context.Context
 	needsResponse []insertDataTask
 	batch         model.Batch
 }

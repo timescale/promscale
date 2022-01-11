@@ -5,6 +5,7 @@
 package ingestor
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -250,6 +251,8 @@ func TestDBIngestorIngest(t *testing.T) {
 		},
 	}
 
+	ctx := context.Background()
+
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			sCache := cache.NewSeriesCache(cache.DefaultConfig, nil)
@@ -266,7 +269,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			wr := NewWriteRequest()
 			wr.Timeseries = c.metrics
 			wr.Metadata = c.metadata
-			countSamples, countMetadata, err := i.Ingest(wr)
+			countSamples, countMetadata, err := i.Ingest(ctx, wr)
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {

@@ -15,6 +15,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tracer"
 	"go.opentelemetry.io/collector/model/pdata"
 )
 
@@ -80,7 +81,9 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces pdata.Trace
 //     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
-func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
+func (ingestor *DBIngestor) Ingest(ctx context.Context, r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
+	ctx, span := tracer.Default().Start(ctx, "db-ingest")
+	defer span.End()
 	activeWriteRequests.Inc()
 	defer activeWriteRequests.Dec() // Dec() is defered otherwise it will lead to loosing a decrement if some error occurs.
 	var (
@@ -91,14 +94,14 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngest
 	switch numTs, numMeta := len(timeseries), len(metadata); {
 	case numTs > 0 && numMeta == 0:
 		// Write request contains only time-series.
-		n, err := ingestor.ingestTimeseries(timeseries, release)
+		n, err := ingestor.ingestTimeseries(ctx, timeseries, release)
 		return n, 0, err
 	case numTs == 0 && numMeta == 0:
 		release()
 		return 0, 0, nil
 	case numMeta > 0 && numTs == 0:
 		// Write request contains only metadata.
-		n, err := ingestor.ingestMetadata(metadata, release)
+		n, err := ingestor.ingestMetadata(ctx, metadata, release)
 		return 0, n, err
 	default:
 	}
@@ -112,11 +115,11 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngest
 	defer close(res)
 
 	go func() {
-		n, err := ingestor.ingestTimeseries(timeseries, release)
+		n, err := ingestor.ingestTimeseries(ctx, timeseries, release)
 		res <- result{series, n, err}
 	}()
 	go func() {
-		n, err := ingestor.ingestMetadata(metadata, release)
+		n, err := ingestor.ingestMetadata(ctx, metadata, release)
 		res <- result{meta, n, err}
 	}()
 
@@ -148,7 +151,9 @@ func (ingestor *DBIngestor) Ingest(r *prompb.WriteRequest) (numInsertablesIngest
 	return numInsertablesIngested, numMetadataIngested, err
 }
 
-func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
+func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
+	ctx, span := tracer.Default().Start(ctx, "ingest-timeseries")
+	defer span.End()
 	var (
 		totalRowsExpected uint64
 
@@ -199,7 +204,7 @@ func (ingestor *DBIngestor) ingestTimeseries(timeseries []prompb.TimeSeries, rel
 	}
 	releaseMem()
 
-	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(model.Data{Rows: insertables, ReceivedTime: time.Now()})
+	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(ctx, model.Data{Rows: insertables, ReceivedTime: time.Now()})
 	if errSamples == nil && numInsertablesIngested != totalRowsExpected {
 		return numInsertablesIngested, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRowsExpected, numInsertablesIngested)
 	}
@@ -216,7 +221,9 @@ func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (m
 
 // ingestMetadata ingests metric metadata received from Prometheus. It runs as a secondary routine, independent from
 // the main dataflow (i.e., samples ingestion) since metadata ingestion is not as frequent as that of samples.
-func (ingestor *DBIngestor) ingestMetadata(metadata []prompb.MetricMetadata, releaseMem func()) (uint64, error) {
+func (ingestor *DBIngestor) ingestMetadata(ctx context.Context, metadata []prompb.MetricMetadata, releaseMem func()) (uint64, error) {
+	_, span := tracer.Default().Start(ctx, "ingest-metadata")
+	defer span.End()
 	num := len(metadata)
 	data := make([]model.Metadata, num)
 	for i := 0; i < num; i++ {
@@ -229,7 +236,7 @@ func (ingestor *DBIngestor) ingestMetadata(metadata []prompb.MetricMetadata, rel
 		}
 	}
 	releaseMem()
-	numMetadataIngested, errMetadata := ingestor.dispatcher.InsertMetadata(data)
+	numMetadataIngested, errMetadata := ingestor.dispatcher.InsertMetadata(ctx, data)
 	if errMetadata != nil {
 		return 0, errMetadata
 	}
@@ -237,8 +244,8 @@ func (ingestor *DBIngestor) ingestMetadata(metadata []prompb.MetricMetadata, rel
 }
 
 // Parts of metric creation not needed to insert data
-func (ingestor *DBIngestor) CompleteMetricCreation() error {
-	return ingestor.dispatcher.CompleteMetricCreation()
+func (ingestor *DBIngestor) CompleteMetricCreation(ctx context.Context) error {
+	return ingestor.dispatcher.CompleteMetricCreation(ctx)
 }
 
 // Close closes the ingestor

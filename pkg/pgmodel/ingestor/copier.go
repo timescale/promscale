@@ -20,6 +20,9 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tracer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const maxInsertStmtPerTxn = 100
@@ -69,7 +72,11 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 	requestBatch := make([]readRequest, 0, maxInsertStmtPerTxn)
 	insertBatch := make([]copyRequest, 0, cap(requestBatch))
 	for {
-		var ok bool
+		ctx, span := tracer.Default().Start(context.Background(), "copier-run")
+		var (
+			ok        bool
+			numSeries int
+		)
 
 		//fetch the batch of request upfront to make sure all of the
 		//requests fetched are for unique metrics. This is insured
@@ -77,25 +84,38 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 		//at a time and the fact that we fetch the entire batch before
 		//executing any of the reads. This guarantees that we never
 		//need to batch the same metrics together in the copier
-		requestBatch, ok = copierGetBatch(requestBatch, in)
+		requestBatch, ok = copierGetBatch(ctx, requestBatch, in)
 		if !ok {
+			span.End()
 			return
 		}
 
+		insertCtx, insertSpan := tracer.Default().Start(ctx, "insert-batch-append")
 		for i := range requestBatch {
 			copyRequest, ok := <-requestBatch[i].copySender
 			if !ok {
 				continue
 			}
+
+			_, batchSpan := tracer.Default().Start(insertCtx, "append-batch", trace.WithLinks(
+				trace.Link{
+					SpanContext: trace.SpanContextFromContext(copyRequest.data.spanCtx),
+				},
+			))
 			insertBatch = append(insertBatch, copyRequest)
+			numSeries = numSeries + copyRequest.data.batch.CountSeries()
+			batchSpan.End()
 		}
+		insertSpan.End()
+
+		span.SetAttributes(attribute.Int("num_series", numSeries))
 
 		// sort to prevent deadlocks on table locks
 		sort.Slice(insertBatch, func(i, j int) bool {
 			return insertBatch[i].table < insertBatch[j].table
 		})
 
-		err := persistBatch(conn, sw, elf, insertBatch)
+		err := persistBatch(ctx, conn, sw, elf, insertBatch)
 		if err != nil {
 			for i := range insertBatch {
 				insertBatch[i].data.reportResults(err)
@@ -110,12 +130,15 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 		}
 		insertBatch = insertBatch[:0]
 		requestBatch = requestBatch[:0]
+		span.End()
 	}
 }
 
-func persistBatch(conn pgxconn.PgxConn, sw *seriesWriter, elf *ExemplarLabelFormatter, insertBatch []copyRequest) error {
+func persistBatch(ctx context.Context, conn pgxconn.PgxConn, sw *seriesWriter, elf *ExemplarLabelFormatter, insertBatch []copyRequest) error {
+	ctx, span := tracer.Default().Start(ctx, "persist-batch")
+	defer span.End()
 	batch := copyBatch(insertBatch)
-	err := sw.WriteSeries(batch)
+	err := sw.WriteSeries(ctx, batch)
 	if err != nil {
 		return fmt.Errorf("copier: writing series: %w", err)
 	}
@@ -124,22 +147,31 @@ func persistBatch(conn pgxconn.PgxConn, sw *seriesWriter, elf *ExemplarLabelForm
 		return fmt.Errorf("copier: formatting exemplar label values: %w", err)
 	}
 
-	doInsertOrFallback(conn, insertBatch...)
+	doInsertOrFallback(ctx, conn, insertBatch...)
 	return nil
 }
 
-func copierGetBatch(batch []readRequest, in <-chan readRequest) ([]readRequest, bool) {
+func copierGetBatch(ctx context.Context, batch []readRequest, in <-chan readRequest) ([]readRequest, bool) {
+	_, span := tracer.Default().Start(ctx, "get-batch")
+	defer span.End()
 	//This mutex is not for safety, but rather for better batching.
 	//It guarantees that only one copier is reading from the channel at one time
 	//This ensures bigger batches as well as less spread of a
 	//single http request to multiple copiers, decreasing latency via less sync
 	//overhead especially on low-pressure systems.
+	span.AddEvent("Acquiring lock")
 	getBatchMutex.Lock()
-	defer getBatchMutex.Unlock()
+	span.AddEvent("Got the lock")
+	defer func(span trace.Span) {
+		getBatchMutex.Unlock()
+		span.AddEvent("Unlocking")
+	}(span)
+
 	req, ok := <-in
 	if !ok {
 		return batch, false
 	}
+	span.AddEvent("Appending first batch")
 	batch = append(batch, req)
 
 	//we use a small timeout to prevent low-pressure systems from using up too many
@@ -149,18 +181,26 @@ hot_gather:
 	for len(batch) < cap(batch) {
 		select {
 		case r2 := <-in:
+			span.AddEvent("Appending batch")
 			batch = append(batch, r2)
 		case <-timeout:
+			span.AddEvent("Timeout appending batches")
 			break hot_gather
 		}
 	}
+	if len(batch) == cap(batch) {
+		span.AddEvent("Batch is full")
+	}
+	span.SetAttributes(attribute.Int("num_batches", len(batch)))
 	return batch, true
 }
 
-func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
-	err, _ := insertSeries(conn, reqs...)
+func doInsertOrFallback(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest) {
+	ctx, span := tracer.Default().Start(ctx, "do-insert-or-fallback")
+	defer span.End()
+	err, _ := insertSeries(ctx, conn, reqs...)
 	if err != nil {
-		insertBatchErrorFallback(conn, reqs...)
+		insertBatchErrorFallback(ctx, conn, reqs...)
 		return
 	}
 
@@ -170,11 +210,13 @@ func doInsertOrFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 	}
 }
 
-func insertBatchErrorFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
+func insertBatchErrorFallback(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest) {
+	ctx, span := tracer.Default().Start(ctx, "insert-batch-error-fallback")
+	defer span.End()
 	for i := range reqs {
-		err, minTime := insertSeries(conn, reqs[i])
+		err, minTime := insertSeries(ctx, conn, reqs[i])
 		if err != nil {
-			err = tryRecovery(conn, err, reqs[i], minTime)
+			err = tryRecovery(ctx, conn, err, reqs[i], minTime)
 		}
 
 		reqs[i].data.reportResults(err)
@@ -186,7 +228,9 @@ func insertBatchErrorFallback(conn pgxconn.PgxConn, reqs ...copyRequest) {
 // If we inserted into a compressed chunk, we decompress the chunk and try again.
 // Since a single batch can have both errors, we need to remember the insert method
 // we're using, so that we deduplicate if needed.
-func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest, minTime int64) error {
+func tryRecovery(ctx context.Context, conn pgxconn.PgxConn, err error, req copyRequest, minTime int64) error {
+	ctx, span := tracer.Default().Start(ctx, "try-recovery")
+	defer span.End()
 	// we only recover from postgres errors right now
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
@@ -197,14 +241,14 @@ func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest, minTime int64
 
 	if pgErr.Code == "0A000" || strings.Contains(pgErr.Message, "compressed") || strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
 		// If the error was that the table is already compressed, decompress and try again.
-		return handleDecompression(conn, req, minTime)
+		return handleDecompression(ctx, conn, req, minTime)
 	}
 
 	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "err", pgErr.Error())
 	return pgErr
 }
 
-func skipDecompression(_ pgxconn.PgxConn, _ copyRequest, _ int64) error {
+func skipDecompression(_ context.Context, _ pgxconn.PgxConn, _ copyRequest, _ int64) error {
 	log.WarnRateLimited("msg", "Rejecting samples falling on compressed chunks as decompression is disabled")
 	return nil
 }
@@ -212,7 +256,9 @@ func skipDecompression(_ pgxconn.PgxConn, _ copyRequest, _ int64) error {
 // In the event we filling in old data and the chunk we want to INSERT into has
 // already been compressed, we decompress the chunk and try again. When we do
 // this we delay the recompression to give us time to insert additional data.
-func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest, minTimeInt int64) error {
+func retryAfterDecompression(ctx context.Context, conn pgxconn.PgxConn, req copyRequest, minTimeInt int64) error {
+	ctx, span := tracer.Default().Start(ctx, "retry-after-decompression")
+	defer span.End()
 	var (
 		table   = req.table
 		minTime = model.Time(minTimeInt).Time()
@@ -242,7 +288,7 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest, minTimeInt i
 
 	metrics.DecompressCalls.Inc()
 	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
-	err, _ := insertSeries(conn, req) // Attempt an insert again.
+	err, _ := insertSeries(ctx, conn, req) // Attempt an insert again.
 	return err
 }
 
@@ -263,7 +309,9 @@ func debugInsert() {
 */
 
 // insertSeries performs the insertion of time-series into the DB.
-func insertSeries(conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
+func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
+	_, span := tracer.Default().Start(ctx, "insert-series")
+	defer span.End()
 	batch := conn.NewBatch()
 
 	numRowsPerInsert := make([]int, 0, len(reqs))

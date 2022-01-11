@@ -19,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -61,6 +62,8 @@ func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elect
 
 func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
+	_, span := tracer.Default().Start(r.Context(), "validate-write-headers")
+	defer span.End()
 	if r.Method != "POST" {
 		validateError(w, fmt.Sprintf("HTTP Method %s instead of POST", r.Method), metrics)
 		return false
@@ -106,6 +109,8 @@ func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Reques
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) bool {
+		_, span := tracer.Default().Start(r.Context(), "check-legacy-ha")
+		defer span.End()
 		// We need to record this time even if we're not the leader as it's
 		// used to determine if we're eligible to become the leader.
 		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
@@ -147,6 +152,9 @@ func (f funcCloser) Close() error {
 }
 
 func decodeSnappy(w http.ResponseWriter, r *http.Request) bool {
+	_, span := tracer.Default().Start(r.Context(), "decode-snappy")
+	defer span.End()
+
 	snappyEncoding := strings.Contains(r.Header.Get("Content-Encoding"), "snappy")
 	if !snappyEncoding {
 		return true
@@ -221,6 +229,8 @@ var decodedBufPool = sync.Pool{
 
 func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func(http.ResponseWriter, *http.Request) bool {
 	return func(w http.ResponseWriter, r *http.Request) bool {
+		ctx, span := tracer.Default().Start(r.Context(), "ingest")
+		defer span.End()
 		req := ingestor.NewWriteRequest()
 		err := dataParser.ParseRequest(r, req)
 		if err != nil {
@@ -246,7 +256,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		metrics.ReceivedSamples.Add(float64(receivedSamplesCount))
 		begin := time.Now()
 
-		numSamples, numMetadata, err := inserter.Ingest(req)
+		numSamples, numMetadata, err := inserter.Ingest(ctx, req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
