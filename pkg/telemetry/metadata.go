@@ -12,6 +12,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/dekobon/distro-detect/linux"
+
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -40,10 +42,19 @@ func promscaleMetadata() Metadata {
 	// leading to type mismatch. Hence, we create a slice to handle both cases.
 	metadata["os_sys_name"] = toString(uname.Sysname[:])
 	metadata["os_node_name"] = toString(uname.Nodename[:])
-	metadata["os_release"] = toString(uname.Release[:])
-	metadata["os_version"] = toString(uname.Version[:])
 	metadata["os_machine"] = toString(uname.Machine[:])
+
+	turnOffPackageLogging()
+	distro := linux.DiscoverDistro()
+	metadata["os_version"] = distro.Version
+	metadata["os_id"] = distro.ID
+
 	return metadata
+}
+
+func turnOffPackageLogging() {
+	linux.LogWarnf = func(format string, args ...interface{}) {}
+	linux.LogErrorf = func(format string, args ...interface{}) {}
 }
 
 func getPkgEnv() string {

@@ -371,7 +371,7 @@ func (t *engineImpl) syncPromqlTelemetry() {
 	}
 
 	evalDuration := time.Since(start)
-	stats["promql_telemetry_evaluation_duration_seconds"] = evalDuration.String()
+	stats["promql_telemetry_evaluation_duration_seconds"] = fmt.Sprintf("%.3f", evalDuration.Seconds())
 
 	t.writeToTimescaleMetadataTable(stats)
 }
