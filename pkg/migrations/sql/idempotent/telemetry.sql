@@ -98,7 +98,14 @@ $$
         PERFORM SCHEMA_PS_CATALOG.apply_telemetry('metrics_default_chunk_interval', result);
 
         -- Traces telemetry.
-        SELECT n_distinct::TEXT INTO result FROM pg_stats WHERE schemaname='SCHEMA_TRACING' AND tablename='span' AND attname='trace_id';
+        SELECT (CASE
+                    WHEN n_distinct >= 0 THEN
+                        n_distinct
+                    ELSE
+                        -n_distinct * approximate_row_count('SCHEMA_TRACING.span')
+                END)::TEXT INTO result
+        FROM pg_stats
+        WHERE schemaname='SCHEMA_TRACING' AND tablename='span' AND attname='trace_id' AND inherited;
         PERFORM SCHEMA_PS_CATALOG.apply_telemetry('traces_total_approx', result);
 
         SELECT approximate_row_count('SCHEMA_TRACING.span')::TEXT INTO result;
