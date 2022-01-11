@@ -23,7 +23,7 @@ require (
 	github.com/jackc/pgproto3/v2 v2.2.0
 	github.com/jackc/pgtype v1.9.1
 	github.com/jackc/pgx/v4 v4.14.1
-	github.com/jaegertracing/jaeger v1.29.0
+	github.com/jaegertracing/jaeger v1.30.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.42.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
