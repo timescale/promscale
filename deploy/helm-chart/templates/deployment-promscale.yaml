@@ -52,7 +52,7 @@ spec:
           envFrom:
           - secretRef:
               {{- $secretName := ternary (include "promscale.fullname" .) .Values.connectionSecretName (eq .Values.connectionSecretName "") }}
-              name: {{ $secretName }}
+              name: {{ tpl $secretName . }}
           {{- if .Values.resources }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
