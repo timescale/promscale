@@ -18,6 +18,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/tenancy"
+	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -27,6 +28,7 @@ type Config struct {
 	OTLPGRPCListenAddr          string
 	PgmodelCfg                  pgclient.Config
 	LogCfg                      log.Config
+	TracerCfg                   tracer.Config
 	APICfg                      api.Config
 	LimitsCfg                   limits.Config
 	TenancyCfg                  tenancy.Config
@@ -108,6 +110,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	pgclient.ParseFlags(fs, &cfg.PgmodelCfg)
 	log.ParseFlags(fs, &cfg.LogCfg)
+	tracer.ParseFlags(fs, &cfg.TracerCfg)
 	api.ParseFlags(fs, &cfg.APICfg)
 	limits.ParseFlags(fs, &cfg.LimitsCfg)
 	tenancy.ParseFlags(fs, &cfg.TenancyCfg)

@@ -14,6 +14,9 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tracer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
@@ -172,7 +175,10 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 // 2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
 // 3. The batcher has only a single read request out at a time.
 func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, tableName string, copierReadRequestCh chan<- readRequest) {
-	var exemplarsInitialized = false
+	var (
+		exemplarsInitialized = false
+		span                 trace.Span
+	)
 
 	addReq := func(req *insertDataRequest, buf *pendingBuffer) {
 		if !exemplarsInitialized && containsExemplars(req.data) {
@@ -183,7 +189,16 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			}
 			exemplarsInitialized = true
 		}
+		_, addSpan := tracer.Default().Start(buf.spanCtx, "add-req",
+			trace.WithLinks(
+				trace.Link{
+					SpanContext: req.spanCtx,
+				},
+			),
+			trace.WithAttributes(attribute.String("insertable_count", fmt.Sprintf("%d", len(req.data)))),
+		)
 		buf.addReq(req)
+		addSpan.End()
 	}
 	//This channel in synchronous (no buffering). This provides backpressure
 	//to the batcher to keep batching until the copier is ready to read.
@@ -192,21 +207,27 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 	readRequest := readRequest{copySender: copySender}
 
 	pending := NewPendingBuffer()
+	pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
+	span.SetAttributes(attribute.String("metric", tableName))
 	addReq(firstReq, pending)
 	copierReadRequestCh <- readRequest
+	span.AddEvent("Sent a read request")
 
 	for {
 		if pending.IsEmpty() {
+			span.AddEvent("Buffer is empty")
 			req, ok := <-input
 			if !ok {
 				return
 			}
 			addReq(req, pending)
 			copierReadRequestCh <- readRequest
+			span.AddEvent("Sent a read request")
 		}
 
 		recvCh := input
 		if pending.IsFull() {
+			span.AddEvent("Buffer is full")
 			recvCh = nil
 		}
 
@@ -214,15 +235,23 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 
 		select {
 		//try to send first, if not then keep batching
-		case copySender <- copyRequest{pending, tableName}:
+		case copySender <- copyRequest{data: pending, table: tableName}:
 			MetricBatcherFlushSeries.Observe(float64(numSeries))
+			span.SetAttributes(attribute.Int("num_series", numSeries))
+			span.End()
 			pending = NewPendingBuffer()
+			pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
+			span.SetAttributes(attribute.String("metric", tableName))
 		case req, ok := <-recvCh:
 			if !ok {
 				if !pending.IsEmpty() {
-					copySender <- copyRequest{pending, tableName}
+					span.AddEvent("Sending last non-empty batch")
+					copySender <- copyRequest{data: pending, table: tableName}
 					MetricBatcherFlushSeries.Observe(float64(numSeries))
 				}
+				span.AddEvent("Exiting metric batcher batch loop")
+				span.SetAttributes(attribute.Int("num_series", numSeries))
+				span.End()
 				return
 			}
 			addReq(req, pending)

@@ -54,6 +54,8 @@ You can also find information on flags with `promscale_<version> -help`.
 | telemetry.log.format | string | logfmt | Log format to use from [ "logfmt", "json" ]. |
 | telemetry.log.level | string | debug | Log level to use from [ "error", "warn", "info", "debug" ]. |
 | telemetry.log.throughput-report-interval | duration | 0 second | Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`. |
+| telemetry.trace.jaeger-endpoint | string | "" (empty) | Jaeger tracing collector thrift HTTP URL endpoint to send telemetry to (e.g. https://jaeger-collector:14268/api/traces). |
+| telemetry.trace.sample-ratio | float | 0.0 | Trace sampling ratio, amount of spans to send to collector. Valid values from 0.0 (none) to 1.0 (all). |
 
 ## Metrics specific flags flags
 

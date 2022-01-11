@@ -17,7 +17,10 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tracer"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -42,6 +45,8 @@ type pgxDispatcher struct {
 	doneWG                 sync.WaitGroup
 	labelArrayOID          uint32
 }
+
+var _ model.Dispatcher = &pgxDispatcher{}
 
 func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
 	numCopiers := cfg.NumCopiers
@@ -89,7 +94,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 
 	//on startup run a completeMetricCreation to recover any potentially
 	//incomplete metric
-	if err := inserter.CompleteMetricCreation(); err != nil {
+	if err := inserter.CompleteMetricCreation(context.Background()); err != nil {
 		return nil, err
 	}
 
@@ -107,7 +112,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 
 func (p *pgxDispatcher) runCompleteMetricCreationWorker() {
 	for range p.completeMetricCreation {
-		err := p.CompleteMetricCreation()
+		err := p.CompleteMetricCreation(context.Background())
 		if err != nil {
 			log.Warn("msg", "Got an error finalizing metric", "err", err)
 		}
@@ -159,7 +164,9 @@ func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
 	return model.SeriesEpoch(newEpoch), nil
 }
 
-func (p *pgxDispatcher) CompleteMetricCreation() error {
+func (p *pgxDispatcher) CompleteMetricCreation(ctx context.Context) error {
+	_, span := tracer.Default().Start(ctx, "dispatcher-complete-metric-creation")
+	defer span.End()
 	_, err := p.conn.Exec(
 		context.Background(),
 		finalizeMetricCreation,
@@ -184,7 +191,9 @@ func (p *pgxDispatcher) Close() {
 // actually inserted) and any error.
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
-func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
+func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64, error) {
+	_, span := tracer.Default().Start(ctx, "dispatcher-insert-ts")
+	defer span.End()
 	var (
 		numRows      uint64
 		maxt         int64
@@ -205,8 +214,10 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 			}
 		}
 		// the following is usually non-blocking, just a channel insert
-		p.getMetricBatcher(metricName) <- &insertDataRequest{metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.getMetricBatcher(metricName) <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
+	span.SetAttributes(attribute.String("num_rows", fmt.Sprintf("%d", numRows)))
+	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
 	reportIncomingBatch(numRows)
 	reportOutgoing := func() {
 		reportOutgoingBatch(numRows)
@@ -242,7 +253,9 @@ func (p *pgxDispatcher) InsertTs(dataTS model.Data) (uint64, error) {
 	return numRows, err
 }
 
-func (p *pgxDispatcher) InsertMetadata(metadata []model.Metadata) (uint64, error) {
+func (p *pgxDispatcher) InsertMetadata(ctx context.Context, metadata []model.Metadata) (uint64, error) {
+	_, span := tracer.Default().Start(ctx, "dispatcher-insert-metadata")
+	defer span.End()
 	totalRows := uint64(len(metadata))
 	insertedRows, err := insertMetadata(p.conn, metadata)
 	if err != nil {
@@ -288,6 +301,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 }
 
 type insertDataRequest struct {
+	spanCtx  trace.SpanContext
 	metric   string
 	finished *sync.WaitGroup
 	data     []model.Insertable

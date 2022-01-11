@@ -23,6 +23,7 @@ import (
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/util"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
@@ -40,7 +41,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		dataParser.AddPreprocessor(preproc)
 	}
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", Write(client, dataParser, elector))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(Write(client, dataParser, elector), "write-metrics"))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {

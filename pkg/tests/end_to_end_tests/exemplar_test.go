@@ -126,7 +126,7 @@ func TestExemplarIngestion(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		insertablesIngested, metadataIngested, err := ingestor.Ingest(newWriteRequestWithTs(exemplarTS_1))
+		insertablesIngested, metadataIngested, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(exemplarTS_1))
 		require.NoError(t, err)
 		require.Equal(t, 8, int(insertablesIngested))
 		require.Equal(t, 0, int(metadataIngested))
@@ -191,7 +191,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		insertablesIngested, metadataIngested, err := ingestor.Ingest(newWriteRequestWithTs(exemplarTS_2))
+		insertablesIngested, metadataIngested, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(exemplarTS_2))
 		require.NoError(t, err)
 		require.Equal(t, 12, int(insertablesIngested))
 		require.Equal(t, 0, int(metadataIngested))

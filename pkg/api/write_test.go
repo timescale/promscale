@@ -361,7 +361,7 @@ func (m *mockInserter) IngestTraces(_ context.Context, _ pdata.Traces) error {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *mockInserter) Ingest(r *prompb.WriteRequest) (uint64, uint64, error) {
+func (m *mockInserter) Ingest(_ context.Context, r *prompb.WriteRequest) (uint64, uint64, error) {
 	m.ts = r.Timeseries
 	return uint64(m.result), 0, m.err
 }
