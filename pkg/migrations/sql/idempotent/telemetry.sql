@@ -100,8 +100,10 @@ $$
         -- Traces telemetry.
         SELECT (CASE
                     WHEN n_distinct >= 0 THEN
+                        --positive values represent an absolute number of distinct elements
                         n_distinct
                     ELSE
+                        --negative values represent number of distinct elements as a proportion of the total
                         -n_distinct * approximate_row_count('SCHEMA_TRACING.span')
                 END)::TEXT INTO result
         FROM pg_stats

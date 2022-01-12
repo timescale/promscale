@@ -132,6 +132,7 @@ func createMetrics() *Metrics {
 		QueryRemoteReadBatchDuration: prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Namespace: util.PromNamespace,
+				Subsystem: "metrics",
 				Name:      "query_remote_read_batch_duration_seconds",
 				Help:      "Duration of query batch read calls to the remote storage.",
 				Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 50, 100, 250, 500, 1000, 2500},
