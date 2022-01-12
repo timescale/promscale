@@ -1,6 +1,8 @@
 # Dataset configuration format
 
-This document describes the format of the configuration structure used to setup the Promscale dataset options. Setup is done by using the `-startup.dataset.config` flag which should contain this configuration structure in YAML format
+Promscale stores some configuration information in the Postgres database which it is connected to. We call this configuration the _Promscale dataset configuration_. Promscale accepts an option to set the dataset values. This document describes its format and mechanics.
+
+Setup is done by using the `-startup.dataset.config` flag which should contain this configuration structure in YAML format
 
 Example usage:
 ```
