@@ -50,4 +50,4 @@ require (
 )
 
 // Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20211026060625-c2d1c858577c
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20211119115433-692a54649ed7

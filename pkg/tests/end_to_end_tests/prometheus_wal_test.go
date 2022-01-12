@@ -7,8 +7,8 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/prometheus/prometheus/pkg/exemplar"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -74,8 +74,8 @@ func generatePrometheusWAL(withExemplars bool) ([]prompb.TimeSeries, string, err
 		copyTts = tts[:]
 	}
 
-	var ref *uint64
-	appendExemplar := func(app storage.Appender, ref uint64, lbls labels.Labels, e prompb.Exemplar) error {
+	var ref *storage.SeriesRef
+	appendExemplar := func(app storage.Appender, ref storage.SeriesRef, lbls labels.Labels, e prompb.Exemplar) error {
 		if _, err := app.AppendExemplar(ref, lbls, prompbExemplarToExemplar(e)); err != nil {
 			return fmt.Errorf("append exemplar: %w", err)
 		}
@@ -92,7 +92,7 @@ func generatePrometheusWAL(withExemplars bool) ([]prompb.TimeSeries, string, err
 
 		var (
 			lbls    = builder.Labels()
-			tempRef uint64
+			tempRef storage.SeriesRef
 			err     error
 		)
 

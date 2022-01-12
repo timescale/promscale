@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	promLabels "github.com/prometheus/prometheus/pkg/labels"
+	promLabels "github.com/prometheus/prometheus/model/labels"
 )
 
 func TestBigLables(t *testing.T) {
