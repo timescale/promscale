@@ -15,7 +15,7 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ### Added
-- Add ability to configure chunk interval on startup [#991]
+- Add ability to configure the default chunk interval on startup [#991]
 - Add `ps_trace.delete_all_traces()` function to delete all trace data [#1012]
 - Add `ps_trace.set_span_retention_period(INTERVAL)` function to set span retention period [#1015]
 - Add `ps_trace.get_span_retention_period()` database function to get current span retention period [#1015]
