@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/textparse"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 

@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/jackc/pgtype"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"

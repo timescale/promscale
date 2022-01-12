@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )

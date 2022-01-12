@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"

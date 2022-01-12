@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"

@@ -21,13 +21,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
 )
 
 func BenchmarkRangeQuery(b *testing.B) {
-	storage := NewTestStorage(b)
-	defer storage.Close()
+	teststorage := NewTestStorage(b)
+	defer teststorage.Close()
 	opts := EngineOpts{
 		Logger:     nil,
 		Reg:        nil,
@@ -61,13 +62,13 @@ func BenchmarkRangeQuery(b *testing.B) {
 		}
 		metrics = append(metrics, labels.FromStrings("__name__", "h_hundred", "l", strconv.Itoa(i), "le", "+Inf"))
 	}
-	refs := make([]uint64, len(metrics))
+	refs := make([]storage.SeriesRef, len(metrics))
 
 	// A day of data plus 10k steps.
 	numIntervals := 8640 + 10000
 
 	for s := 0; s < numIntervals; s++ {
-		a := storage.Appender(context.Background())
+		a := teststorage.Appender(context.Background())
 		ts := int64(s * 10000) // 10s interval.
 		for i, metric := range metrics {
 			ref, _ := a.Append(refs[i], metric, ts, float64(s)+float64(i)/float64(len(metrics)))
@@ -215,7 +216,7 @@ func BenchmarkRangeQuery(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				qry, err := engine.NewRangeQuery(
-					storage, c.expr,
+					teststorage, c.expr,
 					time.Unix(int64((numIntervals-c.steps)*10), 0),
 					time.Unix(int64(numIntervals*10), 0), time.Second*10)
 				if err != nil {

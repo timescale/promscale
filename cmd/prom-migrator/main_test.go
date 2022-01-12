@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"
 )

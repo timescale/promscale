@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // TenantLabelKey is a label key reserved for tenancy.

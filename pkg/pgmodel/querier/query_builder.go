@@ -12,8 +12,8 @@ import (
 
 	"github.com/blang/semver/v4"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"

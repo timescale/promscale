@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )

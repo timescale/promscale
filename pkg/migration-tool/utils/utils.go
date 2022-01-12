@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/timescale/promscale/pkg/clockcache"
 )

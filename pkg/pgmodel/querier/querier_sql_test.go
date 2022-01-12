@@ -6,7 +6,7 @@ package querier
 
 import (
 	"fmt"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"reflect"
 	"testing"
 	"time"

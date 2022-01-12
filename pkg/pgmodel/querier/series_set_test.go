@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"

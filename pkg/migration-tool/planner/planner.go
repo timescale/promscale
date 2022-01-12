@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/prometheus/common/config"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/schollz/progressbar/v3"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migration-tool/utils"

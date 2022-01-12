@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/inhies/go-bytesize"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	plan "github.com/timescale/promscale/pkg/migration-tool/planner"

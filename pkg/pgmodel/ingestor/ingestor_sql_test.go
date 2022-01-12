@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"

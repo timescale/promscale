@@ -5,7 +5,7 @@
 package model
 
 import (
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
