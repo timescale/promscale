@@ -22,6 +22,9 @@ upgradeStrategy: Recreate
 # More info about HA: https://github.com/timescale/promscale/blob/master/docs/high-avaliability/prometheus-HA.md
 extraArgs: []
 
+# Environment variables that will be passed onto deployment pods
+extraEnv: []
+
 # Currently OpenTelemetry tracing support is in beta
 # so tracing features needs to be explicitly enabled.
 openTelemetry:

@@ -19,6 +19,7 @@ We use the following categories for changes:
 - Add `ps_trace.delete_all_traces()` function to delete all trace data [#1012]
 - Add `ps_trace.set_span_retention_period(INTERVAL)` function to set span retention period [#1015]
 - Add `ps_trace.get_span_retention_period()` database function to get current span retention period [#1015]
+- Add ability to set additional environment variables in helm chart [#1041]
 
 ### Changed
 - Rename CLI flags to improve user interface [#964]
