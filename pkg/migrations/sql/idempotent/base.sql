@@ -1163,12 +1163,6 @@ BEGIN
    SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
    INTO metric_id, table_name;
 
-   -- the data table could be locked during label key creation
-   -- and must be locked before the series parent according to lock ordering
-   EXECUTE format($query$
-        LOCK TABLE ONLY SCHEMA_DATA.%1$I IN ACCESS SHARE MODE
-    $query$, table_name);
-
    EXECUTE format($query$
     WITH existing AS (
         SELECT
