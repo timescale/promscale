@@ -282,34 +282,34 @@ SET search_path = pg_temp;
 REVOKE ALL ON PROCEDURE SCHEMA_TRACING.drop_event_chunks(timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON PROCEDURE SCHEMA_TRACING.drop_event_chunks(timestamptz) TO prom_maintenance;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.set_span_retention_period(_span_retention_period INTERVAL)
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.set_trace_retention_period(_trace_retention_period INTERVAL)
 RETURNS BOOLEAN
 AS $$
-    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES ('span_retention_period', _span_retention_period::text)
+    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES ('trace_retention_period', _trace_retention_period::text)
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
     SELECT true;
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_TRACING_PUBLIC.set_span_retention_period(INTERVAL)
-IS 'set the retention period for span data';
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.set_span_retention_period(INTERVAL) TO prom_admin;
+COMMENT ON FUNCTION SCHEMA_TRACING_PUBLIC.set_trace_retention_period(INTERVAL)
+IS 'set the retention period for trace data';
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.set_trace_retention_period(INTERVAL) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_span_retention_period()
+CREATE OR REPLACE FUNCTION SCHEMA_TRACING_PUBLIC.get_trace_retention_period()
 RETURNS INTERVAL
 AS $$
     SELECT value::interval
     FROM SCHEMA_CATALOG.default
-    WHERE key = 'span_retention_period'
+    WHERE key = 'trace_retention_period'
 $$
 LANGUAGE SQL STABLE;
-COMMENT ON FUNCTION SCHEMA_TRACING_PUBLIC.get_span_retention_period()
-IS 'get the retention period for span data';
-GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.get_span_retention_period() TO prom_reader;
+COMMENT ON FUNCTION SCHEMA_TRACING_PUBLIC.get_trace_retention_period()
+IS 'get the retention period for trace data';
+GRANT EXECUTE ON FUNCTION SCHEMA_TRACING_PUBLIC.get_trace_retention_period() TO prom_reader;
 
 CREATE OR REPLACE PROCEDURE SCHEMA_TRACING.execute_data_retention_policy(log_verbose boolean)
 AS $$
 DECLARE
-    _span_retention_period interval;
+    _trace_retention_period interval;
     _older_than timestamptz;
     _last timestamptz;
     _start timestamptz;
@@ -324,14 +324,14 @@ BEGIN
         RAISE LOG 'promscale maintenance: data retention: tracing: starting';
     END IF;
 
-    _span_retention_period = SCHEMA_TRACING_PUBLIC.get_span_retention_period();
-    IF _span_retention_period is null THEN
-        RAISE EXCEPTION 'promscale maintenance: data retention: tracing: span_retention_period is null.';
+    _trace_retention_period = SCHEMA_TRACING_PUBLIC.get_trace_retention_period();
+    IF _trace_retention_period is null THEN
+        RAISE EXCEPTION 'promscale maintenance: data retention: tracing: trace_retention_period is null.';
     END IF;
 
-    _older_than = now() - _span_retention_period;
+    _older_than = now() - _trace_retention_period;
     IF _older_than >= now() THEN -- bail early. no need to continue
-        RAISE WARNING 'promscale maintenance: data retention: tracing: aborting. span_retention_period set to zero or negative interval';
+        RAISE WARNING 'promscale maintenance: data retention: tracing: aborting. trace_retention_period set to zero or negative interval';
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: data retention: tracing: finished in %', clock_timestamp()-_start;
         END IF;

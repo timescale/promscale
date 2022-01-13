@@ -176,14 +176,14 @@ These hypertables have [compression](https://docs.timescale.com/timescaledb/late
 ### Retention
 
 The `_ps_trace.span`, `_ps_trace.event`, and `_ps_trace.link` hypertables have an automated data retention policy which will
-drop chunks beyond a certain age. This policy is driven by the `span_retention_period` which is defaulted to 30 days in 
-new installations. The `ps_trace.set_span_retention_period(_span_retention_period INTERVAL)` function can be used to change
-this value. The `ps_trace.get_span_retention_period()` function can be used to get the current span retention period.
+drop chunks beyond a certain age. This policy is driven by the `trace_retention_period` which is defaulted to 30 days in 
+new installations. The `ps_trace.set_trace_retention_period(_trace_retention_period INTERVAL)` function can be used to change
+this value. The `ps_trace.get_trace_retention_period()` function can be used to get the current trace retention period.
 
 ```postgresql
-SELECT ps_trace.set_span_retention_period(30 * INTERVAL '1 day');
+SELECT ps_trace.set_trace_retention_period(30 * INTERVAL '1 day');
 
-SELECT ps_trace.get_span_retention_period();
+SELECT ps_trace.get_trace_retention_period();
 ```
 
 ### Deleting ALL Trace Data

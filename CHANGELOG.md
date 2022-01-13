@@ -17,8 +17,8 @@ We use the following categories for changes:
 ### Added
 - Add ability to configure the default chunk interval on startup [#991]
 - Add `ps_trace.delete_all_traces()` function to delete all trace data [#1012]
-- Add `ps_trace.set_span_retention_period(INTERVAL)` function to set span retention period [#1015]
-- Add `ps_trace.get_span_retention_period()` database function to get current span retention period [#1015]
+- Add `ps_trace.set_trace_retention_period(INTERVAL)` function to set trace retention period [#1015]
+- Add `ps_trace.get_trace_retention_period()` database function to get current trace retention period [#1015]
 - Add ability to set additional environment variables in helm chart [#1041]
 
 ### Changed
