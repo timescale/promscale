@@ -19,7 +19,7 @@ chmod +x promscale
 
 To deploy Promscale, run the following command:
 ```
-./promscale --db-name <DBNAME> --db-password <DB-Password> --db-ssl-mode allow
+./promscale --db-host <DB_HOSTNAME> --db-port <DB_PORT> --db-name <DBNAME> --db-password <DB-Password> --db-ssl-mode allow
 ```
 Note that the flags `db-name` and `db-password` refer to the name and password of your TimescaleDB database.
 
