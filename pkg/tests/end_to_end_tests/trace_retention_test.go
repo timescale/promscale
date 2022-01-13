@@ -17,12 +17,12 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
-func TestSetSpanRetentionPeriod(t *testing.T) {
+func TestSetTraceRetentionPeriod(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 	var ctx = context.Background()
-	databaseName := fmt.Sprintf("%s_set_span_retention_period", *testDatabase)
+	databaseName := fmt.Sprintf("%s_set_trace_retention_period", *testDatabase)
 	withDB(t, databaseName, func(db *pgxpool.Pool, tb testing.TB) {
 		periods := []time.Duration{
 			time.Hour,
@@ -30,11 +30,11 @@ func TestSetSpanRetentionPeriod(t *testing.T) {
 			time.Hour * 5,
 		}
 		for _, period := range periods {
-			_, err := db.Exec(ctx, fmt.Sprintf("SELECT %s.set_span_retention_period($1)", schema.TracePublic), period)
-			require.NoError(t, err, "Call to set_span_retention_period failed.")
+			_, err := db.Exec(ctx, fmt.Sprintf("SELECT %s.set_trace_retention_period($1)", schema.TracePublic), period)
+			require.NoError(t, err, "Call to set_trace_retention_period failed.")
 			var actual time.Duration
-			err = db.QueryRow(ctx, fmt.Sprintf("SELECT %s.get_span_retention_period()", schema.TracePublic)).Scan(&actual)
-			require.NoError(t, err, "Querying set_span_retention_period failed.")
+			err = db.QueryRow(ctx, fmt.Sprintf("SELECT %s.get_trace_retention_period()", schema.TracePublic)).Scan(&actual)
+			require.NoError(t, err, "Querying set_trace_retention_period failed.")
 			require.Equal(t, period, actual, "Expected %v but got %v", period, actual)
 		}
 	})

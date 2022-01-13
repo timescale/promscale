@@ -127,4 +127,4 @@ INSERT INTO SCHEMA_CATALOG.default(key,value) VALUES
 ('chunk_interval', (INTERVAL '8 hours')::text),
 ('retention_period', (90 * INTERVAL '1 day')::text),
 ('metric_compression', (exists(select * from pg_proc where proname = 'compress_chunk')::text)),
-('span_retention_period', (30 * INTERVAL '1 days')::text);
+('trace_retention_period', (30 * INTERVAL '1 days')::text);
