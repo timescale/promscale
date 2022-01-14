@@ -15,6 +15,7 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ### Added
+- Allow templating host and uri connection strings in helm chart [#1055]
 - Add ability to configure the default chunk interval on startup [#991]
 - Add `ps_trace.delete_all_traces()` function to delete all trace data [#1012]
 - Add `ps_trace.set_span_retention_period(INTERVAL)` function to set span retention period [#1015]
