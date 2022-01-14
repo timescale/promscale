@@ -11,6 +11,8 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
+    depends_on:
+     - promscale
     ports:
       - 9090:9090/tcp
     volumes:
@@ -24,7 +26,6 @@ services:
     restart: on-failure
     depends_on:
       - db
-      - prometheus
     environment:
       PROMSCALE_DB_CONNECT_RETRIES: 10
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
