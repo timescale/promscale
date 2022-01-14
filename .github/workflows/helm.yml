@@ -60,6 +60,7 @@ jobs:
   publish-chart:
     runs-on: ubuntu-latest
     needs: [generate, lint-test]
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -84,7 +85,6 @@ jobs:
             helm s3 push chart_release/* tscharts --acl public-read --dry-run 
 
       - name: push package
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           AWS_REGION: 'us-east-1'
           AWS_ACCESS_KEY_ID: ${{ secrets.ORG_AWS_HELM_CHART_BUCKET_ACCESS_KEY_ID }}
