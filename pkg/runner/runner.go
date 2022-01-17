@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
@@ -156,8 +158,8 @@ func Run(cfg *Config) error {
 
 	if len(cfg.OTLPGRPCListenAddr) > 0 {
 		options := []grpc.ServerOption{
-			grpc.UnaryInterceptor(loggingUnaryInterceptor),
-			grpc.StreamInterceptor(loggingStreamInterceptor),
+			grpc.ChainUnaryInterceptor(loggingUnaryInterceptor, grpc_prometheus.UnaryServerInterceptor),
+			grpc.ChainStreamInterceptor(loggingStreamInterceptor, grpc_prometheus.StreamServerInterceptor),
 		}
 		if cfg.TLSCertFile != "" {
 			creds, err := credentials.NewServerTLSFromFile(cfg.TLSCertFile, cfg.TLSKeyFile)
@@ -169,6 +171,10 @@ func Run(cfg *Config) error {
 		}
 		grpcServer := grpc.NewServer(options...)
 		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
+		grpc_prometheus.Register(grpcServer)
+		grpc_prometheus.EnableHandlingTimeHistogram(
+			grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
+		)
 
 		jaegerQuery, err := query.New(client.QuerierConnection, telemetryEngine)
 		if err != nil {
