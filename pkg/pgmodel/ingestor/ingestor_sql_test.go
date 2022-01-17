@@ -23,6 +23,11 @@ import (
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
 
+const (
+	metricID  int64  = 1
+	tableName string = "table name"
+)
+
 func getTestLabelArray(t *testing.T, l [][]int32) *pgtype.ArrayType {
 	model.SetLabelArrayOIDForTest(0)
 	labelArrayArray := model.GetCustomType(model.LabelArray)
@@ -37,9 +42,13 @@ func init() {
 
 type sVisitor []model.Insertable
 
-func (c sVisitor) VisitSeries(cb func(s *pgmodel.Series) error) error {
+func (c sVisitor) VisitSeries(cb func(info *pgmodel.MetricInfo, s *pgmodel.Series) error) error {
+	info := &pgmodel.MetricInfo{
+		MetricID:  metricID,
+		TableName: tableName,
+	}
 	for _, insertable := range c {
-		err := cb(insertable.Series())
+		err := cb(info, insertable.Series())
 		if err != nil {
 			return err
 		}
@@ -76,9 +85,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 					Args: []interface{}{
 						"metric_1",
+						tableName,
 						[]string{"__name__", "name_1"},
 						[]string{"metric_1", "value_1"},
 					},
@@ -92,7 +102,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
-						"metric_1",
+						metricID,
+						tableName,
 						getTestLabelArray(t, [][]int32{{1, 2}}),
 					},
 					Results: model.RowResults{{int64(1), int64(1)}},
@@ -124,9 +135,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 					Args: []interface{}{
 						"metric_1",
+						tableName,
 						[]string{"__name__", "name_1", "name_2"},
 						[]string{"metric_1", "value_1", "value_2"},
 					},
@@ -140,7 +152,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
-						"metric_1",
+						metricID,
+						tableName,
 						getTestLabelArray(t, [][]int32{{1, 2}, {1, 0, 3}}),
 					},
 					Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}},
@@ -174,9 +187,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 					Args: []interface{}{
 						"metric_1",
+						tableName,
 						[]string{"__name__", "name_1", "name_2"},
 						[]string{"metric_1", "value_1", "value_2"},
 					},
@@ -190,7 +204,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{
 					Sql: seriesInsertSQL,
 					Args: []interface{}{
-						"metric_1",
+						metricID,
+						tableName,
 						getTestLabelArray(t, [][]int32{{1, 2}, {1, 0, 3}, {1, 2}}),
 					},
 					Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}, {int64(1), int64(1)}},
@@ -221,9 +236,10 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
-					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
+					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 					Args: []interface{}{
 						"metric_1",
+						tableName,
 						[]string{"__name__", "name_1", "name_2"},
 						[]string{"metric_1", "value_1", "value_2"},
 					},
@@ -320,9 +336,10 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{Sql: "COMMIT;"},
 		{Sql: "BEGIN;"},
 		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
+			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 			Args: []interface{}{
 				"metric_1",
+				tableName,
 				[]string{"__name__", "name_1", "name_1"},
 				[]string{"metric_1", "value_1", "value_2"},
 			},
@@ -336,7 +353,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{
-				"metric_1",
+				metricID,
+				tableName,
 				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
 			},
 			Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}},
@@ -371,9 +389,10 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{Sql: "COMMIT;"},
 		{Sql: "BEGIN;"},
 		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3)",
+			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 			Args: []interface{}{
 				"metric_1",
+				tableName,
 				[]string{"__name__", "name_1", "name_1"},
 				[]string{"metric_1", "value_1", "value_2"},
 			},
@@ -387,7 +406,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{
-				"metric_1",
+				metricID,
+				tableName,
 				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
 			},
 			Results: model.RowResults{{int64(3), int64(1)}, {int64(4), int64(2)}},
@@ -530,9 +550,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", false}},
+					Results: model.RowResults{{int64(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 				{
@@ -567,9 +587,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", false}},
+					Results: model.RowResults{{int64(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -608,9 +628,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", false}},
+					Results: model.RowResults{{int64(1), "metric_0", false}},
 					Err:     fmt.Errorf("create table error"),
 				},
 			},
@@ -627,9 +647,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", false}},
+					Results: model.RowResults{{int64(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -689,9 +709,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", false}},
+					Results: model.RowResults{{int64(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -750,7 +770,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql:  "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:  "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args: []interface{}{"metric_0"},
 					// no results is deliberate
 					Results: model.RowResults{},
@@ -772,9 +792,9 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{"metric_0", true}},
+					Results: model.RowResults{{int64(1), "metric_0", true}},
 					Err:     error(nil),
 				},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},

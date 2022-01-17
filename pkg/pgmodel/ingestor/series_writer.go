@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tracer"
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	seriesInsertSQL = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
+	seriesInsertSQL = "SELECT _prom_catalog.get_or_create_series_id_for_label_array($1, $2, l.elem), l.nr FROM unnest($3::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
 )
 
 type seriesWriter struct {
@@ -36,7 +37,7 @@ type labelKey struct {
 }
 
 type SeriesVisitor interface {
-	VisitSeries(func(s *model.Series) error) error
+	VisitSeries(func(info *pgmodel.MetricInfo, s *model.Series) error) error
 }
 
 func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} }
@@ -52,6 +53,7 @@ type perMetricInfo struct {
 	maxPos                 int
 	labelArraySet          *pgtype.ArrayType
 	labelArraySetNumLabels int
+	metricInfo             *pgmodel.MetricInfo
 }
 
 // Set all seriesIds for a samples, fetching any missing ones from the DB,
@@ -61,12 +63,16 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 	defer span.End()
 	infos := make(map[string]*perMetricInfo)
 	seriesCount := 0
-	err := sv.VisitSeries(func(series *model.Series) error {
+	err := sv.VisitSeries(func(metricInfo *pgmodel.MetricInfo, series *model.Series) error {
 		if !series.IsSeriesIDSet() {
 			metricName := series.MetricName()
 			info, ok := infos[metricName]
 			if !ok {
-				info = &perMetricInfo{metricName: metricName, labelList: model.NewLabelList(10)}
+				info = &perMetricInfo{
+					metricInfo: metricInfo,
+					metricName: metricName,
+					labelList:  model.NewLabelList(10),
+				}
 				infos[metricName] = info
 			}
 			info.series = append(info.series, series)
@@ -129,14 +135,14 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 
 	batch := h.conn.NewBatch()
 	batchInfos := make([]*perMetricInfo, 0, len(infos))
-	for metricName, info := range infos {
+	for _, info := range infos {
 		if info.labelArraySetNumLabels == 0 {
 			continue
 		}
 
 		//transaction per metric to avoid cross-metric locks
 		batch.Queue("BEGIN;")
-		batch.Queue(seriesInsertSQL, metricName, info.labelArraySet)
+		batch.Queue(seriesInsertSQL, info.metricInfo.MetricID, info.metricInfo.TableName, info.labelArraySet)
 		batch.Queue("COMMIT;")
 		batchInfos = append(batchInfos, info)
 	}
@@ -225,7 +231,7 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 				return dbEpoch, fmt.Errorf("error filling labels: slicing values: %w", err)
 			}
 			batch.Queue("BEGIN;")
-			batch.Queue("SELECT * FROM "+schema.Catalog+".get_or_create_label_ids($1, $2, $3)", metricName, namesSlice, valuesSlice)
+			batch.Queue("SELECT * FROM "+schema.Catalog+".get_or_create_label_ids($1, $2, $3, $4)", metricName, info.metricInfo.TableName, namesSlice, valuesSlice)
 			batch.Queue("COMMIT;")
 			infoBatches = append(infoBatches, info)
 			items += len(namesSlice.Elements)

@@ -21,28 +21,31 @@ func TestMetricTableName(t *testing.T) {
 	testCases := []struct {
 		name        string
 		tableName   string
+		metricID    int64
 		errExpected bool
 		sqlQueries  []model.SqlQuery
 	}{
 		{
 			name:      "no error",
 			tableName: "res1",
+			metricID:  23,
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"t1"},
-					Results: model.RowResults{{"res1", true}},
+					Results: model.RowResults{{int64(23), "res1", true}},
 				},
 			},
 		},
 		{
 			name:      "no error2",
 			tableName: "res2",
+			metricID:  24,
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"t1"},
-					Results: model.RowResults{{"res2", true}},
+					Results: model.RowResults{{int64(24), "res2", true}},
 				},
 			},
 		},
@@ -52,7 +55,7 @@ func TestMetricTableName(t *testing.T) {
 			errExpected: true,
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:  "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:  "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args: []interface{}{"t1"},
 					Err:  fmt.Errorf("test"),
 				},
@@ -64,9 +67,21 @@ func TestMetricTableName(t *testing.T) {
 			errExpected: true,
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"t1"},
-					Results: model.RowResults{{"", true}},
+					Results: model.RowResults{{1, "", true}},
+				},
+			},
+		},
+		{
+			name:        "zero metric ID",
+			tableName:   "res2",
+			errExpected: true,
+			sqlQueries: []model.SqlQuery{
+				{
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Args:    []interface{}{"t1"},
+					Results: model.RowResults{{0, "res2", true}},
 				},
 			},
 		},
@@ -76,11 +91,12 @@ func TestMetricTableName(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
 
-			name, _, err := metricTableName(mock, "t1")
+			info, _, err := metricTableName(mock, "t1")
 			require.Equal(t, c.errExpected, err != nil)
 
 			if err == nil {
-				require.Equal(t, c.tableName, name)
+				require.Equal(t, c.tableName, info.TableName)
+				require.Equal(t, c.metricID, info.MetricID)
 			}
 		})
 	}
@@ -89,11 +105,12 @@ func TestMetricTableName(t *testing.T) {
 func TestInitializeMetricBatcher(t *testing.T) {
 	metricName := "mock_metric"
 	metricTableName := "mock_metric_table_name"
+	metricID := int64(1)
 	sqlQueries := []model.SqlQuery{
 		{
-			Sql:     "SELECT table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+			Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 			Args:    []interface{}{metricName},
-			Results: model.RowResults{{metricTableName, true}},
+			Results: model.RowResults{{int64(1), metricTableName, true}},
 		},
 	}
 	mock := model.NewSqlRecorder(sqlQueries, t)
@@ -102,9 +119,10 @@ func TestInitializeMetricBatcher(t *testing.T) {
 	}
 	completeMetricCreation := make(chan struct{}, 1)
 
-	tableName, err := initializeMetricBatcher(mock, metricName, completeMetricCreation, mockMetrics)
+	info, err := initializeMetricBatcher(mock, metricName, completeMetricCreation, mockMetrics)
 	require.Nil(t, err)
-	require.Equal(t, metricTableName, tableName)
+	require.Equal(t, metricTableName, info.TableName)
+	require.Equal(t, metricID, info.MetricID)
 
 	// Double-check the cache was set properly.
 	mInfo, err := mockMetrics.Get(schema.Data, metricName, false)
@@ -130,7 +148,7 @@ func TestSendBatches(t *testing.T) {
 	}
 	firstReq := &insertDataRequest{metric: "test", data: data, finished: &workFinished, errChan: errChan}
 	copierCh := make(chan readRequest)
-	go sendBatches(firstReq, nil, nil, "test", copierCh)
+	go sendBatches(firstReq, nil, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, copierCh)
 	copierReq := <-copierCh
 	batch := <-copierReq.copySender
 
@@ -146,11 +164,15 @@ func TestSendBatches(t *testing.T) {
 
 type insertableVisitor []model.Insertable
 
-func (insertables insertableVisitor) VisitExemplar(callBack func(s *pgmodel.PromExemplars) error) error {
+func (insertables insertableVisitor) VisitExemplar(callBack func(info *pgmodel.MetricInfo, s *pgmodel.PromExemplars) error) error {
+	info := &pgmodel.MetricInfo{
+		MetricID:  metricID,
+		TableName: tableName,
+	}
 	for i := range insertables {
 		exemplar, ok := insertables[i].(*pgmodel.PromExemplars)
 		if ok {
-			if err := callBack(exemplar); err != nil {
+			if err := callBack(info, exemplar); err != nil {
 				return err
 			}
 		}

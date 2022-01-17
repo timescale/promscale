@@ -28,8 +28,8 @@ import (
 const maxInsertStmtPerTxn = 100
 
 type copyRequest struct {
-	data  *pendingBuffer
-	table string
+	data *pendingBuffer
+	info *pgmodel.MetricInfo
 }
 
 var (
@@ -39,11 +39,11 @@ var (
 
 type copyBatch []copyRequest
 
-func (reqs copyBatch) VisitSeries(callBack func(s *pgmodel.Series) error) error {
+func (reqs copyBatch) VisitSeries(callBack func(info *pgmodel.MetricInfo, s *pgmodel.Series) error) error {
 	for _, req := range reqs {
 		insertables := req.data.batch.Data()
 		for i := range insertables {
-			if err := callBack(insertables[i].Series()); err != nil {
+			if err := callBack(req.info, insertables[i].Series()); err != nil {
 				return err
 			}
 		}
@@ -51,13 +51,13 @@ func (reqs copyBatch) VisitSeries(callBack func(s *pgmodel.Series) error) error 
 	return nil
 }
 
-func (reqs copyBatch) VisitExemplar(callBack func(s *pgmodel.PromExemplars) error) error {
+func (reqs copyBatch) VisitExemplar(callBack func(info *pgmodel.MetricInfo, s *pgmodel.PromExemplars) error) error {
 	for _, req := range reqs {
 		insertables := req.data.batch.Data()
 		for i := range insertables {
 			exemplar, ok := insertables[i].(*pgmodel.PromExemplars)
 			if ok {
-				if err := callBack(exemplar); err != nil {
+				if err := callBack(req.info, exemplar); err != nil {
 					return err
 				}
 			}
@@ -112,7 +112,7 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 
 		// sort to prevent deadlocks on table locks
 		sort.Slice(insertBatch, func(i, j int) bool {
-			return insertBatch[i].table < insertBatch[j].table
+			return insertBatch[i].info.TableName < insertBatch[j].info.TableName
 		})
 
 		err := persistBatch(ctx, conn, sw, elf, insertBatch)
@@ -235,7 +235,7 @@ func tryRecovery(ctx context.Context, conn pgxconn.PgxConn, err error, req copyR
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
 		errMsg := err.Error()
-		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.table), "err", errMsg)
+		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.info.TableName), "err", errMsg)
 		return err
 	}
 
@@ -244,7 +244,7 @@ func tryRecovery(ctx context.Context, conn pgxconn.PgxConn, err error, req copyR
 		return handleDecompression(ctx, conn, req, minTime)
 	}
 
-	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "err", pgErr.Error())
+	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.info.TableName), "err", pgErr.Error())
 	return pgErr
 }
 
@@ -260,7 +260,7 @@ func retryAfterDecompression(ctx context.Context, conn pgxconn.PgxConn, req copy
 	ctx, span := tracer.Default().Start(ctx, "retry-after-decompression")
 	defer span.End()
 	var (
-		table   = req.table
+		table   = req.info.TableName
 		minTime = model.Time(minTimeInt).Time()
 	)
 	//how much faster are we at ingestion than wall-clock time?
@@ -402,7 +402,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 		totalExemplars += numExemplars
 		if hasSamples {
 			numRowsPerInsert = append(numRowsPerInsert, numSamples)
-			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.table, timeSamples, valSamples, seriesIdSamples)
+			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.info.TableName, timeSamples, valSamples, seriesIdSamples)
 		}
 		if hasExemplars {
 			// We cannot send 2-D [][]TEXT to postgres via the pgx.encoder. For this and easier querying reasons, we create a
@@ -413,7 +413,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 				return fmt.Errorf("setting prom_api.label_value_array[] value: %w", err), lowestMinTime
 			}
 			numRowsPerInsert = append(numRowsPerInsert, numExemplars)
-			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1::NAME, $2::TIMESTAMPTZ[], $3::BIGINT[], $4::"+schema.Prom+".label_value_array[], $5::DOUBLE PRECISION[])", req.table, timeExemplars, seriesIdExemplars, labelValues, valExemplars)
+			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1::NAME, $2::TIMESTAMPTZ[], $3::BIGINT[], $4::"+schema.Prom+".label_value_array[], $5::DOUBLE PRECISION[])", req.info.TableName, timeExemplars, seriesIdExemplars, labelValues, valExemplars)
 		}
 	}
 

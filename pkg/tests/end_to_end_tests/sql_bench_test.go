@@ -26,7 +26,7 @@ const (
 func BenchmarkGetSeriesIDForKeyValueArrayExistingSeries(b *testing.B) {
 	b.StopTimer()
 	withDB(b, "bench_1", func(db *pgxpool.Pool, t testing.TB) {
-		err := createMetricTableName(db, metricName)
+		_, _, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func BenchmarkGetSeriesIDForKeyValueArrayExistingSeries(b *testing.B) {
 func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesExistingLabels(b *testing.B) {
 	b.StopTimer()
 	withDB(b, "bench_2", func(db *pgxpool.Pool, t testing.TB) {
-		err := createMetricTableName(db, metricName)
+		_, _, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +94,7 @@ func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesExistingLabels(b *testing.B) {
 func BenchmarkGetSeriesIDForKeyValueArrayNewMetric(b *testing.B) {
 	b.StopTimer()
 	withDB(b, "bench_2", func(db *pgxpool.Pool, t testing.TB) {
-		err := createMetricTableName(db, metricName)
+		_, _, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -136,7 +136,7 @@ func BenchmarkGetSeriesIDForKeyValueArrayNewMetric(b *testing.B) {
 func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesNewLabels(b *testing.B) {
 	b.StopTimer()
 	withDB(b, "bench_3", func(db *pgxpool.Pool, t testing.TB) {
-		err := createMetricTableName(db, metricName)
+		_, _, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +164,7 @@ func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesNewLabels(b *testing.B) {
 func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesNewLabelsBatch(b *testing.B) {
 	b.StopTimer()
 	withDB(b, "bench_3", func(db *pgxpool.Pool, t testing.TB) {
-		err := createMetricTableName(db, metricName)
+		metricID, tableName, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -179,7 +179,7 @@ func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesNewLabelsBatch(b *testing.B) {
 
 		bench.ResetTimer()
 		bench.StartTimer()
-		err = getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db, metricName, b.N, keys, values)
+		err = getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db, metricID, metricName, tableName, b.N, keys, values)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,8 +189,8 @@ func BenchmarkGetSeriesIDForKeyValueArrayNewSeriesNewLabelsBatch(b *testing.B) {
 
 func BenchmarkKeyValueArrayToLabelArrayCreateNewLabels(b *testing.B) {
 	b.StopTimer()
-	withDB(b, "bench_4", func(db *pgxpool.Pool, t testing.TB) {
-		err := createMetricTableName(db, metricName)
+	withDB(b, "bench_5", func(db *pgxpool.Pool, t testing.TB) {
+		_, _, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,8 +217,8 @@ func BenchmarkKeyValueArrayToLabelArrayCreateNewLabels(b *testing.B) {
 
 func BenchmarkKeyValueArrayToLabelArrayExistingLabels(b *testing.B) {
 	b.StopTimer()
-	withDB(b, "bench_5", func(db *pgxpool.Pool, t testing.TB) {
-		err := createMetricTableName(db, metricName)
+	withDB(b, "bench_6", func(db *pgxpool.Pool, t testing.TB) {
+		_, _, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,14 +251,14 @@ func BenchmarkKeyValueArrayToLabelArrayExistingLabels(b *testing.B) {
 
 func BenchmarkKeyValueArrayToLabelArrayCreateNewLabelKeys(b *testing.B) {
 	b.StopTimer()
-	withDB(b, "bench_6", func(db *pgxpool.Pool, t testing.TB) {
+	withDB(b, "bench_7", func(db *pgxpool.Pool, t testing.TB) {
 
-		err := createMetricTableName(db, metricName)
+		_, _, err := createMetricTableName(db, metricName)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = createMetricTableName(db, otherMetricName)
+		_, _, err = createMetricTableName(db, otherMetricName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -293,7 +293,7 @@ func BenchmarkKeyValueArrayToLabelArrayCreateNewLabelKeys(b *testing.B) {
 
 func BenchmarkGetOrCreateMetricTableName(b *testing.B) {
 	b.StopTimer()
-	withDB(b, "bench_7", func(db *pgxpool.Pool, t testing.TB) {
+	withDB(b, "bench_8", func(db *pgxpool.Pool, t testing.TB) {
 		metricNames, _ := generateKeysAndValues(b.N, "metric")
 
 		var bench *testing.B
@@ -306,7 +306,7 @@ func BenchmarkGetOrCreateMetricTableName(b *testing.B) {
 		bench.StartTimer()
 		var err error
 		for n := 0; n < b.N; n++ {
-			err = createMetricTableName(db, metricNames[n])
+			_, _, err = createMetricTableName(db, metricNames[n])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -320,10 +320,9 @@ func keyValueArrayToLabelArray(db *pgxpool.Pool, metricName string, keys []strin
 	return db.QueryRow(context.Background(), "SELECT get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArray)
 }
 
-func createMetricTableName(db *pgxpool.Pool, name string) error {
-	var metricID int
-	var tableName string
-	return db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_or_create_metric_table_name($1)", name).Scan(&metricID, &tableName)
+func createMetricTableName(db *pgxpool.Pool, name string) (metricID int64, tableName string, err error) {
+	err = db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_or_create_metric_table_name($1)", name).Scan(&metricID, &tableName)
+	return metricID, tableName, err
 }
 
 func getSeriesIDForKeyValueArray(db *pgxpool.Pool, metricName string, keys []string, values []string) error {
@@ -372,8 +371,7 @@ func makeUniqueLabels2(allKeys [][]string, allValues [][]string) ([]string, []st
 	return labelKeys, labelValues, unique
 }
 
-func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricName string, N int, allKeys [][]string, allValues [][]string) error {
-	var tableName string
+func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricID int64, metricName, tableName string, N int, allKeys [][]string, allValues [][]string) error {
 	var seriesIDKeyVal int
 	if N != len(allKeys) {
 		panic(fmt.Sprintf("unexpected %v %v", N, len(allKeys)))
@@ -459,6 +457,7 @@ func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricNa
 	}
 
 	count := 0
+
 	if true {
 		labelArrayArray := pgtype.NewArrayType("prom_api.label_array[]", labelArrayOID, func() pgtype.ValueTranscoder { return &pgtype.Int4Array{} })
 		err = labelArrayArray.Set(labelArraySet)
@@ -466,7 +465,13 @@ func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricNa
 			panic(err)
 		}
 		start = time.Now()
-		res, err := db.Query(context.Background(), "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.a)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(a, nr) ORDER BY a", metricName, labelArrayArray)
+		res, err := db.Query(
+			context.Background(),
+			"SELECT _prom_catalog.get_or_create_series_id_for_label_array($1, $2, l.a), l.nr FROM unnest($3::prom_api.label_array[]) WITH ORDINALITY l(a, nr) ORDER BY a",
+			metricID,
+			tableName,
+			labelArrayArray,
+		)
 		if err != nil {
 			panic(err)
 		}

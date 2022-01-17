@@ -34,13 +34,14 @@ type SeriesEpoch int64
 type Series struct {
 	//protects names, values, seriesID, epoch
 	//str and metricName are immutable and doesn't need a lock
-	lock       sync.RWMutex
-	names      []string
-	values     []string
+	lock     sync.RWMutex
+	names    []string
+	values   []string
+	seriesID SeriesID
+	epoch    SeriesEpoch
+
 	metricName string
 	str        string
-	seriesID   SeriesID
-	epoch      SeriesEpoch
 }
 
 func NewSeries(key string, labelPairs []prompb.Label) *Series {
