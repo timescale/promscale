@@ -71,6 +71,3 @@ Promscale usage telemetry is collected through TimescaleDB's telemetry feature.
 
 You can [exclude specific items](https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#change-what-is-included-the-telemetry-report) you are not confortable sharing
  or [completely disable the feature](https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disable-telemetry).
-
-Note that data in the table above will continue to be refreshed (but not shared) 
-even after disabling the telemetry feature. Promscale usage telemetry is refreshed every hour.
