@@ -28,8 +28,9 @@ import (
 const maxInsertStmtPerTxn = 100
 
 type copyRequest struct {
-	data  *pendingBuffer
-	table string
+	data     *pendingBuffer
+	metricID int64
+	table    string
 }
 
 var (
@@ -39,11 +40,11 @@ var (
 
 type copyBatch []copyRequest
 
-func (reqs copyBatch) VisitSeries(callBack func(s *pgmodel.Series) error) error {
+func (reqs copyBatch) VisitSeries(callBack func(metricID int64, tableName string, s *pgmodel.Series) error) error {
 	for _, req := range reqs {
 		insertables := req.data.batch.Data()
 		for i := range insertables {
-			if err := callBack(insertables[i].Series()); err != nil {
+			if err := callBack(req.metricID, req.table, insertables[i].Series()); err != nil {
 				return err
 			}
 		}
@@ -216,7 +217,7 @@ func insertBatchErrorFallback(ctx context.Context, conn pgxconn.PgxConn, reqs ..
 	for i := range reqs {
 		err, minTime := insertSeries(ctx, conn, reqs[i])
 		if err != nil {
-			err = tryRecovery(conn, err, reqs[i], minTime)
+			err = tryRecovery(ctx, conn, err, reqs[i], minTime)
 		}
 
 		reqs[i].data.reportResults(err)
@@ -228,7 +229,9 @@ func insertBatchErrorFallback(ctx context.Context, conn pgxconn.PgxConn, reqs ..
 // If we inserted into a compressed chunk, we decompress the chunk and try again.
 // Since a single batch can have both errors, we need to remember the insert method
 // we're using, so that we deduplicate if needed.
-func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest, minTime int64) error {
+func tryRecovery(ctx context.Context, conn pgxconn.PgxConn, err error, req copyRequest, minTime int64) error {
+	ctx, span := tracer.Default().Start(ctx, "try-recovery")
+	defer span.End()
 	// we only recover from postgres errors right now
 	pgErr, ok := err.(*pgconn.PgError)
 	if !ok {
@@ -239,14 +242,14 @@ func tryRecovery(conn pgxconn.PgxConn, err error, req copyRequest, minTime int64
 
 	if pgErr.Code == "0A000" || strings.Contains(pgErr.Message, "compressed") || strings.Contains(pgErr.Message, "insert/update/delete not permitted") {
 		// If the error was that the table is already compressed, decompress and try again.
-		return handleDecompression(conn, req, minTime)
+		return handleDecompression(ctx, conn, req, minTime)
 	}
 
 	log.Warn("msg", fmt.Sprintf("unexpected postgres error while inserting to %s", req.table), "err", pgErr.Error())
 	return pgErr
 }
 
-func skipDecompression(_ pgxconn.PgxConn, _ copyRequest, _ int64) error {
+func skipDecompression(_ context.Context, _ pgxconn.PgxConn, _ copyRequest, _ int64) error {
 	log.WarnRateLimited("msg", "Rejecting samples falling on compressed chunks as decompression is disabled")
 	return nil
 }
@@ -254,7 +257,9 @@ func skipDecompression(_ pgxconn.PgxConn, _ copyRequest, _ int64) error {
 // In the event we filling in old data and the chunk we want to INSERT into has
 // already been compressed, we decompress the chunk and try again. When we do
 // this we delay the recompression to give us time to insert additional data.
-func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest, minTimeInt int64) error {
+func retryAfterDecompression(ctx context.Context, conn pgxconn.PgxConn, req copyRequest, minTimeInt int64) error {
+	ctx, span := tracer.Default().Start(ctx, "retry-after-decompression")
+	defer span.End()
 	var (
 		table   = req.table
 		minTime = model.Time(minTimeInt).Time()
@@ -284,7 +289,7 @@ func retryAfterDecompression(conn pgxconn.PgxConn, req copyRequest, minTimeInt i
 
 	metrics.DecompressCalls.Inc()
 	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
-	err, _ := insertSeries(context.Background(), conn, req) // Attempt an insert again.
+	err, _ := insertSeries(ctx, conn, req) // Attempt an insert again.
 	return err
 }
 
