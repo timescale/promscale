@@ -19,7 +19,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const getCreateMetricsTableWithNewSQL = "SELECT table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
+const getCreateMetricsTableWithNewSQL = "SELECT id, table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
 const createExemplarTable = "SELECT * FROM " + schema.Catalog + ".create_exemplar_table_if_not_exists($1)"
 
 func containsExemplars(data []model.Insertable) bool {
@@ -35,7 +35,7 @@ type readRequest struct {
 	copySender <-chan copyRequest
 }
 
-func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) {
+func metricTableName(conn pgxconn.PgxConn, metric string) (info model.MetricInfo, possiblyNew bool, err error) {
 	res, err := conn.Query(
 		context.Background(),
 		getCreateMetricsTableWithNewSQL,
@@ -43,47 +43,54 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (string, bool, error) 
 	)
 
 	if err != nil {
-		return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+		return info, true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 	}
 
-	var tableName string
-	var possiblyNew bool
 	defer res.Close()
 	if !res.Next() {
 		if err := res.Err(); err != nil {
-			return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+			return info, true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 		}
-		return "", true, pgErrors.ErrMissingTableName
+		return info, true, pgErrors.ErrMissingTableName
 	}
 
-	if err := res.Scan(&tableName, &possiblyNew); err != nil {
-		return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+	if err := res.Scan(&info.MetricID, &info.TableName, &possiblyNew); err != nil {
+		return info, true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 	}
 
 	if err := res.Err(); err != nil {
-		return "", true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
+		return info, true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 	}
 
-	if tableName == "" {
-		return "", true, fmt.Errorf("failed to get the table name for metric %s: empty table name returned", metric)
+	if info.TableName == "" {
+		return info, true, fmt.Errorf("failed to get the table name for metric %s: empty table name returned", metric)
 	}
 
-	return tableName, possiblyNew, nil
+	if info.MetricID == 0 {
+		return info, true, fmt.Errorf("failed to get the metric ID for metric %s: zero metric ID returned", metric)
+	}
+
+	// Setting schema to default data schema and series table defaults to
+	// table name. This is always true for raw metrics as is the case here.
+	info.TableSchema = schema.Data
+	info.SeriesTable = info.TableName
+
+	return info, possiblyNew, nil
 }
 
 // Create the metric table for the metric we handle, if it does not already
 // exist. This only does the most critical part of metric table creation, the
 // rest is handled by completeMetricTableCreation().
-func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (tableName string, err error) {
+func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (info model.MetricInfo, err error) {
 	// Metric batchers are always initialized with metric names of samples and not of exemplars.
 	mInfo, err := metricTableNames.Get(schema.Data, metricName, false)
 	if err == nil && mInfo.TableName != "" {
-		return mInfo.TableName, nil
+		return mInfo, nil
 	}
 
-	tableName, possiblyNew, err := metricTableName(conn, metricName)
-	if err != nil || tableName == "" {
-		return "", err
+	mInfo, possiblyNew, err := metricTableName(conn, metricName)
+	if err != nil || mInfo.TableName == "" {
+		return mInfo, err
 	}
 
 	// We ignore error here since this is just an optimization.
@@ -96,10 +103,7 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 	_ = metricTableNames.Set(
 		schema.Data,
 		metricName,
-		model.MetricInfo{
-			TableSchema: schema.Data, TableName: tableName,
-			SeriesTable: tableName, // Series table name is always the same for raw metrics.
-		},
+		mInfo,
 		false,
 	)
 
@@ -110,7 +114,7 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 		default:
 		}
 	}
-	return tableName, err
+	return mInfo, err
 }
 
 // initilizeExemplars creates the necessary tables for exemplars. Called lazily only if exemplars are found
@@ -135,14 +139,14 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	labelArrayOID uint32) {
 
 	var (
-		tableName   string
+		info        model.MetricInfo
 		firstReq    *insertDataRequest
 		firstReqSet = false
 	)
 
 	for firstReq = range input {
 		var err error
-		tableName, err = initializeMetricBatcher(conn, metricName, completeMetricCreationSignal, metricTableNames)
+		info, err = initializeMetricBatcher(conn, metricName, completeMetricCreationSignal, metricTableNames)
 		if err != nil {
 			err := fmt.Errorf("initializing the insert routine for metric %v has failed with %w", metricName, err)
 			log.Error("msg", err)
@@ -157,7 +161,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	if !firstReqSet {
 		return
 	}
-	sendBatches(firstReq, input, conn, tableName, copierReadRequestCh)
+	sendBatches(firstReq, input, conn, &info, copierReadRequestCh)
 }
 
 //the basic structure of communication from the batcher to the copier is as follows:
@@ -174,7 +178,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 //     of requests consecutively so as to minimize processing delays. That's what the mutex in the copier does.
 // 2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
 // 3. The batcher has only a single read request out at a time.
-func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, tableName string, copierReadRequestCh chan<- readRequest) {
+func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, info *model.MetricInfo, copierReadRequestCh chan<- readRequest) {
 	var (
 		exemplarsInitialized = false
 		span                 trace.Span
@@ -182,7 +186,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 
 	addReq := func(req *insertDataRequest, buf *pendingBuffer) {
 		if !exemplarsInitialized && containsExemplars(req.data) {
-			if err := initializeExemplars(conn, tableName); err != nil {
+			if err := initializeExemplars(conn, info.TableName); err != nil {
 				log.Error("msg", err)
 				req.reportResult(err)
 				return
@@ -208,7 +212,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 
 	pending := NewPendingBuffer()
 	pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
-	span.SetAttributes(attribute.String("metric", tableName))
+	span.SetAttributes(attribute.String("metric", info.TableName))
 	addReq(firstReq, pending)
 	copierReadRequestCh <- readRequest
 	span.AddEvent("Sent a read request")
@@ -235,18 +239,18 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 
 		select {
 		//try to send first, if not then keep batching
-		case copySender <- copyRequest{data: pending, table: tableName}:
+		case copySender <- copyRequest{pending, info}:
 			MetricBatcherFlushSeries.Observe(float64(numSeries))
 			span.SetAttributes(attribute.Int("num_series", numSeries))
 			span.End()
 			pending = NewPendingBuffer()
 			pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
-			span.SetAttributes(attribute.String("metric", tableName))
+			span.SetAttributes(attribute.String("metric", info.TableName))
 		case req, ok := <-recvCh:
 			if !ok {
 				if !pending.IsEmpty() {
 					span.AddEvent("Sending last non-empty batch")
-					copySender <- copyRequest{data: pending, table: tableName}
+					copySender <- copyRequest{pending, info}
 					MetricBatcherFlushSeries.Observe(float64(numSeries))
 				}
 				span.AddEvent("Exiting metric batcher batch loop")

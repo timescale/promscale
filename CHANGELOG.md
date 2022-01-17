@@ -17,6 +17,9 @@ We use the following categories for changes:
 ### Added
 - Add support to instrument Promscale's Otel GRPC server with Prometheus metrics [#1061]
 
+### Changed
+- Optimized series ID creation by caching metric ID [#1062]
+
 ### Fixed
 - Fix broken `promscale_packager` telemetry field for docker envs [#1077]
 - Fix compression of old chunks thus reducing storage requirements [#1081]

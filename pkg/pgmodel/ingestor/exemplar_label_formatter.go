@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_new_pos_for_key($1::TEXT, $2::TEXT[], true)"
+	getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_new_pos_for_key($1::TEXT, $2::NAME, $3::TEXT[], true)"
 )
 
 type ExemplarVisitor interface {
-	VisitExemplar(func(s *model.PromExemplars) error) error
+	VisitExemplar(func(info *model.MetricInfo, s *model.PromExemplars) error) error
 }
 
 type ExemplarLabelFormatter struct {
@@ -39,7 +39,7 @@ func (t *ExemplarLabelFormatter) orderExemplarLabelValues(ev ExemplarVisitor) er
 		pendingIndexes []positionPending
 	)
 
-	err := ev.VisitExemplar(func(row *model.PromExemplars) error {
+	err := ev.VisitExemplar(func(info *model.MetricInfo, row *model.PromExemplars) error {
 		labelKeyIndex, entryExists := t.exemplarKeyPosCache.GetLabelPositions(row.Series().MetricName())
 		if entryExists {
 			//make sure all positions exist
@@ -53,7 +53,7 @@ func (t *ExemplarLabelFormatter) orderExemplarLabelValues(ev ExemplarVisitor) er
 				// Allocate a batch only if required. If the cache does the job, why to waste on allocs.
 				batch = t.conn.NewBatch()
 			}
-			batch.Queue(getExemplarLabelPositions, row.Series().MetricName(), unorderedLabelKeys)
+			batch.Queue(getExemplarLabelPositions, row.Series().MetricName(), info.TableName, unorderedLabelKeys)
 			pendingIndexes = append(pendingIndexes, positionPending{ // One-to-One relation with queries
 				exemplarRef: row,
 				metricName:  row.Series().MetricName(),

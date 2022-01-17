@@ -475,7 +475,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key(TEXT) to prom_w
 -- This uses some pretty heavy locks so use sparingly.
 -- locks: label_key_position, data table, series partition (in view creation),
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(
-        metric_name text, key_name_array text[], is_for_exemplar boolean)
+        metric_name text, metric_table name, key_name_array text[], is_for_exemplar boolean)
     RETURNS int[]
 AS $func$
 DECLARE
@@ -486,7 +486,6 @@ DECLARE
     key_name text;
     next_position int;
     max_position int;
-    metric_table name;
     position_table_name text;
 BEGIN
     If is_for_exemplar THEN
@@ -516,9 +515,6 @@ BEGIN
 
     -- Lock tables for exclusiveness.
     IF NOT is_for_exemplar THEN
-        SELECT table_name
-        FROM SCHEMA_CATALOG.get_or_create_metric_table_name(get_new_pos_for_key.metric_name)
-        INTO metric_table;
         --lock as for ALTER TABLE because we are in effect changing the schema here
         --also makes sure the next_position below is correct in terms of concurrency
         EXECUTE format('LOCK TABLE prom_data_series.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
@@ -602,9 +598,9 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) TO prom_reader; -- For exemplars querying.
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, text[], boolean) TO prom_writer;
+REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, name, text[], boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, name, text[], boolean) TO prom_reader; -- For exemplars querying.
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, name, text[], boolean) TO prom_writer;
 
 --should only be called after a check that that the label doesn't exist
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
@@ -771,7 +767,9 @@ AS $$
         AND lkp.key = get_or_create_label_key_pos.key
     UNION ALL
     SELECT
-        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, array[get_or_create_label_key_pos.key], false))[1]
+        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, m.table_name, array[get_or_create_label_key_pos.key], false))[1]
+    FROM 
+        SCHEMA_CATALOG.get_or_create_metric_table_name(get_or_create_label_key_pos.metric_name) m
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
@@ -934,7 +932,7 @@ COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(text, text[], text[
 IS 'converts a metric name, array of keys, and array of values to a label array';
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(metric_name TEXT, label_keys text[], label_values text[])
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(metric_name TEXT, metric_table NAME, label_keys text[], label_values text[])
 RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
         WITH cte as (
         SELECT
@@ -958,7 +956,7 @@ RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
            case when count(*) = count(known_pos) Then
               array_agg(known_pos)
            else
-              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, array_agg(key_str), false)
+              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, get_or_create_label_ids.metric_table, array_agg(key_str), false)
            end as poss,
            array_agg(label_id) as label_ids,
            array_agg(key_str) as keys,
@@ -966,9 +964,9 @@ RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
         FROM cte
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, text[], text[])
+COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, name, text[], text[])
 IS 'converts a metric name, array of keys, and array of values to a list of label ids';
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(TEXT, NAME, text[], text[]) TO prom_writer;
 
 
 -- Returns ids, keys and values for a label_array
@@ -1169,16 +1167,9 @@ LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
 
 
-
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(metric_name TEXT, larray SCHEMA_PROM.label_array, OUT table_name NAME, OUT series_id BIGINT)
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(metric_id INT, table_name NAME, larray SCHEMA_PROM.label_array, OUT series_id BIGINT)
 AS $func$
-DECLARE
-  metric_id int;
 BEGIN
-   --need to make sure the series partition exists
-   SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
-   INTO metric_id, table_name;
-
    EXECUTE format($query$
     WITH existing AS (
         SELECT
@@ -1201,7 +1192,7 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(TEXT, SCHEMA_PROM.label_array) TO prom_writer;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(INT, NAME, SCHEMA_PROM.label_array) TO prom_writer;
 
 --
 -- Parameter manipulation functions
