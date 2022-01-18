@@ -1,8 +1,9 @@
-name: Helm Chart Test
+name: Helm Charts
 
 on:
   push:
     branches: [master, main, force_test, release-*, staging, trying]
+    tags: ['*']
   pull_request:
     branches: [master, main, force_test, release-*]
 
