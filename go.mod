@@ -34,7 +34,7 @@ require (
 	github.com/prometheus/client_golang v1.12.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.32.1
-	github.com/prometheus/prometheus v1.8.2-0.20211119115433-692a54649ed7
+	github.com/prometheus/prometheus v1.8.2-0.20220117154355-4855a0c067e2
 	github.com/schollz/progressbar/v3 v3.8.5
 	github.com/sergi/go-diff v1.2.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
@@ -56,4 +56,4 @@ require (
 )
 
 // Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20211119115433-692a54649ed7
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20220117154355-4855a0c067e2
