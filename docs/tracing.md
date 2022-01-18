@@ -217,62 +217,22 @@ Then, point your browser to [http://127.0.0.1:8080/] and login with username `ad
 
 ### Setting up Jaeger UI
 
-In order for the Jaeger UI to show traces stored in Promscale we leverage Jaeger’s support for [gRPC storage plugins](https://github.com/jaegertracing/jaeger/tree/master/plugin/storage/grpc). Our plugin acts as a simple proxy between Jaeger and Promscale. It does not contain any logic. All the processing work is done in the Promscale Connector.
+In order for the Jaeger UI to show traces stored in Promscale we leverage Jaeger’s support for [gRPC storage plugins](https://github.com/jaegertracing/jaeger/tree/master/plugin/storage/grpc).
 
-This plugin only implements the APIs for Jaeger to read traces from Promscale. It does not implement the APIs for Jaeger to write traces to Promscale. To send Jaeger traces to Promscale use the OpenTelemetry Collector instead as explained [here](#jaeger-instrumentation).
+To enable Jaeger to use the plugin you need to provide jaeger-query with the following:
 
-Jaeger's gRPC plugin system works by executing the binary for the plugin when enabled in the configuration file. For that reason when deploying as a container, Jaeger and the binary need to be on the same container image. And since Jaeger doesn’t package all gRPC storage plugins in its default Docker images, we provide an image that includes the upstream Jaeger Query component (not the rest since they are not needed) and Promscale’s gRPC storage plugin for Jaeger. The image is available on [DockerHub](https://hub.docker.com/r/timescale/jaeger-query-proxy/tags). We recomment using the `latest` image
-
-To enable Jaeger to use the plugin you need to pass the following parameters:
-
-* `span-storage.type=grpc-plugin`
-* `grpc-storage-plugin.binary=<path-to-jaeger-query-proxy-binary>`, pointing to the location of the plugin binary
-* `grpc-storage-plugin.configuration-file=<config_file>`, a path pointing to the plugin's configuration file.
+* environment variable `SPAN_STORAGE_TYPE=grpc-plugin`
+* flag `grpc-storage.server=<promscale-host>:<otlp-grpc-port>`
 
 This is how you would run the container with Docker:
 
 ```bash
-docker run --name promscale-jaeger -d -p 16686:16686 -v <path-to-plugin-config-file>:/configs/jaeger-promscale-query.yaml --network promscale-timescaledb timescale/jaeger-query-proxy:latest
-```
-The container already sets the required values for those parameters.
-
-The Jaeger UI would be accessible on port 16686.
-
-If you run Jaeger directly on a host, you first need to download the plugin binary for your system. The binaries are available under the assets of the latest 0.7 Promscale release on [Github](https://github.com/timescale/promscale/releases). Then you have to run the binary as follows:
-
-```bash
-./jaeger-query-plugin --span-storage.type=grpc-plugin --grpc-storage-plugin.binary=<path-to-jaeger-query-proxy-binary> --grpc-storage-plugin.configuration-file=<config_file>
+docker run --name jaeger -d -p 16686:16686 -e SPAN_STORAGE_TYPE=grpc-plugin --network promscale-timescaledb jaegertracing/jaeger-query:1.30.0 --grpc-storage.server=<promscale-host>:<otlp-grpc-port>
 ```
 
-The parameters in the plugin configuration file are the following (only the first is mandatory):
+If you followed the instructions described in this document then otlp-grpc-port will be 9202.
 
-```yaml
-grpc-server: <promscale-host>:<otlp-grpc-port>
-#connection-timeout: 5s
-#grpc-server-host-override: ""
-#cafile: ""
-#tls: false
-```
-
-If you followed the instructions described in this document then otlp-grpc-port will be 9202. For example
-
-```yaml
-grpc-server: localhost:9202
-```
-
-If you run on Kubernetes, create a ConfigMap like the one below
-
-```yaml
-​​apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: promscale-jaeger
-data:
-  jaeger-promscale-query.yaml: |
-    grpc-server: <promscale-service>:9202   
-```
-
-Then make this ConfigMap available to the promscale-jaeger container through a volumeMount. Read more on how to do that in the [Kubernetes documentation](https://kubernetes.io/docs/concepts/configuration/configmap/#configmaps-and-pods).
+The Jaeger UI will be accessible on port 16686.
 
 ### Setting up Grafana
 

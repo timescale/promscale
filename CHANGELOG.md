@@ -30,6 +30,7 @@ We use the following categories for changes:
 ### Removed
 - Remove deprecated `-promql-enable-feature` flag [#964]
 - Remove deprecated leader election [#964]
+- Remove obsoleted jaeger-query-proxy
 
 ### Fixed
 - helm-charts: use fixed target port on svc-promscale [#1009]

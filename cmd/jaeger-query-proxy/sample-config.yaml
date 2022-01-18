@@ -1,3 +1,0 @@
-tls: false
-grpc-server: localhost:9202
-connection-timeout: 10s
