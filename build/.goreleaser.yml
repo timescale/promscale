@@ -21,11 +21,6 @@ builds:
   main: ./cmd/prom-migrator/
   id: prom-migrator
   binary: prom-migrator
-- env:
-  - CGO_ENABLED=0
-  main: ./cmd/jaeger-query-proxy/
-  id: jaeger-query-proxy
-  binary: jaeger-query-proxy
 
 #don't publish scoop but overwrite the weird names
 scoop:
@@ -115,17 +110,6 @@ archives:
     windows: Windows
     386: i386
     amd64: x86_64
-- id: jaeger-query-proxy
-  format: binary
-  builds:
-  - jaeger-query-proxy
-  name_template: "{{ .Binary }}_0.0.2_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
-  replacements:
-    darwin: Darwin
-    linux: Linux
-    windows: Windows
-    386: i386
-    amd64: x86_64
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -182,19 +166,6 @@ dockers:
   image_templates:
   - "timescale/prom-migrator:0.0.3"
   - "timescale/prom-migrator:latest"
-- ids: []
-  skip_push: false
-  dockerfile: ./build/jaeger-query-proxy/Dockerfile
-  extra_files:
-  - .git
-  - go.sum
-  - go.mod
-  - pkg
-  - cmd
-  image_templates:
-  - "timescale/jaeger-query-proxy:0.0.2"
-  - "timescale/jaeger-query-proxy:latest"
-
 
 docker_manifests:
 - name_template: 'timescale/promscale:{{ .Tag }}'
