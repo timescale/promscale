@@ -7,7 +7,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/containerd/cgroups v1.0.2
-	github.com/dekobon/distro-detect v0.0.0-20201122001546-5f5b9c724b9d // indirect
+	github.com/dekobon/distro-detect v0.0.0-20201122001546-5f5b9c724b9d
 	github.com/docker/go-connections v0.4.0
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/felixge/fgprof v0.9.2
@@ -33,7 +33,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.32.1
-	github.com/prometheus/prometheus v1.8.2-0.20211119115433-692a54649ed7
+	github.com/prometheus/prometheus v1.8.2-0.20220117154355-4855a0c067e2
 	github.com/schollz/progressbar/v3 v3.8.5
 	github.com/sergi/go-diff v1.2.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
@@ -44,10 +44,10 @@ require (
 	go.opentelemetry.io/collector/model v0.42.0
 	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
-	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
+	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9
 	google.golang.org/grpc v1.43.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
 // Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20211119115433-692a54649ed7
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20220117154355-4855a0c067e2
