@@ -83,7 +83,7 @@ jobs:
             helm package deploy/helm-chart -d chart_release/
             helm plugin install https://github.com/hypnoglow/helm-s3.git          
             helm repo add tscharts s3://charts.timescale.com
-            helm s3 push chart_release/* tscharts --acl public-read --dry-run 
+            helm s3 push chart_release/* tscharts --acl public-read --relative --dry-run
 
       - name: push package
         env:
@@ -91,4 +91,4 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.ORG_AWS_HELM_CHART_BUCKET_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ORG_AWS_HELM_CHART_BUCKET_SECRET_ACCESS_KEY }}
         run: |
-          helm s3 push chart_release/* tscharts --acl public-read
+          helm s3 push chart_release/* tscharts --acl public-read --relative
