@@ -14,6 +14,9 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+### Added
+- Add support to instrument Promscale's Otel GRPC server with Prometheus metrics [#1061]
+
 ## [0.8.0] - 2022-01-18
 
 ### Added
@@ -23,7 +26,6 @@ We use the following categories for changes:
 - Add `ps_trace.set_trace_retention_period(INTERVAL)` function to set trace retention period [#1015]
 - Add `ps_trace.get_trace_retention_period()` database function to get current trace retention period [#1015]
 - Add ability to set additional environment variables in helm chart [#1041]
-- Add support to instrument Promscale's Otel GRPC server with Prometheus metrics [#1061]
 
 ### Changed
 - Rename CLI flags to improve user interface [#964]
