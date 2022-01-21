@@ -106,7 +106,7 @@ func (t *engineImpl) writeMetadata() error {
 }
 
 const (
-	metadataUpdateWithExtension = "SELECT update_tsprom_metadata($1, $2, $3)"
+	metadataUpdateWithExtension = "SELECT " + schema.Ext + ".update_tsprom_metadata($1, $2, $3)"
 	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 )
 
