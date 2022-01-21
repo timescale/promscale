@@ -136,7 +136,7 @@ $$
         END IF;
 
         -- First try to use promscale_extension to fill the metadata table.
-        PERFORM update_tsprom_metadata(telemetry_name, telemetry_value, TRUE);
+        PERFORM SCHEMA_EXT.update_tsprom_metadata(telemetry_name, telemetry_value, TRUE);
 
         -- If promscale_extension is not installed, the above line will fail. Hence, catch the exception and try the manual way.
         EXCEPTION WHEN OTHERS THEN

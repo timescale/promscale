@@ -47,8 +47,8 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.is_timescaledb_oss() TO prom_reader;
 DO $$
 BEGIN
     IF NOT SCHEMA_CATALOG.is_timescaledb_oss() AND SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
-       PERFORM add_job('SCHEMA_CATALOG.execute_maintenance_job', '30 min');
-       PERFORM add_job('SCHEMA_CATALOG.execute_maintenance_job', '30 min');
+       PERFORM SCHEMA_TIMESCALE.add_job('SCHEMA_CATALOG.execute_maintenance_job', '30 min');
+       PERFORM SCHEMA_TIMESCALE.add_job('SCHEMA_CATALOG.execute_maintenance_job', '30 min');
     END IF;
 END
 $$;

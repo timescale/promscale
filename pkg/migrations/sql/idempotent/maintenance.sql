@@ -20,7 +20,7 @@ BEGIN
         WHERE EXISTS (
             SELECT 1 FROM
             SCHEMA_CATALOG.get_storage_hypertable_info(m.table_schema, m.table_name, m.is_view) hi
-            INNER JOIN show_chunks(hi.hypertable_relation,
+            INNER JOIN SCHEMA_TIMESCALE.show_chunks(hi.hypertable_relation,
                          older_than=>NOW() - SCHEMA_CATALOG.get_metric_retention_period(m.table_schema, m.metric_name)) sc ON TRUE)
         --random order also to prevent starvation
         ORDER BY random();
