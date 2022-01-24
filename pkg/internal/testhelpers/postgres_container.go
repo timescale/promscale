@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 const (
@@ -213,7 +212,7 @@ func setupRole(t testing.TB, dbName string, role string) {
 	require.NoError(t, err)
 	defer dbOwner.Close(context.Background())
 
-	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL "+schema.Catalog+".execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
+	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
 	require.NoError(t, err)
 }
 

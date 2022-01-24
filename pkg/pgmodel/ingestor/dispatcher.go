@@ -13,7 +13,6 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -25,8 +24,8 @@ import (
 
 const (
 	MetricBatcherChannelCap = 1000
-	finalizeMetricCreation  = "CALL " + schema.Catalog + ".finalize_metric_creation()"
-	getEpochSQL             = "SELECT current_epoch FROM " + schema.Catalog + ".ids_epoch LIMIT 1"
+	finalizeMetricCreation  = "CALL _prom_catalog.finalize_metric_creation()"
+	getEpochSQL             = "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1"
 )
 
 // pgxDispatcher redirects incoming samples to the appropriate metricBatcher

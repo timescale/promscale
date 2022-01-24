@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgtype"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -231,7 +230,7 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 				return dbEpoch, fmt.Errorf("error filling labels: slicing values: %w", err)
 			}
 			batch.Queue("BEGIN;")
-			batch.Queue("SELECT * FROM "+schema.Catalog+".get_or_create_label_ids($1, $2, $3, $4)", metricName, info.metricInfo.TableName, namesSlice, valuesSlice)
+			batch.Queue("SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)", metricName, info.metricInfo.TableName, namesSlice, valuesSlice)
 			batch.Queue("COMMIT;")
 			infoBatches = append(infoBatches, info)
 			items += len(namesSlice.Elements)

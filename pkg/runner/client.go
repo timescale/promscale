@@ -186,7 +186,7 @@ func isTimescaleDBOSS(conn *pgx.Conn) (bool, error) {
 		isTimescaleDB bool
 		isLicenseOSS  bool
 	)
-	err := conn.QueryRow(context.Background(), "SELECT "+schema.Catalog+".is_timescaledb_installed()").Scan(&isTimescaleDB)
+	err := conn.QueryRow(context.Background(), "SELECT _prom_catalog.is_timescaledb_installed()").Scan(&isTimescaleDB)
 	if err != nil {
 		return false, fmt.Errorf("error fetching whether TimescaleDB is installed: %w", err)
 	}
@@ -194,7 +194,7 @@ func isTimescaleDBOSS(conn *pgx.Conn) (bool, error) {
 		// Return false so that we don't warn for OSS TimescaleDB.
 		return false, nil
 	}
-	err = conn.QueryRow(context.Background(), "SELECT "+schema.Catalog+".is_timescaledb_oss()").Scan(&isLicenseOSS)
+	err = conn.QueryRow(context.Background(), "SELECT _prom_catalog.is_timescaledb_oss()").Scan(&isLicenseOSS)
 	if err != nil {
 		return false, fmt.Errorf("error fetching TimescaleDB license: %w", err)
 	}

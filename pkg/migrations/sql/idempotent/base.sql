@@ -2,52 +2,52 @@
 --This code assumes that table names can only be 63 chars long
 
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_chunk_interval()
+CREATE OR REPLACE FUNCTION _prom_catalog.get_default_chunk_interval()
     RETURNS INTERVAL
 AS $func$
-    SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='chunk_interval';
+    SELECT value::INTERVAL FROM _prom_catalog.default WHERE key='chunk_interval';
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_chunk_interval() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_default_chunk_interval() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_timescale_major_version()
+CREATE OR REPLACE FUNCTION _prom_catalog.get_timescale_major_version()
     RETURNS INT
 AS $func$
     SELECT split_part(extversion, '.', 1)::INT FROM pg_catalog.pg_extension WHERE extname='timescaledb' LIMIT 1;
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_timescale_major_version() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_timescale_major_version() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_timescale_minor_version()
+CREATE OR REPLACE FUNCTION _prom_catalog.get_timescale_minor_version()
     RETURNS INT
 AS $func$
     SELECT split_part(extversion, '.', 2)::INT FROM pg_catalog.pg_extension WHERE extname='timescaledb' LIMIT 1;
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_timescale_minor_version() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_timescale_minor_version() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_retention_period()
+CREATE OR REPLACE FUNCTION _prom_catalog.get_default_retention_period()
     RETURNS INTERVAL
 AS $func$
-    SELECT value::INTERVAL FROM SCHEMA_CATALOG.default WHERE key='retention_period';
+    SELECT value::INTERVAL FROM _prom_catalog.default WHERE key='retention_period';
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_retention_period() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_default_retention_period() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.is_timescaledb_installed()
+CREATE OR REPLACE FUNCTION _prom_catalog.is_timescaledb_installed()
 RETURNS BOOLEAN
 AS $func$
     SELECT count(*) > 0 FROM pg_extension WHERE extname='timescaledb';
 $func$
 LANGUAGE SQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.is_timescaledb_installed() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.is_timescaledb_installed() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.is_timescaledb_oss()
+CREATE OR REPLACE FUNCTION _prom_catalog.is_timescaledb_oss()
 RETURNS BOOLEAN AS
 $$
 BEGIN
-    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-        IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+    IF _prom_catalog.is_timescaledb_installed() THEN
+        IF _prom_catalog.get_timescale_major_version() >= 2 THEN
             -- TimescaleDB 2.x
             RETURN (SELECT current_setting('timescaledb.license') = 'apache');
         ELSE
@@ -62,15 +62,15 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.is_timescaledb_oss() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.is_timescaledb_oss() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.is_multinode()
+CREATE OR REPLACE FUNCTION _prom_catalog.is_multinode()
     RETURNS BOOLEAN
 AS $func$
 DECLARE
     is_distributed BOOLEAN = false;
 BEGIN
-    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+    IF _prom_catalog.get_timescale_major_version() >= 2 THEN
         SELECT count(*) > 0 FROM timescaledb_information.data_nodes
             INTO is_distributed;
     END IF;
@@ -80,79 +80,79 @@ EXCEPTION WHEN SQLSTATE '42P01' THEN -- Timescale 1.x, never distributed
 END
 $func$
 LANGUAGE PLPGSQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.is_multinode() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.is_multinode() TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_default_compression_setting()
+CREATE OR REPLACE FUNCTION _prom_catalog.get_default_compression_setting()
     RETURNS BOOLEAN
 AS $func$
-    SELECT value::BOOLEAN FROM SCHEMA_CATALOG.default WHERE key='metric_compression';
+    SELECT value::BOOLEAN FROM _prom_catalog.default WHERE key='metric_compression';
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_default_compression_setting() TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_default_compression_setting() TO prom_reader;
 
 --Add 1% of randomness to the interval so that chunks are not aligned so that chunks are staggered for compression jobs.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(chunk_interval INTERVAL)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_staggered_chunk_interval(chunk_interval INTERVAL)
 RETURNS INTERVAL
 AS $func$
     SELECT chunk_interval * (1.0+((random()*0.01)-0.005));
 $func$
 LANGUAGE SQL VOLATILE;
 --only used for setting chunk interval, and admin function
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(INTERVAL) TO prom_admin;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_staggered_chunk_interval(INTERVAL) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_job()
+CREATE OR REPLACE FUNCTION _prom_catalog.get_advisory_lock_prefix_job()
     RETURNS INTEGER
 AS $func$
 SELECT 12377;
 $func$
     LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_job() TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_advisory_lock_prefix_job() TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance()
+CREATE OR REPLACE FUNCTION _prom_catalog.get_advisory_lock_prefix_maintenance()
     RETURNS INTEGER
 AS $func$
    SELECT 12378;
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance() TO prom_maintenance;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_advisory_lock_prefix_maintenance() TO prom_maintenance;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id int, wait boolean = true)
+CREATE OR REPLACE FUNCTION _prom_catalog.lock_metric_for_maintenance(metric_id int, wait boolean = true)
     RETURNS BOOLEAN
 AS $func$
 DECLARE
     res BOOLEAN;
 BEGIN
     IF NOT wait THEN
-        SELECT pg_try_advisory_lock(SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance(), metric_id) INTO STRICT res;
+        SELECT pg_try_advisory_lock(_prom_catalog.get_advisory_lock_prefix_maintenance(), metric_id) INTO STRICT res;
 
         RETURN res;
     ELSE
-        PERFORM pg_advisory_lock(SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance(), metric_id);
+        PERFORM pg_advisory_lock(_prom_catalog.get_advisory_lock_prefix_maintenance(), metric_id);
 
         RETURN TRUE;
     END IF;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(int, boolean) TO prom_maintenance;
+GRANT EXECUTE ON FUNCTION _prom_catalog.lock_metric_for_maintenance(int, boolean) TO prom_maintenance;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(metric_id int)
+CREATE OR REPLACE FUNCTION _prom_catalog.unlock_metric_for_maintenance(metric_id int)
     RETURNS VOID
 AS $func$
 DECLARE
 BEGIN
-    PERFORM pg_advisory_unlock(SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance(), metric_id);
+    PERFORM pg_advisory_unlock(_prom_catalog.get_advisory_lock_prefix_maintenance(), metric_id);
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(int) TO prom_maintenance;
+GRANT EXECUTE ON FUNCTION _prom_catalog.unlock_metric_for_maintenance(int) TO prom_maintenance;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.attach_series_partition(metric_record SCHEMA_CATALOG.metric) RETURNS VOID
+CREATE OR REPLACE FUNCTION _prom_catalog.attach_series_partition(metric_record _prom_catalog.metric) RETURNS VOID
 AS $proc$
 DECLARE
 BEGIN
         EXECUTE format($$
-           ALTER TABLE SCHEMA_CATALOG.series ATTACH PARTITION SCHEMA_DATA_SERIES.%1$I FOR VALUES IN (%2$L)
+           ALTER TABLE _prom_catalog.series ATTACH PARTITION prom_data_series.%1$I FOR VALUES IN (%2$L)
         $$, metric_record.table_name, metric_record.id);
 END;
 $proc$
@@ -161,8 +161,8 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.metric) TO prom_writer;
+REVOKE ALL ON FUNCTION _prom_catalog.attach_series_partition(_prom_catalog.metric) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.attach_series_partition(_prom_catalog.metric) TO prom_writer;
 
 --Canonical lock ordering:
 --metrics
@@ -191,22 +191,22 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.attach_series_partition(SCHEMA_CATALOG.
 --
 --lock-order: metric table, data_table, series parent, series partition
 
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
+CREATE OR REPLACE PROCEDURE _prom_catalog.finalize_metric_creation()
 AS $proc$
 DECLARE
-    r SCHEMA_CATALOG.metric;
+    r _prom_catalog.metric;
     created boolean;
     is_view boolean;
 BEGIN
     FOR r IN
         SELECT *
-        FROM SCHEMA_CATALOG.metric
+        FROM _prom_catalog.metric
         WHERE NOT creation_completed
         ORDER BY random()
     LOOP
         SELECT m.creation_completed, m.is_view
         INTO created, is_view
-        FROM SCHEMA_CATALOG.metric m
+        FROM _prom_catalog.metric m
         WHERE m.id = r.id
         FOR UPDATE;
 
@@ -217,7 +217,7 @@ BEGIN
         END IF;
 
         --do this before taking exclusive lock to minimize work after taking lock
-        UPDATE SCHEMA_CATALOG.metric SET creation_completed = TRUE WHERE id = r.id;
+        UPDATE _prom_catalog.metric SET creation_completed = TRUE WHERE id = r.id;
 
         -- in case of a view, no need to attach the partition
         IF is_view THEN
@@ -231,17 +231,17 @@ BEGIN
         --to enforce lock ordering (parent->child) explicitly. Note:
         --creating a table as a partition takes a stronger lock (access exclusive)
         --so, attaching a partition is better
-        LOCK TABLE ONLY SCHEMA_CATALOG.series IN SHARE UPDATE EXCLUSIVE mode;
+        LOCK TABLE ONLY _prom_catalog.series IN SHARE UPDATE EXCLUSIVE mode;
 
-        PERFORM SCHEMA_CATALOG.attach_series_partition(r);
+        PERFORM _prom_catalog.attach_series_partition(r);
 
         COMMIT;
     END LOOP;
 END;
 $proc$ LANGUAGE PLPGSQL;
-COMMENT ON PROCEDURE SCHEMA_CATALOG.finalize_metric_creation()
+COMMENT ON PROCEDURE _prom_catalog.finalize_metric_creation()
 IS 'Finalizes metric creation. This procedure should be run by the connector automatically';
-GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.finalize_metric_creation() TO prom_writer;
+GRANT EXECUTE ON PROCEDURE _prom_catalog.finalize_metric_creation() TO prom_writer;
 
 --This function is called by a trigger when a new metric is created. It
 --sets up the metric just enough to insert data into it. Metric creation
@@ -251,7 +251,7 @@ GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.finalize_metric_creation() TO prom_wri
 --Note: latency-sensitive function. Should only contain just enough logic
 --to support inserts for the metric.
 --lock-order: data table, labels, series partition.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.make_metric_table()
+CREATE OR REPLACE FUNCTION _prom_catalog.make_metric_table()
     RETURNS trigger
     AS $func$
 DECLARE
@@ -272,40 +272,40 @@ BEGIN
    EXECUTE format('CREATE UNIQUE INDEX data_series_id_time_%s ON %I.%I (series_id, time) INCLUDE (value)',
                     NEW.id, NEW.table_schema, NEW.table_name);
 
-    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
-        IF SCHEMA_CATALOG.is_multinode() THEN
+    IF _prom_catalog.is_timescaledb_installed() THEN
+        IF _prom_catalog.is_multinode() THEN
             --Note: we intentionally do not partition by series_id here. The assumption is
             --that we'll have more "heavy metrics" than nodes and thus partitioning /individual/
             --metrics won't gain us much for inserts and would be detrimental for many queries.
-            PERFORM SCHEMA_TIMESCALE.create_distributed_hypertable(
+            PERFORM public.create_distributed_hypertable(
                 format('%I.%I', NEW.table_schema, NEW.table_name),
                 'time',
-                chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
+                chunk_time_interval=>_prom_catalog.get_staggered_chunk_interval(_prom_catalog.get_default_chunk_interval()),
                 create_default_indexes=>false
             );
         ELSE
-            PERFORM SCHEMA_TIMESCALE.create_hypertable(format('%I.%I', NEW.table_schema, NEW.table_name), 'time',
-            chunk_time_interval=>SCHEMA_CATALOG.get_staggered_chunk_interval(SCHEMA_CATALOG.get_default_chunk_interval()),
+            PERFORM public.create_hypertable(format('%I.%I', NEW.table_schema, NEW.table_name), 'time',
+            chunk_time_interval=>_prom_catalog.get_staggered_chunk_interval(_prom_catalog.get_default_chunk_interval()),
                              create_default_indexes=>false);
         END IF;
     END IF;
 
     --Do not move this into the finalize step, because it's cheap to do while the table is empty
     --but takes a heavyweight blocking lock otherwise.
-    IF  SCHEMA_CATALOG.is_timescaledb_installed()
-            AND SCHEMA_CATALOG.get_default_compression_setting() THEN
-            PERFORM SCHEMA_PROM.set_compression_on_metric_table(NEW.table_name, TRUE);
+    IF  _prom_catalog.is_timescaledb_installed()
+            AND _prom_catalog.get_default_compression_setting() THEN
+            PERFORM prom_api.set_compression_on_metric_table(NEW.table_name, TRUE);
     END IF;
 
 
-    SELECT SCHEMA_CATALOG.get_or_create_label_id('__name__', NEW.metric_name)
+    SELECT _prom_catalog.get_or_create_label_id('__name__', NEW.metric_name)
     INTO STRICT label_id;
     --note that because labels[1] is unique across partitions and UNIQUE(labels) inside partition, labels are guaranteed globally unique
     EXECUTE format($$
-        CREATE TABLE SCHEMA_DATA_SERIES.%1$I (
+        CREATE TABLE prom_data_series.%1$I (
             id bigint NOT NULL,
             metric_id int NOT NULL,
-            labels SCHEMA_PROM.label_array NOT NULL,
+            labels prom_api.label_array NOT NULL,
             delete_epoch BIGINT NULL DEFAULT NULL,
             CHECK(labels[1] = %2$L AND labels[1] IS NOT NULL),
             CHECK(metric_id = %3$L),
@@ -313,9 +313,9 @@ BEGIN
             CONSTRAINT series_pkey_%3$s PRIMARY KEY(id)
         ) WITH (autovacuum_vacuum_threshold = 100, autovacuum_analyze_threshold = 100)
     $$, NEW.table_name, label_id, NEW.id);
-   EXECUTE format('GRANT SELECT ON TABLE SCHEMA_DATA_SERIES.%I TO prom_reader', NEW.table_name);
-   EXECUTE format('GRANT SELECT, INSERT ON TABLE SCHEMA_DATA_SERIES.%I TO prom_writer', NEW.table_name);
-   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_DATA_SERIES.%I TO prom_modifier', NEW.table_name);
+   EXECUTE format('GRANT SELECT ON TABLE prom_data_series.%I TO prom_reader', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT ON TABLE prom_data_series.%I TO prom_writer', NEW.table_name);
+   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE prom_data_series.%I TO prom_modifier', NEW.table_name);
    RETURN NEW;
 END
 $func$
@@ -324,14 +324,14 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.make_metric_table() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.make_metric_table() TO prom_writer;
+REVOKE ALL ON FUNCTION _prom_catalog.make_metric_table() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.make_metric_table() TO prom_writer;
 
-DROP TRIGGER IF EXISTS make_metric_table_trigger ON SCHEMA_CATALOG.metric CASCADE;
+DROP TRIGGER IF EXISTS make_metric_table_trigger ON _prom_catalog.metric CASCADE;
 CREATE TRIGGER make_metric_table_trigger
-    AFTER INSERT ON SCHEMA_CATALOG.metric
+    AFTER INSERT ON _prom_catalog.metric
     FOR EACH ROW
-    EXECUTE PROCEDURE SCHEMA_CATALOG.make_metric_table();
+    EXECUTE PROCEDURE _prom_catalog.make_metric_table();
 
 
 ------------------------
@@ -341,14 +341,14 @@ CREATE TRIGGER make_metric_table_trigger
 -- Return a table name built from a full_name and a suffix.
 -- The full name is truncated so that the suffix could fit in full.
 -- name size will always be exactly 62 chars.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(
+CREATE OR REPLACE FUNCTION _prom_catalog.pg_name_with_suffix(
         full_name text, suffix text)
     RETURNS name
 AS $func$
     SELECT (substring(full_name for 62-(char_length(suffix)+1)) || '_' || suffix)::name
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(text, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.pg_name_with_suffix(text, text) TO prom_reader;
 
 -- Return a new unique name from a name and id.
 -- This tries to use the full_name in full. But if the
@@ -361,7 +361,7 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_with_suffix(text, text) TO prom
 -- We use a max name length of 62 not 63 because table creation creates an
 -- array type named `_tablename`. We need to ensure that this name is
 -- unique as well, so have to reserve a space for the underscore.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.pg_name_unique(
+CREATE OR REPLACE FUNCTION _prom_catalog.pg_name_unique(
         full_name_arg text, suffix text)
     RETURNS name
 AS $func$
@@ -369,13 +369,13 @@ AS $func$
         WHEN char_length(full_name_arg) < 62 THEN
             full_name_arg::name
         ELSE
-            SCHEMA_CATALOG.pg_name_with_suffix(
+            _prom_catalog.pg_name_with_suffix(
                 full_name_arg, suffix
             )
         END
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_unique(text, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.pg_name_unique(text, text) TO prom_reader;
 
 --Creates a new table for a given metric name.
 --This uses up some sequences so should only be called
@@ -384,24 +384,24 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.pg_name_unique(text, text) TO prom_read
 --  which causes the make_metric_table trigger to fire,
 --  which actually creates the table
 -- locks: metric, make_metric_table[data table, labels, series partition]
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_table(
+CREATE OR REPLACE FUNCTION _prom_catalog.create_metric_table(
         metric_name_arg text, OUT id int, OUT table_name name)
 AS $func$
 DECLARE
   new_id int;
   new_table_name name;
 BEGIN
-new_id = nextval(pg_get_serial_sequence('SCHEMA_CATALOG.metric','id'))::int;
-new_table_name = SCHEMA_CATALOG.pg_name_unique(metric_name_arg, new_id::text);
+new_id = nextval(pg_get_serial_sequence('_prom_catalog.metric','id'))::int;
+new_table_name = _prom_catalog.pg_name_unique(metric_name_arg, new_id::text);
 LOOP
-    INSERT INTO SCHEMA_CATALOG.metric (id, metric_name, table_schema, table_name, series_table)
+    INSERT INTO _prom_catalog.metric (id, metric_name, table_schema, table_name, series_table)
         SELECT  new_id,
                 metric_name_arg,
-                'SCHEMA_DATA',
+                'prom_data',
                 new_table_name,
                 new_table_name
     ON CONFLICT DO NOTHING
-    RETURNING SCHEMA_CATALOG.metric.id, SCHEMA_CATALOG.metric.table_name
+    RETURNING _prom_catalog.metric.id, _prom_catalog.metric.table_name
     INTO id, table_name;
     -- under high concurrency the insert may not return anything, so try a select and loop
     -- https://stackoverflow.com/a/15950324
@@ -409,7 +409,7 @@ LOOP
 
     SELECT m.id, m.table_name
     INTO id, table_name
-    FROM SCHEMA_CATALOG.metric m
+    FROM _prom_catalog.metric m
     WHERE metric_name = metric_name_arg;
 
     EXIT WHEN FOUND;
@@ -417,27 +417,27 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE ;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_table(text) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.create_metric_table(text) TO prom_writer;
 
 --Creates a new label_key row for a given key.
 --This uses up some sequences so should only be called
 --If the table does not yet exist.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_label_key(
+CREATE OR REPLACE FUNCTION _prom_catalog.create_label_key(
         new_key TEXT, OUT id INT, OUT value_column_name NAME, OUT id_column_name NAME
 )
 AS $func$
 DECLARE
   new_id int;
 BEGIN
-new_id = nextval(pg_get_serial_sequence('SCHEMA_CATALOG.label_key','id'))::int;
+new_id = nextval(pg_get_serial_sequence('_prom_catalog.label_key','id'))::int;
 LOOP
-    INSERT INTO SCHEMA_CATALOG.label_key (id, key, value_column_name, id_column_name)
+    INSERT INTO _prom_catalog.label_key (id, key, value_column_name, id_column_name)
         SELECT  new_id,
                 new_key,
-                SCHEMA_CATALOG.pg_name_unique(new_key, new_id::text),
-                SCHEMA_CATALOG.pg_name_unique(new_key || '_id', format('%s_id', new_id))
+                _prom_catalog.pg_name_unique(new_key, new_id::text),
+                _prom_catalog.pg_name_unique(new_key || '_id', format('%s_id', new_id))
     ON CONFLICT DO NOTHING
-    RETURNING SCHEMA_CATALOG.label_key.id, SCHEMA_CATALOG.label_key.value_column_name, SCHEMA_CATALOG.label_key.id_column_name
+    RETURNING _prom_catalog.label_key.id, _prom_catalog.label_key.value_column_name, _prom_catalog.label_key.id_column_name
     INTO id, value_column_name, id_column_name;
     -- under high concurrency the insert may not return anything, so try a select and loop
     -- https://stackoverflow.com/a/15950324
@@ -445,7 +445,7 @@ LOOP
 
     SELECT lk.id, lk.value_column_name, lk.id_column_name
     INTO id, value_column_name, id_column_name
-    FROM SCHEMA_CATALOG.label_key lk
+    FROM _prom_catalog.label_key lk
     WHERE key = new_key;
 
     EXIT WHEN FOUND;
@@ -453,28 +453,28 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_label_key(TEXT) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.create_label_key(TEXT) TO prom_writer;
 
 --Get a label key row if one doesn't yet exist.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_key(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_label_key(
         key TEXT, OUT id INT, OUT value_column_name NAME, OUT id_column_name NAME)
 AS $func$
    SELECT id, value_column_name, id_column_name
-   FROM SCHEMA_CATALOG.label_key lk
+   FROM _prom_catalog.label_key lk
    WHERE lk.key = get_or_create_label_key.key
    UNION ALL
    SELECT *
-   FROM SCHEMA_CATALOG.create_label_key(get_or_create_label_key.key)
+   FROM _prom_catalog.create_label_key(get_or_create_label_key.key)
    LIMIT 1
 $func$
 LANGUAGE SQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key(TEXT) to prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_label_key(TEXT) to prom_writer;
 
 -- Get a new label array position for a label key. For any metric,
 -- we want the positions to be as compact as possible.
 -- This uses some pretty heavy locks so use sparingly.
 -- locks: label_key_position, data table, series partition (in view creation),
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_new_pos_for_key(
         metric_name text, metric_table name, key_name_array text[], is_for_exemplar boolean)
     RETURNS int[]
 AS $func$
@@ -501,7 +501,7 @@ BEGIN
         FROM
             unnest($1) WITH ORDINALITY as k(key, ord)
         INNER JOIN
-            SCHEMA_CATALOG.%I p ON
+            _prom_catalog.%I p ON
         (
             p.metric_name = $2
             AND p.key = k.key
@@ -519,12 +519,12 @@ BEGIN
         --also makes sure the next_position below is correct in terms of concurrency
         EXECUTE format('LOCK TABLE prom_data_series.%I IN SHARE UPDATE EXCLUSIVE MODE', metric_table);
     ELSE
-        LOCK TABLE SCHEMA_CATALOG.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
+        LOCK TABLE _prom_catalog.exemplar_label_key_position IN ACCESS EXCLUSIVE MODE;
     END IF;
 
     max_position := NULL;
     EXECUTE FORMAT('SELECT max(pos) + 1
-        FROM SCHEMA_CATALOG.%I
+        FROM _prom_catalog.%I
     WHERE metric_name = $1', position_table_name) USING get_new_pos_for_key.metric_name
     INTO max_position;
 
@@ -543,7 +543,7 @@ BEGIN
     FOREACH key_name IN ARRAY key_name_array LOOP
         --second check after lock
         position := NULL;
-        EXECUTE FORMAT('SELECT pos FROM SCHEMA_CATALOG.%I lp
+        EXECUTE FORMAT('SELECT pos FROM _prom_catalog.%I lp
         WHERE
             lp.metric_name = $1
         AND
@@ -565,11 +565,11 @@ BEGIN
         END IF;
 
         IF NOT is_for_exemplar THEN
-            PERFORM SCHEMA_CATALOG.get_or_create_label_key(key_name);
+            PERFORM _prom_catalog.get_or_create_label_key(key_name);
         END IF;
 
         position := NULL;
-        EXECUTE FORMAT('INSERT INTO SCHEMA_CATALOG.%I
+        EXECUTE FORMAT('INSERT INTO _prom_catalog.%I
         VALUES ($1, $2, $3)
             ON CONFLICT DO NOTHING
         RETURNING pos', position_table_name) USING metric_name, key_name, next_position
@@ -585,8 +585,8 @@ BEGIN
     IF NOT is_for_exemplar AND count_new > 0 THEN
         --note these functions are expensive in practice so they
         --must be run once across a collection of keys
-        PERFORM SCHEMA_CATALOG.create_series_view(metric_name);
-        PERFORM SCHEMA_CATALOG.create_metric_view(metric_name);
+        PERFORM _prom_catalog.create_series_view(metric_name);
+        PERFORM _prom_catalog.create_metric_view(metric_name);
     END IF;
 
     RETURN position_array;
@@ -598,21 +598,21 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, name, text[], boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, name, text[], boolean) TO prom_reader; -- For exemplars querying.
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_pos_for_key(text, name, text[], boolean) TO prom_writer;
+REVOKE ALL ON FUNCTION _prom_catalog.get_new_pos_for_key(text, name, text[], boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_new_pos_for_key(text, name, text[], boolean) TO prom_reader; -- For exemplars querying.
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_new_pos_for_key(text, name, text[], boolean) TO prom_writer;
 
 --should only be called after a check that that the label doesn't exist
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_new_label_id(key_name text, value_name text, OUT id INT)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_new_label_id(key_name text, value_name text, OUT id INT)
 AS $func$
 BEGIN
 LOOP
     INSERT INTO
-        SCHEMA_CATALOG.label(key, value)
+        _prom_catalog.label(key, value)
     VALUES
         (key_name,value_name)
     ON CONFLICT DO NOTHING
-    RETURNING SCHEMA_CATALOG.label.id
+    RETURNING _prom_catalog.label.id
     INTO id;
 
     EXIT WHEN FOUND;
@@ -620,7 +620,7 @@ LOOP
     SELECT
         l.id
     INTO id
-    FROM SCHEMA_CATALOG.label l
+    FROM _prom_catalog.label l
     WHERE
         key = key_name AND
         value = value_name;
@@ -630,37 +630,37 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_new_label_id(text, text) to prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_new_label_id(text, text) to prom_writer;
 
 --wrapper around jsonb_each_text to give a better row_estimate
 --for labels (10 not 100)
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_jsonb_each_text(js jsonb, OUT key text, OUT value text)
+CREATE OR REPLACE FUNCTION _prom_catalog.label_jsonb_each_text(js jsonb, OUT key text, OUT value text)
  RETURNS SETOF record
  LANGUAGE SQL
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
 AS $function$ SELECT (jsonb_each_text(js)).* $function$;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_jsonb_each_text(jsonb) to prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.label_jsonb_each_text(jsonb) to prom_reader;
 
 --wrapper around unnest to give better row estimate (10 not 100)
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_unnest(label_array anyarray)
+CREATE OR REPLACE FUNCTION _prom_catalog.label_unnest(label_array anyarray)
  RETURNS SETOF anyelement
  LANGUAGE SQL
  IMMUTABLE PARALLEL SAFE STRICT ROWS 10
 AS $function$ SELECT unnest(label_array) $function$;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.label_unnest(anyarray) to prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.label_unnest(anyarray) to prom_reader;
 
 -- safe_approximate_row_count returns the approximate row count of a hypertable if timescaledb is installed
 -- else returns the approximate row count in the normal table. This prevents errors in approximate count calculation
 -- if timescaledb is not installed, which is the case in plain postgres support.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.safe_approximate_row_count(table_name_input REGCLASS) RETURNS BIGINT
+CREATE OR REPLACE FUNCTION _prom_catalog.safe_approximate_row_count(table_name_input REGCLASS) RETURNS BIGINT
     LANGUAGE PLPGSQL
 AS
 $$
 BEGIN
-    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+    IF _prom_catalog.get_timescale_major_version() >= 2 THEN
         RETURN (SELECT * FROM approximate_row_count(table_name_input));
     ELSE
-        IF SCHEMA_CATALOG.is_timescaledb_installed()
+        IF _prom_catalog.is_timescaledb_installed()
             AND (SELECT count(*) > 0
                 FROM _timescaledb_catalog.hypertable
                 WHERE format('%I.%I', schema_name, table_name)::regclass=table_name_input)
@@ -671,29 +671,29 @@ BEGIN
     END IF;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.safe_approximate_row_count(regclass) to prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.safe_approximate_row_count(regclass) to prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_catalog_row(
+CREATE OR REPLACE FUNCTION _prom_catalog.delete_series_catalog_row(
     metric_table name,
     series_ids bigint[]
 ) RETURNS VOID AS
 $$
 BEGIN
     EXECUTE FORMAT(
-        'UPDATE SCHEMA_DATA_SERIES.%1$I SET delete_epoch = current_epoch+1 FROM SCHEMA_CATALOG.ids_epoch WHERE delete_epoch IS NULL AND id = ANY($1)',
+        'UPDATE prom_data_series.%1$I SET delete_epoch = current_epoch+1 FROM _prom_catalog.ids_epoch WHERE delete_epoch IS NULL AND id = ANY($1)',
         metric_table
     ) USING series_ids;
     RETURN;
 END;
 $$
 LANGUAGE PLPGSQL;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_series_catalog_row(name, bigint[]) to prom_modifier;
+GRANT EXECUTE ON FUNCTION _prom_catalog.delete_series_catalog_row(name, bigint[]) to prom_modifier;
 
 ---------------------------------------------------
 ------------------- Public APIs -------------------
 ---------------------------------------------------
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_table_name_if_exists(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_metric_table_name_if_exists(
         schema text, metric_name text)
     RETURNS TABLE (id int, table_name name, table_schema name, series_table name, is_view boolean)
 AS $func$
@@ -702,15 +702,15 @@ DECLARE
 BEGIN
     IF get_metric_table_name_if_exists.schema != '' AND get_metric_table_name_if_exists.schema IS NOT NULL THEN
         RETURN QUERY SELECT m.id, m.table_name::name, m.table_schema::name, m.series_table::name, m.is_view
-        FROM SCHEMA_CATALOG.metric m
+        FROM _prom_catalog.metric m
         WHERE m.table_schema = get_metric_table_name_if_exists.schema
         AND m.metric_name = get_metric_table_name_if_exists.metric_name;
         RETURN;
     END IF;
 
     RETURN QUERY SELECT m.id, m.table_name::name, m.table_schema::name, m.series_table::name, m.is_view
-    FROM SCHEMA_CATALOG.metric m
-    WHERE m.table_schema = 'SCHEMA_DATA'
+    FROM _prom_catalog.metric m
+    WHERE m.table_schema = 'prom_data'
     AND m.metric_name = get_metric_table_name_if_exists.metric_name;
 
     IF FOUND THEN
@@ -719,12 +719,12 @@ BEGIN
 
     SELECT count(*)
     INTO rows_found
-    FROM SCHEMA_CATALOG.metric m
+    FROM _prom_catalog.metric m
     WHERE m.metric_name = get_metric_table_name_if_exists.metric_name;
 
     IF rows_found <= 1 THEN
         RETURN QUERY SELECT m.id, m.table_name::name, m.table_schema::name, m.series_table::name, m.is_view
-        FROM SCHEMA_CATALOG.metric m
+        FROM _prom_catalog.metric m
         WHERE m.metric_name = get_metric_table_name_if_exists.metric_name;
         RETURN;
     END IF;
@@ -733,27 +733,27 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_table_name_if_exists(text, text) to prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_metric_table_name_if_exists(text, text) to prom_reader;
 
 -- Public function to get the name of the table for a given metric
 -- This will create the metric table if it does not yet exist.
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_name(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_metric_table_name(
         metric_name text, OUT id int, OUT table_name name, OUT possibly_new BOOLEAN)
 AS $func$
    SELECT id, table_name::name, false
-   FROM SCHEMA_CATALOG.metric m
+   FROM _prom_catalog.metric m
    WHERE m.metric_name = get_or_create_metric_table_name.metric_name
-   AND m.table_schema = 'SCHEMA_DATA'
+   AND m.table_schema = 'prom_data'
    UNION ALL
    SELECT *, true
-   FROM SCHEMA_CATALOG.create_metric_table(get_or_create_metric_table_name.metric_name)
+   FROM _prom_catalog.create_metric_table(get_or_create_metric_table_name.metric_name)
    LIMIT 1
 $func$
 LANGUAGE SQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_metric_table_name(text) to prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_metric_table_name(text) to prom_writer;
 
 --public function to get the array position for a label key
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_label_key_pos(
         metric_name text, key text)
     RETURNS INT
 AS $$
@@ -761,79 +761,79 @@ AS $$
     SELECT
         pos
     FROM
-        SCHEMA_CATALOG.label_key_position lkp
+        _prom_catalog.label_key_position lkp
     WHERE
         lkp.metric_name = get_or_create_label_key_pos.metric_name
         AND lkp.key = get_or_create_label_key_pos.key
     UNION ALL
     SELECT
-        (SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, m.table_name, array[get_or_create_label_key_pos.key], false))[1]
+        (_prom_catalog.get_new_pos_for_key(get_or_create_label_key_pos.metric_name, m.table_name, array[get_or_create_label_key_pos.key], false))[1]
     FROM 
-        SCHEMA_CATALOG.get_or_create_metric_table_name(get_or_create_label_key_pos.metric_name) m
+        _prom_catalog.get_or_create_metric_table_name(get_or_create_label_key_pos.metric_name) m
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_key_pos(text, text) to prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_label_key_pos(text, text) to prom_writer;
 
 -- label_cardinality returns the cardinality of a label_pair id in the series table.
 -- In simple terms, it means the number of times a label_pair/label_matcher is used
 -- across all the series.
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_cardinality(label_id INT)
+CREATE OR REPLACE FUNCTION prom_api.label_cardinality(label_id INT)
     RETURNS INT
     LANGUAGE SQL
 AS
 $$
-    SELECT count(*)::INT FROM SCHEMA_CATALOG.series s WHERE s.labels @> array[label_id];
+    SELECT count(*)::INT FROM _prom_catalog.series s WHERE s.labels @> array[label_id];
 $$ STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_cardinality(int) to prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.label_cardinality(int) to prom_reader;
 
 --public function to get the array position for a label key if it exists
 --useful in case users want to group by a specific label key
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.label_key_position(
+CREATE OR REPLACE FUNCTION prom_api.label_key_position(
         metric_name text, key text)
     RETURNS INT
 AS $$
     SELECT
         pos
     FROM
-        SCHEMA_CATALOG.label_key_position lkp
+        _prom_catalog.label_key_position lkp
     WHERE
         lkp.metric_name = label_key_position.metric_name
         AND lkp.key = label_key_position.key
     LIMIT 1
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.label_key_position(text, text) to prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.label_key_position(text, text) to prom_reader;
 
 -- drop_metric deletes a metric and related series hypertable from the database along with the related series, views and unreferenced labels.
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.drop_metric(metric_name_to_be_dropped text) RETURNS VOID
+CREATE OR REPLACE FUNCTION prom_api.drop_metric(metric_name_to_be_dropped text) RETURNS VOID
 AS
 $$
     DECLARE
         hypertable_name TEXT;
         deletable_metric_id INTEGER;
     BEGIN
-        IF (SELECT NOT pg_try_advisory_xact_lock(SCHEMA_LOCK_ID)) THEN
+        IF (SELECT NOT pg_try_advisory_xact_lock(5585198506344173278)) THEN
             RAISE NOTICE 'drop_metric can run only when no Promscale connectors are running. Please shutdown the Promscale connectors';
-            PERFORM pg_advisory_xact_lock(SCHEMA_LOCK_ID);
+            PERFORM pg_advisory_xact_lock(5585198506344173278);
         END IF;
-        SELECT table_name, id INTO hypertable_name, deletable_metric_id FROM SCHEMA_CATALOG.metric WHERE metric_name=metric_name_to_be_dropped;
+        SELECT table_name, id INTO hypertable_name, deletable_metric_id FROM _prom_catalog.metric WHERE metric_name=metric_name_to_be_dropped;
         RAISE NOTICE 'deleting "%" metric with metric_id as "%" and table_name as "%"', metric_name_to_be_dropped, deletable_metric_id, hypertable_name;
-        EXECUTE FORMAT('DROP VIEW SCHEMA_SERIES.%1$I;', hypertable_name);
-        EXECUTE FORMAT('DROP VIEW SCHEMA_METRIC.%1$I;', hypertable_name);
-        EXECUTE FORMAT('DROP TABLE SCHEMA_DATA_SERIES.%1$I;', hypertable_name);
-        EXECUTE FORMAT('DROP TABLE SCHEMA_DATA.%1$I;', hypertable_name);
-        DELETE FROM SCHEMA_CATALOG.metric WHERE id=deletable_metric_id;
+        EXECUTE FORMAT('DROP VIEW prom_series.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP VIEW prom_metric.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP TABLE prom_data_series.%1$I;', hypertable_name);
+        EXECUTE FORMAT('DROP TABLE prom_data.%1$I;', hypertable_name);
+        DELETE FROM _prom_catalog.metric WHERE id=deletable_metric_id;
         -- clean up unreferenced labels, label_keys and its position.
-        DELETE FROM SCHEMA_CATALOG.label_key_position WHERE metric_name=metric_name_to_be_dropped;
-        DELETE FROM SCHEMA_CATALOG.label_key WHERE key NOT IN (select key from SCHEMA_CATALOG.label_key_position);
+        DELETE FROM _prom_catalog.label_key_position WHERE metric_name=metric_name_to_be_dropped;
+        DELETE FROM _prom_catalog.label_key WHERE key NOT IN (select key from _prom_catalog.label_key_position);
     END;
 $$
 LANGUAGE plpgsql;
 
 --Get the label_id for a key, value pair
 -- no need for a get function only as users will not be using ids directly
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_id(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_label_id(
         key_name text, value_name text)
     RETURNS INT
 AS $$
@@ -841,17 +841,17 @@ AS $$
     --unnecessarily
     SELECT
         id
-    FROM SCHEMA_CATALOG.label
+    FROM _prom_catalog.label
     WHERE
         key = key_name AND
         value = value_name
     UNION ALL
     SELECT
-        SCHEMA_CATALOG.get_new_label_id(key_name, value_name)
+        _prom_catalog.get_new_label_id(key_name, value_name)
     LIMIT 1
 $$
 LANGUAGE SQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_id(text, text) to prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_label_id(text, text) to prom_writer;
 
 --This generates a position based array from the jsonb
 --0s represent keys that are not set (we don't use NULL
@@ -859,20 +859,20 @@ GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_id(text, text) to p
 --This is not super performance critical since this
 --is only used on the insert client and is cached there.
 --Read queries can use the eq function or others with the jsonb to find equality
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_array(js jsonb)
-RETURNS SCHEMA_PROM.label_array AS $$
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_label_array(js jsonb)
+RETURNS prom_api.label_array AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              SCHEMA_CATALOG.get_or_create_label_key_pos(js->>'__name__', e.key)) idx,
+              _prom_catalog.get_or_create_label_key_pos(js->>'__name__', e.key)) idx,
             coalesce(l.id,
-              SCHEMA_CATALOG.get_or_create_label_id(e.key, e.value)) val
+              _prom_catalog.get_or_create_label_id(e.key, e.value)) val
         FROM label_jsonb_each_text(js) e
-             LEFT JOIN SCHEMA_CATALOG.label l
+             LEFT JOIN _prom_catalog.label l
                ON (l.key = e.key AND l.value = e.value)
-            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
+            LEFT JOIN _prom_catalog.label_key_position lkp
                ON
                (
                   lkp.metric_name = js->>'__name__' AND
@@ -889,27 +889,27 @@ RETURNS SCHEMA_PROM.label_array AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )::SCHEMA_PROM.label_array
+    )::prom_api.label_array
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(jsonb)
+COMMENT ON FUNCTION _prom_catalog.get_or_create_label_array(jsonb)
 IS 'converts a jsonb to a label array';
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(jsonb) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_label_array(jsonb) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_array(metric_name TEXT, label_keys text[], label_values text[])
-RETURNS SCHEMA_PROM.label_array AS $$
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_label_array(metric_name TEXT, label_keys text[], label_values text[])
+RETURNS prom_api.label_array AS $$
     WITH idx_val AS (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             coalesce(lkp.pos,
-              SCHEMA_CATALOG.get_or_create_label_key_pos(get_or_create_label_array.metric_name, kv.key)) idx,
+              _prom_catalog.get_or_create_label_key_pos(get_or_create_label_array.metric_name, kv.key)) idx,
             coalesce(l.id,
-              SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) val
+              _prom_catalog.get_or_create_label_id(kv.key, kv.value)) val
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
-            LEFT JOIN SCHEMA_CATALOG.label l
+            LEFT JOIN _prom_catalog.label l
                ON (l.key = kv.key AND l.value = kv.value)
-            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp
+            LEFT JOIN _prom_catalog.label_key_position lkp
                ON
                (
                   lkp.metric_name = get_or_create_label_array.metric_name AND
@@ -925,27 +925,27 @@ RETURNS SCHEMA_PROM.label_array AS $$
                     (SELECT max(idx) FROM idx_val)
             ) g
             LEFT JOIN idx_val ON (idx_val.idx = g)
-    )::SCHEMA_PROM.label_array
+    )::prom_api.label_array
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(text, text[], text[])
+COMMENT ON FUNCTION _prom_catalog.get_or_create_label_array(text, text[], text[])
 IS 'converts a metric name, array of keys, and array of values to a label array';
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_label_array(TEXT, text[], text[]) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(metric_name TEXT, metric_table NAME, label_keys text[], label_values text[])
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_label_ids(metric_name TEXT, metric_table NAME, label_keys text[], label_values text[])
 RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
         WITH cte as (
         SELECT
             -- only call the functions to create new key positions
             -- and label ids if they don't exist (for performance reasons)
             lkp.pos as known_pos,
-            coalesce(l.id, SCHEMA_CATALOG.get_or_create_label_id(kv.key, kv.value)) label_id,
+            coalesce(l.id, _prom_catalog.get_or_create_label_id(kv.key, kv.value)) label_id,
             kv.key key_str,
             kv.value val_str
         FROM ROWS FROM(unnest(label_keys), UNNEST(label_values)) AS kv(key, value)
-            LEFT JOIN SCHEMA_CATALOG.label l
+            LEFT JOIN _prom_catalog.label l
                ON (l.key = kv.key AND l.value = kv.value)
-            LEFT JOIN SCHEMA_CATALOG.label_key_position lkp ON
+            LEFT JOIN _prom_catalog.label_key_position lkp ON
             (
                     lkp.metric_name = get_or_create_label_ids.metric_name AND
                     lkp.key = kv.key
@@ -956,7 +956,7 @@ RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
            case when count(*) = count(known_pos) Then
               array_agg(known_pos)
            else
-              SCHEMA_CATALOG.get_new_pos_for_key(get_or_create_label_ids.metric_name, get_or_create_label_ids.metric_table, array_agg(key_str), false)
+              _prom_catalog.get_new_pos_for_key(get_or_create_label_ids.metric_name, get_or_create_label_ids.metric_table, array_agg(key_str), false)
            end as poss,
            array_agg(label_id) as label_ids,
            array_agg(key_str) as keys,
@@ -964,77 +964,77 @@ RETURNS TABLE(pos int[], id int[], label_key text[], label_value text[]) AS $$
         FROM cte
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(text, name, text[], text[])
+COMMENT ON FUNCTION _prom_catalog.get_or_create_label_ids(text, name, text[], text[])
 IS 'converts a metric name, array of keys, and array of values to a list of label ids';
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_label_ids(TEXT, NAME, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_label_ids(TEXT, NAME, text[], text[]) TO prom_writer;
 
 
 -- Returns ids, keys and values for a label_array
 -- the order may not be the same as the original labels
 -- This function needs to be optimized for performance
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels_info(INOUT labels INT[], OUT keys text[], OUT vals text[])
+CREATE OR REPLACE FUNCTION prom_api.labels_info(INOUT labels INT[], OUT keys text[], OUT vals text[])
 AS $$
     SELECT
         array_agg(l.id), array_agg(l.key), array_agg(l.value)
     FROM
-      SCHEMA_CATALOG.label_unnest(labels) label_id
-      INNER JOIN SCHEMA_CATALOG.label l ON (l.id = label_id)
+      _prom_catalog.label_unnest(labels) label_id
+      INNER JOIN _prom_catalog.label l ON (l.id = label_id)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels_info(INT[])
+COMMENT ON FUNCTION prom_api.labels_info(INT[])
 IS 'converts an array of label ids to three arrays: one for ids, one for keys and another for values';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.labels_info(INT[]) TO prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.labels_info(INT[]) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.key_value_array(labels SCHEMA_PROM.label_array, OUT keys text[], OUT vals text[])
+CREATE OR REPLACE FUNCTION prom_api.key_value_array(labels prom_api.label_array, OUT keys text[], OUT vals text[])
 AS $$
-    SELECT keys, vals FROM SCHEMA_PROM.labels_info(labels)
+    SELECT keys, vals FROM prom_api.labels_info(labels)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.key_value_array(SCHEMA_PROM.label_array)
+COMMENT ON FUNCTION prom_api.key_value_array(prom_api.label_array)
 IS 'converts a labels array to two arrays: one for keys and another for values';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.key_value_array(SCHEMA_PROM.label_array) TO prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.key_value_array(prom_api.label_array) TO prom_reader;
 
 --Returns the jsonb for a series defined by a label_array
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
+CREATE OR REPLACE FUNCTION prom_api.jsonb(labels prom_api.label_array)
 RETURNS jsonb AS $$
     SELECT
         jsonb_object(keys, vals)
     FROM
-      SCHEMA_PROM.key_value_array(labels)
+      prom_api.key_value_array(labels)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.jsonb(labels SCHEMA_PROM.label_array)
+COMMENT ON FUNCTION prom_api.jsonb(labels prom_api.label_array)
 IS 'converts a labels array to a JSONB object';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.jsonb(SCHEMA_PROM.label_array) TO prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.jsonb(prom_api.label_array) TO prom_reader;
 
 --Returns the label_array given a series_id
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.labels(series_id BIGINT)
-RETURNS SCHEMA_PROM.label_array AS $$
+CREATE OR REPLACE FUNCTION prom_api.labels(series_id BIGINT)
+RETURNS prom_api.label_array AS $$
     SELECT
         labels
     FROM
-        SCHEMA_CATALOG.series
+        _prom_catalog.series
     WHERE id = series_id
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.labels(series_id BIGINT)
+COMMENT ON FUNCTION prom_api.labels(series_id BIGINT)
 IS 'fetches labels array for the given series id';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.labels(series_id BIGINT) TO prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.labels(series_id BIGINT) TO prom_reader;
 
 --Do not call before checking that the series does not yet exist
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series(
+CREATE OR REPLACE FUNCTION _prom_catalog.create_series(
         metric_id int,
         metric_table_name NAME,
-        label_array SCHEMA_PROM.label_array,
+        label_array prom_api.label_array,
         OUT series_id BIGINT)
 AS $func$
 DECLARE
    new_series_id bigint;
 BEGIN
-  new_series_id = nextval('SCHEMA_CATALOG.series_id');
+  new_series_id = nextval('_prom_catalog.series_id');
 LOOP
     EXECUTE format ($$
-        INSERT INTO SCHEMA_DATA_SERIES.%I(id, metric_id, labels)
+        INSERT INTO prom_data_series.%I(id, metric_id, labels)
         SELECT $1, $2, $3
         ON CONFLICT DO NOTHING
         RETURNING id
@@ -1046,7 +1046,7 @@ LOOP
 
     EXECUTE format($$
         SELECT id
-        FROM SCHEMA_DATA_SERIES.%I
+        FROM prom_data_series.%I
         WHERE labels = $1
     $$, metric_table_name)
     INTO series_id
@@ -1057,14 +1057,14 @@ END LOOP;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series(int, name, SCHEMA_PROM.label_array) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.create_series(int, name, prom_api.label_array) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.resurrect_series_ids(metric_table name, series_id bigint)
+CREATE OR REPLACE FUNCTION _prom_catalog.resurrect_series_ids(metric_table name, series_id bigint)
     RETURNS VOID
 AS $func$
 BEGIN
     EXECUTE FORMAT($query$
-        UPDATE SCHEMA_DATA_SERIES.%1$I
+        UPDATE prom_data_series.%1$I
         SET delete_epoch = NULL
         WHERE id = $1
     $query$, metric_table) using series_id;
@@ -1076,15 +1076,15 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.resurrect_series_ids(name, bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.resurrect_series_ids(name, bigint) TO prom_writer;
+REVOKE ALL ON FUNCTION _prom_catalog.resurrect_series_ids(name, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.resurrect_series_ids(name, bigint) TO prom_writer;
 
 -- There shouldn't be a need to have a read only version of this as we'll use
 -- the eq or other matcher functions to find series ids like this. However,
 -- there are possible use cases that need the series id directly for performance
 -- that we might want to see if we need to support, in which case a
 -- read only version might be useful in future.
-CREATE OR REPLACE  FUNCTION SCHEMA_CATALOG.get_or_create_series_id(label jsonb)
+CREATE OR REPLACE  FUNCTION _prom_catalog.get_or_create_series_id(label jsonb)
 RETURNS BIGINT AS $$
 DECLARE
   series_id bigint;
@@ -1092,26 +1092,26 @@ DECLARE
   metric_id int;
 BEGIN
    --See get_or_create_series_id_for_kv_array for notes about locking
-   SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(label->>'__name__') mtn
+   SELECT mtn.id, mtn.table_name FROM _prom_catalog.get_or_create_metric_table_name(label->>'__name__') mtn
    INTO metric_id, table_name;
 
-   LOCK TABLE ONLY SCHEMA_CATALOG.series in ACCESS SHARE mode;
+   LOCK TABLE ONLY _prom_catalog.series in ACCESS SHARE mode;
 
    EXECUTE format($query$
     WITH cte AS (
-        SELECT SCHEMA_CATALOG.get_or_create_label_array($1)
+        SELECT _prom_catalog.get_or_create_label_array($1)
     ), existing AS (
         SELECT
             id,
             CASE WHEN delete_epoch IS NOT NULL THEN
-                SCHEMA_CATALOG.resurrect_series_ids(%1$L, id)
+                _prom_catalog.resurrect_series_ids(%1$L, id)
             END
-        FROM SCHEMA_DATA_SERIES.%1$I as series
+        FROM prom_data_series.%1$I as series
         WHERE labels = (SELECT * FROM cte)
     )
     SELECT id FROM existing
     UNION ALL
-    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, (SELECT * FROM cte))
+    SELECT _prom_catalog.create_series(%2$L, %1$L, (SELECT * FROM cte))
     LIMIT 1
    $query$, table_name, metric_id)
    USING label
@@ -1121,40 +1121,40 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id(jsonb)
+COMMENT ON FUNCTION _prom_catalog.get_or_create_series_id(jsonb)
 IS 'returns the series id that exactly matches a JSONB of labels';
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id(jsonb) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_series_id(jsonb) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(metric_name TEXT, label_keys text[], label_values text[], OUT table_name NAME, OUT series_id BIGINT)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_series_id_for_kv_array(metric_name TEXT, label_keys text[], label_values text[], OUT table_name NAME, OUT series_id BIGINT)
 AS $func$
 DECLARE
   metric_id int;
 BEGIN
    --need to make sure the series partition exists
-   SELECT mtn.id, mtn.table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name) mtn
+   SELECT mtn.id, mtn.table_name FROM _prom_catalog.get_or_create_metric_table_name(metric_name) mtn
    INTO metric_id, table_name;
 
    -- the data table could be locked during label key creation
    -- and must be locked before the series parent according to lock ordering
    EXECUTE format($query$
-        LOCK TABLE ONLY SCHEMA_DATA.%1$I IN ACCESS SHARE MODE
+        LOCK TABLE ONLY prom_data.%1$I IN ACCESS SHARE MODE
     $query$, table_name);
 
    EXECUTE format($query$
     WITH cte AS (
-        SELECT SCHEMA_CATALOG.get_or_create_label_array($1, $2, $3)
+        SELECT _prom_catalog.get_or_create_label_array($1, $2, $3)
     ), existing AS (
         SELECT
             id,
             CASE WHEN delete_epoch IS NOT NULL THEN
-                SCHEMA_CATALOG.resurrect_series_ids(%1$L, id)
+                _prom_catalog.resurrect_series_ids(%1$L, id)
             END
-        FROM SCHEMA_DATA_SERIES.%1$I as series
+        FROM prom_data_series.%1$I as series
         WHERE labels = (SELECT * FROM cte)
     )
     SELECT id FROM existing
     UNION ALL
-    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, (SELECT * FROM cte))
+    SELECT _prom_catalog.create_series(%2$L, %1$L, (SELECT * FROM cte))
     LIMIT 1
    $query$, table_name, metric_id)
    USING metric_name, label_keys, label_values
@@ -1164,10 +1164,10 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
 
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(metric_id INT, table_name NAME, larray SCHEMA_PROM.label_array, OUT series_id BIGINT)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_or_create_series_id_for_label_array(metric_id INT, table_name NAME, larray prom_api.label_array, OUT series_id BIGINT)
 AS $func$
 BEGIN
    EXECUTE format($query$
@@ -1175,14 +1175,14 @@ BEGIN
         SELECT
             id,
             CASE WHEN delete_epoch IS NOT NULL THEN
-                SCHEMA_CATALOG.resurrect_series_ids(%1$L, id)
+                _prom_catalog.resurrect_series_ids(%1$L, id)
             END
-        FROM SCHEMA_DATA_SERIES.%1$I as series
+        FROM prom_data_series.%1$I as series
         WHERE labels = $1
     )
     SELECT id FROM existing
     UNION ALL
-    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, $1)
+    SELECT _prom_catalog.create_series(%2$L, %1$L, $1)
     LIMIT 1
    $query$, table_name, metric_id)
    USING larray
@@ -1192,24 +1192,24 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(INT, NAME, SCHEMA_PROM.label_array) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_or_create_series_id_for_label_array(INT, NAME, prom_api.label_array) TO prom_writer;
 
 --
 -- Parameter manipulation functions
 --
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name TEXT, new_interval INTERVAL)
+CREATE OR REPLACE FUNCTION _prom_catalog.set_chunk_interval_on_metric_table(metric_name TEXT, new_interval INTERVAL)
 RETURNS void
 AS $func$
 BEGIN
-    IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
+    IF NOT _prom_catalog.is_timescaledb_installed() THEN
         RAISE EXCEPTION 'cannot set chunk time interval without timescaledb installed';
     END IF;
     --set interval while adding 1% of randomness to the interval so that chunks are not aligned so that
     --chunks are staggered for compression jobs.
-    EXECUTE SCHEMA_TIMESCALE.set_chunk_time_interval(
-        format('SCHEMA_DATA.%I',(SELECT table_name FROM SCHEMA_CATALOG.get_or_create_metric_table_name(metric_name)))::regclass,
-         SCHEMA_CATALOG.get_staggered_chunk_interval(new_interval));
+    EXECUTE public.set_chunk_time_interval(
+        format('prom_data.%I',(SELECT table_name FROM _prom_catalog.get_or_create_metric_table_name(metric_name)))::regclass,
+         _prom_catalog.get_staggered_chunk_interval(new_interval));
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE
@@ -1217,118 +1217,118 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(TEXT, INTERVAL) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.set_chunk_interval_on_metric_table(TEXT, INTERVAL) TO prom_admin;
+REVOKE ALL ON FUNCTION _prom_catalog.set_chunk_interval_on_metric_table(TEXT, INTERVAL) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.set_chunk_interval_on_metric_table(TEXT, INTERVAL) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_chunk_interval(chunk_interval INTERVAL)
+CREATE OR REPLACE FUNCTION prom_api.set_default_chunk_interval(chunk_interval INTERVAL)
 RETURNS BOOLEAN
 AS $$
-    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES('chunk_interval', chunk_interval::text)
+    INSERT INTO _prom_catalog.default(key, value) VALUES('chunk_interval', chunk_interval::text)
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
-    SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name, chunk_interval)
-    FROM SCHEMA_CATALOG.metric
+    SELECT _prom_catalog.set_chunk_interval_on_metric_table(metric_name, chunk_interval)
+    FROM _prom_catalog.metric
     WHERE default_chunk_interval;
 
     SELECT true;
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL)
+COMMENT ON FUNCTION prom_api.set_default_chunk_interval(INTERVAL)
 IS 'set the chunk interval for any metrics (existing and new) without an explicit override';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_chunk_interval(INTERVAL) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_default_chunk_interval(INTERVAL) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
+CREATE OR REPLACE FUNCTION prom_api.set_metric_chunk_interval(metric_name TEXT, chunk_interval INTERVAL)
 RETURNS BOOLEAN
 AS $func$
     --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
     --needs to run before update so row exists before update.
-    SELECT SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name);
+    SELECT _prom_catalog.get_or_create_metric_table_name(set_metric_chunk_interval.metric_name);
 
-    UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = false
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', set_metric_chunk_interval.metric_name));
+    UPDATE _prom_catalog.metric SET default_chunk_interval = false
+    WHERE id IN (SELECT id FROM _prom_catalog.get_metric_table_name_if_exists('prom_data', set_metric_chunk_interval.metric_name));
 
-    SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name, chunk_interval);
+    SELECT _prom_catalog.set_chunk_interval_on_metric_table(metric_name, chunk_interval);
 
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL)
+COMMENT ON FUNCTION prom_api.set_metric_chunk_interval(TEXT, INTERVAL)
 IS 'set a chunk interval for a specific metric (this overrides the default)';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_chunk_interval(TEXT, INTERVAL) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_metric_chunk_interval(TEXT, INTERVAL) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(metric_name TEXT)
+CREATE OR REPLACE FUNCTION prom_api.reset_metric_chunk_interval(metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
-    UPDATE SCHEMA_CATALOG.metric SET default_chunk_interval = true
-    WHERE id = (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name));
+    UPDATE _prom_catalog.metric SET default_chunk_interval = true
+    WHERE id = (SELECT id FROM _prom_catalog.get_metric_table_name_if_exists('prom_data', metric_name));
 
-    SELECT SCHEMA_CATALOG.set_chunk_interval_on_metric_table(metric_name,
-        SCHEMA_CATALOG.get_default_chunk_interval());
+    SELECT _prom_catalog.set_chunk_interval_on_metric_table(metric_name,
+        _prom_catalog.get_default_chunk_interval());
 
     SELECT true;
 $func$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT)
+COMMENT ON FUNCTION prom_api.reset_metric_chunk_interval(TEXT)
 IS 'resets the chunk interval for a specific metric to using the default';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_chunk_interval(TEXT) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.reset_metric_chunk_interval(TEXT) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(schema_name TEXT, metric_name TEXT)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_metric_retention_period(schema_name TEXT, metric_name TEXT)
 RETURNS INTERVAL
 AS $$
-    SELECT COALESCE(m.retention_period, SCHEMA_CATALOG.get_default_retention_period())
-    FROM SCHEMA_CATALOG.metric m
-    WHERE id IN (SELECT id FROM SCHEMA_CATALOG.get_metric_table_name_if_exists(schema_name, get_metric_retention_period.metric_name))
+    SELECT COALESCE(m.retention_period, _prom_catalog.get_default_retention_period())
+    FROM _prom_catalog.metric m
+    WHERE id IN (SELECT id FROM _prom_catalog.get_metric_table_name_if_exists(schema_name, get_metric_retention_period.metric_name))
     UNION ALL
-    SELECT SCHEMA_CATALOG.get_default_retention_period()
+    SELECT _prom_catalog.get_default_retention_period()
     LIMIT 1
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_retention_period(TEXT, TEXT) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_metric_retention_period(TEXT, TEXT) TO prom_reader;
 
 -- convenience function for returning retention period of raw metrics
 -- without the need to specify the schema
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_retention_period(metric_name TEXT)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_metric_retention_period(metric_name TEXT)
 RETURNS INTERVAL
 AS $$
     SELECT *
-    FROM SCHEMA_CATALOG.get_metric_retention_period('SCHEMA_DATA', metric_name)
+    FROM _prom_catalog.get_metric_retention_period('prom_data', metric_name)
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_retention_period(TEXT) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_metric_retention_period(TEXT) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_retention_period(retention_period INTERVAL)
+CREATE OR REPLACE FUNCTION prom_api.set_default_retention_period(retention_period INTERVAL)
 RETURNS BOOLEAN
 AS $$
-    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES('retention_period', retention_period::text)
+    INSERT INTO _prom_catalog.default(key, value) VALUES('retention_period', retention_period::text)
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
     SELECT true;
 $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL)
+COMMENT ON FUNCTION prom_api.set_default_retention_period(INTERVAL)
 IS 'set the retention period for any metrics (existing and new) without an explicit override';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_retention_period(INTERVAL) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_default_retention_period(INTERVAL) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(schema_name TEXT, metric_name TEXT, new_retention_period INTERVAL)
+CREATE OR REPLACE FUNCTION prom_api.set_metric_retention_period(schema_name TEXT, metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
 AS $func$
 DECLARE
-    r SCHEMA_CATALOG.metric;
+    r _prom_catalog.metric;
     _is_cagg BOOLEAN;
     _cagg_schema NAME;
     _cagg_name NAME;
 BEGIN
     --use get_or_create_metric_table_name because we want to be able to set /before/ any data is ingested
     --needs to run before update so row exists before update.
-    PERFORM SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_retention_period.metric_name)
-    WHERE schema_name = 'SCHEMA_DATA';
+    PERFORM _prom_catalog.get_or_create_metric_table_name(set_metric_retention_period.metric_name)
+    WHERE schema_name = 'prom_data';
 
     --check if its a metric view with cagg
     SELECT is_cagg, cagg_schema, cagg_name
     INTO _is_cagg, _cagg_schema, _cagg_name
-    FROM SCHEMA_CATALOG.get_cagg_info(schema_name, metric_name);
+    FROM _prom_catalog.get_cagg_info(schema_name, metric_name);
 
     IF NOT _is_cagg OR (_cagg_name = metric_name AND _cagg_schema = schema_name) THEN
-        UPDATE SCHEMA_CATALOG.metric m SET retention_period = new_retention_period
+        UPDATE _prom_catalog.metric m SET retention_period = new_retention_period
         WHERE m.table_schema = schema_name
         AND m.metric_name = set_metric_retention_period.metric_name;
 
@@ -1341,14 +1341,14 @@ BEGIN
     FOR r IN
         SELECT m.*
         FROM information_schema.view_table_usage v
-        INNER JOIN SCHEMA_CATALOG.metric m
+        INNER JOIN _prom_catalog.metric m
           ON (m.table_name = v.view_name AND m.table_schema = v.view_schema)
         WHERE v.table_name = _cagg_name
           AND v.table_schema = _cagg_schema
     LOOP
         RAISE NOTICE 'Setting data retention for metrics %.%', r.table_schema, r.metric_name;
 
-        UPDATE SCHEMA_CATALOG.metric m
+        UPDATE _prom_catalog.metric m
         SET retention_period = new_retention_period
         WHERE m.table_schema = r.table_schema
         AND m.metric_name = r.metric_name;
@@ -1358,25 +1358,25 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, TEXT, INTERVAL)
+COMMENT ON FUNCTION prom_api.set_metric_retention_period(TEXT, TEXT, INTERVAL)
 IS 'set a retention period for a specific metric (this overrides the default)';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, TEXT, INTERVAL)TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_metric_retention_period(TEXT, TEXT, INTERVAL)TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
+CREATE OR REPLACE FUNCTION prom_api.set_metric_retention_period(metric_name TEXT, new_retention_period INTERVAL)
 RETURNS BOOLEAN
 AS $func$
-    SELECT SCHEMA_PROM.set_metric_retention_period('SCHEMA_DATA', metric_name, new_retention_period);
+    SELECT prom_api.set_metric_retention_period('prom_data', metric_name, new_retention_period);
 $func$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)
+COMMENT ON FUNCTION prom_api.set_metric_retention_period(TEXT, INTERVAL)
 IS 'set a retention period for a specific raw metric in default schema (this overrides the default)';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_retention_period(TEXT, INTERVAL)TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_metric_retention_period(TEXT, INTERVAL)TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(schema_name TEXT, metric_name TEXT)
+CREATE OR REPLACE FUNCTION prom_api.reset_metric_retention_period(schema_name TEXT, metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
 DECLARE
-    r SCHEMA_CATALOG.metric;
+    r _prom_catalog.metric;
     _is_cagg BOOLEAN;
     _cagg_schema NAME;
     _cagg_name NAME;
@@ -1385,10 +1385,10 @@ BEGIN
     --check if its a metric view with cagg
     SELECT is_cagg, cagg_schema, cagg_name
     INTO _is_cagg, _cagg_schema, _cagg_name
-    FROM SCHEMA_CATALOG.get_cagg_info(schema_name, metric_name);
+    FROM _prom_catalog.get_cagg_info(schema_name, metric_name);
 
     IF NOT _is_cagg OR (_cagg_name = metric_name AND _cagg_schema = schema_name) THEN
-        UPDATE SCHEMA_CATALOG.metric m SET retention_period = NULL
+        UPDATE _prom_catalog.metric m SET retention_period = NULL
         WHERE m.table_schema = schema_name
         AND m.metric_name = reset_metric_retention_period.metric_name;
 
@@ -1400,14 +1400,14 @@ BEGIN
     FOR r IN
         SELECT m.*
         FROM information_schema.view_table_usage v
-        INNER JOIN SCHEMA_CATALOG.metric m
+        INNER JOIN _prom_catalog.metric m
           ON (m.table_name = v.view_name AND m.table_schema = v.view_schema)
         WHERE v.table_name = _cagg_name
           AND v.table_schema = _cagg_schem
     LOOP
         RAISE NOTICE 'Resetting data retention for metrics %.%', r.table_schema, r.metric_name;
 
-        UPDATE SCHEMA_CATALOG.metric m
+        UPDATE _prom_catalog.metric m
         SET retention_period = NULL
         WHERE m.table_schema = r.table_schema
         AND m.metric_name = r.metric_name;
@@ -1417,21 +1417,21 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT, TEXT)
+COMMENT ON FUNCTION prom_api.reset_metric_retention_period(TEXT, TEXT)
 IS 'resets the retention period for a specific metric to using the default';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT, TEXT) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.reset_metric_retention_period(TEXT, TEXT) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_retention_period(metric_name TEXT)
+CREATE OR REPLACE FUNCTION prom_api.reset_metric_retention_period(metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
-    SELECT SCHEMA_PROM.reset_metric_retention_period('SCHEMA_DATA', metric_name);
+    SELECT prom_api.reset_metric_retention_period('prom_data', metric_name);
 $func$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT)
+COMMENT ON FUNCTION prom_api.reset_metric_retention_period(TEXT)
 IS 'resets the retention period for a specific raw metric in the default schema to using the default retention period';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_retention_period(TEXT) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.reset_metric_retention_period(TEXT) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metric_compression_setting(metric_name TEXT)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_metric_compression_setting(metric_name TEXT)
 RETURNS BOOLEAN
 AS $$
 DECLARE
@@ -1448,18 +1448,18 @@ BEGIN
 
     SELECT table_name
     INTO STRICT metric_table_name
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
+    FROM _prom_catalog.get_metric_table_name_if_exists('prom_data', metric_name);
 
-    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2  THEN
+    IF _prom_catalog.get_timescale_major_version() >= 2  THEN
         SELECT compression_enabled
         FROM timescaledb_information.hypertables
-        WHERE hypertable_schema ='SCHEMA_DATA'
+        WHERE hypertable_schema ='prom_data'
           AND hypertable_name = metric_table_name
         INTO STRICT result;
     ELSE
         SELECT EXISTS (
             SELECT FROM _timescaledb_catalog.hypertable h
-            WHERE h.schema_name = 'SCHEMA_DATA'
+            WHERE h.schema_name = 'prom_data'
             AND h.table_name = metric_table_name
             AND h.compressed_hypertable_id IS NOT NULL)
         INTO result;
@@ -1468,15 +1468,15 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metric_compression_setting(TEXT) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_metric_compression_setting(TEXT) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_default_compression_setting(compression_setting BOOLEAN)
+CREATE OR REPLACE FUNCTION prom_api.set_default_compression_setting(compression_setting BOOLEAN)
 RETURNS BOOLEAN
 AS $$
 DECLARE
     can_compress BOOLEAN;
 BEGIN
-    IF compression_setting = SCHEMA_CATALOG.get_default_compression_setting() THEN
+    IF compression_setting = _prom_catalog.get_default_compression_setting() THEN
         RETURN TRUE;
     END IF;
 
@@ -1487,21 +1487,21 @@ BEGIN
         RAISE EXCEPTION 'Cannot enable metrics compression, feature not found';
     END IF;
 
-    INSERT INTO SCHEMA_CATALOG.default(key, value) VALUES('metric_compression', compression_setting::text)
+    INSERT INTO _prom_catalog.default(key, value) VALUES('metric_compression', compression_setting::text)
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
-    PERFORM SCHEMA_PROM.set_compression_on_metric_table(table_name, compression_setting)
-    FROM SCHEMA_CATALOG.metric
+    PERFORM prom_api.set_compression_on_metric_table(table_name, compression_setting)
+    FROM _prom_catalog.metric
     WHERE default_compression;
     RETURN true;
 END
 $$
 LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_default_compression_setting(BOOLEAN)
+COMMENT ON FUNCTION prom_api.set_default_compression_setting(BOOLEAN)
 IS 'set the compression setting for any metrics (existing and new) without an explicit override';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_default_compression_setting(BOOLEAN) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_default_compression_setting(BOOLEAN) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_metric_compression_setting(metric_name TEXT, new_compression_setting BOOLEAN)
+CREATE OR REPLACE FUNCTION prom_api.set_metric_compression_setting(metric_name TEXT, new_compression_setting BOOLEAN)
 RETURNS BOOLEAN
 AS $func$
 DECLARE
@@ -1509,7 +1509,7 @@ DECLARE
     metric_table_name text;
 BEGIN
     --if already set to desired value, nothing to do
-    IF SCHEMA_CATALOG.get_metric_compression_setting(metric_name) = new_compression_setting THEN
+    IF _prom_catalog.get_metric_compression_setting(metric_name) = new_compression_setting THEN
         RETURN TRUE;
     END IF;
 
@@ -1525,11 +1525,11 @@ BEGIN
     --needs to run before update so row exists before update.
     SELECT table_name
     INTO STRICT metric_table_name
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(set_metric_compression_setting.metric_name);
+    FROM _prom_catalog.get_or_create_metric_table_name(set_metric_compression_setting.metric_name);
 
-    PERFORM SCHEMA_PROM.set_compression_on_metric_table(metric_table_name, new_compression_setting);
+    PERFORM prom_api.set_compression_on_metric_table(metric_table_name, new_compression_setting);
 
-    UPDATE SCHEMA_CATALOG.metric
+    UPDATE _prom_catalog.metric
     SET default_compression = false
     WHERE table_name = metric_table_name;
 
@@ -1537,22 +1537,22 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.set_metric_compression_setting(TEXT, BOOLEAN)
+COMMENT ON FUNCTION prom_api.set_metric_compression_setting(TEXT, BOOLEAN)
 IS 'set a compression setting for a specific metric (this overrides the default)';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_metric_compression_setting(TEXT, BOOLEAN) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_metric_compression_setting(TEXT, BOOLEAN) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN)
+CREATE OR REPLACE FUNCTION prom_api.set_compression_on_metric_table(metric_table_name TEXT, compression_setting BOOLEAN)
 RETURNS void
 AS $func$
 DECLARE
 BEGIN
-    IF SCHEMA_CATALOG.is_timescaledb_oss() THEN
+    IF _prom_catalog.is_timescaledb_oss() THEN
         RAISE NOTICE 'Compression not available in TimescaleDB-OSS. Cannot set compression on "%" metric table name', metric_table_name;
         RETURN;
     END IF;
     IF compression_setting THEN
         EXECUTE format($$
-            ALTER TABLE SCHEMA_DATA.%I SET (
+            ALTER TABLE prom_data.%I SET (
                 timescaledb.compress,
                 timescaledb.compress_segmentby = 'series_id',
                 timescaledb.compress_orderby = 'time, value'
@@ -1560,10 +1560,10 @@ BEGIN
 
         --rc4 of multinode doesn't properly hand down compression when turned on
         --inside of a function; this gets around that.
-        IF SCHEMA_CATALOG.is_multinode() THEN
-            CALL SCHEMA_TIMESCALE.distributed_exec(
+        IF _prom_catalog.is_multinode() THEN
+            CALL public.distributed_exec(
                 format($$
-                ALTER TABLE SCHEMA_DATA.%I SET (
+                ALTER TABLE prom_data.%I SET (
                     timescaledb.compress,
                    timescaledb.compress_segmentby = 'series_id',
                    timescaledb.compress_orderby = 'time, value'
@@ -1573,18 +1573,18 @@ BEGIN
 
         --chunks where the end time is before now()-1 hour will be compressed
         --per-ht compression policy only used for timescale 1.x
-        IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM SCHEMA_TIMESCALE.add_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name), INTERVAL '1 hour');
+        IF _prom_catalog.get_timescale_major_version() < 2 THEN
+            PERFORM public.add_compress_chunks_policy(format('prom_data.%I', metric_table_name), INTERVAL '1 hour');
         END IF;
     ELSE
-        IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
-            PERFORM SCHEMA_TIMESCALE.remove_compress_chunks_policy(format('SCHEMA_DATA.%I', metric_table_name));
+        IF _prom_catalog.get_timescale_major_version() < 2 THEN
+            PERFORM public.remove_compress_chunks_policy(format('prom_data.%I', metric_table_name));
         END IF;
 
-        CALL SCHEMA_CATALOG.decompress_chunks_after(metric_table_name::name, timestamptz '-Infinity', transactional=>true);
+        CALL _prom_catalog.decompress_chunks_after(metric_table_name::name, timestamptz '-Infinity', transactional=>true);
 
         EXECUTE format($$
-            ALTER TABLE SCHEMA_DATA.%I SET (
+            ALTER TABLE prom_data.%I SET (
                 timescaledb.compress = false
             ); $$, metric_table_name);
     END IF;
@@ -1595,13 +1595,13 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN) FROM PUBLIC;
-COMMENT ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN)
+REVOKE ALL ON FUNCTION prom_api.set_compression_on_metric_table(TEXT, BOOLEAN) FROM PUBLIC;
+COMMENT ON FUNCTION prom_api.set_compression_on_metric_table(TEXT, BOOLEAN)
 IS 'set a compression for a specific metric table';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.set_compression_on_metric_table(TEXT, BOOLEAN) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.set_compression_on_metric_table(TEXT, BOOLEAN) TO prom_admin;
 
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.reset_metric_compression_setting(metric_name TEXT)
+CREATE OR REPLACE FUNCTION prom_api.reset_metric_compression_setting(metric_name TEXT)
 RETURNS BOOLEAN
 AS $func$
 DECLARE
@@ -1609,22 +1609,22 @@ DECLARE
 BEGIN
     SELECT table_name
     INTO STRICT metric_table_name
-    FROM SCHEMA_CATALOG.get_or_create_metric_table_name(reset_metric_compression_setting.metric_name);
+    FROM _prom_catalog.get_or_create_metric_table_name(reset_metric_compression_setting.metric_name);
 
-    UPDATE SCHEMA_CATALOG.metric
+    UPDATE _prom_catalog.metric
     SET default_compression = true
     WHERE table_name = metric_table_name;
 
-    PERFORM SCHEMA_PROM.set_compression_on_metric_table(metric_table_name, SCHEMA_CATALOG.get_default_compression_setting());
+    PERFORM prom_api.set_compression_on_metric_table(metric_table_name, _prom_catalog.get_default_compression_setting());
     RETURN true;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_PROM.reset_metric_compression_setting(TEXT)
+COMMENT ON FUNCTION prom_api.reset_metric_compression_setting(TEXT)
 IS 'resets the compression setting for a specific metric to using the default';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.reset_metric_compression_setting(TEXT) TO prom_admin;
+GRANT EXECUTE ON FUNCTION prom_api.reset_metric_compression_setting(TEXT) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.epoch_abort(user_epoch BIGINT)
+CREATE OR REPLACE FUNCTION _prom_catalog.epoch_abort(user_epoch BIGINT)
 RETURNS VOID AS $func$
 DECLARE db_epoch BIGINT;
 BEGIN
@@ -1635,11 +1635,11 @@ BEGIN
         USING ERRCODE='PS001';
 END;
 $func$ LANGUAGE PLPGSQL VOLATILE;
-COMMENT ON FUNCTION SCHEMA_CATALOG.epoch_abort(BIGINT)
+COMMENT ON FUNCTION _prom_catalog.epoch_abort(BIGINT)
 IS 'ABORT an INSERT transaction due to the ID epoch being out of date';
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.epoch_abort TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.epoch_abort TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_confirmed_unused_series(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_confirmed_unused_series(
     metric_schema NAME, metric_table NAME, series_table NAME, potential_series_ids BIGINT[], check_time TIMESTAMPTZ
 ) RETURNS BIGINT[]
 AS $func$
@@ -1649,7 +1649,7 @@ DECLARE
 BEGIN
     FOR r IN
         SELECT *
-        FROM SCHEMA_CATALOG.metric m
+        FROM _prom_catalog.metric m
         WHERE m.series_table = get_confirmed_unused_series.series_table
     LOOP
 
@@ -1684,9 +1684,9 @@ BEGIN
 END
 $func$
 LANGUAGE PLPGSQL STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_confirmed_unused_series(NAME, NAME, NAME, BIGINT[], TIMESTAMPTZ) TO prom_maintenance;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_confirmed_unused_series(NAME, NAME, NAME, BIGINT[], TIMESTAMPTZ) TO prom_maintenance;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.mark_unused_series(
+CREATE OR REPLACE FUNCTION _prom_catalog.mark_unused_series(
     metric_schema TEXT, metric_table TEXT, metric_series_table TEXT, older_than TIMESTAMPTZ, check_time TIMESTAMPTZ
 ) RETURNS VOID AS $func$
 DECLARE
@@ -1705,11 +1705,11 @@ BEGIN
             FROM %1$I.%2$I
             WHERE time >= %4$L AND time < %5$L
         ), confirmed_drop_series AS (
-            SELECT SCHEMA_CATALOG.get_confirmed_unused_series('%1$s','%2$s','%3$s', array_agg(series_id), %5$L) as ids
+            SELECT _prom_catalog.get_confirmed_unused_series('%1$s','%2$s','%3$s', array_agg(series_id), %5$L) as ids
             FROM potentially_drop_series
         ) -- we want this next statement to be the last one in the txn since it could block series fetch (both of them update delete_epoch)
-        UPDATE SCHEMA_DATA_SERIES.%3$I SET delete_epoch = current_epoch+1
-        FROM SCHEMA_CATALOG.ids_epoch
+        UPDATE prom_data_series.%3$I SET delete_epoch = current_epoch+1
+        FROM _prom_catalog.ids_epoch
         WHERE delete_epoch IS NULL
             AND id IN (SELECT unnest(ids) FROM confirmed_drop_series)
     $query$, metric_schema, metric_table, metric_series_table, older_than, check_time);
@@ -1721,10 +1721,10 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, text, text, timestamptz, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.mark_unused_series(text, text, text, timestamptz, timestamptz) TO prom_maintenance;
+REVOKE ALL ON FUNCTION _prom_catalog.mark_unused_series(text, text, text, timestamptz, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.mark_unused_series(text, text, text, timestamptz, timestamptz) TO prom_maintenance;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_expired_series(
+CREATE OR REPLACE FUNCTION _prom_catalog.delete_expired_series(
     metric_schema TEXT, metric_table TEXT, metric_series_table TEXT, ran_at TIMESTAMPTZ, present_epoch BIGINT, last_updated_epoch TIMESTAMPTZ
 ) RETURNS VOID AS $func$
 DECLARE
@@ -1749,7 +1749,7 @@ BEGIN
             FROM
             (
                 SELECT id
-                FROM SCHEMA_DATA_SERIES.%3$I
+                FROM prom_data_series.%3$I
                 WHERE delete_epoch <= %4$L
             ) as potential
             LEFT JOIN LATERAL (
@@ -1760,12 +1760,12 @@ BEGIN
             ) as lateral_exists(indicator) ON (TRUE)
             WHERE indicator IS NULL
         ), deleted_series AS (
-            DELETE FROM SCHEMA_DATA_SERIES.%3$I
+            DELETE FROM prom_data_series.%3$I
             WHERE delete_epoch <= %4$L
                 AND id IN (SELECT id FROM dead_series) -- concurrency means we need this qual in both
             RETURNING id, labels
         ), resurrected_series AS (
-            UPDATE SCHEMA_DATA_SERIES.%3$I
+            UPDATE prom_data_series.%3$I
             SET delete_epoch = NULL
             WHERE delete_epoch <= %4$L
                 AND id NOT IN (SELECT id FROM dead_series) -- concurrency means we need this qual in both
@@ -1789,7 +1789,7 @@ BEGIN
                 FROM unnest($1) as labels(label_id)
                 WHERE NOT EXISTS (
                     SELECT 1
-                    FROM  SCHEMA_DATA_SERIES.%1$I series_exists_local
+                    FROM  prom_data_series.%1$I series_exists_local
                     WHERE series_exists_local.labels && ARRAY[labels.label_id]
                     LIMIT 1
                 )
@@ -1800,19 +1800,19 @@ BEGIN
                 FROM check_local_series
                 WHERE NOT EXISTS (
                     SELECT 1
-                    FROM  SCHEMA_CATALOG.series series_exists
+                    FROM  _prom_catalog.series series_exists
                     WHERE series_exists.labels && ARRAY[label_id]
                     LIMIT 1
                 )
             )
-            DELETE FROM SCHEMA_CATALOG.label
+            DELETE FROM _prom_catalog.label
             WHERE id IN (SELECT * FROM confirmed_drop_labels) AND key != '__name__';
         $query$, metric_series_table) USING label_array;
 
         SET LOCAL jit = DEFAULT;
     END IF;
 
-    UPDATE SCHEMA_CATALOG.ids_epoch
+    UPDATE _prom_catalog.ids_epoch
         SET (current_epoch, last_update_time) = (next_epoch, now())
         WHERE current_epoch < next_epoch;
     RETURN;
@@ -1824,22 +1824,22 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, text, text, timestamptz, BIGINT, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_expired_series(text, text, text, timestamptz, BIGINT, timestamptz) TO prom_maintenance;
+REVOKE ALL ON FUNCTION _prom_catalog.delete_expired_series(text, text, text, timestamptz, BIGINT, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.delete_expired_series(text, text, text, timestamptz, BIGINT, timestamptz) TO prom_maintenance;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.set_app_name(full_name text)
+CREATE OR REPLACE FUNCTION _prom_catalog.set_app_name(full_name text)
     RETURNS VOID
 AS $func$
     --setting a name that's too long create surpurflous NOTICE messages in the log
     SELECT set_config('application_name', substring(full_name for 63), false);
 $func$
 LANGUAGE SQL VOLATILE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.set_app_name(text) TO prom_maintenance;
+GRANT EXECUTE ON FUNCTION _prom_catalog.set_app_name(text) TO prom_maintenance;
 
 -- Get hypertable information for where data is stored for raw metrics and for
 -- the materialized hypertable for cagg metrics. For non-materialized views return
 -- no rows
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(metric_schema_name text, metric_table_name text, is_view boolean)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_storage_hypertable_info(metric_schema_name text, metric_table_name text, is_view boolean)
 RETURNS TABLE (id int, hypertable_relation text)
 AS $$
 DECLARE
@@ -1849,7 +1849,7 @@ DECLARE
     _materialized_hypertable_id int;
     _storage_hypertable_relation text;
 BEGIN
-        IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        IF NOT _prom_catalog.is_timescaledb_installed() THEN
             RETURN;
         END IF;
 
@@ -1864,7 +1864,7 @@ BEGIN
 
         SELECT is_cagg, materialized_hypertable_id, storage_hypertable_relation
         INTO _is_cagg, _materialized_hypertable_id, _storage_hypertable_relation
-        FROM SCHEMA_CATALOG.get_cagg_info(metric_schema_name, metric_table_name);
+        FROM _prom_catalog.get_cagg_info(metric_schema_name, metric_table_name);
 
         IF NOT _is_cagg THEN
             RETURN;
@@ -1874,12 +1874,12 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_storage_hypertable_info(text, text, boolean) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_storage_hypertable_info(text, text, boolean) TO prom_reader;
 
 
 --Get underlying metric view schema and name
 --we need to support up to two levels of views to support 2-step caggs
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_first_level_view_on_metric(metric_schema text, metric_table text)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_first_level_view_on_metric(metric_schema text, metric_table text)
 RETURNS TABLE (view_schema name, view_name name, metric_table_name name)
 AS $$
 BEGIN
@@ -1889,7 +1889,7 @@ BEGIN
     FROM information_schema.view_table_usage v
     WHERE v.view_schema = metric_schema
     AND v.view_name = metric_table
-    AND v.table_schema = 'SCHEMA_DATA';
+    AND v.table_schema = 'prom_data';
 
     IF FOUND THEN
         RETURN;
@@ -1904,7 +1904,7 @@ BEGIN
             AND v2.view_name = v.table_name)
     WHERE v.view_schema = metric_schema
     AND v.view_name = metric_table
-    AND v2.table_schema = 'SCHEMA_DATA';
+    AND v2.table_schema = 'prom_data';
     RETURN;
 END
 $$
@@ -1914,10 +1914,10 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.get_first_level_view_on_metric(text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_first_level_view_on_metric(text, text) TO prom_reader;
+REVOKE ALL ON FUNCTION _prom_catalog.get_first_level_view_on_metric(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_first_level_view_on_metric(text, text) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_cagg_info(
+CREATE OR REPLACE FUNCTION _prom_catalog.get_cagg_info(
     metric_schema text, metric_table text,
     OUT is_cagg BOOLEAN, OUT cagg_schema name, OUT cagg_name name, OUT metric_table_name name,
     OUT materialized_hypertable_id INT, OUT storage_hypertable_relation TEXT)
@@ -1925,7 +1925,7 @@ AS $$
 BEGIN
     is_cagg := FALSE;
     SELECT *
-    FROM SCHEMA_CATALOG.get_first_level_view_on_metric(metric_schema, metric_table)
+    FROM _prom_catalog.get_first_level_view_on_metric(metric_schema, metric_table)
     INTO cagg_schema, cagg_name, metric_table_name;
 
     IF NOT FOUND THEN
@@ -1935,7 +1935,7 @@ BEGIN
     -- for TSDB 2.x we return the view schema and name because functions like
     -- show_chunks don't work on materialized hypertables, which is a difference
     -- from 1.x version
-    IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+    IF _prom_catalog.get_timescale_major_version() >= 2 THEN
         SELECT h.id, format('%I.%I', c.view_schema,  c.view_name)
         INTO materialized_hypertable_id, storage_hypertable_relation
         FROM timescaledb_information.continuous_aggregates c
@@ -1965,44 +1965,44 @@ BEGIN
 END
 $$
 LANGUAGE PLPGSQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_cagg_info(text, text) TO prom_reader;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_cagg_info(text, text) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_stale_marker(value double precision)
+CREATE OR REPLACE FUNCTION prom_api.is_stale_marker(value double precision)
 RETURNS BOOLEAN
 AS $func$
     SELECT float8send(value) = '\x7ff0000000000002'
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.is_stale_marker(double precision)
+COMMENT ON FUNCTION prom_api.is_stale_marker(double precision)
 IS 'returns true if the value is a Prometheus stale marker';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.is_stale_marker(double precision) TO prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.is_stale_marker(double precision) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.is_normal_nan(value double precision)
+CREATE OR REPLACE FUNCTION prom_api.is_normal_nan(value double precision)
 RETURNS BOOLEAN
 AS $func$
     SELECT float8send(value) = '\x7ff8000000000001'
 $func$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.is_normal_nan(double precision)
+COMMENT ON FUNCTION prom_api.is_normal_nan(double precision)
 IS 'returns true if the value is a NaN';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.is_normal_nan(double precision) TO prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.is_normal_nan(double precision) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.val(
+CREATE OR REPLACE FUNCTION prom_api.val(
         label_id INT)
     RETURNS TEXT
 AS $$
     SELECT
         value
-    FROM SCHEMA_CATALOG.label
+    FROM _prom_catalog.label
     WHERE
         id = label_id
 $$
 LANGUAGE SQL STABLE PARALLEL SAFE;
-COMMENT ON FUNCTION SCHEMA_PROM.val(INT)
+COMMENT ON FUNCTION prom_api.val(INT)
 IS 'returns the label value from a label id';
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.val(INT) TO prom_reader;
+GRANT EXECUTE ON FUNCTION prom_api.val(INT) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_label_key_column_name_for_view(label_key text, id BOOLEAN)
+CREATE OR REPLACE FUNCTION _prom_catalog.get_label_key_column_name_for_view(label_key text, id BOOLEAN)
     returns NAME
 AS $func$
 DECLARE
@@ -2016,16 +2016,16 @@ BEGIN
   END IF;
 
   IF id THEN
-    RETURN (SCHEMA_CATALOG.get_or_create_label_key(label_key)).id_column_name;
+    RETURN (_prom_catalog.get_or_create_label_key(label_key)).id_column_name;
   ELSE
-    RETURN (SCHEMA_CATALOG.get_or_create_label_key(label_key)).value_column_name;
+    RETURN (_prom_catalog.get_or_create_label_key(label_key)).value_column_name;
   END IF;
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_label_key_column_name_for_view(text, BOOLEAN) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_label_key_column_name_for_view(text, BOOLEAN) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_series_view(
+CREATE OR REPLACE FUNCTION _prom_catalog.create_series_view(
         metric_name text)
     RETURNS BOOLEAN
 AS $func$
@@ -2037,37 +2037,37 @@ DECLARE
 BEGIN
     SELECT
         ',' || string_agg(
-            format ('SCHEMA_PROM.val(series.labels[%s]) AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name_for_view(key, false))
+            format ('prom_api.val(series.labels[%s]) AS %I',pos::int, _prom_catalog.get_label_key_column_name_for_view(key, false))
         , ', ' ORDER BY pos)
     INTO STRICT label_value_cols
-    FROM SCHEMA_CATALOG.label_key_position lkp
+    FROM _prom_catalog.label_key_position lkp
     WHERE lkp.metric_name = create_series_view.metric_name and key != '__name__';
 
     SELECT m.table_name, m.id
     INTO STRICT view_name, metric_id
-    FROM SCHEMA_CATALOG.metric m
+    FROM _prom_catalog.metric m
     WHERE m.metric_name = create_series_view.metric_name
-    AND m.table_schema = 'SCHEMA_DATA';
+    AND m.table_schema = 'prom_data';
 
     SELECT COUNT(*) > 0 into view_exists
     FROM pg_class
     WHERE
       relname = view_name AND
-      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA_SERIES');
+      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'prom_series');
 
     EXECUTE FORMAT($$
-        CREATE OR REPLACE VIEW SCHEMA_SERIES.%1$I AS
+        CREATE OR REPLACE VIEW prom_series.%1$I AS
         SELECT
             id AS series_id,
             labels
             %2$s
         FROM
-            SCHEMA_DATA_SERIES.%1$I AS series
+            prom_data_series.%1$I AS series
         WHERE delete_epoch IS NULL
     $$, view_name, label_value_cols);
 
     IF NOT view_exists THEN
-        EXECUTE FORMAT('GRANT SELECT ON SCHEMA_SERIES.%1$I TO prom_reader', view_name);
+        EXECUTE FORMAT('GRANT SELECT ON prom_series.%1$I TO prom_reader', view_name);
     END IF;
     RETURN true;
 END
@@ -2077,10 +2077,10 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_series_view(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_series_view(text) TO prom_writer;
+REVOKE ALL ON FUNCTION _prom_catalog.create_series_view(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.create_series_view(text) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.create_metric_view(
+CREATE OR REPLACE FUNCTION _prom_catalog.create_metric_view(
         metric_name text)
     RETURNS BOOLEAN
 AS $func$
@@ -2092,26 +2092,26 @@ DECLARE
 BEGIN
     SELECT
         ',' || string_agg(
-            format ('series.labels[%s] AS %I',pos::int, SCHEMA_CATALOG.get_label_key_column_name_for_view(key, true))
+            format ('series.labels[%s] AS %I',pos::int, _prom_catalog.get_label_key_column_name_for_view(key, true))
         , ', ' ORDER BY pos)
     INTO STRICT label_value_cols
-    FROM SCHEMA_CATALOG.label_key_position lkp
+    FROM _prom_catalog.label_key_position lkp
     WHERE lkp.metric_name = create_metric_view.metric_name and key != '__name__';
 
     SELECT m.table_name, m.id
     INTO STRICT table_name, metric_id
-    FROM SCHEMA_CATALOG.metric m
+    FROM _prom_catalog.metric m
     WHERE m.metric_name = create_metric_view.metric_name
-    AND m.table_schema = 'SCHEMA_DATA';
+    AND m.table_schema = 'prom_data';
 
     SELECT COUNT(*) > 0 into view_exists
     FROM pg_class
     WHERE
       relname = table_name AND
-      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA_METRIC');
+      relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'prom_metric');
 
     EXECUTE FORMAT($$
-        CREATE OR REPLACE VIEW SCHEMA_METRIC.%1$I AS
+        CREATE OR REPLACE VIEW prom_metric.%1$I AS
         SELECT
             data.time as time,
             data.value as value,
@@ -2119,12 +2119,12 @@ BEGIN
             series.labels
             %2$s
         FROM
-            SCHEMA_DATA.%1$I AS data
-            LEFT JOIN SCHEMA_DATA_SERIES.%1$I AS series ON (series.id = data.series_id)
+            prom_data.%1$I AS data
+            LEFT JOIN prom_data_series.%1$I AS series ON (series.id = data.series_id)
     $$, table_name, label_value_cols);
 
     IF NOT view_exists THEN
-        EXECUTE FORMAT('GRANT SELECT ON SCHEMA_METRIC.%1$I TO prom_reader', table_name);
+        EXECUTE FORMAT('GRANT SELECT ON prom_metric.%1$I TO prom_reader', table_name);
     END IF;
 
     RETURN true;
@@ -2135,10 +2135,10 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.create_metric_view(text) TO prom_writer;
+REVOKE ALL ON FUNCTION _prom_catalog.create_metric_view(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.create_metric_view(text) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.register_metric_view(schema_name name, view_name name, if_not_exists BOOLEAN = false)
+CREATE OR REPLACE FUNCTION prom_api.register_metric_view(schema_name name, view_name name, if_not_exists BOOLEAN = false)
     RETURNS BOOLEAN
 AS $func$
 DECLARE
@@ -2157,18 +2157,18 @@ BEGIN
     END IF;
 
     -- cannot register view in data schema
-    IF schema_name = 'SCHEMA_DATA' THEN
-        RAISE EXCEPTION 'cannot register metric view in SCHEMA_DATA schema';
+    IF schema_name = 'prom_data' THEN
+        RAISE EXCEPTION 'cannot register metric view in prom_data schema';
     END IF;
 
     -- check if view is based on a metric from prom_data
     -- we check for two levels so we can support 2-step continuous aggregates
     SELECT v.view_schema, v.view_name, v.metric_table_name
     INTO agg_schema, agg_name, metric_table_name
-    FROM SCHEMA_CATALOG.get_first_level_view_on_metric(schema_name, view_name) v;
+    FROM _prom_catalog.get_first_level_view_on_metric(schema_name, view_name) v;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'view not based on a metric table from SCHEMA_DATA schema';
+        RAISE EXCEPTION 'view not based on a metric table from prom_data schema';
     END IF;
 
     -- check if the view contains necessary columns with the correct types
@@ -2185,7 +2185,7 @@ BEGIN
     END IF;
 
     -- insert into metric table
-    INSERT INTO SCHEMA_CATALOG.metric (metric_name, table_name, table_schema, series_table, is_view, creation_completed)
+    INSERT INTO _prom_catalog.metric (metric_name, table_name, table_schema, series_table, is_view, creation_completed)
     VALUES (register_metric_view.view_name, register_metric_view.view_name, register_metric_view.schema_name, metric_table_name, true, true)
     ON CONFLICT DO NOTHING;
 
@@ -2204,7 +2204,7 @@ BEGIN
     EXECUTE format('GRANT SELECT ON TABLE %I.%I TO prom_reader', agg_schema, agg_name);
 
     PERFORM *
-    FROM SCHEMA_CATALOG.get_storage_hypertable_info(agg_schema, agg_name, true);
+    FROM _prom_catalog.get_storage_hypertable_info(agg_schema, agg_name, true);
 
     RETURN true;
 END
@@ -2214,17 +2214,17 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_PROM.register_metric_view(name, name, boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.register_metric_view(name, name, boolean) TO prom_admin;
+REVOKE ALL ON FUNCTION prom_api.register_metric_view(name, name, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION prom_api.register_metric_view(name, name, boolean) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_PROM.unregister_metric_view(schema_name name, view_name name, if_exists BOOLEAN = false)
+CREATE OR REPLACE FUNCTION prom_api.unregister_metric_view(schema_name name, view_name name, if_exists BOOLEAN = false)
     RETURNS BOOLEAN
 AS $func$
 DECLARE
    metric_table_name name;
    column_count int;
 BEGIN
-    DELETE FROM SCHEMA_CATALOG.metric
+    DELETE FROM _prom_catalog.metric
     WHERE unregister_metric_view.schema_name = table_schema
     AND unregister_metric_view.view_name = table_name
     AND is_view = TRUE;
@@ -2246,10 +2246,10 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_PROM.unregister_metric_view(name, name, boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_PROM.unregister_metric_view(name, name, boolean) TO prom_admin;
+REVOKE ALL ON FUNCTION prom_api.unregister_metric_view(name, name, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION prom_api.unregister_metric_view(name, name, boolean) TO prom_admin;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delete_series_from_metric(name text, series_ids bigint[])
+CREATE OR REPLACE FUNCTION _prom_catalog.delete_series_from_metric(name text, series_ids bigint[])
 RETURNS BIGINT
 AS
 $$
@@ -2260,8 +2260,8 @@ DECLARE
     rows_affected bigint;
     num_rows_deleted bigint := 0;
 BEGIN
-    SELECT table_name INTO metric_table FROM SCHEMA_CATALOG.metric m WHERE m.metric_name=name AND m.is_view = false;
-    IF SCHEMA_CATALOG.is_timescaledb_installed() THEN
+    SELECT table_name INTO metric_table FROM _prom_catalog.metric m WHERE m.metric_name=name AND m.is_view = false;
+    IF _prom_catalog.is_timescaledb_installed() THEN
         FOR delete_stmt IN
             SELECT FORMAT('DELETE FROM %1$I.%2$I WHERE series_id = ANY($1)', schema_name, table_name)
             FROM (
@@ -2269,7 +2269,7 @@ BEGIN
                     INNER JOIN pg_namespace n ON c.relnamespace = n.oid
                     INNER JOIN _timescaledb_catalog.chunk ch ON (ch.schema_name, ch.table_name) = (n.nspname, c.relname)
                     LEFT JOIN _timescaledb_catalog.chunk chc ON ch.compressed_chunk_id = chc.id
-                WHERE c.oid IN (SELECT SCHEMA_TIMESCALE.show_chunks(format('%I.%I','SCHEMA_DATA', metric_table))::oid)
+                WHERE c.oid IN (SELECT public.show_chunks(format('%I.%I','prom_data', metric_table))::oid)
                 ) a
         LOOP
             EXECUTE delete_stmt USING series_ids;
@@ -2277,11 +2277,11 @@ BEGIN
             num_rows_deleted = num_rows_deleted + rows_affected;
         END LOOP;
     ELSE
-        EXECUTE FORMAT('DELETE FROM SCHEMA_DATA.%1$I WHERE series_id = ANY($1)', metric_table) USING series_ids;
+        EXECUTE FORMAT('DELETE FROM prom_data.%1$I WHERE series_id = ANY($1)', metric_table) USING series_ids;
         GET DIAGNOSTICS rows_affected = ROW_COUNT;
         num_rows_deleted = num_rows_deleted + rows_affected;
     END IF;
-    PERFORM SCHEMA_CATALOG.delete_series_catalog_row(metric_table, series_ids);
+    PERFORM _prom_catalog.delete_series_catalog_row(metric_table, series_ids);
     RETURN num_rows_deleted;
 END;
 $$
@@ -2290,19 +2290,19 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delete_series_from_metric(text, bigint[])FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delete_series_from_metric(text, bigint[]) to prom_modifier;
+REVOKE ALL ON FUNCTION _prom_catalog.delete_series_from_metric(text, bigint[])FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.delete_series_from_metric(text, bigint[]) to prom_modifier;
 
 -- the following functions require timescaledb >= 2.0.0
 DO $block$
 BEGIN
-    IF SCHEMA_CATALOG.is_timescaledb_installed() AND SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+    IF _prom_catalog.is_timescaledb_installed() AND _prom_catalog.get_timescale_major_version() >= 2 THEN
 
-        CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.hypertable_local_size(schema_name_in name)
+        CREATE OR REPLACE FUNCTION _prom_catalog.hypertable_local_size(schema_name_in name)
         RETURNS TABLE(hypertable_name name, table_bytes bigint, index_bytes bigint, toast_bytes bigint, total_bytes bigint)
         AS $function$
         BEGIN
-            IF SCHEMA_CATALOG.get_timescale_minor_version() < 3 THEN
+            IF _prom_catalog.get_timescale_minor_version() < 3 THEN
                 -- two columns in _timescaledb_internal.hypertable_chunk_local_size were renamed in version 2.2
                 -- schema_name -> hypertable_schema
                 -- table_name -> hypertable_name
@@ -2364,10 +2364,10 @@ BEGIN
         SECURITY DEFINER
         --search path must be set for security definer
         SET search_path = pg_temp;
-        REVOKE ALL ON FUNCTION SCHEMA_CATALOG.hypertable_local_size(name) FROM PUBLIC;
-        GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.hypertable_local_size(name) to prom_reader;
+        REVOKE ALL ON FUNCTION _prom_catalog.hypertable_local_size(name) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION _prom_catalog.hypertable_local_size(name) to prom_reader;
 
-        CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.hypertable_node_up(schema_name_in name)
+        CREATE OR REPLACE FUNCTION _prom_catalog.hypertable_node_up(schema_name_in name)
         RETURNS TABLE(hypertable_name name, node_name name, node_up boolean)
         AS $function$
             -- list of distributed hypertables and whether or not the associated data node is up
@@ -2408,10 +2408,10 @@ BEGIN
         SECURITY DEFINER
         --search path must be set for security definer
         SET search_path = pg_temp;
-        REVOKE ALL ON FUNCTION SCHEMA_CATALOG.hypertable_node_up(name) FROM PUBLIC;
-        GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.hypertable_node_up(name) to prom_reader;
+        REVOKE ALL ON FUNCTION _prom_catalog.hypertable_node_up(name) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION _prom_catalog.hypertable_node_up(name) to prom_reader;
 
-        CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.hypertable_remote_size(schema_name_in name)
+        CREATE OR REPLACE FUNCTION _prom_catalog.hypertable_remote_size(schema_name_in name)
         RETURNS TABLE(hypertable_name name, table_bytes bigint, index_bytes bigint, toast_bytes bigint, total_bytes bigint)
         AS $function$
             SELECT
@@ -2420,7 +2420,7 @@ BEGIN
                 sum(x.index_bytes)::bigint AS index_bytes,
                 sum(x.toast_bytes)::bigint AS toast_bytes,
                 sum(x.total_bytes)::bigint AS total_bytes
-            FROM SCHEMA_CATALOG.hypertable_node_up(schema_name_in) dht
+            FROM _prom_catalog.hypertable_node_up(schema_name_in) dht
             LEFT OUTER JOIN LATERAL _timescaledb_internal.data_node_hypertable_info(
                 CASE WHEN dht.node_up THEN
                     dht.node_name
@@ -2434,15 +2434,15 @@ BEGIN
         SECURITY DEFINER
         --search path must be set for security definer
         SET search_path = pg_temp;
-        REVOKE ALL ON FUNCTION SCHEMA_CATALOG.hypertable_remote_size(name) FROM PUBLIC;
-        GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.hypertable_remote_size(name) to prom_reader;
+        REVOKE ALL ON FUNCTION _prom_catalog.hypertable_remote_size(name) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION _prom_catalog.hypertable_remote_size(name) to prom_reader;
 
         -- two columns in _timescaledb_internal.compressed_chunk_stats were renamed in version 2.2
         -- schema_name -> hypertable_schema
         -- table_name -> hypertable_name
         -- we use explicit column aliases on _timescaledb_internal.compressed_chunk_stats to rename the
         -- `schema_name` and `table_name` in the older versions to the new names
-        CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.hypertable_compression_stats_for_schema(schema_name_in name)
+        CREATE OR REPLACE FUNCTION _prom_catalog.hypertable_compression_stats_for_schema(schema_name_in name)
         RETURNS TABLE(hypertable_name name, total_chunks bigint, number_compressed_chunks bigint, before_compression_total_bytes bigint, after_compression_total_bytes bigint)
         AS $function$
             SELECT
@@ -2485,7 +2485,7 @@ BEGIN
                     ch.before_compression_total_bytes,
                     ch.after_compression_total_bytes,
                     dht.node_name
-                FROM SCHEMA_CATALOG.hypertable_node_up(schema_name_in) dht
+                FROM _prom_catalog.hypertable_node_up(schema_name_in) dht
                 LEFT OUTER JOIN LATERAL _timescaledb_internal.data_node_compressed_chunk_stats (
                     CASE WHEN dht.node_up THEN
                         dht.node_name
@@ -2501,8 +2501,8 @@ BEGIN
         SECURITY DEFINER
         --search path must be set for security definer
         SET search_path = pg_temp;
-        REVOKE ALL ON FUNCTION SCHEMA_CATALOG.hypertable_compression_stats_for_schema(name) FROM PUBLIC;
-        GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.hypertable_compression_stats_for_schema(name) to prom_reader;
+        REVOKE ALL ON FUNCTION _prom_catalog.hypertable_compression_stats_for_schema(name) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION _prom_catalog.hypertable_compression_stats_for_schema(name) to prom_reader;
 
     END IF;
 END;
@@ -2511,7 +2511,7 @@ $block$
 
 --------------------------------- Views --------------------------------
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.metric_view()
+CREATE OR REPLACE FUNCTION _prom_catalog.metric_view()
 RETURNS TABLE(id int, metric_name text, table_name name, label_keys text[], retention_period interval,
               chunk_interval interval, compressed_interval interval, total_interval interval,
               before_compression_bytes bigint, after_compression_bytes bigint,
@@ -2519,7 +2519,7 @@ RETURNS TABLE(id int, metric_name text, table_name name, label_keys text[], rete
               total_chunks bigint, compressed_chunks bigint)
 AS $func$
 BEGIN
-        IF NOT SCHEMA_CATALOG.is_timescaledb_installed() THEN
+        IF NOT _prom_catalog.is_timescaledb_installed() THEN
             RETURN QUERY
                 SELECT
                    i.id,
@@ -2545,21 +2545,21 @@ BEGIN
                         m.table_name,
                         ARRAY(
                             SELECT key
-                            FROM SCHEMA_CATALOG.label_key_position lkp
+                            FROM _prom_catalog.label_key_position lkp
                             WHERE lkp.metric_name = m.metric_name
                             ORDER BY key) label_keys,
-                        SCHEMA_CATALOG.get_metric_retention_period(m.table_schema, m.metric_name) as retention_period,
+                        _prom_catalog.get_metric_retention_period(m.table_schema, m.metric_name) as retention_period,
                         NULL::interval as chunk_interval,
-                        pg_size_pretty(pg_total_relation_size(format('SCHEMA_DATA.%I', m.table_name)::regclass)) as total_size,
+                        pg_size_pretty(pg_total_relation_size(format('prom_data.%I', m.table_name)::regclass)) as total_size,
                         0.0 as compression_ratio,
                         NULL::bigint as total_chunks,
                         NULL::bigint as compressed_chunks
-                    FROM SCHEMA_CATALOG.metric m
+                    FROM _prom_catalog.metric m
                 ) AS i;
             RETURN;
         END IF;
 
-        IF SCHEMA_CATALOG.get_timescale_major_version() >= 2 THEN
+        IF _prom_catalog.get_timescale_major_version() >= 2 THEN
             RETURN QUERY
             WITH ci AS (
                 SELECT
@@ -2567,7 +2567,7 @@ BEGIN
                     COALESCE(SUM(range_end-range_start) FILTER(WHERE is_compressed), INTERVAL '0') AS compressed_interval,
                     COALESCE(SUM(range_end-range_start), INTERVAL '0') AS total_interval
                 FROM timescaledb_information.chunks c
-                WHERE hypertable_schema='SCHEMA_DATA'
+                WHERE hypertable_schema='prom_data'
                 GROUP BY hypertable_schema, hypertable_name
             )
             SELECT
@@ -2576,10 +2576,10 @@ BEGIN
                 m.table_name,
                 ARRAY(
                     SELECT key
-                    FROM SCHEMA_CATALOG.label_key_position lkp
+                    FROM _prom_catalog.label_key_position lkp
                     WHERE lkp.metric_name = m.metric_name
                     ORDER BY key) label_keys,
-                SCHEMA_CATALOG.get_metric_retention_period(m.table_schema, m.metric_name) as retention_period,
+                _prom_catalog.get_metric_retention_period(m.table_schema, m.metric_name) as retention_period,
                 dims.time_interval as chunk_interval,
                 ci.compressed_interval,
                 ci.total_interval,
@@ -2590,7 +2590,7 @@ BEGIN
                 (1.0 - (hcs.after_compression_total_bytes::NUMERIC / hcs.before_compression_total_bytes::NUMERIC)) * 100 as compression_ratio,
                 hcs.total_chunks::BIGINT,
                 hcs.number_compressed_chunks::BIGINT as compressed_chunks
-            FROM SCHEMA_CATALOG.metric m
+            FROM _prom_catalog.metric m
             LEFT JOIN
             (
                 SELECT
@@ -2599,16 +2599,16 @@ BEGIN
                 FROM
                 (
                     SELECT *
-                    FROM SCHEMA_CATALOG.hypertable_local_size('SCHEMA_DATA')
+                    FROM _prom_catalog.hypertable_local_size('prom_data')
                     UNION ALL
                     SELECT *
-                    FROM SCHEMA_CATALOG.hypertable_remote_size('SCHEMA_DATA')
+                    FROM _prom_catalog.hypertable_remote_size('prom_data')
                 ) x
                 GROUP BY x.hypertable_name
             ) hs ON (hs.hypertable_name = m.table_name)
             LEFT JOIN timescaledb_information.dimensions dims ON
-                (dims.hypertable_schema = 'SCHEMA_DATA' AND dims.hypertable_name = m.table_name)
-            LEFT JOIN SCHEMA_CATALOG.hypertable_compression_stats_for_schema('SCHEMA_DATA') hcs ON (hcs.hypertable_name = m.table_name)
+                (dims.hypertable_schema = 'prom_data' AND dims.hypertable_name = m.table_name)
+            LEFT JOIN _prom_catalog.hypertable_compression_stats_for_schema('prom_data') hcs ON (hcs.hypertable_name = m.table_name)
             LEFT JOIN ci ON (ci.hypertable_name = m.table_name)
             ;
         ELSE
@@ -2660,7 +2660,7 @@ BEGIN
                                     ) FILTER (WHERE cs.compression_status = 'Compressed'),
                                     INTERVAL '0'
                                 ) compressed_interval
-                            FROM SCHEMA_TIMESCALE.chunk_relation_size_pretty(FORMAT('prom_data.%I', m.table_name)) rs
+                            FROM public.chunk_relation_size_pretty(FORMAT('prom_data.%I', m.table_name)) rs
                             LEFT JOIN timescaledb_information.compressed_chunk_stats cs ON
                                 (cs.chunk_name::text = rs.chunk_table::text)
                         ) as ci ON TRUE;
@@ -2673,71 +2673,71 @@ SECURITY DEFINER
 --need to include public(the timescaledb schema) for some timescale functions to work.
 SET search_path = public, pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.metric_view() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.metric_view() TO prom_reader;
+REVOKE ALL ON FUNCTION _prom_catalog.metric_view() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.metric_view() TO prom_reader;
 
-CREATE OR REPLACE VIEW SCHEMA_INFO.metric AS
+CREATE OR REPLACE VIEW prom_info.metric AS
    SELECT
      *
-    FROM SCHEMA_CATALOG.metric_view();
-GRANT SELECT ON SCHEMA_INFO.metric TO prom_reader;
+    FROM _prom_catalog.metric_view();
+GRANT SELECT ON prom_info.metric TO prom_reader;
 
-CREATE OR REPLACE VIEW SCHEMA_INFO.label AS
+CREATE OR REPLACE VIEW prom_info.label AS
     SELECT
         lk.key,
         lk.value_column_name,
         lk.id_column_name,
         va.values as values,
         cardinality(va.values) as num_values
-    FROM SCHEMA_CATALOG.label_key lk
-    INNER JOIN LATERAL(SELECT key, array_agg(value ORDER BY value) as values FROM SCHEMA_CATALOG.label GROUP BY key)
+    FROM _prom_catalog.label_key lk
+    INNER JOIN LATERAL(SELECT key, array_agg(value ORDER BY value) as values FROM _prom_catalog.label GROUP BY key)
     AS va ON (va.key = lk.key) ORDER BY num_values DESC;
-GRANT SELECT ON SCHEMA_INFO.label TO prom_reader;
+GRANT SELECT ON prom_info.label TO prom_reader;
 
-CREATE OR REPLACE VIEW SCHEMA_INFO.system_stats AS
+CREATE OR REPLACE VIEW prom_info.system_stats AS
     SELECT
     (
-        SELECT SCHEMA_CATALOG.safe_approximate_row_count('_prom_catalog.series'::REGCLASS)
+        SELECT _prom_catalog.safe_approximate_row_count('_prom_catalog.series'::REGCLASS)
     ) AS num_series_approx,
     (
-        SELECT count(*) FROM SCHEMA_CATALOG.metric
+        SELECT count(*) FROM _prom_catalog.metric
     ) AS num_metric,
     (
-        SELECT count(*) FROM SCHEMA_CATALOG.label_key
+        SELECT count(*) FROM _prom_catalog.label_key
     ) AS num_label_keys,
     (
-        SELECT count(*) FROM SCHEMA_CATALOG.label
+        SELECT count(*) FROM _prom_catalog.label
     ) AS num_labels;
-GRANT SELECT ON SCHEMA_INFO.system_stats TO prom_reader;
+GRANT SELECT ON prom_info.system_stats TO prom_reader;
 
-CREATE OR REPLACE VIEW SCHEMA_INFO.metric_stats AS
+CREATE OR REPLACE VIEW prom_info.metric_stats AS
     SELECT metric_name,
-    SCHEMA_CATALOG.safe_approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
-    (SELECT SCHEMA_CATALOG.safe_approximate_row_count(format('prom_data.%I',table_name)::regclass)) AS num_samples_approx
-    FROM SCHEMA_CATALOG.metric ORDER BY metric_name;
-GRANT SELECT ON SCHEMA_INFO.metric_stats TO prom_reader;
+    _prom_catalog.safe_approximate_row_count(format('prom_series.%I', table_name)::regclass) AS num_series_approx,
+    (SELECT _prom_catalog.safe_approximate_row_count(format('prom_data.%I',table_name)::regclass)) AS num_samples_approx
+    FROM _prom_catalog.metric ORDER BY metric_name;
+GRANT SELECT ON prom_info.metric_stats TO prom_reader;
 
 --this should the only thing run inside the transaction. It's important the txn ends after calling this function
 --to release locks
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.delay_compression_job(ht_table name, new_start timestamptz) RETURNS VOID
+CREATE OR REPLACE FUNCTION _prom_catalog.delay_compression_job(ht_table name, new_start timestamptz) RETURNS VOID
 AS $$
 DECLARE
     bgw_job_id int;
 BEGIN
-    UPDATE SCHEMA_CATALOG.metric m
+    UPDATE _prom_catalog.metric m
     SET delay_compression_until = new_start
     WHERE table_name = ht_table;
 
-    IF SCHEMA_CATALOG.get_timescale_major_version() < 2 THEN
+    IF _prom_catalog.get_timescale_major_version() < 2 THEN
         SELECT job_id INTO bgw_job_id
         FROM _timescaledb_config.bgw_policy_compress_chunks p
         INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = p.hypertable_id)
-        WHERE h.schema_name = 'SCHEMA_DATA' and h.table_name = ht_table;
+        WHERE h.schema_name = 'prom_data' and h.table_name = ht_table;
 
         --alter job schedule is not currently concurrency-safe (timescaledb issue #2165)
-        PERFORM pg_advisory_xact_lock(SCHEMA_CATALOG.get_advisory_lock_prefix_job(), bgw_job_id);
+        PERFORM pg_advisory_xact_lock(_prom_catalog.get_advisory_lock_prefix_job(), bgw_job_id);
 
-        PERFORM SCHEMA_TIMESCALE.alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
+        PERFORM public.alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
     END IF;
 END
 $$
@@ -2746,16 +2746,16 @@ SECURITY DEFINER
 --search path must be set for security definer
 SET search_path = pg_temp;
 --redundant given schema settings but extra caution for security definers
-REVOKE ALL ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.delay_compression_job(name, timestamptz) TO prom_writer;
+REVOKE ALL ON FUNCTION _prom_catalog.delay_compression_job(name, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION _prom_catalog.delay_compression_job(name, timestamptz) TO prom_writer;
 
-CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.do_decompress_chunks_after', $ee$
+CALL _prom_catalog.execute_everywhere('_prom_catalog.do_decompress_chunks_after', $ee$
 DO $DO$
 BEGIN
     --this function isolates the logic that needs to be security definer
     --cannot fold it into do_decompress_chunks_after because cannot have security
     --definer do txn-al stuff like commit
-    CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.decompress_chunk_for_metric(metric_table TEXT, chunk_schema_name name, chunk_table_name name) RETURNS VOID
+    CREATE OR REPLACE FUNCTION _prom_catalog.decompress_chunk_for_metric(metric_table TEXT, chunk_schema_name name, chunk_table_name name) RETURNS VOID
     AS $$
     DECLARE
         chunk_full_name text;
@@ -2769,7 +2769,7 @@ BEGIN
        INNER JOIN  _timescaledb_catalog.hypertable h ON (h.id = c.hypertable_id)
        WHERE
             c.schema_name = chunk_schema_name AND c.table_name = chunk_table_name AND
-            h.schema_name = 'SCHEMA_DATA' AND h.table_name = metric_table AND
+            h.schema_name = 'prom_data' AND h.table_name = metric_table AND
             c.compressed_chunk_id IS NOT NULL;
 
         IF NOT FOUND Then
@@ -2790,21 +2790,21 @@ BEGIN
        END IF;
 
        RAISE NOTICE 'Promscale is decompressing chunk: %.%', chunk_schema_name, chunk_table_name;
-       PERFORM SCHEMA_TIMESCALE.decompress_chunk(chunk_full_name);
+       PERFORM public.decompress_chunk(chunk_full_name);
     END;
     $$
     LANGUAGE PLPGSQL
     SECURITY DEFINER
     --search path must be set for security definer
     SET search_path = pg_temp;
-    REVOKE ALL ON FUNCTION SCHEMA_CATALOG.decompress_chunk_for_metric(TEXT, name, name) FROM PUBLIC;
-    GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.decompress_chunk_for_metric(TEXT, name, name) TO prom_writer;
+    REVOKE ALL ON FUNCTION _prom_catalog.decompress_chunk_for_metric(TEXT, name, name) FROM PUBLIC;
+    GRANT EXECUTE ON FUNCTION _prom_catalog.decompress_chunk_for_metric(TEXT, name, name) TO prom_writer;
 
 
     --Decompression should take place in a procedure because we don't want locks held across
     --decompress_chunk calls since that function takes some heavier locks at the end.
     --Thus, transactional parameter should usually be false
-    CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.do_decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ, transactional BOOLEAN = false)
+    CREATE OR REPLACE PROCEDURE _prom_catalog.do_decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ, transactional BOOLEAN = false)
     AS $$
     DECLARE
         chunk_row record;
@@ -2813,7 +2813,7 @@ BEGIN
         min_time_internal bigint;
     BEGIN
         SELECT h.* INTO STRICT hypertable_row FROM _timescaledb_catalog.hypertable h
-        WHERE table_name = metric_table AND schema_name = 'SCHEMA_DATA';
+        WHERE table_name = metric_table AND schema_name = 'prom_data';
 
         SELECT d.* INTO STRICT dimension_row FROM _timescaledb_catalog.dimension d WHERE hypertable_id = hypertable_row.id ORDER BY id LIMIT 1;
 
@@ -2834,19 +2834,19 @@ BEGIN
             AND c.compressed_chunk_id IS NOT NULL
             ORDER BY ds.range_start
         LOOP
-            PERFORM SCHEMA_CATALOG.decompress_chunk_for_metric(metric_table, chunk_row.schema_name, chunk_row.table_name);
+            PERFORM _prom_catalog.decompress_chunk_for_metric(metric_table, chunk_row.schema_name, chunk_row.table_name);
             IF NOT transactional THEN
               COMMIT;
             END IF;
         END LOOP;
     END;
     $$ LANGUAGE PLPGSQL;
-    GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.do_decompress_chunks_after(NAME, TIMESTAMPTZ, BOOLEAN) TO prom_writer;
+    GRANT EXECUTE ON PROCEDURE _prom_catalog.do_decompress_chunks_after(NAME, TIMESTAMPTZ, BOOLEAN) TO prom_writer;
 END
 $DO$;
 $ee$);
 
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ, transactional BOOLEAN = false)
+CREATE OR REPLACE PROCEDURE _prom_catalog.decompress_chunks_after(metric_table NAME, min_time TIMESTAMPTZ, transactional BOOLEAN = false)
 AS $proc$
 BEGIN
     -- In early versions of timescale multinode the access node catalog does not
@@ -2854,26 +2854,26 @@ BEGIN
     -- for nodes in need of decompression on the data nodes, and /not/ the
     -- access node; right now executing on the access node will do a lot of work
     -- and locking for no result.
-    IF SCHEMA_CATALOG.is_multinode() THEN
-        CALL SCHEMA_TIMESCALE.distributed_exec(
+    IF _prom_catalog.is_multinode() THEN
+        CALL public.distributed_exec(
             format(
-                $dist$ CALL SCHEMA_CATALOG.do_decompress_chunks_after(%L, %L, %L) $dist$,
+                $dist$ CALL _prom_catalog.do_decompress_chunks_after(%L, %L, %L) $dist$,
                 metric_table, min_time, transactional),
             transactional => false);
     ELSE
-        CALL SCHEMA_CATALOG.do_decompress_chunks_after(metric_table, min_time, transactional);
+        CALL _prom_catalog.do_decompress_chunks_after(metric_table, min_time, transactional);
     END IF;
 END
 $proc$ LANGUAGE PLPGSQL;
-GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.decompress_chunks_after(name, TIMESTAMPTZ, boolean) TO prom_writer;
+GRANT EXECUTE ON PROCEDURE _prom_catalog.decompress_chunks_after(name, TIMESTAMPTZ, boolean) TO prom_writer;
 
-CALL SCHEMA_CATALOG.execute_everywhere('SCHEMA_CATALOG.compress_old_chunks', $ee$
+CALL _prom_catalog.execute_everywhere('_prom_catalog.compress_old_chunks', $ee$
 DO $DO$
 BEGIN
     --this function isolates the logic that needs to be security definer
     --cannot fold it into compress_old_chunks because cannot have security
     --definer do txn-all stuff like commit
-    CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.compress_chunk_for_metric(metric_table TEXT, chunk_schema_name name, chunk_table_name name) RETURNS VOID
+    CREATE OR REPLACE FUNCTION _prom_catalog.compress_chunk_for_metric(metric_table TEXT, chunk_schema_name name, chunk_table_name name) RETURNS VOID
     AS $$
     DECLARE
         chunk_full_name text;
@@ -2882,22 +2882,22 @@ BEGIN
             format('%I.%I', chunk_schema, chunk_name)
         INTO chunk_full_name
         FROM timescaledb_information.chunks
-        WHERE hypertable_schema = 'SCHEMA_DATA'
+        WHERE hypertable_schema = 'prom_data'
           AND hypertable_name = metric_table
           AND chunk_schema = chunk_schema_name
           AND chunk_name = chunk_table_name;
 
-        PERFORM SCHEMA_TIMESCALE.compress_chunk(chunk_full_name, if_not_compressed => true);
+        PERFORM public.compress_chunk(chunk_full_name, if_not_compressed => true);
     END;
     $$
     LANGUAGE PLPGSQL
     SECURITY DEFINER
     --search path must be set for security definer
     SET search_path = pg_temp;
-    REVOKE ALL ON FUNCTION SCHEMA_CATALOG.compress_chunk_for_metric(TEXT, name, name) FROM PUBLIC;
-    GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.compress_chunk_for_metric(TEXT, name, name) TO prom_maintenance;
+    REVOKE ALL ON FUNCTION _prom_catalog.compress_chunk_for_metric(TEXT, name, name) FROM PUBLIC;
+    GRANT EXECUTE ON FUNCTION _prom_catalog.compress_chunk_for_metric(TEXT, name, name) TO prom_maintenance;
 
-    CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
+    CREATE OR REPLACE PROCEDURE _prom_catalog.compress_old_chunks(metric_table TEXT, compress_before TIMESTAMPTZ)
     AS $$
     DECLARE
         chunk_schema_name name;
@@ -2912,72 +2912,72 @@ BEGIN
                 range_end,
                 row_number() OVER (ORDER BY range_end DESC)
             FROM timescaledb_information.chunks
-            WHERE hypertable_schema = 'SCHEMA_DATA'
+            WHERE hypertable_schema = 'prom_data'
                 AND hypertable_name = metric_table
                 AND NOT is_compressed
             ORDER BY range_end ASC
         LOOP
             CONTINUE WHEN chunk_num <= 1 OR chunk_range_end > compress_before;
-            PERFORM SCHEMA_CATALOG.compress_chunk_for_metric(metric_table, chunk_schema_name, chunk_table_name);
+            PERFORM _prom_catalog.compress_chunk_for_metric(metric_table, chunk_schema_name, chunk_table_name);
             COMMIT;
         END LOOP;
     END;
     $$ LANGUAGE PLPGSQL;
-    GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.compress_old_chunks(TEXT, TIMESTAMPTZ) TO prom_maintenance;
+    GRANT EXECUTE ON PROCEDURE _prom_catalog.compress_old_chunks(TEXT, TIMESTAMPTZ) TO prom_maintenance;
 END
 $DO$;
 $ee$);
 
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.compress_metric_chunks(metric_name TEXT)
+CREATE OR REPLACE PROCEDURE _prom_catalog.compress_metric_chunks(metric_name TEXT)
 AS $$
 DECLARE
   metric_table NAME;
 BEGIN
     SELECT table_name
     INTO STRICT metric_table
-    FROM SCHEMA_CATALOG.get_metric_table_name_if_exists('SCHEMA_DATA', metric_name);
+    FROM _prom_catalog.get_metric_table_name_if_exists('prom_data', metric_name);
 
     -- as of timescaledb-2.0-rc4 the is_compressed column of the chunks view is
     -- not updated on the access node, therefore we need to one the compressor
     -- on all the datanodes to search for uncompressed chunks
-    IF SCHEMA_CATALOG.is_multinode() THEN
-        CALL SCHEMA_TIMESCALE.distributed_exec(format($dist$
-            CALL SCHEMA_CATALOG.compress_old_chunks(%L, now() - INTERVAL '1 hour')
+    IF _prom_catalog.is_multinode() THEN
+        CALL public.distributed_exec(format($dist$
+            CALL _prom_catalog.compress_old_chunks(%L, now() - INTERVAL '1 hour')
         $dist$, metric_table), transactional => false);
     ELSE
-        CALL SCHEMA_CATALOG.compress_old_chunks(metric_table, now() - INTERVAL '1 hour');
+        CALL _prom_catalog.compress_old_chunks(metric_table, now() - INTERVAL '1 hour');
     END IF;
 END
 $$ LANGUAGE PLPGSQL;
-GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.compress_metric_chunks(text) TO prom_maintenance;
+GRANT EXECUTE ON PROCEDURE _prom_catalog.compress_metric_chunks(text) TO prom_maintenance;
 
 --Order by random with stable marking gives us same order in a statement and different
 -- orderings in different statements
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression()
-RETURNS SETOF SCHEMA_CATALOG.metric
+CREATE OR REPLACE FUNCTION _prom_catalog.get_metrics_that_need_compression()
+RETURNS SETOF _prom_catalog.metric
 AS $$
 DECLARE
 BEGIN
         RETURN QUERY
         SELECT m.*
-        FROM SCHEMA_CATALOG.metric m
+        FROM _prom_catalog.metric m
         WHERE
           is_view = false AND
-          SCHEMA_CATALOG.get_metric_compression_setting(m.metric_name) AND
+          _prom_catalog.get_metric_compression_setting(m.metric_name) AND
           delay_compression_until IS NULL OR delay_compression_until < now() AND
           is_view = FALSE
         ORDER BY random();
 END
 $$
 LANGUAGE PLPGSQL STABLE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_metrics_that_need_compression() TO prom_maintenance;
+GRANT EXECUTE ON FUNCTION _prom_catalog.get_metrics_that_need_compression() TO prom_maintenance;
 
 --only for timescaledb 2.0 in 1.x we use compression policies
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_compression_policy(log_verbose boolean = false)
+CREATE OR REPLACE PROCEDURE _prom_catalog.execute_compression_policy(log_verbose boolean = false)
 AS $$
 DECLARE
-    r SCHEMA_CATALOG.metric;
-    remaining_metrics SCHEMA_CATALOG.metric[] DEFAULT '{}';
+    r _prom_catalog.metric;
+    remaining_metrics _prom_catalog.metric[] DEFAULT '{}';
     startT TIMESTAMPTZ;
     lockStartT TIMESTAMPTZ;
 BEGIN
@@ -2988,9 +2988,9 @@ BEGIN
     --to prevent starvation.
     FOR r IN
         SELECT *
-        FROM SCHEMA_CATALOG.get_metrics_that_need_compression()
+        FROM _prom_catalog.get_metrics_that_need_compression()
     LOOP
-        IF NOT SCHEMA_CATALOG.lock_metric_for_maintenance(r.id, wait=>false) THEN
+        IF NOT _prom_catalog.lock_metric_for_maintenance(r.id, wait=>false) THEN
             remaining_metrics := remaining_metrics || r;
             CONTINUE;
         END IF;
@@ -2998,12 +2998,12 @@ BEGIN
             startT := clock_timestamp();
             RAISE LOG 'promscale maintenance: compression: metric %: starting, without lock wait', r.metric_name;
         END IF;
-        PERFORM SCHEMA_CATALOG.set_app_name( format('promscale maintenance: compression: metric %s', r.metric_name));
-        CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
+        PERFORM _prom_catalog.set_app_name( format('promscale maintenance: compression: metric %s', r.metric_name));
+        CALL _prom_catalog.compress_metric_chunks(r.metric_name);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: compression: metric %: finished in %', r.metric_name, clock_timestamp()-startT;
         END IF;
-        PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
+        PERFORM _prom_catalog.unlock_metric_for_maintenance(r.id);
 
         COMMIT;
     END LOOP;
@@ -3016,48 +3016,48 @@ BEGIN
             lockStartT := clock_timestamp();
             RAISE LOG 'promscale maintenance: compression: metric %: waiting for lock', r.metric_name;
         END IF;
-        PERFORM SCHEMA_CATALOG.set_app_name( format('promscale maintenance: compression: metric %s: waiting on lock', r.metric_name));
-        PERFORM SCHEMA_CATALOG.lock_metric_for_maintenance(r.id);
+        PERFORM _prom_catalog.set_app_name( format('promscale maintenance: compression: metric %s: waiting on lock', r.metric_name));
+        PERFORM _prom_catalog.lock_metric_for_maintenance(r.id);
         IF log_verbose THEN
             startT := clock_timestamp();
             RAISE LOG 'promscale maintenance: compression: metric %: starting', r.metric_name;
         END IF;
-        PERFORM SCHEMA_CATALOG.set_app_name( format('promscale maintenance: compression: metric %s', r.metric_name));
-        CALL SCHEMA_CATALOG.compress_metric_chunks(r.metric_name);
+        PERFORM _prom_catalog.set_app_name( format('promscale maintenance: compression: metric %s', r.metric_name));
+        CALL _prom_catalog.compress_metric_chunks(r.metric_name);
         IF log_verbose THEN
             RAISE LOG 'promscale maintenance: compression: metric %: finished in % (lock took %; compression took %)', r.metric_name, clock_timestamp()-lockStartT, startT-lockStartT, clock_timestamp()-startT;
         END IF;
-        PERFORM SCHEMA_CATALOG.unlock_metric_for_maintenance(r.id);
+        PERFORM _prom_catalog.unlock_metric_for_maintenance(r.id);
 
         COMMIT;
     END LOOP;
 END;
 $$ LANGUAGE PLPGSQL;
-COMMENT ON PROCEDURE SCHEMA_CATALOG.execute_compression_policy(boolean)
+COMMENT ON PROCEDURE _prom_catalog.execute_compression_policy(boolean)
 IS 'compress data according to the policy. This procedure should be run regularly in a cron job';
-GRANT EXECUTE ON PROCEDURE SCHEMA_CATALOG.execute_compression_policy(boolean) TO prom_maintenance;
+GRANT EXECUTE ON PROCEDURE _prom_catalog.execute_compression_policy(boolean) TO prom_maintenance;
 
-CREATE OR REPLACE PROCEDURE SCHEMA_PROM.add_prom_node(node_name TEXT, attach_to_existing_metrics BOOLEAN = true)
+CREATE OR REPLACE PROCEDURE prom_api.add_prom_node(node_name TEXT, attach_to_existing_metrics BOOLEAN = true)
 AS $func$
 DECLARE
     command_row record;
 BEGIN
     FOR command_row IN
         SELECT command, transactional
-        FROM SCHEMA_CATALOG.remote_commands
+        FROM _prom_catalog.remote_commands
         ORDER BY seq asc
     LOOP
-        CALL SCHEMA_TIMESCALE.distributed_exec(command_row.command,node_list=>array[node_name]);
+        CALL public.distributed_exec(command_row.command,node_list=>array[node_name]);
     END LOOP;
 
     IF attach_to_existing_metrics THEN
-        PERFORM attach_data_node(node_name, hypertable => format('%I.%I', 'SCHEMA_DATA', table_name))
-        FROM SCHEMA_CATALOG.metric;
+        PERFORM attach_data_node(node_name, hypertable => format('%I.%I', 'prom_data', table_name))
+        FROM _prom_catalog.metric;
     END IF;
 END
 $func$ LANGUAGE PLPGSQL;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.insert_metric_row(
+CREATE OR REPLACE FUNCTION _prom_catalog.insert_metric_row(
     metric_table name,
     time_array timestamptz[],
     value_array DOUBLE PRECISION[],
@@ -3068,7 +3068,7 @@ DECLARE
   num_rows BIGINT;
 BEGIN
     EXECUTE FORMAT(
-     'INSERT INTO  SCHEMA_DATA.%1$I (time, value, series_id)
+     'INSERT INTO  prom_data.%1$I (time, value, series_id)
           SELECT * FROM unnest($1, $2, $3) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING',
         metric_table
     ) USING time_array, value_array, series_id_array;
@@ -3077,4 +3077,4 @@ BEGIN
 END;
 $$
 LANGUAGE PLPGSQL;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.insert_metric_row(NAME, TIMESTAMPTZ[], DOUBLE PRECISION[], BIGINT[]) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.insert_metric_row(NAME, TIMESTAMPTZ[], DOUBLE PRECISION[], BIGINT[]) TO prom_writer;

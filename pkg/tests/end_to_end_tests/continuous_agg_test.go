@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"testing"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
@@ -270,7 +270,7 @@ WITH (timescaledb.continuous,  timescaledb.ignore_invalidation_older_than = '1 m
 
 		// Drop some raw metric data and check that the series data is not marked for deletion.
 		// NOTE: we cannot drop all the raw data becuase we are getting `too far behind` issues with 1.x caggs
-		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2, $3)", schema.Data, "metric_2", time.Unix(endTime/1000-20000, 0))
+		_, err = db.Exec(context.Background(), "CALL _prom_catalog.drop_metric_chunks($1, $2, $3)", schema.PromData, "metric_2", time.Unix(endTime/1000-20000, 0))
 		if err != nil {
 			t.Fatalf("unexpected error while dropping metric chunks: %s", err)
 		}

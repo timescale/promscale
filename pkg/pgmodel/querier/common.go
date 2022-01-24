@@ -7,15 +7,14 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
 const (
-	getMetricTableSQL         = "SELECT table_schema, table_name, series_table FROM " + schema.Catalog + ".get_metric_table_name_if_exists($1, $2)"
-	getExemplarMetricTableSQL = "SELECT COALESCE(table_name, '') FROM " + schema.Catalog + ".exemplar WHERE metric_name=$1"
+	getMetricTableSQL         = "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)"
+	getExemplarMetricTableSQL = "SELECT COALESCE(table_name, '') FROM _prom_catalog.exemplar WHERE metric_name=$1"
 )
 
 // fromLabelMatchers parses protobuf label matchers to Prometheus label matchers.

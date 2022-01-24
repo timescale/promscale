@@ -1,1 +1,1 @@
-DROP FUNCTION IF EXISTS SCHEMA_CATALOG.delete_expired_series(TEXT, TIMESTAMPTZ);
+DROP FUNCTION IF EXISTS _prom_catalog.delete_expired_series(TEXT, TIMESTAMPTZ);

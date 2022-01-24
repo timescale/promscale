@@ -12,7 +12,6 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 func TestOperationCalls(t *testing.T) {
@@ -124,38 +123,38 @@ func testOperationCallsInserts(t *testing.T, ctx context.Context, db *pgxpool.Po
 	// the sql used to generate the span inserts is in a comment at the bottom of
 	// this file
 
-	var insertServiceNames = fmt.Sprintf(`
-insert into %[1]s.tag (id, tag_type, key_id, key, value)
+	var insertServiceNames = `
+insert into _ps_trace.tag (id, tag_type, key_id, key, value)
 overriding system value
 values
-    (1, %[2]s.span_tag_type(), 1, 'service.name', to_jsonb('service 1'::text)),
-    (2, %[2]s.span_tag_type(), 1, 'service.name', to_jsonb('service 2'::text)),
-    (3, %[2]s.span_tag_type(), 1, 'service.name', to_jsonb('service 3'::text)),
-    (4, %[2]s.span_tag_type(), 1, 'service.name', to_jsonb('service 4'::text))
-`, schema.Trace, schema.TracePublic)
+    (1, ps_trace.span_tag_type(), 1, 'service.name', to_jsonb('service 1'::text)),
+    (2, ps_trace.span_tag_type(), 1, 'service.name', to_jsonb('service 2'::text)),
+    (3, ps_trace.span_tag_type(), 1, 'service.name', to_jsonb('service 3'::text)),
+    (4, ps_trace.span_tag_type(), 1, 'service.name', to_jsonb('service 4'::text))
+`
 	exec, err := db.Exec(ctx, insertServiceNames)
 	require.NoError(t, err, "Failed to insert service names")
 	require.Equal(t, int64(4), exec.RowsAffected(), "Expected to insert 4 service names. Got: %v", exec.RowsAffected())
 
-	var insertOperations = fmt.Sprintf(`
-insert into %[1]s.operation (id, service_name_id, span_kind, span_name)
+	var insertOperations = `
+insert into _ps_trace.operation (id, service_name_id, span_kind, span_name)
 overriding system value
 values
-    (1, 1, 'SPAN_KIND_SERVER'::%[2]s.span_kind, 'service 1 server'),
-    (2, 1, 'SPAN_KIND_CLIENT'::%[2]s.span_kind, 'service 1 client'),
-    (3, 2, 'SPAN_KIND_SERVER'::%[2]s.span_kind, 'service 2 server'),
-    (4, 2, 'SPAN_KIND_CLIENT'::%[2]s.span_kind, 'service 2 client'),
-    (5, 3, 'SPAN_KIND_SERVER'::%[2]s.span_kind, 'service 3 server'),
-    (6, 3, 'SPAN_KIND_CLIENT'::%[2]s.span_kind, 'service 3 client'),
-    (7, 4, 'SPAN_KIND_SERVER'::%[2]s.span_kind, 'service 4 server'),
-    (8, 4, 'SPAN_KIND_CLIENT'::%[2]s.span_kind, 'service 4 client')
-`, schema.Trace, schema.TracePublic)
+    (1, 1, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 1 server'),
+    (2, 1, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 1 client'),
+    (3, 2, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 2 server'),
+    (4, 2, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 2 client'),
+    (5, 3, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 3 server'),
+    (6, 3, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 3 client'),
+    (7, 4, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 4 server'),
+    (8, 4, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 4 client')
+`
 	exec, err = db.Exec(ctx, insertOperations)
 	require.NoError(t, err, "Failed to insert operations")
 	require.Equal(t, int64(8), exec.RowsAffected(), "Expected to insert 8 operations. Got: %v", exec.RowsAffected())
 
-	var insertSpans = fmt.Sprintf(`
-insert into %s.span 
+	var insertSpans = `
+insert into _ps_trace.span 
 (
 	trace_id,
 	span_id,
@@ -255,7 +254,7 @@ from
 	('e7310854-92ad-449c-ae79-8d27b28e77ee', 71, null, 7, '2021-11-07 09:02:01+00'),
 	('e7310854-92ad-449c-ae79-8d27b28e77ee', 72, 71, 6, '2021-11-07 09:02:01+00')
 ) x(trace_id, span_id, parent_span_id, operation_id, start_time)
-`, schema.Trace)
+`
 	exec, err = db.Exec(ctx, insertSpans)
 	require.NoError(t, err, "Failed to insert spans: %v", err)
 	require.Equal(t, int64(72), exec.RowsAffected(), "Expected to insert 72 spans. Got %d", exec.RowsAffected())

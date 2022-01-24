@@ -43,7 +43,7 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMig
 	}
 	defer func() { _ = db.Close(context.Background()) }()
 
-	err = MigrateExtension(db, "timescaledb", schema.Timescale, version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
+	err = MigrateExtension(db, "timescaledb", schema.Public, version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
 	if err != nil {
 		return fmt.Errorf("could not install timescaledb: %w", err)
 	}
@@ -54,7 +54,7 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMig
 
 func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrateOptions) (bool, error) {
 	ExtensionIsInstalled = false
-	err := MigrateExtension(db, "promscale", schema.Ext, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
+	err := MigrateExtension(db, "promscale", schema.PromExt, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}

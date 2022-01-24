@@ -14,8 +14,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/blang/semver/v4"
@@ -25,7 +23,6 @@ import (
 	"github.com/timescale/promscale/pkg/migrations"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 const (
@@ -270,7 +267,7 @@ func (t *Migrator) execMigrationFile(tx pgx.Tx, fileName string) error {
 	if err != nil {
 		return fmt.Errorf("unable to get migration script: name %s, err %w", fileName, err)
 	}
-	contents, err := replaceSchemaNames(f)
+	contents, err := readMigrationFile(f)
 	if err != nil {
 		return fmt.Errorf("unable to read migration script: name %s, err %w", fileName, err)
 	}
@@ -375,7 +372,7 @@ func orderFilesNaturally(entries []os.FileInfo) []string {
 	return pp.getNames()
 }
 
-func replaceSchemaNames(r io.ReadCloser) (string, error) {
+func readMigrationFile(r io.ReadCloser) (string, error) {
 	buf := new(bytes.Buffer)
 	_, err := buf.ReadFrom(r)
 	if err != nil {
@@ -386,21 +383,6 @@ func replaceSchemaNames(r io.ReadCloser) (string, error) {
 		return "", err
 	}
 	s := buf.String()
-	s = strings.ReplaceAll(s, "SCHEMA_TAG", schema.Tag)
-	s = strings.ReplaceAll(s, "SCHEMA_CATALOG", schema.Catalog)
-	s = strings.ReplaceAll(s, "SCHEMA_LOCK_ID", strconv.FormatInt(schema.LockID, 10))
-	s = strings.ReplaceAll(s, "SCHEMA_EXT", schema.Ext)
-	s = strings.ReplaceAll(s, "SCHEMA_PROM", schema.Prom)
-	s = strings.ReplaceAll(s, "SCHEMA_TIMESCALE", schema.Timescale)
-	s = strings.ReplaceAll(s, "SCHEMA_SERIES", schema.SeriesView)
-	s = strings.ReplaceAll(s, "SCHEMA_METRIC", schema.MetricView)
-	s = strings.ReplaceAll(s, "SCHEMA_DATA_EXEMPLAR", schema.Exemplar) // Keep this above SCHEMA_DATA to avoid conflicts.
-	s = strings.ReplaceAll(s, "SCHEMA_DATA_SERIES", schema.DataSeries)
-	s = strings.ReplaceAll(s, "SCHEMA_DATA", schema.Data)
-	s = strings.ReplaceAll(s, "SCHEMA_INFO", schema.Info)
-	s = strings.ReplaceAll(s, "SCHEMA_TRACING_PUBLIC", schema.TracePublic)
-	s = strings.ReplaceAll(s, "SCHEMA_TRACING", schema.Trace)
-	s = strings.ReplaceAll(s, "SCHEMA_PS_CATALOG", schema.PromscaleCatalog)
 	return s, err
 }
 

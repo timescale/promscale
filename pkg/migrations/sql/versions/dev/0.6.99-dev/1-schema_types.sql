@@ -1,70 +1,70 @@
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TAG;
-GRANT USAGE ON SCHEMA SCHEMA_TAG TO prom_reader;
+CREATE SCHEMA IF NOT EXISTS ps_tag;
+GRANT USAGE ON SCHEMA ps_tag TO prom_reader;
 
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
-GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
+CREATE SCHEMA IF NOT EXISTS _ps_trace;
+GRANT USAGE ON SCHEMA _ps_trace TO prom_reader;
 
-CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
-GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
+CREATE SCHEMA IF NOT EXISTS ps_trace;
+GRANT USAGE ON SCHEMA ps_trace TO prom_reader;
 
-CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
+CALL _prom_catalog.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
-    GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _prom_catalog; -- catalog tables + internal functions
+    GRANT USAGE ON SCHEMA _prom_catalog TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- public functions
-    GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_api; -- public functions
+    GRANT USAGE ON SCHEMA prom_api TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
-    GRANT USAGE ON SCHEMA SCHEMA_EXT TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _prom_ext; -- optimized versions of functions created by the extension
+    GRANT USAGE ON SCHEMA _prom_ext TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES; -- series views
-    GRANT USAGE ON SCHEMA SCHEMA_SERIES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_series; -- series views
+    GRANT USAGE ON SCHEMA prom_series TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC; -- metric views
-    GRANT USAGE ON SCHEMA SCHEMA_METRIC TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_metric; -- metric views
+    GRANT USAGE ON SCHEMA prom_metric TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_data;
+    GRANT USAGE ON SCHEMA prom_data TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_SERIES;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_data_series;
+    GRANT USAGE ON SCHEMA prom_data_series TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
-    GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_info;
+    GRANT USAGE ON SCHEMA prom_info TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
-    GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
+    CREATE SCHEMA IF NOT EXISTS prom_data_exemplar;
+    GRANT USAGE ON SCHEMA prom_data_exemplar TO prom_reader;
+    GRANT ALL ON SCHEMA prom_data_exemplar TO prom_writer;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TAG;
-    GRANT USAGE ON SCHEMA SCHEMA_TAG TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS ps_tag;
+    GRANT USAGE ON SCHEMA ps_tag TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _ps_trace;
+    GRANT USAGE ON SCHEMA _ps_trace TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS ps_trace;
+    GRANT USAGE ON SCHEMA ps_trace TO prom_reader;
 END $$ $ee$);
 
-CALL SCHEMA_CATALOG.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
+CALL _prom_catalog.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
 
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.trace_id uuid NOT NULL CHECK (value != '00000000-0000-0000-0000-000000000000');
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.trace_id TO prom_reader;
+    CREATE DOMAIN ps_trace.trace_id uuid NOT NULL CHECK (value != '00000000-0000-0000-0000-000000000000');
+    GRANT USAGE ON DOMAIN ps_trace.trace_id TO prom_reader;
 
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_k text NOT NULL CHECK (value != '');
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_k TO prom_reader;
+    CREATE DOMAIN ps_trace.tag_k text NOT NULL CHECK (value != '');
+    GRANT USAGE ON DOMAIN ps_trace.tag_k TO prom_reader;
 
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_v jsonb NOT NULL;
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_v TO prom_reader;
+    CREATE DOMAIN ps_trace.tag_v jsonb NOT NULL;
+    GRANT USAGE ON DOMAIN ps_trace.tag_v TO prom_reader;
 
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_map jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(value) = 'object');
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_map TO prom_reader;
+    CREATE DOMAIN ps_trace.tag_map jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(value) = 'object');
+    GRANT USAGE ON DOMAIN ps_trace.tag_map TO prom_reader;
 
-    CREATE DOMAIN SCHEMA_TRACING_PUBLIC.tag_type smallint NOT NULL; --bitmap, may contain several types
-    GRANT USAGE ON DOMAIN SCHEMA_TRACING_PUBLIC.tag_type TO prom_reader;
+    CREATE DOMAIN ps_trace.tag_type smallint NOT NULL; --bitmap, may contain several types
+    GRANT USAGE ON DOMAIN ps_trace.tag_type TO prom_reader;
 
-    CREATE TYPE SCHEMA_TRACING_PUBLIC.span_kind AS ENUM
+    CREATE TYPE ps_trace.span_kind AS ENUM
     (
         'SPAN_KIND_UNSPECIFIED',
         'SPAN_KIND_INTERNAL',
@@ -73,32 +73,32 @@ CALL SCHEMA_CATALOG.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
         'SPAN_KIND_PRODUCER',
         'SPAN_KIND_CONSUMER'
     );
-    GRANT USAGE ON TYPE SCHEMA_TRACING_PUBLIC.span_kind TO prom_reader;
+    GRANT USAGE ON TYPE ps_trace.span_kind TO prom_reader;
 
-    CREATE TYPE SCHEMA_TRACING_PUBLIC.status_code AS ENUM
+    CREATE TYPE ps_trace.status_code AS ENUM
     (
         'STATUS_CODE_UNSET',
         'STATUS_CODE_OK',
         'STATUS_CODE_ERROR'
     );
-    GRANT USAGE ON TYPE SCHEMA_TRACING_PUBLIC.status_code TO prom_reader;
+    GRANT USAGE ON TYPE ps_trace.status_code TO prom_reader;
 END $$ $ee$);
 
-UPDATE SCHEMA_CATALOG.remote_commands SET seq = seq+2 WHERE seq >= 8;
-UPDATE SCHEMA_CATALOG.remote_commands SET seq = 9 WHERE key='tracing_types';
+UPDATE _prom_catalog.remote_commands SET seq = seq+2 WHERE seq >= 8;
+UPDATE _prom_catalog.remote_commands SET seq = 9 WHERE key='tracing_types';
 
 DO $$
 DECLARE
    new_path text;
 BEGIN
-   new_path := current_setting('search_path') || format(',%L,%L,%L,%L,%L,%L', 'SCHEMA_TAG', 'SCHEMA_EXT', 'SCHEMA_PROM', 'SCHEMA_METRIC', 'SCHEMA_CATALOG', 'SCHEMA_TRACING_PUBLIC');
+   new_path := current_setting('search_path') || format(',%L,%L,%L,%L,%L,%L', 'ps_tag', '_prom_ext', 'prom_api', 'prom_metric', '_prom_catalog', 'ps_trace');
    execute format('ALTER DATABASE %I SET search_path = %s', current_database(), new_path);
    execute format('SET search_path = %s', new_path);
 END
 $$;
 
 INSERT INTO public.prom_installation_info(key, value) VALUES
-    ('tagging schema',          'SCHEMA_TAG'),
-    ('tracing schema',          'SCHEMA_TRACING_PUBLIC'),
-    ('tracing schema private',  'SCHEMA_TRACING')
+    ('tagging schema',          'ps_tag'),
+    ('tracing schema',          'ps_trace'),
+    ('tracing schema private',  '_ps_trace')
 ON CONFLICT (key) DO NOTHING;

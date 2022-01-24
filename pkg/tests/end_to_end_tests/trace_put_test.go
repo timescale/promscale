@@ -11,7 +11,6 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 func TestTracePuts(t *testing.T) {
@@ -53,7 +52,7 @@ func testPutSchemaURL(t *testing.T, db *pgxpool.Pool, ctx context.Context) {
 		for _, tv := range cases {
 			put(tv)
 		}
-		rows, err := db.Query(ctx, fmt.Sprintf("select id, url from %s.schema_url order by id", schema.Trace))
+		rows, err := db.Query(ctx, "select id, url from _ps_trace.schema_url order by id")
 		require.NoError(t, err)
 		defer rows.Close()
 		for _, expected := range cases {
@@ -95,7 +94,7 @@ func testPutInstrumentationLib(t *testing.T, db *pgxpool.Pool, ctx context.Conte
 		for _, tv := range cases {
 			put(tv)
 		}
-		rows, err := db.Query(ctx, fmt.Sprintf("select id, name, version, schema_url_id from %s.instrumentation_lib order by id", schema.Trace))
+		rows, err := db.Query(ctx, "select id, name, version, schema_url_id from _ps_trace.instrumentation_lib order by id")
 		require.NoError(t, err)
 		defer rows.Close()
 		for _, expected := range cases {
@@ -124,7 +123,7 @@ func testPutTagKey(t *testing.T, db *pgxpool.Pool, ctx context.Context) {
 				actualKey string
 				actualTyp int8
 			)
-			row := db.QueryRow(ctx, fmt.Sprintf("select id, key, tag_type from %s.tag_key where id = $1", schema.Trace), id)
+			row := db.QueryRow(ctx, "select id, key, tag_type from _ps_trace.tag_key where id = $1", id)
 			err := row.Scan(&actualId, &actualKey, &actualTyp)
 			require.NoError(t, err)
 			require.Equal(t, id, actualId, "Unexpected id")
@@ -167,7 +166,7 @@ func testPutTag(t *testing.T, db *pgxpool.Pool, ctx context.Context) {
 				actualValue string
 				actualTyp   int8
 			)
-			row := db.QueryRow(ctx, fmt.Sprintf("select id, key, value::text, tag_type from %s.tag where id = $1", schema.Trace), id)
+			row := db.QueryRow(ctx, "select id, key, value::text, tag_type from _ps_trace.tag where id = $1", id)
 			err := row.Scan(&actualId, &actualKey, &actualValue, &actualTyp)
 			require.NoError(t, err)
 			require.Equal(t, id, actualId, "Unexpected id")

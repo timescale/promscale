@@ -10,11 +10,10 @@ import (
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const insertOperationSQL = `SELECT %s.put_operation($1, $2, $3)`
+const insertOperationSQL = `SELECT ps_trace.put_operation($1, $2, $3)`
 
 type operation struct {
 	serviceName string
@@ -41,7 +40,7 @@ func (o operation) Before(item sortable) bool {
 }
 
 func (o operation) AddToDBBatch(batch pgxconn.PgxBatch) {
-	batch.Queue(fmt.Sprintf(insertOperationSQL, schema.TracePublic), o.serviceName, o.spanName, o.spanKind)
+	batch.Queue(insertOperationSQL, o.serviceName, o.spanName, o.spanKind)
 }
 
 func (o operation) ScanIDs(r pgx.BatchResults) (interface{}, error) {

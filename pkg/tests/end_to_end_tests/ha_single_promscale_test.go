@@ -28,7 +28,6 @@ import (
 	"github.com/timescale/promscale/pkg/ha"
 	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -518,7 +517,7 @@ func checkDbState(t testing.TB, db *pgxpool.Pool, output haTestOutput) bool {
 func checkLeaseInDb(t testing.TB, db *pgxpool.Pool, wantedLeaseState leaseState) bool {
 	row := db.QueryRow(
 		context.Background(),
-		"SELECT leader_name, lease_start, lease_until FROM "+schema.Catalog+".ha_leases WHERE cluster_name = $1",
+		"SELECT leader_name, lease_start, lease_until FROM _prom_catalog.ha_leases WHERE cluster_name = $1",
 		wantedLeaseState.cluster,
 	)
 	var stateInDb leaseState

@@ -250,7 +250,7 @@ func TestPgxSeriesSet(t *testing.T) {
 				{Float: 30000},
 				{Float: 100},
 			},
-			metricSchema: schema.Data,
+			metricSchema: schema.PromData,
 			rowCount:     1,
 		},
 		{
@@ -340,7 +340,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					expectedLabels = append(expectedLabels, labels.Label{Name: labelMapping[v].k, Value: labelMapping[v].v})
 				}
 
-				if c.metricSchema != "" && c.metricSchema != schema.Data {
+				if c.metricSchema != "" && c.metricSchema != schema.PromData {
 					expectedLabels = append(expectedLabels, labels.Label{Name: model.SchemaNameLabelName, Value: c.metricSchema})
 				}
 				if c.columnName != "" && c.columnName != defaultColumnName {

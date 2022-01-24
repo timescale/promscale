@@ -145,7 +145,7 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	filter := metadata.timeFilter
 	finalSQL := fmt.Sprintf(template,
 		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
+		pgx.Identifier{schema.PromDataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(cases, " AND "),
 		filter.start,
 		filter.end,
@@ -166,7 +166,7 @@ func buildMultipleMetricSamplesQuery(filter timeFilter, series []pgmodel.SeriesI
 	return fmt.Sprintf(
 		timeseriesBySeriesIDsSQLFormat,
 		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.seriesTable}.Sanitize(),
+		pgx.Identifier{schema.PromDataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(s, ","),
 		filter.start,
 		filter.end,

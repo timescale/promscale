@@ -1,4 +1,4 @@
-CREATE TABLE SCHEMA_CATALOG.ha_leases
+CREATE TABLE _prom_catalog.ha_leases
 (
     cluster_name TEXT PRIMARY KEY,
     leader_name  TEXT,
@@ -6,7 +6,7 @@ CREATE TABLE SCHEMA_CATALOG.ha_leases
     lease_until  TIMESTAMPTZ
 );
 
-CREATE TABLE SCHEMA_CATALOG.ha_leases_logs
+CREATE TABLE _prom_catalog.ha_leases_logs
 (
     cluster_name TEXT        NOT NULL,
     leader_name  TEXT        NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE SCHEMA_CATALOG.ha_leases_logs
 
 
 -- STUB for function that trigger to automatically keep the log calls - real implementation in ha.sql
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.ha_leases_audit_fn()
+CREATE OR REPLACE FUNCTION _prom_catalog.ha_leases_audit_fn()
     RETURNS TRIGGER
 AS
 $func$
@@ -30,12 +30,12 @@ $func$ LANGUAGE plpgsql VOLATILE;
 -- trigger to automatically keep the log
 CREATE TRIGGER ha_leases_audit
     AFTER INSERT OR UPDATE
-    ON SCHEMA_CATALOG.ha_leases
+    ON _prom_catalog.ha_leases
     FOR EACH ROW
-EXECUTE PROCEDURE SCHEMA_CATALOG.ha_leases_audit_fn();
+EXECUTE PROCEDURE _prom_catalog.ha_leases_audit_fn();
 
 -- default values for lease
-INSERT INTO SCHEMA_CATALOG.default(key, value)
+INSERT INTO _prom_catalog.default(key, value)
 VALUES ('ha_lease_timeout', '1m'),
        ('ha_lease_refresh', '10s')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

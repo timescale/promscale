@@ -1,7 +1,7 @@
 /*
     15 = resource | span | event | link
 */
-INSERT INTO SCHEMA_TRACING.tag_key (id, key, tag_type)
+INSERT INTO _ps_trace.tag_key (id, key, tag_type)
 OVERRIDING SYSTEM VALUE
 VALUES
     (1, 'service.name', 15),
@@ -179,4 +179,4 @@ VALUES
     (173, 'exception.stacktrace', 15),
     (174, 'exception.escaped', 15)
 ;
-SELECT setval('SCHEMA_TRACING.tag_key_id_seq', 1000);
+SELECT setval('_ps_trace.tag_key_id_seq', 1000);

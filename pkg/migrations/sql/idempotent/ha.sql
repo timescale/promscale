@@ -1,5 +1,5 @@
 -- function that trigger to automatically keep the log calls
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.ha_leases_audit_fn()
+CREATE OR REPLACE FUNCTION _prom_catalog.ha_leases_audit_fn()
     RETURNS TRIGGER
 AS
 $func$
@@ -28,7 +28,7 @@ END;
 $func$ LANGUAGE plpgsql VOLATILE;
 
 -- ha api functions
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.update_lease(cluster TEXT, writer TEXT, min_time TIMESTAMPTZ,
+CREATE OR REPLACE FUNCTION _prom_catalog.update_lease(cluster TEXT, writer TEXT, min_time TIMESTAMPTZ,
                                                        max_time TIMESTAMPTZ) RETURNS ha_leases
 AS
 $func$
@@ -45,25 +45,25 @@ BEGIN
     -- find lease_timeout setting;
     SELECT value::INTERVAL
     INTO lease_timeout
-    FROM SCHEMA_CATALOG.default
+    FROM _prom_catalog.default
     WHERE key = 'ha_lease_timeout';
 
     -- find latest leader and their lease time range;
     SELECT h.leader_name, h.lease_start, h.lease_until
     INTO leader, lease_start, lease_until
-    FROM SCHEMA_CATALOG.ha_leases as h
+    FROM _prom_catalog.ha_leases as h
     WHERE cluster_name = cluster;
 
     --only happens on very first call;
     IF NOT FOUND THEN
         -- no leader yet for cluster insert;
-        INSERT INTO SCHEMA_CATALOG.ha_leases
+        INSERT INTO _prom_catalog.ha_leases
         VALUES (cluster, writer, min_time, max_time + lease_timeout)
         ON CONFLICT DO NOTHING;
         -- needed due to on-conflict clause;
         SELECT h.leader_name, h.lease_start, h.lease_until
         INTO leader, lease_start, lease_until
-        FROM SCHEMA_CATALOG.ha_leases as h
+        FROM _prom_catalog.ha_leases as h
         WHERE cluster_name = cluster;
     END IF;
 
@@ -74,12 +74,12 @@ BEGIN
     -- find lease_refresh setting;
     SELECT value::INTERVAL
     INTO lease_refresh
-    FROM SCHEMA_CATALOG.default
+    FROM _prom_catalog.default
     WHERE key = 'ha_lease_refresh';
 
     new_lease_timeout = max_time + lease_timeout;
     IF new_lease_timeout > lease_until + lease_refresh THEN
-        UPDATE SCHEMA_CATALOG.ha_leases h
+        UPDATE _prom_catalog.ha_leases h
         SET lease_until = new_lease_timeout
         WHERE h.cluster_name = cluster
           AND h.leader_name = writer
@@ -87,7 +87,7 @@ BEGIN
         IF NOT FOUND THEN -- concurrent update
             SELECT h.leader_name, h.lease_start, h.lease_until
             INTO leader, lease_start, lease_until
-            FROM SCHEMA_CATALOG.ha_leases as h
+            FROM _prom_catalog.ha_leases as h
             WHERE cluster_name = cluster;
             IF leader <> writer OR lease_until <= max_time
             THEN
@@ -99,9 +99,9 @@ BEGIN
     RETURN lease_state;
 END;
 $func$ LANGUAGE plpgsql VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.update_lease(TEXT, TEXT, TIMESTAMPTZ, TIMESTAMPTZ) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.update_lease(TEXT, TEXT, TIMESTAMPTZ, TIMESTAMPTZ) TO prom_writer;
 
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.try_change_leader(cluster TEXT, new_leader TEXT,
+CREATE OR REPLACE FUNCTION _prom_catalog.try_change_leader(cluster TEXT, new_leader TEXT,
                                                             max_time TIMESTAMPTZ) RETURNS ha_leases
 AS
 $func$
@@ -112,10 +112,10 @@ BEGIN
     -- find lease_timeout setting;
     SELECT value::INTERVAL
     INTO lease_timeout
-    FROM SCHEMA_CATALOG.default
+    FROM _prom_catalog.default
     WHERE key = 'ha_lease_timeout';
 
-    UPDATE SCHEMA_CATALOG.ha_leases
+    UPDATE _prom_catalog.ha_leases
     SET leader_name = new_leader,
         lease_start = lease_until,
         lease_until = max_time + lease_timeout
@@ -130,4 +130,4 @@ BEGIN
 
 END;
 $func$ LANGUAGE plpgsql VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.try_change_leader(TEXT, TEXT, TIMESTAMPTZ) TO prom_writer;
+GRANT EXECUTE ON FUNCTION _prom_catalog.try_change_leader(TEXT, TEXT, TIMESTAMPTZ) TO prom_writer;

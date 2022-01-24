@@ -5,13 +5,12 @@ import (
 	"fmt"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const (
-	getExemplarLabelPositions = "SELECT * FROM " + schema.Catalog + ".get_new_pos_for_key($1::TEXT, $2::NAME, $3::TEXT[], true)"
+	getExemplarLabelPositions = "SELECT * FROM _prom_catalog.get_new_pos_for_key($1::TEXT, $2::NAME, $3::TEXT[], true)"
 )
 
 type ExemplarVisitor interface {
