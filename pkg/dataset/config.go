@@ -7,13 +7,12 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"gopkg.in/yaml.v2"
 )
 
 const defaultChunkInterval = 8 * time.Hour
 
-var setDefaultChunkIntervalSQL = fmt.Sprintf("SELECT %s.set_default_chunk_interval($1)", schema.Prom)
+var setDefaultChunkIntervalSQL = "SELECT prom_api.set_default_chunk_interval($1)"
 
 type Config struct {
 	Metrics Metrics `yaml:"metrics"`

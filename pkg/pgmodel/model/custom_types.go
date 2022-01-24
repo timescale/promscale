@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/jackc/pgtype"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -26,7 +25,7 @@ func labelArrayTranscoder() pgtype.ValueTranscoder { return new(pgtype.Int4Array
 func registerLabelArrayOID(conn pgxconn.PgxConn) error {
 	labelArrayOIDMux.Lock()
 	defer labelArrayOIDMux.Unlock()
-	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_array'::regtype::oid`).Scan(&labelArrayOID)
+	err := conn.QueryRow(context.Background(), `SELECT 'prom_api.label_array'::regtype::oid`).Scan(&labelArrayOID)
 	if err != nil {
 		return fmt.Errorf("registering prom_api.label_array oid: %w", err)
 	}
@@ -46,7 +45,7 @@ func labelValueArrayTranscoder() pgtype.ValueTranscoder { return new(pgtype.Text
 func registerLabelValueArrayOID(conn pgxconn.PgxConn) error {
 	labelValueArrayOIDMux.Lock()
 	defer labelValueArrayOIDMux.Unlock()
-	err := conn.QueryRow(context.Background(), `SELECT '`+schema.Prom+`.label_value_array'::regtype::oid`).Scan(&labelValueArrayOID)
+	err := conn.QueryRow(context.Background(), `SELECT 'prom_api.label_value_array'::regtype::oid`).Scan(&labelValueArrayOID)
 	if err != nil {
 		return fmt.Errorf("registering prom_api.label_value_array oid: %w", err)
 	}

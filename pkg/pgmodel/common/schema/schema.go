@@ -5,22 +5,13 @@
 package schema
 
 const (
-	Tag              = "ps_tag"
-	Prom             = "prom_api"
-	Data             = "prom_data"
-	Info             = "prom_info"
-	Exemplar         = "prom_data_exemplar"
-	Ext              = "_prom_ext"
-	Catalog          = "_prom_catalog"
-	PromscaleCatalog = "_ps_catalog"
-	Timescale        = "public"
+	PromData         = "prom_data"
+	PromDataExemplar = "prom_data_exemplar"
+	PromExt          = "_prom_ext"
+	// Public is where all timescaledb-functions are loaded
+	Public = "public"
 
 	LockID = 0x4D829C732AAFCEDE // Chosen randomly.
 
-	SeriesView = "prom_series"
-	MetricView = "prom_metric"
-	DataSeries = "prom_data_series"
-
-	Trace       = "_ps_trace"
-	TracePublic = "ps_trace"
+	PromDataSeries = "prom_data_series"
 )

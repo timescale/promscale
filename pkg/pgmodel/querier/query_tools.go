@@ -41,7 +41,7 @@ func (tools *queryTools) getMetricTableName(metricSchema, metricName string, isE
 		if err != nil {
 			return model.MetricInfo{}, err
 		}
-		metricInfo = model.MetricInfo{TableSchema: schema.Exemplar, TableName: tableName}
+		metricInfo = model.MetricInfo{TableSchema: schema.PromDataExemplar, TableName: tableName}
 	} else {
 		metricInfo, err = querySampleMetricTableName(tools.conn, metricSchema, metricName)
 		if err != nil {

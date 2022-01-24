@@ -1,75 +1,75 @@
 -- delete the get_new_label_pos so that base.sql creates the new one.
-DROP FUNCTION IF EXISTS SCHEMA_CATALOG.get_new_pos_for_key(text, text[]);
+DROP FUNCTION IF EXISTS _prom_catalog.get_new_pos_for_key(text, text[]);
 
-CREATE DOMAIN SCHEMA_PROM.label_value_array AS TEXT[];
+CREATE DOMAIN prom_api.label_value_array AS TEXT[];
 
-CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
-GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
-GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
+CREATE SCHEMA IF NOT EXISTS prom_data_exemplar;
+GRANT USAGE ON SCHEMA prom_data_exemplar TO prom_reader;
+GRANT ALL ON SCHEMA prom_data_exemplar TO prom_writer;
 
-CREATE TABLE IF NOT EXISTS SCHEMA_CATALOG.exemplar_label_key_position (
+CREATE TABLE IF NOT EXISTS _prom_catalog.exemplar_label_key_position (
   metric_name TEXT NOT NULL,
   key         TEXT NOT NULL,
   pos         INTEGER NOT NULL,
   PRIMARY KEY (metric_name, key) INCLUDE (pos)
 );
-GRANT SELECT ON TABLE SCHEMA_CATALOG.exemplar_label_key_position TO prom_reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.exemplar_label_key_position TO prom_writer;
+GRANT SELECT ON TABLE _prom_catalog.exemplar_label_key_position TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _prom_catalog.exemplar_label_key_position TO prom_writer;
 
-CREATE TABLE IF NOT EXISTS SCHEMA_CATALOG.exemplar (
+CREATE TABLE IF NOT EXISTS _prom_catalog.exemplar (
    id          SERIAL PRIMARY KEY,
    metric_name TEXT NOT NULL,
    table_name  TEXT NOT NULL,
    UNIQUE (metric_name) INCLUDE (table_name, id)
 );
-GRANT SELECT ON TABLE SCHEMA_CATALOG.exemplar TO prom_reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_CATALOG.exemplar TO prom_writer;
+GRANT SELECT ON TABLE _prom_catalog.exemplar TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _prom_catalog.exemplar TO prom_writer;
 
 GRANT USAGE, SELECT ON SEQUENCE exemplar_id_seq TO prom_writer;
 
 INSERT INTO public.prom_installation_info(key, value) VALUES
-    ('exemplar data schema',  'SCHEMA_DATA_EXEMPLAR');
+    ('exemplar data schema',  'prom_data_exemplar');
 
 ------------------ op.@> -----------------
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.label_value_contains(labels SCHEMA_PROM.label_value_array, label_value TEXT)
+CREATE OR REPLACE FUNCTION _prom_catalog.label_value_contains(labels prom_api.label_value_array, label_value TEXT)
 RETURNS BOOLEAN
 AS $func$
     SELECT labels @> ARRAY[label_value]::TEXT[]
 $func$
 LANGUAGE SQL STABLE PARALLEL SAFE;
 
-CREATE OPERATOR SCHEMA_PROM.@> (
-    LEFTARG = SCHEMA_PROM.label_value_array,
+CREATE OPERATOR prom_api.@> (
+    LEFTARG = prom_api.label_value_array,
     RIGHTARG = TEXT,
-    FUNCTION = SCHEMA_CATALOG.label_value_contains
+    FUNCTION = _prom_catalog.label_value_contains
 );
 
-CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
-    GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
+CALL _prom_catalog.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
+    CREATE SCHEMA IF NOT EXISTS _prom_catalog; -- catalog tables + internal functions
+    GRANT USAGE ON SCHEMA _prom_catalog TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- public functions
-    GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_api; -- public functions
+    GRANT USAGE ON SCHEMA prom_api TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
-    GRANT USAGE ON SCHEMA SCHEMA_EXT TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _prom_ext; -- optimized versions of functions created by the extension
+    GRANT USAGE ON SCHEMA _prom_ext TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES; -- series views
-    GRANT USAGE ON SCHEMA SCHEMA_SERIES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_series; -- series views
+    GRANT USAGE ON SCHEMA prom_series TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC; -- metric views
-    GRANT USAGE ON SCHEMA SCHEMA_METRIC TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_metric; -- metric views
+    GRANT USAGE ON SCHEMA prom_metric TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_data;
+    GRANT USAGE ON SCHEMA prom_data TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_SERIES;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_data_series;
+    GRANT USAGE ON SCHEMA prom_data_series TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
-    GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_info;
+    GRANT USAGE ON SCHEMA prom_info TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
-    GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
+    CREATE SCHEMA IF NOT EXISTS prom_data_exemplar;
+    GRANT USAGE ON SCHEMA prom_data_exemplar TO prom_reader;
+    GRANT ALL ON SCHEMA prom_data_exemplar TO prom_writer;
 END $$ $ee$);

@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -47,32 +46,32 @@ func TestOperationBatch(t *testing.T) {
 			expectedBatchQueue: 7,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertOperationSQL, schema.TracePublic),
+					Sql:     insertOperationSQL,
 					Args:    []interface{}{"", "anotherTest", "first"},
 					Results: [][]interface{}{{int64(7)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertOperationSQL, schema.TracePublic),
+					Sql:     insertOperationSQL,
 					Args:    []interface{}{"", "anotherTest", "second"},
 					Results: [][]interface{}{{int64(8)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertOperationSQL, schema.TracePublic),
+					Sql:     insertOperationSQL,
 					Args:    []interface{}{"", "null", ""},
 					Results: [][]interface{}{{nil}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertOperationSQL, schema.TracePublic),
+					Sql:     insertOperationSQL,
 					Args:    []interface{}{"", "zero", ""},
 					Results: [][]interface{}{{int64(0)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertOperationSQL, schema.TracePublic),
+					Sql:     insertOperationSQL,
 					Args:    []interface{}{"first", "test", ""},
 					Results: [][]interface{}{{int64(5)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertOperationSQL, schema.TracePublic),
+					Sql:     insertOperationSQL,
 					Args:    []interface{}{"second", "test", ""},
 					Results: [][]interface{}{{int64(6)}},
 				},
@@ -118,7 +117,7 @@ func TestOperationBatch(t *testing.T) {
 			expectedBatchQueue: 1,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertOperationSQL, schema.TracePublic),
+					Sql:     insertOperationSQL,
 					Args:    []interface{}{defaultServiceName, "non-cached", defaultSpanKind},
 					Results: [][]interface{}{{"wrong type"}},
 				},

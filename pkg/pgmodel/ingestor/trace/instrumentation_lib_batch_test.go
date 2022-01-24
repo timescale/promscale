@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -44,37 +43,37 @@ func TestInstrumentationLibraryBatch(t *testing.T) {
 			expectedBatchQueue: 8,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"anotherTest", "first", pgtype.Int8{Int: 1, Status: pgtype.Null}},
 					Results: [][]interface{}{{int64(7)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"anotherTest", "second", pgtype.Int8{Int: 1, Status: pgtype.Present}},
 					Results: [][]interface{}{{int64(8)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"null", "", pgtype.Int8{Int: 1, Status: pgtype.Present}},
 					Results: [][]interface{}{{nil}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"test", "first", pgtype.Int8{Int: 1, Status: pgtype.Null}},
 					Results: [][]interface{}{{int64(5)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"test", "first", pgtype.Int8{Int: 1, Status: pgtype.Present}},
 					Results: [][]interface{}{{int64(6)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"test", "first", pgtype.Int8{Int: 2, Status: pgtype.Present}},
 					Results: [][]interface{}{{int64(6)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"zero", "", pgtype.Int8{Int: 1, Status: pgtype.Present}},
 					Results: [][]interface{}{{int64(0)}},
 				},
@@ -124,7 +123,7 @@ func TestInstrumentationLibraryBatch(t *testing.T) {
 			expectedBatchQueue: 1,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic),
+					Sql:     insertInstrumentationLibSQL,
 					Args:    []interface{}{"non-cached", "", pgtype.Int8{Int: 0, Status: pgtype.Null}},
 					Results: [][]interface{}{{"wrong type"}},
 				},

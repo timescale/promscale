@@ -14,7 +14,6 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 const (
@@ -329,7 +328,7 @@ func createMetricTableName(db *pgxpool.Pool, name string) error {
 func getSeriesIDForKeyValueArray(db *pgxpool.Pool, metricName string, keys []string, values []string) error {
 	var tableName string
 	var seriesIDKeyVal int
-	return db.QueryRow(context.Background(), "SELECT * FROM "+schema.Catalog+".get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, append([]string{"__name__"}, keys...), append([]string{metricName}, values...)).Scan(&tableName, &seriesIDKeyVal)
+	return db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, append([]string{"__name__"}, keys...), append([]string{metricName}, values...)).Scan(&tableName, &seriesIDKeyVal)
 }
 
 type labels_r struct {
@@ -587,7 +586,7 @@ func getSeriesIDForKeyValueArrayBatchUsingKeyValueArray(db *pgxpool.Pool, metric
 		if txn {
 			batch.Queue("BEGIN;")
 		}
-		batch.Queue("SELECT * FROM "+schema.Catalog+".get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, append([]string{"__name__"}, allKeys[n]...), append([]string{metricName}, allValues[n]...))
+		batch.Queue("SELECT * FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, append([]string{"__name__"}, allKeys[n]...), append([]string{metricName}, allValues[n]...))
 		if txn {
 			batch.Queue("COMMIT;")
 		}

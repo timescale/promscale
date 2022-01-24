@@ -13,15 +13,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const (
-	getLabelNamesSQL  = "SELECT distinct key from " + schema.Catalog + ".label"
-	getLabelValuesSQL = "SELECT value from " + schema.Catalog + ".label WHERE key = $1"
-	getLabelsSQL      = "SELECT (" + schema.Prom + ".labels_info($1::int[])).*"
+	getLabelNamesSQL  = "SELECT distinct key from _prom_catalog.label"
+	getLabelValuesSQL = "SELECT value from _prom_catalog.label WHERE key = $1"
+	getLabelsSQL      = "SELECT (prom_api.labels_info($1::int[])).*"
 )
 
 // LabelsReader defines the methods for accessing labels data

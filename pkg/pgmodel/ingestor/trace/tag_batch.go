@@ -12,13 +12,12 @@ import (
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const (
-	insertTagKeySQL = "SELECT %s.put_tag_key($1, $2::%s.tag_type)"
-	insertTagSQL    = "SELECT %s.put_tag($1, $2, $3::%s.tag_type)"
+	insertTagKeySQL = "SELECT ps_trace.put_tag_key($1, $2::ps_trace.tag_type)"
+	insertTagSQL    = "SELECT ps_trace.put_tag($1, $2, $3::ps_trace.tag_type)"
 )
 
 type tag struct {
@@ -46,8 +45,8 @@ func (t tag) Before(item sortable) bool {
 }
 
 func (t tag) AddToDBBatch(batch pgxconn.PgxBatch) {
-	batch.Queue(fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic), t.key, t.typ)
-	batch.Queue(fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic), t.key, t.value, t.typ)
+	batch.Queue(insertTagKeySQL, t.key, t.typ)
+	batch.Queue(insertTagSQL, t.key, t.value, t.typ)
 }
 
 func (t tag) ScanIDs(r pgx.BatchResults) (interface{}, error) {

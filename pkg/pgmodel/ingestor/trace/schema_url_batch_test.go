@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -33,22 +32,22 @@ func TestSchemaURLBatch(t *testing.T) {
 			expectedBatchQueue: 5,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertSchemaURLSQL, schema.TracePublic),
+					Sql:     insertSchemaURLSQL,
 					Args:    []interface{}{schemaURL("anotherTest")},
 					Results: [][]interface{}{{int64(7)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertSchemaURLSQL, schema.TracePublic),
+					Sql:     insertSchemaURLSQL,
 					Args:    []interface{}{schemaURL("null")},
 					Results: [][]interface{}{{nil}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertSchemaURLSQL, schema.TracePublic),
+					Sql:     insertSchemaURLSQL,
 					Args:    []interface{}{schemaURL("test")},
 					Results: [][]interface{}{{int64(6)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertSchemaURLSQL, schema.TracePublic),
+					Sql:     insertSchemaURLSQL,
 					Args:    []interface{}{schemaURL("zero")},
 					Results: [][]interface{}{{int64(0)}},
 				},
@@ -98,7 +97,7 @@ func TestSchemaURLBatch(t *testing.T) {
 			expectedBatchQueue: 1,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertSchemaURLSQL, schema.TracePublic),
+					Sql:     insertSchemaURLSQL,
 					Args:    []interface{}{schemaURL("non-cached url")},
 					Results: [][]interface{}{{"wrong type"}},
 				},

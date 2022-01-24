@@ -15,12 +15,12 @@ BEGIN
         These functions do not exist until the
         idempotent scripts are executed, so we have
         to deal with it "manually"
-        SCHEMA_CATALOG.get_timescale_major_version()
-        SCHEMA_CATALOG.is_timescaledb_oss()
-        SCHEMA_CATALOG.is_timescaledb_installed()
-        SCHEMA_CATALOG.is_multinode()
-        SCHEMA_CATALOG.get_default_chunk_interval()
-        SCHEMA_CATALOG.get_staggered_chunk_interval(...)
+        _prom_catalog.get_timescale_major_version()
+        _prom_catalog.is_timescaledb_oss()
+        _prom_catalog.is_timescaledb_installed()
+        _prom_catalog.is_multinode()
+        _prom_catalog.get_default_chunk_interval()
+        _prom_catalog.get_staggered_chunk_interval(...)
     */
     SELECT count(*) > 0
     INTO STRICT _is_timescaledb_installed
@@ -54,28 +54,28 @@ BEGIN
         AND _is_compression_available
         AND _timescaledb_major_version < 2 THEN
         BEGIN
-            PERFORM SCHEMA_TIMESCALE.add_compression_policy('SCHEMA_TRACING.span', INTERVAL '1 hour');
-            PERFORM SCHEMA_TIMESCALE.add_compression_policy('SCHEMA_TRACING.event', INTERVAL '1 hour');
-            PERFORM SCHEMA_TIMESCALE.add_compression_policy('SCHEMA_TRACING.link', INTERVAL '1 hour');
+            PERFORM public.add_compression_policy('_ps_trace.span', INTERVAL '1 hour');
+            PERFORM public.add_compression_policy('_ps_trace.event', INTERVAL '1 hour');
+            PERFORM public.add_compression_policy('_ps_trace.link', INTERVAL '1 hour');
         EXCEPTION
             WHEN undefined_function THEN
                 RAISE NOTICE 'add_compression_policy does not exist';
         END;
     END IF;
 
-    ALTER TABLE SCHEMA_TRACING.span
+    ALTER TABLE _ps_trace.span
         ADD CONSTRAINT span_span_id_check CHECK (span_id != 0),
         ADD CONSTRAINT span_parent_span_id_check CHECK (parent_span_id != 0);
 
-    ALTER TABLE SCHEMA_TRACING.event
+    ALTER TABLE _ps_trace.event
         ADD CONSTRAINT event_span_id_check CHECK (span_id != 0);
 
-    ALTER TABLE SCHEMA_TRACING.link
+    ALTER TABLE _ps_trace.link
         ADD CONSTRAINT link_span_id_check CHECK (span_id != 0),
         ADD CONSTRAINT link_linked_span_id_check CHECK (linked_span_id != 0);
 END;
 $block$
 ;
 
-DROP FUNCTION IF EXISTS SCHEMA_TRACING_PUBLIC.put_tag_key(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_type);
-DROP FUNCTION IF EXISTS SCHEMA_TRACING_PUBLIC.put_tag(SCHEMA_TRACING_PUBLIC.tag_k, SCHEMA_TRACING_PUBLIC.tag_v, SCHEMA_TRACING_PUBLIC.tag_type);
+DROP FUNCTION IF EXISTS ps_trace.put_tag_key(ps_trace.tag_k, ps_trace.tag_type);
+DROP FUNCTION IF EXISTS ps_trace.put_tag(ps_trace.tag_k, ps_trace.tag_v, ps_trace.tag_type);

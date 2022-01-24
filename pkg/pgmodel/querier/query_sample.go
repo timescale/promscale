@@ -139,7 +139,7 @@ func fetchMultipleMetricsSamples(tools *queryTools, metadata *evalMetadata) ([]s
 		// We only support default data schema for multi-metric queries
 		// NOTE: this needs to be updated once we add support for storing
 		// non-view metrics into multiple schemas
-		if metricInfo.TableSchema != schema.Data {
+		if metricInfo.TableSchema != schema.PromData {
 			return nil, fmt.Errorf("found unsupported metric schema in multi-metric matching query")
 		}
 
