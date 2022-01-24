@@ -1,1 +1,1 @@
-DROP FUNCTION IF EXISTS SCHEMA_CATALOG.hypertable_compression_stats(name);
+DROP FUNCTION IF EXISTS _prom_catalog.hypertable_compression_stats(name);

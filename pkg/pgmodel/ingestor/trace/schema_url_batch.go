@@ -10,11 +10,10 @@ import (
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const insertSchemaURLSQL = `SELECT %s.put_schema_url($1)`
+const insertSchemaURLSQL = `SELECT ps_trace.put_schema_url($1)`
 
 type schemaURL string
 
@@ -30,7 +29,7 @@ func (s schemaURL) Before(url sortable) bool {
 }
 
 func (s schemaURL) AddToDBBatch(batch pgxconn.PgxBatch) {
-	batch.Queue(fmt.Sprintf(insertSchemaURLSQL, schema.TracePublic), s)
+	batch.Queue(insertSchemaURLSQL, s)
 }
 
 func (s schemaURL) ScanIDs(r pgx.BatchResults) (interface{}, error) {

@@ -1,5 +1,5 @@
 
-CREATE OR REPLACE VIEW SCHEMA_TRACING_PUBLIC.span AS
+CREATE OR REPLACE VIEW ps_trace.span AS
 SELECT
     s.trace_id,
     s.span_id,
@@ -26,16 +26,16 @@ SELECT
     s.resource_tags,
     s.resource_dropped_tags_count,
     u2.url as resource_schema_url
-FROM SCHEMA_TRACING.span s
-LEFT OUTER JOIN SCHEMA_TRACING.operation o ON (s.operation_id = o.id)
-LEFT OUTER JOIN SCHEMA_TRACING.tag t ON (o.service_name_id = t.id AND t.key = 'service.name') -- partition elimination
-LEFT OUTER JOIN SCHEMA_TRACING.instrumentation_lib il ON (s.instrumentation_lib_id = il.id)
-LEFT OUTER JOIN SCHEMA_TRACING.schema_url u1 on (il.schema_url_id = u1.id)
-LEFT OUTER JOIN SCHEMA_TRACING.schema_url u2 on (il.schema_url_id = u2.id)
+FROM _ps_trace.span s
+LEFT OUTER JOIN _ps_trace.operation o ON (s.operation_id = o.id)
+LEFT OUTER JOIN _ps_trace.tag t ON (o.service_name_id = t.id AND t.key = 'service.name') -- partition elimination
+LEFT OUTER JOIN _ps_trace.instrumentation_lib il ON (s.instrumentation_lib_id = il.id)
+LEFT OUTER JOIN _ps_trace.schema_url u1 on (il.schema_url_id = u1.id)
+LEFT OUTER JOIN _ps_trace.schema_url u2 on (il.schema_url_id = u2.id)
 ;
-GRANT SELECT ON SCHEMA_TRACING_PUBLIC.span to prom_reader;
+GRANT SELECT ON ps_trace.span to prom_reader;
 
-CREATE OR REPLACE VIEW SCHEMA_TRACING_PUBLIC.event AS
+CREATE OR REPLACE VIEW ps_trace.event AS
 SELECT
     e.trace_id,
     e.span_id,
@@ -57,14 +57,14 @@ SELECT
     s.resource_dropped_tags_count,
     s.status_code,
     s.status_message
-FROM SCHEMA_TRACING.event e
-LEFT OUTER JOIN SCHEMA_TRACING.span s on (e.span_id = s.span_id AND e.trace_id = s.trace_id)
-LEFT OUTER JOIN SCHEMA_TRACING.operation o ON (s.operation_id = o.id)
-LEFT OUTER JOIN SCHEMA_TRACING.tag t ON (o.service_name_id = t.id AND t.key = 'service.name') -- partition elimination
+FROM _ps_trace.event e
+LEFT OUTER JOIN _ps_trace.span s on (e.span_id = s.span_id AND e.trace_id = s.trace_id)
+LEFT OUTER JOIN _ps_trace.operation o ON (s.operation_id = o.id)
+LEFT OUTER JOIN _ps_trace.tag t ON (o.service_name_id = t.id AND t.key = 'service.name') -- partition elimination
 ;
-GRANT SELECT ON SCHEMA_TRACING_PUBLIC.event to prom_reader;
+GRANT SELECT ON ps_trace.event to prom_reader;
 
-CREATE OR REPLACE VIEW SCHEMA_TRACING_PUBLIC.link AS
+CREATE OR REPLACE VIEW ps_trace.link AS
 SELECT
     s1.trace_id                         ,
     s1.span_id                          ,
@@ -118,8 +118,8 @@ SELECT
     s2.resource_schema_url              as linked_resource_schema_url        ,
     k.tags as link_tags,
     k.dropped_tags_count as dropped_link_tags_count
-FROM SCHEMA_TRACING.link k
-LEFT OUTER JOIN SCHEMA_TRACING_PUBLIC.span s1 on (k.span_id = s1.span_id and k.trace_id = s1.trace_id)
-LEFT OUTER JOIN SCHEMA_TRACING_PUBLIC.span s2 on (k.linked_span_id = s2.span_id and k.linked_trace_id = s2.trace_id)
+FROM _ps_trace.link k
+LEFT OUTER JOIN ps_trace.span s1 on (k.span_id = s1.span_id and k.trace_id = s1.trace_id)
+LEFT OUTER JOIN ps_trace.span s2 on (k.linked_span_id = s2.span_id and k.linked_trace_id = s2.trace_id)
 ;
-GRANT SELECT ON SCHEMA_TRACING_PUBLIC.link to prom_reader;
+GRANT SELECT ON ps_trace.link to prom_reader;

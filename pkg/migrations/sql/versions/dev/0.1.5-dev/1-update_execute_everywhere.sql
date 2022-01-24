@@ -1,5 +1,5 @@
 --table to save commands so they can be run when adding new nodes
- CREATE TABLE SCHEMA_CATALOG.remote_commands(
+ CREATE TABLE _prom_catalog.remote_commands(
     key TEXT PRIMARY KEY,
     seq SERIAL,
     transactional BOOLEAN,
@@ -13,7 +13,7 @@ DROP PROCEDURE execute_everywhere(text, BOOLEAN);
 CREATE OR REPLACE PROCEDURE execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
-        INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
+        INSERT INTO _prom_catalog.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
         ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
 END
 $func$ LANGUAGE PLPGSQL;
@@ -46,51 +46,51 @@ CALL execute_everywhere('grant_prom_reader_prom_writer',$ee$
 $ee$);
 
 CALL execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- catalog tables + internal functions
-    GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
-    GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_reader;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_CATALOG GRANT SELECT ON TABLES TO prom_reader;
-    GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_writer;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_CATALOG TO prom_writer;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_CATALOG GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
+    CREATE SCHEMA IF NOT EXISTS _prom_catalog; -- catalog tables + internal functions
+    GRANT USAGE ON SCHEMA _prom_catalog TO prom_reader;
+    GRANT SELECT ON ALL TABLES IN SCHEMA _prom_catalog TO prom_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA _prom_catalog GRANT SELECT ON TABLES TO prom_reader;
+    GRANT USAGE ON SCHEMA _prom_catalog TO prom_writer;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA _prom_catalog TO prom_writer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA _prom_catalog GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- public functions
-    GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_api; -- public functions
+    GRANT USAGE ON SCHEMA prom_api TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
-    GRANT USAGE ON SCHEMA SCHEMA_EXT TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _prom_ext; -- optimized versions of functions created by the extension
+    GRANT USAGE ON SCHEMA _prom_ext TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES; -- series views
-    GRANT USAGE ON SCHEMA SCHEMA_SERIES TO prom_reader;
-    GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_SERIES TO prom_reader;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_SERIES GRANT SELECT ON TABLES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_series; -- series views
+    GRANT USAGE ON SCHEMA prom_series TO prom_reader;
+    GRANT SELECT ON ALL TABLES IN SCHEMA prom_series TO prom_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA prom_series GRANT SELECT ON TABLES TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC; -- metric views
-    GRANT USAGE ON SCHEMA SCHEMA_METRIC TO prom_reader;
-    GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_METRIC TO prom_reader;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_METRIC GRANT SELECT ON TABLES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_metric; -- metric views
+    GRANT USAGE ON SCHEMA prom_metric TO prom_reader;
+    GRANT SELECT ON ALL TABLES IN SCHEMA prom_metric TO prom_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA prom_metric GRANT SELECT ON TABLES TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
-    GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_DATA TO prom_reader;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA GRANT SELECT ON TABLES TO prom_reader;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_writer;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_DATA TO prom_writer;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
+    CREATE SCHEMA IF NOT EXISTS prom_data;
+    GRANT USAGE ON SCHEMA prom_data TO prom_reader;
+    GRANT SELECT ON ALL TABLES IN SCHEMA prom_data TO prom_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA prom_data GRANT SELECT ON TABLES TO prom_reader;
+    GRANT USAGE ON SCHEMA prom_data TO prom_writer;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA prom_data TO prom_writer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA prom_data GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_SERIES;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
-    GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA_SERIES GRANT SELECT ON TABLES TO prom_reader;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_writer;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA SCHEMA_DATA_SERIES TO prom_writer;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_DATA_SERIES GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
+    CREATE SCHEMA IF NOT EXISTS prom_data_series;
+    GRANT USAGE ON SCHEMA prom_data_series TO prom_reader;
+    GRANT SELECT ON ALL TABLES IN SCHEMA prom_data_series TO prom_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA prom_data_series GRANT SELECT ON TABLES TO prom_reader;
+    GRANT USAGE ON SCHEMA prom_data_series TO prom_writer;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA prom_data_series TO prom_writer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA prom_data_series GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prom_writer;
 
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
-    GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
-    GRANT SELECT ON ALL TABLES IN SCHEMA SCHEMA_INFO TO prom_reader;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA SCHEMA_INFO GRANT SELECT ON TABLES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_info;
+    GRANT USAGE ON SCHEMA prom_info TO prom_reader;
+    GRANT SELECT ON ALL TABLES IN SCHEMA prom_info TO prom_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA prom_info GRANT SELECT ON TABLES TO prom_reader;
 END $$ $ee$);
 
 --real function
@@ -99,7 +99,7 @@ AS $func$
 BEGIN
     EXECUTE command;
 
-    INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
+    INSERT INTO _prom_catalog.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
     ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
 
     BEGIN

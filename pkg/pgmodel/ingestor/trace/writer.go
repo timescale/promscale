@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/clockcache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
@@ -34,11 +33,11 @@ const (
 )
 
 const (
-	insertSpanLinkSQL = `INSERT INTO %s.link (trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, trace_state, tags, dropped_tags_count, link_nbr)
+	insertSpanLinkSQL = `INSERT INTO _ps_trace.link (trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, trace_state, tags, dropped_tags_count, link_nbr)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-	insertSpanEventSQL = `INSERT INTO %s.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count)
+	insertSpanEventSQL = `INSERT INTO _ps_trace.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	insertSpanSQL = `INSERT INTO %s.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
+	insertSpanSQL = `INSERT INTO _ps_trace.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
 		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		ON CONFLICT DO NOTHING`  // Most cases conflict only happens on retries, safe to ignore duplicate data.
@@ -76,7 +75,7 @@ func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagsBatch t
 		if err != nil {
 			return err
 		}
-		linkBatch.Queue(fmt.Sprintf(insertSpanLinkSQL, schema.Trace),
+		linkBatch.Queue(insertSpanLinkSQL,
 			traceID,
 			spanID,
 			spanStartTime,
@@ -98,7 +97,7 @@ func (t *traceWriterImpl) queueSpanEvents(eventBatch pgxconn.PgxBatch, tagsBatch
 		if err != nil {
 			return err
 		}
-		eventBatch.Queue(fmt.Sprintf(insertSpanEventSQL, schema.Trace),
+		eventBatch.Queue(insertSpanEventSQL,
 			event.Timestamp().AsTime(),
 			traceID,
 			spanID,
@@ -267,7 +266,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 				eventTimeRange := getEventTimeRange(span.Events())
 
 				spanBatch.Queue(
-					fmt.Sprintf(insertSpanSQL, schema.Trace),
+					insertSpanSQL,
 					traceID,
 					spanID,
 					getTraceStateValue(span.TraceState()),

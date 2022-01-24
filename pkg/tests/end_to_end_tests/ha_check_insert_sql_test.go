@@ -15,7 +15,6 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 type leaseState struct {
@@ -31,7 +30,7 @@ func (l leaseState) String() string {
 }
 
 func callUpdateLease(db *pgxpool.Pool, cluster, writer string, minT, maxT time.Time) (*leaseState, error) {
-	row := db.QueryRow(context.Background(), "SELECT * FROM "+schema.Catalog+".update_lease($1,$2,$3,$4)", cluster, writer, minT, maxT)
+	row := db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.update_lease($1,$2,$3,$4)", cluster, writer, minT, maxT)
 	lock := leaseState{}
 	if err := row.Scan(&lock.cluster, &lock.leader, &lock.leaseStart, &lock.leaseUntil); err != nil {
 		return nil, err
@@ -42,7 +41,7 @@ func callUpdateLease(db *pgxpool.Pool, cluster, writer string, minT, maxT time.T
 func checkLease(db *pgxpool.Pool, lock *leaseState, wantedLockState *leaseState) bool {
 	row := db.QueryRow(
 		context.Background(),
-		"SELECT lease_start, lease_until FROM "+schema.Catalog+".ha_leases WHERE cluster_name = $1",
+		"SELECT lease_start, lease_until FROM _prom_catalog.ha_leases WHERE cluster_name = $1",
 		wantedLockState.cluster,
 	)
 	var start, stop time.Time

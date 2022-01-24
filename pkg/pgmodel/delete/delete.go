@@ -79,7 +79,7 @@ func getMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.
 func filterMetricNameSeriesIds(metrics, schemas []string, seriesIds [][]model.SeriesID) (filteredMetrics []string, filteredSeriesIds [][]model.SeriesID) {
 	for i := range metrics {
 		metricSchema := schemas[i]
-		if metricSchema != schema.Data {
+		if metricSchema != schema.PromData {
 			continue
 		}
 		metric := metrics[i]

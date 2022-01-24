@@ -7,7 +7,6 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -49,72 +48,72 @@ func TestTagBatch(t *testing.T) {
 			expectedBatchQueue: 8,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"first", SpanTagType},
 					Results: [][]interface{}{{int64(1)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"first", `"anotherTest"`, SpanTagType},
 					Results: [][]interface{}{{int64(2)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"null", SpanTagType},
 					Results: [][]interface{}{{nil}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"null", `""`, SpanTagType},
 					Results: [][]interface{}{{nil}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"second", SpanTagType},
 					Results: [][]interface{}{{int64(3)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"second", `"anotherTest"`, SpanTagType},
 					Results: [][]interface{}{{int64(4)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"test", SpanTagType},
 					Results: [][]interface{}{{int64(7)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"test", `""`, SpanTagType},
 					Results: [][]interface{}{{int64(8)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"test", EventTagType},
 					Results: [][]interface{}{{int64(9)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"test", `""`, EventTagType},
 					Results: [][]interface{}{{int64(10)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"test", ResourceTagType},
 					Results: [][]interface{}{{int64(5)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"test", `"first"`, ResourceTagType},
 					Results: [][]interface{}{{int64(6)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"zero", SpanTagType},
 					Results: [][]interface{}{{int64(0)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"zero", `""`, SpanTagType},
 					Results: [][]interface{}{{int64(0)}},
 				},
@@ -164,12 +163,12 @@ func TestTagBatch(t *testing.T) {
 			expectedBatchQueue: 1,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"non-cached", SpanTagType},
 					Results: [][]interface{}{{"wrong type"}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"non-cached", `""`, SpanTagType},
 					Results: [][]interface{}{{int64(999)}},
 				},
@@ -182,12 +181,12 @@ func TestTagBatch(t *testing.T) {
 			expectedBatchQueue: 1,
 			queries: []model.SqlQuery{
 				{
-					Sql:     fmt.Sprintf(insertTagKeySQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagKeySQL,
 					Args:    []interface{}{"non-cached", SpanTagType},
 					Results: [][]interface{}{{int64(999)}},
 				},
 				{
-					Sql:     fmt.Sprintf(insertTagSQL, schema.TracePublic, schema.TracePublic),
+					Sql:     insertTagSQL,
 					Args:    []interface{}{"non-cached", `""`, SpanTagType},
 					Results: [][]interface{}{{"wrong type"}},
 				},

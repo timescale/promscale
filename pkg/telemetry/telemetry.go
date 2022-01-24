@@ -18,7 +18,6 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/promql"
@@ -106,7 +105,7 @@ func (t *engineImpl) writeMetadata() error {
 }
 
 const (
-	metadataUpdateWithExtension = "SELECT " + schema.Ext + ".update_tsprom_metadata($1, $2, $3)"
+	metadataUpdateWithExtension = "SELECT _prom_ext.update_tsprom_metadata($1, $2, $3)"
 	metadataUpdateNoExtension   = "INSERT INTO _timescaledb_catalog.metadata(key, value, include_in_telemetry) VALUES ('promscale_' || $1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, include_in_telemetry = EXCLUDED.include_in_telemetry"
 )
 
@@ -277,9 +276,8 @@ func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
 	//		promscale_trace_query_requests_executed_total = $7,
 	//		promscale_trace_dependency_requests_executed_total = $8
 
-	query := fmt.Sprintf(`INSERT INTO %s.promscale_instance_information(%s) VALUES (%s)
+	query := fmt.Sprintf(`INSERT INTO _ps_catalog.promscale_instance_information(%s) VALUES (%s)
 	ON CONFLICT (uuid) DO UPDATE SET %s`,
-		schema.PromscaleCatalog,
 		strings.Join(columnNames, ", "),
 		strings.Join(indexes, ", "),
 		strings.Join(updateStatements, ", "),

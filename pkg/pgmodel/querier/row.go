@@ -153,7 +153,7 @@ func (r *sampleRow) Close() {
 }
 
 func (r *sampleRow) GetAdditionalLabels() (ll labels.Labels) {
-	if r.schema != "" && r.schema != schema.Data {
+	if r.schema != "" && r.schema != schema.PromData {
 		ll = append(ll, labels.Label{Name: model.SchemaNameLabelName, Value: r.schema})
 	}
 	if r.column != "" && r.column != defaultColumnName {

@@ -16,7 +16,6 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -273,14 +272,14 @@ func retryAfterDecompression(ctx context.Context, conn pgxconn.PgxConn, req copy
 	}
 	log.Warn("msg", fmt.Sprintf("Table %s was compressed, decompressing", table), "table", table, "min-time", minTime, "age", time.Since(minTime), "delay-job-by", delayBy)
 
-	_, rescheduleErr := conn.Exec(context.Background(), "SELECT "+schema.Catalog+".delay_compression_job($1, $2)",
+	_, rescheduleErr := conn.Exec(context.Background(), "SELECT _prom_catalog.delay_compression_job($1, $2)",
 		table, time.Now().Add(delayBy))
 	if rescheduleErr != nil {
 		log.Error("msg", rescheduleErr, "context", "Rescheduling compression")
 		return rescheduleErr
 	}
 
-	_, decompressErr := conn.Exec(context.Background(), "CALL "+schema.Catalog+".decompress_chunks_after($1, $2);", table, minTime)
+	_, decompressErr := conn.Exec(context.Background(), "CALL _prom_catalog.decompress_chunks_after($1, $2);", table, minTime)
 	if decompressErr != nil {
 		log.Error("msg", decompressErr, "context", "Decompressing chunks")
 		return decompressErr
@@ -402,18 +401,18 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 		totalExemplars += numExemplars
 		if hasSamples {
 			numRowsPerInsert = append(numRowsPerInsert, numSamples)
-			batch.Queue("SELECT "+schema.Catalog+".insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.info.TableName, timeSamples, valSamples, seriesIdSamples)
+			batch.Queue("SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])", req.info.TableName, timeSamples, valSamples, seriesIdSamples)
 		}
 		if hasExemplars {
 			// We cannot send 2-D [][]TEXT to postgres via the pgx.encoder. For this and easier querying reasons, we create a
-			// new type in postgres by the name SCHEMA_PROM.label_value_array and use that type as array (which forms a 2D array of TEXT)
+			// new type in postgres by the name prom_api.label_value_array and use that type as array (which forms a 2D array of TEXT)
 			// which is then used to push using the unnest method apprach.
 			labelValues := pgmodel.GetCustomType(pgmodel.LabelValueArray)
 			if err := labelValues.Set(exemplarLbls); err != nil {
 				return fmt.Errorf("setting prom_api.label_value_array[] value: %w", err), lowestMinTime
 			}
 			numRowsPerInsert = append(numRowsPerInsert, numExemplars)
-			batch.Queue("SELECT "+schema.Catalog+".insert_exemplar_row($1::NAME, $2::TIMESTAMPTZ[], $3::BIGINT[], $4::"+schema.Prom+".label_value_array[], $5::DOUBLE PRECISION[])", req.info.TableName, timeExemplars, seriesIdExemplars, labelValues, valExemplars)
+			batch.Queue("SELECT _prom_catalog.insert_exemplar_row($1::NAME, $2::TIMESTAMPTZ[], $3::BIGINT[], $4::prom_api.label_value_array[], $5::DOUBLE PRECISION[])", req.info.TableName, timeExemplars, seriesIdExemplars, labelValues, valExemplars)
 		}
 	}
 
@@ -421,8 +420,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 	//thus we don't need row locking here. Note by doing this check at the end we can
 	//have some wasted work for the inserts before this fails but this is rare.
 	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
-	epochCheck := fmt.Sprintf("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN %s.epoch_abort($1) END FROM %s.ids_epoch LIMIT 1", schema.Catalog, schema.Catalog)
-	batch.Queue(epochCheck, int64(lowestEpoch))
+	batch.Queue("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1", int64(lowestEpoch))
 
 	NumRowsPerBatch.Observe(float64(numRowsTotal))
 	NumInsertsPerBatch.Observe(float64(len(reqs)))
@@ -476,7 +474,7 @@ func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows
 		helps[i] = reqs[i].Help
 	}
 	start := time.Now()
-	row := conn.QueryRow(context.Background(), "SELECT "+schema.Catalog+".insert_metric_metadatas($1::TIMESTAMPTZ[], $2::TEXT[], $3::TEXT[], $4::TEXT[], $5::TEXT[])",
+	row := conn.QueryRow(context.Background(), "SELECT _prom_catalog.insert_metric_metadatas($1::TIMESTAMPTZ[], $2::TEXT[], $3::TEXT[], $4::TEXT[], $5::TEXT[])",
 		timeSlice, metricFamilies, types, units, helps)
 	if err := row.Scan(&insertedRows); err != nil {
 		return 0, fmt.Errorf("send metadata batch: %w", err)

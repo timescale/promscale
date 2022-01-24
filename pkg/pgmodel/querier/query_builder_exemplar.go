@@ -36,8 +36,8 @@ const (
 func buildSingleMetricExemplarsQuery(metadata *evalMetadata) string {
 	filter := metadata.timeFilter
 	finalSQL := fmt.Sprintf(exemplarByMetricSQLFormat,
-		pgx.Identifier{schema.Exemplar, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.PromDataExemplar, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.PromDataSeries, filter.metric}.Sanitize(),
 		strings.Join(metadata.clauses, " AND "),
 		filter.start,
 		filter.end,
@@ -53,8 +53,8 @@ func buildMultipleMetricExemplarsQuery(filter timeFilter, series []pgmodel.Serie
 	baseQuery := exemplarsBySeriesIDsSQLFormat
 	return fmt.Sprintf(
 		baseQuery,
-		pgx.Identifier{schema.Exemplar, filter.metric}.Sanitize(),
-		pgx.Identifier{schema.DataSeries, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.PromDataExemplar, filter.metric}.Sanitize(),
+		pgx.Identifier{schema.PromDataSeries, filter.metric}.Sanitize(),
 		strings.Join(s, ","),
 		filter.start,
 		filter.end,

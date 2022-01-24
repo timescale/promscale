@@ -10,11 +10,10 @@ import (
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-const insertInstrumentationLibSQL = `SELECT %s.put_instrumentation_lib($1, $2, $3)`
+const insertInstrumentationLibSQL = `SELECT ps_trace.put_instrumentation_lib($1, $2, $3)`
 
 type instrumentationLibrary struct {
 	name        string
@@ -44,7 +43,7 @@ func (il instrumentationLibrary) Before(item sortable) bool {
 }
 
 func (il instrumentationLibrary) AddToDBBatch(batch pgxconn.PgxBatch) {
-	batch.Queue(fmt.Sprintf(insertInstrumentationLibSQL, schema.TracePublic), il.name, il.version, il.schemaURLID)
+	batch.Queue(insertInstrumentationLibSQL, il.name, il.version, il.schemaURLID)
 }
 
 func (il instrumentationLibrary) ScanIDs(r pgx.BatchResults) (interface{}, error) {

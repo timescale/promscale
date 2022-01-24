@@ -1,46 +1,46 @@
-CALL SCHEMA_CATALOG.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG; -- this will be limited to metric and probably renamed in future
-    GRANT USAGE ON SCHEMA SCHEMA_CATALOG TO prom_reader;
+CALL _prom_catalog.execute_everywhere('create_schemas', $ee$ DO $$ BEGIN
+    CREATE SCHEMA IF NOT EXISTS _prom_catalog; -- this will be limited to metric and probably renamed in future
+    GRANT USAGE ON SCHEMA _prom_catalog TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_PROM; -- public functions
-    GRANT USAGE ON SCHEMA SCHEMA_PROM TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_api; -- public functions
+    GRANT USAGE ON SCHEMA prom_api TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_EXT; -- optimized versions of functions created by the extension
-    GRANT USAGE ON SCHEMA SCHEMA_EXT TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _prom_ext; -- optimized versions of functions created by the extension
+    GRANT USAGE ON SCHEMA _prom_ext TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_SERIES; -- series views
-    GRANT USAGE ON SCHEMA SCHEMA_SERIES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_series; -- series views
+    GRANT USAGE ON SCHEMA prom_series TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_METRIC; -- metric views
-    GRANT USAGE ON SCHEMA SCHEMA_METRIC TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_metric; -- metric views
+    GRANT USAGE ON SCHEMA prom_metric TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_data;
+    GRANT USAGE ON SCHEMA prom_data TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_SERIES;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_SERIES TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_data_series;
+    GRANT USAGE ON SCHEMA prom_data_series TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_INFO;
-    GRANT USAGE ON SCHEMA SCHEMA_INFO TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS prom_info;
+    GRANT USAGE ON SCHEMA prom_info TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_DATA_EXEMPLAR;
-    GRANT USAGE ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_reader;
-    GRANT ALL ON SCHEMA SCHEMA_DATA_EXEMPLAR TO prom_writer;
+    CREATE SCHEMA IF NOT EXISTS prom_data_exemplar;
+    GRANT USAGE ON SCHEMA prom_data_exemplar TO prom_reader;
+    GRANT ALL ON SCHEMA prom_data_exemplar TO prom_writer;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TAG;
-    GRANT USAGE ON SCHEMA SCHEMA_TAG TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS ps_tag;
+    GRANT USAGE ON SCHEMA ps_tag TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _ps_trace;
+    GRANT USAGE ON SCHEMA _ps_trace TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_TRACING_PUBLIC;
-    GRANT USAGE ON SCHEMA SCHEMA_TRACING_PUBLIC TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS ps_trace;
+    GRANT USAGE ON SCHEMA ps_trace TO prom_reader;
 
-    CREATE SCHEMA IF NOT EXISTS SCHEMA_PS_CATALOG;
-    GRANT USAGE ON SCHEMA SCHEMA_PS_CATALOG TO prom_reader;
+    CREATE SCHEMA IF NOT EXISTS _ps_catalog;
+    GRANT USAGE ON SCHEMA _ps_catalog TO prom_reader;
 END $$ $ee$);
 
-CREATE TABLE IF NOT EXISTS SCHEMA_PS_CATALOG.promscale_instance_information (
+CREATE TABLE IF NOT EXISTS _ps_catalog.promscale_instance_information (
     uuid                                                UUID NOT NULL PRIMARY KEY,
     last_updated                                        TIMESTAMPTZ NOT NULL,
     promscale_ingested_samples_total                    BIGINT DEFAULT 0 NOT NULL,
@@ -52,5 +52,5 @@ CREATE TABLE IF NOT EXISTS SCHEMA_PS_CATALOG.promscale_instance_information (
     is_counter_reset_row                                BOOLEAN DEFAULT FALSE NOT NULL, -- counter reset row has '00000000-0000-0000-0000-000000000000' uuid
     CHECK((uuid = '00000000-0000-0000-0000-000000000000' OR NOT is_counter_reset_row) AND (uuid != '00000000-0000-0000-0000-000000000000' OR is_counter_reset_row))
 );
-GRANT SELECT ON TABLE SCHEMA_PS_CATALOG.promscale_instance_information TO prom_reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE SCHEMA_PS_CATALOG.promscale_instance_information TO prom_writer;
+GRANT SELECT ON TABLE _ps_catalog.promscale_instance_information TO prom_reader;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_catalog.promscale_instance_information TO prom_writer;

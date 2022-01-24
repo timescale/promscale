@@ -11,15 +11,14 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const (
-	leasesTable         = schema.Catalog + ".ha_leases"
-	leaseLogsTable      = schema.Catalog + ".ha_leases_logs"
-	updateLeaseFn       = schema.Catalog + ".update_lease"
-	tryChangeLeaderFn   = schema.Catalog + ".try_change_leader"
+	leasesTable         = "_prom_catalog.ha_leases"
+	leaseLogsTable      = "_prom_catalog.ha_leases_logs"
+	updateLeaseFn       = "_prom_catalog.update_lease"
+	tryChangeLeaderFn   = "_prom_catalog.try_change_leader"
 	updateLeaseSQL      = "SELECT * FROM " + updateLeaseFn + "($1, $2, $3, $4)"
 	tryChangeLeaderSQL  = "SELECT * FROM " + tryChangeLeaderFn + "($1, $2, $3)"
 	latestLeaseStateSQL = "SELECT leader_name, lease_start, lease_until FROM " + leasesTable + " WHERE cluster_name = $1"

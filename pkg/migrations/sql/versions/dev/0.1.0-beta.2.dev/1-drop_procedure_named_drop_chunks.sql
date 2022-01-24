@@ -1,1 +1,1 @@
-DROP PROCEDURE IF EXISTS SCHEMA_PROM.drop_chunks();
+DROP PROCEDURE IF EXISTS prom_api.drop_chunks();

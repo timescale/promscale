@@ -7,11 +7,11 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	pgErrors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tracer"
@@ -19,8 +19,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const getCreateMetricsTableWithNewSQL = "SELECT id, table_name, possibly_new FROM " + schema.Catalog + ".get_or_create_metric_table_name($1)"
-const createExemplarTable = "SELECT * FROM " + schema.Catalog + ".create_exemplar_table_if_not_exists($1)"
+const getCreateMetricsTableWithNewSQL = "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)"
+const createExemplarTable = "SELECT * FROM _prom_catalog.create_exemplar_table_if_not_exists($1)"
 
 func containsExemplars(data []model.Insertable) bool {
 	for _, row := range data {
@@ -72,7 +72,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (info model.MetricInfo
 
 	// Setting schema to default data schema and series table defaults to
 	// table name. This is always true for raw metrics as is the case here.
-	info.TableSchema = schema.Data
+	info.TableSchema = schema.PromData
 	info.SeriesTable = info.TableName
 
 	return info, possiblyNew, nil
@@ -83,7 +83,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (info model.MetricInfo
 // rest is handled by completeMetricTableCreation().
 func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMetricCreationSignal chan struct{}, metricTableNames cache.MetricCache) (info model.MetricInfo, err error) {
 	// Metric batchers are always initialized with metric names of samples and not of exemplars.
-	mInfo, err := metricTableNames.Get(schema.Data, metricName, false)
+	mInfo, err := metricTableNames.Get(schema.PromData, metricName, false)
 	if err == nil && mInfo.TableName != "" {
 		return mInfo, nil
 	}
@@ -101,7 +101,7 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 	// Metric table is filled during start, but exemplar table is filled when we
 	// first see an exemplar. Hence, that's the place to sent isExemplar as true.
 	_ = metricTableNames.Set(
-		schema.Data,
+		schema.PromData,
 		metricName,
 		mInfo,
 		false,

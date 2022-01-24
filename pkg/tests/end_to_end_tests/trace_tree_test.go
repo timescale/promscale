@@ -11,7 +11,6 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 /*
@@ -44,7 +43,7 @@ func TestTraceTreeFuncs(t *testing.T) {
 }
 
 func testTraceTreeFuncsInserts(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
-	var insertSpans = fmt.Sprintf(`
+	var insertSpans = `
 WITH x(span_id, parent_span_id) AS
 (
     VALUES
@@ -67,7 +66,7 @@ WITH x(span_id, parent_span_id) AS
         (17,   13),
         (18,   15)
 )
-INSERT INTO %s.span
+INSERT INTO _ps_trace.span
 (
     trace_id,
     span_id,
@@ -92,13 +91,13 @@ SELECT
     '{}'::jsonb::tag_map,
     -1
 FROM x
-;`, schema.Trace)
+;`
 	exec, err := db.Exec(ctx, insertSpans)
 	require.NoError(t, err, "Failed to insert spans")
 	require.Equal(t, int64(18), exec.RowsAffected(), "Expected to insert 18 spans. Got: %v", exec.RowsAffected())
 
-	var insertDecoy = fmt.Sprintf(`
-INSERT INTO %s.span
+	var insertDecoy = `
+INSERT INTO _ps_trace.span
 (
     trace_id,
     span_id,
@@ -122,7 +121,7 @@ SELECT
     'STATUS_CODE_OK',
     '{}'::jsonb::tag_map,
     -1
-;`, schema.Trace)
+;`
 	exec, err = db.Exec(ctx, insertDecoy)
 	require.NoError(t, err, "Failed to insert decoy span: %v", err)
 	require.Equal(t, int64(1), exec.RowsAffected(), "Expected to insert 1 spans. Got: %v", exec.RowsAffected())

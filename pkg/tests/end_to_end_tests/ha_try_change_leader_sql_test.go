@@ -12,11 +12,10 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
 func callTryChangeLeader(db *pgxpool.Pool, cluster, writer string, maxT time.Time) (*leaseState, error) {
-	row := db.QueryRow(context.Background(), "SELECT * FROM "+schema.Catalog+".try_change_leader($1,$2,$3)", cluster, writer, maxT)
+	row := db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.try_change_leader($1,$2,$3)", cluster, writer, maxT)
 	lock := leaseState{}
 	if err := row.Scan(&lock.cluster, &lock.leader, &lock.leaseStart, &lock.leaseUntil); err != nil {
 		return nil, err

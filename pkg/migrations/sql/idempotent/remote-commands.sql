@@ -21,10 +21,10 @@ WITH x(key, seq) AS
     ('grant_prom_reader_prom_writer'             ,  6),
     ('create_schemas'                            ,  7),
     ('tracing_types'                             ,  8),
-    ('SCHEMA_CATALOG.do_decompress_chunks_after' ,  9),
-    ('SCHEMA_CATALOG.compress_old_chunks'        , 10)
+    ('_prom_catalog.do_decompress_chunks_after' ,  9),
+    ('_prom_catalog.compress_old_chunks'        , 10)
 )
-UPDATE SCHEMA_CATALOG.remote_commands u SET seq = z.seq
+UPDATE _prom_catalog.remote_commands u SET seq = z.seq
 FROM
 (
     -- our remote commands from above
@@ -33,7 +33,7 @@ FROM
     UNION
     -- any other remote commands get listed afterwards
     SELECT key, (SELECT max(seq) FROM x) + row_number() OVER (ORDER BY seq)
-    FROM SCHEMA_CATALOG.remote_commands k
+    FROM _prom_catalog.remote_commands k
     WHERE NOT EXISTS
     (
         SELECT 1

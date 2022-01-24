@@ -1,1 +1,1 @@
-DROP FUNCTION IF EXISTS SCHEMA_TRACING.get_tag_id(SCHEMA_TRACING_PUBLIC.tag_map, SCHEMA_TRACING_PUBLIC.tag_k) CASCADE;
+DROP FUNCTION IF EXISTS _ps_trace.get_tag_id(ps_trace.tag_map, ps_trace.tag_k) CASCADE;

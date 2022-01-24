@@ -1,22 +1,22 @@
  --perms for schema will be addressed later;
- CREATE SCHEMA IF NOT EXISTS SCHEMA_CATALOG;
+ CREATE SCHEMA IF NOT EXISTS _prom_catalog;
 
 --table to save commands so they can be run when adding new nodes
- CREATE TABLE SCHEMA_CATALOG.remote_commands(
+ CREATE TABLE _prom_catalog.remote_commands(
     key TEXT PRIMARY KEY,
     seq SERIAL,
     transactional BOOLEAN,
     command TEXT
 );
 --only the prom owner has any permissions.
-GRANT ALL ON TABLE SCHEMA_CATALOG.remote_commands to CURRENT_USER;
-GRANT ALL ON SEQUENCE SCHEMA_CATALOG.remote_commands_seq_seq to CURRENT_USER;
+GRANT ALL ON TABLE _prom_catalog.remote_commands to CURRENT_USER;
+GRANT ALL ON SEQUENCE _prom_catalog.remote_commands_seq_seq to CURRENT_USER;
 
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
+CREATE OR REPLACE PROCEDURE _prom_catalog.execute_everywhere(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
     IF command_key IS NOT NULL THEN
-       INSERT INTO SCHEMA_CATALOG.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
+       INSERT INTO _prom_catalog.remote_commands(key, command, transactional) VALUES(command_key, command, transactional)
        ON CONFLICT (key) DO UPDATE SET command = excluded.command, transactional = excluded.transactional;
     END IF;
 
@@ -34,12 +34,12 @@ BEGIN
 END
 $func$ LANGUAGE PLPGSQL;
 --redundant given schema settings but extra caution for this function
-REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.execute_everywhere(text, text, boolean) FROM PUBLIC;
+REVOKE ALL ON PROCEDURE _prom_catalog.execute_everywhere(text, text, boolean) FROM PUBLIC;
 
-CREATE OR REPLACE PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
+CREATE OR REPLACE PROCEDURE _prom_catalog.update_execute_everywhere_entry(command_key text, command TEXT, transactional BOOLEAN = true)
 AS $func$
 BEGIN
-    UPDATE SCHEMA_CATALOG.remote_commands
+    UPDATE _prom_catalog.remote_commands
     SET
         command=update_execute_everywhere_entry.command,
         transactional=update_execute_everywhere_entry.transactional
@@ -47,4 +47,4 @@ BEGIN
 END
 $func$ LANGUAGE PLPGSQL;
 --redundant given schema settings but extra caution for this function
-REVOKE ALL ON PROCEDURE SCHEMA_CATALOG.update_execute_everywhere_entry(text, text, boolean) FROM PUBLIC;
+REVOKE ALL ON PROCEDURE _prom_catalog.update_execute_everywhere_entry(text, text, boolean) FROM PUBLIC;

@@ -1,3 +1,3 @@
-DROP FUNCTION IF EXISTS SCHEMA_TRACING_PUBLIC.upstream_spans(SCHEMA_TRACING_PUBLIC.trace_id, bigint, int) CASCADE;
-DROP FUNCTION IF EXISTS SCHEMA_TRACING_PUBLIC.downstream_spans(SCHEMA_TRACING_PUBLIC.trace_id, bigint, int) CASCADE;
-DROP FUNCTION IF EXISTS SCHEMA_TRACING_PUBLIC.span_tree(SCHEMA_TRACING_PUBLIC.trace_id, bigint, int) CASCADE;
+DROP FUNCTION IF EXISTS ps_trace.upstream_spans(ps_trace.trace_id, bigint, int) CASCADE;
+DROP FUNCTION IF EXISTS ps_trace.downstream_spans(ps_trace.trace_id, bigint, int) CASCADE;
+DROP FUNCTION IF EXISTS ps_trace.span_tree(ps_trace.trace_id, bigint, int) CASCADE;

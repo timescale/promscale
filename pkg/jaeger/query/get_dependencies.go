@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jaegertracing/jaeger/model"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -20,7 +19,7 @@ SELECT
    (SELECT value #>> '{}' FROM _ps_trace.tag WHERE id = parent_op.service_name_id AND key='service.name') as parent_service,
    (SELECT value #>> '{}' FROM _ps_trace.tag WHERE id = child_op.service_name_id AND key='service.name') as child_service,
    sum(ops.cnt) as cnt
-FROM ` + schema.TracePublic + `.operation_calls($1, $2) ops
+FROM ps_trace.operation_calls($1, $2) ops
 INNER JOIN _ps_trace.operation child_op ON (ops.child_operation_id = child_op.id)
 INNER JOIN _ps_trace.operation parent_op ON (ops.parent_operation_id = parent_op.id)
 WHERE parent_op.service_name_id != child_op.service_name_id

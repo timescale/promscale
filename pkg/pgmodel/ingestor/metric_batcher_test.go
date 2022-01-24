@@ -125,9 +125,9 @@ func TestInitializeMetricBatcher(t *testing.T) {
 	require.Equal(t, metricID, info.MetricID)
 
 	// Double-check the cache was set properly.
-	mInfo, err := mockMetrics.Get(schema.Data, metricName, false)
+	mInfo, err := mockMetrics.Get(schema.PromData, metricName, false)
 	require.Nil(t, err)
-	require.Equal(t, schema.Data, mInfo.TableSchema)
+	require.Equal(t, schema.PromData, mInfo.TableSchema)
 	require.Equal(t, metricTableName, mInfo.TableName)
 	require.Equal(t, metricTableName, mInfo.SeriesTable)
 

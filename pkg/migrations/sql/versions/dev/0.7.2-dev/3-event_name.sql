@@ -1,5 +1,5 @@
 /*
-    Remove the event_name_check check constraint on SCHEMA_TRACING.event if it exists
+    Remove the event_name_check check constraint on _ps_trace.event if it exists
     You can't drop the constraint if compression is turned on for the table.
     If compression is on, turn it off.
 */
@@ -23,7 +23,7 @@ BEGIN
         FROM pg_constraint c
         INNER JOIN pg_class t on (c.conrelid = t.oid)
         INNER JOIN pg_namespace n on (c.connamespace = n.oid and t.relnamespace = n.oid)
-        WHERE n.nspname = 'SCHEMA_TRACING'
+        WHERE n.nspname = '_ps_trace'
         AND t.relname = 'event'
         AND c.conname = 'event_name_check'
         AND c.contype = 'c'
@@ -36,9 +36,9 @@ BEGIN
         These functions do not exist until the
         idempotent scripts are executed, so we have
         to deal with it "manually"
-        SCHEMA_CATALOG.get_timescale_major_version()
-        SCHEMA_CATALOG.is_timescaledb_oss()
-        SCHEMA_CATALOG.is_timescaledb_installed()
+        _prom_catalog.get_timescale_major_version()
+        _prom_catalog.is_timescaledb_oss()
+        _prom_catalog.is_timescaledb_installed()
     */
     SELECT count(*) > 0
     INTO STRICT _is_timescaledb_installed
@@ -71,7 +71,7 @@ BEGIN
         -- is compression enabled for the table?
         SELECT compression_enabled INTO _compression_enabled
         FROM timescaledb_information.hypertables
-        WHERE hypertable_schema = 'SCHEMA_TRACING'
+        WHERE hypertable_schema = '_ps_trace'
         AND hypertable_name = 'event'
         ;
 
@@ -88,7 +88,7 @@ BEGIN
                 chunk_name
             ) as chunk_name
             FROM timescaledb_information.chunks
-            WHERE hypertable_schema = 'SCHEMA_TRACING'
+            WHERE hypertable_schema = '_ps_trace'
             AND hypertable_name = 'event'
             AND is_compressed
             ;
@@ -100,11 +100,11 @@ BEGIN
             END LOOP;
 
             -- turn off compression
-            ALTER TABLE SCHEMA_TRACING.event SET (timescaledb.compress=false);
+            ALTER TABLE _ps_trace.event SET (timescaledb.compress=false);
 
             IF _timescaledb_major_version < 2 THEN
                 BEGIN
-                    PERFORM SCHEMA_TIMESCALE.remove_compression_policy('SCHEMA_TRACING.event', true);
+                    PERFORM public.remove_compression_policy('_ps_trace.event', true);
                 EXCEPTION
                     WHEN undefined_function THEN
                         RAISE NOTICE 'remove_compression_policy does not exist';
@@ -114,15 +114,15 @@ BEGIN
     END IF;
 
     -- drop the constraint
-    ALTER TABLE SCHEMA_TRACING.event DROP CONSTRAINT IF EXISTS event_name_check;
+    ALTER TABLE _ps_trace.event DROP CONSTRAINT IF EXISTS event_name_check;
 
     IF _compression_enabled THEN
         -- turn compression back on
-        ALTER TABLE SCHEMA_TRACING.event SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
+        ALTER TABLE _ps_trace.event SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
 
         IF _timescaledb_major_version < 2 THEN
             BEGIN
-                PERFORM SCHEMA_TIMESCALE.add_compression_policy('SCHEMA_TRACING.event', INTERVAL '1 hour');
+                PERFORM public.add_compression_policy('_ps_trace.event', INTERVAL '1 hour');
             EXCEPTION
                 WHEN undefined_function THEN
                     RAISE NOTICE 'add_compression_policy does not exist';

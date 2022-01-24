@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -20,9 +19,9 @@ func MetricQuery(conn pgxconn.PgxConn, metric string, limit int) (map[string][]m
 		err  error
 	)
 	if metric != "" {
-		rows, err = conn.Query(context.Background(), "SELECT * from "+schema.Prom+".get_metric_metadata($1)", metric)
+		rows, err = conn.Query(context.Background(), "SELECT * from prom_api.get_metric_metadata($1)", metric)
 	} else {
-		rows, err = conn.Query(context.Background(), "SELECT metric_family, type, unit, help from "+schema.Catalog+".metadata ORDER BY metric_family, last_seen DESC")
+		rows, err = conn.Query(context.Background(), "SELECT metric_family, type, unit, help from _prom_catalog.metadata ORDER BY metric_family, last_seen DESC")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query metric metadata: %w", err)
