@@ -67,6 +67,7 @@ var flagAliases = map[string][]string{
 	"metrics.cache.metrics.size":        {"metrics-cache-size"},
 	"metrics.cache.series.initial-size": {"series-cache-initial-size"},
 	"metrics.cache.series.max-bytes":    {"series-cache-max-bytes"},
+	"metrics.high-availability":         {"high-availability"},
 	"metrics.ignore-samples-written-to-compressed-chunks": {"ignore-samples-written-to-compressed-chunks"},
 	"metrics.multi-tenancy":                               {"multi-tenancy"},
 	"metrics.multi-tenancy.allow-non-tenants":             {"multi-tenancy-allow-non-tenants"},
