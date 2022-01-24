@@ -55,7 +55,7 @@ global:
 ```
 
 After Prometheus instances are configured to send the correct labels,
-Promscale simply needs to be started with the `-high-availability` CLI flag.
+Promscale simply needs to be started with the `-metrics.high-availability` CLI flag.
 Internally, Promscale will elect a single replica per cluster to be the
 current leader. Only data sent from that replica will be ingested. If that
 leader-replica stops sending data, then a new replica will be elected as the
