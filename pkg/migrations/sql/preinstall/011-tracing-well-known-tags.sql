@@ -179,4 +179,4 @@ VALUES
     (173, 'exception.stacktrace', 15),
     (174, 'exception.escaped', 15)
 ;
-SELECT setval('SCHEMA_TRACING.tag_key_id_seq', 1000);
+PERFORM setval('SCHEMA_TRACING.tag_key_id_seq', 1000);
