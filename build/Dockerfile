@@ -17,6 +17,7 @@ RUN GIT_COMMIT=$(git rev-list -1 HEAD) \
 
 # Final image
 FROM busybox
+ENV PROMSCALE_PKG=docker
 LABEL maintainer="Timescale https://www.timescale.com"
 COPY --from=builder /bin/promscale /
 ENTRYPOINT ["/promscale"]

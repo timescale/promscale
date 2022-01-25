@@ -17,6 +17,9 @@ We use the following categories for changes:
 ### Added
 - Add support to instrument Promscale's Otel GRPC server with Prometheus metrics [#1061]
 
+### Fixed
+- Fix broken `promscale_packager` telemetry field for docker envs [#1077]
+
 ## [0.8.0] - 2022-01-18
 
 ### Added
