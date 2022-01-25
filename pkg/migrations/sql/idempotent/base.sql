@@ -100,6 +100,22 @@ LANGUAGE SQL VOLATILE;
 --only used for setting chunk interval, and admin function
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_staggered_chunk_interval(INTERVAL) TO prom_admin;
 
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_job()
+    RETURNS INTEGER
+AS $func$
+SELECT 12377;
+$func$
+    LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_job() TO prom_writer;
+
+CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance()
+    RETURNS INTEGER
+AS $func$
+   SELECT 12378;
+$func$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance() TO prom_maintenance;
+
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.lock_metric_for_maintenance(metric_id int, wait boolean = true)
     RETURNS BOOLEAN
 AS $func$
@@ -107,11 +123,11 @@ DECLARE
     res BOOLEAN;
 BEGIN
     IF NOT wait THEN
-        SELECT pg_try_advisory_lock(ADVISORY_LOCK_PREFIX_MAINTENACE, metric_id) INTO STRICT res;
+        SELECT pg_try_advisory_lock(SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance(), metric_id) INTO STRICT res;
 
         RETURN res;
     ELSE
-        PERFORM pg_advisory_lock(ADVISORY_LOCK_PREFIX_MAINTENACE, metric_id);
+        PERFORM pg_advisory_lock(SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance(), metric_id);
 
         RETURN TRUE;
     END IF;
@@ -125,7 +141,7 @@ CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.unlock_metric_for_maintenance(metric_i
 AS $func$
 DECLARE
 BEGIN
-    PERFORM pg_advisory_unlock(ADVISORY_LOCK_PREFIX_MAINTENACE, metric_id);
+    PERFORM pg_advisory_unlock(SCHEMA_CATALOG.get_advisory_lock_prefix_maintenance(), metric_id);
 END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
@@ -2728,7 +2744,7 @@ BEGIN
         WHERE h.schema_name = 'SCHEMA_DATA' and h.table_name = ht_table;
 
         --alter job schedule is not currently concurrency-safe (timescaledb issue #2165)
-        PERFORM pg_advisory_xact_lock(ADVISORY_LOCK_PREFIX_JOB, bgw_job_id);
+        PERFORM pg_advisory_xact_lock(SCHEMA_CATALOG.get_advisory_lock_prefix_job(), bgw_job_id);
 
         PERFORM SCHEMA_TIMESCALE.alter_job_schedule(bgw_job_id, next_start=>GREATEST(new_start, (SELECT next_start FROM timescaledb_information.policy_stats WHERE job_id = bgw_job_id)));
     END IF;
