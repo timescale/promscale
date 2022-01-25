@@ -61,12 +61,10 @@ func turnOffPackageLogging() {
 
 func getPkgEnv() string {
 	pkg := os.Getenv("PROMSCALE_PKG")
-	switch pkg {
-	case "deb", "rpm", "apk":
-		return pkg
-	default:
-		return "unknown"
+	if pkg == "" {
+		pkg = "unknown"
 	}
+	return pkg
 }
 
 func toString(prop []byte) string {
