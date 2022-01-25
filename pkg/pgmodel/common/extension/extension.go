@@ -29,11 +29,11 @@ type ExtensionMigrateOptions struct {
 	UpgradePreRelease bool
 }
 
-// MigrateTimescaleDBExtension installs or updates TimescaleDB
+// InstallUpgradeTimescaleDBExtensions installs or updates TimescaleDB
 // Note that after this call any previous connections can break
 // so this has to be called ahead of opening connections.
 //
-// Also this takes a connection string not a connection because for
+// Note: this takes a connection string not a connection because for
 // updates the ALTER has to be the first command on the connection
 // thus we cannot reuse existing connections
 func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMigrateOptions) error {
@@ -218,9 +218,10 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 	}
 
 	if !isInstalled {
+		log.Info("msg", "installing extension", "extension_name", extName)
 		_, extErr := conn.Exec(context.Background(),
-			fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s WITH SCHEMA %s VERSION '%s'",
-				extName, extSchemaName, getSqlVersion(*newVersion, extName)))
+			fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s VERSION '%s'",
+				extName, getSqlVersion(*newVersion, extName)))
 		if extErr != nil {
 			return extErr
 		}
@@ -240,6 +241,7 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 		log.Info("msg", "using a higher extension version than expected", "extension_name", extName, "current_version", currentVersion, "expected_version", newVersion)
 		return nil
 	} else if comparator == 0 {
+		log.Info("msg", "extension already installed, skipping installation", "extension_name", extName, "current_version", currentVersion)
 		//Nothing to do we are at the correct version
 		return nil
 	} else {

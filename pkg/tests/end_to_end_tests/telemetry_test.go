@@ -280,7 +280,7 @@ func TestTelemetrySQLStats(t *testing.T) {
 		require.Equal(t, "0", metrics) // Without promscale_extension, this will give error saying "no rows in result set".
 
 		// Add dummy metric.
-		_, err = conn.Exec(context.Background(), "SELECT create_metric_table('test_metric')")
+		_, err = conn.Exec(context.Background(), "SELECT _prom_catalog.create_metric_table('test_metric')")
 		require.NoError(t, err)
 
 		// Update the last_updated of counter_reset row so that it allows us to scan. Otherwise, the next scan allowed would be after 1 hour.

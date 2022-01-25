@@ -251,12 +251,12 @@ func SetupDBState(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *uti
 		log.Warn("msg", "skipping migration lock")
 	}
 
-	err := pgmodel.Migrate(conn, appVersion, extOptions)
-	if err != nil {
-		return fmt.Errorf("Error while trying to migrate DB: %w", err)
-	}
+	//err := pgmodel.Migrate(conn, appVersion, extOptions)
+	//if err != nil {
+	//	return fmt.Errorf("Error while trying to migrate DB: %w", err)
+	//}
 
-	_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
+	_, err := extension.InstallUpgradePromscaleExtensions(conn, extOptions)
 	if err != nil {
 		return err
 	}
@@ -282,14 +282,10 @@ func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {
 }
 
 // Except for migration, every connection that communicates with the DB must be
-// guarded by an instante of the schema-version lease to ensure that no other
+// guarded by an instance of the schema-version lease to ensure that no other
 // connector can migrate the DB out from under it. We do not bother to release
-// said lease; in such and event the connector will be shutdown anyway, and
+// said lease; in such an event the connector will be shutdown anyway, and
 // connection-death will close the connection.
 func getSchemaLease(ctx context.Context, conn *pgx.Conn) error {
-	err := util.GetSharedLease(ctx, conn, schema.LockID)
-	if err != nil {
-		return err
-	}
-	return pgmodel.CheckSchemaVersion(ctx, conn, appVersion, false)
+	return util.GetSharedLease(ctx, conn, schema.LockID)
 }
