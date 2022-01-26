@@ -1153,6 +1153,7 @@ LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_kv_array(TEXT, text[], text[]) TO prom_writer;
 
 
+
 CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(metric_name TEXT, larray SCHEMA_PROM.label_array, OUT table_name NAME, OUT series_id BIGINT)
 AS $func$
 DECLARE
@@ -1185,33 +1186,6 @@ END
 $func$
 LANGUAGE PLPGSQL VOLATILE;
 GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(TEXT, SCHEMA_PROM.label_array) TO prom_writer;
-
-CREATE OR REPLACE FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(metric_id INT, metric_name TEXT, table_name NAME, larray SCHEMA_PROM.label_array, OUT series_id BIGINT)
-AS $func$
-BEGIN
-   EXECUTE format($query$
-    WITH existing AS (
-        SELECT
-            id,
-            CASE WHEN delete_epoch IS NOT NULL THEN
-                SCHEMA_CATALOG.resurrect_series_ids(%1$L, id)
-            END
-        FROM SCHEMA_DATA_SERIES.%1$I as series
-        WHERE labels = $1
-    )
-    SELECT id FROM existing
-    UNION ALL
-    SELECT SCHEMA_CATALOG.create_series(%2$L, %1$L, $1)
-    LIMIT 1
-   $query$, table_name, metric_id)
-   USING larray
-   INTO series_id;
-
-   RETURN;
-END
-$func$
-LANGUAGE PLPGSQL VOLATILE;
-GRANT EXECUTE ON FUNCTION SCHEMA_CATALOG.get_or_create_series_id_for_label_array(INT, TEXT, NAME, SCHEMA_PROM.label_array) TO prom_writer;
 
 --
 -- Parameter manipulation functions

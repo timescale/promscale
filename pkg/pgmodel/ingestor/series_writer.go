@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	seriesInsertSQL = "SELECT _prom_catalog.get_or_create_series_id_for_label_array($1, $2, $3, l.elem), l.nr FROM unnest($4::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
+	seriesInsertSQL = "SELECT (_prom_catalog.get_or_create_series_id_for_label_array($1, l.elem)).series_id, l.nr FROM unnest($2::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
 )
 
 type seriesWriter struct {
@@ -36,7 +36,7 @@ type labelKey struct {
 }
 
 type SeriesVisitor interface {
-	VisitSeries(func(metricID int64, tableName string, s *model.Series) error) error
+	VisitSeries(func(s *model.Series) error) error
 }
 
 func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} }
@@ -52,8 +52,6 @@ type perMetricInfo struct {
 	maxPos                 int
 	labelArraySet          *pgtype.ArrayType
 	labelArraySetNumLabels int
-	metricID               int64
-	tableName              string
 }
 
 // Set all seriesIds for a samples, fetching any missing ones from the DB,
@@ -63,17 +61,12 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 	defer span.End()
 	infos := make(map[string]*perMetricInfo)
 	seriesCount := 0
-	err := sv.VisitSeries(func(metricID int64, tableName string, series *model.Series) error {
+	err := sv.VisitSeries(func(series *model.Series) error {
 		if !series.IsSeriesIDSet() {
 			metricName := series.MetricName()
 			info, ok := infos[metricName]
 			if !ok {
-				info = &perMetricInfo{
-					metricID:   metricID,
-					tableName:  tableName,
-					metricName: metricName,
-					labelList:  model.NewLabelList(10),
-				}
+				info = &perMetricInfo{metricName: metricName, labelList: model.NewLabelList(10)}
 				infos[metricName] = info
 			}
 			info.series = append(info.series, series)
@@ -143,7 +136,7 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 
 		//transaction per metric to avoid cross-metric locks
 		batch.Queue("BEGIN;")
-		batch.Queue(seriesInsertSQL, info.metricID, metricName, info.tableName, info.labelArraySet)
+		batch.Queue(seriesInsertSQL, metricName, info.labelArraySet)
 		batch.Queue("COMMIT;")
 		batchInfos = append(batchInfos, info)
 	}
