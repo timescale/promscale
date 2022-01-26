@@ -19,6 +19,7 @@ We use the following categories for changes:
 
 ### Fixed
 - Fix broken `promscale_packager` telemetry field for docker envs [#1077]
+- Fix compression of old chunks thus reducing storage requirements [#1081]
 
 ## [0.8.0] - 2022-01-18
 

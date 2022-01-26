@@ -2911,21 +2911,22 @@ BEGIN
     DECLARE
         chunk_schema_name name;
         chunk_table_name name;
+        chunk_range_end timestamptz;
         chunk_num INT;
     BEGIN
-        FOR chunk_schema_name, chunk_table_name, chunk_num IN
+        FOR chunk_schema_name, chunk_table_name, chunk_range_end, chunk_num IN
             SELECT
                 chunk_schema,
                 chunk_name,
+                range_end,
                 row_number() OVER (ORDER BY range_end DESC)
             FROM timescaledb_information.chunks
             WHERE hypertable_schema = 'SCHEMA_DATA'
                 AND hypertable_name = metric_table
                 AND NOT is_compressed
-                AND range_end <= compress_before
             ORDER BY range_end ASC
         LOOP
-            CONTINUE WHEN chunk_num <= 1;
+            CONTINUE WHEN chunk_num <= 1 OR chunk_range_end > compress_before;
             PERFORM SCHEMA_CATALOG.compress_chunk_for_metric(metric_table, chunk_schema_name, chunk_table_name);
             COMMIT;
         END LOOP;
