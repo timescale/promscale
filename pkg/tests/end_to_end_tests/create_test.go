@@ -1233,6 +1233,19 @@ func TestCustomCompressionJob(t *testing.T) {
 		if chunkIsCompressed("1970-03-01 00:00:00.001+00") {
 			t.Error("third chunk compressed too soon")
 		}
+
+		// Add an chunk at current time
+		insert = fmt.Sprintf(`INSERT INTO prom_data."%s" VALUES (NOW(), 0.1, 1);`, tableName)
+		_, err = db.Exec(context.Background(), insert)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		runCompressionJob()
+		// third chunk should be compressed since its not the last chunk anymore
+		if !chunkIsCompressed("1970-03-01 00:00:00.001+00") {
+			t.Error("third chunk not compressed when it should have been")
+		}
 	})
 }
 
