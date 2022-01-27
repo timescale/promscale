@@ -3067,13 +3067,24 @@ $$
 DECLARE
   num_rows BIGINT;
 BEGIN
+    --turns out there is a horrible CPU perf penalty on the DB for ON CONFLICT DO NOTHING.
+    --yet in our data, conflicts are rare. So we first try inserting without ON CONFLICT
+    --and fall back if there is a unique constraint violation.
     EXECUTE FORMAT(
      'INSERT INTO  prom_data.%1$I (time, value, series_id)
-          SELECT * FROM unnest($1, $2, $3) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING',
+          SELECT * FROM unnest($1, $2, $3) a(t,v,s) ORDER BY s,t',
         metric_table
     ) USING time_array, value_array, series_id_array;
     GET DIAGNOSTICS num_rows = ROW_COUNT;
     RETURN num_rows;
+EXCEPTION WHEN unique_violation THEN 
+	EXECUTE FORMAT(
+	'INSERT INTO  prom_data.%1$I (time, value, series_id)
+		 SELECT * FROM unnest($1, $2, $3) a(t,v,s) ORDER BY s,t ON CONFLICT DO NOTHING',
+	   metric_table
+	) USING time_array, value_array, series_id_array;
+	GET DIAGNOSTICS num_rows = ROW_COUNT;
+	RETURN num_rows;
 END;
 $$
 LANGUAGE PLPGSQL;
