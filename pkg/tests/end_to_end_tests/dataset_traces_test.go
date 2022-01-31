@@ -136,8 +136,9 @@ func fillSpanOne(span pdata.Span) {
 	span.SetTraceID(pdata.NewTraceID(traceID1))
 	span.SetSpanID(pdata.NewSpanID(generateRandSpanID()))
 	span.SetName("operationA")
-	span.SetStartTimestamp(testSpanStartTimestamp)
-	span.SetEndTimestamp(testSpanEndTimestamp)
+	// test the logic that detects and fixes end < start
+	span.SetStartTimestamp(testSpanEndTimestamp)
+	span.SetEndTimestamp(testSpanStartTimestamp)
 	span.SetDroppedAttributesCount(1)
 	span.SetTraceState("span-trace-state1")
 	initSpanAttributes(span.Attributes())

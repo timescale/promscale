@@ -276,8 +276,16 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 
 				eventTimeRange := getEventTimeRange(span.Events())
 
-				if maxEndTimestamp < uint64(span.EndTimestamp()) {
-					maxEndTimestamp = uint64(span.EndTimestamp())
+				// postgresql timestamptz only has microsecond precision while time.Time has nanosecond precision
+				start := span.StartTimestamp().AsTime().Truncate(time.Microsecond)
+				end := span.EndTimestamp().AsTime().Truncate(time.Microsecond)
+				// make sure start <= end
+				if end.Before(start) {
+					start, end = end, start
+				}
+
+				if maxEndTimestamp < uint64(end.Unix()) {
+					maxEndTimestamp = uint64(end.Unix())
 				}
 
 				spanBatch.Queue(
@@ -287,8 +295,8 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					getTraceStateValue(span.TraceState()),
 					parentSpanID,
 					operationID,
-					span.StartTimestamp().AsTime(),
-					span.EndTimestamp().AsTime(),
+					start,
+					end,
 					string(jsonTags),
 					span.DroppedAttributesCount(),
 					eventTimeRange,
