@@ -17,6 +17,9 @@ We use the following categories for changes:
 ### Added
 - Add Prometheus metrics support for Tracing [#1102]
 
+### Fixed
+- Fix spans with end < start. Start and end are swapped in this case. [#1096]
+
 ## [0.9.0] - 2022-02-02
 
 ### Added
