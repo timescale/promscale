@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	getMetricTableSQL         = "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)"
+	getMetricTableSQL         = "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)"
 	getExemplarMetricTableSQL = "SELECT COALESCE(table_name, '') FROM _prom_catalog.exemplar WHERE metric_name=$1"
 )
 
