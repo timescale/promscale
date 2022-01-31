@@ -82,7 +82,7 @@ func querySampleMetricTableName(conn pgxconn.PgxConn, schema, metric string) (mI
 		metric,
 	)
 
-	if err = row.Scan(&mInfo.TableSchema, &mInfo.TableName, &mInfo.SeriesTable); err != nil {
+	if err = row.Scan(&mInfo.MetricID, &mInfo.TableSchema, &mInfo.TableName, &mInfo.SeriesTable); err != nil {
 		if err == pgx.ErrNoRows {
 			err = errors.ErrMissingTableName
 		}

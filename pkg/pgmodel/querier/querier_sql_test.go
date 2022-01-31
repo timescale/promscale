@@ -6,10 +6,11 @@ package querier
 
 import (
 	"fmt"
-	"github.com/prometheus/prometheus/model/timestamp"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/clockcache"
@@ -98,9 +99,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
-					Results: model.RowResults{{"prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
 					Err:     fmt.Errorf("some error 2"),
 				},
 			},
@@ -129,9 +130,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
-					Results: model.RowResults{{"prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -213,7 +214,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
 					Results: model.RowResults{nil},
 					Err:     pgx.ErrNoRows,
@@ -249,9 +250,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
-					Results: model.RowResults{{"prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -292,9 +293,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
-					Results: model.RowResults{{"prom_data", "bar", "bar"}},
+					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -339,9 +340,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "custom"},
-					Results: model.RowResults{{"custom_schema", "custom", "bar"}},
+					Results: model.RowResults{{int64(1), "custom_schema", "custom", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -387,9 +388,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
-					Results: model.RowResults{{"prom_data", "bar", "bar"}},
+					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -447,15 +448,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
-					Results: model.RowResults{{"prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "bar"},
-					Results: model.RowResults{{"prom_data", "bar", "bar"}},
+					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -506,9 +507,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "foo"},
-					Results: model.RowResults{{"prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -551,9 +552,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
-					Results: model.RowResults{{"prom_data", "metric", "metric"}},
+					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -612,9 +613,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
-					Results: model.RowResults{{"prom_data", "metric", "metric"}},
+					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -673,9 +674,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
+					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
-					Results: model.RowResults{{"prom_data", "metric", "metric"}},
+					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{

@@ -47,7 +47,7 @@ remote_write:
   remote_timeout: 1m" > $CONF
 
 cleanup() {
-    if [[ $PASSED -ne 5 ]]; then
+    if [[ $PASSED -ne 6 ]]; then
         docker logs e2e-tsdb || true
     fi
     rm $CONF || true
@@ -134,20 +134,30 @@ curl -v \
     --data "custom_metric{custom_label=\"custom_value\"} 5" \
     "${CONNECTOR_URL}/write"
 
-compare_connector_and_prom() {
-    QUERY=${1}
-    CONNECTOR_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/${QUERY}")
-    PROM_OUTPUT=$(curl -s "http://${PROM_URL}/api/v1/${QUERY}")
-    echo "ran: ${QUERY}"
-    echo " connector response: ${CONNECTOR_OUTPUT}"
-    echo "prometheus response: ${PROM_OUTPUT}"
-    if [ "${CONNECTOR_OUTPUT}" != "${PROM_OUTPUT}" ]; then
-        echo "mismatched output"
-        ((FAILED+=1))
-    else
-        ((PASSED+=1))
-    fi
-}
+
+kill $CONN_PID
+
+PROMSCALE_LOG_LEVEL=debug \
+PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_DB_PASSWORD=test \
+PROMSCALE_DB_USER=writer \
+PROMSCALE_DB_NAME=postgres \
+PROMSCALE_DB_SSL_MODE=disable \
+PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
+./promscale -install-extensions=false -migrate=false -upgrade-extensions=false &
+
+CONN_PID=$!
+
+echo "Waiting for connector to be up..."
+wait_for "$CONNECTOR_URL"
+
+echo "Verifying loading cache used by ingest and query paths"
+curl -fs "http://${CONNECTOR_URL}/api/v1/query?query=custom_metric" || exit 1
+
+curl -f \
+    -H "Content-Type: text/plain" \
+    --data "custom_metric{custom_label=\"custom_value_2\"} 5" \
+    "${CONNECTOR_URL}/write" || exit 1
 
 kill $CONN_PID
 
@@ -165,6 +175,21 @@ CONN_PID=$!
 echo "Waiting for connector to be up..."
 wait_for "$CONNECTOR_URL"
 
+compare_connector_and_prom() {
+    QUERY=${1}
+    CONNECTOR_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/${QUERY}")
+    PROM_OUTPUT=$(curl -s "http://${PROM_URL}/api/v1/${QUERY}")
+    echo "ran: ${QUERY}"
+    if [ "${CONNECTOR_OUTPUT}" != "${PROM_OUTPUT}" ]; then
+        echo "mismatched output"
+        echo " connector response: ${CONNECTOR_OUTPUT}"
+        echo "prometheus response: ${PROM_OUTPUT}"
+        ((FAILED+=1))
+    else
+        ((PASSED+=1))
+    fi
+}
+
 END_TIME=$(date +"%s")
 
 DATASET_START_TIME="2020-08-10T10:35:20Z"
@@ -174,7 +199,9 @@ DATASET_END_TIME="2020-08-10T11:43:50Z"
 # Check that backfilled dataset is present in both sources.
 compare_connector_and_prom "query_range?query=demo_disk_usage_bytes%7Binstance%3D%22demo.promlabs.com%3A10002%22%7D&start=$DATASET_START_TIME&end=$DATASET_END_TIME&step=30s"
 compare_connector_and_prom "query?query=demo_cpu_usage_seconds_total%7Binstance%3D%22demo.promlabs.com%3A10000%22%2Cmode%3D%22user%22%7D&time=$DATASET_START_TIME"
-# Check that connector metrics are scraped.  compare_connector_and_prom "query?query=ts_prom_received_samples_total&time=$START_TIME" # Check that connector is up.
+# Check that connector metrics are scraped.  
+compare_connector_and_prom "query?query=ts_prom_received_samples_total&time=$START_TIME" 
+# Check that connector is up.
 compare_connector_and_prom "query?query=up&time=$START_TIME"
 # Check series endpoint matches on connector series.
 compare_connector_and_prom "series?match%5B%5D=ts_prom_sent_samples_total"
@@ -185,11 +212,11 @@ compare_connector_and_prom "series?match%5B%5D=ts_prom_sent_samples_total"
 EXPECTED_OUTPUT1='{"status":"success","data":["__name__","code","custom_label","handler","instance","job","le","method","mode","namespace","node","path","quantile","status","version"]}'
 EXPECTED_OUTPUT2='{"status":"success","data":["__name__","code","custom_label","handler","instance","job","le","method","mode","namespace","node","path","quantile","status"]}'
 LABELS_OUTPUT=$(curl -s "http://${CONNECTOR_URL}/api/v1/labels")
-echo "  labels response: ${LABELS_OUTPUT}"
-echo "expected response: ${EXPECTED_OUTPUT1}"
 
 if [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT1}" ] && [ "${LABELS_OUTPUT}" != "${EXPECTED_OUTPUT2}" ]; then
     echo "TEST FAILED: mismatched output"
+    echo "  labels response: ${LABELS_OUTPUT}"
+    echo "expected response: ${EXPECTED_OUTPUT1}"
     ((FAILED+=1))
 else
     ((PASSED+=1))
