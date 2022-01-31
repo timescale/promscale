@@ -17,7 +17,6 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/go-hclog v1.1.0
-	github.com/hashicorp/go-plugin v1.4.3
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
 	github.com/jackc/pgconn v1.10.1
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
@@ -31,7 +30,7 @@ require (
 	github.com/pbnjay/memory v0.0.0-20201129165224-b12e5d931931
 	github.com/peterbourgon/ff/v3 v3.1.2
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.12.0
+	github.com/prometheus/client_golang v1.12.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.32.1
 	github.com/prometheus/prometheus v1.8.2-0.20220117154355-4855a0c067e2
