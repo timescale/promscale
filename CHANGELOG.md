@@ -20,6 +20,7 @@ We use the following categories for changes:
 ### Fixed
 - Fix spans with end < start. Start and end are swapped in this case. [#1096]
 - Disable push downs which use `offset`, as they are broken [#1129]
+- Fix aggregate pushdown evaluation [#1098]
 
 ## [0.9.0] - 2022-02-02
 
