@@ -2510,6 +2510,14 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			name:  "delta function over range selector with offset",
 			query: `delta(metric_2[1m] offset 3m)`,
 		},
+		{
+			name:  "pushdown with range smaller than instant vector lookback",
+			query: `rate(metric_2[1m]) / metric_2`,
+		},
+		{
+			name:  "pushdown with range smaller than instant vector lookback and offset",
+			query: `rate(metric_2[1m]) / metric_2 offset 2m`,
+		},
 	}
 	start := time.Unix(startTime/1000, 0)
 	end := time.Unix(endTime/1000, 0)
