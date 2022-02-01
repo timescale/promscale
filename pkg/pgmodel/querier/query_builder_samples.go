@@ -163,13 +163,63 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 			orderByClause = "ORDER BY series_id, time"
 		}
 	}
+
+	// On query time ranges in Prometheus:
+	//
+	// When we receive a range query the [`start`, `end`] range specifies the
+	// timespan that we are expected to deliver results for. Similarly, when we
+	// receive an instant query, the `time` parameter specifies the instant
+	// that we are expected to deliver a result for.
+	//
+	// Depending on the query, we may need to look further back in time than
+	// the `start` to deliver results from `start` onwards. For instance, a
+	// range query such as `rate(metric_one[5m])` in the range `(T1, T2)` will
+	// deliver results between T1 and T2, but it has a 5-minute range on
+	// `metric_one`. In order to deliver a result for time T1, we need to get
+	// `metric_one`'s values at (T1 - 5m) and T1. Similarly, an instant query
+	// for `metric_one` at timestamp T3 requires looking back the lookback time
+	// (the default is 5 minutes) to find the most recent samples.
+	// We call this point in time `scan_start`: the point in time at which we
+	// need to start scanning the underlying data to calculate the result. This
+	// could look as follows:
+	//
+	//     scan_start    start                 end
+	//         |-----------|--------------------|
+	//
+	// How do the following time ranges relate to scan_start, start, and end:
+	// - metadata.timeFilter
+	// - metadata.selectHints.{Start, End}
+	//
+	// The timeFilter's time range is determined by `findMinMaxTime` on the
+	// expression being evaluated, and is the widest span of _all_
+	// subexpressions (effectively [min(scan_start), end]).
+	// This means that, for instance, if the following range selector and
+	// instant selector are combined: rate(metric_one[1m]) / metric_one, the
+	// timeFilter.start is T1 - 5m (assuming default lookback time of 5m).
+	// Note: This is problematic because for metric_one[1m] we actually want to
+	// query over [T1 - 1m, end], not [T1 - 5m, end].
+	//
+	// The selectHints' time range is calculated by `getTimeRangesForSelector`,
+	// which determines the correct `scan_start` for the current expression.
+
 	filter := metadata.timeFilter
+	sh := metadata.selectHints
+	var start, end string
+	// selectHints are non-nil when the query was initiated through the `query`
+	// or `query_range` endpoints. They are nil when the query was initiated
+	// through the `read` (remote read) endpoint.
+	if sh != nil {
+		start, end = toRFC3339Nano(sh.Start), toRFC3339Nano(sh.End)
+	} else {
+		start, end = metadata.timeFilter.start, metadata.timeFilter.end
+	}
+
 	finalSQL := fmt.Sprintf(template,
 		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
 		pgx.Identifier{schema.PromDataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(cases, " AND "),
-		filter.start,
-		filter.end,
+		start,
+		end,
 		strings.Join(selectorClauses, ", "),
 		strings.Join(selectors, ", "),
 		orderByClause,
