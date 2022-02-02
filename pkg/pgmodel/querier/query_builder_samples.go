@@ -63,7 +63,7 @@ const (
 			WHERE
 				labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = 'job' and l.value = 'demo');
 	*/
-	timeseriesByMetricSQLFormat = `SELECT series.labels,  %[7]s
+	timeseriesByMetricSQLFormat = `SELECT series.labels, %[7]s
 	FROM %[2]s series
 	INNER JOIN LATERAL (
 		SELECT %[6]s
@@ -81,9 +81,9 @@ const (
 	     %[3]s`
 
 	/* optimized for no clauses besides __name__
-	   uses a inner join without a lateral to allow for better parallel execution
+	   uses an inner join without a lateral to allow for better parallel execution
 	*/
-	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels,  %[7]s
+	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels, %[7]s
 	FROM %[2]s series
 	INNER JOIN (
 		SELECT series_id, %[6]s
@@ -102,10 +102,32 @@ const (
 	defaultColumnName = "value"
 )
 
+// buildSingleMetricSamplesQuery builds a SQL query which fetches the data for
+// one metric.
 func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{}, parser.Node, TimestampSeries, error) {
-	// Aggregators are not in exemplar queries. In sample query, we have aggregations since they are
-	// to serve promql evaluations. But, exemplar queries are fetch-only queries. Their responses are not meant to be
-	// served by any PromQL function.
+	// The basic structure of the SQL query which this function produces is:
+	//		SELECT
+	//		  series.labels
+	//		, <array_aggregator>(metric.value ORDER BY time) as value_array
+	//		[, <array_aggregator>(metric.time ORDER BY time) as time_array] (optional)
+	//		FROM
+	//			<metric name> metric
+	//		INNER JOIN
+	//			<series name> series ON metric.series_id = series.id
+	//		WHERE
+	//			<some WHERE clauses>
+	//		GROUP BY series.id;
+	//
+	// The <array_aggregator> produces an array of values, so each result row
+	// consists of an array of labels, an array of values, and optionally an
+	// array of timestamps.
+	//
+	// In the absence of available pushdowns, the <array_aggregator> is the
+	// `array_agg` Postgres function, and the `time_array` result set is
+	// returned.
+	// When pushdowns are available, the <array_aggregator> is a pushdown
+	// function which the promscale extension provides.
+
 	qf, node, err := getAggregators(metadata.promqlMetadata)
 	if err != nil {
 		return "", nil, nil, nil, err

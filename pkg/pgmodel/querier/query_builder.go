@@ -207,6 +207,8 @@ var (
 	rateIncreaseExtensionRange   = semver.MustParseRange(">= 0.2.0")
 )
 
+// aggregators represent postgres functions which are used for the array
+// aggregation of series values.
 type aggregators struct {
 	timeClause  string
 	timeParams  []interface{}
@@ -216,68 +218,107 @@ type aggregators struct {
 	tsSeries    TimestampSeries //can be NULL and only present if timeClause == ""
 }
 
-/* The path is the list of ancestors (direct parent last) returned node is the most-ancestral node processed by the pushdown */
-// todo: investigate if query hints can have only node and lookback
-func getAggregators(md *promqlMetadata) (*aggregators, parser.Node, error) {
-	path := md.path // PromQL AST.
-	qh := md.queryHints
-	hints := md.selectHints
-	if !extension.ExtensionIsInstalled || qh == nil || hasSubquery(path) || hints == nil {
-		return getDefaultAggregators(), nil, nil
+// getAggregators returns the aggregator which should be used to fetch data for
+// a single metric. It may apply pushdowns to functions.
+func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
+	// todo: investigate if query hints can have only node and lookback
+	if canAttemptPushdown(metadata) {
+		agg, node, err := tryPushDown(metadata)
+		if err == nil && agg != nil {
+			return agg, node, nil
+		}
 	}
 
-	//switch on the current node being processed
-	vs, isVectorSelector := qh.CurrentNode.(*parser.VectorSelector)
+	defaultAggregators := &aggregators{
+		timeClause:  "array_agg(time)",
+		valueClause: "array_agg(value)",
+		unOrdered:   false,
+	}
+
+	return defaultAggregators, nil, nil
+}
+
+func canAttemptPushdown(metadata *promqlMetadata) bool {
+	path := metadata.path // PromQL AST.
+	queryHints := metadata.queryHints
+	selectHints := metadata.selectHints
+	return extension.ExtensionIsInstalled && queryHints != nil && !hasSubquery(path) && selectHints != nil
+}
+
+// tryPushDown inspects the AST above the current node to determine if it's
+// possible to make use of a known pushdown function.
+// The following promQL functions can be pushed down:
+//   `delta`, `increase`, `rate`
+// Additionally, a vector selector can be pushed down.
+// If pushdown is possible, tryPushDown returns the aggregator representing the
+// pushed down function, as well as the new top node resulting from the
+// pushdown. If no pushdown is possible, it returns nil.
+// For more on top nodes, see `engine.populateSeries`
+func tryPushDown(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
+
+	// A function call like `rate(metric[5m])` parses to this AST:
+	//
+	// 	Call -> MatrixSelector -> VectorSelector
+	//
+	// This forms the basis for how we determine if we can do a promQL
+	// pushdown: If the current node is a vector selector, we look up the AST
+	// to check if the "grandparent" node to the vector selector is a known
+	// function which we can push down to the database.
+
+	path := metadata.path
+	queryHints := metadata.queryHints
+	selectHints := metadata.selectHints
+
+	vs, isVectorSelector := queryHints.CurrentNode.(*parser.VectorSelector)
 	if isVectorSelector {
-		/* Try to optimize the aggregation first since that would return less data than a plain vector selector */
 		if len(path) >= 2 {
-			//switch on the 2nd-to-last last path node
-			node := path[len(path)-2]
-			callNode, isCall := node.(*parser.Call)
-			if isCall {
-				switch callNode.Func.Name {
-				case "delta":
-					agg, err := callAggregator(hints, callNode.Func.Name)
-					return agg, node, err
-				case "rate", "increase":
-					if rateIncreaseExtensionRange(extension.PromscaleExtensionVersion) {
-						agg, err := callAggregator(hints, callNode.Func.Name)
-						return agg, node, err
-					}
-				}
+			grandparent := path[len(path)-2]
+			funcName, canPushDown := tryExtractPushdownableFunctionName(grandparent)
+			if canPushDown {
+				agg, err := callAggregator(selectHints, funcName)
+				return agg, grandparent, err
 			}
 		}
 
 		//TODO: handle the instant query (hints.Step==0) case too.
-		/* vector selector pushdown improves performance by selecting from the database only the last point
-		* in a vector selector window(step) this decreases the amount of samples transferred from the DB to Promscale
-		* by orders of magnitude. A vector selector aggregate also does not require ordered inputs which saves
-		* a sort and allows for parallel evaluation. */
-		if hints.Step > 0 &&
-			hints.Range == 0 && /* So this is not an aggregate. That's optimized above */
+
+		// vector selector pushdown improves performance by selecting from the
+		// database only the last point in a vector selector window(step).
+		// This decreases the number of samples transferred from the DB to
+		// Promscale by orders of magnitude. A vector selector aggregate also
+		// does not require ordered inputs which saves a sort and allows for
+		// parallel evaluation.
+		if selectHints.Step > 0 &&
+			selectHints.Range == 0 && /* So this is not an aggregate. That's optimized above */
 			!calledByTimestamp(path) &&
 			vs.OriginalOffset == time.Duration(0) &&
 			vs.Offset == time.Duration(0) &&
 			vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
 			qf := aggregators{
-				valueClause: "vector_selector($%d, $%d,$%d, $%d, time, value)",
-				valueParams: []interface{}{qh.StartTime, qh.EndTime, hints.Step, qh.Lookback.Milliseconds()},
+				valueClause: "vector_selector($%d, $%d, $%d, $%d, time, value)",
+				valueParams: []interface{}{queryHints.StartTime, queryHints.EndTime, selectHints.Step, queryHints.Lookback.Milliseconds()},
 				unOrdered:   true,
-				tsSeries:    newRegularTimestampSeries(qh.StartTime, qh.EndTime, time.Duration(hints.Step)*time.Millisecond),
+				tsSeries:    newRegularTimestampSeries(queryHints.StartTime, queryHints.EndTime, time.Duration(selectHints.Step)*time.Millisecond),
 			}
-			return &qf, qh.CurrentNode, nil
+			return &qf, queryHints.CurrentNode, nil
 		}
 	}
-
-	return getDefaultAggregators(), nil, nil
+	return nil, nil, nil
 }
 
-func getDefaultAggregators() *aggregators {
-	return &aggregators{
-		timeClause:  "array_agg(time)",
-		valueClause: "array_agg(value)",
-		unOrdered:   false,
+func tryExtractPushdownableFunctionName(node parser.Node) (string, bool) {
+	callNode, isCall := node.(*parser.Call)
+	if isCall {
+		switch callNode.Func.Name {
+		case "delta":
+			return callNode.Func.Name, true
+		case "rate", "increase":
+			if rateIncreaseExtensionRange(extension.PromscaleExtensionVersion) {
+				return callNode.Func.Name, true
+			}
+		}
 	}
+	return "", false
 }
 
 func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, error) {
@@ -294,7 +335,7 @@ func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, 
 		}
 	}
 	qf := aggregators{
-		valueClause: "prom_" + funcName + "($%d, $%d,$%d, $%d, time, value)",
+		valueClause: "prom_" + funcName + "($%d, $%d, $%d, $%d, time, value)",
 		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), stepDuration.Milliseconds(), rangeDuration.Milliseconds()},
 		unOrdered:   false,
 		tsSeries:    newRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
