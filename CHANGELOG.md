@@ -14,6 +14,8 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+## [0.9.0] - 2022-02-02
+
 ### Added
 - Add support to instrument Promscale's Otel GRPC server with Prometheus metrics [#1061]
 
