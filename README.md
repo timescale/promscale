@@ -5,6 +5,13 @@
 [![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/promscale/maintainability)
 [![GoDoc](https://godoc.org/github.com/timescale/promscale?status.svg)](https://pkg.go.dev/github.com/timescale/promscale)
 
+- **[Website](https://www.timescale.com/promscale)**
+- **[Slack Community](https://timescaledb.slack.com/)** (join the #promscale channel) 
+- **[Forum](https://www.timescale.com/forum/c/promscale-and-observability)**
+- **[Blog](https://blog.timescale.com/tag/observability/)** 
+
+<img alt="Promscale" src="images/promscale-logo.png" width="600px">
+
 **Promscale is an open source observability backend for metrics and traces
 powered by SQL**.
 
