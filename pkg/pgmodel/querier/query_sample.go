@@ -67,9 +67,11 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 	return sampleRows, nil, nil
 }
 
-// fetchSingleMetricSamples returns all the result rows for a single metric using the
-// query metadata and the tools. It uses the hints and node path to try to push
-// down query functions where possible.
+// fetchSingleMetricSamples returns all the result rows for a single metric
+// using the query metadata and the tools. It uses the hints and node path to
+// try to push down query functions where possible. When a pushdown is
+// successfully applied, the new top node is returned together with the metric
+// rows. For more information about top nodes, see `engine.populateSeries`.
 func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]sampleRow, parser.Node, error) {
 	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata)
 	if err != nil {
