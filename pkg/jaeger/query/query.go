@@ -89,7 +89,6 @@ func (p *Query) FindTraces(ctx context.Context, query *spanstore.TraceQueryParam
 	res, err := findTraces(ctx, p.conn, query)
 	if err == nil {
 		metrics.RequestsTotal.With(prometheus.Labels{"subsystem": "trace", "handler": "find_traces", "code": "200"}).Inc()
-		traceExecutionTime.Observe(time.Since(start).Seconds())
 		traceRequestsExec.Add(1)
 		metrics.RequestsDuration.With(prometheus.Labels{"subsystem": "trace", "handler": "find_traces"}).Observe(time.Since(start).Seconds())
 	} else {
