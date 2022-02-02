@@ -275,7 +275,7 @@ func reportMetricsTelemetry(maxTs int64, numSamples, numMetadata uint64) {
 		return
 	}
 	atomic.StoreInt64(&MaxSentTimestamp, maxTs)
-	metrics.MaxSentTimestamp.Set(float64(maxTs))
+	metrics.StaleMaxSentTimestamp.Set(float64(maxTs))
 }
 
 // Get the handler for a given metric name, creating a new one if none exists
