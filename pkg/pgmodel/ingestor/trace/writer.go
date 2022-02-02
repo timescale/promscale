@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/timestamp"
+
 	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/jackc/pgtype"
-	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
@@ -57,13 +60,18 @@ type traceWriterImpl struct {
 }
 
 func NewWriter(conn pgxconn.PgxConn) *traceWriterImpl {
-	return &traceWriterImpl{
+	writer := &traceWriterImpl{
 		conn:         conn,
 		schemaCache:  newSchemaCache(),
 		instLibCache: newInstrumentationLibraryCache(),
 		opCache:      newOperationCache(),
 		tagCache:     newTagCache(),
 	}
+	registerToMetrics("schema", writer.schemaCache)
+	registerToMetrics("instrumentation_library", writer.instLibCache)
+	registerToMetrics("operation", writer.opCache)
+	registerToMetrics("tag", writer.tagCache)
+	return writer
 }
 
 func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
@@ -124,6 +132,13 @@ func getServiceName(rSpan pdata.ResourceSpans) string {
 }
 
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
+	ingestStart := time.Now()
+	metrics.ActiveWriteRequests.With(prometheus.Labels{"subsystem": "trace"}).Inc()
+	defer func() {
+		metrics.ActiveWriteRequests.With(prometheus.Labels{"subsystem": "trace"}).Dec()
+		metrics.IngestDuration.With(prometheus.Labels{"subsystem": "trace"}).Observe(time.Since(ingestStart).Seconds())
+	}()
+
 	rSpans := traces.ResourceSpans()
 
 	sURLBatch := newSchemaUrlBatch(t.schemaCache)
@@ -207,6 +222,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		return err
 	}
 
+	maxEndTimestamp := uint64(0)
 	spanBatch := t.conn.NewBatch()
 	linkBatch := t.conn.NewBatch()
 	eventBatch := t.conn.NewBatch()
@@ -265,6 +281,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 
 				eventTimeRange := getEventTimeRange(span.Events())
 
+				if maxEndTimestamp < uint64(span.EndTimestamp()) {
+					maxEndTimestamp = uint64(span.EndTimestamp())
+				}
+
 				spanBatch.Queue(
 					insertSpanSQL,
 					traceID,
@@ -290,9 +310,14 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		}
 	}
 
+	start := time.Now()
 	if err := t.sendBatches(ctx, eventBatch, linkBatch, spanBatch); err != nil {
 		return fmt.Errorf("error sending trace batches: %w", err)
 	}
+
+	metrics.InsertDuration.With(prometheus.Labels{"subsystem": "trace"}).Observe(time.Since(start).Seconds())
+	metrics.IngestedTotal.With(prometheus.Labels{"type": "spans"}).Add(float64(traces.SpanCount()))
+	metrics.MaxSentTimestamp.With(prometheus.Labels{"subsystem": "trace"}).Set(float64(maxEndTimestamp))
 
 	// Only report telemetry if ingestion successful.
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
