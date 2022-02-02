@@ -800,7 +800,19 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 	return start, end
 }
 
-func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map[parser.Node]struct{} {
+// populateSeries traverses the promQL AST of evalStmt and augments nodes of
+// type VectorSelector with the series data for that node. It uses the querier
+// to fetch the series data from the database.
+//
+// It's possible that when fetching data for a VectorSelector, a pushdown is
+// applied to the function which was applied to the VectorSelector. An example
+// is the expression `rate(metric[5m])`: the `rate` function is pushed down,
+// but the data is stored in the VectorSelector corresponding to `metric[5m]`.
+// In this case, `rate` function becomes a terminal node for later expression
+// evaluation. These terminal nodes are called "top nodes".
+//
+// populateSeries returns a map keyed by all top nodes.
+func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalStmt) map[parser.Node]struct{} {
 	var (
 		// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 		// The evaluation of the VectorSelector inside then evaluates the given range and unsets
@@ -809,22 +821,22 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map
 		topNodes  map[parser.Node]struct{} = make(map[parser.Node]struct{})
 	)
 
-	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
+	parser.Inspect(evalStmt.Expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
 		case *parser.VectorSelector:
 			var qh *pgquerier.QueryHints
-			start, end := ng.getTimeRangesForSelector(s, n, path, evalRange)
+			start, end := ng.getTimeRangesForSelector(evalStmt, n, path, evalRange)
 			hints := &storage.SelectHints{
 				Start: start,
 				End:   end,
-				Step:  durationMilliseconds(s.Interval),
+				Step:  durationMilliseconds(evalStmt.Interval),
 				Range: durationMilliseconds(evalRange),
 				Func:  extractFuncFromPath(path),
 			}
 
 			qh = &pgquerier.QueryHints{
-				StartTime:   s.Start,
-				EndTime:     s.End,
+				StartTime:   evalStmt.Start,
+				EndTime:     evalStmt.End,
 				CurrentNode: n,
 				Lookback:    ng.lookbackDelta,
 			}
@@ -1244,8 +1256,8 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	defer span.Finish()
 
 	if _, isTopNode := ev.topNodes[expr]; isTopNode {
-		/* the storage layer has already processed this node. Just return
-		the result. */
+		// the storage layer has already processed this node. Just return
+		// the result.
 		var (
 			mat      Matrix
 			warnings storage.Warnings
@@ -1253,7 +1265,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		)
 		parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
 			switch n := node.(type) {
-			/* Note that a MatrixSelector cascades down to it's VectorSelector in Inspect */
+			// Note that a MatrixSelector cascades down to its VectorSelector in Inspect.
 			case *parser.VectorSelector:
 				warnings, err = checkAndExpandSeriesSet(ev.ctx, n)
 				if err != nil {
@@ -1264,8 +1276,8 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 					err = fmt.Errorf("Matrix is already filled in")
 					return err
 				}
-				//all range-vector function calls have their metric name dropped
-				//see eval() function
+				// All range-vector function calls have their metric name
+				// dropped, see eval() function.
 				_, isCall := expr.(*parser.Call)
 				mat = ev.getPushdownResult(n, numSteps, isCall)
 			}
