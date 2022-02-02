@@ -19,13 +19,9 @@ var (
 		Name:      "query_requests_executed_total",
 		Help:      "Total number of query requests successfully executed by /getTrace and /fetchTraces API.",
 	})
-	traceExecutionTime = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: util.PromNamespace,
-		Subsystem: "trace",
-		Name:      "fetch_traces_api_execution_duration_seconds",
-		Help:      "Time taken by a trace query for complete execution in /fetchTraces API.",
-		Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 50, 100, 250, 500, 1000, 2500},
-	})
+	// Even though this is handled by promscale_query_requests_total{subsystem="trace", handler="get_dependencies", code="200"}
+	// yet we will have to keep this metric for telemetry as extracting the underlying series from a metric will require
+	// changing telemetry arch that tracks the all prometheus metrics, just for this metric, which is not worth.
 	dependencyRequestsExec = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: util.PromNamespace,
 		Subsystem: "trace",
@@ -48,7 +44,6 @@ func registerMetricsForTelemetry(t telemetry.Engine) error {
 func init() {
 	prometheus.MustRegister(
 		traceRequestsExec,
-		traceExecutionTime,
 		dependencyRequestsExec,
 	)
 }
