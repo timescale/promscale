@@ -34,7 +34,7 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.32.1
 	github.com/prometheus/prometheus v1.8.2-0.20220117154355-4855a0c067e2
-	github.com/schollz/progressbar/v3 v3.8.5
+	github.com/schollz/progressbar/v3 v3.8.6
 	github.com/sergi/go-diff v1.2.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
 	github.com/stretchr/testify v1.7.0
@@ -49,7 +49,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.3.0
 	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
-	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9
+	golang.org/x/sys v0.0.0-20220128215802-99c3d69c2c27
 	google.golang.org/grpc v1.44.0
 	gopkg.in/yaml.v2 v2.4.0
 )
