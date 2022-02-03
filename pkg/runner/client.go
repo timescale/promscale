@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package runner
 
 import (
@@ -24,8 +25,7 @@ import (
 )
 
 var (
-	appVersion = pgmodel.VersionInfo{Version: version.Promscale, CommitHash: version.CommitHash}
-	//	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
+	appVersion = migrate.VersionInfo{Version: version.Promscale, CommitHash: version.CommitHash}
 )
 
 func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
@@ -106,7 +106,7 @@ func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, erro
 	}
 
 	// Check the database is on the correct version.
-	// This must be done even if we attempted a migrate; if we failed to acquire
+	// This must be done even if we attempted to migrate; if we failed to acquire
 	// the lock we'll start up as-if we were never supposed to migrate in the
 	// first place. This is also needed as checkDependencies populates our
 	// extension metadata
@@ -227,46 +227,6 @@ func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
 	return false, nil
 }
 
-/*
-func SetupDBState(conn *pgx.Conn, appVersion pgmodel.VersionInfo, leaseLock *util.PgAdvisoryLock, extOptions extension.ExtensionMigrateOptions) error {
-	// At startup migrators attempt to grab the schema-version lock. If this
-	// fails that means some other connector is running. All is not lost: some
-	// other connector may have migrated the DB to the correct version. We warn,
-	// then start the connector as normal. If we are on the wrong version, the
-	// normal version-check code will prevent us from running.
-
-	if leaseLock != nil {
-		locked, err := leaseLock.GetAdvisoryLock()
-		if err != nil {
-			return fmt.Errorf("error while acquiring migration lock %w", err)
-		}
-		if !locked {
-			return migrationLockError
-		}
-		defer func() {
-			_, err := leaseLock.Unlock()
-			if err != nil {
-				log.Error("msg", "error while releasing migration lock", "err", err)
-			}
-		}()
-	} else {
-		log.Warn("msg", "skipping migration lock")
-	}
-
-	err := pgmodel.Migrate(conn, appVersion, extOptions)
-	if err != nil {
-		return fmt.Errorf("Error while trying to migrate DB: %w", err)
-	}
-
-	_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-*/
-
 func ApplyDatasetConfig(conn *pgx.Conn, cfgFilename string) error {
 	cfg, err := dataset.NewConfig(cfgFilename)
 	if err != nil {
@@ -285,7 +245,7 @@ func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {
 }
 
 // Except for migration, every connection that communicates with the DB must be
-// guarded by an instante of the schema-version lease to ensure that no other
+// guarded by an instance of the schema-version lease to ensure that no other
 // connector can migrate the DB out from under it. We do not bother to release
 // said lease; in such and event the connector will be shutdown anyway, and
 // connection-death will close the connection.

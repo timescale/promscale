@@ -17,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
+	"github.com/timescale/promscale/pkg/pgmodel/migrate"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/telemetry"
@@ -46,12 +47,12 @@ func TestMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer conn.Release()
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale}, false, extOptions)
+		err = pgmodel.CheckDependencies(conn.Conn(), migrate.VersionInfo{Version: version.Promscale}, false, extOptions)
 		if err != nil {
 			t.Error(err)
 		}
 
-		err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"}, false, extOptions)
+		err = pgmodel.CheckDependencies(conn.Conn(), migrate.VersionInfo{Version: "100.0.0"}, false, extOptions)
 		if err == nil {
 			t.Errorf("Expected error in CheckDependencies")
 		}
@@ -292,7 +293,7 @@ func TestMigrationLib(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Release()
-			mig := pgmodel.NewMigrator(c.Conn(), test_migrations.MigrationFiles, testTOC)
+			mig := migrate.NewMigrator(c.Conn(), test_migrations.MigrationFiles, testTOC)
 
 			err = mig.Migrate(semver.MustParse(version))
 			if !expectErr && err != nil {

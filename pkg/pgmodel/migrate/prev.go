@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package pgmodel
+package migrate
 
 import (
 	"bytes"
@@ -112,32 +112,6 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.Extensi
 	return nil
 }
 
-// CheckDependencies makes sure all project dependencies, including the DB schema
-// the extension, are set up correctly. This will set the ExtensionIsInstalled
-// flag and thus should only be called once, at initialization.
-func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool, extOptions extension.ExtensionMigrateOptions) (err error) {
-	if err = CheckSchemaVersion(context.Background(), db, versionInfo, migrationFailedDueToLockError); err != nil {
-		return err
-	}
-	return extension.CheckVersions(db, migrationFailedDueToLockError, extOptions)
-}
-
-// CheckSchemaVersion checks the DB schema version without checking the extension
-func CheckSchemaVersion(ctx context.Context, conn *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool) error {
-	expectedVersion := semver.MustParse(versionInfo.Version)
-	dbVersion, err := getSchemaVersionOnConnection(ctx, conn)
-	if err != nil {
-		return fmt.Errorf("failed to check schema version: %w", err)
-	}
-	if versionCompare := dbVersion.Compare(expectedVersion); versionCompare != 0 {
-		if versionCompare < 0 && migrationFailedDueToLockError {
-			return fmt.Errorf("Failed to acquire the migration lock to upgrade the schema version and unable to run with the old version. Please ensure that no other Promscale connectors with the old schema version are running. Received schema version %v but expected %v", dbVersion, expectedVersion)
-		}
-		return fmt.Errorf("Error while comparing schema version: received schema version %v but expected %v", dbVersion, expectedVersion)
-	}
-	return nil
-}
-
 type Migrator struct {
 	db       *pgx.Conn
 	sqlFiles http.FileSystem
@@ -237,10 +211,10 @@ func ensureVersionTable(db *pgx.Conn) error {
 }
 
 func getSchemaVersion(db *pgx.Conn) (semver.Version, error) {
-	return getSchemaVersionOnConnection(context.Background(), db)
+	return GetSchemaVersionOnConnection(context.Background(), db)
 }
 
-func getSchemaVersionOnConnection(ctx context.Context, db *pgx.Conn) (semver.Version, error) {
+func GetSchemaVersionOnConnection(ctx context.Context, db *pgx.Conn) (semver.Version, error) {
 	var version semver.Version
 	res, err := db.Query(ctx, getVersion)
 	if err != nil {
