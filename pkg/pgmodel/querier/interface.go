@@ -22,15 +22,22 @@ type SeriesSet interface {
 	Close()
 }
 
-// Querier queries the data using the provided query data and returns the
-// matching timeseries.
+// Querier provides access to the three query methods: remote read, samples,
+// and exemplars.
 type Querier interface {
-	// Query returns resulting timeseries for a query.
-	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
+	// RemoteReadQuerier returns a remote storage querier
+	RemoteReadQuerier() RemoteReadQuerier
 	// SamplesQuerier returns a sample querier.
 	SamplesQuerier() SamplesQuerier
 	// ExemplarsQuerier returns an exemplar querier.
 	ExemplarsQuerier(ctx context.Context) ExemplarQuerier
+}
+
+// RemoteReadQuerier queries the data using the provided query data and returns
+// the matching timeseries.
+type RemoteReadQuerier interface {
+	// Query returns resulting timeseries for a query.
+	Query(*prompb.Query) ([]*prompb.TimeSeries, error)
 }
 
 // SamplesQuerier queries data using the provided query data and returns the

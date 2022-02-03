@@ -21,7 +21,7 @@ func newQuerySamples(qr *pgxQuerier) *querySamples {
 	return &querySamples{qr}
 }
 
-// Select implements the Querier interface. It is the entry point for our
+// Select implements the SamplesQuerier interface. It is the entry point for our
 // own version of the Prometheus engine.
 func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (seriesSet SeriesSet, node parser.Node) {
 	sampleRows, topNode, err := q.fetchSamplesRows(mint, maxt, hints, qh, path, ms)
@@ -112,8 +112,8 @@ func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]samp
 	return samplesRows, topNode, nil
 }
 
-// queryMultipleMetrics returns all the result rows for across multiple metrics
-// using the supplied query parameters.
+// fetchMultipleMetricsSamples returns all the result rows for across multiple
+// metrics using the supplied query parameters.
 func fetchMultipleMetricsSamples(tools *queryTools, metadata *evalMetadata) ([]sampleRow, error) {
 	// First fetch series IDs per metric.
 	metrics, schemas, series, err := GetMetricNameSeriesIds(tools.conn, metadata)
