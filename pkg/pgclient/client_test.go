@@ -36,7 +36,19 @@ func (q mockSamplesQuerier) Select(mint int64, maxt int64, sortSeries bool, hint
 	return nil, nil
 }
 
-func (q *mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
+func (q *mockQuerier) RemoteReadQuerier() querier.RemoteReadQuerier {
+	return mockRemoteReadQuerier{
+		tts: q.tts,
+		err: q.err,
+	}
+}
+
+type mockRemoteReadQuerier struct {
+	tts []*prompb.TimeSeries
+	err error
+}
+
+func (q mockRemoteReadQuerier) Query(_ *prompb.Query) ([]*prompb.TimeSeries, error) {
 	return q.tts, q.err
 }
 

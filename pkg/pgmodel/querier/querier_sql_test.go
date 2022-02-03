@@ -722,7 +722,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			}
 			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0))}}
 
-			result, err := querier.Query(c.query)
+			result, err := querier.RemoteReadQuerier().Query(c.query)
 
 			if err != nil {
 				switch {

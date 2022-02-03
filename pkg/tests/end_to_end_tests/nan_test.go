@@ -129,7 +129,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			dbConn := pgxconn.NewPgxConn(db)
 			labelsReader := lreader.NewLabelsReader(dbConn, lCache)
 			r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
-			resp, err := r.Query(c.query)
+			resp, err := r.RemoteReadQuerier().Query(c.query)
 			if err != nil {
 				t.Fatalf("unexpected error while ingesting test dataset: %s", err)
 			}
