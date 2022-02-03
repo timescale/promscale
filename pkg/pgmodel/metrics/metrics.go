@@ -58,7 +58,8 @@ var (
 			Help:      "Total number of times leader changed per cluster.",
 		},
 		[]string{"cluster"})
-	StaleMaxSentTimestamp = prometheus.NewGauge( // This will be deprecated in the renaming PR.
+	// TODO (Harkishen): This will be deprecated in the renaming PR.
+	StaleMaxSentTimestamp = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
 			Name:      "max_sent_timestamp_milliseconds",
@@ -72,7 +73,7 @@ var (
 			Name:      "ingested_total",
 			Help:      "Total number of insertables ingested in the database.",
 		},
-		[]string{"type"},
+		[]string{"kind", "type"},
 	)
 	ActiveWriteRequests = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -81,7 +82,7 @@ var (
 			Name:      "active_write_requests",
 			Help:      "Number of write requests that are active in the ingestion pipeline.",
 		},
-		[]string{"subsystem"},
+		[]string{"type", "kind"},
 	)
 	InsertDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -91,7 +92,7 @@ var (
 			Help:      "Time taken to insert a batch of samples or traces into the database.",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 50, 100, 250, 500, 1000, 2500},
 		},
-		[]string{"subsystem"},
+		[]string{"type"},
 	)
 	IngestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -101,7 +102,7 @@ var (
 			Help:      "Time taken to process (including filling up caches) and insert a batch of samples or traces into the database.",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 50, 100, 250, 500, 1000, 2500},
 		},
-		[]string{"subsystem"},
+		[]string{"type"},
 	)
 	MaxSentTimestamp = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -110,7 +111,7 @@ var (
 			Name:      "max_sent_timestamp_milliseconds",
 			Help:      "Maximum sent timestamp into the database. For samples, it is the sample timestamp and for traces, it is the maximum end timestamp.",
 		},
-		[]string{"subsystem"},
+		[]string{"type"},
 	)
 	RequestsDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -120,7 +121,7 @@ var (
 			Help:      "Time taken by function to respond to query.",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 50, 100, 250, 500, 1000, 2500},
 		},
-		[]string{"subsystem", "handler"},
+		[]string{"type", "handler", "code"},
 	)
 	RequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -129,7 +130,7 @@ var (
 			Name:      "requests_total",
 			Help:      "Total query requests.",
 		},
-		[]string{"subsystem", "handler", "code"},
+		[]string{"type", "handler", "code"},
 	)
 )
 
