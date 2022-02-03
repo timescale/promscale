@@ -272,7 +272,7 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		t.Fatal(err)
 	}
 	defer conn.Release()
-	err = migrate.SetupDBState(conn.Conn(), migrate.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
+	err = migrate.Run(conn.Conn(), migrate.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
 	if err != nil {
 		t.Fatal(err)
 	}

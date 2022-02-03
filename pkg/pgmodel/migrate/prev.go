@@ -22,12 +22,10 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migrations"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
-	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 )
 
 const (
 	createMigrationsTable   = "CREATE TABLE IF NOT EXISTS prom_schema_migrations (version text not null primary key)"
-	getVersion              = "SELECT version FROM prom_schema_migrations LIMIT 1"
 	setVersion              = "INSERT INTO prom_schema_migrations (version) VALUES ($1)"
 	truncateMigrationsTable = "TRUNCATE prom_schema_migrations"
 
@@ -60,11 +58,6 @@ var (
 	migrationFileNameRegexp = regexp.MustCompile(`([[:digit:]]+)-[[:word:]]+.sql`)
 )
 
-type VersionInfo struct {
-	Version    string
-	CommitHash string
-}
-
 type prefixedName struct {
 	prefix int
 	name   string
@@ -92,8 +85,8 @@ func (p prefixedNames) getNames() []string {
 	return names
 }
 
-// Migrate performs a database migration to the latest version
-func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.ExtensionMigrateOptions) (err error) {
+// migrate performs a database migration to the latest version
+func migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 	migrateMutex.Lock()
 	defer migrateMutex.Unlock()
 
@@ -104,7 +97,7 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.Extensi
 
 	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContents)
 
-	err = mig.Migrate(appVersion)
+	err = mig.migrate(appVersion)
 	if err != nil {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
@@ -122,7 +115,7 @@ func NewMigrator(db *pgx.Conn, sqlFiles http.FileSystem, toc map[string][]string
 	return &Migrator{db: db, sqlFiles: sqlFiles, toc: toc}
 }
 
-func (t *Migrator) Migrate(appVersion semver.Version) error {
+func (t *Migrator) migrate(appVersion semver.Version) error {
 	if err := ensureVersionTable(t.db); err != nil {
 		return fmt.Errorf("error ensuring version table: %w", err)
 	}
@@ -212,28 +205,6 @@ func ensureVersionTable(db *pgx.Conn) error {
 
 func getSchemaVersion(db *pgx.Conn) (semver.Version, error) {
 	return GetSchemaVersionOnConnection(context.Background(), db)
-}
-
-func GetSchemaVersionOnConnection(ctx context.Context, db *pgx.Conn) (semver.Version, error) {
-	var version semver.Version
-	res, err := db.Query(ctx, getVersion)
-	if err != nil {
-		return version, fmt.Errorf("Error getting DB version: %w", err)
-	}
-	defer res.Close()
-
-	for res.Next() {
-		err = res.Scan(&version)
-	}
-	if err != nil {
-		return version, fmt.Errorf("Error getting DB version: %w", err)
-	}
-	err = res.Err()
-	if err != nil {
-		return version, fmt.Errorf("Error getting DB version: %w", err)
-	}
-
-	return version, nil
 }
 
 func (t *Migrator) execMigrationFile(tx pgx.Tx, fileName string) error {
