@@ -105,7 +105,7 @@ func TestMigrateLock(t *testing.T) {
 		if err == nil {
 			t.Fatalf("migration should fail due to lock")
 		}
-		if !strings.Contains(err.Error(), "Could not acquire migration lock") {
+		if !strings.Contains(err.Error(), "could not acquire migration lock") {
 			t.Fatalf("Incorrect error, expected lock failure, foud: %v", err)
 		}
 
