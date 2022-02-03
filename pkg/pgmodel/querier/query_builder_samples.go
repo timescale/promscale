@@ -80,9 +80,8 @@ const (
 	WHERE
 	     %[3]s`
 
-	/* optimized for no clauses besides __name__
-	   uses an inner join without a lateral to allow for better parallel execution
-	*/
+	// This is optimized for no clauses besides __name__, uses an inner join
+	// without a lateral to allow for better parallel execution.
 	timeseriesByMetricSQLFormatNoClauses = `SELECT series.labels, %[7]s
 	FROM %[2]s series
 	INNER JOIN (

@@ -247,9 +247,11 @@ func canAttemptPushdown(metadata *promqlMetadata) bool {
 
 // tryPushDown inspects the AST above the current node to determine if it's
 // possible to make use of a known pushdown function.
-// The following promQL functions can be pushed down:
-//   `delta`, `increase`, `rate`
-// Additionally, a vector selector can be pushed down.
+//
+// We can push down some PromQL functions, as well as a VectorSelector. Refer
+// to tryExtractPushdownableFunctionName to see which PromQL pushdowns are
+// available.
+//
 // If pushdown is possible, tryPushDown returns the aggregator representing the
 // pushed down function, as well as the new top node resulting from the
 // pushdown. If no pushdown is possible, it returns nil.
@@ -289,7 +291,7 @@ func tryPushDown(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
 		// does not require ordered inputs which saves a sort and allows for
 		// parallel evaluation.
 		if selectHints.Step > 0 &&
-			selectHints.Range == 0 && /* So this is not an aggregate. That's optimized above */
+			selectHints.Range == 0 && // So this is not an aggregate. That's optimized above
 			!calledByTimestamp(path) &&
 			vs.OriginalOffset == time.Duration(0) &&
 			vs.Offset == time.Duration(0) &&

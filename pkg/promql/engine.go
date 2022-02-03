@@ -1265,7 +1265,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		)
 		parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
 			switch n := node.(type) {
-			// Note that a MatrixSelector cascades down to its VectorSelector in Inspect
+			// Note that a MatrixSelector cascades down to its VectorSelector in Inspect.
 			case *parser.VectorSelector:
 				warnings, err = checkAndExpandSeriesSet(ev.ctx, n)
 				if err != nil {
@@ -1276,8 +1276,8 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 					err = fmt.Errorf("Matrix is already filled in")
 					return err
 				}
-				// all range-vector function calls have their metric name dropped
-				// see eval() function
+				// All range-vector function calls have their metric name
+				// dropped, see eval() function.
 				_, isCall := expr.(*parser.Call)
 				mat = ev.getPushdownResult(n, numSteps, isCall)
 			}
