@@ -84,9 +84,8 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 	return results, nil
 }
 
-// fetchSingleMetricSamples returns all the result rows for a single metric using the
-// query metadata and the tools. It uses the hints and node path to try to push
-// down query functions where possible.
+// fetchSingleMetricExemplars returns all exemplar rows for a single metric
+// using the query metadata and tools.
 func fetchSingleMetricExemplars(tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
 	sqlQuery := buildSingleMetricExemplarsQuery(metadata)
 
@@ -107,7 +106,7 @@ func fetchSingleMetricExemplars(tools *queryTools, metadata *evalMetadata) ([]ex
 	return exemplarSeriesRows, nil
 }
 
-// queryMultipleMetrics returns all the result rows for across multiple metrics
+// fetchMultipleMetricsExemplars returns all the result rows across multiple metrics
 // using the supplied query parameters.
 func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
 	// First fetch series IDs per metric.

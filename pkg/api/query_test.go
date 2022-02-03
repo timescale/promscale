@@ -70,6 +70,10 @@ func (ms mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.
 	return &mockSeriesSet{err: ms.selectErr}, nil
 }
 
+func (m mockQuerier) RemoteReadQuerier() querier.RemoteReadQuerier {
+	return nil
+}
+
 func (m mockQuerier) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
 	return mockExemplarQuerier{}
 }

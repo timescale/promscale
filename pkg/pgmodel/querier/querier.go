@@ -6,14 +6,12 @@ package querier
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -44,36 +42,16 @@ func NewQuerier(
 	return querier
 }
 
+func (q *pgxQuerier) RemoteReadQuerier() RemoteReadQuerier {
+	return newQueryRemoteRead(q)
+}
+
 func (q *pgxQuerier) SamplesQuerier() SamplesQuerier {
 	return newQuerySamples(q)
 }
 
 func (q *pgxQuerier) ExemplarsQuerier(ctx context.Context) ExemplarQuerier {
 	return newQueryExemplars(q)
-}
-
-// Query implements the Querier interface. It is the entry point for
-// remote-storage queries.
-func (q *pgxQuerier) Query(query *prompb.Query) ([]*prompb.TimeSeries, error) {
-	if query == nil {
-		return []*prompb.TimeSeries{}, nil
-	}
-
-	matchers, err := fromLabelMatchers(query.Matchers)
-	if err != nil {
-		return nil, err
-	}
-
-	qrySamples := newQuerySamples(q)
-	sampleRows, _, err := qrySamples.fetchSamplesRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
-	if err != nil {
-		return nil, err
-	}
-	results, err := buildTimeSeries(sampleRows, q.tools.labelsReader)
-	if err != nil {
-		return nil, fmt.Errorf("building time-series: %w", err)
-	}
-	return results, nil
 }
 
 // errorSeriesSet represents an error result in a form of a series set.

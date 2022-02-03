@@ -216,8 +216,10 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 		Results: make([]*prompb.QueryResult, len(req.Queries)),
 	}
 
+	qr := c.querier.RemoteReadQuerier()
+
 	for i, q := range req.Queries {
-		tts, err := c.querier.Query(q)
+		tts, err := qr.Query(q)
 		if err != nil {
 			return nil, err
 		}

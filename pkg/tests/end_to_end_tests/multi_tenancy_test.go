@@ -72,7 +72,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err := qr.Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -123,7 +123,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -187,7 +187,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -263,7 +263,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 				},
 			},
 		}
-		result, err := qr.Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -287,7 +287,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		// ----- query-test: querying an invalid tenant (tenant-c) -----
 		expectedResult = []prompb.TimeSeries{}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -338,7 +338,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -372,7 +372,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 
 		expectedResult = []prompb.TimeSeries{}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_RE,
@@ -464,7 +464,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 			},
 		}
 
-		result, err := qr.Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -510,7 +510,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 			},
 		}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -564,7 +564,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 			},
 		}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -581,7 +581,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		verifyResults(t, expectedResult, result)
 
 		expectedResult = []prompb.TimeSeries{}
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -658,7 +658,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 			},
 		}
 
-		result, err := qr.Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -709,7 +709,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 			},
 		}
 
-		result, err = qr.Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
