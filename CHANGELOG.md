@@ -14,6 +14,9 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+### Added
+- Add Prometheus metrics support for Tracing [#1102]
+
 ## [0.9.0] - 2022-02-02
 
 ### Added

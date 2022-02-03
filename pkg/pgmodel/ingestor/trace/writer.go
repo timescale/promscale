@@ -60,18 +60,13 @@ type traceWriterImpl struct {
 }
 
 func NewWriter(conn pgxconn.PgxConn) *traceWriterImpl {
-	writer := &traceWriterImpl{
+	return &traceWriterImpl{
 		conn:         conn,
 		schemaCache:  newSchemaCache(),
 		instLibCache: newInstrumentationLibraryCache(),
 		opCache:      newOperationCache(),
 		tagCache:     newTagCache(),
 	}
-	registerToMetrics("schema", writer.schemaCache)
-	registerToMetrics("instrumentation_library", writer.instLibCache)
-	registerToMetrics("operation", writer.opCache)
-	registerToMetrics("tag", writer.tagCache)
-	return writer
 }
 
 func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
@@ -132,11 +127,11 @@ func getServiceName(rSpan pdata.ResourceSpans) string {
 }
 
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
-	ingestStart := time.Now()
-	metrics.ActiveWriteRequests.With(prometheus.Labels{"subsystem": "trace"}).Inc()
+	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
+	metrics.ActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "spans"}).Inc()
 	defer func() {
-		metrics.ActiveWriteRequests.With(prometheus.Labels{"subsystem": "trace"}).Dec()
-		metrics.IngestDuration.With(prometheus.Labels{"subsystem": "trace"}).Observe(time.Since(ingestStart).Seconds())
+		metrics.ActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "spans"}).Dec()
+		metrics.IngestDuration.With(prometheus.Labels{"type": "trace"}).Observe(time.Since(startIngest).Seconds())
 	}()
 
 	rSpans := traces.ResourceSpans()
@@ -315,9 +310,9 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		return fmt.Errorf("error sending trace batches: %w", err)
 	}
 
-	metrics.InsertDuration.With(prometheus.Labels{"subsystem": "trace"}).Observe(time.Since(start).Seconds())
-	metrics.IngestedTotal.With(prometheus.Labels{"type": "spans"}).Add(float64(traces.SpanCount()))
-	metrics.MaxSentTimestamp.With(prometheus.Labels{"subsystem": "trace"}).Set(float64(maxEndTimestamp))
+	metrics.InsertDuration.With(prometheus.Labels{"type": "trace"}).Observe(time.Since(start).Seconds())
+	metrics.IngestedTotal.With(prometheus.Labels{"type": "trace", "kind": "spans"}).Add(float64(traces.SpanCount()))
+	metrics.MaxSentTimestamp.With(prometheus.Labels{"type": "trace"}).Set(float64(maxEndTimestamp))
 
 	// Only report telemetry if ingestion successful.
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())

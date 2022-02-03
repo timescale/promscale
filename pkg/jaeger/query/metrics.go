@@ -13,13 +13,14 @@ import (
 )
 
 var (
+	// TODO (harkishen): update telemetry module to extract metric data from series in new consistent metrics.
 	traceRequestsExec = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: util.PromNamespace,
 		Subsystem: "trace",
 		Name:      "query_requests_executed_total",
 		Help:      "Total number of query requests successfully executed by /getTrace and /fetchTraces API.",
 	})
-	// Even though this is handled by promscale_query_requests_total{subsystem="trace", handler="get_dependencies", code="200"}
+	// Even though this is handled by promscale_query_requests_total{type="trace", handler="get_dependencies", code="200"}
 	// yet we will have to keep this metric for telemetry as extracting the underlying series from a metric will require
 	// changing telemetry arch that tracks the all prometheus metrics, just for this metric, which is not worth.
 	dependencyRequestsExec = prometheus.NewCounter(prometheus.CounterOpts{
