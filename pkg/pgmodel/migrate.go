@@ -18,6 +18,10 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
+const (
+	firstAppVersionWithNewMigration = "0.11.0"
+)
+
 var (
 	migrateMutex = &sync.Mutex{}
 
@@ -54,33 +58,58 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 		log.Warn("msg", "skipping migration lock")
 	}
 
-	err := func(db *pgx.Conn, versionInfo VersionInfo) (err error) {
-		migrateMutex.Lock()
-		defer migrateMutex.Unlock()
-
-		appVersion, err := semver.Make(versionInfo.Version)
-		if err != nil {
-			return errors.ErrInvalidSemverFormat
-		}
-
-		mig := NewMigrator(db, migrations.MigrationFiles, tableOfContents)
-
-		err = mig.Migrate(appVersion)
-		if err != nil {
-			return fmt.Errorf("Error encountered during migration: %w", err)
-		}
-
-		return nil
-	}(conn, appVersion)
+	firstAppVersionWithNewMigration, err := semver.Make(firstAppVersionWithNewMigration)
 	if err != nil {
-		return fmt.Errorf("Error while trying to migrate DB: %w", err)
+		return errors.ErrInvalidSemverFormat
+	}
+	appSemver, err := semver.Make(appVersion.Version)
+	if err != nil {
+		return errors.ErrInvalidSemverFormat
 	}
 
-	_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
-	if err != nil {
-		return err
+	// old way of doing migrations via scripts embedded in the promscale client
+	if appSemver.LT(firstAppVersionWithNewMigration) {
+		err = oldMigration(conn, appSemver)
+		if err != nil {
+			return fmt.Errorf("Error while trying to migrate DB: %w", err)
+		}
+
+		_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
+		if err != nil {
+			return err
+		}
+	} else {
+		// new way of doing migrations via extension upgrades only
+
+		if err = removeOldExtensionIfExists(conn); err != nil {
+			return err
+		}
+
+		_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
+		if err != nil {
+			return err
+		}
 	}
 
+	return nil
+}
+
+func oldMigration(db *pgx.Conn, appVersion semver.Version) (err error) {
+	migrateMutex.Lock()
+	defer migrateMutex.Unlock()
+
+	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContents)
+
+	err = mig.Migrate(appVersion)
+	if err != nil {
+		return fmt.Errorf("Error encountered during migration: %w", err)
+	}
+
+	return nil
+}
+
+func removeOldExtensionIfExists(db *pgx.Conn) (err error) {
+	// TODO
 	return nil
 }
 
