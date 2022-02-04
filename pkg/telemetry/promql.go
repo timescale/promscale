@@ -7,6 +7,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"time"
 
 	"github.com/timescale/promscale/pkg/promql"
@@ -18,7 +19,7 @@ type promqlTelemetry struct {
 	parsedQuery promql.Query
 }
 
-func (t *promqlTelemetry) execute(engine *promql.Engine, queryable promql.Queryable) (float64, error) {
+func (t *promqlTelemetry) execute(engine *promql.Engine, queryable pgquerier.Queryable) (float64, error) {
 	if t.parsedQuery == nil {
 		qry, err := engine.NewInstantQuery(queryable, t.query, time.Now())
 		if err != nil {

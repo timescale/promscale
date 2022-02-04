@@ -14,6 +14,7 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -27,12 +28,12 @@ func (l labelsValue) String() string {
 	return strings.Join(l, "\n")
 }
 
-func Labels(conf *Config, queryable promql.Queryable) http.Handler {
+func Labels(conf *Config, queryable pgquerier.Queryable) http.Handler {
 	hf := corsWrapper(conf, labelsHandler(queryable))
 	return gziphandler.GzipHandler(hf)
 }
 
-func labelsHandler(queryable promql.Queryable) http.HandlerFunc {
+func labelsHandler(queryable pgquerier.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		querier, err := queryable.SamplesQuerier(context.Background(), math.MinInt64, math.MaxInt64)
 		if err != nil {

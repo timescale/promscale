@@ -13,15 +13,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/exemplar"
-	"github.com/timescale/promscale/pkg/promql"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 )
 
-func QueryExemplar(conf *Config, queryable promql.Queryable, metrics *Metrics) http.Handler {
+func QueryExemplar(conf *Config, queryable pgquerier.Queryable, metrics *Metrics) http.Handler {
 	hf := corsWrapper(conf, queryExemplar(queryable, metrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryExemplar(queryable pgquerier.Queryable, metrics *Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {

@@ -11,32 +11,31 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
-	pgQuerier "github.com/timescale/promscale/pkg/pgmodel/querier"
-	"github.com/timescale/promscale/pkg/promql"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 )
 
-func NewQueryable(q pgQuerier.Querier, labelsReader lreader.LabelsReader) promql.Queryable {
+func NewQueryable(q pgquerier.Querier, labelsReader lreader.LabelsReader) pgquerier.Queryable {
 	return &queryable{querier: q, labelsReader: labelsReader}
 }
 
 type queryable struct {
-	querier      pgQuerier.Querier
+	querier      pgquerier.Querier
 	labelsReader lreader.LabelsReader
 }
 
 type samplesQuerier struct {
 	ctx           context.Context
 	mint, maxt    int64
-	metricsReader pgQuerier.Querier
+	metricsReader pgquerier.Querier
 	labelsReader  lreader.LabelsReader
-	seriesSets    []pgQuerier.SeriesSet
+	seriesSets    []pgquerier.SeriesSet
 }
 
-func (q queryable) ExemplarsQuerier(ctx context.Context) pgQuerier.ExemplarQuerier {
+func (q queryable) ExemplarsQuerier(ctx context.Context) pgquerier.ExemplarQuerier {
 	return q.querier.ExemplarsQuerier(ctx)
 }
 
-func (q queryable) SamplesQuerier(ctx context.Context, mint, maxt int64) (promql.SamplesQuerier, error) {
+func (q queryable) SamplesQuerier(ctx context.Context, mint, maxt int64) (pgquerier.SamplesQuerier, error) {
 	return q.newSamplesQuerier(ctx, mint, maxt), nil
 }
 
@@ -65,7 +64,7 @@ func (q *samplesQuerier) Close() {
 	}
 }
 
-func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgQuerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	qry := q.metricsReader.SamplesQuerier()
 	ss, n := qry.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
 	q.seriesSets = append(q.seriesSets, ss)

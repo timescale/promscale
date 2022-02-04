@@ -26,7 +26,7 @@ type mockQuerier struct {
 
 var _ querier.Querier = (*mockQuerier)(nil)
 
-func (q *mockQuerier) SamplesQuerier() querier.SamplesQuerier {
+func (q *mockQuerier) SamplesQuerier() querier.SamplesQuerier2 {
 	return mockSamplesQuerier{}
 }
 

@@ -7,6 +7,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,12 +41,12 @@ type engineImpl struct {
 	stop chan struct{}
 
 	promqlEngine    *promql.Engine
-	promqlQueryable promql.Queryable
+	promqlQueryable pgquerier.Queryable
 
 	metrics sync.Map
 }
 
-func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Queryable) (*engineImpl, error) {
+func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable pgquerier.Queryable) (*engineImpl, error) {
 	isTelemetryOff, err := isTelemetryOff(conn)
 	if err != nil {
 		log.Debug("msg", "unable to get TimescaleDB telemetry configuration. Maybe TimescaleDB is not installed", "err", err.Error())

@@ -35,7 +35,7 @@ import (
 	"github.com/prometheus/prometheus/util/teststorage"
 	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/querier"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 )
 
 var (
@@ -75,7 +75,7 @@ func NewTestStorage(t testutil.T) *TestStorage {
 	return &TestStorage{DB: db, dir: dir}
 }
 
-func (db *TestStorage) SamplesQuerier(ctx context.Context, mint, maxt int64) (SamplesQuerier, error) {
+func (db *TestStorage) SamplesQuerier(ctx context.Context, mint, maxt int64) (pgquerier.SamplesQuerier, error) {
 	q, err := db.DB.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func (db *TestStorage) SamplesQuerier(ctx context.Context, mint, maxt int64) (Sa
 	return &QuerierWrapper{q}, err
 }
 
-func (t *TestStorage) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
+func (t *TestStorage) ExemplarsQuerier(_ context.Context) pgquerier.ExemplarQuerier {
 	return nil
 }
 
@@ -110,7 +110,7 @@ type QuerierWrapper struct {
 	storage.Querier
 }
 
-func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ *querier.QueryHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ *pgquerier.QueryHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	ss := t.Querier.Select(b, sh, m...)
 	return ss, nil
 }
@@ -163,7 +163,7 @@ func (t *Test) QueryEngine() *Engine {
 }
 
 // Queryable allows querying the test data.
-func (t *Test) Queryable() Queryable {
+func (t *Test) Queryable() pgquerier.Queryable {
 	return t.storage
 }
 
