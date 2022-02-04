@@ -114,7 +114,7 @@ func CheckExtensionsVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, 
 }
 
 func checkTimescaleDBVersion(conn *pgx.Conn) error {
-	timescaleVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "timescaledb")
+	timescaleVersion, isInstalled, err := FetchInstalledExtensionVersion(conn, "timescaledb")
 	if err != nil {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
 	}
@@ -181,7 +181,7 @@ func extensionVersions(conn *pgx.Conn, extName string, validRange semver.Range, 
 		return nil, nil, fmt.Errorf("problem fetching default version: %w", err)
 	}
 
-	current, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
+	current, isInstalled, err := FetchInstalledExtensionVersion(conn, extName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("problem getting the installed extension version: %w", err)
 	}
@@ -316,7 +316,7 @@ func fetchDefaultExtensionVersions(conn *pgx.Conn, extName string) (semver.Versi
 	return v, nil
 }
 
-func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semver.Version, bool, error) {
+func FetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semver.Version, bool, error) {
 	var versionString string
 	if err := conn.QueryRow(
 		context.Background(),

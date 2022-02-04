@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	firstAppVersionWithNewMigration = "0.11.0"
+	firstAppVersionWithNewMigration = "0.11.0" // TODO decide the correct version to go here
+	firstExtVersionWithNewMigration = "0.5.0"  // TODO decide the correct version to go here
 )
 
 var (
@@ -85,6 +86,8 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 			return err
 		}
 
+		extOptions.Install = true // TODO decide whether it is appropriate to force this to true
+		extOptions.Upgrade = true // TODO decide whether it is appropriate to force this to true
 		_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
 		if err != nil {
 			return err
@@ -109,7 +112,25 @@ func oldMigration(db *pgx.Conn, appVersion semver.Version) (err error) {
 }
 
 func removeOldExtensionIfExists(db *pgx.Conn) (err error) {
-	// TODO
+	firstExtVersionWithNewMigration, err := semver.Make(firstExtVersionWithNewMigration)
+	if err != nil {
+		return errors.ErrInvalidSemverFormat
+	}
+	version, installed, err := extension.FetchInstalledExtensionVersion(db, "promscale")
+	if err != nil {
+		return err
+	}
+
+	if installed && version.LT(firstExtVersionWithNewMigration) {
+		_, err := db.Exec(
+			context.Background(),
+			"DROP EXTENSION IF EXISTS promscale", // TODO to cascade or not to cascade?
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -117,6 +138,7 @@ func removeOldExtensionIfExists(db *pgx.Conn) (err error) {
 // the extension, are set up correctly. This will set the ExtensionIsInstalled
 // flag and thus should only be called once, at initialization.
 func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool, extOptions extension.ExtensionMigrateOptions) (err error) {
+	// TODO decide how to handle this after the switch
 	if err = CheckSchemaVersion(context.Background(), db, versionInfo, migrationFailedDueToLockError); err != nil {
 		return err
 	}
@@ -125,6 +147,7 @@ func CheckDependencies(db *pgx.Conn, versionInfo VersionInfo, migrationFailedDue
 
 // CheckSchemaVersion checks the DB schema version without checking the extension
 func CheckSchemaVersion(ctx context.Context, conn *pgx.Conn, versionInfo VersionInfo, migrationFailedDueToLockError bool) error {
+	// TODO decide how to handle this after the switch
 	expectedVersion := semver.MustParse(versionInfo.Version)
 	dbVersion, err := getSchemaVersionOnConnection(ctx, conn)
 	if err != nil {
