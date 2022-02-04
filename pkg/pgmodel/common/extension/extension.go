@@ -29,7 +29,7 @@ type ExtensionMigrateOptions struct {
 	UpgradePreRelease bool
 }
 
-// MigrateTimescaleDBExtension installs or updates TimescaleDB
+// InstallUpgradeTimescaleDBExtensions installs or updates TimescaleDB
 // Note that after this call any previous connections can break
 // so this has to be called ahead of opening connections.
 //
