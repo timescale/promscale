@@ -24,7 +24,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/runner"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
 
@@ -273,7 +272,7 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		t.Fatal(err)
 	}
 	defer conn.Release()
-	err = runner.SetupDBState(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
+	err = pgmodel.Migrate(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
