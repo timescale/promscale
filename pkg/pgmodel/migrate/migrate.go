@@ -51,7 +51,7 @@ func Run(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryLock,
 
 	err := migrate(conn, appVersion)
 	if err != nil {
-		return fmt.Errorf("error while trying to migrate DB: %w", err)
+		return fmt.Errorf("error while trying to Migrate DB: %w", err)
 	}
 
 	_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)

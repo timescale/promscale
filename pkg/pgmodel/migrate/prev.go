@@ -97,7 +97,7 @@ func migrate(db *pgx.Conn, versionInfo VersionInfo) (err error) {
 
 	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContents)
 
-	err = mig.migrate(appVersion)
+	err = mig.Migrate(appVersion)
 	if err != nil {
 		return fmt.Errorf("Error encountered during migration: %w", err)
 	}
@@ -115,7 +115,7 @@ func NewMigrator(db *pgx.Conn, sqlFiles http.FileSystem, toc map[string][]string
 	return &Migrator{db: db, sqlFiles: sqlFiles, toc: toc}
 }
 
-func (t *Migrator) migrate(appVersion semver.Version) error {
+func (t *Migrator) Migrate(appVersion semver.Version) error {
 	if err := ensureVersionTable(t.db); err != nil {
 		return fmt.Errorf("error ensuring version table: %w", err)
 	}
@@ -125,7 +125,7 @@ func (t *Migrator) migrate(appVersion semver.Version) error {
 		return fmt.Errorf("failed to get the version from database: %w", err)
 	}
 
-	// If already at correct version, nothing to migrate on proper release.
+	// If already at correct version, nothing to Migrate on proper release.
 	// On dev versions, idempotent files need to be reapplied.
 	if dbVersion.Compare(appVersion) == 0 {
 		devRelease := false
@@ -156,7 +156,7 @@ func (t *Migrator) migrate(appVersion semver.Version) error {
 
 	// Error if at a greater version.
 	if dbVersion.Compare(appVersion) > 0 {
-		return fmt.Errorf("schema version (%v) is above the application version (%v), cannot migrate", dbVersion, appVersion)
+		return fmt.Errorf("schema version (%v) is above the application version (%v), cannot Migrate", dbVersion, appVersion)
 	}
 
 	tx, err := t.db.Begin(context.Background())
