@@ -19,7 +19,7 @@ const (
 // Hence, we must register only once.
 var regSchema, regOp, regInst, regTag sync.Once
 
-func newSchemaCache() *clockcache.Cache {
+func newSchemaCache() *clockcache.Cache { // todo: update these WithMax with WithMetrics once #1102 is merged.
 	c := clockcache.WithMax(urlCacheSize)
 	regSchema.Do(func() {
 		registerMetrics("schema", c)

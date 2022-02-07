@@ -62,7 +62,7 @@ type MetricNameCache struct {
 }
 
 func NewMetricCache(config Config) *MetricNameCache {
-	return &MetricNameCache{Metrics: clockcache.WithMax(config.MetricsCacheSize)}
+	return &MetricNameCache{Metrics: clockcache.WithMetrics("metric", "metric", config.MetricsCacheSize)}
 }
 
 // Get fetches the table name for specified metric.
@@ -113,5 +113,5 @@ func (m *MetricNameCache) Evictions() uint64 {
 }
 
 func NewLabelsCache(config Config) LabelsCache {
-	return clockcache.WithMax(config.LabelsCacheSize)
+	return clockcache.WithMetrics("label", "metric", config.LabelsCacheSize)
 }

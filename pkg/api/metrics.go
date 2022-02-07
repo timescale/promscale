@@ -94,8 +94,7 @@ func createMetrics() *Metrics {
 		IngestedSamples: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
-				Subsystem: "ingest",
-				Name:      "ingested_total",
+				Name:      "ingested_samples_total",
 				Help:      "Total number of processed sample/metadata sent to remote storage.",
 			},
 		),

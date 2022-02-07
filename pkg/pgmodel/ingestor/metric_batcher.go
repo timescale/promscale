@@ -242,7 +242,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		select {
 		//try to send first, if not then keep batching
 		case copySender <- copyRequest{pending, info}:
-			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "kind": "samples"}).Observe(float64(numSeries))
+			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
 			span.SetAttributes(attribute.Int("num_series", numSeries))
 			span.End()
 			pending = NewPendingBuffer()
@@ -253,7 +253,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 				if !pending.IsEmpty() {
 					span.AddEvent("Sending last non-empty batch")
 					copySender <- copyRequest{pending, info}
-					metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "kind": "samples"}).Observe(float64(numSeries))
+					metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
 				}
 				span.AddEvent("Exiting metric batcher batch loop")
 				span.SetAttributes(attribute.Int("num_series", numSeries))
