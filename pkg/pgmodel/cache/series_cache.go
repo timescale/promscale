@@ -43,7 +43,7 @@ type SeriesCacheImpl struct {
 
 func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
 	cache := &SeriesCacheImpl{
-		clockcache.WithMax(config.SeriesCacheInitialSize),
+		clockcache.WithMetrics("series", "metric", config.SeriesCacheInitialSize),
 		config.SeriesCacheMemoryMaxBytes,
 	}
 

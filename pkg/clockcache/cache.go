@@ -9,11 +9,13 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // CLOCK based approximate LRU storing designed for concurrent usage.
 // Gets only require a read lock, while Inserts take at least one write lock.
 type Cache struct {
+	metrics *perfMetrics
 	// guards elements and all fields except for `used` in Element, must have at
 	// least a read-lock to access, and a write-lock to insert/update/delete.
 	elementsLock sync.RWMutex
@@ -48,9 +50,14 @@ type element struct {
 
 func WithMax(max uint64) *Cache {
 	return &Cache{
+		metrics:  &perfMetrics{}, // Unregistered metrics.
 		elements: make(map[interface{}]*element, max),
 		storage:  make([]element, 0, max),
 	}
+}
+
+func (self *Cache) applyPerfMetric(m *perfMetrics) {
+	self.metrics = m
 }
 
 // Insert a key/value mapping into the cache if the key is not already present,
@@ -194,6 +201,9 @@ func (self *Cache) evict() (insertPtr *element) {
 //       keys will be the keys whose values are present, while the remainder
 //       will be the keys not present in the cache
 func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFound int) {
+	start := time.Now()
+	defer func() { self.metrics.Observe("Get_Values", time.Since(start)) }()
+
 	if len(keys) != len(valuesOut) {
 		panic(fmt.Sprintf("keys and values are not the same len. %d keys, %d values", len(keys), len(valuesOut)))
 	}
@@ -222,12 +232,16 @@ func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFo
 }
 
 func (self *Cache) Get(key interface{}) (interface{}, bool) {
+	start := time.Now()
+	defer func() { self.metrics.Observe("Get", time.Since(start)) }()
+
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	return self.get(key)
 }
 
 func (self *Cache) get(key interface{}) (interface{}, bool) {
+	self.metrics.Inc(self.metrics.queriesTotal)
 	elem, present := self.elements[key]
 	if !present {
 		return 0, false
@@ -241,6 +255,7 @@ func (self *Cache) get(key interface{}) (interface{}, bool) {
 	if atomic.LoadUint32(&elem.used) == 0 {
 		atomic.StoreUint32(&elem.used, 1)
 	}
+	self.metrics.Inc(self.metrics.hitsTotal)
 
 	return elem.value, true
 }
