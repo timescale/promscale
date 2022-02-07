@@ -104,8 +104,8 @@ func Run(cfg *Config) error {
 		}(ctx)
 	}
 
-	promMetrics := api.InitMetrics()
-	client, err := CreateClient(cfg, promMetrics)
+	api.InitMetrics()
+	client, err := CreateClient(cfg)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", err.Error())
 		return startupError

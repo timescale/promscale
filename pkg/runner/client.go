@@ -11,7 +11,6 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/dataset"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -27,7 +26,7 @@ var (
 	appVersion = pgmodel.VersionInfo{Version: version.Promscale, CommitHash: version.CommitHash}
 )
 
-func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
+func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	// The TimescaleDB migration has to happen before other connections
 	// are open, also it has to happen as the first command on a connection.
 	// Thus we cannot rely on the migration lock here. Instead we assume
