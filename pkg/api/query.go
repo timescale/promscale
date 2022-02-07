@@ -6,6 +6,8 @@ package api
 
 import (
 	"context"
+	"github.com/prometheus/client_golang/prometheus"
+	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"net/http"
 	"time"
 
@@ -27,6 +29,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 		if err != nil {
 			log.Error("msg", "Query error", "err", err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
+			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "400"}).Inc()
 			metrics.InvalidQueryReqs.Add(1)
 			return
 		}
@@ -38,6 +41,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 			if err != nil {
 				log.Error("msg", "Query error", "err", err.Error())
 				respondError(w, http.StatusBadRequest, err, "bad_data")
+				pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "400"}).Inc()
 				metrics.InvalidQueryReqs.Add(1)
 				return
 			}
@@ -46,39 +50,39 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metric
 			defer cancel()
 		}
 
-		metrics.ReceivedQueries.Add(1)
 		begin := time.Now()
 		qry, err := queryEngine.NewInstantQuery(queryable, r.FormValue("query"), ts)
 		if err != nil {
 			log.Error("msg", "Query error", "err", err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
-			metrics.FailedQueries.Add(1)
+			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "400"}).Inc()
 			return
 		}
 
 		res := qry.Exec(ctx)
-		metrics.QueryDuration.Observe(time.Since(begin).Seconds())
+		pgMetrics.QueryDuration.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query"}).Observe(time.Since(begin).Seconds())
 
 		if res.Err != nil {
 			log.Error("msg", res.Err, "endpoint", "query")
 			switch res.Err.(type) {
 			case promql.ErrQueryCanceled:
+				pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "503"}).Inc()
 				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
 				return
 			case promql.ErrQueryTimeout:
-				metrics.TimedOutQueries.Add(1)
+				pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "503"}).Inc()
 				respondError(w, http.StatusServiceUnavailable, res.Err, "timeout")
 				return
 			case promql.ErrStorage:
-				metrics.FailedQueries.Add(1)
+				pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "500"}).Inc()
 				respondError(w, http.StatusInternalServerError, res.Err, "internal")
 				return
 			}
+			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "422"}).Inc()
 			respondError(w, http.StatusUnprocessableEntity, res.Err, "execution")
-			metrics.FailedQueries.Add(1)
 			return
 		}
-		metrics.ExecutedQueries.Add(1)
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "2xx"}).Inc()
 
 		respondQuery(w, res, res.Warnings)
 	}

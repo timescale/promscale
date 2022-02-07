@@ -122,15 +122,16 @@ func RegisterMetricsForTelemetry(t telemetry.Engine) error {
 	if err = t.RegisterMetric("promscale_ingested_samples_total", metrics.IngestedSamples); err != nil {
 		return fmt.Errorf("register 'promscale_ingested_samples_total' metric for telemetry: %w", err)
 	}
-	if err = t.RegisterMetric("promscale_metrics_queries_failed_total", metrics.FailedQueries); err != nil {
-		return fmt.Errorf("register 'promscale_metrics_queries_failed_total' metric for telemetry: %w", err)
-	}
-	if err = t.RegisterMetric("promscale_metrics_queries_executed_total", metrics.ExecutedQueries); err != nil {
-		return fmt.Errorf("register 'promscale_metrics_queries_executed_total' metric for telemetry: %w", err)
-	}
-	if err = t.RegisterMetric("promscale_metrics_queries_timedout_total", metrics.TimedOutQueries); err != nil {
-		return fmt.Errorf("register 'promscale_metrics_queries_timedout_total' metric for telemetry: %w", err)
-	}
+	// TODO (harkishen): fix queries for telemetry.
+	//if err = t.RegisterMetric("promscale_metrics_queries_failed_total", metrics.FailedQueries); err != nil {
+	//	return fmt.Errorf("register 'promscale_metrics_queries_failed_total' metric for telemetry: %w", err)
+	//}
+	//if err = t.RegisterMetric("promscale_metrics_queries_executed_total", metrics.ExecutedQueries); err != nil {
+	//	return fmt.Errorf("register 'promscale_metrics_queries_executed_total' metric for telemetry: %w", err)
+	//}
+	//if err = t.RegisterMetric("promscale_metrics_queries_timedout_total", metrics.TimedOutQueries); err != nil {
+	//	return fmt.Errorf("register 'promscale_metrics_queries_timedout_total' metric for telemetry: %w", err)
+	//}
 	return nil
 }
 

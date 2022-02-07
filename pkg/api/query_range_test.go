@@ -161,17 +161,9 @@ func TestRangedQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			receivedQueriesCounter := &mockMetric{}
-			failedQueriesCounter := &mockMetric{}
 			invalidQueryReqs := &mockMetric{}
-			queryDuration := &mockMetric{}
 			metrics := &Metrics{
-				FailedQueries:    failedQueriesCounter,
-				ReceivedQueries:  receivedQueriesCounter,
 				InvalidQueryReqs: invalidQueryReqs,
-				QueryDuration:    queryDuration,
-				TimedOutQueries:  &mockMetric{},
-				ExecutedQueries:  &mockMetric{},
 			}
 			handler := queryRange(&Config{MaxPointsPerTs: 11000}, engine, query.NewQueryable(tc.querier, nil), metrics)
 			queryUrl := constructRangedQuery(tc.metric, tc.start, tc.end, tc.step, tc.timeout)
