@@ -21,7 +21,7 @@ require (
 	github.com/jackc/pgconn v1.10.1
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
 	github.com/jackc/pgproto3/v2 v2.2.0
-	github.com/jackc/pgtype v1.9.1
+	github.com/jackc/pgtype v1.10.0
 	github.com/jackc/pgx/v4 v4.14.1
 	github.com/jaegertracing/jaeger v1.30.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.43.0
