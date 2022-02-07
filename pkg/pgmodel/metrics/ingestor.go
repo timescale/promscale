@@ -156,6 +156,33 @@ var (
 			Help:      "Number of active ingestion occurring in Promscale at the moment.",
 		}, []string{"type", "kind"},
 	)
+
+	// Used in pkg/api
+	IngestorInsertables = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "insertables_total",
+			Help:      "Total number of insertables (sample/metadata) ingested.",
+		}, []string{"type", "kind"},
+	)
+	IngestorRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "requests_total",
+			Help:      "Total number of requests to ingestor.",
+		}, []string{"type", "kind", "code"},
+	)
+	IngestorDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "duration_seconds",
+			Help:      "Time taken (processing + db insert) for ingestion of sample/exemplar.",
+			Buckets:   append(prometheus.DefBuckets, []float64{60, 120, 300}...),
+		}, []string{"type", "kind"},
+	)
 )
 
 func init() {
@@ -176,5 +203,8 @@ func init() {
 		IngestorRowsPerInsert,
 		IngestorInsertDuration,
 		IngestorActiveWriteRequests,
+		IngestorInsertables,
+		IngestorDuration,
+		IngestorRequests,
 	)
 }

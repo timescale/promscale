@@ -93,15 +93,9 @@ func TestQueryExemplar(t *testing.T) {
 	}
 
 	queryable := query.NewQueryable(mockQuerier{}, nil)
-	receivedQueriesCounter := &mockMetric{}
-	failedQueriesCounter := &mockMetric{}
 	invalidQueryReqs := &mockMetric{}
-	queryDuration := &mockMetric{}
 	metrics := &Metrics{
-		FailedQueries:    failedQueriesCounter,
-		ReceivedQueries:  receivedQueriesCounter,
 		InvalidQueryReqs: invalidQueryReqs,
-		QueryDuration:    queryDuration,
 	}
 
 	for _, tc := range tcs {

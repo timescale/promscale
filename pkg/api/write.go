@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
+	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"io"
 	"mime"
 	"net/http"
@@ -234,6 +235,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		if err != nil {
 			ingestor.FinishWriteRequest(req)
 			invalidRequestError(w, "parser error", err.Error(), metrics)
+			pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata", "code": "400"}).Inc()
 			return false
 		}
 
@@ -250,26 +252,23 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 			receivedSamplesCount += int64(len(ts.Samples))
 		}
 		receivedMetadataCount += int64(len(req.Metadata))
-		metrics.Received.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(receivedSamplesCount))
-		metrics.Received.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(receivedMetadataCount))
 		begin := time.Now()
 
 		numSamples, numMetadata, err := inserter.Ingest(ctx, req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			metrics.Failed.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(uint64(receivedSamplesCount) - numSamples))
-			metrics.Failed.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(uint64(receivedMetadataCount) - numMetadata))
+			pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample", "code": "400"}).Inc()
 			return false
 		}
 
 		duration := time.Since(begin).Seconds()
 
 		metrics.IngestedSamples.Add(float64(numSamples))
-		metrics.Ingested.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(numSamples)) // todo (harkishen): try to abstract this to one metric that does both. Consider making IngestedSamples as part of some telemetry struct.
-		metrics.Ingested.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(numMetadata))
-		metrics.SentMetadata.Add(float64(numMetadata))
-		metrics.IngestDuration.With(prometheus.Labels{"type": "metric"}).Observe(duration)
+		pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata", "code": "2xx"}).Inc()
+		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(numSamples)) // todo (harkishen): try to abstract this to one metric that does both. Consider making IngestedSamples as part of some telemetry struct.
+		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(numMetadata))
+		pgMetrics.IngestorDuration.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Observe(duration)
 		return true
 	}
 }
