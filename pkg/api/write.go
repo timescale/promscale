@@ -7,6 +7,7 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"io"
 	"mime"
 	"net/http"
@@ -117,17 +118,14 @@ func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Reques
 
 		shouldWrite, err := elector.IsLeader()
 		if err != nil {
-			metrics.LeaderGauge.Set(0)
 			log.Error("msg", "IsLeader check failed", "err", err)
 			return false
 		}
 		if !shouldWrite {
-			metrics.LeaderGauge.Set(0)
 			log.DebugRateLimited("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
 			return false
 		}
 
-		metrics.LeaderGauge.Set(1)
 		return true
 	}
 }
@@ -252,23 +250,26 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 			receivedSamplesCount += int64(len(ts.Samples))
 		}
 		receivedMetadataCount += int64(len(req.Metadata))
-
-		metrics.ReceivedSamples.Add(float64(receivedSamplesCount))
+		metrics.Received.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(receivedSamplesCount))
+		metrics.Received.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(receivedMetadataCount))
 		begin := time.Now()
 
 		numSamples, numMetadata, err := inserter.Ingest(ctx, req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			metrics.FailedSamples.Add(float64(uint64(receivedSamplesCount) - numSamples))
-			metrics.FailedMetadata.Add(float64(uint64(receivedMetadataCount) - numMetadata))
+			metrics.Failed.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(uint64(receivedSamplesCount) - numSamples))
+			metrics.Failed.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(uint64(receivedMetadataCount) - numMetadata))
 			return false
 		}
 
 		duration := time.Since(begin).Seconds()
+
 		metrics.IngestedSamples.Add(float64(numSamples))
+		metrics.Ingested.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(numSamples)) // todo (harkishen): try to abstract this to one metric that does both. Consider making IngestedSamples as part of some telemetry struct.
+		metrics.Ingested.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(numMetadata))
 		metrics.SentMetadata.Add(float64(numMetadata))
-		metrics.SentBatchDuration.Observe(duration)
+		metrics.IngestDuration.With(prometheus.Labels{"type": "metric"}).Observe(duration)
 		return true
 	}
 }

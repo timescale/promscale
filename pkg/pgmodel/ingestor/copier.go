@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"math"
 	"sort"
 	"strings"
@@ -23,8 +24,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
-
-const maxInsertStmtPerTxn = 100
 
 type copyRequest struct {
 	data *pendingBuffer
@@ -68,7 +67,7 @@ func (reqs copyBatch) VisitExemplar(callBack func(info *pgmodel.MetricInfo, s *p
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
 func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
-	requestBatch := make([]readRequest, 0, maxInsertStmtPerTxn)
+	requestBatch := make([]readRequest, 0, metrics.MaxInsertStmtPerTxn)
 	insertBatch := make([]copyRequest, 0, cap(requestBatch))
 	for {
 		ctx, span := tracer.Default().Start(context.Background(), "copier-run")
@@ -285,8 +284,8 @@ func retryAfterDecompression(ctx context.Context, conn pgxconn.PgxConn, req copy
 		return decompressErr
 	}
 
-	metrics.DecompressCalls.Inc()
-	metrics.DecompressEarliest.WithLabelValues(table).Set(float64(minTime.UnixNano()) / 1e9)
+	metrics.IngestorDecompressCalls.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Inc()
+	metrics.IngestorDecompressEarliest.With(prometheus.Labels{"type": "metric", "kind": "sample", "table": table}).Set(float64(minTime.UnixNano()) / 1e9)
 	err, _ := insertSeries(ctx, conn, req) // Attempt an insert again.
 	return err
 }
@@ -326,7 +325,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 		// We sort after WriteSeries call because we now have guarantees that all seriesIDs have been populated
 		sort.Sort(&req.data.batch)
 		numSamples, numExemplars := req.data.batch.Count()
-		NumRowsPerInsert.Observe(float64(numSamples + numExemplars))
+		metrics.IngestorRowsPerInsert.With(prometheus.Labels{"type": "metric", "subsystem": "copier"}).Observe(float64(numSamples + numExemplars))
 
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
@@ -422,8 +421,8 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
 	batch.Queue("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1", int64(lowestEpoch))
 
-	NumRowsPerBatch.Observe(float64(numRowsTotal))
-	NumInsertsPerBatch.Observe(float64(len(reqs)))
+	metrics.IngestorRowsPerBatch.With(prometheus.Labels{"type": "metric", "subsystem": "copier"}).Observe(float64(numRowsTotal))
+	metrics.IngestorInsertsPerBatch.With(prometheus.Labels{"type": "metric", "subsystem": "copier"}).Observe(float64(len(reqs)))
 	start := time.Now()
 	results, err := conn.SendBatch(context.Background(), batch)
 	if err != nil {
@@ -444,8 +443,8 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 			registerDuplicates(numRowsExpected - insertedRows)
 		}
 	}
-	numSamplesInserted.Add(float64(totalSamples))
-	numExemplarsInserted.Add(float64(totalExemplars))
+	metrics.IngestorInsertablesIngested.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(totalSamples))
+	metrics.IngestorInsertablesIngested.With(prometheus.Labels{"type": "metric", "kind": "exemplar"}).Add(float64(totalExemplars))
 
 	var val []byte
 	row := results.QueryRow()
@@ -454,7 +453,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 		return err, lowestMinTime
 	}
 	reportDuplicates(affectedMetrics)
-	DbBatchInsertDuration.Observe(time.Since(start).Seconds())
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(time.Since(start).Seconds())
 	return nil, lowestMinTime
 }
 
@@ -479,6 +478,18 @@ func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows
 	if err := row.Scan(&insertedRows); err != nil {
 		return 0, fmt.Errorf("send metadata batch: %w", err)
 	}
-	MetadataBatchInsertDuration.Observe(time.Since(start).Seconds())
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "", "kind": "exemplar"}).Observe(time.Since(start).Seconds())
 	return insertedRows, nil
+}
+
+var copierChannelMutex sync.Mutex
+
+func setCopierChannelToMonitor(toSamplesCopiers chan readRequest) {
+	copierChannelMutex.Lock()
+	defer copierChannelMutex.Unlock()
+
+	metrics.IngestorChannelCap.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Set(float64(cap(toSamplesCopiers)))
+	metrics.SampleCopierChannelLengthFunc = func() float64 {
+		return float64(len(toSamplesCopiers))
+	}
 }

@@ -5,6 +5,7 @@
 package ingestor
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,13 +26,13 @@ func init() {
 }
 
 func registerDuplicates(duplicateSamples int64) {
-	metrics.DuplicateSamples.Add(float64(duplicateSamples))
-	metrics.DuplicateWrites.Inc()
+	metrics.IngestorDuplicates.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(duplicateSamples))
+	metrics.IngestorDuplicates.With(prometheus.Labels{"type": "metric", "kind": "writes_to_db"}).Inc()
 }
 
 func reportDuplicates(duplicateMetrics uint64) {
 	atomic.AddUint64(&duplicateMetricsTotal, duplicateMetrics)
-	metrics.DuplicateMetrics.Add(float64(duplicateMetrics))
+	metrics.IngestorDuplicates.With(prometheus.Labels{"type": "metric", "kind": "metric"}).Add(float64(duplicateMetrics))
 	launchReporterOnce.Do(func() {
 		go func() {
 			report := time.NewTicker(reportDuplicatesInterval)

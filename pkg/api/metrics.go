@@ -17,14 +17,12 @@ type Metrics struct {
 	// Using the first word in struct to ensure proper alignment in 32-bit systems.
 	// Reference: https://golang.org/pkg/sync/atomic/#pkg-note-BUG
 	LastRequestUnixNano          int64
-	LeaderGauge                  prometheus.Gauge
-	ReceivedSamples              prometheus.Counter
-	ReceivedMetadata             prometheus.Counter
-	FailedSamples                prometheus.Counter
-	FailedMetadata               prometheus.Counter
-	IngestedSamples              prometheus.Counter
+	Received                     *prometheus.CounterVec
+	Failed                       *prometheus.CounterVec
+	Ingested                     *prometheus.CounterVec
+	IngestedSamples              prometheus.Counter // For telemetry.
 	SentMetadata                 prometheus.Counter
-	SentBatchDuration            prometheus.Histogram
+	IngestDuration               *prometheus.HistogramVec
 	ReceivedQueries              prometheus.Counter
 	ExecutedQueries              prometheus.Counter
 	TimedOutQueries              prometheus.Counter
@@ -46,20 +44,18 @@ func InitMetrics() *Metrics {
 	}
 	metrics = createMetrics()
 	prometheus.MustRegister(
-		metrics.LeaderGauge,
-		metrics.ReceivedSamples,
-		metrics.ReceivedMetadata,
+		metrics.Received,
 		metrics.ReceivedQueries,
+		metrics.Ingested,
 		metrics.IngestedSamples,
 		metrics.SentMetadata,
-		metrics.FailedSamples,
-		metrics.FailedMetadata,
+		metrics.Failed,
 		metrics.FailedQueries,
 		metrics.ExecutedQueries,
 		metrics.TimedOutQueries,
 		metrics.InvalidReadReqs,
 		metrics.InvalidWriteReqs,
-		metrics.SentBatchDuration,
+		metrics.IngestDuration,
 		metrics.QueryRemoteReadBatchDuration,
 		metrics.QueryDuration,
 		metrics.ExemplarQueryDuration,
@@ -71,46 +67,36 @@ func InitMetrics() *Metrics {
 
 func createMetrics() *Metrics {
 	return &Metrics{
-		LeaderGauge: prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Namespace: util.PromNamespace,
-				Name:      "current_leader",
-				Help:      "Shows current election leader status",
-			},
-		),
-		ReceivedSamples: prometheus.NewCounter(
+		Received: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
-				Name:      "received_samples_total",
-				Help:      "Total number of received samples.",
-			},
+				Subsystem: "ingest",
+				Name:      "received_total",
+				Help:      "Total number of received sample/metadata.",
+			}, []string{"type", "kind"},
 		),
-		ReceivedMetadata: prometheus.NewCounter(
+		Failed: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
-				Name:      "received_metadata_total",
-				Help:      "Total number of received metadata.",
-			},
+				Subsystem: "ingest",
+				Name:      "failed_total",
+				Help:      "Total number of processed sample/metadata which failed on send to remote storage.",
+			}, []string{"type", "kind"},
 		),
-		FailedSamples: prometheus.NewCounter(
+		Ingested: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
-				Name:      "failed_samples_total",
-				Help:      "Total number of processed samples which failed on send to remote storage.",
-			},
-		),
-		FailedMetadata: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: util.PromNamespace,
-				Name:      "failed_metadata_total",
-				Help:      "Total number of processed metadata which failed on send to remote storage.",
-			},
+				Subsystem: "ingest",
+				Name:      "ingested_total",
+				Help:      "Total number of processed sample/metadata sent to remote storage.",
+			}, []string{"type", "kind"},
 		),
 		IngestedSamples: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: util.PromNamespace,
-				Name:      "ingested_samples_total",
-				Help:      "Total number of processed samples sent to remote storage.",
+				Subsystem: "ingest",
+				Name:      "ingested_total",
+				Help:      "Total number of processed sample/metadata sent to remote storage.",
 			},
 		),
 		SentMetadata: prometheus.NewCounter(
@@ -120,13 +106,14 @@ func createMetrics() *Metrics {
 				Help:      "Total number of processed metadata sent to remote storage.",
 			},
 		),
-		SentBatchDuration: prometheus.NewHistogram(
+		IngestDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: util.PromNamespace,
-				Name:      "sent_batch_duration_seconds",
-				Help:      "Duration of sample batch send calls to the remote storage.",
+				Subsystem: "ingest",
+				Name:      "duration_seconds",
+				Help:      "Total time taken (processing + db insert) to ingest a batch of data.",
 				Buckets:   prometheus.DefBuckets,
-			},
+			}, []string{"type"},
 		),
 		LastRequestUnixNano: time.Now().UnixNano(),
 		QueryRemoteReadBatchDuration: prometheus.NewHistogram(

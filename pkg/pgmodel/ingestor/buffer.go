@@ -6,16 +6,11 @@ package ingestor
 
 import (
 	"context"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"sync"
 
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
-
-// maximum number of insertDataRequests that should be buffered before the
-// insertHandler flushes to the next layer. We don't want too many as this
-// increases the number of lost writes if the connector dies. This number
-// was chosen arbitrarily.
-const flushSize = 2000
 
 type insertDataTask struct {
 	finished *sync.WaitGroup
@@ -55,7 +50,7 @@ func NewPendingBuffer() *pendingBuffer {
 }
 
 func (p *pendingBuffer) IsFull() bool {
-	return p.batch.CountSeries() > flushSize
+	return p.batch.CountSeries() > metrics.FlushSize
 }
 
 func (p *pendingBuffer) IsEmpty() bool {
