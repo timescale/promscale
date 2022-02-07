@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,9 +24,8 @@ import (
 )
 
 const (
-	MetricBatcherChannelCap = 1000
-	finalizeMetricCreation  = "CALL _prom_catalog.finalize_metric_creation()"
-	getEpochSQL             = "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1"
+	finalizeMetricCreation = "CALL _prom_catalog.finalize_metric_creation()"
+	getEpochSQL            = "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1"
 )
 
 // pgxDispatcher redirects incoming samples to the appropriate metricBatcher
@@ -271,11 +271,11 @@ func reportMetricsTelemetry(maxTs int64, numSamples, numMetadata uint64) {
 	tput.ReportMetricsProcessed(maxTs, numSamples, numMetadata)
 
 	// Max_sent_timestamp stats.
-	if maxTs < atomic.LoadInt64(&MaxSentTimestamp) {
+	if maxTs < atomic.LoadInt64(&metrics.MaxSentTs) {
 		return
 	}
-	atomic.StoreInt64(&MaxSentTimestamp, maxTs)
-	metrics.StaleMaxSentTimestamp.Set(float64(maxTs))
+	atomic.StoreInt64(&metrics.MaxSentTs, maxTs)
+	metrics.IngestorMaxSentTimestamp.Set(float64(maxTs))
 }
 
 // Get the handler for a given metric name, creating a new one if none exists
@@ -287,7 +287,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		// only start up the inserter routine if we know that we won the race
 		// to create the inserter, anything else will leave a zombie inserter
 		// lying around.
-		c := make(chan *insertDataRequest, MetricBatcherChannelCap)
+		c := make(chan *insertDataRequest, metrics.MetricBatcherChannelCap)
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
@@ -295,7 +295,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)
-	MetricBatcherChLen.Observe(float64(len(ch)))
+	metrics.IngestorChannelLen.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "kind": "samples"}).Observe(float64(len(ch)))
 	return ch
 }
 

@@ -7,6 +7,8 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"time"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -84,8 +86,8 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces pdata.Trace
 func (ingestor *DBIngestor) Ingest(ctx context.Context, r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
 	ctx, span := tracer.Default().Start(ctx, "db-ingest")
 	defer span.End()
-	activeWriteRequests.Inc()
-	defer activeWriteRequests.Dec() // Dec() is defered otherwise it will lead to loosing a decrement if some error occurs.
+	metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Inc()
+	defer metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Dec()
 	var (
 		timeseries = r.Timeseries
 		metadata   = r.Metadata

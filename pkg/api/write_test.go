@@ -75,6 +75,19 @@ func TestDetectSnappyStreamFormat(t *testing.T) {
 
 }
 
+var (
+	defaultCounterOpts = prometheus.CounterOpts{
+		Namespace: "test",
+		Name:      "metric_counter",
+		Help:      "metric for test.",
+	}
+	defaultHistogramOpts = prometheus.HistogramOpts{
+		Namespace: "test",
+		Name:      "metric_histogram",
+		Help:      "metric for test.",
+	}
+)
+
 func TestWrite(t *testing.T) {
 	require.NoError(t, log.Init(log.Config{
 		Level: "debug",
@@ -244,29 +257,27 @@ func TestWrite(t *testing.T) {
 				},
 			)
 			leaderGauge := &mockMetric{}
-			receivedSamplesCounter := &mockMetric{}
-			receivedMetadataCounter := &mockMetric{}
-			failedSamplesCounter := &mockMetric{}
-			failedMetadataCounter := &mockMetric{}
 			ingestedSamplesCounter := &mockMetric{}
 			sentMetadataCounter := &mockMetric{}
-			sendBatchHistogram := &mockMetric{}
 			invalidWriteReqs := &mockMetric{}
+
+			// Below metrics are vectors, which do not satisfy the `Counter` interface. Hence, they
+			// have to be filled with concrete types.
+			receivedSamplesCounter := prometheus.NewCounterVec(defaultCounterOpts, []string{})
+			failedSamplesCounter := prometheus.NewCounterVec(defaultCounterOpts, []string{})
+			batchDurationHistogram := prometheus.NewHistogramVec(defaultHistogramOpts, []string{})
 			mock := &mockInserter{
 				result: c.inserterResponse,
 				err:    c.inserterErr,
 			}
 			dataParser := parser.NewParser()
 			metrics = &Metrics{
-				LeaderGauge:       leaderGauge,
-				ReceivedSamples:   receivedSamplesCounter,
-				ReceivedMetadata:  receivedMetadataCounter,
-				FailedSamples:     failedSamplesCounter,
-				FailedMetadata:    failedMetadataCounter,
-				IngestedSamples:   ingestedSamplesCounter,
-				SentMetadata:      sentMetadataCounter,
-				SentBatchDuration: sendBatchHistogram,
-				InvalidWriteReqs:  invalidWriteReqs,
+				Received:         receivedSamplesCounter,
+				Failed:           failedSamplesCounter,
+				IngestedSamples:  ingestedSamplesCounter,
+				SentMetadata:     sentMetadataCounter,
+				IngestDuration:   batchDurationHistogram,
+				InvalidWriteReqs: invalidWriteReqs,
 			}
 
 			handler := Write(mock, dataParser, elector)
@@ -297,8 +308,8 @@ func TestWrite(t *testing.T) {
 
 			if ingestedSamplesCounter.value != float64(c.inserterResponse) {
 				t.Errorf(
-					"num sent samples gauge not set correctly: got %f, expected %d",
-					receivedSamplesCounter.value,
+					"num sent samples gauge not set correctly: got %v, expected %d",
+					receivedSamplesCounter.MetricVec,
 					c.inserterResponse,
 				)
 			}
