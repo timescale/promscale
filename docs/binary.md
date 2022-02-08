@@ -84,7 +84,7 @@ All environment variables are prefixed with `PROMSCALE`.
 
 Configuration file is a YAML file where the keys are CLI flag names and values are their respective flag values.
 
-The list of available cli flags is available in [here](/docs/cli.md) in
+The list of available cli flags is available in [here](/docs/configuration.md) in
 our docs or by running with the `-h` flag (e.g. `promscale -h`)
 
 ## 🛠 Building from source
