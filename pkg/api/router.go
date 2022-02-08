@@ -6,6 +6,7 @@ package api
 
 import (
 	"fmt"
+	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -119,19 +120,34 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 
 func RegisterMetricsForTelemetry(t telemetry.Engine) error {
 	var err error
-	if err = t.RegisterMetric("promscale_ingested_samples_total", metrics.IngestedSamples); err != nil {
+	if err = t.RegisterMetric(
+		"promscale_ingested_samples_total",
+		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "sample"})); err != nil {
 		return fmt.Errorf("register 'promscale_ingested_samples_total' metric for telemetry: %w", err)
 	}
-	// TODO (harkishen): fix queries for telemetry.
-	//if err = t.RegisterMetric("promscale_metrics_queries_failed_total", metrics.FailedQueries); err != nil {
-	//	return fmt.Errorf("register 'promscale_metrics_queries_failed_total' metric for telemetry: %w", err)
-	//}
-	//if err = t.RegisterMetric("promscale_metrics_queries_executed_total", metrics.ExecutedQueries); err != nil {
-	//	return fmt.Errorf("register 'promscale_metrics_queries_executed_total' metric for telemetry: %w", err)
-	//}
-	//if err = t.RegisterMetric("promscale_metrics_queries_timedout_total", metrics.TimedOutQueries); err != nil {
-	//	return fmt.Errorf("register 'promscale_metrics_queries_timedout_total' metric for telemetry: %w", err)
-	//}
+	if err = t.RegisterMetric(
+		"promscale_metrics_queries_failed_total",
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "422"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "422"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "500"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "500"}),
+	); err != nil {
+		return fmt.Errorf("register 'promscale_metrics_queries_failed_total' metric for telemetry: %w", err)
+	}
+	if err = t.RegisterMetric(
+		"promscale_metrics_queries_success_total",
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "2xx"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "2xx"}),
+	); err != nil {
+		return fmt.Errorf("register 'promscale_metrics_queries_success_total' metric for telemetry: %w", err)
+	}
+	if err = t.RegisterMetric(
+		"promscale_metrics_queries_timedout_total",
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "503"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "503"}),
+	); err != nil {
+		return fmt.Errorf("register 'promscale_metrics_queries_timedout_total' metric for telemetry: %w", err)
+	}
 	return nil
 }
 

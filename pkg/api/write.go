@@ -246,14 +246,7 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 			return false
 		}
 
-		var receivedSamplesCount, receivedMetadataCount int64
-
-		for _, ts := range req.Timeseries {
-			receivedSamplesCount += int64(len(ts.Samples))
-		}
-		receivedMetadataCount += int64(len(req.Metadata))
 		begin := time.Now()
-
 		numSamples, numMetadata, err := inserter.Ingest(ctx, req)
 		if err != nil {
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
@@ -261,12 +254,9 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 			pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample", "code": "400"}).Inc()
 			return false
 		}
-
 		duration := time.Since(begin).Seconds()
-
-		metrics.IngestedSamples.Add(float64(numSamples))
 		pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata", "code": "2xx"}).Inc()
-		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(numSamples)) // todo (harkishen): try to abstract this to one metric that does both. Consider making IngestedSamples as part of some telemetry struct.
+		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(numSamples))
 		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(numMetadata))
 		pgMetrics.IngestorDuration.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Observe(duration)
 		return true

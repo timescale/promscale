@@ -81,11 +81,6 @@ var (
 		Name:      "metric_counter",
 		Help:      "metric for test.",
 	}
-	defaultHistogramOpts = prometheus.HistogramOpts{
-		Namespace: "test",
-		Name:      "metric_histogram",
-		Help:      "metric for test.",
-	}
 )
 
 func TestWrite(t *testing.T) {
@@ -258,25 +253,17 @@ func TestWrite(t *testing.T) {
 			)
 			leaderGauge := &mockMetric{}
 			ingestedSamplesCounter := &mockMetric{}
-			sentMetadataCounter := &mockMetric{}
 			invalidWriteReqs := &mockMetric{}
 
 			// Below metrics are vectors, which do not satisfy the `Counter` interface. Hence, they
 			// have to be filled with concrete types.
 			receivedSamplesCounter := prometheus.NewCounterVec(defaultCounterOpts, []string{})
-			failedSamplesCounter := prometheus.NewCounterVec(defaultCounterOpts, []string{})
-			batchDurationHistogram := prometheus.NewHistogramVec(defaultHistogramOpts, []string{})
 			mock := &mockInserter{
 				result: c.inserterResponse,
 				err:    c.inserterErr,
 			}
 			dataParser := parser.NewParser()
 			metrics = &Metrics{
-				Received:         receivedSamplesCounter,
-				Failed:           failedSamplesCounter,
-				IngestedSamples:  ingestedSamplesCounter,
-				SentMetadata:     sentMetadataCounter,
-				IngestDuration:   batchDurationHistogram,
 				InvalidWriteReqs: invalidWriteReqs,
 			}
 

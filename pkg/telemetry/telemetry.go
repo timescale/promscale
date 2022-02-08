@@ -28,7 +28,7 @@ import (
 // that will be monitored every hour and filled into _ps_catalog.promscale_instance_information table and then into
 // the _timescaledb_catalog.metadata table.
 type Engine interface {
-	RegisterMetric(columnName string, gaugeOrCounterMetric prometheus.Metric) error
+	RegisterMetric(columnName string, gaugeOrCounterMetric ...prometheus.Metric) error
 	Start()
 	Stop()
 }
@@ -189,14 +189,17 @@ func (t *engineImpl) syncWithInfoTable() error {
 	)
 	t.metrics.Range(func(statName, metric interface{}) bool {
 		columnName := statName.(string)
-		promMetric := metric.(prometheus.Metric)
-		underlyingValue, err = extractMetricValue(promMetric)
-		if err != nil {
-			err = fmt.Errorf("extracting metric value of stat '%s': %w", columnName, err)
-			return false
+		promMetric := metric.([]prometheus.Metric)
+		value := float64(0)
+		for _, metric := range promMetric {
+			underlyingValue, err = extractMetricValue(metric)
+			if err != nil {
+				err = fmt.Errorf("extracting metric value of stat '%s': %w", columnName, err)
+				return false
+			}
+			value += underlyingValue
 		}
-
-		newStats[columnName] = underlyingValue
+		newStats[columnName] = value
 		return true
 	})
 	if err != nil {
@@ -223,11 +226,19 @@ func extractMetricValue(metric prometheus.Metric) (float64, error) {
 
 // RegisterMetric registers a Prometheus Gauge or Counter metric for telemetry visitor.
 // It must be called after creating the telemetry engine.
-func (t *engineImpl) RegisterMetric(columnName string, gaugeOrCounterMetric prometheus.Metric) error {
-	if !isCounterOrGauge(gaugeOrCounterMetric) {
-		return fmt.Errorf("metric not a counter or gauge")
+// Note: gaugeOrCounterMetrics can take more than one metric, since some telemetry stats like
+// promscale_executed_queries_total need 2 metric series:
+// 1. promscale_query_requests_total{type="metric", handler="/api/v1/query", code="2xx"}
+// 2. promscale_query_requests_total{type="metric", handler="/api/v1/query_range", code="2xx"}
+// Hence, the telemetry engine extracts the metric values of these 2 series
+// and sums up the results before updating the telemetry.
+func (t *engineImpl) RegisterMetric(columnName string, gaugeOrCounterMetrics ...prometheus.Metric) error {
+	for _, metric := range gaugeOrCounterMetrics {
+		if !isCounterOrGauge(metric) {
+			return fmt.Errorf("metric not a counter or gauge: %v", metric)
+		}
 	}
-	t.metrics.Store(columnName, gaugeOrCounterMetric)
+	t.metrics.Store(columnName, gaugeOrCounterMetrics)
 	return nil
 }
 
@@ -380,7 +391,7 @@ func convertIntToString(i int64) string {
 
 type noop struct{}
 
-func NewNoopEngine() Engine                                 { return noop{} }
-func (noop) Start()                                         {}
-func (noop) Stop()                                          {}
-func (noop) RegisterMetric(string, prometheus.Metric) error { return nil }
+func NewNoopEngine() Engine                                    { return noop{} }
+func (noop) Start()                                            {}
+func (noop) Stop()                                             {}
+func (noop) RegisterMetric(string, ...prometheus.Metric) error { return nil }
