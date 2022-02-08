@@ -6,6 +6,7 @@ package querier
 
 import (
 	"fmt"
+	"github.com/timescale/promscale/pkg/log"
 	"math"
 	"sort"
 	"time"
@@ -190,7 +191,8 @@ func hasSubquery(path []parser.Node) bool {
 	return false
 }
 
-/* vectorSelectors called by the timestamp function have special handling see engine.go */
+// calledByTimestamp returns whether the immediate parent node is the
+// `timestamp` function call.
 func calledByTimestamp(path []parser.Node) bool {
 	if len(path) > 0 {
 		node := path[len(path)-1]
@@ -220,12 +222,13 @@ type aggregators struct {
 
 // getAggregators returns the aggregator which should be used to fetch data for
 // a single metric. It may apply pushdowns to functions.
-func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
-	// todo: investigate if query hints can have only node and lookback
+func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node) {
 
 	agg, node, err := tryPushDown(metadata)
-	if err == nil && agg != nil {
-		return agg, node, nil
+	if err != nil {
+		log.Info("msg", "error while trying to push down, will skip pushdown optimization", "error", err)
+	} else if agg != nil {
+		return agg, node
 	}
 
 	defaultAggregators := &aggregators{
@@ -234,7 +237,7 @@ func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node, error)
 		unOrdered:   false,
 	}
 
-	return defaultAggregators, nil, nil
+	return defaultAggregators, nil
 }
 
 // tryPushDown inspects the AST above the current node to determine if it's
@@ -290,30 +293,15 @@ func tryPushDown(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
 		grandparent := path[len(path)-2]
 		funcName, canPushDown := tryExtractPushdownableFunctionName(grandparent)
 		if canPushDown {
-			agg, err := callAggregator(selectHints, funcName)
+			agg, err := buildPromQlFunctionCallAggregator(selectHints, funcName)
 			return agg, grandparent, err
 		}
 	}
 
-	//TODO: handle the instant query (hints.Step==0) case too.
-
-	// vector selector pushdown improves performance by selecting from the
-	// database only the last point in a vector selector window(step).
-	// This decreases the number of samples transferred from the DB to
-	// Promscale by orders of magnitude. A vector selector aggregate also
-	// does not require ordered inputs which saves a sort and allows for
-	// parallel evaluation.
-	if selectHints.Step > 0 &&
-		selectHints.Range == 0 && // So this is not an aggregate. That's optimized above
-		!calledByTimestamp(path) &&
-		vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
-		qf := aggregators{
-			valueClause: "vector_selector($%d, $%d, $%d, $%d, time, value)",
-			valueParams: []interface{}{queryHints.StartTime, queryHints.EndTime, selectHints.Step, queryHints.Lookback.Milliseconds()},
-			unOrdered:   true,
-			tsSeries:    newRegularTimestampSeries(queryHints.StartTime, queryHints.EndTime, time.Duration(selectHints.Step)*time.Millisecond),
-		}
-		return &qf, queryHints.CurrentNode, nil
+	lookback := queryHints.Lookback.Milliseconds()
+	agg := buildVectorSelectorFunctionCallAggregator(lookback, selectHints, path)
+	if agg != nil {
+		return agg, queryHints.CurrentNode, nil
 	}
 	return nil, nil, nil
 }
@@ -333,26 +321,89 @@ func tryExtractPushdownableFunctionName(node parser.Node) (string, bool) {
 	return "", false
 }
 
-func callAggregator(hints *storage.SelectHints, funcName string) (*aggregators, error) {
-	queryStart := hints.Start + hints.Range
-	queryEnd := hints.End
-	stepDuration := time.Second
-	rangeDuration := time.Duration(hints.Range) * time.Millisecond
+func buildPromQlFunctionCallAggregator(selectHints *storage.SelectHints, funcName string) (*aggregators, error) {
+	// Note: selectHints.Start = results.start - lookback, i.e. it has been
+	// adjusted to account for the time from which we start _scanning_ for
+	// results. The time range that results will lie in is:
+	// [resultStart, selectHints.end].
+	resultStart := selectHints.Start + selectHints.Range
 
-	if hints.Step > 0 {
-		stepDuration = time.Duration(hints.Step) * time.Millisecond
-	} else {
-		if queryStart != queryEnd {
-			return nil, fmt.Errorf("query start should equal query end")
-		}
+	stepDuration := time.Second
+	rangeDuration := time.Duration(selectHints.Range) * time.Millisecond
+
+	switch {
+	case selectHints.Step > 0:
+		stepDuration = time.Duration(selectHints.Step) * time.Millisecond
+	case selectHints.Step == 0 && resultStart != selectHints.End:
+		return nil, fmt.Errorf("query start should equal query end")
 	}
+
+	// On time ranges: given the parameters (scan_start, result_start,
+	// result_end), as defined in buildSingleMetricSamplesQuery, the prom_*
+	// call that we construct here has the rough structure of:
+	// SELECT
+	//   prom_*(scan_start, result_end, ...)
+	// FROM ...
+	// WHERE t >= scan_start AND t <= result_end
+	//
+	// Note: The actual WHERE clause parameters are set in
+	// buildSingleMetricSamplesQuery
+
 	qf := aggregators{
 		valueClause: "prom_" + funcName + "($%d, $%d, $%d, $%d, time, value)",
-		valueParams: []interface{}{model.Time(hints.Start).Time(), model.Time(queryEnd).Time(), stepDuration.Milliseconds(), rangeDuration.Milliseconds()},
+		valueParams: []interface{}{model.Time(selectHints.Start).Time(), model.Time(selectHints.End).Time(), stepDuration.Milliseconds(), rangeDuration.Milliseconds()},
 		unOrdered:   false,
-		tsSeries:    newRegularTimestampSeries(model.Time(queryStart).Time(), model.Time(queryEnd).Time(), stepDuration),
+		tsSeries:    newRegularTimestampSeries(model.Time(resultStart).Time(), model.Time(selectHints.End).Time(), stepDuration),
 	}
 	return &qf, nil
+}
+
+func buildVectorSelectorFunctionCallAggregator(lookback int64, selectHints *storage.SelectHints, path []parser.Node) *aggregators {
+	// vector selector pushdown improves performance by selecting from the
+	// database only the last point in a vector selector window (step).
+	// This decreases the number of samples transferred from the DB to
+	// Promscale by orders of magnitude. A vector selector aggregate also
+	// does not require ordered inputs which saves a sort and allows for
+	// parallel evaluation. For more information, refer to the module doc of
+	// the promscale extension.
+
+	switch {
+	// We can't handle a zero-sized step, so skip pushdown optimization.
+	// TODO: handle the instant query (hints.Step==0) case too.
+	case selectHints.Step == 0:
+		return nil
+	// The `vector_selector` can only be applied to non-aggregates (i.e. when range is zero).
+	case selectHints.Range != 0:
+		return nil
+	// Vector selectors called by the timestamp function have special handling, see `eval` in engine.go.
+	case calledByTimestamp(path):
+		return nil
+	// We need the extension version to support pushdowns.
+	case !vectorSelectorExtensionRange(extension.PromscaleExtensionVersion):
+		return nil
+	}
+
+	// On time ranges: given the parameters (scan_start, result_start,
+	// result_end), as defined in buildSingleMetricSamplesQuery, the
+	// vector_selector call that we construct here has the rough structure
+	// of:
+	// SELECT
+	//   vector_selector(result_start, result_end, ...)
+	// FROM ...
+	// WHERE t >= scan_start AND t <= result_end
+	//
+	// Note: The actual WHERE clause parameters are set in
+	// buildSingleMetricSamplesQuery
+
+	resultStart := selectHints.Start + lookback
+	resultEnd := selectHints.End
+	qf := aggregators{
+		valueClause: "vector_selector($%d, $%d, $%d, $%d, time, value)",
+		valueParams: []interface{}{model.Time(resultStart).Time(), model.Time(resultEnd).Time(), selectHints.Step, lookback},
+		unOrdered:   true,
+		tsSeries:    newRegularTimestampSeries(model.Time(resultStart).Time(), model.Time(resultEnd).Time(), time.Duration(selectHints.Step)*time.Millisecond),
+	}
+	return &qf
 }
 
 // anchorValue adds anchors to values in regexps since PromQL docs
