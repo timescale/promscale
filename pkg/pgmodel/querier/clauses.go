@@ -8,7 +8,9 @@ import (
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
-/* Given a clause with %d placeholder for parameter numbers, and the existing and new parameters, return a clause with the parameters set to the appropriate $index and the full set of parameter values */
+// Given a clause with %d placeholder for parameter numbers, and the existing
+// and new parameters, return a clause with the parameters set to the
+// appropriate $index and the full set of parameter values
 func setParameterNumbers(clause string, existingArgs []interface{}, newArgs ...interface{}) (string, []interface{}, error) {
 	argIndex := len(existingArgs) + 1
 	argCountInClause := strings.Count(clause, "%d")

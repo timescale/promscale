@@ -127,16 +127,14 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	// When pushdowns are available, the <array_aggregator> is a pushdown
 	// function which the promscale extension provides.
 
-	qf, node, err := getAggregators(metadata.promqlMetadata)
-	if err != nil {
-		return "", nil, nil, nil, err
-	}
+	qf, node := getAggregators(metadata.promqlMetadata)
 
 	var selectors, selectorClauses []string
 	values := metadata.values
 
 	if qf.timeClause != "" {
 		var timeClauseBound string
+		var err error
 		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
 		if err != nil {
 			return "", nil, nil, nil, err
@@ -166,33 +164,34 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 
 	// On query time ranges in Prometheus:
 	//
-	// When we receive a range query the [`start`, `end`] range specifies the
-	// timespan that we are expected to deliver results for. Similarly, when we
-	// receive an instant query, the `time` parameter specifies the instant
-	// that we are expected to deliver a result for.
+	// When we receive a range query the [`result_start`, `result_end`] range
+	// specifies the timespan that we are expected to deliver results for.
+	// Similarly, when we receive an instant query, the `time` parameter
+	// specifies the instant  that we are expected to deliver a result for.
 	//
 	// Depending on the query, we may need to look further back in time than
-	// the `start` to deliver results from `start` onwards. For instance, a
-	// range query such as `rate(metric_one[5m])` in the range `(T1, T2)` will
-	// deliver results between T1 and T2, but it has a 5-minute range on
-	// `metric_one`. In order to deliver a result for time T1, we need to get
-	// `metric_one`'s values at (T1 - 5m) and T1. Similarly, an instant query
-	// for `metric_one` at timestamp T3 requires looking back the lookback time
-	// (the default is 5 minutes) to find the most recent samples.
+	// the `result_start` to deliver results from `result_start` onwards. For
+	// instance, a range query such as `rate(metric_one[5m])` in the range
+	// `(T1, T2)` will deliver results between T1 and T2, but it has a 5-minute
+	// range on `metric_one`. In order to deliver a result for time T1, we need
+	// to get `metric_one`'s values at (T1 - 5m) and T1. Similarly, an instant
+	// query for `metric_one` at timestamp T3 requires looking back the
+	// lookback time (the default is 5 minutes) to find the most recent samples.
 	// We call this point in time `scan_start`: the point in time at which we
 	// need to start scanning the underlying data to calculate the result. This
 	// could look as follows:
 	//
-	//     scan_start    start                 end
-	//         |-----------|--------------------|
+	//     scan_start   result_start         result_end
+	//         |-------------|--------------------|
 	//
-	// How do the following time ranges relate to scan_start, start, and end:
+	// How do the following time ranges relate to scan_start, result_start, and
+	// result_end:
 	// - metadata.timeFilter
 	// - metadata.selectHints.{Start, End}
 	//
 	// The timeFilter's time range is determined by `findMinMaxTime` on the
 	// expression being evaluated, and is the widest span of _all_
-	// subexpressions (effectively [min(scan_start), end]).
+	// subexpressions (effectively [min(scan_start), result_end]).
 	// This means that, for instance, if the following range selector and
 	// instant selector are combined: rate(metric_one[1m]) / metric_one, the
 	// timeFilter.start is T1 - 5m (assuming default lookback time of 5m).

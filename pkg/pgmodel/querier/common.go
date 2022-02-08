@@ -43,9 +43,8 @@ func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 	return result, nil
 }
 
+// QueryHints contain additional metadata which promscale requires
 type QueryHints struct {
-	StartTime   time.Time
-	EndTime     time.Time
 	CurrentNode parser.Node
 	Lookback    time.Duration
 }
