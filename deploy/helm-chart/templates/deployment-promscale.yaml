@@ -51,7 +51,7 @@ spec:
           {{- end }}
           {{- if .Values.extraEnv }}
           env:
-            {{- toYaml (tpl .Values.extraEnv .) | nindent 12 }}
+            {{- tpl (toYaml .Values.extraEnv) . | nindent 12 }}
           {{- end }}
           envFrom:
           - secretRef:
