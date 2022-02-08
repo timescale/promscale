@@ -162,10 +162,10 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 		}
 		pgxcfg := conn.Conn().Config()
 		cfg := runner.Config{
-			Migrate:           true,
-			InstallExtensions: false,
-			StopAfterMigrate:  false,
-			UseVersionLease:   true,
+			Migrate:                   true,
+			InstallPromscaleExtension: false,
+			StopAfterMigrate:          false,
+			UseVersionLease:           true,
 			PgmodelCfg: pgclient.Config{
 				AppName:                 pgclient.DefaultApp,
 				Database:                *testDatabase,
@@ -186,7 +186,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 		verifyExtensionExists(t, db, "promscale", false)
 
 		api.InitMetrics()
-		cfg.InstallExtensions = false
+		cfg.InstallPromscaleExtension = false
 		migrator, err := runner.CreateClient(&cfg)
 		if err != nil {
 			t.Fatal(err)
@@ -195,7 +195,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 
 		verifyExtensionExists(t, db, "promscale", false)
 
-		cfg.InstallExtensions = true
+		cfg.InstallPromscaleExtension = true
 		migrator, err = runner.CreateClient(&cfg)
 		if err != nil {
 			t.Fatal(err)
