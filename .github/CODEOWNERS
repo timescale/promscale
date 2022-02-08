@@ -5,6 +5,10 @@
 
 /cmd/prom-migrator @Harkishen-Singh
 
+# Go deps
+go.mod @antekresic
+go.sum @antekresic
+
 # Go packages
 /pkg/api @antekresic @Harkishen-Singh
 /pkg/ewma @Harkishen-Singh
