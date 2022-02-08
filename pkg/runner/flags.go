@@ -224,6 +224,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		if (flagset["migrate"] && cfg.Migrate) || (flagset["use-schema-version-lease"] && cfg.UseVersionLease) {
 			return nil, fmt.Errorf("Migration flags not supported in read-only mode")
 		}
+		if flagset["install-extensions"] && cfg.InstallExtensions {
+			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
+		}
 		if flagset["startup.install-extensions"] && cfg.InstallExtensions {
 			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
 		}

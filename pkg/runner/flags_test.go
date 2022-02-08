@@ -94,6 +94,10 @@ func TestParseFlags(t *testing.T) {
 				c.UseVersionLease = false
 				c.InstallExtensions = false
 				c.UpgradeExtensions = false
+				c.InstallPromscaleExtension = false
+				c.UpgradePromscaleExtension = false
+				c.InstallTimescaleDBExtension = false
+				c.UpgradeTimescaleDBExtension = false
 				return c
 			},
 		},
