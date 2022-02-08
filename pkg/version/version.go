@@ -66,6 +66,10 @@ var (
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 )
 
+func PromscaleVersion() semver.Version {
+	return semver.MustParse(Promscale)
+}
+
 // VerifyPgVersion verifies the Postgresql version compatibility.
 func VerifyPgVersion(version semver.Version) bool {
 	return pgAcceptedVersionsRange(version)

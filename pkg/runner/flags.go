@@ -17,9 +17,11 @@ import (
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
+	"github.com/timescale/promscale/pkg/version"
 )
 
 type Config struct {
@@ -42,6 +44,10 @@ type Config struct {
 	UseVersionLease             bool
 	InstallExtensions           bool
 	UpgradeExtensions           bool
+	InstallTimescaleDBExtension bool
+	UpgradeTimescaleDBExtension bool
+	InstallPromscaleExtension   bool
+	UpgradePromscaleExtension   bool
 	UpgradePrereleaseExtensions bool
 	StartupOnly                 bool
 }
@@ -100,6 +106,9 @@ var flagAliases = map[string][]string{
 }
 
 func ParseFlags(cfg *Config, args []string) (*Config, error) {
+	appVersion := version.PromscaleVersion()
+	firstAppVersionWithNewMigration := pgmodel.FirstAppVersionWithNewMigration()
+
 	var (
 		fs = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 
@@ -127,8 +136,12 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.BoolVar(&skipMigrate, "startup.skip-migrate", false, "Skip migrating Promscale SQL schema to latest version on startup.")
 
 	fs.BoolVar(&cfg.UseVersionLease, "startup.use-schema-version-lease", true, "Use schema version lease to prevent race conditions during migration.")
-	fs.BoolVar(&cfg.InstallExtensions, "startup.install-extensions", true, "Install TimescaleDB, Promscale extension.")
-	fs.BoolVar(&cfg.UpgradeExtensions, "startup.upgrade-extensions", true, "Upgrades TimescaleDB, Promscale extensions.")
+	fs.BoolVar(&cfg.InstallExtensions, "startup.install-extensions", true, fmt.Sprintf("(DEPRECATED) Will be removed in version %s. Install TimescaleDB, Promscale extensions.", firstAppVersionWithNewMigration))
+	fs.BoolVar(&cfg.UpgradeExtensions, "startup.upgrade-extensions", true, fmt.Sprintf("(DEPRECATED) Will be removed in version %s. Upgrades TimescaleDB, Promscale extensions.", firstAppVersionWithNewMigration))
+	fs.BoolVar(&cfg.InstallTimescaleDBExtension, "startup.install-timescaledb-extension", true, "Install TimescaleDB extension.")
+	fs.BoolVar(&cfg.UpgradeTimescaleDBExtension, "startup.upgrade-timescaledb-extension", true, "Upgrades TimescaleDB extension.")
+	fs.BoolVar(&cfg.InstallPromscaleExtension, "startup.install-promscale-extension", true, "Install Promscale extension.")
+	fs.BoolVar(&cfg.UpgradePromscaleExtension, "startup.upgrade-promscale-extension", true, "Upgrades Promscale extension.")
 	fs.BoolVar(&cfg.UpgradePrereleaseExtensions, "startup.upgrade-prerelease-extensions", false, "Upgrades to pre-release TimescaleDB, Promscale extensions.")
 	fs.StringVar(&cfg.TLSCertFile, "auth.tls-cert-file", "", "TLS Certificate file used for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")
 	fs.StringVar(&cfg.TLSKeyFile, "auth.tls-key-file", "", "TLS Key file for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")
@@ -160,6 +173,23 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	if err := validate(cfg); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	if appVersion.LT(firstAppVersionWithNewMigration) {
+		flagset := make(map[string]bool)
+		fs.Visit(func(f *flag.Flag) { flagset[f.Name] = true })
+		if flagset["startup.install-extensions"] && !flagset["startup.install-timescaledb-extension"] {
+			cfg.InstallTimescaleDBExtension = cfg.InstallExtensions
+		}
+		if flagset["startup.install-extensions"] && !flagset["startup.install-promscale-extension"] {
+			cfg.InstallPromscaleExtension = cfg.InstallExtensions
+		}
+		if flagset["startup.upgrade-extensions"] && !flagset["startup.upgrade-timescaledb-extension"] {
+			cfg.InstallTimescaleDBExtension = cfg.InstallExtensions
+		}
+		if flagset["startup.upgrade-extensions"] && !flagset["startup.upgrade-promscale-extension"] {
+			cfg.InstallPromscaleExtension = cfg.InstallExtensions
+		}
 	}
 
 	_, tracingEnabled := (cfg.APICfg.EnabledFeatureMap)["tracing"]
@@ -194,14 +224,24 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		if (flagset["migrate"] && cfg.Migrate) || (flagset["use-schema-version-lease"] && cfg.UseVersionLease) {
 			return nil, fmt.Errorf("Migration flags not supported in read-only mode")
 		}
-		if flagset["install-extensions"] && cfg.InstallExtensions {
+		if flagset["startup.install-extensions"] && cfg.InstallExtensions {
 			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
+		}
+		if flagset["startup.install-timescaledb-extension"] && cfg.InstallTimescaleDBExtension {
+			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
+		}
+		if flagset["startup.install-promscale-extension"] && cfg.InstallPromscaleExtension {
+			return nil, fmt.Errorf("Cannot install or update Promscale extension in read-only mode")
 		}
 		cfg.Migrate = false
 		cfg.StopAfterMigrate = false
 		cfg.UseVersionLease = false
 		cfg.InstallExtensions = false
 		cfg.UpgradeExtensions = false
+		cfg.InstallTimescaleDBExtension = false
+		cfg.UpgradeTimescaleDBExtension = false
+		cfg.InstallPromscaleExtension = false
+		cfg.UpgradePromscaleExtension = false
 	}
 
 	if cfg.APICfg.HighAvailability {

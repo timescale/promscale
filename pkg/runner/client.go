@@ -34,14 +34,21 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	// (upgrading the DB will force-close all existing connections, so we may
 	// add a reconnect check that the DB has an appropriate version)
 	connStr := cfg.PgmodelCfg.GetConnectionStr()
-	extOptions := extension.ExtensionMigrateOptions{
-		Install:           cfg.InstallExtensions,
-		Upgrade:           cfg.UpgradeExtensions,
+
+	extOptionsTimescaleDB := extension.ExtensionMigrateOptions{
+		Install:           cfg.InstallTimescaleDBExtension,
+		Upgrade:           cfg.UpgradeTimescaleDBExtension,
 		UpgradePreRelease: cfg.UpgradePrereleaseExtensions,
 	}
 
-	if cfg.InstallExtensions {
-		err := extension.InstallUpgradeTimescaleDBExtensions(connStr, extOptions)
+	extOptionsPromscale := extension.ExtensionMigrateOptions{
+		Install:           cfg.InstallPromscaleExtension,
+		Upgrade:           cfg.UpgradePromscaleExtension,
+		UpgradePreRelease: cfg.UpgradePrereleaseExtensions,
+	}
+
+	if cfg.InstallTimescaleDBExtension {
+		err := extension.InstallUpgradeTimescaleDBExtensions(connStr, extOptionsTimescaleDB)
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +79,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 		if !cfg.UseVersionLease {
 			lease = nil
 		}
-		err = pgmodel.Migrate(conn, appVersion, lease, extOptions)
+		err = pgmodel.Migrate(conn, appVersion, lease, extOptionsPromscale)
 		migrationFailedDueToLockError = err == pgmodel.MigrationLockError
 		if err != nil && err != pgmodel.MigrationLockError {
 			return nil, fmt.Errorf("migration error: %w", err)
@@ -112,7 +119,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Dependency checking error while trying to open DB connection: %w", err)
 	}
-	err = pgmodel.CheckDependencies(conn, appVersion, migrationFailedDueToLockError, extOptions)
+	err = pgmodel.CheckDependencies(conn, appVersion, migrationFailedDueToLockError, extOptionsPromscale)
 	if err != nil {
 		err = fmt.Errorf("dependency error: %w", err)
 		if migrationFailedDueToLockError {

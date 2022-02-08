@@ -38,6 +38,24 @@ type VersionInfo struct {
 	CommitHash string
 }
 
+// FirstAppVersionWithNewMigration returns the semver.Version
+// corresponding to the first version of the Promscale connector
+// that uses the "new" way of doing database migrations i.e.
+// relying on the required Promscale database extension to do
+// the migrations
+func FirstAppVersionWithNewMigration() semver.Version {
+	return semver.MustParse(firstAppVersionWithNewMigration)
+}
+
+// FirstExtVersionWithNewMigration returns the semver.Version
+// corresponding to the first version of the Promscale database
+// extension that uses the "new" way of doing database migrations
+// i.e. relying on the required Promscale database extension to do
+// the migrations
+func FirstExtVersionWithNewMigration() semver.Version {
+	return semver.MustParse(firstExtVersionWithNewMigration)
+}
+
 func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryLock, extOptions extension.ExtensionMigrateOptions) error {
 	// At startup migrators attempt to grab the schema-version lock. If this
 	// fails that means some other connector is running. All is not lost: some
@@ -63,18 +81,12 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 		log.Warn("msg", "skipping migration lock")
 	}
 
-	firstAppVersionWithNewMigration, err := semver.Make(firstAppVersionWithNewMigration)
-	if err != nil {
-		return errors.ErrInvalidSemverFormat
-	}
-	appSemver, err := semver.Make(appVersion.Version)
-	if err != nil {
-		return errors.ErrInvalidSemverFormat
-	}
+	firstAppVersionWithNewMigration := FirstAppVersionWithNewMigration()
+	appSemver := semver.MustParse(appVersion.Version)
 
 	if appSemver.LT(firstAppVersionWithNewMigration) {
 		// before the transition to doing all db migrations via the extension
-		err = oldMigration(conn, appSemver)
+		err := oldMigration(conn, appSemver)
 		if err != nil {
 			return fmt.Errorf("Error while trying to migrate DB: %w", err)
 		}
@@ -126,8 +138,6 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 		}
 
 		// new way of doing migrations via extension upgrades only
-		extOptions.Install = true // TODO decide whether it is appropriate to force this to true
-		extOptions.Upgrade = true // TODO decide whether it is appropriate to force this to true
 		_, err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
 		if err != nil {
 			return err
@@ -160,7 +170,7 @@ func doesSchemaMigrationTableExist(db *pgx.Conn) (exists bool, err error) {
 }
 
 func removeOldExtensionIfExists(db *pgx.Conn) (err error) {
-	firstExtVersionWithNewMigration, err := semver.Make(firstExtVersionWithNewMigration)
+	firstExtVersionWithNewMigration := FirstExtVersionWithNewMigration()
 	if err != nil {
 		return errors.ErrInvalidSemverFormat
 	}
