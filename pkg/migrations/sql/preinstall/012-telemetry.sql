@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS _ps_catalog.promscale_instance_information (
     uuid                                                UUID NOT NULL PRIMARY KEY,
     last_updated                                        TIMESTAMPTZ NOT NULL,
     promscale_ingested_samples_total                    BIGINT DEFAULT 0 NOT NULL,
-    promscale_metrics_queries_executed_total            BIGINT DEFAULT 0 NOT NULL,
+    promscale_metrics_queries_success_total            BIGINT DEFAULT 0 NOT NULL,
     promscale_metrics_queries_timedout_total            BIGINT DEFAULT 0 NOT NULL,
     promscale_metrics_queries_failed_total              BIGINT DEFAULT 0 NOT NULL,
     promscale_trace_query_requests_executed_total       BIGINT DEFAULT 0 NOT NULL,

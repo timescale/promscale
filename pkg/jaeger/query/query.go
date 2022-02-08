@@ -48,8 +48,8 @@ func (p *Query) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Tra
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		metrics.RequestsTotal.With(prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code}).Inc()
-		metrics.RequestsDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code}).Observe(time.Since(start).Seconds())
+		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code}).Inc()
+		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code}).Observe(time.Since(start).Seconds())
 	}()
 	res, err := getTrace(ctx, p.conn, traceID)
 	if err != nil {
@@ -64,8 +64,8 @@ func (p *Query) GetServices(ctx context.Context) ([]string, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		metrics.RequestsTotal.With(prometheus.Labels{"type": "trace", "handler": "Get_Services", "code": code}).Inc()
-		metrics.RequestsDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Services", "code": code}).Observe(time.Since(start).Seconds())
+		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Get_Services", "code": code}).Inc()
+		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Services", "code": code}).Observe(time.Since(start).Seconds())
 	}()
 	res, err := getServices(ctx, p.conn)
 	if err != nil {
@@ -79,8 +79,8 @@ func (p *Query) GetOperations(ctx context.Context, query spanstore.OperationQuer
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		metrics.RequestsTotal.With(prometheus.Labels{"type": "trace", "handler": "Get_Operations", "code": code}).Inc()
-		metrics.RequestsDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Operations", "code": code}).Observe(time.Since(start).Seconds())
+		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Get_Operations", "code": code}).Inc()
+		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Operations", "code": code}).Observe(time.Since(start).Seconds())
 	}()
 	res, err := getOperations(ctx, p.conn, query)
 	if err != nil {
@@ -94,8 +94,8 @@ func (p *Query) FindTraces(ctx context.Context, query *spanstore.TraceQueryParam
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		metrics.RequestsTotal.With(prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code}).Inc()
-		metrics.RequestsDuration.With(prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code}).Observe(time.Since(start).Seconds())
+		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code}).Inc()
+		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code}).Observe(time.Since(start).Seconds())
 	}()
 	res, err := findTraces(ctx, p.conn, query)
 	if err != nil {
@@ -110,8 +110,8 @@ func (p *Query) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryPar
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		metrics.RequestsTotal.With(prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code}).Inc()
-		metrics.RequestsDuration.With(prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code}).Observe(time.Since(start).Seconds())
+		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code}).Inc()
+		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code}).Observe(time.Since(start).Seconds())
 	}()
 	res, err := findTraceIDs(ctx, p.conn, query)
 	if err != nil {
@@ -126,8 +126,8 @@ func (p *Query) GetDependencies(ctx context.Context, endTs time.Time, lookback t
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		metrics.RequestsTotal.With(prometheus.Labels{"type": "trace", "handler": "Get_Dependencies", "code": code}).Inc()
-		metrics.RequestsDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Dependencies", "code": code}).Observe(time.Since(start).Seconds())
+		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Get_Dependencies", "code": code}).Inc()
+		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Dependencies", "code": code}).Observe(time.Since(start).Seconds())
 	}()
 
 	res, err := getDependencies(ctx, p.conn, endTs, lookback)

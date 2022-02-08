@@ -7,10 +7,13 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -19,8 +22,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tracer"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -275,7 +276,7 @@ func reportMetricsTelemetry(maxTs int64, numSamples, numMetadata uint64) {
 		return
 	}
 	atomic.StoreInt64(&metrics.MaxSentTs, maxTs)
-	metrics.IngestorMaxSentTimestamp.Set(float64(maxTs))
+	metrics.IngestorMaxSentTimestamp.With(prometheus.Labels{"type": "metric"}).Set(float64(maxTs))
 }
 
 // Get the handler for a given metric name, creating a new one if none exists

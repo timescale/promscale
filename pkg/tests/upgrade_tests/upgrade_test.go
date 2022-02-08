@@ -59,6 +59,12 @@ func TestMain(m *testing.M) {
 	if *useExtension {
 		baseExtensionState.UsePromscale()
 	}
+	if err := os.Setenv("IS_TEST", "true"); err != nil {
+		// E2E tests calls prometheus.MustRegister() more than once in clockcache,
+		// hence, we set this environment variable to have a different behaviour
+		// while assigning registerer in clockcache metrics.
+		panic(err)
+	}
 	_ = log.Init(log.Config{
 		Level: "debug",
 	})

@@ -27,7 +27,7 @@ The query will return something similar to this:
 | promscale_metrics_ha_cluster_count                          | 0            |
 | promscale_metrics_metadata_total                            | 0            |
 | promscale_metrics_multi_tenancy_tenant_count                | 0            |
-| promscale_metrics_queries_executed_total                    | 0            |
+| promscale_metrics_queries_success_total                     | 0            |
 | promscale_metrics_queries_failed_total                      | 0            |
 | promscale_metrics_queries_timedout_total                    | 0            |
 | promscale_metrics_registered_views                          | 0            |

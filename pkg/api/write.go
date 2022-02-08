@@ -7,8 +7,6 @@ package api
 import (
 	"bytes"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"io"
 	"mime"
 	"net/http"
@@ -51,13 +49,18 @@ func (wh *writeHandler) handler() http.Handler {
 }
 
 // Write returns an http.Handler that is responsible for data ingest.
-func Write(inserter ingestor.DBInserter, dataParser *parser.DefaultParser, elector *util.Elector) http.Handler {
+func Write(
+	inserter ingestor.DBInserter,
+	dataParser *parser.DefaultParser,
+	elector *util.Elector,
+	callBack func(code string, durationSeconds, numSamples, numMetadata float64),
+) http.Handler {
 	wh := writeHandler{}
 	wh.addStages(
 		validateWriteHeaders,
-		checkLegacyHA(elector),
+		checkLegacyHA(elector, metrics),
 		decodeSnappy,
-		ingest(inserter, dataParser),
+		ingest(inserter, dataParser, callBack),
 	)
 	return wh.handler()
 }
@@ -105,7 +108,8 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func checkLegacyHA(elector *util.Elector) func(http.ResponseWriter, *http.Request) bool {
+// TODO (Harkishen): drop support for this unless function.
+func checkLegacyHA(elector *util.Elector, metrics *Metrics) func(http.ResponseWriter, *http.Request) bool {
 	if elector == nil {
 		return nil
 	}
@@ -226,8 +230,19 @@ var decodedBufPool = sync.Pool{
 	},
 }
 
-func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func(http.ResponseWriter, *http.Request) bool {
+func ingest(
+	inserter ingestor.DBInserter,
+	dataParser *parser.DefaultParser,
+	updateMetrics func(code string, durationSeconds, numSamples, numMetadata float64),
+) func(http.ResponseWriter, *http.Request) bool {
 	return func(w http.ResponseWriter, r *http.Request) bool {
+		begin := time.Now()
+		statusCode := "400"
+		numSamples := uint64(0)
+		numMetadata := uint64(0)
+		defer func() {
+			updateMetrics(statusCode, time.Since(begin).Seconds(), float64(numSamples), float64(numMetadata))
+		}()
 		ctx, span := tracer.Default().Start(r.Context(), "ingest")
 		defer span.End()
 		req := ingestor.NewWriteRequest()
@@ -235,30 +250,25 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 		if err != nil {
 			ingestor.FinishWriteRequest(req)
 			invalidRequestError(w, "parser error", err.Error(), metrics)
-			pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata", "code": "400"}).Inc()
 			return false
 		}
 
-		// if samples in write request are empty the we do not need to
+		// if samples in write request are empty then we do not need to
 		// proceed further
 		if len(req.Timeseries) == 0 && len(req.Metadata) == 0 {
+			statusCode = "2xx"
 			ingestor.FinishWriteRequest(req)
 			return false
 		}
 
-		begin := time.Now()
-		numSamples, numMetadata, err := inserter.Ingest(ctx, req)
+		numSamples, numMetadata, err = inserter.Ingest(ctx, req)
 		if err != nil {
+			statusCode = "500"
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample", "code": "400"}).Inc()
 			return false
 		}
-		duration := time.Since(begin).Seconds()
-		pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata", "code": "2xx"}).Inc()
-		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(numSamples))
-		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(float64(numMetadata))
-		pgMetrics.IngestorDuration.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Observe(duration)
+		statusCode = "2xx"
 		return true
 	}
 }
@@ -266,7 +276,6 @@ func ingest(inserter ingestor.DBInserter, dataParser *parser.DefaultParser) func
 func invalidRequestError(w http.ResponseWriter, msg, err string, m *Metrics) {
 	log.Error("msg", msg, "err", err)
 	http.Error(w, err, http.StatusBadRequest)
-	m.InvalidWriteReqs.Inc()
 }
 
 func validateError(w http.ResponseWriter, err string, metrics *Metrics) {

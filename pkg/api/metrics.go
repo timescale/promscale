@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -16,11 +18,21 @@ var metrics *Metrics
 type Metrics struct {
 	// Using the first word in struct to ensure proper alignment in 32-bit systems.
 	// Reference: https://golang.org/pkg/sync/atomic/#pkg-note-BUG
-	LastRequestUnixNano int64
-	InvalidReadReqs     prometheus.Counter
-	InvalidWriteReqs    prometheus.Counter
-	InvalidQueryReqs    prometheus.Counter
-	HTTPRequestDuration *prometheus.HistogramVec
+	LastRequestUnixNano       int64
+	HTTPRequestDuration       *prometheus.HistogramVec
+	RemoteReadReceivedQueries prometheus.Counter
+}
+
+func updateIngestMetrics(code string, duration, numSamples, numMetadata float64) {
+	pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "code": code}).Inc()
+	pgMetrics.IngestorDuration.With(prometheus.Labels{"type": "metric", "code": code}).Observe(duration)
+	pgMetrics.IngestorItems.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(numSamples)
+	pgMetrics.IngestorItems.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(numMetadata)
+}
+
+func updateQueryMetrics(handler, code string, duration float64) {
+	pgMetrics.Query.With(prometheus.Labels{"type": "metric", "code": code, "handler": handler}).Inc()
+	pgMetrics.QueryDuration.With(prometheus.Labels{"type": "metric", "code": code, "handler": handler}).Observe(duration)
 }
 
 // InitMetrics sets up and returns the Prometheus metrics which Promscale exposes.
@@ -31,40 +43,15 @@ func InitMetrics() *Metrics {
 	}
 	metrics = createMetrics()
 	prometheus.MustRegister(
-		metrics.InvalidReadReqs,
-		metrics.InvalidWriteReqs,
 		metrics.HTTPRequestDuration,
+		metrics.RemoteReadReceivedQueries,
 	)
-
 	return metrics
 }
 
 func createMetrics() *Metrics {
 	return &Metrics{
 		LastRequestUnixNano: time.Now().UnixNano(),
-		InvalidReadReqs: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: util.PromNamespace,
-				Subsystem: "api",
-				Name:      "invalid_read_requests",
-				Help:      "Total number of remote read requests with invalid metadata.",
-			},
-		),
-		InvalidWriteReqs: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: util.PromNamespace,
-				Subsystem: "api",
-				Name:      "invalid_write_requests",
-				Help:      "Total number of remote write requests with invalid metadata.",
-			},
-		),
-		InvalidQueryReqs: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: util.PromNamespace,
-				Name:      "invalid_query_requests",
-				Help:      "Total number of invalid query requests with invalid metadata.",
-			},
-		),
 		HTTPRequestDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: util.PromNamespace,
@@ -74,6 +61,15 @@ func createMetrics() *Metrics {
 				Buckets:   prometheus.DefBuckets,
 			},
 			[]string{"path"},
+		),
+		RemoteReadReceivedQueries: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace:   util.PromNamespace,
+				Subsystem:   "query",
+				Name:        "remote_read_queries_total",
+				Help:        "Number of remote-read queries received.",
+				ConstLabels: map[string]string{"type": "metric", "handler": "/read"},
+			},
 		),
 	}
 }

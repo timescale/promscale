@@ -17,7 +17,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/model/pdata"
@@ -74,14 +73,6 @@ func TestDetectSnappyStreamFormat(t *testing.T) {
 	}
 
 }
-
-var (
-	defaultCounterOpts = prometheus.CounterOpts{
-		Namespace: "test",
-		Name:      "metric_counter",
-		Help:      "metric for test.",
-	}
-)
 
 func TestWrite(t *testing.T) {
 	require.NoError(t, log.Init(log.Config{
@@ -251,23 +242,14 @@ func TestWrite(t *testing.T) {
 					err:      c.electionErr,
 				},
 			)
-			leaderGauge := &mockMetric{}
-			ingestedSamplesCounter := &mockMetric{}
-			invalidWriteReqs := &mockMetric{}
-
-			// Below metrics are vectors, which do not satisfy the `Counter` interface. Hence, they
-			// have to be filled with concrete types.
-			receivedSamplesCounter := prometheus.NewCounterVec(defaultCounterOpts, []string{})
 			mock := &mockInserter{
 				result: c.inserterResponse,
 				err:    c.inserterErr,
 			}
+			metrics = &Metrics{LastRequestUnixNano: 0}
 			dataParser := parser.NewParser()
-			metrics = &Metrics{
-				InvalidWriteReqs: invalidWriteReqs,
-			}
-
-			handler := Write(mock, dataParser, elector)
+			numSamples := &mockMetric{}
+			handler := Write(mock, dataParser, elector, mockUpdaterForIngest(&mockMetric{}, nil, numSamples, nil))
 
 			headers := protobufHeaders
 			if len(c.customHeaders) != 0 {
@@ -282,21 +264,10 @@ func TestWrite(t *testing.T) {
 				t.Errorf("Unexpected HTTP status code received: got %d wanted %d", w.Code, c.responseCode)
 			}
 
-			if c.electionErr != nil && leaderGauge.value != 0 {
-				t.Errorf("leader gauge metric not set correctly: got %f when election returns an error", leaderGauge.value)
-			}
-
-			switch {
-			case c.isLeader && leaderGauge.value != 1:
-				t.Errorf("leader gauge metric not set correctly: got %f when is leader", leaderGauge.value)
-			case !c.isLeader && leaderGauge.value != 0:
-				t.Errorf("leader gauge metric not set correctly: got %f when is not leader", leaderGauge.value)
-			}
-
-			if ingestedSamplesCounter.value != float64(c.inserterResponse) {
+			if numSamples.value != float64(c.inserterResponse) {
 				t.Errorf(
 					"num sent samples gauge not set correctly: got %v, expected %d",
-					receivedSamplesCounter.MetricVec,
+					numSamples.value,
 					c.inserterResponse,
 				)
 			}
@@ -320,7 +291,6 @@ func GenerateWriteHandleTester(t *testing.T, handleFunc http.Handler, headers ma
 
 		for name, value := range headers {
 			req.Header.Add(name, value)
-
 		}
 		w := httptest.NewRecorder()
 		handleFunc.ServeHTTP(w, req)
@@ -397,7 +367,7 @@ func (m *mockMetric) Desc() *prometheus.Desc {
 	panic("implement me")
 }
 
-func (m *mockMetric) Write(metric *dto.Metric) error {
+func (m *mockMetric) Write(metric *io_prometheus_client.Metric) error {
 	metric.Counter = &io_prometheus_client.Counter{}
 	metric.Counter.Value = &m.value
 	return nil
@@ -433,4 +403,28 @@ func (m *mockMetric) Sub(f float64) {
 
 func (m *mockMetric) SetToCurrentTime() {
 	panic("implement me")
+}
+
+func mockUpdaterForIngest(counter, histogram, numSamples, numMetadata *mockMetric) func(code string, duration, numSamples, numMetadata float64) {
+	return func(_ string, duration, samples, metadata float64) {
+		counter.value++
+		applyValueIfMetricNotNil(counter, samples)
+		applyValueIfMetricNotNil(histogram, duration)
+		applyValueIfMetricNotNil(numSamples, samples)
+		applyValueIfMetricNotNil(numMetadata, metadata)
+	}
+}
+
+func mockUpdaterForQuery(counter, histogram *mockMetric) func(handler, code string, duration float64) {
+	return func(_, _ string, duration float64) {
+		counter.value++
+		applyValueIfMetricNotNil(histogram, duration)
+	}
+}
+
+func applyValueIfMetricNotNil(metric *mockMetric, value float64) {
+	if metric == nil {
+		return
+	}
+	metric.value = value
 }

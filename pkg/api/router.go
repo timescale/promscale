@@ -6,7 +6,6 @@ package api
 
 import (
 	"fmt"
-	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -16,15 +15,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/ha"
 	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/util"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
@@ -42,7 +43,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		dataParser.AddPreprocessor(preproc)
 	}
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(Write(client, dataParser, elector), "write-metrics"))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(Write(client, dataParser, elector, updateIngestMetrics), "write-metrics"))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {
@@ -57,7 +58,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 
 	router.Post("/write", writeHandler)
 
-	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics))
+	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics, updateQueryMetrics))
 	router.Get("/read", readHandler)
 	router.Post("/read", readHandler)
 
@@ -70,15 +71,15 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	if err != nil {
 		return nil, fmt.Errorf("creating query-engine: %w", err)
 	}
-	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, metrics))
+	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, updateQueryMetrics))
 	router.Get("/api/v1/query", queryHandler)
 	router.Post("/api/v1/query", queryHandler)
 
-	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, metrics))
+	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, updateQueryMetrics))
 	router.Get("/api/v1/query_range", queryRangeHandler)
 	router.Post("/api/v1/query_range", queryRangeHandler)
 
-	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, metrics))
+	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, updateQueryMetrics))
 	router.Get("/api/v1/query_exemplars", exemplarQueryHandler)
 	router.Post("/api/v1/query_exemplars", exemplarQueryHandler)
 
@@ -122,7 +123,7 @@ func RegisterMetricsForTelemetry(t telemetry.Engine) error {
 	var err error
 	if err = t.RegisterMetric(
 		"promscale_ingested_samples_total",
-		pgMetrics.IngestorInsertables.With(prometheus.Labels{"type": "metric", "kind": "sample"})); err != nil {
+		pgMetrics.IngestorItems.With(prometheus.Labels{"type": "metric", "kind": "sample"})); err != nil {
 		return fmt.Errorf("register 'promscale_ingested_samples_total' metric for telemetry: %w", err)
 	}
 	if err = t.RegisterMetric(

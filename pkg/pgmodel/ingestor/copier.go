@@ -7,7 +7,6 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
 	"math"
 	"sort"
 	"strings"
@@ -15,14 +14,16 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tracer"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type copyRequest struct {
@@ -306,6 +307,8 @@ func debugInsert() {
 }
 */
 
+var labelsCopier = prometheus.Labels{"type": "metric", "subsystem": "copier"}
+
 // insertSeries performs the insertion of time-series into the DB.
 func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest) (error, int64) {
 	_, span := tracer.Default().Start(ctx, "insert-series")
@@ -325,7 +328,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 		// We sort after WriteSeries call because we now have guarantees that all seriesIDs have been populated
 		sort.Sort(&req.data.batch)
 		numSamples, numExemplars := req.data.batch.Count()
-		metrics.IngestorRowsPerInsert.With(prometheus.Labels{"type": "metric", "subsystem": "copier"}).Observe(float64(numSamples + numExemplars))
+		metrics.IngestorRowsPerInsert.With(labelsCopier).Observe(float64(numSamples + numExemplars))
 
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
@@ -421,8 +424,8 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
 	batch.Queue("SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1", int64(lowestEpoch))
 
-	metrics.IngestorRowsPerBatch.With(prometheus.Labels{"type": "metric", "subsystem": "copier"}).Observe(float64(numRowsTotal))
-	metrics.IngestorInsertsPerBatch.With(prometheus.Labels{"type": "metric", "subsystem": "copier"}).Observe(float64(len(reqs)))
+	metrics.IngestorRowsPerBatch.With(labelsCopier).Observe(float64(numRowsTotal))
+	metrics.IngestorInsertsPerBatch.With(labelsCopier).Observe(float64(len(reqs)))
 	start := time.Now()
 	results, err := conn.SendBatch(context.Background(), batch)
 	if err != nil {

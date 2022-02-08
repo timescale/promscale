@@ -11,7 +11,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
 	"github.com/timescale/promscale/pkg/log"
 )
 
@@ -165,4 +167,20 @@ func TestAddAlias(t *testing.T) {
 	require.Equal(t, sf.DefValue, alias.DefValue)
 	require.Equal(t, alias.Usage, fmt.Sprintf(aliasDescTemplate+descSuffix, sf.Name))
 
+}
+
+func TestExtractMetricValue(t *testing.T) {
+	metric := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "test", Name: "extraction"})
+
+	metric.Set(164)
+
+	value, err := ExtractMetricValue(metric)
+	require.NoError(t, err)
+	require.Equal(t, float64(164), value)
+
+	wrongMetric := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "test", Name: "wrong", Buckets: prometheus.DefBuckets})
+
+	wrongMetric.Observe(164)
+	_, err = ExtractMetricValue(wrongMetric)
+	require.Error(t, err)
 }

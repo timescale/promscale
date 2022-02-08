@@ -11,22 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExtractMetricValue(t *testing.T) {
-	metric := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "test", Name: "extraction"})
-
-	metric.Set(164)
-
-	value, err := extractMetricValue(metric)
-	require.NoError(t, err)
-	require.Equal(t, float64(164), value)
-
-	wrongMetric := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "test", Name: "wrong", Buckets: prometheus.DefBuckets})
-
-	wrongMetric.Observe(164)
-	_, err = extractMetricValue(wrongMetric)
-	require.Error(t, err)
-}
-
 func TestRegisterMetric(t *testing.T) {
 	metric := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "test", Name: "extraction"})
 

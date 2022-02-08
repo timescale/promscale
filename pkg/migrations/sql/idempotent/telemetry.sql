@@ -36,7 +36,7 @@ $$
         )
         UPDATE _ps_catalog.promscale_instance_information SET
             promscale_ingested_samples_total                    = promscale_ingested_samples_total + COALESCE(x.del_promscale_ingested_samples_total, 0),
-            promscale_metrics_queries_executed_total            = promscale_metrics_queries_executed_total + COALESCE(x.del_promscale_metrics_queries_executed_total, 0),
+            promscale_metrics_queries_success_total             = promscale_metrics_queries_success_total + COALESCE(x.del_promscale_metrics_queries_success_total, 0),
             promscale_metrics_queries_timedout_total            = promscale_metrics_queries_timedout_total + COALESCE(x.del_promscale_metrics_queries_timedout_total, 0),
             promscale_metrics_queries_failed_total              = promscale_metrics_queries_failed_total + COALESCE(x.del_promscale_metrics_queries_failed_total, 0),
             promscale_trace_query_requests_executed_total       = promscale_trace_query_requests_executed_total + COALESCE(x.del_promscale_trace_query_requests_executed_total, 0),
@@ -46,7 +46,7 @@ $$
         (
             SELECT
                 sum(promscale_ingested_samples_total)  			        as del_promscale_ingested_samples_total,
-                sum(promscale_metrics_queries_executed_total)  		    as del_promscale_metrics_queries_executed_total,
+                sum(promscale_metrics_queries_success_total)  		    as del_promscale_metrics_queries_success_total,
                 sum(promscale_metrics_queries_timedout_total)  		    as del_promscale_metrics_queries_timedout_total,
                 sum(promscale_metrics_queries_failed_total)  		    as del_promscale_metrics_queries_failed_total,
                 sum(promscale_trace_query_requests_executed_total)      as del_promscale_trace_query_requests_executed_total,

@@ -129,7 +129,7 @@ func prepareWriterWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, ht
 		t.Fatalf("could not create ingestor: %v", err)
 	}
 	api.InitMetrics()
-	return ticker, api.Write(ing, dataParser, nil), ing, err
+	return ticker, api.Write(ing, dataParser, nil, func(code string, numSamples, numMetadata, duration float64) {}), ing, err
 }
 
 func TestHALeaderChangeDueToInactivity(t *testing.T) {

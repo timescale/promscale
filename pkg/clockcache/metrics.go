@@ -1,6 +1,7 @@
 package clockcache
 
 import (
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,11 +17,7 @@ type MetricOptions struct {
 // The module must be either 'metric' or 'trace'.
 func WithMetrics(cacheName, module string, max uint64) *Cache {
 	cache := WithMax(max)
-	RegisterBasicMetrics(cacheName, module, cache)
-
-	perf := new(perfMetrics)
-	perf.createAndRegister(cacheName, module)
-	cache.applyPerfMetric(perf)
+	registerMetrics(cacheName, module, cache)
 	return cache
 }
 
@@ -31,7 +28,7 @@ type perfMetrics struct {
 	queriesLatency *prometheus.HistogramVec
 }
 
-func (pm *perfMetrics) createAndRegister(name, module string) {
+func (pm *perfMetrics) createAndRegister(r prometheus.Registerer, name, module string) {
 	pm.isApplied = true
 	pm.hitsTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
@@ -58,10 +55,10 @@ func (pm *perfMetrics) createAndRegister(name, module string) {
 			Name:        "query_latency_microseconds",
 			Help:        "Query latency for the clockcache.",
 			ConstLabels: map[string]string{"type": module, "name": name},
-			Buckets:     prometheus.LinearBuckets(1, 500, 20),
+			Buckets:     prometheus.LinearBuckets(1, 500, 10),
 		}, []string{"method"},
 	)
-	prometheus.MustRegister(pm.hitsTotal, pm.queriesTotal, pm.queriesLatency)
+	r.MustRegister(pm.hitsTotal, pm.queriesTotal, pm.queriesLatency)
 }
 
 func (pm *perfMetrics) Inc(c prometheus.Counter) {
@@ -76,17 +73,23 @@ func (pm *perfMetrics) Observe(method string, d time.Duration) {
 	}
 }
 
-// RegisterBasicMetrics registers and creates basic metrics for cache like:
-// 1. promscale_cache_enabled
-// 2. promscale_cache_elements
-// 3. promscale_cache_size
-// 4. promscale_cache_capacity
-// 5. promscale_cache_evictions_total
 // Note: the moduleType refers to which module the cache belongs. Valid options: ["metric", "trace"].
-func RegisterBasicMetrics(cacheName, moduleType string, c *Cache) {
+func registerMetrics(cacheName, moduleType string, c *Cache) {
 	if !(moduleType == "metric" || moduleType == "trace") {
 		panic("moduleType can only be either 'metric' or 'trace'")
 	}
+
+	r := prometheus.DefaultRegisterer
+	if isTest := os.Getenv("IS_TEST"); isTest == "true" {
+		// Use new registry for each cache creation in e2e tests to
+		// avoid duplicate prometheus.MustRegister() calls.
+		r = prometheus.NewRegistry()
+	}
+
+	perf := new(perfMetrics)
+	perf.createAndRegister(r, cacheName, moduleType)
+	c.applyPerfMetric(perf)
+
 	enabled := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
@@ -94,7 +97,7 @@ func RegisterBasicMetrics(cacheName, moduleType string, c *Cache) {
 			Name:      "enabled",
 			Help:      "Cache is enabled or not.",
 			ConstLabels: map[string]string{ // type => ["trace" or "metric"] and name => name of the cache i.e., metric cache, series cache, schema cache, etc.
-				"type": "trace",
+				"type": moduleType,
 				"name": cacheName,
 			},
 		},
@@ -106,7 +109,7 @@ func RegisterBasicMetrics(cacheName, moduleType string, c *Cache) {
 			Subsystem:   "cache",
 			Name:        "elements",
 			Help:        "Number of elements in cache in terms of elements count.",
-			ConstLabels: map[string]string{"type": "trace", "name": cacheName},
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
 		}, func() float64 {
 			return float64(c.Len())
 		},
@@ -115,9 +118,9 @@ func RegisterBasicMetrics(cacheName, moduleType string, c *Cache) {
 		prometheus.GaugeOpts{
 			Namespace:   util.PromNamespace,
 			Subsystem:   "cache",
-			Name:        "capacity_bytes",
+			Name:        "bytes",
 			Help:        "Cache size in bytes.",
-			ConstLabels: map[string]string{"type": "trace", "name": cacheName},
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
 		}, func() float64 {
 			return float64(c.SizeBytes())
 		},
@@ -128,7 +131,7 @@ func RegisterBasicMetrics(cacheName, moduleType string, c *Cache) {
 			Subsystem:   "cache",
 			Name:        "capacity_elements",
 			Help:        "Total cache capacity in terms of elements count.",
-			ConstLabels: map[string]string{"type": "trace", "name": cacheName},
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
 		}, func() float64 {
 			return float64(c.Cap())
 		},
@@ -139,10 +142,10 @@ func RegisterBasicMetrics(cacheName, moduleType string, c *Cache) {
 			Subsystem:   "cache",
 			Name:        "evictions_total",
 			Help:        "Total evictions in a clockcache.",
-			ConstLabels: map[string]string{"type": "trace", "name": cacheName},
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
 		}, func() float64 {
 			return float64(c.Evictions())
 		},
 	)
-	prometheus.MustRegister(enabled, count, size, capacity, evictions)
+	r.MustRegister(enabled, count, size, capacity, evictions)
 }

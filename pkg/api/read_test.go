@@ -58,8 +58,9 @@ func TestRead(t *testing.T) {
 			responseCode:   http.StatusOK,
 			readerResponse: &prompb.ReadResponse{},
 			requestBody: readRequestToString(
-				&prompb.ReadRequest{},
+				&prompb.ReadRequest{Queries: []*prompb.Query{{}}},
 			),
+			expReceivedQueries: 1,
 		}, {
 			name:           "happy path with query",
 			responseCode:   http.StatusOK,
@@ -79,13 +80,14 @@ func TestRead(t *testing.T) {
 			}
 			config := &Config{}
 			receivedQueriesCounter := &mockMetric{}
-			queryDurationHist := &mockMetric{}
-			failedQueriesCounter := &mockMetric{}
-			invalidReadReqs := &mockMetric{}
-			metrics := &Metrics{
-				InvalidReadReqs: invalidReadReqs,
+
+			metrics = &Metrics{
+				RemoteReadReceivedQueries: receivedQueriesCounter,
 			}
-			handler := Read(config, mockReader, metrics)
+
+			requests := &mockMetric{}
+			duration := &mockMetric{}
+			handler := Read(config, mockReader, metrics, mockUpdaterForQuery(requests, duration))
 
 			test := GenerateReadHandleTester(t, handler, c.name == "bad header")
 
@@ -98,10 +100,10 @@ func TestRead(t *testing.T) {
 			if receivedQueriesCounter.value != c.expReceivedQueries {
 				t.Errorf("expected %f queries to be received, got %f", c.expReceivedQueries, receivedQueriesCounter.value)
 			}
-			if c.responseCode == http.StatusOK && queryDurationHist.value == 0 {
+			if c.responseCode == http.StatusOK && duration.value == 0 {
 				t.Error("expected recorded query duration to be > 0")
 			}
-			if c.responseCode == http.StatusInternalServerError && failedQueriesCounter.value == 0 {
+			if c.responseCode == http.StatusInternalServerError && requests.value == 0 {
 				t.Error("expected number of failed queries to be > 0")
 			}
 		})

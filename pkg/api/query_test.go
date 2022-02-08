@@ -221,11 +221,8 @@ func TestQuery(t *testing.T) {
 					Timeout:    timeout,
 				},
 			)
-			invalidQueryReqs := &mockMetric{}
-			metrics := &Metrics{
-				InvalidQueryReqs: invalidQueryReqs,
-			}
-			handler := queryHandler(engine, query.NewQueryable(tc.querier, tc.labelsReader), metrics)
+
+			handler := queryHandler(engine, query.NewQueryable(tc.querier, tc.labelsReader), mockUpdaterForQuery(&mockMetric{}, nil))
 			queryURL := constructQuery(tc.metric, tc.time, tc.timeout)
 			w := doQuery(t, handler, queryURL, tc.canceled)
 

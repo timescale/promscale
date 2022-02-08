@@ -128,10 +128,12 @@ func getServiceName(rSpan pdata.ResourceSpans) string {
 
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
 	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
-	metrics.ActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "spans"}).Inc()
+	code := "500"
+	metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "span"}).Inc()
 	defer func() {
-		metrics.ActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "spans"}).Dec()
-		metrics.IngestDuration.With(prometheus.Labels{"type": "trace"}).Observe(time.Since(startIngest).Seconds())
+		metrics.IngestorRequests.With(prometheus.Labels{"type": "trace", "code": code}).Inc()
+		metrics.IngestorDuration.With(prometheus.Labels{"type": "trace", "code": code}).Observe(time.Since(startIngest).Seconds())
+		metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "span"}).Dec()
 	}()
 
 	rSpans := traces.ResourceSpans()
@@ -318,9 +320,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		return fmt.Errorf("error sending trace batches: %w", err)
 	}
 
-	metrics.InsertDuration.With(prometheus.Labels{"type": "trace"}).Observe(time.Since(start).Seconds())
-	metrics.IngestedTotal.With(prometheus.Labels{"type": "trace", "kind": "spans"}).Add(float64(traces.SpanCount()))
-	metrics.MaxSentTimestamp.With(prometheus.Labels{"type": "trace"}).Set(float64(maxEndTimestamp))
+	code = "2xx"
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "span"}).Observe(time.Since(start).Seconds())
+	metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span"}).Add(float64(traces.SpanCount()))
+	metrics.IngestorMaxSentTimestamp.With(prometheus.Labels{"type": "trace"}).Set(float64(maxEndTimestamp))
 
 	// Only report telemetry if ingestion successful.
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())

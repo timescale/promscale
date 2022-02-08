@@ -20,6 +20,10 @@ We use the following categories for changes:
 ### Fixed
 - Fix spans with end < start. Start and end are swapped in this case. [#1096]
 
+### Changed
+- Renamed and refactor Promscale metrics for better consistency [#1113]
+- Add performance metrics in cache module in Promscale [#1113]
+
 ## [0.9.0] - 2022-02-02
 
 ### Added

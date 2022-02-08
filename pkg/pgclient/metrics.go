@@ -33,6 +33,10 @@ var (
 )
 
 func InitClientMetrics(client *Client) {
+	if statementCacheLen != nil {
+		// Register metrics only once.
+		return
+	}
 	statementCacheLen = createStatementCacheLengthHistogramMetric(client)
 	prometheus.MustRegister(
 		statementCacheEnabled,
