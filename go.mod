@@ -18,7 +18,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/go-hclog v1.1.0
 	github.com/inhies/go-bytesize v0.0.0-20201103132853-d0aed0d254f8
-	github.com/jackc/pgconn v1.10.1
+	github.com/jackc/pgconn v1.11.0
 	github.com/jackc/pgerrcode v0.0.0-20190803225404-afa3381909a6
 	github.com/jackc/pgproto3/v2 v2.2.0
 	github.com/jackc/pgtype v1.10.0
