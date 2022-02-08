@@ -62,7 +62,7 @@ type MetricNameCache struct {
 }
 
 func NewMetricCache(config Config) *MetricNameCache {
-	return &MetricNameCache{Metrics: clockcache.WithMetrics("metric", "metric", config.MetricsCacheSize)}
+	return &MetricNameCache{Metrics: clockcache.WithMetrics("metric_name", "metric", config.MetricsCacheSize)}
 }
 
 // Get fetches the table name for specified metric.

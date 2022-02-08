@@ -67,6 +67,12 @@ var (
 
 func init() {
 	tput.InitWatcher(time.Second)
+	if err := os.Setenv("IS_TEST", "true"); err != nil {
+		// Test dependent behaviours call initializing a module more than once.
+		// An example of this is duplicate metrics registry in createAndRegister.
+		// This helps avoid such situations.
+		panic(err)
+	}
 }
 
 // setExtensionState sets the value of extensionState based on the input flags.

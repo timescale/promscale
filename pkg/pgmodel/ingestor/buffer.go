@@ -6,9 +6,9 @@ package ingestor
 
 import (
 	"context"
-	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"sync"
 
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 

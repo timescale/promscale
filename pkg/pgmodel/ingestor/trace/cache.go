@@ -1,12 +1,6 @@
 package trace
 
-import (
-	"sync"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/timescale/promscale/pkg/clockcache"
-	"github.com/timescale/promscale/pkg/util"
-)
+import "github.com/timescale/promscale/pkg/clockcache"
 
 const (
 	urlCacheSize       = 10000
@@ -15,111 +9,18 @@ const (
 	tagCacheSize       = 10000
 )
 
-// Only for tests: Metrics get registered twice in E2E tests, leading to panic.
-// Hence, we must register only once.
-var regSchema, regOp, regInst, regTag sync.Once
-
-func newSchemaCache() *clockcache.Cache { // todo: update these WithMax with WithMetrics once #1102 is merged.
-	c := clockcache.WithMax(urlCacheSize)
-	regSchema.Do(func() {
-		registerMetrics("schema", c)
-	})
-	return c
+func newSchemaCache() *clockcache.Cache {
+	return clockcache.WithMetrics("schema", "trace", urlCacheSize)
 }
 
 func newOperationCache() *clockcache.Cache {
-	c := clockcache.WithMax(operationCacheSize)
-	regOp.Do(func() {
-		registerMetrics("operation", c)
-	})
-	return c
+	return clockcache.WithMetrics("operation", "trace", operationCacheSize)
 }
 
 func newInstrumentationLibraryCache() *clockcache.Cache {
-	c := clockcache.WithMax(instLibCacheSize)
-	regInst.Do(func() {
-		registerMetrics("instrumentation_lib", c)
-	})
-	return c
+	return clockcache.WithMetrics("instrumentation_lib", "trace", instLibCacheSize)
 }
 
 func newTagCache() *clockcache.Cache {
-	c := clockcache.WithMax(tagCacheSize)
-	regTag.Do(func() {
-		registerMetrics("tag", c)
-	})
-	return c
-}
-
-func registerMetrics(cacheName string, c *clockcache.Cache) {
-	enabled := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "cache",
-			Name:      "enabled",
-			Help:      "Cache is enabled or not.",
-			ConstLabels: map[string]string{ // type => ["trace" or "metric"] and name => name of the cache i.e., metric cache, series cache, schema cache, etc.
-				"type": "trace",
-				"name": cacheName,
-			},
-		},
-	)
-	enabled.Set(1)
-	count := prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "cache",
-			Name:      "elements",
-			Help:      "Number of elements in cache in terms of elements count.",
-			ConstLabels: map[string]string{
-				"type": "trace",
-				"name": cacheName,
-			},
-		}, func() float64 {
-			return float64(c.Len())
-		},
-	)
-	size := prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "cache",
-			Name:      "bytes",
-			Help:      "Total cache capacity in bytes.",
-			ConstLabels: map[string]string{
-				"type": "trace",
-				"name": cacheName,
-			},
-		}, func() float64 {
-			return float64(c.SizeBytes())
-		},
-	)
-	capacity := prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "cache",
-			Name:      "capacity_elements",
-			Help:      "Total cache capacity in terms of elements count.",
-			ConstLabels: map[string]string{
-				"type": "trace",
-				"name": cacheName,
-			},
-		}, func() float64 {
-			return float64(c.Cap())
-		},
-	)
-	evictions := prometheus.NewCounterFunc(
-		prometheus.CounterOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "cache",
-			Name:      "evictions_total",
-			Help:      "Total evictions in a clockcache.",
-			ConstLabels: map[string]string{
-				"type": "trace",
-				"name": cacheName,
-			},
-		}, func() float64 {
-			return float64(c.Evictions())
-		},
-	)
-	prometheus.MustRegister(enabled, count, size, capacity, evictions)
+	return clockcache.WithMetrics("tag", "trace", tagCacheSize)
 }

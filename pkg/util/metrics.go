@@ -1,5 +1,12 @@
 package util
 
+import (
+	"fmt"
+
+	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
+)
+
 //returns a exponential histogram for a saturating metric. Grows exponentially
 //until max-10, and has another bucket for max.
 //This is done so we can tell from the histogram if the resource was saturated or not.
@@ -25,4 +32,19 @@ func HistogramBucketsSaturating(start float64, factor float64, max float64) []fl
 	buckets = append(buckets, max-10)
 	buckets = append(buckets, max)
 	return buckets
+}
+
+func ExtractMetricValue(counterOrGauge prometheus.Metric) (float64, error) {
+	var internal io_prometheus_client.Metric
+	if err := counterOrGauge.Write(&internal); err != nil {
+		return 0, fmt.Errorf("error writing metric: %w", err)
+	}
+	switch {
+	case internal.Gauge != nil:
+		return internal.Gauge.GetValue(), nil
+	case internal.Counter != nil:
+		return internal.Counter.GetValue(), nil
+	default:
+		return 0, fmt.Errorf("both Gauge and Counter are nil")
+	}
 }

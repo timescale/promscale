@@ -23,6 +23,10 @@ We use the following categories for changes:
 - Fix aggregate pushdown evaluation [#1098]
 - Fix broken `extraEnv` parameter in helm chart values [#1126]
 
+### Changed
+- Renamed and refactor Promscale metrics for better consistency [#1113]
+- Add performance metrics in cache module in Promscale [#1113]
+
 ## [0.9.0] - 2022-02-02
 
 ### Added

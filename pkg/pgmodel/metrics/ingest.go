@@ -46,27 +46,13 @@ var (
 			Name:      "decompress_min_unix_time",
 			Help:      "Earliest decompression time in unix.",
 		}, []string{"type", "kind", "table"})
-	HAClusterLeaderDetails = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: util.PromNamespace,
-			Name:      "ha_cluster_leader_info",
-			Help:      "Info on HA clusters and respective leaders.",
-		},
-		[]string{"cluster", "replica"})
-	NumOfHAClusterLeaderChanges = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: util.PromNamespace,
-			Name:      "ha_cluster_leader_changes_total",
-			Help:      "Total number of times leader changed per cluster.",
-		},
-		[]string{"cluster"})
-	IngestorMaxSentTimestamp = prometheus.NewGauge(
+	IngestorMaxSentTimestamp = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
 			Name:      "max_sent_timestamp_milliseconds",
 			Help:      "Maximum sample timestamp for samples that Promscale sent to the database.",
-		},
+		}, []string{"type"},
 	)
 	IngestorChannelCap = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -109,7 +95,7 @@ var (
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
 			Name:      "inserted_total",
-			Help:      "Total insertables (samples/exemplars) inserted into the database.",
+			Help:      "Total insertables (samples/exemplars/spans) inserted into the database.",
 		}, []string{"type", "kind"},
 	)
 	IngestorInsertsPerBatch = prometheus.NewHistogramVec(
@@ -156,13 +142,20 @@ var (
 			Help:      "Number of active ingestion occurring in Promscale at the moment.",
 		}, []string{"type", "kind"},
 	)
-
-	// Used in pkg/api
-	IngestorInsertables = prometheus.NewCounterVec(
+	IngestorDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "duration_seconds",
+			Help:      "Time taken (processing + db insert) for ingestion of sample/exemplar/span.",
+			Buckets:   append(prometheus.DefBuckets, []float64{60, 120, 300}...),
+		}, []string{"type", "code"},
+	)
+	IngestorItems = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
-			Name:      "insertables_total",
+			Name:      "items_total",
 			Help:      "Total number of insertables (sample/metadata) ingested.",
 		}, []string{"type", "kind"},
 	)
@@ -172,16 +165,7 @@ var (
 			Subsystem: "ingest",
 			Name:      "requests_total",
 			Help:      "Total number of requests to ingestor.",
-		}, []string{"type", "kind", "code"},
-	)
-	IngestorDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "ingest",
-			Name:      "duration_seconds",
-			Help:      "Time taken (processing + db insert) for ingestion of sample/exemplar.",
-			Buckets:   append(prometheus.DefBuckets, []float64{60, 120, 300}...),
-		}, []string{"type", "kind"},
+		}, []string{"type", "code"},
 	)
 )
 
@@ -191,8 +175,6 @@ func init() {
 		IngestorDuplicates,
 		IngestorDecompressCalls,
 		IngestorDecompressEarliest,
-		HAClusterLeaderDetails,
-		NumOfHAClusterLeaderChanges,
 		IngestorMaxSentTimestamp,
 		IngestorChannelCap,
 		IngestorChannelLen,
@@ -203,10 +185,8 @@ func init() {
 		IngestorRowsPerInsert,
 		IngestorInsertDuration,
 		IngestorActiveWriteRequests,
-		IngestorInsertables,
 		IngestorDuration,
+		IngestorItems,
 		IngestorRequests,
 	)
-
-	// Register metrics for telemetry engine to monitor.
 }

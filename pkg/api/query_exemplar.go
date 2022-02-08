@@ -6,47 +6,45 @@ package api
 
 import (
 	"context"
-	"github.com/prometheus/client_golang/prometheus"
-	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"net/http"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
+
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/exemplar"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func QueryExemplar(conf *Config, queryable promql.Queryable, metrics *Metrics) http.Handler {
-	hf := corsWrapper(conf, queryExemplar(queryable, metrics))
+func QueryExemplar(conf *Config, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.Handler {
+	hf := corsWrapper(conf, queryExemplar(queryable, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryExemplar(queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		statusCode := "400"
+		begin := time.Now()
+		defer func() {
+			updateMetrics("/api/v1/query_exemplars", statusCode, time.Since(begin).Seconds())
+		}()
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
 			log.Info("msg", "Exemplar query bad request:", "error", err)
 			respondError(w, http.StatusBadRequest, err, "bad_data")
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_exemplars", "code": "400"}).Inc()
-			metrics.InvalidQueryReqs.Add(1)
 			return
 		}
 		end, err := parseTime(r.FormValue("end"))
 		if err != nil {
 			log.Info("msg", "Exemplar query bad request:", "error", err)
 			respondError(w, http.StatusBadRequest, err, "bad_data")
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_exemplars", "code": "400"}).Inc()
-			metrics.InvalidQueryReqs.Add(1)
 			return
 		}
 		if end.Before(start) {
 			err := errors.New("end timestamp must not be before start time")
 			log.Info("msg", "Exemplar query bad request:", "error", err)
 			respondError(w, http.StatusBadRequest, err, "bad_data")
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_exemplars", "code": "400"}).Inc()
-			metrics.InvalidQueryReqs.Add(1)
 			return
 		}
 
@@ -59,8 +57,6 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 			if err != nil {
 				log.Info("msg", "Exemplar query bad request:", "error", err)
 				respondError(w, http.StatusBadRequest, err, "bad_data")
-				pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_exemplars", "code": "400"}).Inc()
-				metrics.InvalidQueryReqs.Inc()
 				return
 			}
 
@@ -68,16 +64,14 @@ func queryExemplar(queryable promql.Queryable, metrics *Metrics) http.HandlerFun
 			defer cancel()
 		}
 
-		begin := time.Now()
 		results, err := exemplar.QueryExemplar(ctx, r.FormValue("query"), queryable, start, end)
 		if err != nil {
+			statusCode = "500"
 			log.Error("msg", err, "endpoint", "query_exemplars")
 			respondError(w, http.StatusInternalServerError, err, "bad_data")
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_exemplars", "code": "500"}).Inc()
 			return
 		}
-		pgMetrics.QueryDuration.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_exemplars"}).Observe(time.Since(begin).Seconds())
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_exemplars", "code": "2xx"}).Inc()
+		statusCode = "2xx"
 		respondExemplar(w, results)
 	}
 }

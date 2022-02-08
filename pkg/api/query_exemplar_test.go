@@ -93,13 +93,8 @@ func TestQueryExemplar(t *testing.T) {
 	}
 
 	queryable := query.NewQueryable(mockQuerier{}, nil)
-	invalidQueryReqs := &mockMetric{}
-	metrics := &Metrics{
-		InvalidQueryReqs: invalidQueryReqs,
-	}
-
 	for _, tc := range tcs {
-		handler := queryExemplar(queryable, metrics)
+		handler := queryExemplar(queryable, mockUpdaterForQuery(&mockMetric{}, nil))
 		preparedURL := constructQueryExemplarRequest(tc.query, tc.start, tc.end, tc.timeout)
 		r := doExemplarQuery(t, "GET", preparedURL, handler)
 		require.Equal(t, tc.statusCode, r.Code, fmt.Sprintf("received code %d, expected %d", r.Code, tc.statusCode), tc.name)

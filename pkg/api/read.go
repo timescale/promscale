@@ -13,18 +13,20 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
-	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler {
+func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics func(handler, code string, duration float64)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		statusCode := "400"
+		begin := time.Now()
+		defer func() {
+			updateMetrics("/read", statusCode, time.Since(begin).Seconds())
+		}()
 		if !validateReadHeaders(w, r) {
-			metrics.InvalidReadReqs.Inc()
 			return
 		}
 
@@ -32,7 +34,6 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler 
 		if err != nil {
 			log.Error("msg", "Read header validation error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/read", "code": "400"}).Inc()
 			return
 		}
 
@@ -40,7 +41,6 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler 
 		if err != nil {
 			log.Error("msg", "Decode error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/read", "code": "400"}).Inc()
 			return
 		}
 
@@ -48,12 +48,10 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler 
 		if err := proto.Unmarshal(reqBuf, &req); err != nil {
 			log.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/read", "code": "400"}).Inc()
 			return
 		}
 
-		pgMetrics.RemoteReadReceivedQueries.Add(float64(len(req.Queries)))
-		begin := time.Now()
+		metrics.RemoteReadReceivedQueries.Add(float64(len(req.Queries)))
 
 		// Drop __replica__ labelSet when
 		// Promscale is running is HA mode
@@ -71,19 +69,16 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler 
 		var resp *prompb.ReadResponse
 		resp, err = reader.Read(&req)
 		if err != nil {
+			statusCode = "500"
 			log.Warn("msg", "Error executing query", "query", req, "storage", "PostgreSQL", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/read", "code": "500"}).Inc()
 			return
 		}
 
-		duration := time.Since(begin).Seconds()
-		pgMetrics.QueryDuration.With(prometheus.Labels{"type": "metric", "handler": "/read"}).Observe(duration)
-
 		data, err := proto.Marshal(resp)
 		if err != nil {
+			statusCode = "500"
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/read", "code": "500"}).Inc()
 			return
 		}
 
@@ -92,10 +87,11 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics) http.Handler 
 
 		compressed = snappy.Encode(nil, data)
 		if _, err := w.Write(compressed); err != nil {
+			statusCode = "500"
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/read", "code": "500"}).Inc()
 			return
 		}
+		statusCode = "2xx"
 	})
 }
 

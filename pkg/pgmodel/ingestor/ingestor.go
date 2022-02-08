@@ -7,18 +7,19 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tracer"
-	"go.opentelemetry.io/collector/model/pdata"
 )
 
 type Cfg struct {
@@ -86,8 +87,8 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces pdata.Trace
 func (ingestor *DBIngestor) Ingest(ctx context.Context, r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
 	ctx, span := tracer.Default().Start(ctx, "db-ingest")
 	defer span.End()
-	metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Inc()
-	defer metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Dec()
+	metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Inc()
+	defer metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Dec()
 	var (
 		timeseries = r.Timeseries
 		metadata   = r.Metadata

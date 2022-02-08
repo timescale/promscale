@@ -5,10 +5,11 @@
 package ingestor
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"

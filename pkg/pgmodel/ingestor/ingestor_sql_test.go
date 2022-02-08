@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -57,6 +58,8 @@ func (c sVisitor) VisitSeries(cb func(info *pgmodel.MetricInfo, s *pgmodel.Serie
 }
 
 func TestPGXInserterInsertSeries(t *testing.T) {
+	// Set test env so that cache metrics uses a new registry and avoid panic on duplicate register.
+	require.NoError(t, os.Setenv("IS_TEST", "true"))
 	testCases := []struct {
 		name       string
 		series     []labels.Labels

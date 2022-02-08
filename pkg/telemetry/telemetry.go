@@ -15,12 +15,11 @@ import (
 	"github.com/jackc/pgtype"
 
 	"github.com/prometheus/client_golang/prometheus"
-	io_prometheus_client "github.com/prometheus/client_model/go"
-
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 // Engine for telemetry performs activities like inserting metadata of Promscale and Tobs (env vars with 'TOBS_TELEMETRY_')
@@ -192,7 +191,7 @@ func (t *engineImpl) syncWithInfoTable() error {
 		promMetric := metric.([]prometheus.Metric)
 		value := float64(0)
 		for _, metric := range promMetric {
-			underlyingValue, err = extractMetricValue(metric)
+			underlyingValue, err = util.ExtractMetricValue(metric)
 			if err != nil {
 				err = fmt.Errorf("extracting metric value of stat '%s': %w", columnName, err)
 				return false
@@ -209,19 +208,6 @@ func (t *engineImpl) syncWithInfoTable() error {
 		return fmt.Errorf("sync new stats: %w", err)
 	}
 	return nil
-}
-
-func extractMetricValue(metric prometheus.Metric) (float64, error) {
-	var internal io_prometheus_client.Metric
-	if err := metric.Write(&internal); err != nil {
-		return 0, fmt.Errorf("error writing metric: %w", err)
-	}
-	if internal.Gauge != nil {
-		return internal.Gauge.GetValue(), nil
-	} else if internal.Counter != nil {
-		return internal.Counter.GetValue(), nil
-	}
-	return 0, fmt.Errorf("both Gauge and Counter are nil")
 }
 
 // RegisterMetric registers a Prometheus Gauge or Counter metric for telemetry visitor.
@@ -281,7 +267,7 @@ func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
 	//	UPDATE SET
 	//		last_updated = $2,
 	//		promscale_ingested_samples_total = $3,
-	//		promscale_metrics_queries_executed_total = $4,
+	//		promscale_metrics_queries_success_total = $4,
 	//		promscale_metrics_queries_timedout_total = $5,
 	//		promscale_metrics_queries_failed_total = $6,
 	//		promscale_trace_query_requests_executed_total = $7,
@@ -341,7 +327,7 @@ func (t *engineImpl) getInstanceInformationStats() (Metadata, error) {
 	if err := t.conn.QueryRow(context.Background(), `
 	SELECT
 		sum(promscale_ingested_samples_total),
-		sum(promscale_metrics_queries_executed_total),
+		sum(promscale_metrics_queries_success_total),
 		sum(promscale_metrics_queries_timedout_total),
 		sum(promscale_metrics_queries_failed_total),
 		sum(promscale_trace_query_requests_executed_total),
@@ -352,7 +338,7 @@ func (t *engineImpl) getInstanceInformationStats() (Metadata, error) {
 		return nil, fmt.Errorf("querying values from information table: %w", err)
 	}
 	stats["ingested_samples_total"] = convertIntToString(samples)
-	stats["metrics_queries_executed_total"] = convertIntToString(queriesExec)
+	stats["metrics_queries_success_total"] = convertIntToString(queriesExec)
 	stats["metrics_queries_timedout_total"] = convertIntToString(queriesTimeout)
 	stats["metrics_queries_failed_total"] = convertIntToString(queriesFailed)
 	stats["trace_query_requests_executed_total"] = convertIntToString(traceQueryReqs)
