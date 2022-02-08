@@ -119,7 +119,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Dependency checking error while trying to open DB connection: %w", err)
 	}
-	err = pgmodel.CheckDependencies(conn, appVersion, migrationFailedDueToLockError, extOptionsPromscale)
+	err = pgmodel.CheckDependencies(conn, appVersion, migrationFailedDueToLockError, extOptionsPromscale.UpgradePreRelease)
 	if err != nil {
 		err = fmt.Errorf("dependency error: %w", err)
 		if migrationFailedDueToLockError {
