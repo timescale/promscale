@@ -17,7 +17,6 @@ type Metrics struct {
 	// Using the first word in struct to ensure proper alignment in 32-bit systems.
 	// Reference: https://golang.org/pkg/sync/atomic/#pkg-note-BUG
 	LastRequestUnixNano int64
-	IngestedSamples     prometheus.Counter // For telemetry.
 	InvalidReadReqs     prometheus.Counter
 	InvalidWriteReqs    prometheus.Counter
 	InvalidQueryReqs    prometheus.Counter
@@ -32,7 +31,6 @@ func InitMetrics() *Metrics {
 	}
 	metrics = createMetrics()
 	prometheus.MustRegister(
-		metrics.IngestedSamples,
 		metrics.InvalidReadReqs,
 		metrics.InvalidWriteReqs,
 		metrics.HTTPRequestDuration,
@@ -43,13 +41,6 @@ func InitMetrics() *Metrics {
 
 func createMetrics() *Metrics {
 	return &Metrics{
-		IngestedSamples: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: util.PromNamespace,
-				Name:      "ingested_samples_total",
-				Help:      "Total number of processed sample/metadata sent to remote storage.",
-			},
-		),
 		LastRequestUnixNano: time.Now().UnixNano(),
 		InvalidReadReqs: prometheus.NewCounter(
 			prometheus.CounterOpts{

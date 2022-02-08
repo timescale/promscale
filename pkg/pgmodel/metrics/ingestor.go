@@ -207,4 +207,6 @@ func init() {
 		IngestorDuration,
 		IngestorRequests,
 	)
+
+	// Register metrics for telemetry engine to monitor.
 }
