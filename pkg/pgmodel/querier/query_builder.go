@@ -205,8 +205,9 @@ func calledByTimestamp(path []parser.Node) bool {
 }
 
 var (
-	vectorSelectorExtensionRange = semver.MustParseRange(">= 0.2.0")
-	rateIncreaseExtensionRange   = semver.MustParseRange(">= 0.2.0")
+	vectorSelectorExtensionRange        = semver.MustParseRange(">= 0.2.0")
+	instantVectorSelectorExtensionRange = semver.MustParseRange(">= 0.5.0")
+	rateIncreaseExtensionRange          = semver.MustParseRange(">= 0.2.0")
 )
 
 // aggregators represent postgres functions which are used for the array
@@ -369,9 +370,8 @@ func buildVectorSelectorFunctionCallAggregator(lookback int64, selectHints *stor
 	// the promscale extension.
 
 	switch {
-	// We can't handle a zero-sized step, so skip pushdown optimization.
-	// TODO: handle the instant query (hints.Step==0) case too.
-	case selectHints.Step == 0:
+	// We need to have extension support for instant vector selectors
+	case selectHints.Step == 0 && !instantVectorSelectorExtensionRange(extension.PromscaleExtensionVersion):
 		return nil
 	// The `vector_selector` can only be applied to non-aggregates (i.e. when range is zero).
 	case selectHints.Range != 0:
