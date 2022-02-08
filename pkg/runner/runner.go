@@ -70,7 +70,7 @@ func Run(cfg *Config) error {
 		tput.InitWatcher(cfg.ThroughputInterval)
 	}
 
-	if cfg.TracerCfg.JaegerCollectorEndpoint != "" {
+	if cfg.TracerCfg.CanExportTraces() {
 		tp, err := tracer.InitProvider(&cfg.TracerCfg)
 		if err != nil {
 			log.Error("msg", "aborting startup due to tracer provider error", "err", err.Error())

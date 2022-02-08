@@ -17,6 +17,7 @@ We use the following categories for changes:
 ### Added
 - Add Prometheus metrics support for Tracing [#1102]
 - Add ingested spans-count to telemetry [#1155]
+- Add OTEL collector exporter endpoint support to Promscale tracing telemetry exporter [#1148]
 
 ### Fixed
 - Fix spans with end < start. Start and end are swapped in this case. [#1096]

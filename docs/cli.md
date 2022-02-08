@@ -54,8 +54,11 @@ You can also find information on flags with `promscale_<version> -help`.
 | telemetry.log.format | string | logfmt | Log format to use from [ "logfmt", "json" ]. |
 | telemetry.log.level | string | debug | Log level to use from [ "error", "warn", "info", "debug" ]. |
 | telemetry.log.throughput-report-interval | duration | 0 second | Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`. |
+| telemetry.trace.otel-endpoint | string | "" (empty) | OpenTelemetry tracing collector GRPC URL endpoint to send telemetry to. (i.e. otel-collector:4317) |
+| telemetry.trace.otel-tls-cert-file | string | "" (empty) | TLS Certificate file used for client authentication against the OTEL tracing collector GRPC endpoint, leave blank to disable TLS. |
+| telemetry.trace.otel-tls-key-file | string | "" (empty) | TLS Key file for client authentication against the OTEL tracing collector GRPC endpoint, leave blank to disable TLS. |
 | telemetry.trace.jaeger-endpoint | string | "" (empty) | Jaeger tracing collector thrift HTTP URL endpoint to send telemetry to (e.g. https://jaeger-collector:14268/api/traces). |
-| telemetry.trace.sample-ratio | float | 0.0 | Trace sampling ratio, amount of spans to send to collector. Valid values from 0.0 (none) to 1.0 (all). |
+| telemetry.trace.sample-ratio | float | 1.0 | Trace sampling ratio, amount of spans to send to collector. Valid values from 0.0 (none) to 1.0 (all). |
 
 ## Metrics specific flags flags
 
