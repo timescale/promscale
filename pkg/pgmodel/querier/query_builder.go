@@ -273,9 +273,6 @@ func tryPushDown(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
 	// We can't handle subqueries in pushdowns.
 	case hasSubquery(path):
 		return nil, nil, nil
-	// We can't do pushdowns without the extension.
-	case !extension.ExtensionIsInstalled:
-		return nil, nil, nil
 	}
 
 	vs, isVectorSelector := queryHints.CurrentNode.(*parser.VectorSelector)

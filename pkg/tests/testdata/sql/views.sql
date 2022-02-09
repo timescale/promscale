@@ -20,7 +20,7 @@ INSERT INTO prom_data.cpu_total
 SELECT * FROM prom_info.label ORDER BY key;
 
 \set ON_ERROR_STOP 0
-SELECT count(compress_chunk(i)) from show_chunks('prom_data.cpu_usage') i;
+SELECT count(public.compress_chunk(i)) from public.show_chunks('prom_data.cpu_usage') i;
 \set ON_ERROR_STOP 0
 
 SET role prom_reader;

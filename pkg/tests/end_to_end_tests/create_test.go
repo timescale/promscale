@@ -534,7 +534,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
+		_, err = dbOwner.Exec(context.Background(), "SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -565,7 +565,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
+		_, err = dbOwner.Exec(context.Background(), "SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -731,7 +731,7 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
+		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT public.compress_chunk(i) from public.show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
@@ -952,7 +952,7 @@ func TestCompressionSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
+		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT public.compress_chunk(i) from public.show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
@@ -1670,7 +1670,7 @@ func TestRegisterMetricView(t *testing.T) {
 		}
 
 		// Cannot register view from data schema.
-		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_data.metric_view_in_data_schema AS SELECT * FROM prom_data."rawMetric"`); err != nil {
+		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_in_data_schema AS SELECT * FROM prom_data."rawMetric"`); err != nil {
 			t.Fatalf("unexpected error while creating view in data schema: %s", err)
 		}
 		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_data', 'metric_view_in_data_schema')"); err == nil {
