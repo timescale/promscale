@@ -128,30 +128,30 @@ func TestTraceDropChunk(t *testing.T) {
 		require.NoError(t, err, "Failed to insert event test data.")
 
 		cnt := 0
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.span')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.span')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count span chunks.")
 		require.Equal(t, 2, cnt, "Expected 2 span chunks. Found %d", cnt)
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.link')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.link')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count link chunks.")
 		require.Equal(t, 2, cnt, "Expected 2 link chunks. Found %d", cnt)
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.event')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.event')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count event chunks.")
 		require.Equal(t, 2, cnt, "Expected 2 event chunks. Found %d", cnt)
 
 		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance(log_verbose=>true)")
 		require.NoError(t, err, "Failed to execute_maintenance.")
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.span')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.span')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count span chunks.")
 		require.Equal(t, 1, cnt, "Expected 1 span chunk. Found %d", cnt)
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.link')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.link')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count link chunks.")
 		require.Equal(t, 1, cnt, "Expected 1 link chunk. Found %d", cnt)
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.event')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.event')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count event chunks.")
 		require.Equal(t, 1, cnt, "Expected 1 event chunk. Found %d", cnt)
 
@@ -159,15 +159,15 @@ func TestTraceDropChunk(t *testing.T) {
 		_, err = dbJob.Exec(context.Background(), "CALL prom_api.execute_maintenance()")
 		require.NoError(t, err, "Failed to execute_maintenance.")
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.span')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.span')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count span chunks.")
 		require.Equal(t, 1, cnt, "Expected 1 span chunk. Found %d", cnt)
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.link')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.link')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count link chunks.")
 		require.Equal(t, 1, cnt, "Expected 1 link chunk. Found %d", cnt)
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM show_chunks('_ps_trace.event')`).Scan(&cnt)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM public.show_chunks('_ps_trace.event')`).Scan(&cnt)
 		require.NoError(t, err, "Failed to count event chunks.")
 		require.Equal(t, 1, cnt, "Expected 1 event chunk. Found %d", cnt)
 	})

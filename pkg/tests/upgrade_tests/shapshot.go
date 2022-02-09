@@ -5,9 +5,11 @@
 package upgrade_tests
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -103,6 +105,51 @@ type schemaInfo struct {
 type tableInfo struct {
 	name   string
 	values []string
+}
+
+func (s dbSnapshot) writeToFile(f *os.File) error {
+	w := bufio.NewWriter(f)
+	if _, err := w.WriteString(s.extensions); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.schemaOutputs); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.defaultPrivileges); err != nil {
+		return err
+	}
+
+	for _, si := range s.schemas {
+		if _, err := w.WriteString(si.name); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.tables); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.functions); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.privileges); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.indices); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.triggers); err != nil {
+			return err
+		}
+		for _, ti := range si.data {
+			if _, err := w.WriteString(fmt.Sprintf("%s.%s\n", si.name, ti.name)); err != nil {
+				return err
+			}
+			for _, v := range ti.values {
+				if _, err := w.WriteString(fmt.Sprintf("%s\n", v)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return w.Flush()
 }
 
 func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, msg string) bool {
@@ -251,9 +298,11 @@ func readOutput(t *testing.T, outputDir string) string {
 func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out []tableInfo) {
 	row := db.QueryRow(
 		context.Background(),
-		"SELECT array_agg(relname::TEXT order by relname::TEXT) "+
-			"FROM pg_class "+
-			"WHERE relnamespace=$1::TEXT::regnamespace AND relkind='r'",
+		`SELECT array_agg(relname::TEXT order by relname::TEXT)
+			FROM pg_class 
+			WHERE relnamespace=$1::TEXT::regnamespace AND relkind='r'
+			AND (relnamespace, relname) != ('_ps_catalog'::regnamespace, 'migration')
+			`,
 		schema,
 	)
 	var tables []string
@@ -263,7 +312,11 @@ func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out 
 		return
 	}
 
-	out = make([]tableInfo, len(tables))
+	numTables := len(tables)
+	if schema == "_ps_catalog" {
+		numTables = numTables + 1
+	}
+	out = make([]tableInfo, numTables)
 	batch := pgx.Batch{}
 	for _, table := range tables {
 		batch.Queue(fmt.Sprintf(
@@ -279,6 +332,16 @@ func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out 
 		if err != nil {
 			t.Errorf("error querying values from table %s: %v",
 				pgx.Identifier{schema, table}.Sanitize(), err)
+		}
+	}
+
+	// special handling for _ps_catalog.migration. we don't want to compare applied_at or applied_at_version
+	if schema == "_ps_catalog" {
+		row = db.QueryRow(context.Background(), "select array_agg(x.name order by x.applied_at) from _ps_catalog.migration x")
+		out[numTables-1].name = "migration"
+		if err = row.Scan(&out[numTables-1].values); err != nil {
+			t.Errorf("error querying values from table _ps_catalog.migration: %v", err)
+			return
 		}
 	}
 	return

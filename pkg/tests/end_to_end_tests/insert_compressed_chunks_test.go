@@ -63,7 +63,7 @@ func TestInsertInCompressedChunks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"firstMetric\"') i;")
+		_, err = db.Exec(context.Background(), "SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"firstMetric\"') i;")
 		require.NoError(t, err)
 
 		// Insert data into compressed chunk.
@@ -92,7 +92,7 @@ func TestInsertInCompressedChunks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = db.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"firstMetric\"') i;")
+		_, err = db.Exec(context.Background(), "SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"firstMetric\"') i;")
 		require.NoError(t, err)
 
 		// Insert data into compressed chunk.
