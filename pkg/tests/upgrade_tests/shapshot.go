@@ -5,9 +5,11 @@
 package upgrade_tests
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -105,6 +107,51 @@ type tableInfo struct {
 	values []string
 }
 
+func (s dbSnapshot) writeToFile(f *os.File) error {
+	w := bufio.NewWriter(f)
+	if _, err := w.WriteString(s.extensions); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.schemaOutputs); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.defaultPrivileges); err != nil {
+		return err
+	}
+
+	for _, si := range s.schemas {
+		if _, err := w.WriteString(si.name); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.tables); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.functions); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.privileges); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.indices); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.triggers); err != nil {
+			return err
+		}
+		for _, ti := range si.data {
+			if _, err := w.WriteString(fmt.Sprintf("%s.%s\n", si.name, ti.name)); err != nil {
+				return err
+			}
+			for _, v := range ti.values {
+				if _, err := w.WriteString(fmt.Sprintf("%s\n", v)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return w.Flush()
+}
+
 func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, msg string) bool {
 	if upgradedOuput == pristineOutput {
 		return false
@@ -184,6 +231,7 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 		info.triggers = getPsqlInfo(t, container, dbName, outputDir, "\\dy "+schema+".*")
 		info.data = getTableInfosForSchema(t, db, schema)
 	}
+	info = ClearTableFromSnapshot(info, "_ps_catalog", "migration")
 	return
 }
 

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -34,7 +35,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/runner"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -75,13 +75,40 @@ func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean 
 		//but migration code that works in an older PG version should generally work in a newer one.
 		panic("Only use pg12 for upgrade tests")
 	}
-	return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
+	return "timescaledev/promscale-extension:0.1.2-ts2-pg13", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg13"
+	// using pg13 until we deal with the lack of "trusted" support in pg12
+	//return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
+}
+
+func writeToFiles(t *testing.T, upgradedDbInfo, pristineDbInfo dbSnapshot) error {
+	dir, err := ioutil.TempDir("", "upgrade_test")
+	if err != nil {
+		return err
+	}
+	t.Logf("writing upgraded and pristine output to dir: %s", dir)
+	upgradedPath := filepath.Join(dir, "upgraded.txt")
+	pristinePath := filepath.Join(dir, "pristine.txt")
+	w := func(path string, snapshot dbSnapshot) error {
+		f, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		return snapshot.writeToFile(f)
+	}
+	if err := w(upgradedPath, upgradedDbInfo); err != nil {
+		return err
+	}
+	return w(pristinePath, pristineDbInfo)
 }
 
 func TestUpgradeFromPrev(t *testing.T) {
 	upgradedDbInfo := getUpgradedDbInfo(t, false, false, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, false, baseExtensionState)
-
+	err := writeToFiles(t, upgradedDbInfo, pristineDbInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
 		PrintDbSnapshotDifferences(t, pristineDbInfo, upgradedDbInfo)
 	}
@@ -90,7 +117,10 @@ func TestUpgradeFromPrev(t *testing.T) {
 func TestUpgradeFromEarliest(t *testing.T) {
 	upgradedDbInfo := getUpgradedDbInfo(t, false, true, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, false, baseExtensionState)
-
+	err := writeToFiles(t, upgradedDbInfo, pristineDbInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
 		PrintDbSnapshotDifferences(t, pristineDbInfo, upgradedDbInfo)
 	}
@@ -101,7 +131,10 @@ func TestUpgradeFromEarliestMultinode(t *testing.T) {
 	extState.UseMultinode()
 	upgradedDbInfo := getUpgradedDbInfo(t, false, true, extState)
 	pristineDbInfo := getPristineDbInfo(t, false, extState)
-
+	err := writeToFiles(t, upgradedDbInfo, pristineDbInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
 		PrintDbSnapshotDifferences(t, pristineDbInfo, upgradedDbInfo)
 	}
@@ -112,7 +145,10 @@ func TestUpgradeFromEarliestMultinode(t *testing.T) {
 func TestUpgradeFromEarliestNoData(t *testing.T) {
 	upgradedDbInfo := getUpgradedDbInfo(t, true, true, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, true, baseExtensionState)
-
+	err := writeToFiles(t, upgradedDbInfo, pristineDbInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(pristineDbInfo, upgradedDbInfo) {
 		PrintDbSnapshotDifferences(t, pristineDbInfo, upgradedDbInfo)
 	}
@@ -152,7 +188,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 		},
 		/* postUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string) {
-			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
+			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
 
 			db, err := pgxpool.Connect(context.Background(), connectURL)
 			if err != nil {
@@ -363,6 +399,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 	t.Logf("upgrading versions %v => %v", prevVersion, version.Promscale)
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 	migrateToVersion(t, connectURL, version.Promscale, "azxtestcommit")
+	testhelpers.MakePromUserPromAdmin(t, DBName)
 
 	if extensionState.UsesMultinode() {
 		//add a node after upgrade; this tests strictly more functionality since we already have one node set up before
@@ -406,6 +443,8 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 		testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, extensionState, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
 			migrateToVersion(t, connectURL, version.Promscale, "azxtestcommit")
 
+			testhelpers.MakePromUserPromAdmin(t, *testDatabase)
+
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
 			db, err := pgxpool.Connect(context.Background(), connectURL)
 			if err != nil {
@@ -425,7 +464,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 		addNode2(t, *testDatabase)
 	}
 	defer func() { _ = closer.Close() }()
-	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
+	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
 	db, err := pgxpool.Connect(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
@@ -445,7 +484,7 @@ func migrateToVersion(t testing.TB, connectURL string, version string, commitHas
 		t.Fatal(err)
 	}
 	defer func() { _ = migratePool.Close(context.Background()) }()
-	err = runner.SetupDBState(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, nil, extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true})
+	err = pgmodel.Migrate(migratePool, pgmodel.VersionInfo{Version: version, CommitHash: commitHash}, nil, extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true})
 	if err != nil {
 		t.Fatal(err)
 	}

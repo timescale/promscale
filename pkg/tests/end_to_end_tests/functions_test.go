@@ -326,17 +326,18 @@ func TestExtensionFunctions(t *testing.T) {
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 
-		searchPath := ""
-		// right now the schemas in this test are hardcoded, if we ever allow
-		// user-defined schemas we will need to test those as well
-		expected := `"$user", public, ps_tag, _prom_ext, prom_api, prom_metric, _prom_catalog, ps_trace`
-		err := db.QueryRow(context.Background(), "SHOW search_path;").Scan(&searchPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if searchPath != expected {
-			t.Errorf("incorrect search path\nexpected\n\t%s\nfound\n\t%s", expected, searchPath)
-		}
+		// TODO (james): I'm not sure that we should be removing the search path modification, I've started a discussion.
+		//searchPath := ""
+		//// right now the schemas in this test are hardcoded, if we ever allow
+		//// user-defined schemas we will need to test those as well
+		//expected := `"$user", public, ps_tag, _prom_ext, prom_api, prom_metric, _prom_catalog, ps_trace`
+		//err := db.QueryRow(context.Background(), "SHOW search_path;").Scan(&searchPath)
+		//if err != nil {
+		//	t.Fatal(err)
+		//}
+		//if searchPath != expected {
+		//	t.Errorf("incorrect search path\nexpected\n\t%s\nfound\n\t%s", expected, searchPath)
+		//}
 
 		functions := []string{
 			"label_jsonb_each_text",
@@ -346,7 +347,7 @@ func TestExtensionFunctions(t *testing.T) {
 			"label_find_key_regex",
 			"label_find_key_not_regex",
 		}
-		extSchema := "_prom_ext"
+		extSchema := "_prom_catalog"
 		for _, fn := range functions {
 			const query = "SELECT nspname FROM pg_proc LEFT JOIN pg_namespace ON pronamespace = pg_namespace.oid WHERE pg_proc.oid = $1::regproc;"
 			schema := ""
@@ -386,7 +387,7 @@ func TestExtensionGapfillDelta(t *testing.T) {
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
 		defer db.Close()
-		_, err := db.Exec(context.Background(), "CREATE TABLE gfd_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
+		_, err := db.Exec(context.Background(), "CREATE TEMPORARY TABLE gfd_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -413,7 +414,7 @@ func TestExtensionGapfillDelta(t *testing.T) {
 		var res string
 		err = db.QueryRow(context.Background(),
 			"SELECT prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, NULL, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
-		if !(err.Error() == "ERROR: time is null (SQLSTATE XX000)" || err.Error() == `ERROR: NULL value for non-nullable argument "time" (SQLSTATE XX000)`) {
+		if !(err.Error() == "ERROR: sample_time is null (SQLSTATE XX000)" || err.Error() == `ERROR: NULL value for non-nullable argument "time" (SQLSTATE XX000)`) {
 			t.Error(err)
 		}
 		err = db.QueryRow(context.Background(),
@@ -536,7 +537,7 @@ func TestExtensionGapfillIncrease(t *testing.T) {
 			t.Run(testCase.name, func(t *testing.T) {
 				db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
 				defer db.Close()
-				_, err := db.Exec(context.Background(), "CREATE TABLE gfi_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
+				_, err := db.Exec(context.Background(), "CREATE TEMPORARY TABLE gfi_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
 				if err != nil {
 					t.Fatal(err)
 				}

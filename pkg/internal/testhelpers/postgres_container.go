@@ -160,6 +160,7 @@ func PgConnectURLUser(dbName string, user string) string {
 func getRoleUser(role string) string {
 	return role + "_user"
 }
+
 func setupRole(t testing.TB, dbName string, role string) {
 	user := getRoleUser(role)
 	dbOwner, err := pgx.Connect(context.Background(), PgConnectURL(dbName, NoSuperuser))
@@ -167,6 +168,15 @@ func setupRole(t testing.TB, dbName string, role string) {
 	defer dbOwner.Close(context.Background())
 
 	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
+	require.NoError(t, err)
+}
+
+func MakePromUserPromAdmin(t testing.TB, dbName string) {
+	db, err := pgx.Connect(context.Background(), PgConnectURL(dbName, Superuser))
+	require.NoError(t, err)
+	defer db.Close(context.Background())
+
+	_, err = db.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", "prom_admin", promUser))
 	require.NoError(t, err)
 }
 
