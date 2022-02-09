@@ -25,7 +25,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/querier"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"go.uber.org/goleak"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -190,11 +190,11 @@ type errQueryable struct {
 	err error
 }
 
-func (qry *errQueryable) SamplesQuerier(_ context.Context, mint int64, maxt int64) (SamplesQuerier, error) {
+func (qry *errQueryable) SamplesQuerier(_ context.Context, mint int64, maxt int64) (pgquerier.SamplesQuerier, error) {
 	return &errQuerier{qry.err}, nil
 }
 
-func (qry *errQueryable) ExemplarsQuerier(_ context.Context) querier.ExemplarQuerier {
+func (qry *errQueryable) ExemplarsQuerier(_ context.Context) pgquerier.ExemplarQuerier {
 	return nil
 }
 
@@ -203,7 +203,7 @@ type errQuerier struct {
 	err error
 }
 
-func (q *errQuerier) Select(bool, *storage.SelectHints, *querier.QueryHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (q *errQuerier) Select(bool, *storage.SelectHints, *pgquerier.QueryHints, []parser.Node, ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	return errSeriesSet{err: q.err}, nil
 }
 func (*errQuerier) LabelValues(string) ([]string, storage.Warnings, error) {
@@ -256,21 +256,21 @@ type noopHintRecordingQueryable struct {
 	hints []*storage.SelectHints
 }
 
-func (h *noopHintRecordingQueryable) SamplesQuerier(context.Context, int64, int64) (SamplesQuerier, error) {
+func (h *noopHintRecordingQueryable) SamplesQuerier(context.Context, int64, int64) (pgquerier.SamplesQuerier, error) {
 	return &hintRecordingQuerier{SamplesQuerier: &errQuerier{}, h: h}, nil
 }
 
-func (h *noopHintRecordingQueryable) ExemplarsQuerier(context.Context) querier.ExemplarQuerier {
+func (h *noopHintRecordingQueryable) ExemplarsQuerier(context.Context) pgquerier.ExemplarQuerier {
 	return nil
 }
 
 type hintRecordingQuerier struct {
-	SamplesQuerier
+	pgquerier.SamplesQuerier
 
 	h *noopHintRecordingQueryable
 }
 
-func (h *hintRecordingQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *querier.QueryHints, p []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (h *hintRecordingQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, p []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
 	h.h.hints = append(h.h.hints, hints)
 	return h.SamplesQuerier.Select(sortSeries, hints, qh, nil, matchers...)
 }

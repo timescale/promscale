@@ -17,10 +17,9 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
-	"github.com/timescale/promscale/pkg/pgmodel/querier"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/tenancy"
 	"go.opentelemetry.io/collector/model/pdata"
@@ -31,9 +30,9 @@ type Client struct {
 	Connection        pgxconn.PgxConn
 	QuerierConnection pgxconn.PgxConn
 	ingestor          *ingestor.DBIngestor
-	querier           querier.Querier
+	querier           pgquerier.Querier
 	healthCheck       health.HealthCheckerFn
-	queryable         promql.Queryable
+	queryable         pgquerier.Queryable
 	ConnectionStr     string
 	metricCache       cache.MetricCache
 	labelsCache       cache.LabelsCache
@@ -156,7 +155,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
 
 	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)
-	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
+	dbQuerier := pgquerier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)
@@ -252,7 +251,7 @@ func (c *Client) HealthCheck() error {
 
 // Queryable returns the Prometheus promql.Queryable interface that's running
 // with the same underlying Querier as the Client.
-func (c *Client) Queryable() promql.Queryable {
+func (c *Client) Queryable() pgquerier.Queryable {
 	return c.queryable
 }
 

@@ -7,15 +7,15 @@ package exemplar
 import (
 	"context"
 	"fmt"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"time"
 
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/promql"
 )
 
 // QueryExemplar fetches the exemplars from the database using the queryable.
-func QueryExemplar(ctx context.Context, query string, queryable promql.Queryable, start, end time.Time) ([]model.ExemplarQueryResult, error) {
+func QueryExemplar(ctx context.Context, query string, queryable pgquerier.Queryable, start, end time.Time) ([]model.ExemplarQueryResult, error) {
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
 		return nil, err

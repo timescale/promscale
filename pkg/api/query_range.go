@@ -13,15 +13,16 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/pkg/errors"
 	"github.com/timescale/promscale/pkg/log"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func QueryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.Handler {
+func QueryRange(conf *Config, queryEngine *promql.Engine, queryable pgquerier.Queryable, metrics *Metrics) http.Handler {
 	hf := corsWrapper(conf, queryRange(conf, queryEngine, queryable, metrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryRange(conf *Config, queryEngine *promql.Engine, queryable pgquerier.Queryable, metrics *Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {

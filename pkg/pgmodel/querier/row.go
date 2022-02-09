@@ -162,7 +162,7 @@ func (r *sampleRow) GetAdditionalLabels() (ll labels.Labels) {
 	return ll
 }
 
-// appendTsRows adds new results rows to already existing result rows and
+// appendSampleRows adds new results rows to already existing result rows and
 // returns the as a result.
 func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metric, schema, column string) ([]sampleRow, error) {
 	if in.Err() != nil {

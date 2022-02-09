@@ -2,20 +2,20 @@ package thanos
 
 import (
 	"context"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"github.com/timescale/promscale/pkg/promql"
 )
 
 type Storage struct {
-	queryable promql.Queryable
+	queryable pgquerier.Queryable
 }
 
-func NewStorage(queryable promql.Queryable) *Storage {
+func NewStorage(queryable pgquerier.Queryable) *Storage {
 	return &Storage{
 		queryable: queryable,
 	}

@@ -46,34 +46,6 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-// A Queryable handles queries against a storage.
-// Use it when you need to have access to all samples without chunk encoding abstraction e.g promQL.
-type Queryable interface {
-	// SamplesQuerier returns a new promql.Querier on the storage. It helps querying over samples
-	// in the database.
-	SamplesQuerier(ctx context.Context, mint, maxt int64) (SamplesQuerier, error)
-	// ExemplarsQuerier returns a new Querier that helps querying exemplars in the database.
-	ExemplarsQuerier(ctx context.Context) pgquerier.ExemplarQuerier
-}
-
-// SamplesQuerier provides querying access over time series data of a fixed time range.
-type SamplesQuerier interface {
-	// LabelValues returns all potential values for a label name.
-	// It is not safe to use the strings beyond the lifefime of the querier.
-	LabelValues(name string) ([]string, storage.Warnings, error)
-
-	// LabelNames returns all the unique label names present in the block in sorted order.
-	LabelNames(...*labels.Matcher) ([]string, storage.Warnings, error)
-
-	// Close releases the resources of the Querier.
-	Close()
-
-	// Select returns a set of series that matches the given label matchers.
-	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
-	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
-	Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node)
-}
-
 const (
 	namespace            = util.PromNamespace
 	subsystem            = "engine"
@@ -155,7 +127,7 @@ type Query interface {
 // query implements the Query interface.
 type query struct {
 	// Underlying data provider.
-	queryable Queryable
+	queryable pgquerier.Queryable
 	// The original query string.
 	q string
 	// Statement of the parsed query.
@@ -386,7 +358,7 @@ func (ng *Engine) SetQueryLogger(l QueryLogger) {
 }
 
 // NewInstantQuery returns an evaluation query for the given expression at the given time.
-func (ng *Engine) NewInstantQuery(q Queryable, qs string, ts time.Time) (Query, error) {
+func (ng *Engine) NewInstantQuery(q pgquerier.Queryable, qs string, ts time.Time) (Query, error) {
 	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
@@ -402,7 +374,7 @@ func (ng *Engine) NewInstantQuery(q Queryable, qs string, ts time.Time) (Query, 
 
 // NewRangeQuery returns an evaluation query for the given time range and with
 // the resolution set by the interval.
-func (ng *Engine) NewRangeQuery(q Queryable, qs string, start, end time.Time, interval time.Duration) (Query, error) {
+func (ng *Engine) NewRangeQuery(q pgquerier.Queryable, qs string, start, end time.Time, interval time.Duration) (Query, error) {
 	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
@@ -419,7 +391,7 @@ func (ng *Engine) NewRangeQuery(q Queryable, qs string, start, end time.Time, in
 	return qry, nil
 }
 
-func (ng *Engine) newQuery(q Queryable, expr parser.Expr, start, end time.Time, interval time.Duration) (*query, error) {
+func (ng *Engine) newQuery(q pgquerier.Queryable, expr parser.Expr, start, end time.Time, interval time.Duration) (*query, error) {
 	if err := ng.validateOpts(expr); err != nil {
 		return nil, err
 	}
@@ -800,7 +772,19 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 	return start, end
 }
 
-func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map[parser.Node]struct{} {
+// populateSeries traverses the promQL AST of evalStmt and augments nodes of
+// type VectorSelector with the series data for that node. It uses the querier
+// to fetch the series data from the database.
+//
+// It's possible that when fetching data for a VectorSelector, a pushdown is
+// applied to the function which was applied to the VectorSelector. An example
+// is the expression `rate(metric[5m])`: the `rate` function is pushed down,
+// but the data is stored in the VectorSelector corresponding to `metric[5m]`.
+// In this case, `rate` function becomes a terminal node for later expression
+// evaluation. These terminal nodes are called "top nodes".
+//
+// populateSeries returns a map keyed by all top nodes.
+func (ng *Engine) populateSeries(querier pgquerier.SamplesQuerier, evalStmt *parser.EvalStmt) map[parser.Node]struct{} {
 	var (
 		// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 		// The evaluation of the VectorSelector inside then evaluates the given range and unsets
@@ -809,22 +793,22 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map
 		topNodes  map[parser.Node]struct{} = make(map[parser.Node]struct{})
 	)
 
-	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
+	parser.Inspect(evalStmt.Expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
 		case *parser.VectorSelector:
 			var qh *pgquerier.QueryHints
-			start, end := ng.getTimeRangesForSelector(s, n, path, evalRange)
+			start, end := ng.getTimeRangesForSelector(evalStmt, n, path, evalRange)
 			hints := &storage.SelectHints{
 				Start: start,
 				End:   end,
-				Step:  durationMilliseconds(s.Interval),
+				Step:  durationMilliseconds(evalStmt.Interval),
 				Range: durationMilliseconds(evalRange),
 				Func:  extractFuncFromPath(path),
 			}
 
 			qh = &pgquerier.QueryHints{
-				StartTime:   s.Start,
-				EndTime:     s.End,
+				StartTime:   evalStmt.Start,
+				EndTime:     evalStmt.End,
 				CurrentNode: n,
 				Lookback:    ng.lookbackDelta,
 			}
@@ -1244,8 +1228,8 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	defer span.Finish()
 
 	if _, isTopNode := ev.topNodes[expr]; isTopNode {
-		/* the storage layer has already processed this node. Just return
-		the result. */
+		// the storage layer has already processed this node. Just return
+		// the result.
 		var (
 			mat      Matrix
 			warnings storage.Warnings
@@ -1253,7 +1237,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		)
 		parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
 			switch n := node.(type) {
-			/* Note that a MatrixSelector cascades down to it's VectorSelector in Inspect */
+			// Note that a MatrixSelector cascades down to its VectorSelector in Inspect.
 			case *parser.VectorSelector:
 				warnings, err = checkAndExpandSeriesSet(ev.ctx, n)
 				if err != nil {
@@ -1264,8 +1248,8 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 					err = fmt.Errorf("Matrix is already filled in")
 					return err
 				}
-				//all range-vector function calls have their metric name dropped
-				//see eval() function
+				// All range-vector function calls have their metric name
+				// dropped, see eval() function.
 				_, isCall := expr.(*parser.Call)
 				mat = ev.getPushdownResult(n, numSteps, isCall)
 			}

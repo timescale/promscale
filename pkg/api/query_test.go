@@ -60,7 +60,7 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
 }
 
-func (m mockQuerier) SamplesQuerier() querier.SamplesQuerier {
+func (m mockQuerier) SamplesQuerier() querier.SamplesQuerier2 {
 	return m
 }
 

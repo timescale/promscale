@@ -44,7 +44,7 @@ func NewQuerier(
 	return querier
 }
 
-func (q *pgxQuerier) SamplesQuerier() SamplesQuerier {
+func (q *pgxQuerier) SamplesQuerier() SamplesQuerier2 {
 	return newQuerySamples(q)
 }
 

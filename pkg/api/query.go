@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"net/http"
 	"time"
 
@@ -14,12 +15,12 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func Query(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.Handler {
+func Query(conf *Config, queryEngine *promql.Engine, queryable pgquerier.Queryable, metrics *Metrics) http.Handler {
 	hf := corsWrapper(conf, queryHandler(queryEngine, queryable, metrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, metrics *Metrics) http.HandlerFunc {
+func queryHandler(queryEngine *promql.Engine, queryable pgquerier.Queryable, metrics *Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var ts time.Time
 		var err error

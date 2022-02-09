@@ -13,15 +13,16 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func LabelValues(conf *Config, queryable promql.Queryable) http.Handler {
+func LabelValues(conf *Config, queryable pgquerier.Queryable) http.Handler {
 	hf := corsWrapper(conf, labelValues(queryable))
 	return gziphandler.GzipHandler(hf)
 }
 
-func labelValues(queryable promql.Queryable) http.HandlerFunc {
+func labelValues(queryable pgquerier.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		name := route.Param(ctx, "name")
