@@ -40,7 +40,7 @@ SELECT * FROM prom_info.label ORDER BY key;
 (5 rows)
 
 \set ON_ERROR_STOP 0
-SELECT count(compress_chunk(i)) from show_chunks('prom_data.cpu_usage') i;
+SELECT count(public.compress_chunk(i)) from public.show_chunks('prom_data.cpu_usage') i;
  count 
 -------
      1

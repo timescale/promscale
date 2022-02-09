@@ -5,9 +5,11 @@
 package upgrade_tests
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -23,7 +25,9 @@ import (
 type dbSnapshot struct {
 	schemaNames       []string
 	schemas           []schemaInfo
+	users             string // \du
 	extensions        string // \dx
+	promscale         string // \dx+ promscale
 	schemaOutputs     string // \dn+
 	defaultPrivileges string // \ddp
 }
@@ -97,12 +101,67 @@ type schemaInfo struct {
 	privileges string // \dp+
 	indices    string // \di
 	triggers   string // \dy
+	operators  string // \do
 	data       []tableInfo
 }
 
 type tableInfo struct {
 	name   string
 	values []string
+}
+
+func (s dbSnapshot) writeToFile(f *os.File) error {
+	w := bufio.NewWriter(f)
+	if _, err := w.WriteString(s.users); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.extensions); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.promscale); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.schemaOutputs); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.defaultPrivileges); err != nil {
+		return err
+	}
+
+	for _, si := range s.schemas {
+		if _, err := w.WriteString(si.name); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.tables); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.functions); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.privileges); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.indices); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.triggers); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.operators); err != nil {
+			return err
+		}
+		for _, ti := range si.data {
+			if _, err := w.WriteString(fmt.Sprintf("%s.%s\n", si.name, ti.name)); err != nil {
+				return err
+			}
+			for _, v := range ti.values {
+				if _, err := w.WriteString(fmt.Sprintf("%s\n", v)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return w.Flush()
 }
 
 func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, msg string) bool {
@@ -118,7 +177,9 @@ func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, 
 func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgradedDbInfo dbSnapshot) {
 	t.Errorf("upgrade differences")
 	printOutputDiff(t, fmt.Sprintf("%+v", upgradedDbInfo.schemaNames), fmt.Sprintf("%+v", pristineDbInfo.schemaNames), "schema names differ")
+	printOutputDiff(t, upgradedDbInfo.users, pristineDbInfo.users, "users differ")
 	printOutputDiff(t, upgradedDbInfo.extensions, pristineDbInfo.extensions, "extension outputs differ")
+	printOutputDiff(t, upgradedDbInfo.promscale, pristineDbInfo.promscale, "promscale extension members differ")
 	printOutputDiff(t, upgradedDbInfo.schemaOutputs, pristineDbInfo.schemaOutputs, "schema outputs differ")
 	printOutputDiff(t, upgradedDbInfo.defaultPrivileges, pristineDbInfo.defaultPrivileges, "default privileges differ")
 
@@ -137,6 +198,7 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 		printOutputDiff(t, upgradedSchema.privileges, pristineSchema.privileges, "privileges differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, upgradedSchema.indices, pristineSchema.indices, "indices differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, upgradedSchema.triggers, pristineSchema.triggers, "triggers differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, upgradedSchema.operators, pristineSchema.operators, "operators differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, fmt.Sprintf("%+v", upgradedSchema.data), fmt.Sprintf("%+v", pristineSchema.data), "data differs for schema "+upgradedSchema.name)
 	}
 }
@@ -165,7 +227,9 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 		)
 	}
 
+	info.users = getPsqlInfo(t, container, dbName, outputDir, "\\du")
 	info.extensions = getPsqlInfo(t, container, dbName, outputDir, "\\dx")
+	info.promscale = getPsqlInfo(t, container, dbName, outputDir, "\\dx+ promscale")
 	info.schemaOutputs = getPsqlInfo(t, container, dbName, outputDir, "\\dn+")
 	info.defaultPrivileges = getPsqlInfo(t, container, dbName, outputDir, "\\ddp")
 	info.schemas = make([]schemaInfo, len(ourSchemas))
@@ -182,6 +246,7 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 		// will be in tables anyway
 		info.indices = getPsqlInfo(t, container, dbName, outputDir, "\\di "+schema+".*")
 		info.triggers = getPsqlInfo(t, container, dbName, outputDir, "\\dy "+schema+".*")
+		info.operators = getPsqlInfo(t, container, dbName, outputDir, "\\do "+schema+".*")
 		info.data = getTableInfosForSchema(t, db, schema)
 	}
 	return
@@ -251,9 +316,11 @@ func readOutput(t *testing.T, outputDir string) string {
 func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out []tableInfo) {
 	row := db.QueryRow(
 		context.Background(),
-		"SELECT array_agg(relname::TEXT order by relname::TEXT) "+
-			"FROM pg_class "+
-			"WHERE relnamespace=$1::TEXT::regnamespace AND relkind='r'",
+		`SELECT array_agg(relname::TEXT order by relname::TEXT)
+			FROM pg_class 
+			WHERE relnamespace=$1::TEXT::regnamespace AND relkind='r'
+			AND (relnamespace, relname) != ('_ps_catalog'::regnamespace, 'migration')
+			`,
 		schema,
 	)
 	var tables []string
@@ -263,7 +330,11 @@ func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out 
 		return
 	}
 
-	out = make([]tableInfo, len(tables))
+	numTables := len(tables)
+	if schema == "_ps_catalog" {
+		numTables = numTables + 1
+	}
+	out = make([]tableInfo, numTables)
 	batch := pgx.Batch{}
 	for _, table := range tables {
 		batch.Queue(fmt.Sprintf(
@@ -279,6 +350,16 @@ func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out 
 		if err != nil {
 			t.Errorf("error querying values from table %s: %v",
 				pgx.Identifier{schema, table}.Sanitize(), err)
+		}
+	}
+
+	// special handling for _ps_catalog.migration. we don't want to compare applied_at or applied_at_version
+	if schema == "_ps_catalog" {
+		row = db.QueryRow(context.Background(), "select array_agg(x.name order by x.applied_at) from _ps_catalog.migration x")
+		out[numTables-1].name = "migration"
+		if err = row.Scan(&out[numTables-1].values); err != nil {
+			t.Errorf("error querying values from table _ps_catalog.migration: %v", err)
+			return
 		}
 	}
 	return

@@ -326,17 +326,18 @@ func TestExtensionFunctions(t *testing.T) {
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 
-		searchPath := ""
-		// right now the schemas in this test are hardcoded, if we ever allow
-		// user-defined schemas we will need to test those as well
-		expected := `"$user", public, ps_tag, _prom_ext, prom_api, prom_metric, _prom_catalog, ps_trace`
-		err := db.QueryRow(context.Background(), "SHOW search_path;").Scan(&searchPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if searchPath != expected {
-			t.Errorf("incorrect search path\nexpected\n\t%s\nfound\n\t%s", expected, searchPath)
-		}
+		// TODO (james): I'm not sure that we should be removing the search path modification, I've started a discussion.
+		//searchPath := ""
+		//// right now the schemas in this test are hardcoded, if we ever allow
+		//// user-defined schemas we will need to test those as well
+		//expected := `"$user", public, ps_tag, _prom_ext, prom_api, prom_metric, _prom_catalog, ps_trace`
+		//err := db.QueryRow(context.Background(), "SHOW search_path;").Scan(&searchPath)
+		//if err != nil {
+		//	t.Fatal(err)
+		//}
+		//if searchPath != expected {
+		//	t.Errorf("incorrect search path\nexpected\n\t%s\nfound\n\t%s", expected, searchPath)
+		//}
 
 		functions := []string{
 			"label_jsonb_each_text",
@@ -346,7 +347,7 @@ func TestExtensionFunctions(t *testing.T) {
 			"label_find_key_regex",
 			"label_find_key_not_regex",
 		}
-		extSchema := "_prom_ext"
+		extSchema := "_prom_catalog"
 		for _, fn := range functions {
 			const query = "SELECT nspname FROM pg_proc LEFT JOIN pg_namespace ON pronamespace = pg_namespace.oid WHERE pg_proc.oid = $1::regproc;"
 			schema := ""
@@ -359,21 +360,47 @@ func TestExtensionFunctions(t *testing.T) {
 			}
 		}
 
-		operators := []string{
-			"==(prom_api.label_key,prom_api.pattern)",
-			"!==(prom_api.label_key,prom_api.pattern)",
-			"==~(prom_api.label_key,prom_api.pattern)",
-			"!=~(prom_api.label_key,prom_api.pattern)",
+		operators := [][]string{
+			{"ps_tag", "!==(text, anyelement)"},
+			{"ps_tag", "!==(text, text)"},
+			{"ps_tag", "!=~(text, text)"},
+			{"ps_tag", "#<(text, anyelement)"},
+			{"ps_tag", "#<(text, text)"},
+			{"ps_tag", "#<=(text, anyelement)"},
+			{"ps_tag", "#<=(text, text)"},
+			{"ps_tag", "#>(text, anyelement)"},
+			{"ps_tag", "#>(text, text)"},
+			{"ps_tag", "#>=(text, anyelement)"},
+			{"ps_tag", "#>=(text, text)"},
+			{"ps_tag", "==(text, anyelement)"},
+			{"ps_tag", "==(text, text)"},
+			{"ps_tag", "==~(text, text)"},
+			{"ps_tag", "@?(text, jsonpath)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_regexp_matches)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_regexp_not_matches)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_equals)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_not_equals)"},
+			{"prom_api", "?(prom_api.label_array, prom_api.matcher_positive)"},
+			{"prom_api", "?(prom_api.label_array, prom_api.matcher_negative)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_jsonb_path_exists)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_regexp_matches)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_regexp_not_matches)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_equals)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_not_equals)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_less_than)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_less_than_or_equal)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_greater_than)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_greater_than_or_equal)"},
 		}
 		for _, opr := range operators {
 			const query = "SELECT nspname FROM pg_operator LEFT JOIN pg_namespace ON oprnamespace = pg_namespace.oid WHERE pg_operator.oid = $1::regoperator;"
 			schema := ""
-			err := db.QueryRow(context.Background(), query, opr).Scan(&schema)
+			err := db.QueryRow(context.Background(), query, opr[1]).Scan(&schema)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if schema != extSchema {
-				t.Errorf("function %s in wrong schema\nexpected\n\t%s\nfound\n\t%s", opr, extSchema, schema)
+			if schema != opr[0] {
+				t.Errorf("function %s in wrong schema\nexpected\n\t%s\nfound\n\t%s", opr, opr[0], schema)
 			}
 		}
 	})
@@ -386,7 +413,7 @@ func TestExtensionGapfillDelta(t *testing.T) {
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
 		defer db.Close()
-		_, err := db.Exec(context.Background(), "CREATE TABLE gfd_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
+		_, err := db.Exec(context.Background(), "CREATE TEMPORARY TABLE gfd_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -413,7 +440,7 @@ func TestExtensionGapfillDelta(t *testing.T) {
 		var res string
 		err = db.QueryRow(context.Background(),
 			"SELECT prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, NULL, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
-		if !(err.Error() == "ERROR: time is null (SQLSTATE XX000)" || err.Error() == `ERROR: NULL value for non-nullable argument "time" (SQLSTATE XX000)`) {
+		if !(err.Error() == "ERROR: sample_time is null (SQLSTATE XX000)" || err.Error() == `ERROR: NULL value for non-nullable argument "time" (SQLSTATE XX000)`) {
 			t.Error(err)
 		}
 		err = db.QueryRow(context.Background(),
@@ -536,7 +563,7 @@ func TestExtensionGapfillIncrease(t *testing.T) {
 			t.Run(testCase.name, func(t *testing.T) {
 				db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
 				defer db.Close()
-				_, err := db.Exec(context.Background(), "CREATE TABLE gfi_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
+				_, err := db.Exec(context.Background(), "CREATE TEMPORARY TABLE gfi_test_table(t TIMESTAMPTZ, v DOUBLE PRECISION);")
 				if err != nil {
 					t.Fatal(err)
 				}

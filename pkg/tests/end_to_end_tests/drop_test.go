@@ -185,7 +185,7 @@ func TestSQLDropChunk(t *testing.T) {
 		}
 
 		cnt := 0
-		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -197,7 +197,7 @@ func TestSQLDropChunk(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -210,7 +210,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 		//test2 isn't affected
-		err = db.QueryRow(context.Background(), "SELECT count(*) FROM show_chunks('prom_data.test2')").Scan(&cnt)
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM public.show_chunks('prom_data.test2')").Scan(&cnt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -271,7 +271,7 @@ func TestSQLDropChunkWithLocked(t *testing.T) {
 		require.NoError(t, err)
 
 		cnt := 0
-		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 2, int(cnt))
 
@@ -322,7 +322,7 @@ func TestSQLDropChunkWithLocked(t *testing.T) {
 		//make sure the exec_maintenance completes
 		wg.Wait()
 
-		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
+		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('prom_data."%s"')`, tableName)).Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 1, int(cnt), "Expected the chunk to be dropped")
 	})
@@ -465,7 +465,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT set_chunk_time_interval('prom_data.test', interval '8 hour')")
+		_, err = db.Exec(context.Background(), "SELECT public.set_chunk_time_interval('prom_data.test', interval '8 hour')")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -719,7 +719,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 
 		if *useTimescaleDB {
 			//owner not admin since using timescale func to avoid randomness
-			_, err = dbOwner.Exec(context.Background(), "SELECT set_chunk_time_interval('prom_data.test', interval '8 hour')")
+			_, err = dbOwner.Exec(context.Background(), "SELECT public.set_chunk_time_interval('prom_data.test', interval '8 hour')")
 			if err != nil {
 				t.Fatal(err)
 			}
