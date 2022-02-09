@@ -222,11 +222,10 @@ type aggregators struct {
 // a single metric. It may apply pushdowns to functions.
 func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
 	// todo: investigate if query hints can have only node and lookback
-	if canAttemptPushdown(metadata) {
-		agg, node, err := tryPushDown(metadata)
-		if err == nil && agg != nil {
-			return agg, node, nil
-		}
+
+	agg, node, err := tryPushDown(metadata)
+	if err == nil && agg != nil {
+		return agg, node, nil
 	}
 
 	defaultAggregators := &aggregators{
@@ -236,13 +235,6 @@ func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node, error)
 	}
 
 	return defaultAggregators, nil, nil
-}
-
-func canAttemptPushdown(metadata *promqlMetadata) bool {
-	path := metadata.path // PromQL AST.
-	queryHints := metadata.queryHints
-	selectHints := metadata.selectHints
-	return extension.ExtensionIsInstalled && queryHints != nil && !hasSubquery(path) && selectHints != nil
 }
 
 // tryPushDown inspects the AST above the current node to determine if it's
@@ -271,39 +263,57 @@ func tryPushDown(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
 	queryHints := metadata.queryHints
 	selectHints := metadata.selectHints
 
+	switch {
+	// We can't push down without hints.
+	case queryHints == nil || selectHints == nil:
+		return nil, nil, nil
+	// We can't handle subqueries in pushdowns.
+	case hasSubquery(path):
+		return nil, nil, nil
+	// We can't do pushdowns without the extension.
+	case !extension.ExtensionIsInstalled:
+		return nil, nil, nil
+	}
+
 	vs, isVectorSelector := queryHints.CurrentNode.(*parser.VectorSelector)
-	if isVectorSelector {
-		if len(path) >= 2 {
-			grandparent := path[len(path)-2]
-			funcName, canPushDown := tryExtractPushdownableFunctionName(grandparent)
-			if canPushDown {
-				agg, err := callAggregator(selectHints, funcName)
-				return agg, grandparent, err
-			}
-		}
 
-		//TODO: handle the instant query (hints.Step==0) case too.
+	switch {
+	// We can't push down something that isn't a VectorSelector.
+	case !isVectorSelector:
+		return nil, nil, nil
+	// We can't handle offsets in VectorSelector pushdowns.
+	case vs.OriginalOffset != 0 || vs.Offset != 0:
+		return nil, nil, nil
+	}
 
-		// vector selector pushdown improves performance by selecting from the
-		// database only the last point in a vector selector window(step).
-		// This decreases the number of samples transferred from the DB to
-		// Promscale by orders of magnitude. A vector selector aggregate also
-		// does not require ordered inputs which saves a sort and allows for
-		// parallel evaluation.
-		if selectHints.Step > 0 &&
-			selectHints.Range == 0 && // So this is not an aggregate. That's optimized above
-			!calledByTimestamp(path) &&
-			vs.OriginalOffset == time.Duration(0) &&
-			vs.Offset == time.Duration(0) &&
-			vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
-			qf := aggregators{
-				valueClause: "vector_selector($%d, $%d, $%d, $%d, time, value)",
-				valueParams: []interface{}{queryHints.StartTime, queryHints.EndTime, selectHints.Step, queryHints.Lookback.Milliseconds()},
-				unOrdered:   true,
-				tsSeries:    newRegularTimestampSeries(queryHints.StartTime, queryHints.EndTime, time.Duration(selectHints.Step)*time.Millisecond),
-			}
-			return &qf, queryHints.CurrentNode, nil
+	if len(path) >= 2 {
+		grandparent := path[len(path)-2]
+		funcName, canPushDown := tryExtractPushdownableFunctionName(grandparent)
+		if canPushDown {
+			agg, err := callAggregator(selectHints, funcName)
+			return agg, grandparent, err
 		}
+	}
+
+	//TODO: handle the instant query (hints.Step==0) case too.
+
+	// vector selector pushdown improves performance by selecting from the
+	// database only the last point in a vector selector window(step).
+	// This decreases the number of samples transferred from the DB to
+	// Promscale by orders of magnitude. A vector selector aggregate also
+	// does not require ordered inputs which saves a sort and allows for
+	// parallel evaluation.
+	if selectHints.Step > 0 &&
+		selectHints.Range == 0 && // So this is not an aggregate. That's optimized above
+		!calledByTimestamp(path) &&
+		vectorSelectorExtensionRange(extension.PromscaleExtensionVersion) {
+		qf := aggregators{
+			valueClause: "vector_selector($%d, $%d, $%d, $%d, time, value)",
+			valueParams: []interface{}{queryHints.StartTime, queryHints.EndTime, selectHints.Step, queryHints.Lookback.Milliseconds()},
+			unOrdered:   true,
+			tsSeries:    newRegularTimestampSeries(queryHints.StartTime, queryHints.EndTime, time.Duration(selectHints.Step)*time.Millisecond),
+		}
+		return &qf, queryHints.CurrentNode, nil
 	}
 	return nil, nil, nil
 }

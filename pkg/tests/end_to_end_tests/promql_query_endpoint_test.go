@@ -2506,6 +2506,10 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			name:  "two pushdowns, same metric different matchers",
 			query: `sum(rate(metric_2{foo = "bar"}[5m]))/sum(rate(metric_2[5m]))`,
 		},
+		{
+			name:  "delta function over range selector with offset",
+			query: `delta(metric_2[1m] offset 3m)`,
+		},
 	}
 	start := time.Unix(startTime/1000, 0)
 	end := time.Unix(endTime/1000, 0)
