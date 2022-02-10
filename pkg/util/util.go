@@ -69,10 +69,17 @@ func ParseEnv(p string, fs *flag.FlagSet) error {
 
 func AddAliases(fs *flag.FlagSet, aliases map[string][]string, descSuffix string) {
 	aliasDescFormat := aliasDescTemplate + descSuffix
+	set := false
 	fs.VisitAll(func(f *flag.Flag) {
 		if flagAliases, ok := aliases[f.Name]; ok {
+			set = false
 			for _, alias := range flagAliases {
+				set = true
 				fs.Var(f.Value, alias, fmt.Sprintf(aliasDescFormat, f.Name))
+			}
+
+			if !set {
+				panic(fmt.Sprintf("trying to set an flag alias for a flag that is missing: %s", f.Name))
 			}
 		}
 	})
