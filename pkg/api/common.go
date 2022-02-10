@@ -121,8 +121,8 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 
 	fs.BoolVar(&cfg.ReadOnly, "db.read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
 	fs.BoolVar(&cfg.HighAvailability, "metrics.high-availability", false, "Enable external_labels based HA.")
-	fs.BoolVar(&cfg.AdminAPIEnabled, "web-enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
-	fs.StringVar(&cfg.TelemetryPath, "web-telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
+	fs.BoolVar(&cfg.AdminAPIEnabled, "web.enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
+	fs.StringVar(&cfg.TelemetryPath, "web.telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
 	fs.StringVar(&cfg.Auth.BasicAuthUsername, "web.auth.username", "", "Authentication username used for web endpoint authentication. Disabled by default.")
 	fs.StringVar(&cfg.Auth.BasicAuthPassword, "web.auth.password", "", "Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token flags.")
