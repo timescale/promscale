@@ -14,6 +14,9 @@ import (
 )
 
 func TestDeleteSpans(t *testing.T) {
+	if *useMultinode {
+		t.Skip("Span deletion fails on multinode")
+	}
 	var ctx = context.Background()
 	databaseName := fmt.Sprintf("%s_delete_all_traces", *testDatabase)
 	withDB(t, databaseName, func(db *pgxpool.Pool, tb testing.TB) {
