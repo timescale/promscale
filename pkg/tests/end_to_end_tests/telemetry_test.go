@@ -61,6 +61,9 @@ func TestPromscaleTobsMetadata(t *testing.T) {
 }
 
 func TestTelemetryInfoTableWrite(t *testing.T) {
+	if !*useTimescaleDB {
+		t.Skip("telemetry requires TimescaleDB")
+	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -128,6 +131,9 @@ func TestOnlyOneHousekeeper(t *testing.T) {
 }
 
 func TestHousekeeper(t *testing.T) {
+	if !*useTimescaleDB || *useTimescaleOSS || !*useExtension {
+		t.Skip("telemetry requires TimescaleDB and the Promscale extension")
+	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -162,6 +168,9 @@ func TestHousekeeper(t *testing.T) {
 }
 
 func TestCleanStalePromscales(t *testing.T) {
+	if !*useTimescaleDB {
+		t.Skip("telemetry requires TimescaleDB")
+	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -252,7 +261,7 @@ func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
 }
 
 func TestTelemetrySQLStats(t *testing.T) {
-	if !*useExtension {
+	if !*useExtension || !*useTimescale2 {
 		t.Skip("test will give wrong result without promscale_extension. Hence, skipping")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
@@ -296,6 +305,9 @@ func TestTelemetrySQLStats(t *testing.T) {
 }
 
 func TestPromQLBasedTelemetry(t *testing.T) {
+	if !*useExtension {
+		t.Skip("test will give wrong result without promscale_extension. Hence, skipping")
+	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		conn, err := dbOwner.Acquire(context.Background())
 		if err != nil {
