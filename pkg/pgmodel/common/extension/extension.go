@@ -260,9 +260,12 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 		// if migration fails, Do not crash just log an error. As there is an extension already present.
 		if err != nil {
 			if !validRange(*currentVersion) {
-				return fmt.Errorf("The %v extension is not installed at the right version and the upgrades failed, need version: %v and the installed version is %s and the upgrade failed with %w ", extName, rangeString, currentVersion, err)
+				return fmt.Errorf("the %v extension is not installed at the right version and the upgrades failed, need version: %v and the installed version is %s and the upgrade failed with %w ", extName, rangeString, currentVersion, err)
 			}
 			log.Error("msg", fmt.Sprintf("Failed to migrate extension %v from %v to %v: %v", extName, currentVersion, newVersion, err))
+			// We've failed to migrate but we are still in the valid extension range so we can continue to operate.
+			// Eventually we can make this more strict later on
+			return nil
 		}
 		log.Info("msg", "successfully updated extension", "extension_name", extName, "old_version", currentVersion, "new_version", newVersion)
 	}
