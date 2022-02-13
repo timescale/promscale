@@ -42,12 +42,17 @@ type regularTimestampSeries struct {
 }
 
 func newRegularTimestampSeries(start time.Time, end time.Time, step time.Duration) *regularTimestampSeries {
-	len := (end.Sub(start) / step) + 1
+	var length int
+	if step == 0 {
+		length = 1
+	} else {
+		length = int((end.Sub(start) / step) + 1)
+	}
 	return &regularTimestampSeries{
 		start: start,
 		end:   end,
 		step:  step,
-		len:   int(len),
+		len:   length,
 	}
 }
 

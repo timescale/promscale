@@ -835,8 +835,6 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalSt
 			}
 
 			qh = &pgquerier.QueryHints{
-				StartTime:   evalStmt.Start,
-				EndTime:     evalStmt.End,
 				CurrentNode: n,
 				Lookback:    ng.lookbackDelta,
 			}
