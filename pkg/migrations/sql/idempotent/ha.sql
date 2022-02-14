@@ -29,7 +29,7 @@ $func$ LANGUAGE plpgsql VOLATILE;
 
 -- ha api functions
 CREATE OR REPLACE FUNCTION _prom_catalog.update_lease(cluster TEXT, writer TEXT, min_time TIMESTAMPTZ,
-                                                       max_time TIMESTAMPTZ) RETURNS ha_leases
+                                                       max_time TIMESTAMPTZ) RETURNS _prom_catalog.ha_leases
 AS
 $func$
 DECLARE
@@ -37,7 +37,7 @@ DECLARE
     lease_start       TIMESTAMPTZ;
     lease_until       TIMESTAMPTZ;
     new_lease_timeout TIMESTAMPTZ;
-    lease_state       ha_leases%ROWTYPE;
+    lease_state       _prom_catalog.ha_leases%ROWTYPE;
     lease_timeout INTERVAL;
     lease_refresh INTERVAL;
 BEGIN
@@ -95,19 +95,19 @@ BEGIN
             END IF;
         END IF;
     END IF;
-    SELECT * INTO STRICT lease_state FROM ha_leases WHERE cluster_name = cluster;
+    SELECT * INTO STRICT lease_state FROM _prom_catalog.ha_leases WHERE cluster_name = cluster;
     RETURN lease_state;
 END;
 $func$ LANGUAGE plpgsql VOLATILE;
 GRANT EXECUTE ON FUNCTION _prom_catalog.update_lease(TEXT, TEXT, TIMESTAMPTZ, TIMESTAMPTZ) TO prom_writer;
 
 CREATE OR REPLACE FUNCTION _prom_catalog.try_change_leader(cluster TEXT, new_leader TEXT,
-                                                            max_time TIMESTAMPTZ) RETURNS ha_leases
+                                                            max_time TIMESTAMPTZ) RETURNS _prom_catalog.ha_leases
 AS
 $func$
 DECLARE
     lease_timeout INTERVAL;
-    lease_state ha_leases%ROWTYPE;
+    lease_state _prom_catalog.ha_leases%ROWTYPE;
 BEGIN
     -- find lease_timeout setting;
     SELECT value::INTERVAL
@@ -124,7 +124,7 @@ BEGIN
 
     SELECT *
     INTO STRICT lease_state
-    FROM ha_leases
+    FROM _prom_catalog.ha_leases
     WHERE cluster_name = cluster;
     RETURN lease_state;
 

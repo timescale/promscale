@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	setLeaseExplicitlySQL = `UPDATE ha_leases SET leader_name=$1, lease_start=$2, lease_until=$3
+	setLeaseExplicitlySQL = `UPDATE _prom_catalog.ha_leases SET leader_name=$1, lease_start=$2, lease_until=$3
 			WHERE cluster_name=$4`
 )
 
