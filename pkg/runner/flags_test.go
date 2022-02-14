@@ -5,10 +5,14 @@
 package runner
 
 import (
+	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseFlags(t *testing.T) {
@@ -339,4 +343,44 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAddAlias(t *testing.T) {
+	aliases := map[string][]string{
+		"first_flag":  {"first_flag_alias", "first_flag_another_alias"},
+		"second_flag": {"second_flag_alias"},
+	}
+
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.Bool("first_flag", true, "First flag desc")
+	fs.String("second_flag", "empty", "Second flag desc")
+
+	descSuffix := "Test description."
+
+	addAliases(fs, aliases, descSuffix)
+
+	ff := fs.Lookup("first_flag")
+	sf := fs.Lookup("second_flag")
+
+	require.NotNil(t, ff)
+	require.NotNil(t, sf)
+
+	alias := fs.Lookup("first_flag_alias")
+	require.NotNil(t, alias)
+	require.Equal(t, ff.Value, alias.Value)
+	require.Equal(t, ff.DefValue, alias.DefValue)
+	require.Equal(t, alias.Usage, fmt.Sprintf(aliasDescTemplate+descSuffix, ff.Name))
+
+	alias = fs.Lookup("first_flag_another_alias")
+	require.NotNil(t, alias)
+	require.Equal(t, ff.Value, alias.Value)
+	require.Equal(t, ff.DefValue, alias.DefValue)
+	require.Equal(t, alias.Usage, fmt.Sprintf(aliasDescTemplate+descSuffix, ff.Name))
+
+	alias = fs.Lookup("second_flag_alias")
+	require.NotNil(t, alias)
+	require.Equal(t, sf.Value, alias.Value)
+	require.Equal(t, sf.DefValue, alias.DefValue)
+	require.Equal(t, alias.Usage, fmt.Sprintf(aliasDescTemplate+descSuffix, sf.Name))
+
 }

@@ -43,6 +43,17 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	return cfg
 }
 
+// InitDefault is used to start the logger with sane defaults before we can configure it.
+// It's useful in instances where we want to log stuff before the configuration
+// has been successfully parsed. Calling Init function later on overrides this.
+func InitDefault() {
+	l := level.NewFilter(
+		log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
+		level.AllowInfo(),
+	)
+	logger = log.With(l, "ts", timestampFormat, "caller", log.Caller(4))
+}
+
 // Init starts logging given the configuration. By default, it uses logfmt format
 // and minimum logging level.
 func Init(cfg Config) error {

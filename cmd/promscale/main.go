@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+	log.InitDefault()
 	args := os.Args[1:]
 	if shouldProceed := runner.ParseArgs(args); !shouldProceed {
 		os.Exit(0)
