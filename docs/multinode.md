@@ -16,8 +16,8 @@ Promscale, you should run the `add_prom_node(node_name)` function
 after running the standard `add_data_node()` function. For example:
 
 ```sql
-SELECT add_data_node('example_node_name', host => 'example_host_address')
-SELECT add_prom_node('example_node_name');
+SELECT add_data_node('example_node_name', host => 'example_host_address');
+CALL add_prom_node('example_node_name');
 ```
 
 Note: `add_prom_node` should be run by the same database user, as the
