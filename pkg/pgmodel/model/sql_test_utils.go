@@ -179,6 +179,10 @@ func (b *MockBatch) Queue(query string, arguments ...interface{}) {
 	})
 }
 
+func (b *MockBatch) Len() int {
+	return len(b.items)
+}
+
 type MockBatchResult struct {
 	idx     int
 	queries []SqlQuery

@@ -126,14 +126,22 @@ func getServiceName(rSpan pdata.ResourceSpans) string {
 	return serviceName
 }
 
+var (
+	traceLabel      = prometheus.Labels{"type": "trace"}
+	traceSpanLabel  = prometheus.Labels{"type": "trace", "kind": "span"}
+	traceEventLabel = prometheus.Labels{"type": "trace", "kind": "event"}
+	traceLinkLabel  = prometheus.Labels{"type": "trace", "kind": "link"}
+)
+
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
 	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
 	code := "500"
-	metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "span"}).Inc()
+	metrics.IngestorActiveWriteRequests.With(traceSpanLabel).Inc()
+	metrics.IngestorItems.With(traceSpanLabel).Add(float64(traces.SpanCount()))
 	defer func() {
 		metrics.IngestorRequests.With(prometheus.Labels{"type": "trace", "code": code}).Inc()
-		metrics.IngestorDuration.With(prometheus.Labels{"type": "trace", "code": code}).Observe(time.Since(startIngest).Seconds())
-		metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "trace", "kind": "span"}).Dec()
+		metrics.IngestorDuration.With(prometheus.Labels{"type": "trace", "code": ""}).Observe(time.Since(startIngest).Seconds())
+		metrics.IngestorActiveWriteRequests.With(traceSpanLabel).Dec()
 	}()
 
 	rSpans := traces.ResourceSpans()
@@ -209,6 +217,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 			}
 		}
 	}
+
+	metrics.InsertBatchSize.With(prometheus.Labels{"type": "trace", "kind": "instrumentation_lib"}).Observe(float64(instrLibBatch.b.Len()))
+	metrics.InsertBatchSize.With(prometheus.Labels{"type": "trace", "kind": "operation"}).Observe(float64(operationBatch.b.Len()))
+	metrics.InsertBatchSize.With(prometheus.Labels{"type": "trace", "kind": "tag"}).Observe(float64(tagsBatch.b.Len()))
 	if err := instrLibBatch.SendBatch(ctx, t.conn); err != nil {
 		return err
 	}
@@ -315,30 +327,44 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		}
 	}
 
+	metrics.InsertBatchSize.With(traceSpanLabel).Observe(float64(spanBatch.Len()))
+	metrics.InsertBatchSize.With(traceEventLabel).Observe(float64(eventBatch.Len()))
+	metrics.InsertBatchSize.With(traceLinkLabel).Observe(float64(linkBatch.Len()))
+
 	start := time.Now()
-	if err := t.sendBatches(ctx, eventBatch, linkBatch, spanBatch); err != nil {
-		return fmt.Errorf("error sending trace batches: %w", err)
+	if err := t.sendBatch(ctx, eventBatch); err != nil {
+		return fmt.Errorf("error sending trace event batch: %w", err)
 	}
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "event"}).Observe(time.Since(start).Seconds())
+
+	start = time.Now()
+	if err := t.sendBatch(ctx, linkBatch); err != nil {
+		return fmt.Errorf("error sending trace link batch: %w", err)
+	}
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "link"}).Observe(time.Since(start).Seconds())
+
+	start = time.Now()
+	if err := t.sendBatch(ctx, spanBatch); err != nil {
+		return fmt.Errorf("error sending trace span batch: %w", err)
+	}
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "span"}).Observe(time.Since(start).Seconds())
 
 	code = "2xx"
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "span"}).Observe(time.Since(start).Seconds())
-	metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span"}).Add(float64(traces.SpanCount()))
-	metrics.IngestorMaxSentTimestamp.With(prometheus.Labels{"type": "trace"}).Set(float64(maxEndTimestamp))
+	metrics.IngestorMaxSentTimestamp.With(traceLabel).Set(float64(maxEndTimestamp))
 
 	// Only report telemetry if ingestion successful.
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
 	return nil
 }
 
-func (t *traceWriterImpl) sendBatches(ctx context.Context, batches ...pgxconn.PgxBatch) error {
-	for _, batch := range batches {
-		br, err := t.conn.SendBatch(ctx, batch)
-		if err != nil {
-			return err
-		}
-		if err = br.Close(); err != nil {
-			return err
-		}
+func (t *traceWriterImpl) sendBatch(ctx context.Context, batch pgxconn.PgxBatch) error {
+	br, err := t.conn.SendBatch(ctx, batch)
+	if err != nil {
+		return err
+	}
+	if err = br.Close(); err != nil {
+		return err
 	}
 	return nil
 }

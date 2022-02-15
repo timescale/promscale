@@ -53,6 +53,7 @@ func (q sortableItems) Swap(i, j int) {
 
 //batcher queues up items to send to the DB but it sorts before sending
 //this avoids deadlocks in the DB. It also avoids sending the same items repeatedly.
+// batcher is not thread safe
 type batcher struct {
 	batch map[batchItem]interface{}
 	cache cache
@@ -65,9 +66,14 @@ func newBatcher(cache cache) batcher {
 	}
 }
 
-// Queue adds item to the batch to be sent.
+// Queue adds item to the batch to be sent or replaces an existing item
 func (b batcher) Queue(i batchItem) {
 	b.batch[i] = nil
+}
+
+// Number of items in the batch.
+func (b batcher) Len() int {
+	return len(b.batch)
 }
 
 // SendBatch sends the batch over the DB connections and gets the ID results.

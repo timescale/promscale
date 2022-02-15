@@ -124,10 +124,11 @@ func TestWrite(t *testing.T) {
 			},
 		},
 		{
-			name:         "write error",
-			isLeader:     true,
-			responseCode: http.StatusInternalServerError,
-			inserterErr:  fmt.Errorf("some error"),
+			name:             "write error",
+			isLeader:         true,
+			inserterResponse: 1,
+			responseCode:     http.StatusInternalServerError,
+			inserterErr:      fmt.Errorf("some error"),
 			requestBody: writeRequestToString(
 				&prompb.WriteRequest{
 					Timeseries: []prompb.TimeSeries{
