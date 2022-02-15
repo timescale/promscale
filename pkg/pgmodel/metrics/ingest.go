@@ -156,7 +156,7 @@ var (
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
 			Name:      "items_total",
-			Help:      "Total number of insertables (sample/metadata) ingested.",
+			Help:      "Total number of insertables (sample/metadata) received",
 		}, []string{"type", "kind"},
 	)
 	IngestorRequests = prometheus.NewCounterVec(
@@ -166,6 +166,16 @@ var (
 			Name:      "requests_total",
 			Help:      "Total number of requests to ingestor.",
 		}, []string{"type", "code"},
+	)
+	InsertBatchSize = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "insert_batch_size",
+			Help:      "Number of records inserted into database",
+			Buckets:   []float64{10, 50, 100, 200, 500, 1000, 2000, 4000, 6000, 8000, 10000, 20000},
+		},
+		[]string{"type", "kind"},
 	)
 )
 
@@ -188,5 +198,6 @@ func init() {
 		IngestorDuration,
 		IngestorItems,
 		IngestorRequests,
+		InsertBatchSize,
 	)
 }

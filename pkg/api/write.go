@@ -19,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
+	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -261,8 +262,14 @@ func ingest(
 			return false
 		}
 
+		// set number of received samples and metadata in case below Ingest fails
+		numSamplesTmp := uint64(getTotalSamples(req))
+		numMetadataTmp := uint64(len(req.Metadata))
+
 		numSamples, numMetadata, err = inserter.Ingest(ctx, req)
 		if err != nil {
+			numSamples = numSamplesTmp
+			numMetadata = numMetadataTmp
 			statusCode = "500"
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -295,4 +302,12 @@ func detectSnappyStreamFormat(input []byte) bool {
 	}
 
 	return true
+}
+
+func getTotalSamples(wr *prompb.WriteRequest) int {
+	total := 0
+	for _, ts := range wr.Timeseries {
+		total += len(ts.Samples)
+	}
+	return total
 }

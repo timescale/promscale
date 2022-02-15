@@ -18,6 +18,7 @@ import (
 
 type PgxBatch interface {
 	Queue(query string, arguments ...interface{})
+	Len() int
 }
 
 type PgxConn interface {
