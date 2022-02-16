@@ -1,6 +1,7 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package runner
 
 import (
@@ -10,7 +11,6 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/dataset"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -27,7 +27,7 @@ var (
 	migrationLockError = fmt.Errorf("Could not acquire migration lock. Ensure there are no other connectors running and try again.")
 )
 
-func CreateClient(cfg *Config, promMetrics *api.Metrics) (*pgclient.Client, error) {
+func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	// The TimescaleDB migration has to happen before other connections
 	// are open, also it has to happen as the first command on a connection.
 	// Thus we cannot rely on the migration lock here. Instead we assume

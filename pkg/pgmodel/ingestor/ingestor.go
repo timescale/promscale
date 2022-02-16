@@ -19,6 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tracer"
 )
 
@@ -38,7 +39,7 @@ type DBIngestor struct {
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg, t telemetry.Engine) (*DBIngestor, error) {
 	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
 	if err != nil {
 		return nil, err
@@ -46,7 +47,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 	return &DBIngestor{
 		sCache:     sCache,
 		dispatcher: dispatcher,
-		tWriter:    trace.NewWriter(conn),
+		tWriter:    trace.NewWriter(conn, t),
 	}, nil
 }
 
@@ -60,7 +61,7 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	c := cache.NewMetricCache(cacheConfig)
 	s := cache.NewSeriesCache(cacheConfig, nil)
 	e := cache.NewExemplarLabelsPosCache(cacheConfig)
-	return NewPgxIngestor(conn, c, s, e, cfg)
+	return NewPgxIngestor(conn, c, s, e, cfg, telemetry.NewNoopEngine())
 }
 
 const (

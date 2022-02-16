@@ -17,8 +17,10 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/telemetry"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
 
@@ -59,7 +61,10 @@ type traceWriterImpl struct {
 	tagCache     *clockcache.Cache
 }
 
-func NewWriter(conn pgxconn.PgxConn) *traceWriterImpl {
+func NewWriter(conn pgxconn.PgxConn, t telemetry.Engine) *traceWriterImpl {
+	if err := t.RegisterMetric("promscale_ingested_spans_total", metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span"})); err != nil {
+		log.Debug("msg", "err registering telemetry metric promscale_ingested_spans_total", "err", err.Error())
+	}
 	return &traceWriterImpl{
 		conn:         conn,
 		schemaCache:  newSchemaCache(),

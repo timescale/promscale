@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/ha"
@@ -22,9 +23,21 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tenancy"
 	"go.opentelemetry.io/collector/model/pdata"
 )
+
+var PromscaleID uuid.UUID
+
+func init() {
+	// PromscaleID must always be generated on start, so that it remains constant throughout the lifecycle.
+	PromscaleID = uuid.New()
+}
+
+// Post connect validation function, useful for things such as acquiring locks
+// that should live the duration of the connection
+type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
@@ -41,11 +54,8 @@ type Client struct {
 	closePool         bool
 	sigClose          chan struct{}
 	haService         *ha.Service
+	TelemetryEngine   telemetry.Engine
 }
-
-// Post connect validation function, useful for things such as acquiring locks
-// that should live the duration of the connection
-type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
@@ -140,24 +150,34 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 		AsyncAcks:              cfg.AsyncAcks,
 	}
 
-	var (
-		dbIngestor          *ingestor.DBIngestor
-		exemplarKeyPosCache = cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
-	)
+	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
+	exemplarKeyPosCache := cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
+
+	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)
+	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
+	queryable := query.NewQueryable(dbQuerier, labelsReader)
+
+	var telemetryEngine telemetry.Engine
+	engine, err := telemetry.NewEngine(dbConn, PromscaleID, queryable)
+	if err != nil {
+		log.Debug("msg", "err creating telemetry engine", "err", err.Error())
+	}
+	if engine == nil {
+		telemetryEngine = telemetry.NewNoopEngine()
+	} else {
+		telemetryEngine = engine
+	}
+	telemetryEngine.Start() // We stop the engine at client.Close().
+
+	var dbIngestor *ingestor.DBIngestor
 	if !readOnly {
 		var err error
-		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
+		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, exemplarKeyPosCache, &c, telemetryEngine)
 		if err != nil {
 			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err
 		}
 	}
-
-	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
-
-	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)
-	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
-	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	healthChecker := health.NewHealthChecker(dbConn)
 	client := &Client{
@@ -171,6 +191,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 		labelsCache:       labelsCache,
 		seriesCache:       seriesCache,
 		sigClose:          sigClose,
+		TelemetryEngine:   telemetryEngine,
 	}
 
 	InitClientMetrics(client)
@@ -180,6 +201,9 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 // Close closes the client and performs cleanup
 func (c *Client) Close() {
 	log.Info("msg", "Shutting down Client")
+	if c.TelemetryEngine != nil {
+		c.TelemetryEngine.Stop()
+	}
 	if c.ingestor != nil {
 		c.ingestor.Close()
 	}

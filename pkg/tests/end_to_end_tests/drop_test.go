@@ -21,6 +21,7 @@ import (
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/telemetry"
 )
 
 func TestSQLRetentionPeriod(t *testing.T) {
@@ -470,7 +471,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		c := cache.NewMetricCache(cache.DefaultConfig)
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Cfg{DisableEpochSync: true})
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Cfg{DisableEpochSync: true}, telemetry.NewNoopEngine())
 		if err != nil {
 			t.Fatal(err)
 		}
