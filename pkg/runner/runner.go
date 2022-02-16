@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"go.opentelemetry.io/collector/model/otlpgrpc"
 	"go.opentelemetry.io/otel"
@@ -29,7 +28,6 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
@@ -38,16 +36,9 @@ import (
 )
 
 var (
-	elector     *util.Elector
-	PromscaleID uuid.UUID
-
+	elector      *util.Elector
 	startupError = fmt.Errorf("startup error")
 )
-
-func init() {
-	// PromscaleID must always be generated on start, so that it remains constant throughout the lifecycle.
-	PromscaleID = uuid.New()
-}
 
 func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	m, err := handler(ctx, req)
@@ -104,8 +95,8 @@ func Run(cfg *Config) error {
 		}(ctx)
 	}
 
-	promMetrics := api.InitMetrics()
-	client, err := CreateClient(cfg, promMetrics)
+	api.InitMetrics()
+	client, err := CreateClient(cfg)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", err.Error())
 		return startupError
@@ -131,24 +122,7 @@ func Run(cfg *Config) error {
 	log.Info("msg", "Starting up...")
 	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
 
-	var telemetryEngine telemetry.Engine
-
-	engine, err := telemetry.NewEngine(client.Connection, PromscaleID, client.Queryable())
-	if err != nil {
-		log.Error("msg", "aborting startup due to error in setting up telemetry-engine", "err", err.Error())
-		return fmt.Errorf("creating telemetry-engine: %w", err)
-	}
-
-	if engine != nil {
-		telemetryEngine = engine
-	} else {
-		telemetryEngine = telemetry.NewNoopEngine()
-	}
-
-	telemetryEngine.Start()
-	defer telemetryEngine.Stop()
-
-	err = api.RegisterMetricsForTelemetry(telemetryEngine)
+	err = api.RegisterMetricsForTelemetry(client.TelemetryEngine)
 	if err != nil {
 		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
 		return fmt.Errorf("error registering metrics for telemetry: %w", err)
@@ -204,7 +178,7 @@ func Run(cfg *Config) error {
 			grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
 		)
 
-		jaegerQuery, err := query.New(client.QuerierConnection, telemetryEngine)
+		jaegerQuery, err := query.New(client.QuerierConnection, client.TelemetryEngine)
 		if err != nil {
 			log.Error("msg", "Creating jaeger query failed", "err", err)
 			return err

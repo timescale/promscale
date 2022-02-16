@@ -239,13 +239,11 @@ func isCounterOrGauge(metric prometheus.Metric) bool {
 
 // syncInfoTable stats with promscale_instance_information table.
 func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
-	lastUpdated := time.Now()
-
 	pgUUID := new(pgtype.UUID)
 	if err := pgUUID.Set(t.uuid); err != nil {
 		return fmt.Errorf("setting pg-uuid: %w", err)
 	}
-
+	lastUpdated := time.Now()
 	columnNames := []string{"uuid", "last_updated"}
 	columnValues := []interface{}{pgUUID, lastUpdated}
 	indexes := []string{"$1", "$2"}
@@ -262,16 +260,17 @@ func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
 
 	// Sample query:
 	// INSERT INTO _ps_catalog.promscale_instance_information
-	//	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	//	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	//		ON CONFLICT (uuid) DO
 	//	UPDATE SET
 	//		last_updated = $2,
 	//		promscale_ingested_samples_total = $3,
-	//		promscale_metrics_queries_success_total = $4,
-	//		promscale_metrics_queries_timedout_total = $5,
-	//		promscale_metrics_queries_failed_total = $6,
-	//		promscale_trace_query_requests_executed_total = $7,
-	//		promscale_trace_dependency_requests_executed_total = $8
+	// 		promscale_ingested_spans_total = $4
+	//		promscale_metrics_queries_success_total = $5,
+	//		promscale_metrics_queries_timedout_total = $6,
+	//		promscale_metrics_queries_failed_total = $7,
+	//		promscale_trace_query_requests_executed_total = $8,
+	//		promscale_trace_dependency_requests_executed_total = $9
 
 	query := fmt.Sprintf(`INSERT INTO _ps_catalog.promscale_instance_information(%s) VALUES (%s)
 	ON CONFLICT (uuid) DO UPDATE SET %s`,
@@ -302,9 +301,15 @@ func (t *engineImpl) housekeeping() {
 		log.Debug("msg", "error getting instance information stats", "err", err.Error())
 		return
 	}
+
+	start := time.Now()
 	t.writeToTimescaleMetadataTable(stats)
 	t.syncSQLStats()
 	t.syncPromqlTelemetry()
+	stats = Metadata{
+		"telemetry_evaluation_duration_seconds": fmt.Sprintf("%.3f", time.Since(start).Seconds()),
+	}
+	t.writeToTimescaleMetadataTable(stats)
 }
 
 func (t *engineImpl) syncSQLStats() {
@@ -318,6 +323,7 @@ func (t *engineImpl) getInstanceInformationStats() (Metadata, error) {
 	stats := make(Metadata)
 	var (
 		samples        int64
+		spans          int64
 		queriesExec    int64
 		queriesTimeout int64
 		queriesFailed  int64
@@ -327,17 +333,19 @@ func (t *engineImpl) getInstanceInformationStats() (Metadata, error) {
 	if err := t.conn.QueryRow(context.Background(), `
 	SELECT
 		sum(promscale_ingested_samples_total),
+		sum(promscale_ingested_spans_total),
 		sum(promscale_metrics_queries_success_total),
 		sum(promscale_metrics_queries_timedout_total),
 		sum(promscale_metrics_queries_failed_total),
 		sum(promscale_trace_query_requests_executed_total),
 		sum(promscale_trace_dependency_requests_executed_total)
 	FROM _ps_catalog.promscale_instance_information`).Scan(
-		&samples, &queriesExec, &queriesTimeout, &queriesFailed, &traceQueryReqs, &traceDepReqs,
+		&samples, &spans, &queriesExec, &queriesTimeout, &queriesFailed, &traceQueryReqs, &traceDepReqs,
 	); err != nil {
 		return nil, fmt.Errorf("querying values from information table: %w", err)
 	}
 	stats["ingested_samples_total"] = convertIntToString(samples)
+	stats["ingested_spans_total"] = convertIntToString(spans)
 	stats["metrics_queries_success_total"] = convertIntToString(queriesExec)
 	stats["metrics_queries_timedout_total"] = convertIntToString(queriesTimeout)
 	stats["metrics_queries_failed_total"] = convertIntToString(queriesFailed)

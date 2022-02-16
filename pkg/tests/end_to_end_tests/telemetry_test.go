@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -332,8 +331,7 @@ func TestPromQLBasedTelemetry(t *testing.T) {
 		}
 		defer conn.Release()
 
-		metrics := api.InitMetrics()
-		reader, err := runner.CreateClient(&cfg, metrics)
+		reader, err := runner.CreateClient(&cfg)
 		require.NoError(t, err)
 		defer reader.Close()
 
