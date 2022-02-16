@@ -8,10 +8,6 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-type MetricOptions struct {
-	Name, Module string
-}
-
 // WithMetrics attaches the default cache metrics like _enabled, _capacity, _size, _elements, _evictions_total and
 // the perf metrics like _query_hits, _queries, _query_latency by function.
 // The module must be either 'metric' or 'trace'.
