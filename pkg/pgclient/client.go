@@ -35,7 +35,7 @@ func init() {
 	PromscaleID = uuid.New()
 }
 
-// Post connect validation function, useful for things such as acquiring locks
+// LockFunc does connect validation function, useful for things such as acquiring locks
 // that should live the duration of the connection
 type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
