@@ -186,5 +186,6 @@ docker_manifests:
   skip_push: auto
 
 release:
+  draft: true
   extra_files:
     - glob: ./dist/rpm/*

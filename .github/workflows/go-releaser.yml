@@ -46,7 +46,7 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --snapshot --skip-publish --rm-dist -f build/.goreleaser.yml
+          args: release --snapshot --skip-publish --rm-dist -f .goreleaser.yml
       -
         name: GoReleaser Release
         uses: goreleaser/goreleaser-action@v2
@@ -55,7 +55,7 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --rm-dist -f build/.goreleaser.yml
+          args: release --rm-dist -f .goreleaser.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
