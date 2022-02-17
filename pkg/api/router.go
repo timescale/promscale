@@ -123,7 +123,7 @@ func RegisterMetricsForTelemetry(t telemetry.Engine) error {
 	var err error
 	if err = t.RegisterMetric(
 		"promscale_ingested_samples_total",
-		pgMetrics.IngestorItems.With(prometheus.Labels{"type": "metric", "kind": "sample"})); err != nil {
+		pgMetrics.IngestorItems.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"})); err != nil {
 		return fmt.Errorf("register 'promscale_ingested_samples_total' metric for telemetry: %w", err)
 	}
 	if err = t.RegisterMetric(

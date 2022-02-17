@@ -446,8 +446,8 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest
 			registerDuplicates(numRowsExpected - insertedRows)
 		}
 	}
-	metrics.IngestorInsertablesIngested.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(totalSamples))
-	metrics.IngestorInsertablesIngested.With(prometheus.Labels{"type": "metric", "kind": "exemplar"}).Add(float64(totalExemplars))
+	metrics.IngestorItems.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Add(float64(totalSamples))
+	metrics.IngestorItems.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "exemplar"}).Add(float64(totalExemplars))
 
 	var val []byte
 	row := results.QueryRow()
@@ -481,6 +481,7 @@ func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows
 	if err := row.Scan(&insertedRows); err != nil {
 		return 0, fmt.Errorf("send metadata batch: %w", err)
 	}
+	metrics.IngestorItems.With(prometheus.Labels{"type": "metric", "kind": "metadata", "subsystem": ""}).Add(float64(insertedRows))
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "", "kind": "exemplar"}).Observe(time.Since(start).Seconds())
 	return insertedRows, nil
 }

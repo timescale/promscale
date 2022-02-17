@@ -90,14 +90,6 @@ var (
 			Buckets:   util.HistogramBucketsSaturating(1, 2, FlushSize),
 		}, []string{"type", "subsystem"},
 	)
-	IngestorInsertablesIngested = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "ingest",
-			Name:      "inserted_total",
-			Help:      "Total insertables (samples/exemplars/spans) inserted into the database.",
-		}, []string{"type", "kind"},
-	)
 	IngestorInsertsPerBatch = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
@@ -156,7 +148,15 @@ var (
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
 			Name:      "items_total",
-			Help:      "Total number of insertables (sample/metadata) received",
+			Help:      "Total number of items (sample/metadata/span) ingested",
+		}, []string{"type", "kind", "subsystem"},
+	)
+	IngestorItemsReceived = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "items_received_total",
+			Help:      "Total items (samples/exemplars/spans) received.",
 		}, []string{"type", "kind"},
 	)
 	IngestorRequests = prometheus.NewCounterVec(
@@ -189,7 +189,6 @@ func init() {
 		IngestorChannelCap,
 		IngestorChannelLen,
 		IngestorFlushSeries,
-		IngestorInsertablesIngested,
 		IngestorInsertsPerBatch,
 		IngestorRowsPerBatch,
 		IngestorRowsPerInsert,
@@ -197,6 +196,7 @@ func init() {
 		IngestorActiveWriteRequests,
 		IngestorDuration,
 		IngestorItems,
+		IngestorItemsReceived,
 		IngestorRequests,
 		InsertBatchSize,
 	)
