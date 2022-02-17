@@ -8,11 +8,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.9.0
+    chart: promscale-0.10.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.9.0
+    app.kubernetes.io/version: 0.10.0
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 ---
@@ -24,11 +24,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.9.0
+    chart: promscale-0.10.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.9.0
+    app.kubernetes.io/version: 0.10.0
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 stringData:
@@ -47,11 +47,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.9.0
+    chart: promscale-0.10.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.9.0
+    app.kubernetes.io/version: 0.10.0
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 spec:
@@ -72,11 +72,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.9.0
+    chart: promscale-0.10.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.9.0
+    app.kubernetes.io/version: 0.10.0
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 spec:
@@ -90,10 +90,10 @@ spec:
     metadata:
       labels:
         app: promscale
-        chart: promscale-0.9.0
+        chart: promscale-0.10.0
         release: promscale
         app.kubernetes.io/name: "promscale-connector"
-        app.kubernetes.io/version: 0.9.0
+        app.kubernetes.io/version: 0.10.0
         app.kubernetes.io/part-of: "promscale-connector"
         app.kubernetes.io/component: "connector"
       annotations: 

@@ -14,21 +14,24 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+## [0.10.0] - 2022-02-17
+
 ### Added
-- Add Prometheus metrics support for Tracing [#1102]
+- Add Prometheus metrics support for Tracing [#1102, #1152]
 - Add ingested spans-count to telemetry [#1155]
 - Add OTEL collector exporter endpoint support to Promscale tracing telemetry exporter [#1148]
 - Add example tracing setup to docker-compose [#1024]
 
-### Fixed
-- Fix spans with end < start. Start and end are swapped in this case. [#1096]
-- Disable push downs which use `offset`, as they are broken [#1129]
-- Fix aggregate pushdown evaluation [#1098]
-- Fix broken `extraEnv` parameter in helm chart values [#1126]
-
 ### Changed
 - Renamed and refactor Promscale metrics for better consistency. New metrics can be found [here](docs/metrics.md) [#1113]
 - Add performance metrics in cache module in Promscale [#1113]
+
+### Fixed
+- Spans with `end < start`. `start` and `end` are swapped in this case. [#1096]
+- Disable push downs which use `offset`, as they are broken [#1129]
+- Aggregate pushdown evaluation [#1098]
+- Broken `extraEnv` parameter in helm chart values [#1126]
+- Logging success message if extension update failed [#1139]
 
 ## [0.9.0] - 2022-02-02
 
