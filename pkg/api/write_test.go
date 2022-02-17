@@ -88,14 +88,14 @@ func TestWrite(t *testing.T) {
 		"Content-Type": "application/json",
 	}
 	testCases := []struct {
-		name             string
-		responseCode     int
-		requestBody      string
-		inserterResponse int64
-		inserterErr      error
-		isLeader         bool
-		electionErr      error
-		customHeaders    map[string]string
+		name            string
+		responseCode    int
+		requestBody     string
+		receivedSamples int64
+		inserterErr     error
+		isLeader        bool
+		electionErr     error
+		customHeaders   map[string]string
 	}{
 		{
 			name:         "write request body error",
@@ -124,11 +124,11 @@ func TestWrite(t *testing.T) {
 			},
 		},
 		{
-			name:             "write error",
-			isLeader:         true,
-			inserterResponse: 1,
-			responseCode:     http.StatusInternalServerError,
-			inserterErr:      fmt.Errorf("some error"),
+			name:            "write error",
+			isLeader:        true,
+			receivedSamples: 1,
+			responseCode:    http.StatusInternalServerError,
+			inserterErr:     fmt.Errorf("some error"),
 			requestBody: writeRequestToString(
 				&prompb.WriteRequest{
 					Timeseries: []prompb.TimeSeries{
@@ -182,17 +182,15 @@ func TestWrite(t *testing.T) {
 			},
 		},
 		{
-			name:             "happy path",
-			isLeader:         true,
-			responseCode:     http.StatusOK,
-			inserterResponse: 3,
+			name:            "happy path",
+			isLeader:        true,
+			responseCode:    http.StatusOK,
+			receivedSamples: 0,
 			requestBody: writeRequestToString(
 				&prompb.WriteRequest{
 					Timeseries: []prompb.TimeSeries{
 						{
-							Samples: []prompb.Sample{
-								{},
-							},
+							Samples: []prompb.Sample{},
 						},
 					},
 				},
@@ -206,28 +204,30 @@ func TestWrite(t *testing.T) {
 			customHeaders: jsonHeaders,
 		},
 		{
-			name:             "happy path JSON",
-			isLeader:         true,
-			responseCode:     http.StatusOK,
-			inserterResponse: 3,
-			requestBody:      `{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`,
-			customHeaders:    jsonHeaders,
+			name:            "happy path JSON",
+			isLeader:        true,
+			responseCode:    http.StatusOK,
+			receivedSamples: 3,
+			requestBody:     `{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`,
+			customHeaders:   jsonHeaders,
 		},
 		{
-			name:         "happy path JSON with snappy (stream format)",
-			isLeader:     true,
-			responseCode: http.StatusOK,
-			requestBody:  getSnappyStreamEncoded(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`),
+			name:            "happy path JSON with snappy (stream format)",
+			isLeader:        true,
+			responseCode:    http.StatusOK,
+			receivedSamples: 3,
+			requestBody:     getSnappyStreamEncoded(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`),
 			customHeaders: map[string]string{
 				"Content-Type":     "application/json",
 				"Content-Encoding": "snappy",
 			},
 		},
 		{
-			name:         "happy path JSON with snappy (block format)",
-			isLeader:     true,
-			responseCode: http.StatusOK,
-			requestBody:  string(snappy.Encode(nil, []byte(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`))),
+			name:            "happy path JSON with snappy (block format)",
+			isLeader:        true,
+			responseCode:    http.StatusOK,
+			receivedSamples: 3,
+			requestBody:     string(snappy.Encode(nil, []byte(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`))),
 			customHeaders: map[string]string{
 				"Content-Type":     "application/json",
 				"Content-Encoding": "snappy",
@@ -244,13 +244,13 @@ func TestWrite(t *testing.T) {
 				},
 			)
 			mock := &mockInserter{
-				result: c.inserterResponse,
+				result: c.receivedSamples,
 				err:    c.inserterErr,
 			}
 			metrics = &Metrics{LastRequestUnixNano: 0}
 			dataParser := parser.NewParser()
-			numSamples := &mockMetric{}
-			handler := Write(mock, dataParser, elector, mockUpdaterForIngest(&mockMetric{}, nil, numSamples, nil))
+			numSamplesReceived := &mockMetric{}
+			handler := Write(mock, dataParser, elector, mockUpdaterForIngest(&mockMetric{}, nil, numSamplesReceived, nil))
 
 			headers := protobufHeaders
 			if len(c.customHeaders) != 0 {
@@ -265,11 +265,11 @@ func TestWrite(t *testing.T) {
 				t.Errorf("Unexpected HTTP status code received: got %d wanted %d", w.Code, c.responseCode)
 			}
 
-			if numSamples.value != float64(c.inserterResponse) {
+			if numSamplesReceived.value != float64(c.receivedSamples) {
 				t.Errorf(
 					"num sent samples gauge not set correctly: got %v, expected %d",
-					numSamples.value,
-					c.inserterResponse,
+					numSamplesReceived.value,
+					c.receivedSamples,
 				)
 			}
 		})
@@ -406,13 +406,12 @@ func (m *mockMetric) SetToCurrentTime() {
 	panic("implement me")
 }
 
-func mockUpdaterForIngest(counter, histogram, numSamples, numMetadata *mockMetric) func(code string, duration, numSamples, numMetadata float64) {
-	return func(_ string, duration, samples, metadata float64) {
+func mockUpdaterForIngest(counter, histogram, numSamples, numMetadata *mockMetric) func(code string, duration, receivedSamples, receivedMetadata float64) {
+	return func(_ string, duration, receivedSamples, receivedMetadata float64) {
 		counter.value++
-		applyValueIfMetricNotNil(counter, samples)
 		applyValueIfMetricNotNil(histogram, duration)
-		applyValueIfMetricNotNil(numSamples, samples)
-		applyValueIfMetricNotNil(numMetadata, metadata)
+		applyValueIfMetricNotNil(numSamples, receivedSamples)
+		applyValueIfMetricNotNil(numMetadata, receivedMetadata)
 	}
 }
 
