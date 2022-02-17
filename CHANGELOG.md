@@ -18,6 +18,7 @@ We use the following categories for changes:
 - Add Prometheus metrics support for Tracing [#1102]
 - Add ingested spans-count to telemetry [#1155]
 - Add OTEL collector exporter endpoint support to Promscale tracing telemetry exporter [#1148]
+- Add example tracing setup to docker-compose [#1024]
 
 ### Fixed
 - Fix spans with end < start. Start and end are swapped in this case. [#1096]
@@ -52,7 +53,6 @@ We use the following categories for changes:
 - Add `ps_trace.get_trace_retention_period()` database function to get current trace retention period [#1015]
 - Add ability to set additional environment variables in helm chart [#1041]
 - Add OpenTelemetry tracing instrumentation to metric ingest codepath
-- Add example tracing setup to docker-compose [#1024]
 
 ### Changed
 - Rename CLI flags to improve user interface [#964]
