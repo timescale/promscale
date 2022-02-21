@@ -59,7 +59,9 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	//between metrucs
 	maxMetrics := 10000
 	copierReadRequestCh := make(chan readRequest, maxMetrics)
-	setCopierChannelToMonitor(copierReadRequestCh)
+
+	metrics.IngestorChannelCap.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Set(float64(cap(copierReadRequestCh)))
+	metrics.RegisterCopierChannelLenMetric(func() float64 { return float64(len(copierReadRequestCh)) })
 
 	if cfg.IgnoreCompressedChunks {
 		// Handle decompression to not decompress anything.
@@ -296,7 +298,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)
-	metrics.IngestorChannelLen.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "kind": "samples"}).Observe(float64(len(ch)))
+	metrics.IngestorChannelLenBatcher.Set(float64(len(ch)))
 	return ch
 }
 
