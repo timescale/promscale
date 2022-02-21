@@ -41,7 +41,7 @@ func scanTraces(rows pgxconn.PgxRows) ([]*model.Trace, error) {
 		return nil, fmt.Errorf("trace row iterator: %w", rows.Err())
 	}
 
-	batch, err := jaegertranslator.InternalTracesToJaegerProto(traces)
+	batch, err := jaegertranslator.ProtoFromTraces(traces)
 	if err != nil {
 		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
 	}
