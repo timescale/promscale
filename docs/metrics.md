@@ -674,23 +674,9 @@ promscale_ingest_active_write_requests{kind="span",type="trace"} 0
 promscale_ingest_channel_cap{kind="sample",subsystem="copier",type="metric"} 10000
 promscale_ingest_channel_cap{kind="sample",subsystem="metric_batcher",type="metric"} 1000
 # HELP promscale_ingest_channel_len Length of the ingestor channel.
-# TYPE promscale_ingest_channel_len histogram
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="0"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="1"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="2"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="4"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="8"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="16"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="32"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="64"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="128"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="256"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="512"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="990"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="1000"} 1462
-promscale_ingest_channel_len_bucket{kind="samples",subsystem="metric_batcher",type="metric",le="+Inf"} 1462
-promscale_ingest_channel_len_sum{kind="samples",subsystem="metric_batcher",type="metric"} 0
-promscale_ingest_channel_len_count{kind="samples",subsystem="metric_batcher",type="metric"} 1462
+# TYPE promscale_ingest_channel_len gauge
+promscale_ingest_channel_len{kind="sample",subsystem="copier",type="metric"} 0
+promscale_ingest_channel_len{kind="sample",subsystem="metric_batcher",type="metric"} 0
 # HELP promscale_ingest_duplicates_total Total number of processed samples/write_requests_to_db/metrics which where duplicates.
 # TYPE promscale_ingest_duplicates_total counter
 promscale_ingest_duplicates_total{kind="metric",type="metric"} 0

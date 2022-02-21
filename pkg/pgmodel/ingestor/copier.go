@@ -484,15 +484,3 @@ func insertMetadata(conn pgxconn.PgxConn, reqs []pgmodel.Metadata) (insertedRows
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "", "kind": "exemplar"}).Observe(time.Since(start).Seconds())
 	return insertedRows, nil
 }
-
-var copierChannelMutex sync.Mutex
-
-func setCopierChannelToMonitor(toSamplesCopiers chan readRequest) {
-	copierChannelMutex.Lock()
-	defer copierChannelMutex.Unlock()
-
-	metrics.IngestorChannelCap.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Set(float64(cap(toSamplesCopiers)))
-	metrics.SampleCopierChannelLengthFunc = func() float64 {
-		return float64(len(toSamplesCopiers))
-	}
-}

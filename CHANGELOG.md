@@ -14,6 +14,9 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+### Fixed
+- Register `promscale_ingest_channel_len_bucket` metric and make it a gauge
+
 ## [0.10.0] - 2022-02-17
 
 ### Added

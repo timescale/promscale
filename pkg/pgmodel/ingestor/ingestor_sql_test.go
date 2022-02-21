@@ -523,6 +523,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 }
 
 func TestPGXInserterInsertData(t *testing.T) {
+	if err := os.Setenv("IS_TEST", "true"); err != nil {
+		t.Fatal(err)
+	}
 	makeLabel := func() *model.Series {
 		l := &model.Series{}
 		l.SetSeriesID(1, 1)
