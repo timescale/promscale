@@ -15,7 +15,8 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ### Fixed
-- Register `promscale_ingest_channel_len_bucket` metric and make it a gauge
+- Register `promscale_ingest_channel_len_bucket` metric and make it a gauge [#1177]
+- Log warning when failing to write response to remote read requests [#1180]
 
 ## [0.10.0] - 2022-02-17
 
