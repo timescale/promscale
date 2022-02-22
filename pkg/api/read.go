@@ -87,8 +87,11 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics
 
 		compressed = snappy.Encode(nil, data)
 		if _, err := w.Write(compressed); err != nil {
-			statusCode = "500"
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			// Most likely the request was cancelled from client side.
+			// We use a non-standard code so we can distinguish from actual
+			// internal server errors.
+			statusCode = "499"
+			log.Warn("msg", "Error writing HTTP response", "err", err)
 			return
 		}
 		statusCode = "2xx"
