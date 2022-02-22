@@ -4,8 +4,12 @@ on:
   push:
     branches: [master, main, force_test, release-*, staging, trying]
     tags: ['*']
+    paths:
+      - deploy/helm-chart/**
   pull_request:
     branches: [master, main, force_test, release-*]
+    paths:
+      - deploy/helm-chart/**
 
 jobs:
   generate:
