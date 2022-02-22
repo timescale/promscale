@@ -13,8 +13,46 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/util"
 )
+
+var (
+	requestTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "database",
+			Name:      "requests_total",
+			Help:      "Total number of database requests.",
+		}, []string{"method"},
+	)
+	errorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "database",
+			Name:      "request_errors_total",
+			Help:      "Total number of database request errors.",
+		}, []string{"method"},
+	)
+	duration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "database",
+			Name:      "requests_duration_seconds",
+			Help:      "Time taken to complete a database request.",
+		}, []string{"method"},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(requestTotal, errorsTotal, duration)
+}
+
+func getLabelSet(method string) prometheus.Labels {
+	return prometheus.Labels{"method": method}
+}
 
 type PgxBatch interface {
 	Queue(query string, arguments ...interface{})
@@ -109,15 +147,53 @@ func (p *connImpl) Close() {
 }
 
 func (p *connImpl) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
-	return p.Conn.Exec(ctx, sql, args...)
+	lset := getLabelSet("exec")
+	requestTotal.With(lset).Inc()
+	start := time.Now()
+	defer func() {
+		duration.With(lset).Observe(time.Since(start).Seconds())
+	}()
+	tag, err := p.Conn.Exec(ctx, sql, args...)
+	if err != nil {
+		errorsTotal.With(lset).Inc()
+	}
+	return tag, err
 }
 
 func (p *connImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
-	return p.Conn.Query(ctx, sql, args...)
+	lset := getLabelSet("query")
+	requestTotal.With(lset).Inc()
+	start := time.Now()
+	defer func() {
+		duration.With(lset).Observe(time.Since(start).Seconds())
+	}()
+	rows, err := p.Conn.Query(ctx, sql, args...)
+	if err != nil {
+		errorsTotal.With(lset).Inc()
+	}
+	return rows, err
 }
 
 func (p *connImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	return p.Conn.QueryRow(ctx, sql, args...)
+	lset := getLabelSet("query_row")
+	requestTotal.With(lset).Inc()
+	start := time.Now()
+	defer func() {
+		duration.With(lset).Observe(time.Since(start).Seconds())
+	}()
+	return &rowWrapper{p.Conn.QueryRow(ctx, sql, args...)}
+}
+
+type rowWrapper struct {
+	r pgx.Row
+}
+
+func (w *rowWrapper) Scan(dest ...interface{}) error {
+	err := w.r.Scan(dest...)
+	if err != nil {
+		errorsTotal.With(getLabelSet("query_row")).Inc()
+	}
+	return err
 }
 
 func (p *connImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
@@ -133,6 +209,12 @@ func (p *connImpl) NewBatch() PgxBatch {
 }
 
 func (p *connImpl) SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error) {
+	lset := getLabelSet("send_batch")
+	requestTotal.With(lset).Inc()
+	start := time.Now()
+	defer func() {
+		duration.With(lset).Observe(time.Since(start).Seconds())
+	}()
 	return p.Conn.SendBatch(ctx, b.(*pgx.Batch)), nil
 }
 

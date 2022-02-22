@@ -8,10 +8,15 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/collector/model/pdata"
+
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -25,7 +30,7 @@ import (
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tenancy"
-	"go.opentelemetry.io/collector/model/pdata"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 var PromscaleID uuid.UUID
@@ -55,6 +60,7 @@ type Client struct {
 	sigClose          chan struct{}
 	haService         *ha.Service
 	TelemetryEngine   telemetry.Engine
+	stopHealthChecker context.CancelFunc
 }
 
 // NewClient creates a new PostgreSQL client
@@ -179,19 +185,22 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 		}
 	}
 
-	healthChecker := health.NewHealthChecker(dbConn)
+	healthCheckerCtx, stopHealthChecker := context.WithCancel(context.Background())
+	healthCheckRoutine(healthCheckerCtx, dbConn)
+
 	client := &Client{
 		Connection:        dbConn,
 		QuerierConnection: dbQuerierConn,
 		ingestor:          dbIngestor,
 		querier:           dbQuerier,
-		healthCheck:       healthChecker,
+		healthCheck:       health.NewHealthChecker(dbConn),
 		queryable:         queryable,
 		metricCache:       metricsCache,
 		labelsCache:       labelsCache,
 		seriesCache:       seriesCache,
 		sigClose:          sigClose,
 		TelemetryEngine:   telemetryEngine,
+		stopHealthChecker: stopHealthChecker,
 	}
 
 	InitClientMetrics(client)
@@ -201,6 +210,9 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 // Close closes the client and performs cleanup
 func (c *Client) Close() {
 	log.Info("msg", "Shutting down Client")
+	if c.stopHealthChecker != nil {
+		c.stopHealthChecker()
+	}
 	if c.TelemetryEngine != nil {
 		c.TelemetryEngine.Stop()
 	}
@@ -296,4 +308,44 @@ func observeStatementCacheState(conn *pgx.Conn) bool {
 	statementCacheSize := statementCache.Len()
 	statementCacheLen.Observe(float64(statementCacheSize))
 	return true
+}
+
+func healthCheckRoutine(ctx context.Context, conn pgxconn.PgxConn) {
+	r := prometheus.DefaultRegisterer
+	if env := os.Getenv("IS_TEST"); env == "true" {
+		r = prometheus.NewRegistry()
+	}
+	dbHealthChecks := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "database",
+			Name:      "health_checks_total",
+			Help:      "Total number of database health checks performed.",
+		},
+	)
+	dbHealthErrors := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "database",
+			Name:      "health_check_errors_total",
+			Help:      "Total number of database health check errors.",
+		},
+	)
+	r.MustRegister(dbHealthChecks, dbHealthErrors)
+	go func() {
+		check := time.NewTicker(time.Minute)
+		defer check.Stop()
+		connection := health.NewHealthChecker(conn)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-check.C:
+			}
+			dbHealthChecks.Inc()
+			if err := connection(); err != nil {
+				dbHealthErrors.Inc()
+			}
+		}
+	}()
 }
