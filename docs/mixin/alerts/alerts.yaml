@@ -1,0 +1,192 @@
+groups:
+- name: promscale-general
+  rules:
+  - alert: PromscaleDown
+    expr: absent(up{job=~".*promscale.*"})
+    labels:
+      severity: critical
+    annotations:
+      summary: Promscale is down
+      description: No Promscale instance was found.
+- name: promscale-ingest
+  rules:
+  - alert: PromscaleIngestHighErrorRate
+    expr: |
+      (
+        sum by (job, instance, type) (
+          rate(promscale_ingest_requests_total{code=~"5.."}[5m])
+        )
+      /
+        sum by (job, instance, type) (
+          rate(promscale_ingest_requests_total[5m])
+        )
+      ) > 0.05
+    labels:
+      severity: warning
+    annotations:
+      summary: High error rate in Promscale ingestion
+      description: "Promscale ingestion is having a {{ $value | humanizePercentage }} error rate."
+  - alert: PromscaleIngestHighErrorRate
+    expr: |
+      (
+        sum by (job, instance, type) (
+          rate(promscale_ingest_requests_total{code=~"5.."}[5m])
+        )
+      /
+        sum by (job, instance, type) (
+          rate(promscale_ingest_requests_total[5m])
+        )
+      ) > 0.1
+    labels:
+      severity: critical
+    annotations:
+      summary: High error rate in Promscale ingestion
+      description: "Promscale ingestion is having a {{ $value | humanizePercentage }} error rate."
+  - alert: PromscaleIngestHighLatency
+    expr: |
+      (
+        histogram_quantile(
+          0.90,
+          sum by (job, instance, type, le) (
+            rate(promscale_ingest_duration_seconds_bucket[5m])
+          )
+        ) > 10
+      and
+        sum by (job, instance, type) (
+            rate(promscale_ingest_duration_seconds_bucket[5m])
+        )
+      ) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Slow Promscale ingestion
+      description: "90% of ingestion batch took {{ $value }} seconds to ingest."
+  - alert: PromscaleIngestHighLatency
+    expr: |
+      (
+        histogram_quantile(
+          0.90,
+          sum by (job, instance, type, le) (
+            rate(promscale_ingest_duration_seconds_bucket[5m])
+          )
+        ) > 30
+      and
+        sum by (job, instance, type) (
+            rate(promscale_ingest_duration_seconds_bucket[5m])
+        )
+      ) > 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Slow Promscale ingestion
+      description: "90% of ingestion batch took {{ $value }} seconds to ingest."
+- name: promscale-query
+  rules:
+  - alert: PromscaleQueryHighErrorRate
+    expr: |
+      (
+        sum by (job, instance, type) (
+          rate(promscale_query_requests_total{code=~"5.."}[5m])
+        )
+      /
+        sum by (job, instance, type) (
+          rate(promscale_query_requests_total[5m])
+        )
+      ) > 0.05
+    labels:
+      severity: warning
+    annotations:
+      summary: High error rate in querying Promscale
+      description: "Evaluating queries via Promscale has {{ $value | humanizePercentage }} error rate."
+  - alert: PromscaleQueryHighErrorRate
+    expr: |
+      (
+        sum by (job, instance, type) (
+          rate(promscale_query_requests_total{code=~"5.."}[5m])
+        )
+      /
+        sum by (job, instance, type) (
+          rate(promscale_query_requests_total[5m])
+        )
+      ) > 0.1
+    labels:
+      severity: critical
+    annotations:
+      summary: High error rate in querying Promscale
+      description: "Evaluating queries via Promscale had {{ $value | humanizePercentage }} error rate."
+  - alert: PromscaleQueryHighLatency
+    expr: |
+      (
+        histogram_quantile(
+          0.90,
+          sum by (job, instance, type, le) (
+            rate(promscale_query_duration_seconds_bucket[5m])
+          )
+        ) > 5
+      and
+        sum by (job, instance, type) (
+          rate(promscale_query_duration_seconds_bucket[5m])
+        ) > 0
+      )
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Slow Promscale querying
+      description: "90% of the queries took {{ $value }} seconds to evaluate."
+  - alert: PromscaleQueryHighLatency
+    expr: |
+      (
+        histogram_quantile(
+          0.90,
+          sum by (job, instance, type, le) (
+            rate(promscale_query_duration_seconds_bucket[5m])
+          )
+        ) > 10
+      and
+        sum by (job, instance, type) (
+          rate(promscale_query_duration_seconds_bucket[5m])
+        ) > 0
+      )
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Slow Promscale querying
+      description: "90% of the queries took {{ $value }} seconds to evaluate."
+- name: promscale-cache
+  rules:
+  - alert: PromscaleCacheHighNumberOfEvictions
+    expr: |
+      (
+        sum by (job, instance, name, type) (
+          rate(promscale_cache_evictions_total[5m])
+        )
+      /
+        sum by (job, instance, name, type) (
+          promscale_cache_capacity_elements
+        )
+      ) > 0.2
+    labels:
+      severity: warning
+    annotations:
+      summary: High cache eviction in Promscale
+      description: "Promscale {{ $labels.name }} is evicting at {{ $value }} entries a second."
+  - alert: PromscaleCacheTooSmall
+    expr: |
+      (
+        sum by (job, instance, type, name) (
+          rate(promscale_cache_query_hits_total[5m])
+        )
+      /
+        sum by (job, instance, type, name) (
+          rate(promscale_cache_queries_total[5m])
+        )
+      ) < 0.9
+    labels:
+      severity: warning
+    annotations:
+      summary: High cache eviction in Promscale
+      description: "Promscale {{ $labels.name }} has a hit ratio of {{ $value }}."

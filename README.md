@@ -75,6 +75,7 @@ remote storage endpoints. For more information about prom-migrator, visit
 * **[Multi-tenancy](docs/multi_tenancy.md)**
 * **[Writing Metric Data](docs/writing_to_promscale.md)**
 * **[Alerting](docs/alerting.md)**
+  * [Alerting for Promscale](docs/mixin/README.md)
 * **[Downsampling](docs/downsampling.md)**
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
 * **[Quick Tips](#-quick-tips)**

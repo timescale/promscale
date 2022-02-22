@@ -14,6 +14,9 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+## Added
+- Alerting rules for Promscale. You can find them at [here](docs/promscale_alerting.md) [#1181]
+
 ### Fixed
 - Register `promscale_ingest_channel_len_bucket` metric and make it a gauge [#1177]
 - Log warning when failing to write response to remote read requests [#1180]
