@@ -1,3 +1,5 @@
+# Note: Alert thresholds are experimental. Feel free to change them or suggest back at
+# Promscale channel in TimescaleDB slack.
 groups:
 - name: promscale-general
   rules:
@@ -61,7 +63,7 @@ groups:
       severity: warning
     annotations:
       summary: Slow Promscale ingestion
-      description: "90% of ingestion batch took {{ $value }} seconds to ingest."
+      description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
   - alert: PromscaleIngestHighLatency
     expr: |
       (
@@ -81,7 +83,7 @@ groups:
       severity: critical
     annotations:
       summary: Slow Promscale ingestion
-      description: "90% of ingestion batch took {{ $value }} seconds to ingest."
+      description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
 - name: promscale-query
   rules:
   - alert: PromscaleQueryHighErrorRate
@@ -135,7 +137,7 @@ groups:
       severity: warning
     annotations:
       summary: Slow Promscale querying
-      description: "90% of the queries took {{ $value }} seconds to evaluate."
+      description: "Slowest 10% of the queries took more than {{ $value }} seconds to evaluate."
   - alert: PromscaleQueryHighLatency
     expr: |
       (
@@ -155,7 +157,7 @@ groups:
       severity: critical
     annotations:
       summary: Slow Promscale querying
-      description: "90% of the queries took {{ $value }} seconds to evaluate."
+      description: "Slowest 10% of the queries took {{ $value }} seconds to evaluate."
 - name: promscale-cache
   rules:
   - alert: PromscaleCacheHighNumberOfEvictions
@@ -189,4 +191,41 @@ groups:
       severity: warning
     annotations:
       summary: High cache eviction in Promscale
-      description: "Promscale {{ $labels.name }} has a hit ratio of {{ $value }}."
+      description: "Promscale {{ $labels.name }} has a hit ratio of {{ $value | humanizePercentage }}."
+- name: promscale-database-connection
+  rules:
+  - alert: PromscaleStorageHighErrorRate
+    expr: |
+      (
+        sum by (job) (
+          # Error counter exists for query, query_row & exec, and not for send_batch.
+          rate(promscale_database_request_errors_total{method=~"query.*|exec"}[5m])
+        )
+      /
+        sum by (job) (
+          rate(promscale_database_requests_total{method=~"query.*|exec"}[5m])
+        )
+      ) > 0.05
+    labels:
+      severity: warning
+    annotations:
+      summary: Promscale experiences a high error rate when connecting to the database
+      description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
+  - alert: PromscaleStorageHighLatency
+    expr: |
+      (
+        histogram_quantile(0.9,
+          sum by (le, job, type) (
+            rate(promscale_database_requests_duration_seconds_bucket[5m])
+          )
+        ) > 5
+      and
+        sum by (job, type) (
+          rate(promscale_database_requests_duration_seconds_count[5m])
+        ) > 0
+      )
+    labels:
+      severity: warning
+    annotations:
+      summary: Slow database response
+      description: "Slowest 10% of database requests are taking more than {{ $value }} seconds to respond."

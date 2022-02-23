@@ -15,7 +15,8 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ## Added
-- Alerting rules for Promscale. You can find them at [here](docs/promscale_alerting.md) [#1181]
+- Alerting rules for Promscale. You can find them [here](docs/promscale_alerting.md) [#1181, #1185]
+- Add database status and request metrics [#1185]
 
 ### Fixed
 - Register `promscale_ingest_channel_len_bucket` metric and make it a gauge [#1177]
