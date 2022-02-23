@@ -41,7 +41,7 @@ var (
 			Namespace: util.PromNamespace,
 			Subsystem: "database",
 			Name:      "requests_duration_seconds",
-			Help:      "Time taken to complete a database request.",
+			Help:      "Time taken to complete a database request and process the response.",
 		}, []string{"method"},
 	)
 )
@@ -50,7 +50,7 @@ func init() {
 	prometheus.MustRegister(requestTotal, errorsTotal, duration)
 }
 
-func getLabelSet(method string) prometheus.Labels {
+func promMethodLabel(method string) prometheus.Labels {
 	return prometheus.Labels{"method": method}
 }
 
@@ -147,53 +147,40 @@ func (p *connImpl) Close() {
 }
 
 func (p *connImpl) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
-	lset := getLabelSet("exec")
-	requestTotal.With(lset).Inc()
+	execLabels := promMethodLabel("exec")
+	requestTotal.With(execLabels).Inc()
 	start := time.Now()
 	defer func() {
-		duration.With(lset).Observe(time.Since(start).Seconds())
+		duration.With(execLabels).Observe(time.Since(start).Seconds())
 	}()
 	tag, err := p.Conn.Exec(ctx, sql, args...)
 	if err != nil {
-		errorsTotal.With(lset).Inc()
+		errorsTotal.With(execLabels).Inc()
 	}
 	return tag, err
 }
 
 func (p *connImpl) Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error) {
-	lset := getLabelSet("query")
-	requestTotal.With(lset).Inc()
+	// TODO (harkishen): Add sql queries as labels to know how much time taken for each query type.
+	queryLabels := promMethodLabel("query")
+	requestTotal.With(queryLabels).Inc()
 	start := time.Now()
-	defer func() {
-		duration.With(lset).Observe(time.Since(start).Seconds())
-	}()
 	rows, err := p.Conn.Query(ctx, sql, args...)
 	if err != nil {
-		errorsTotal.With(lset).Inc()
+		errorsTotal.With(queryLabels).Inc()
+		return nil, err
 	}
-	return rows, err
+	return newRowsWithDuration(rows, start), err
 }
 
 func (p *connImpl) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	lset := getLabelSet("query_row")
-	requestTotal.With(lset).Inc()
+	queryRowLabels := promMethodLabel("query_row")
+	requestTotal.With(queryRowLabels).Inc()
 	start := time.Now()
 	defer func() {
-		duration.With(lset).Observe(time.Since(start).Seconds())
+		duration.With(queryRowLabels).Observe(time.Since(start).Seconds())
 	}()
-	return &rowWrapper{p.Conn.QueryRow(ctx, sql, args...)}
-}
-
-type rowWrapper struct {
-	r pgx.Row
-}
-
-func (w *rowWrapper) Scan(dest ...interface{}) error {
-	err := w.r.Scan(dest...)
-	if err != nil {
-		errorsTotal.With(getLabelSet("query_row")).Inc()
-	}
-	return err
+	return rowWithTelemetry{p.Conn.QueryRow(ctx, sql, args...)}
 }
 
 func (p *connImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
@@ -209,13 +196,8 @@ func (p *connImpl) NewBatch() PgxBatch {
 }
 
 func (p *connImpl) SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error) {
-	lset := getLabelSet("send_batch")
-	requestTotal.With(lset).Inc()
-	start := time.Now()
-	defer func() {
-		duration.With(lset).Observe(time.Since(start).Seconds())
-	}()
-	return p.Conn.SendBatch(ctx, b.(*pgx.Batch)), nil
+	requestTotal.With(promMethodLabel("send_batch")).Inc()
+	return newBatchResultsWithDuration(p.Conn.SendBatch(ctx, b.(*pgx.Batch)), time.Now()), nil
 }
 
 // filters out indentation characters from the

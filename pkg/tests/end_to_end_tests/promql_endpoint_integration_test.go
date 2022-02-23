@@ -19,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
+
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
