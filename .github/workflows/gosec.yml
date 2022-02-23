@@ -16,6 +16,6 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v2
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@v2.9.6
+        uses: securego/gosec@v2.10.0
         with:
           args: -exclude-dir=pkg/promql -exclude-dir=pkg/prompb ./...
