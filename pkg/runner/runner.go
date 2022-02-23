@@ -31,6 +31,7 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
+	dbMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics/database"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
@@ -108,12 +109,16 @@ func Run(cfg *Config) error {
 	if client == nil {
 		return nil
 	}
-
 	defer client.Close()
 
 	if cfg.StartupOnly {
 		log.Info("msg", "Promscale in startup-only mode (using flag `-startup.only`), exiting post startup...")
 		return nil
+	}
+
+	if util.IsTimescaleDBInstalled(client.Connection) {
+		engine := dbMetrics.NewEngine(client.Connection)
+		engine.Start()
 	}
 
 	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)

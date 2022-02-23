@@ -5,10 +5,13 @@
 package util
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const PromNamespace = "promscale"
@@ -62,4 +65,13 @@ func ParseEnv(p string, fs *flag.FlagSet) error {
 	})
 
 	return err
+}
+
+func IsTimescaleDBInstalled(conn pgxconn.PgxConn) bool {
+	var installed bool
+	err := conn.QueryRow(context.Background(), `SELECT count(*) > 0 FROM pg_extension where extname = 'timescaledb'`).Scan(&installed)
+	if err != nil {
+		return false
+	}
+	return installed
 }
