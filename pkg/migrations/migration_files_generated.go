@@ -321,6 +321,17 @@ var MigrationFiles = func() http.FileSystem {
 			modTime: time.Time{},
 			content: []byte("\x41\x4c\x54\x45\x52\x20\x54\x41\x42\x4c\x45\x20\x5f\x70\x73\x5f\x63\x61\x74\x61\x6c\x6f\x67\x2e\x70\x72\x6f\x6d\x73\x63\x61\x6c\x65\x5f\x69\x6e\x73\x74\x61\x6e\x63\x65\x5f\x69\x6e\x66\x6f\x72\x6d\x61\x74\x69\x6f\x6e\x0a\x20\x20\x41\x44\x44\x20\x43\x4f\x4c\x55\x4d\x4e\x20\x20\x70\x72\x6f\x6d\x73\x63\x61\x6c\x65\x5f\x69\x6e\x67\x65\x73\x74\x65\x64\x5f\x73\x70\x61\x6e\x73\x5f\x74\x6f\x74\x61\x6c\x20\x42\x49\x47\x49\x4e\x54\x20\x4e\x4f\x54\x20\x4e\x55\x4c\x4c\x20\x44\x45\x46\x41\x55\x4c\x54\x20\x30\x20\x3b"),
 		},
+		"/versions/dev/0.11.0-dev": &vfsgen۰DirInfo{
+			name:    "0.11.0-dev",
+			modTime: time.Time{},
+		},
+		"/versions/dev/0.11.0-dev/1-drop_check_constraints.sql": &vfsgen۰CompressedFileInfo{
+			name:             "1-drop_check_constraints.sql",
+			modTime:          time.Time{},
+			uncompressedSize: 324,
+
+			compressedContent: []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x88\x2f\x28\x8e\x2f\x29\x4a\x4c\x4e\xd5\x2b\x2e\x48\xcc\x53\x70\x09\xf2\x0f\x50\x70\xf6\xf7\x0b\x0e\x09\x72\xf4\xf4\x0b\x51\x00\x09\xc6\x27\x67\xa4\x26\x67\x5b\x73\x91\xaa\xad\x20\xb1\x28\x35\xaf\x24\x1e\xcc\xce\x4c\x21\xd7\x14\x0a\xb5\x83\xe5\xe3\x8b\x4b\x12\x4b\x52\x89\x30\x02\x22\xe5\xec\xef\x13\xea\xeb\xa7\x90\x52\x5a\x94\x58\x92\x99\x9f\x17\x9f\x5b\x0c\x31\xdb\x35\x22\x20\xc8\x35\x38\xd8\xd3\xdf\xcf\x9a\x0b\x10\x00\x00\xff\xff\x5e\x20\x77\x59\x44\x01\x00\x00"),
+		},
 		"/versions/dev/0.2.2-dev": &vfsgen۰DirInfo{
 			name:    "0.2.2-dev",
 			modTime: time.Time{},
@@ -566,6 +577,7 @@ var MigrationFiles = func() http.FileSystem {
 		fs["/versions/dev/0.1.4-dev"].(os.FileInfo),
 		fs["/versions/dev/0.1.5-dev"].(os.FileInfo),
 		fs["/versions/dev/0.10.0-dev"].(os.FileInfo),
+		fs["/versions/dev/0.11.0-dev"].(os.FileInfo),
 		fs["/versions/dev/0.2.2-dev"].(os.FileInfo),
 		fs["/versions/dev/0.3.1-dev"].(os.FileInfo),
 		fs["/versions/dev/0.4.2-dev"].(os.FileInfo),
@@ -599,6 +611,9 @@ var MigrationFiles = func() http.FileSystem {
 	fs["/versions/dev/0.10.0-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.10.0-dev/1-alter_promscale_instance_information_column.sql"].(os.FileInfo),
 		fs["/versions/dev/0.10.0-dev/2-add_spans_total_column_telemetry.sql"].(os.FileInfo),
+	}
+	fs["/versions/dev/0.11.0-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
+		fs["/versions/dev/0.11.0-dev/1-drop_check_constraints.sql"].(os.FileInfo),
 	}
 	fs["/versions/dev/0.2.2-dev"].(*vfsgen۰DirInfo).entries = []os.FileInfo{
 		fs["/versions/dev/0.2.2-dev/1-set_up_ha.sql"].(os.FileInfo),
