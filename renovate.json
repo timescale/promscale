@@ -1,5 +1,30 @@
 {
+  "timezone": "Etc/UTC",
   "extends": [
-    "config:base"
+    "config:base",
+    "schedule:daily"
+  ],
+  "dependencyDashboardLabels": ["dependencies"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "labels": ["helm"],
+      "groupName": "helm charts",
+      "matchManagers": ["helmv3", "helm-values"]
+    },
+    {
+      "labels": ["go"],
+      "groupName": "golang",
+      "matchManagers": ["gomod"]
+    },
+    {
+      "labels": ["github_actions"],
+      "groupName": "github actions",
+      "matchManagers": ["github-actions"]
+    },
+    {
+      "groupName": "docker-compose",
+      "matchManagers": ["docker-compose"]
+    }
   ]
 }
