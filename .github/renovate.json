@@ -5,24 +5,24 @@
     "schedule:daily"
   ],
   "dependencyDashboardLabels": ["dependencies"],
-  "labels": ["dependencies"],
   "packageRules": [
     {
-      "labels": ["helm"],
+      "labels": ["helm", "dependencies"],
       "groupName": "helm charts",
       "matchManagers": ["helmv3", "helm-values"]
     },
     {
-      "labels": ["go"],
+      "labels": ["go", "dependencies"],
       "groupName": "golang",
       "matchManagers": ["gomod"]
     },
     {
-      "labels": ["github_actions"],
+      "labels": ["github_actions", "dependencies"],
       "groupName": "github actions",
       "matchManagers": ["github-actions"]
     },
     {
+      "labels": ["dependencies"],
       "groupName": "docker-compose",
       "matchManagers": ["docker-compose"]
     }
