@@ -260,7 +260,7 @@ func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
 }
 
 func TestTelemetrySQLStats(t *testing.T) {
-	if !*useExtension || !*useTimescale2 {
+	if !*useExtension {
 		t.Skip("test will give wrong result without promscale_extension. Hence, skipping")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {

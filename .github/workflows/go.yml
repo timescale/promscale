@@ -91,14 +91,13 @@ jobs:
     strategy:
       matrix:
         test-setups:
-        - {name: "Timescaledb 1.x (pg 12)",  shortname: "tsdb1x-pg-12", ext: true,  tsdb: true,  tsdb2: false, tsdboss: false, multi: false, pg: 12}
-        - {name: "Plain Postgres (12)",      shortname: "plain-pg-12",  ext: false, tsdb: false, tsdb2: false, tsdboss: false, multi: false, pg: 12}
-        - {name: "Plain Postgres (13)",      shortname: "plain-pg-13",  ext: false, tsdb: false, tsdb2: false, tsdboss: false, multi: false, pg: 13}
-        - {name: "Singlenode",               shortname: "singlenode",   ext: true,  tsdb: true,  tsdb2: true,  tsdboss: false, multi: false, pg: 14}
-        - {name: "Multinode",                shortname: "multinode",    ext: true,  tsdb: true,  tsdb2: true,  tsdboss: false, multi: true,  pg: 14}
-        - {name: "W/O Promscale Extension",  shortname: "wo-prom-ext",  ext: false, tsdb: true,  tsdb2: true,  tsdboss: false, multi: false, pg: 14}
-        - {name: "Plain Postgres",           shortname: "plain-pg",     ext: false, tsdb: false, tsdb2: false, tsdboss: false, multi: false, pg: 14}
-        - {name: "TimescaleDB-OSS",          shortname: "tsdb-oss",     ext: false, tsdb: true,  tsdb2: true,  tsdboss: true,  multi: false, pg: 14}
+        - {name: "Plain Postgres (12)",      shortname: "plain-pg-12",  ext: false, tsdb: false, tsdboss: false, multi: false, pg: 12}
+        - {name: "Plain Postgres (13)",      shortname: "plain-pg-13",  ext: false, tsdb: false, tsdboss: false, multi: false, pg: 13}
+        - {name: "Plain Postgres",           shortname: "plain-pg",     ext: false, tsdb: false, tsdboss: false, multi: false, pg: 14}
+        - {name: "Singlenode",               shortname: "singlenode",   ext: true,  tsdb: true,  tsdboss: false, multi: false, pg: 14}
+        - {name: "Multinode",                shortname: "multinode",    ext: true,  tsdb: true,  tsdboss: false, multi: true,  pg: 14}
+        - {name: "W/O Promscale Extension",  shortname: "wo-prom-ext",  ext: false, tsdb: true,  tsdboss: false, multi: false, pg: 14}
+        - {name: "TimescaleDB-OSS",          shortname: "tsdb-oss",     ext: false, tsdb: true,  tsdboss: true,  multi: false, pg: 14}
 
     steps:
     - name: Check out code into the Go module directory
@@ -126,11 +125,10 @@ jobs:
         PG: ${{ matrix.test-setups.pg }}
         EXT: ${{ matrix.test-setups.ext }}
         TSDB: ${{ matrix.test-setups.tsdb }}
-        TSDB2: ${{ matrix.test-setups.tsdb2 }}
         MULTI: ${{ matrix.test-setups.multi }}
         TSDBOSS: ${{ matrix.test-setups.tsdboss }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
-      run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-timescaledb-oss=$TSDBOSS -use-multinode=$MULTI -postgres-version-major=$PG | tee $SHORTNAME-test-run.log  2>&1
+      run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescaledb-oss=$TSDBOSS -use-multinode=$MULTI -postgres-version-major=$PG | tee $SHORTNAME-test-run.log  2>&1
 
     - name: 'Upload Log Artifact'
       if: ${{ always() }}

@@ -3,9 +3,10 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"testing"
 	"time"
+
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
@@ -186,29 +187,13 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		if _, err := db.Exec(context.Background(), "CREATE SCHEMA cagg_schema"); err != nil {
 			t.Fatalf("unexpected error while creating view schema: %s", err)
 		}
-		if *useTimescale2 {
-			if _, err := db.Exec(context.Background(),
-				`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
+		if _, err := db.Exec(context.Background(),
+			`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
 WITH (timescaledb.continuous) AS
   SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
     FROM prom_data.metric_2
     GROUP BY time_bucket('1hour', time), series_id`); err != nil {
-				t.Fatalf("unexpected error while creating metric view: %s", err)
-			}
-		} else {
-			// Using TimescaleDB 1.x
-			if _, err := db.Exec(context.Background(),
-				`CREATE VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
-WITH (timescaledb.continuous,  timescaledb.ignore_invalidation_older_than = '1 min', timescaledb.refresh_lag = '-2h') AS
-  SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
-    FROM prom_data.metric_2
-    GROUP BY time_bucket('1hour', time), series_id`); err != nil {
-				t.Fatalf("unexpected error while creating metric view: %s", err)
-			}
-			if _, err := db.Exec(context.Background(),
-				`REFRESH MATERIALIZED VIEW cagg_schema.cagg`); err != nil {
-				t.Fatalf("unexpected error while creating metric view: %s", err)
-			}
+			t.Fatalf("unexpected error while creating metric view: %s", err)
 		}
 		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')"); err != nil {
 			t.Fatalf("unexpected error while registering metric view: %s", err)
@@ -391,26 +376,13 @@ func TestContinuousAggDataRetention(t *testing.T) {
 		_, err = db.Exec(context.Background(), "CREATE SCHEMA cagg_schema")
 		require.NoError(t, err)
 
-		if *useTimescale2 {
-			_, err = db.Exec(context.Background(),
-				`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
+		_, err = db.Exec(context.Background(),
+			`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
 WITH (timescaledb.continuous) AS
   SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
     FROM prom_data.test
     GROUP BY time_bucket('1hour', time), series_id`)
-			require.NoError(t, err)
-		} else {
-			// Using TimescaleDB 1.x
-			_, err = db.Exec(context.Background(),
-				`CREATE VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
-WITH (timescaledb.continuous, timescaledb.max_interval_per_job = '1000 weeks', timescaledb.ignore_invalidation_older_than = '1 min') AS
-  SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
-    FROM prom_data.test
-    GROUP BY time_bucket('1hour', time), series_id`)
-			require.NoError(t, err)
-			_, err = db.Exec(context.Background(), `REFRESH MATERIALIZED VIEW cagg_schema.cagg`)
-			require.NoError(t, err)
-		}
+		require.NoError(t, err)
 		_, err = db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')")
 		require.NoError(t, err)
 
@@ -448,9 +420,6 @@ WITH (timescaledb.continuous, timescaledb.max_interval_per_job = '1000 weeks', t
 func TestContinuousAgg2StepAgg(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescale2 {
-		t.Skip("2-step continuous aggregates need TimescaleDB 2.x support")
 	}
 	if !*useExtension {
 		t.Skip("2-step continuous aggregates need TimescaleDB 2.x HA image")
