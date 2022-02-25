@@ -130,7 +130,7 @@ func TestOnlyOneHousekeeper(t *testing.T) {
 }
 
 func TestHousekeeper(t *testing.T) {
-	if !*useTimescaleDB || *useTimescaleOSS || !*useExtension {
+	if !*useTimescaleDB || !*useExtension {
 		t.Skip("telemetry requires TimescaleDB and the Promscale extension")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {

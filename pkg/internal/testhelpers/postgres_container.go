@@ -57,7 +57,6 @@ const (
 	multinodeBit        = 1 << iota
 	postgres12Bit       = 1 << iota
 	postgres13Bit       = 1 << iota
-	timescaleOSSBit     = 1 << iota
 	timescaleNightlyBit = 1 << iota
 )
 
@@ -67,7 +66,6 @@ const (
 	Timescale2AndPromscale ExtensionState = timescaleBit | promscaleBit
 	Multinode              ExtensionState = timescaleBit | multinodeBit
 	MultinodeAndPromscale  ExtensionState = timescaleBit | multinodeBit | promscaleBit
-	TimescaleOSS           ExtensionState = timescaleBit | timescaleOSSBit
 
 	TimescaleNightly          ExtensionState = timescaleBit | timescaleNightlyBit
 	TimescaleNightlyMultinode ExtensionState = timescaleBit | multinodeBit | timescaleNightlyBit
@@ -101,10 +99,6 @@ func (e *ExtensionState) UsePG13() {
 	*e |= postgres13Bit
 }
 
-func (e *ExtensionState) UseTimescaleDBOSS() {
-	*e |= timescaleBit | timescaleOSSBit
-}
-
 func (e ExtensionState) UsesTimescaleDB() bool {
 	return (e & timescaleBit) != 0
 }
@@ -129,10 +123,6 @@ func (e ExtensionState) UsesPG13() bool {
 	return (e & postgres13Bit) != 0
 }
 
-func (e ExtensionState) UsesTimescaleDBOSS() bool {
-	return (e & timescaleOSSBit) != 0
-}
-
 func (e ExtensionState) GetPGMajor() string {
 	PGMajor := "14"
 	if e.UsesPG13() {
@@ -155,8 +145,6 @@ func (e ExtensionState) GetDockerImageName() (string, error) {
 		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
 	case VanillaPostgres:
 		image = "postgres:" + PGMajor
-	case TimescaleOSS:
-		image = "timescale/timescaledb:latest-" + PGTag + "-oss"
 	case TimescaleNightly, TimescaleNightlyMultinode:
 		image = "timescaledev/timescaledb:nightly-" + PGTag
 	}

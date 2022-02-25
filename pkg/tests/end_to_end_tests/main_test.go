@@ -37,7 +37,6 @@ var (
 	useDocker             = flag.Bool("use-docker", true, "start database using a docker container")
 	useExtension          = flag.Bool("use-extension", true, "use the promscale extension")
 	useTimescaleDB        = flag.Bool("use-timescaledb", true, "use TimescaleDB")
-	useTimescaleOSS       = flag.Bool("use-timescaledb-oss", false, "use TimescaleDB-OSS latest")
 	postgresVersion       = flag.Int("postgres-version-major", 14, "Major version of Postgres")
 	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
 	useTimescaleDBNightly = flag.Bool("use-timescaledb-nightly", false, "use TimescaleDB nightly images")
@@ -104,10 +103,6 @@ func setExtensionState() {
 		*useTimescaleDB = true
 	}
 
-	if *useTimescaleOSS {
-		extensionState.UseTimescaleDBOSS()
-		*useTimescaleDB = true
-	}
 }
 
 func TestMain(m *testing.M) {

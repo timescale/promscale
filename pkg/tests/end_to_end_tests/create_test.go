@@ -506,9 +506,6 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	if *useTimescaleOSS {
-		t.Skip("compression not available in TimescaleDB-OSS")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -627,9 +624,6 @@ func TestMetricBatcherLabelsBatching(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	if *useTimescaleOSS {
-		t.Skip("compression not applicable in TimescaleDB-OSS")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -699,9 +693,6 @@ func TestInsertCompressed(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
-	}
-	if *useTimescaleOSS {
-		t.Skip("compression not available in TimescaleDB-OSS")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
@@ -789,9 +780,6 @@ func TestInsertMultinodeAddNodes(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
-	}
-	if *useTimescaleOSS {
-		t.Skip("compression not applicable in TimescaleDB-OSS")
 	}
 	if !*useMultinode {
 		t.Skip("Only applies for multinode")
@@ -887,9 +875,6 @@ func TestCompressionSetting(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
-	}
-	if *useTimescaleOSS {
-		t.Skip("compression not available in TimescaleDB-OSS")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
@@ -1008,9 +993,6 @@ func TestCustomCompressionJob(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
-	}
-	if *useTimescaleOSS {
-		t.Skip("compression not applicable in TimescaleDB-OSS")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
@@ -1221,9 +1203,6 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	if *useTimescaleOSS {
-		t.Skip("compression not applicable in TimescaleDB-OSS")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
@@ -1386,9 +1365,6 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	if *useTimescaleOSS {
-		t.Skip("compression not applicable in TimescaleDB-OSS")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
@@ -1516,9 +1492,6 @@ func TestConfigMaintenanceJobs(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("jobs meaningless without TimescaleDB")
-	}
-	if *useTimescaleOSS {
-		t.Skip("add_job() is not available in TimescaleDB OSS, hence this test is not applicable")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
