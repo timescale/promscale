@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
@@ -37,15 +39,11 @@ const (
 	serviceNameTagKey  = "service.name"
 )
 
-const (
-	insertSpanLinkSQL = `INSERT INTO _ps_trace.link (trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, trace_state, tags, dropped_tags_count, link_nbr)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-	insertSpanEventSQL = `INSERT INTO _ps_trace.event (time, trace_id, span_id, name, event_nbr, tags, dropped_tags_count)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	insertSpanSQL = `INSERT INTO _ps_trace.span (trace_id, span_id, trace_state, parent_span_id, operation_id, start_time, end_time, span_tags, dropped_tags_count,
-		event_time, dropped_events_count, dropped_link_count, status_code, status_message, instrumentation_lib_id, resource_tags, resource_dropped_tags_count, resource_schema_url_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-		ON CONFLICT DO NOTHING`  // Most cases conflict only happens on retries, safe to ignore duplicate data.
+var (
+	linkTableColumns  = []string{"trace_id", "span_id", "span_start_time", "linked_trace_id", "linked_span_id", "trace_state", "tags", "dropped_tags_count", "link_nbr"}
+	eventTableColumns = []string{"time", "trace_id", "span_id", "name", "event_nbr", "tags", "dropped_tags_count"}
+	spanTableColumns  = []string{"trace_id", "span_id", "parent_span_id", "operation_id", "start_time", "end_time", "trace_state", "span_tags", "dropped_tags_count",
+		"event_time", "dropped_events_count", "dropped_link_count", "status_code", "status_message", "instrumentation_lib_id", "resource_tags", "resource_dropped_tags_count", "resource_schema_url_id"}
 )
 
 type Writer interface {
@@ -74,7 +72,7 @@ func NewWriter(conn pgxconn.PgxConn, t telemetry.Engine) *traceWriterImpl {
 	}
 }
 
-func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
+func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
 		linkedSpanID := getSpanID(link.SpanID().Bytes())
@@ -83,41 +81,21 @@ func (t *traceWriterImpl) queueSpanLinks(linkBatch pgxconn.PgxBatch, tagsBatch t
 		if err != nil {
 			return err
 		}
-		linkBatch.Queue(insertSpanLinkSQL,
-			traceID,
-			spanID,
-			spanStartTime,
-			TraceIDToUUID(link.TraceID().Bytes()),
-			linkedSpanID,
-			getTraceStateValue(link.TraceState()),
-			string(jsonTags),
-			link.DroppedAttributesCount(),
-			i,
-		)
+		*linkRows = append(*linkRows, []interface{}{traceID, spanID, spanStartTime, TraceIDToUUID(link.TraceID().Bytes()),
+			linkedSpanID, getTraceStateValue(link.TraceState()), jsonTags, link.DroppedAttributesCount(), i})
+
 	}
 	return nil
 }
 
-func (t *traceWriterImpl) queueSpanEvents(eventBatch pgxconn.PgxBatch, tagsBatch tagBatch, events pdata.SpanEventSlice, traceID pgtype.UUID, spanID pgtype.Int8) error {
+func (t *traceWriterImpl) addSpanEvents(eventRows *[][]interface{}, tagsBatch tagBatch, events pdata.SpanEventSlice, traceID pgtype.UUID, spanID pgtype.Int8) error {
 	for i := 0; i < events.Len(); i++ {
 		event := events.At(i)
 		jsonTags, err := tagsBatch.GetTagMapJSON(event.Attributes().AsRaw(), EventTagType)
 		if err != nil {
 			return err
 		}
-		eventBatch.Queue(insertSpanEventSQL,
-			event.Timestamp().AsTime(),
-			traceID,
-			spanID,
-			event.Name(),
-			i,
-			string(jsonTags),
-			event.DroppedAttributesCount(),
-		)
-
-		if err != nil {
-			return err
-		}
+		*eventRows = append(*eventRows, []interface{}{event.Timestamp().AsTime(), traceID, spanID, event.Name(), i, jsonTags, event.DroppedAttributesCount()})
 	}
 	return nil
 }
@@ -237,9 +215,11 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 	}
 
 	maxEndTimestamp := uint64(0)
-	spanBatch := t.conn.NewBatch()
-	linkBatch := t.conn.NewBatch()
-	eventBatch := t.conn.NewBatch()
+	var (
+		spanRows  [][]interface{}
+		linkRows  [][]interface{}
+		eventRows [][]interface{}
+	)
 	for i := 0; i < rSpans.Len(); i++ {
 		rSpan := rSpans.At(i)
 		instLibSpans := rSpan.InstrumentationLibrarySpans()
@@ -276,10 +256,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					return err
 				}
 
-				if err := t.queueSpanEvents(eventBatch, tagsBatch, span.Events(), traceID, spanID); err != nil {
+				if err := t.addSpanEvents(&eventRows, tagsBatch, span.Events(), traceID, spanID); err != nil {
 					return err
 				}
-				if err := t.queueSpanLinks(linkBatch, tagsBatch, span.Links(), traceID, spanID, span.StartTimestamp().AsTime()); err != nil {
+				if err := t.addSpanLinks(&linkRows, tagsBatch, span.Links(), traceID, spanID, span.StartTimestamp().AsTime()); err != nil {
 					return err
 				}
 
@@ -307,50 +287,33 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					maxEndTimestamp = uint64(end.Unix())
 				}
 
-				spanBatch.Queue(
-					insertSpanSQL,
-					traceID,
-					spanID,
-					getTraceStateValue(span.TraceState()),
-					parentSpanID,
-					operationID,
-					start,
-					end,
-					string(jsonTags),
-					span.DroppedAttributesCount(),
-					eventTimeRange,
-					span.DroppedEventsCount(),
-					span.DroppedLinksCount(),
-					span.Status().Code().String(),
-					span.Status().Message(),
-					instLibID,
-					string(jsonResourceTags),
-					0, // TODO: Add resource_dropped_tags_count when it gets exposed upstream.
-					rSchemaURLID,
-				)
+				spanRows = append(spanRows, []interface{}{traceID, spanID, parentSpanID,
+					operationID, start, end, getTraceStateValue(span.TraceState()), jsonTags, span.DroppedAttributesCount(), eventTimeRange, span.DroppedEventsCount(),
+					span.DroppedLinksCount(), span.Status().Code().String(), span.Status().Message(), instLibID, jsonResourceTags, 0, rSchemaURLID})
+
 			}
 		}
 	}
 
-	metrics.InsertBatchSize.With(traceSpanLabel).Observe(float64(spanBatch.Len()))
-	metrics.InsertBatchSize.With(traceEventLabel).Observe(float64(eventBatch.Len()))
-	metrics.InsertBatchSize.With(traceLinkLabel).Observe(float64(linkBatch.Len()))
+	metrics.InsertBatchSize.With(traceSpanLabel).Observe(float64(len(spanRows)))
+	metrics.InsertBatchSize.With(traceEventLabel).Observe(float64(len(eventRows)))
+	metrics.InsertBatchSize.With(traceLinkLabel).Observe(float64(len(linkRows)))
 
 	start := time.Now()
-	if err := t.sendBatch(ctx, eventBatch); err != nil {
-		return fmt.Errorf("error sending trace event batch: %w", err)
+	if err := t.insertRows(ctx, "event", eventTableColumns, eventRows); err != nil {
+		return fmt.Errorf("error inserting events: %w", err)
 	}
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "event"}).Observe(time.Since(start).Seconds())
 
 	start = time.Now()
-	if err := t.sendBatch(ctx, linkBatch); err != nil {
-		return fmt.Errorf("error sending trace link batch: %w", err)
+	if err := t.insertRows(ctx, "link", linkTableColumns, linkRows); err != nil {
+		return fmt.Errorf("error inserting links: %w", err)
 	}
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "link"}).Observe(time.Since(start).Seconds())
 
 	start = time.Now()
-	if err := t.sendBatch(ctx, spanBatch); err != nil {
-		return fmt.Errorf("error sending trace span batch: %w", err)
+	if err := t.insertRows(ctx, "span", spanTableColumns, spanRows); err != nil {
+		return fmt.Errorf("error inserting spans: %w", err)
 	}
 	metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span", "subsystem": ""}).Add(float64(traces.SpanCount()))
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "span"}).Observe(time.Since(start).Seconds())
@@ -364,15 +327,43 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 	return nil
 }
 
-func (t *traceWriterImpl) sendBatch(ctx context.Context, batch pgxconn.PgxBatch) error {
-	br, err := t.conn.SendBatch(ctx, batch)
+func (t *traceWriterImpl) insertRows(ctx context.Context, table string, columns []string, data [][]interface{}) error {
+	if len(data) == 0 {
+		return nil
+	}
+	conn, err := t.conn.Acquire(ctx)
 	if err != nil {
 		return err
 	}
-	if err = br.Close(); err != nil {
+	defer func() {
+		if conn != nil {
+			conn.Release()
+		}
+	}()
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
 		return err
 	}
-	return nil
+	defer func() {
+		if err != nil && tx != nil {
+			if err := tx.Rollback(ctx); err != nil {
+				log.Error(err)
+			}
+		}
+	}()
+
+	if _, err = tx.Exec(ctx, fmt.Sprintf("CREATE TEMPORARY TABLE temp ON COMMIT DROP AS TABLE _ps_trace.%s WITH NO DATA", table)); err != nil {
+		return err
+	}
+
+	if _, err = tx.CopyFrom(ctx, pgx.Identifier{"temp"}, columns, pgx.CopyFromRows(data)); err != nil {
+		return err
+	}
+
+	if _, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO _ps_trace.%s(%[2]s) SELECT %[2]s FROM temp ON CONFLICT DO NOTHING", table, strings.Join(columns, ","))); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func ByteArrayToInt64(buf [8]byte) int64 {
