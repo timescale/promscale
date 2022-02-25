@@ -4,14 +4,38 @@ import "github.com/prometheus/client_golang/prometheus"
 
 const namespace = "promscale_sql"
 
+var dbHealthErrors = prometheus.NewCounter(
+	prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "database",
+		Name:      "health_check_errors_total",
+		Help:      "Total number of database health check errors.",
+	},
+)
+
+func init() {
+	prometheus.MustRegister(dbHealthErrors)
+}
+
 type metricQueryWrap struct {
-	metric      prometheus.Collector
-	query       string
-	previousVal int64
-	isCounter   bool
+	metric        prometheus.Collector
+	query         string
+	isHealthCheck bool
 }
 
 var metrics = []metricQueryWrap{
+	{
+		metric: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Subsystem: "database",
+				Name:      "health_check_total",
+				Help:      "Total number of database health checks performed.",
+			},
+		),
+		query:         "SELECT 1",
+		isHealthCheck: true,
+	},
 	{
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -24,16 +48,15 @@ var metrics = []metricQueryWrap{
 		query: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false`,
 	},
 	{
-		metric: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		metric: prometheus.NewGauge(
+			prometheus.GaugeOpts{
 				Namespace: namespace,
 				Subsystem: "database",
-				Name:      "chunks_created_total",
+				Name:      "chunks_created",
 				Help:      "Total number of chunks created since creation of database.",
 			},
 		),
-		query:     `select count(*)::bigint from _timescaledb_catalog.chunk`,
-		isCounter: true,
+		query: `select count(*)::bigint from _timescaledb_catalog.chunk`,
 	},
 	{
 		metric: prometheus.NewGauge(
