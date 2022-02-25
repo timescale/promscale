@@ -50,7 +50,7 @@ func getMetrics(m []metricQueryWrap) []prometheus.Collector {
 	return metrics
 }
 
-const sqlMetricsEvalInterval = time.Minute * 3
+const sqlMetricsEvalInterval = time.Second * 3
 
 func (e *metricsEngineImpl) Start() {
 	e.register()
@@ -85,13 +85,12 @@ func evalMetric(ctx context.Context, conn pgxconn.PgxConn, wg *sync.WaitGroup, m
 	var value int64
 	err := conn.QueryRow(ctx, metric.query).Scan(&value)
 	if err != nil {
-		log.Error("msg", fmt.Sprintf("error evaluating database metric: %s", metric.metric), "err", err.Error())
+		if metric.isHealthCheck {
+			dbHealthErrors.Inc()
+			updateMetric(metric.metric, 1) // Update the health_check counter.
+		}
+		log.Warn("msg", fmt.Sprintf("error evaluating database metric: %s", metric.metric), "err", err.Error())
 		return
-	}
-	if metric.isCounter {
-		// Since counter needs the amount incremented only.
-		value = value - metric.previousVal
-		metric.previousVal += value
 	}
 	updateMetric(metric.metric, value)
 }
