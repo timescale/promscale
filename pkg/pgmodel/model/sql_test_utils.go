@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
@@ -52,6 +53,10 @@ func NewErrorSqlRecorder(queries []SqlQuery, err error, t *testing.T) *SqlRecord
 }
 
 func (r *SqlRecorder) Close() {
+}
+
+func (r *SqlRecorder) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
+	return nil, nil
 }
 
 func (r *SqlRecorder) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {

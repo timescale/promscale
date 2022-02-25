@@ -68,6 +68,7 @@ type PgxConn interface {
 	CopyFromRows(rows [][]interface{}) pgx.CopyFromSource
 	NewBatch() PgxBatch
 	SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error)
+	Acquire(ctx context.Context) (*pgxpool.Conn, error)
 }
 
 type PgxRows interface {
@@ -198,6 +199,10 @@ func (p *connImpl) NewBatch() PgxBatch {
 func (p *connImpl) SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error) {
 	requestTotal.With(promMethodLabel("send_batch")).Inc()
 	return newBatchResultsWithDuration(p.Conn.SendBatch(ctx, b.(*pgx.Batch)), time.Now()), nil
+}
+
+func (p *connImpl) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
+	return p.Conn.Acquire(ctx)
 }
 
 // filters out indentation characters from the
