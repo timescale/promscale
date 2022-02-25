@@ -16,13 +16,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/util"
 )
+
+const namespace = "promscale"
 
 var (
 	requestTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: util.PromNamespace,
+			Namespace: namespace,
 			Subsystem: "database",
 			Name:      "requests_total",
 			Help:      "Total number of database requests.",
@@ -30,7 +31,7 @@ var (
 	)
 	errorsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: util.PromNamespace,
+			Namespace: namespace,
 			Subsystem: "database",
 			Name:      "request_errors_total",
 			Help:      "Total number of database request errors.",
@@ -38,7 +39,7 @@ var (
 	)
 	duration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: util.PromNamespace,
+			Namespace: namespace,
 			Subsystem: "database",
 			Name:      "requests_duration_seconds",
 			Help:      "Time taken to complete a database request and process the response.",

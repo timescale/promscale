@@ -229,3 +229,64 @@ groups:
     annotations:
       summary: Slow database response
       description: "Slowest 10% of database requests are taking more than {{ $value }} seconds to respond."
+- name: promscale-database
+  rules:
+  - alert: PromscaleStorageUnhealthy
+    expr: |
+      (
+        sum by (job) (
+          rate(promscale_sql_database_health_check_errors_total[5m])
+        )
+      /
+        sum by (job) (
+          rate(promscale_sql_database_health_check_total[5m])
+        )
+      ) > 0.05
+    labels:
+      severity: warning
+    annotations:
+      summary: Promscale database is unhealthy
+      description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
+  - alert: PromscaleMaintenanceJobRunningTooLong
+    expr: |
+      (
+        (
+          (
+            time()
+          -
+            promscale_sql_database_worker_maintenance_job_start_timestamp_seconds
+          )
+            >
+              30 * 60 * 2 # 30 mins (we launch maintenance jobs scheduled at 30 mins) * 60 (to seconds) * 2 (wait max for 2 complete scans before firing alert).
+        )
+      and
+        promscale_sql_database_worker_maintenance_job_start_timestamp_seconds > 0
+      )
+    labels:
+      severity: warning
+    annotations:
+      summary: Promscale maintenance jobs taking too long to complete
+      description: "Promscale Database is taking {{ $value }} seconds to respond to Promscale's requests."
+  - alert: PromscaleMaintenanceJobFailures
+    expr: promscale_sql_database_worker_maintenance_job_failed == 1
+    labels:
+      severity: warning
+    annotations:
+      summary: Promscale maintenance job failed
+      description: "Promscale maintenance job failed to successfully execute."
+  - alert: PromscaleCompressionRatioLow
+    expr: |
+      (
+          (
+            promscale_sql_database_chunks_compressed_count
+          /
+            promscale_sql_database_chunks_count
+          ) < 0.3
+        and
+          promscale_sql_database_compression_status == 1
+      )
+    labels:
+      severity: warning
+    annotations:
+      summary: Promscale compression ratio is low
+      description: "Promscale compression ratio is low, with only {{ $value | humanizePercentage }} of total chunks being compressed."
