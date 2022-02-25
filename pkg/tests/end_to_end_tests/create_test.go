@@ -13,7 +13,6 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
-	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stretchr/testify/require"
@@ -755,15 +754,9 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 		var nextStartAfter time.Time
-		var statsQuery string
-		if *useTimescale2 {
-			statsQuery = "SELECT delay_compression_until FROM _prom_catalog.metric " +
-				"WHERE metric_name = $1::text"
-			err = db.QueryRow(context.Background(), statsQuery, "Test").Scan(&nextStartAfter)
-		} else {
-			statsQuery = "SELECT next_start FROM timescaledb_information.policy_stats WHERE hypertable = $1::text::regclass"
-			err = db.QueryRow(context.Background(), statsQuery, pgx.Identifier{"prom_data", tableName}.Sanitize()).Scan(&nextStartAfter)
-		}
+		statsQuery := "SELECT delay_compression_until FROM _prom_catalog.metric " +
+			"WHERE metric_name = $1::text"
+		err = db.QueryRow(context.Background(), statsQuery, "Test").Scan(&nextStartAfter)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -901,22 +894,6 @@ func TestCompressionSetting(t *testing.T) {
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
 		defer db.Close()
-		checkJobs := func(t testing.TB, jobs_expected int) {
-			countQuery := ""
-			jobs := make([]string, 0)
-			if *useTimescale2 {
-				//compression does not effect #jobs in timescaledb2
-				return
-			}
-			countQuery = "SELECT array_agg((s.*)::text) FROM _timescaledb_config.bgw_job s"
-			err := db.QueryRow(context.Background(), countQuery).Scan(&jobs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(jobs) != jobs_expected {
-				t.Errorf("unexpected jobs, expected 1 got %v", jobs)
-			}
-		}
 
 		var compressionEnabled bool
 		err := db.QueryRow(context.Background(), "SELECT _prom_catalog.get_default_compression_setting()").Scan(&compressionEnabled)
@@ -927,8 +904,6 @@ func TestCompressionSetting(t *testing.T) {
 		if !compressionEnabled {
 			t.Error("compression should be enabled by default, was not")
 		}
-
-		checkJobs(t, 1)
 
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_default_compression_setting(false)")
 		if err != nil {
@@ -942,8 +917,6 @@ func TestCompressionSetting(t *testing.T) {
 			t.Error("compression should have been disabled")
 
 		}
-
-		checkJobs(t, 1)
 
 		ts := []prompb.TimeSeries{
 			{
@@ -979,8 +952,6 @@ func TestCompressionSetting(t *testing.T) {
 			t.Error("metric compression should be disabled as per default, was not")
 		}
 
-		checkJobs(t, 1)
-
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_compression_setting('Test', true)")
 		if err != nil {
 			t.Fatal(err)
@@ -1010,8 +981,6 @@ func TestCompressionSetting(t *testing.T) {
 			t.Fatal("metric compression should be enabled manually, was not")
 		}
 
-		checkJobs(t, 2)
-
 		if *useMultinode {
 			//TODO turning compression off in multinode is broken upstream.
 			return
@@ -1030,7 +999,6 @@ func TestCompressionSetting(t *testing.T) {
 		if compressionEnabled {
 			t.Error("metric compression should be disabled as per default, was not")
 		}
-		checkJobs(t, 1)
 	})
 }
 
@@ -1040,9 +1008,6 @@ func TestCustomCompressionJob(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
-	}
-	if !*useTimescale2 {
-		t.Skip("test meaningless without Timescale 2")
 	}
 	if *useTimescaleOSS {
 		t.Skip("compression not applicable in TimescaleDB-OSS")
@@ -1256,9 +1221,6 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	if !*useTimescale2 {
-		t.Skip("test meaningless without Timescale 2")
-	}
 	if *useTimescaleOSS {
 		t.Skip("compression not applicable in TimescaleDB-OSS")
 	}
@@ -1424,9 +1386,6 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("compression meaningless without TimescaleDB")
 	}
-	if !*useTimescale2 {
-		t.Skip("test meaningless without Timescale 2")
-	}
 	if *useTimescaleOSS {
 		t.Skip("compression not applicable in TimescaleDB-OSS")
 	}
@@ -1558,9 +1517,6 @@ func TestConfigMaintenanceJobs(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("jobs meaningless without TimescaleDB")
 	}
-	if !*useTimescale2 {
-		t.Skip("test meaningless without Timescale 2")
-	}
 	if *useTimescaleOSS {
 		t.Skip("add_job() is not available in TimescaleDB OSS, hence this test is not applicable")
 	}
@@ -1653,9 +1609,6 @@ func TestExecuteMaintJob(t *testing.T) {
 	}
 	if !*useTimescaleDB {
 		t.Skip("jobs meaningless without TimescaleDB")
-	}
-	if !*useTimescale2 {
-		t.Skip("test meaningless without Timescale 2")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))

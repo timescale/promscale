@@ -77,13 +77,12 @@ jobs:
     strategy:
       matrix:
         test-setups:
-        - {name: "Multinode",                             ext: true,  tsdb: true,  tsdb2: true,  multi: true,  pg: 13, nightly: false}
-        - {name: "W/O Promscale Extension",               ext: false, tsdb: true,  tsdb2: true,  multi: false, pg: 13, nightly: false}
-        - {name: "Plain Postgres",                        ext: false, tsdb: false, tsdb2: false, multi: false, pg: 13, nightly: false}
-        - {name: "Timescaledb 1.x (pg 12)",               ext: true,  tsdb: true,  tsdb2: false, multi: false, pg: 12, nightly: false}
-        - {name: "Plain Postgres (12)",                   ext: false, tsdb: false, tsdb2: false, multi: false, pg: 12, nightly: false}
-        - {name: "TimescaleDB Nightly (PG-13)",            ext: false, tsdb: true,  tsdb2: true,  multi: false, pg: 13, nightly: true}
-        - {name: "TimescaleDB-Multinode Nightly (PG-13)",  ext: false, tsdb: true,  tsdb2: true,  multi: true,  pg: 13, nightly: true}
+        - {name: "Multinode",                             ext: true,  tsdb: true,  multi: true,  pg: 13, nightly: false}
+        - {name: "W/O Promscale Extension",               ext: false, tsdb: true,  multi: false, pg: 13, nightly: false}
+        - {name: "Plain Postgres",                        ext: false, tsdb: false, multi: false, pg: 13, nightly: false}
+        - {name: "Plain Postgres (12)",                   ext: false, tsdb: false, multi: false, pg: 12, nightly: false}
+        - {name: "TimescaleDB Nightly (PG-13)",           ext: false, tsdb: true,  multi: false, pg: 13, nightly: true}
+        - {name: "TimescaleDB-Multinode Nightly (PG-13)", ext: false, tsdb: true,  multi: true,  pg: 13, nightly: true}
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
@@ -112,10 +111,9 @@ jobs:
         PG: ${{ matrix.test-setups.pg }}
         EXT: ${{ matrix.test-setups.ext }}
         TSDB: ${{ matrix.test-setups.tsdb }}
-        TSDB2: ${{ matrix.test-setups.tsdb2 }}
         MULTI: ${{ matrix.test-setups.multi }}
         NIGHTLY: ${{ matrix.test-setups.nightly }}
-      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-timescale2=$TSDB2 -use-multinode=$MULTI -use-timescaledb-nightly=$NIGHTLY -postgres-version-major=$PG
+      run: go test ./pkg/tests/end_to_end_tests/ -use-extension=$EXT -use-timescaledb=$TSDB -use-multinode=$MULTI -use-timescaledb-nightly=$NIGHTLY -postgres-version-major=$PG
 
   test-helm-chart:
     name: Test helm-chart template generation
