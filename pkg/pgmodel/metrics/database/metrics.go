@@ -1,16 +1,25 @@
 package database
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/timescale/promscale/pkg/util"
+)
 
-const namespace = "promscale_sql"
-
-var dbHealthErrors = prometheus.NewCounter(
-	prometheus.CounterOpts{
-		Namespace: namespace,
-		Subsystem: "database",
-		Name:      "health_check_errors_total",
-		Help:      "Total number of database health check errors.",
-	},
+var (
+	dbHealthErrors = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "sql_database",
+			Name:      "health_check_errors_total",
+			Help:      "Total number of database health check errors.",
+		},
+	)
+	up = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name:      "up",
+			ConstLabels: map[string]string{"type": "promscale_sql"},
+		},
+	)
 )
 
 func init() {
@@ -27,8 +36,8 @@ var metrics = []metricQueryWrap{
 	{
 		metric: prometheus.NewCounter(
 			prometheus.CounterOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "health_check_total",
 				Help:      "Total number of database health checks performed.",
 			},
@@ -39,8 +48,8 @@ var metrics = []metricQueryWrap{
 	{
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "chunks_count",
 				Help:      "Total number of chunks in TimescaleDB currently.",
 			},
@@ -50,8 +59,8 @@ var metrics = []metricQueryWrap{
 	{
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "chunks_created",
 				Help:      "Total number of chunks created since creation of database.",
 			},
@@ -61,8 +70,8 @@ var metrics = []metricQueryWrap{
 	{
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "chunks_compressed_count",
 				Help:      "Total number of compressed chunks in TimescaleDB currently.",
 			},
@@ -71,8 +80,8 @@ var metrics = []metricQueryWrap{
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "compression_status",
 				Help:      "Compression status in TimescaleDB.",
 			},
@@ -81,8 +90,8 @@ var metrics = []metricQueryWrap{
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "worker_count",
 				Help:      "Number of TimescaleDB background workers.",
 			},
@@ -91,8 +100,8 @@ var metrics = []metricQueryWrap{
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "worker_maintenance_job",
 				Help:      "Number of Promscale maintenance workers.",
 			},
@@ -101,8 +110,8 @@ var metrics = []metricQueryWrap{
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "worker_maintenance_job_failed",
 				Help:      "Number of Promscale maintenance workers.",
 			},
@@ -116,8 +125,8 @@ inner join
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "worker_maintenance_job_start_timestamp_seconds",
 				Help:      "Timestamp in unix seconds for last successful execution of Promscale maintenance job.",
 			},
@@ -133,8 +142,8 @@ inner join
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "chunks_bytes",
 				Help:      "Total bytes of all chunks in 'prom_data' & '_ps_trace' schema.",
 			},
@@ -143,8 +152,8 @@ inner join
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Subsystem: "database",
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "chunks_compressed_bytes",
 				Help:      "Total bytes of all compressed chunks in 'prom_data' & '_ps_trace' schema.",
 			},

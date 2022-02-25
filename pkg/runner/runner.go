@@ -114,8 +114,10 @@ func Run(cfg *Config) error {
 	}
 
 	if util.IsTimescaleDBInstalled(client.Connection) {
-		engine := dbMetrics.NewEngine(client.Connection)
-		engine.Start()
+		dbMetricsCtx, stopDBMetrics := context.WithCancel(context.Background())
+		defer stopDBMetrics()
+		engine := dbMetrics.NewEngine(dbMetricsCtx, client.Connection)
+		engine.Run()
 	}
 
 	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
