@@ -1,0 +1,32 @@
+name: mixin
+on:
+  push:
+    paths:
+    - 'docs/mixin/alerts/*.yml'
+  pull_request:
+    paths:
+    - 'docs/mixin/alerts/*.yml'
+jobs:
+  check-mixin:
+    runs-on: ubuntu-latest
+    name: Check monitoring mixin
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Import environment variables
+      run: cat ".github/env" >> $GITHUB_ENV
+
+    - name: Set up Go ${{ env.golang-version }}
+      uses: actions/setup-go@v2.2.0
+      with:
+        go-version: ${{ env.golang-version }}
+      id: go
+
+    - uses: actions/setup-go@v2
+      with:
+        go-version: ${{ env.golang-version }}
+
+    - name: download promtool
+      run: go install -a github.com/prometheus/prometheus/cmd/promtool@latest
+      
+    - run: make check-alerts

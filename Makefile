@@ -31,5 +31,11 @@ go-lint:
 generate:
 	go generate ./...
 
+.PHONY: check-alerts
+check-alerts:
+	# If you don't have promtool, install it with
+	# go install -a github.com/prometheus/prometheus/cmd/promtool@latest
+	promtool check rules docs/mixin/alerts/alerts.yaml
+
 .PHONY: all
 all: build test e2e-test go-fmt go-lint
