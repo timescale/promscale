@@ -54,7 +54,6 @@ func TestMain(m *testing.M) {
 	var code int
 	flag.Parse()
 	baseExtensionState.UseTimescaleDB()
-	baseExtensionState.UseTimescaleDB2()
 	baseExtensionState.UsePG12()
 	if *useExtension {
 		baseExtensionState.UsePromscale()
@@ -80,16 +79,7 @@ func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean 
 		//but migration code that works in an older PG version should generally work in a newer one.
 		panic("Only use pg12 for upgrade tests")
 	}
-	switch {
-	case extensionState.UsesMultinode():
-		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
-	case !extensionState.UsesTimescaleDB():
-		return "timescale/timescaledb:latest-pg12", "timescale/timescaledb:latest-pg12"
-	case extensionState.UsesTimescale2():
-		return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
-	default:
-		return "timescaledev/promscale-extension:0.1.1-ts1-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts1-pg12"
-	}
+	return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
 }
 
 func TestUpgradeFromPrev(t *testing.T) {
@@ -147,9 +137,6 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 	prevVersion := semver.MustParse(version.PrevReleaseVersion)
 	if useEarliest {
 		prevVersion = semver.MustParse(version.EarliestUpgradeTestVersion)
-		if extensionState.UsesMultinode() || extensionState.UsesTimescale2() {
-			prevVersion = semver.MustParse(version.EarliestUpgradeTestVersionMultinode)
-		}
 	}
 	// TODO we could probably improve performance of this test by 2x if we
 	//      gathered the db info in parallel. Unfortunately our db runner doesn't
@@ -733,7 +720,7 @@ func startDB(t *testing.T, ctx context.Context) (*pgx.Conn, testcontainers.Conta
 		t.Fatal(err)
 	}
 
-	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, testhelpers.Timescale1AndPromscale)
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, testhelpers.Timescale2AndPromscale)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}

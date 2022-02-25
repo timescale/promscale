@@ -38,12 +38,11 @@ var (
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 
-	Promscale                           = "0.11.0-dev.0"
-	PrevReleaseVersion                  = "0.10.0"
-	PromMigrator                        = "0.0.3"
-	CommitHash                          = ""
-	EarliestUpgradeTestVersion          = "0.1.0"
-	EarliestUpgradeTestVersionMultinode = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0
+	Promscale                  = "0.11.0-dev.0"
+	PrevReleaseVersion         = "0.10.0"
+	PromMigrator               = "0.0.3"
+	CommitHash                 = ""
+	EarliestUpgradeTestVersion = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0
 
 	PgVersionNumRange       = ">=12.x <15.x" // Corresponds to range within pg 12.0 to pg 14.99
 	pgAcceptedVersionsRange = semver.MustParseRange(PgVersionNumRange)

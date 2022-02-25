@@ -83,24 +83,19 @@ func TestSQLGoldenFiles(t *testing.T) {
 				t.Log(string(msg))
 			}
 
-			mod := ""
-			if *useTimescale2 {
-				mod = "-2"
-			}
-
-			expectedFile := filepath.Join("../testdata/expected/", base+mod+".out")
+			expectedFile := filepath.Join("../testdata/expected/", base+".out")
 			if outputDifferWithoutTimescale[base] {
 				if *useTimescaleDB {
-					expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+mod+".out")
+					expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+".out")
 				} else {
 					expectedFile = filepath.Join("../testdata/expected/", base+"-postgres.out")
 				}
 			}
 			if outputDifferWithMultinode[base] && *useMultinode {
-				expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+mod+"-multinode.out")
+				expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+"-multinode.out")
 			}
 			if outputDifferWithExtension[base] && !*useExtension {
-				expectedFile = filepath.Join("../testdata/expected/", base+mod+"-noextension.out")
+				expectedFile = filepath.Join("../testdata/expected/", base+"-noextension.out")
 			}
 			if outputDifferWithTimescaleOSS[base] && *useTimescaleOSS {
 				expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb-oss.out")
