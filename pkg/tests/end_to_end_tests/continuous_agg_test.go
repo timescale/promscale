@@ -32,9 +32,6 @@ func TestContinuousAggDownsampling(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("continuous aggregates need TimescaleDB support")
 	}
-	if *useTimescaleOSS {
-		t.Skip("continuous aggregates need non-OSS version of TimescaleDB")
-	}
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
 	}
@@ -339,9 +336,6 @@ func TestContinuousAggDataRetention(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("continuous aggregates need TimescaleDB support")
 	}
-	if *useTimescaleOSS {
-		t.Skip("continuous aggregates need non-OSS version of TimescaleDB")
-	}
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
 	}
@@ -423,9 +417,6 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 	}
 	if !*useExtension {
 		t.Skip("2-step continuous aggregates need TimescaleDB 2.x HA image")
-	}
-	if *useTimescaleOSS {
-		t.Skip("continuous aggregates need non-OSS version of TimescaleDB")
 	}
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
