@@ -35,7 +35,6 @@ var (
 	testDatabase          = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 	updateGoldenFiles     = flag.Bool("update", false, "update the golden files of this test")
 	useDocker             = flag.Bool("use-docker", true, "start database using a docker container")
-	useExtension          = flag.Bool("use-extension", true, "use the promscale extension")
 	useTimescaleDB        = flag.Bool("use-timescaledb", true, "use TimescaleDB")
 	postgresVersion       = flag.Int("postgres-version-major", 14, "Major version of Postgres")
 	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
@@ -84,10 +83,6 @@ func setExtensionState() {
 		//this is the default
 	default:
 		panic("Unknown Postgres version")
-	}
-
-	if *useExtension {
-		extensionState.UsePromscale()
 	}
 
 	if *useTimescaleDB {
@@ -245,11 +240,6 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 	extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true}
 	if *useTimescaleDB {
 		migrateURL := connectURL
-		if !*useExtension {
-			// The docker image without an extension does not have pgextwlist
-			// Thus, you have to use the superuser to install TimescaleDB
-			migrateURL = superConnectURL
-		}
 		err := extension.InstallUpgradeTimescaleDBExtensions(migrateURL, extOptions)
 		if err != nil {
 			t.Fatal(err)

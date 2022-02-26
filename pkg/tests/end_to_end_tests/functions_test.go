@@ -321,7 +321,7 @@ func getFingerprintFromJSON(t testing.TB, jsonRes []byte) model.Fingerprint {
 }
 
 func TestExtensionFunctions(t *testing.T) {
-	if !*useExtension || testing.Short() {
+	if testing.Short() {
 		t.Skip("skipping extension test; testing without extension")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
@@ -380,7 +380,7 @@ func TestExtensionFunctions(t *testing.T) {
 }
 
 func TestExtensionGapfillDelta(t *testing.T) {
-	if !*useExtension || testing.Short() {
+	if testing.Short() {
 		t.Skip("skipping extension test; testing without extension")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
@@ -444,7 +444,7 @@ func TestExtensionGapfillDelta(t *testing.T) {
 }
 
 func TestExtensionGapfillIncrease(t *testing.T) {
-	if !*useExtension || testing.Short() {
+	if testing.Short() {
 		t.Skip("skipping extension test; testing without extension")
 	}
 	startTime, err := time.Parse(time.RFC3339, "2000-01-02T15:00:00Z")
