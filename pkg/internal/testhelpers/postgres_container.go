@@ -72,7 +72,7 @@ const (
 )
 
 func (e *ExtensionState) UsePromscale() {
-	*e |= timescaleBit | promscaleBit
+	*e |= promscaleBit
 }
 
 func (e *ExtensionState) UseTimescaleDB() {
@@ -138,16 +138,15 @@ func (e ExtensionState) GetDockerImageName() (string, error) {
 	PGMajor := e.GetPGMajor()
 	PGTag := "pg" + PGMajor
 
-	switch e &^ postgres12Bit &^ postgres13Bit {
-	case Timescale2, Multinode:
-		image = "timescale/timescaledb:latest-" + PGTag
-	case Timescale2AndPromscale, MultinodeAndPromscale:
-		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
-	case VanillaPostgres:
-		image = "postgres:" + PGMajor
-	case TimescaleNightly, TimescaleNightlyMultinode:
+	switch {
+	case e.UsesTimescaleNightly():
 		image = "timescaledev/timescaledb:nightly-" + PGTag
+	case !e.usesPromscale():
+		image = "timescale/timescaledb:latest-" + PGTag
+	default:
+		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
 	}
+
 	return image, nil
 }
 
@@ -417,6 +416,48 @@ func createMultinodeNetwork() (networkName string, closer func(), err error) {
 	return networkName, closer, nil
 }
 
+func dropTimescaleExtensionInDB(dbname string) error {
+	db, err := pgx.Connect(context.Background(), PgConnectURL(dbname, Superuser))
+	if err != nil {
+		return fmt.Errorf("could not connect to template1 db: %w", err)
+	}
+
+	_, err = db.Exec(context.Background(), "DROP EXTENSION timescaledb")
+	if err != nil {
+		return fmt.Errorf("could not uninstall timescaledb: %w", err)
+	}
+	err = db.Close(context.Background())
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func removeTimescaleExtension(container testcontainers.Container) error {
+	err := dropTimescaleExtensionInDB("template1")
+	if err != nil {
+		return fmt.Errorf("could not connect to template1 db: %w", err)
+	}
+
+	err = dropTimescaleExtensionInDB("postgres")
+	if err != nil {
+		return fmt.Errorf("could not connect to template1 db: %w", err)
+	}
+
+	code, err := container.Exec(context.Background(), []string{
+		"bash",
+		"-c",
+		"rm `pg_config --sharedir`/extension/timescaledb* && rm `pg_config --pkglibdir`/timescaledb-*"})
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("docker exec error. exit code: %d", code)
+	}
+
+	return nil
+}
+
 func startPGInstance(
 	ctx context.Context,
 	image string,
@@ -537,6 +578,12 @@ func startPGInstance(
 	db, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		return nil, closer, err
+	}
+	if !extensionState.UsesTimescaleDB() {
+		err = removeTimescaleExtension(container)
+		if err != nil {
+			return nil, closer, err
+		}
 	}
 
 	for _, username := range users {
