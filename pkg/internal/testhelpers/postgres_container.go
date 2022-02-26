@@ -53,7 +53,6 @@ type ExtensionState int
 
 const (
 	timescaleBit        = 1 << iota
-	promscaleBit        = 1 << iota
 	multinodeBit        = 1 << iota
 	postgres12Bit       = 1 << iota
 	postgres13Bit       = 1 << iota
@@ -61,19 +60,13 @@ const (
 )
 
 const (
-	VanillaPostgres        ExtensionState = 0
-	Timescale2             ExtensionState = timescaleBit
-	Timescale2AndPromscale ExtensionState = timescaleBit | promscaleBit
-	Multinode              ExtensionState = timescaleBit | multinodeBit
-	MultinodeAndPromscale  ExtensionState = timescaleBit | multinodeBit | promscaleBit
+	VanillaPostgres ExtensionState = 0
+	Timescale2      ExtensionState = timescaleBit
+	Multinode       ExtensionState = timescaleBit | multinodeBit
 
 	TimescaleNightly          ExtensionState = timescaleBit | timescaleNightlyBit
 	TimescaleNightlyMultinode ExtensionState = timescaleBit | multinodeBit | timescaleNightlyBit
 )
-
-func (e *ExtensionState) UsePromscale() {
-	*e |= promscaleBit
-}
 
 func (e *ExtensionState) UseTimescaleDB() {
 	*e |= timescaleBit
@@ -111,10 +104,6 @@ func (e ExtensionState) UsesMultinode() bool {
 	return (e & multinodeBit) != 0
 }
 
-func (e ExtensionState) usesPromscale() bool {
-	return (e & promscaleBit) != 0
-}
-
 func (e ExtensionState) UsesPG12() bool {
 	return (e & postgres12Bit) != 0
 }
@@ -140,9 +129,9 @@ func (e ExtensionState) GetDockerImageName() (string, error) {
 
 	switch {
 	case e.UsesTimescaleNightly():
-		image = "timescaledev/timescaledb:nightly-" + PGTag
-	case !e.usesPromscale():
-		image = "timescale/timescaledb:latest-" + PGTag
+		//TODO this is broken as we need a nightly image with the promscale extension.
+		panic("Nightly images are temporarily broken")
+		//image = "timescaledev/timescaledb:nightly-" + PGTag
 	default:
 		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
 	}
@@ -504,13 +493,11 @@ func startPGInstance(
 		)
 	}
 
-	if extensionState.usesPromscale() {
-		req.Cmd = append(req.Cmd,
-			"-c", "local_preload_libraries=pgextwlist",
-			//timescale_prometheus_extra included for upgrade tests with old extension name
-			"-c", "extwlist.extensions=promscale,timescaledb,timescale_prometheus_extra",
-		)
-	}
+	req.Cmd = append(req.Cmd,
+		"-c", "local_preload_libraries=pgextwlist",
+		//timescale_prometheus_extra included for upgrade tests with old extension name
+		"-c", "extwlist.extensions=promscale,timescaledb,timescale_prometheus_extra",
+	)
 
 	req.BindMounts = make(map[string]string)
 	if testDataDir != "" {

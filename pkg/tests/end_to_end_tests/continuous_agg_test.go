@@ -415,8 +415,8 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useExtension {
-		t.Skip("2-step continuous aggregates need TimescaleDB 2.x HA image")
+	if !*useTimescaleDB {
+		t.Skip("continuous aggregates require TimescaleDB")
 	}
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")

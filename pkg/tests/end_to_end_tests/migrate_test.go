@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
-	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -150,8 +149,8 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useExtension {
-		t.Skip("need promscale extension for this test")
+	if !*useTimescaleDB {
+		t.Skip("need timescaleDB extension for this test")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, _ testing.TB) {
 		conn, err := db.Acquire(context.Background())
@@ -208,7 +207,7 @@ func TestMigrateTwice(t *testing.T) {
 	}
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(dbOwner *pgxpool.Pool, t testing.TB, connectURL string) {
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
-		if *useExtension && !extension.ExtensionIsInstalled {
+		if !extension.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 
@@ -216,7 +215,7 @@ func TestMigrateTwice(t *testing.T) {
 		extension.ExtensionIsInstalled = false
 
 		performMigrate(t, connectURL, testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
-		if *useExtension && !extension.ExtensionIsInstalled {
+		if !extension.ExtensionIsInstalled {
 			t.Errorf("extension is not installed, expected it to be installed")
 		}
 
@@ -231,10 +230,6 @@ func TestMigrateTwice(t *testing.T) {
 			var versionString string
 			err = db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
 			if err != nil {
-				if err == pgx.ErrNoRows && !*useExtension {
-					//Without an extension, metadata will not be written if running as non-superuser
-					return
-				}
 				t.Fatal(err)
 			}
 

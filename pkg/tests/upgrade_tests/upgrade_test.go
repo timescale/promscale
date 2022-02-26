@@ -41,7 +41,6 @@ import (
 
 var (
 	testDatabase       = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
-	useExtension       = flag.Bool("use-extension", true, "use the promscale extension")
 	printLogs          = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	baseExtensionState testhelpers.ExtensionState
 )
@@ -55,9 +54,6 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	baseExtensionState.UseTimescaleDB()
 	baseExtensionState.UsePG12()
-	if *useExtension {
-		baseExtensionState.UsePromscale()
-	}
 	if err := os.Setenv("IS_TEST", "true"); err != nil {
 		// E2E tests calls prometheus.MustRegister() more than once in clockcache,
 		// hence, we set this environment variable to have a different behaviour
@@ -720,7 +716,7 @@ func startDB(t *testing.T, ctx context.Context) (*pgx.Conn, testcontainers.Conta
 		t.Fatal(err)
 	}
 
-	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, testhelpers.Timescale2AndPromscale)
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, testhelpers.Timescale2)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}
