@@ -37,7 +37,7 @@ services:
 
   otel-collector:
     platform: linux/amd64
-    image: "otel/opentelemetry-collector:0.41.0"
+    image: "otel/opentelemetry-collector:0.45.0"
     command: [ "--config=/etc/otel-collector-config.yml" ]
     volumes:
       - ./otel-collector-config.yml:/etc/otel-collector-config.yml
@@ -45,7 +45,7 @@ services:
       - "14268:14268" # jaeger http
 
   jaeger:
-    image: jaegertracing/jaeger-query:1.30.0
+    image: jaegertracing/jaeger-query:1.31.0
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
     command: [
