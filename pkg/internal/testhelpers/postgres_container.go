@@ -506,7 +506,7 @@ func startPGInstance(
 
 	req.BindMounts = make(map[string]string)
 	if testDataDir != "" {
-		req.BindMounts[testDataDir] = "/testdata"
+		req.BindMounts["/testdata"] = testDataDir
 	}
 	if dataDir != "" {
 		var bindDir string
@@ -518,7 +518,7 @@ func startPGInstance(
 		if err := os.Mkdir(bindDir, 0700); err != nil && !os.IsExist(err) {
 			return nil, nil, err
 		}
-		req.BindMounts[bindDir] = "/var/lib/postgresql/data"
+		req.BindMounts["/var/lib/postgresql/data"] = bindDir
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

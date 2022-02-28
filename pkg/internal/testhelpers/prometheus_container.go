@@ -40,8 +40,8 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 		ExposedPorts: []string{string(prometheusPort)},
 		WaitingFor:   wait.ForListeningPort(prometheusPort),
 		BindMounts: map[string]string{
-			storagePath:    "/prometheus",
-			promConfigFile: "/etc/prometheus/prometheus.yml",
+			"/prometheus":                    storagePath,
+			"/etc/prometheus/prometheus.yml": promConfigFile,
 		},
 		Cmd: []string{
 			// Default configuration.
