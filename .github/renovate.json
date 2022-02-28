@@ -6,24 +6,44 @@
   ],
   "ignoreDeps": ["github.com/prometheus/prometheus"],
   "dependencyDashboardLabels": ["dependencies"],
+  "labels": ["dependencies"],
+  "regexManagers": [
+    {
+      "fileMatch": ["^\\.github\\/workflows\\/[^/]+\\.ya?ml$"],
+      "matchStrings": ["golangci-lint-version:\\s(?<currentValue>.*?)\\n"],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "golangci/golangci-lint"
+    },
+    {
+      "fileMatch": ["^\\.github\\/workflows\\/[^/]+\\.ya?ml$"],
+      "matchStrings": ["helm-version:\\s(?<currentValue>.*?)\\n"],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "helm/helm"
+    },
+    {
+      "fileMatch": ["^\\.github\\/workflows\\/[^/]+\\.ya?ml$"],
+      "matchStrings": ["golang-version:\\s(?<currentValue>.*?)\\n"],
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "golang"
+    }
+  ],
   "packageRules": [
     {
-      "labels": ["helm", "dependencies"],
+      "addLabels": ["helm"],
       "groupName": "helm charts",
       "matchManagers": ["helmv3", "helm-values"]
     },
     {
-      "labels": ["go", "dependencies"],
+      "addLabels": ["go"],
       "groupName": "golang",
       "matchManagers": ["gomod"]
     },
     {
-      "labels": ["github_actions", "dependencies"],
+      "addLabels": ["github_actions"],
       "groupName": "github actions",
-      "matchManagers": ["github-actions"]
+      "matchPaths": [".github/**"]
     },
     {
-      "labels": ["dependencies"],
       "groupName": "docker-compose",
       "matchManagers": ["docker-compose"]
     }

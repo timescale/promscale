@@ -10,6 +10,10 @@ on:
   pull_request:
     branches: ['**']
 
+env:
+  golang-version: 1.16.0
+  golangci-lint-version: v1.42.1
+
 jobs:
   build:
     name: Build and Lint
@@ -17,9 +21,6 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
-
-    - name: Import environment variables
-      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.2.0
@@ -49,9 +50,6 @@ jobs:
 
     - name: Checkout test data files
       run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
-
-    - name: Import environment variables
-      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.2.0
@@ -108,9 +106,6 @@ jobs:
 
     - name: Checkout test data files
       run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
-
-    - name: Import environment variables
-      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.2.0

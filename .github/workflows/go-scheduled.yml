@@ -10,6 +10,9 @@ on:
   schedule:
     - cron: "6 0 * * *"
 
+env:
+  golang-version: 1.16.0
+
 jobs:
 
   build:
@@ -18,9 +21,6 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
-
-    - name: Import environment variables
-      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.2.0
@@ -49,10 +49,7 @@ jobs:
         lfs: true
 
     - name: Checkout LFS objects
-      run: git lfs checkout
-
-    - name: Import environment variables
-      run: cat ".github/env" >> $GITHUB_ENV      
+      run: git lfs checkout 
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.2.0
@@ -95,9 +92,6 @@ jobs:
 
     - name: Checkout LFS objects
       run: git lfs checkout
-
-    - name: Import environment variables
-      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.2.0

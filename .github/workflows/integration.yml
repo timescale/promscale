@@ -10,6 +10,9 @@ on:
   pull_request:
     branches: [master, main, force_test, release-*]
 
+env:
+  golang-version: 1.16.0
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -24,9 +27,6 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
-
-    - name: Import environment variables
-      run: cat ".github/env" >> $GITHUB_ENV
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v2.2.0

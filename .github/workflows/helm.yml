@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [master, main, force_test, release-*]
 
+env:
+  helm-version: v3.7.1
+
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -27,7 +30,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v2.0
         with:
-          version: v3.7.1
+          version: ${{ env.helm-version }}
 
       # Python is required because `ct lint` runs Yamale (https://github.com/23andMe/Yamale) and
       # yamllint (https://github.com/adrienverge/yamllint) which require Python
@@ -38,8 +41,6 @@ jobs:
 
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.2.0
-        with:
-          version: v3.4.0
 
       - name: Run chart-testing (list-changed)
         id: list-changed
@@ -71,7 +72,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v2.0
         with:
-          version: v3.7.1
+          version: ${{ env.helm-version }}
 
       - name: Create package
         env:
