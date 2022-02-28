@@ -10,6 +10,7 @@ go.mod @antekresic
 go.sum @antekresic
 
 # Go packages
+/pkg @niksajakovljevic
 /pkg/api @antekresic @Harkishen-Singh
 /pkg/ewma @Harkishen-Singh
 /pkg/ha @antekresic
