@@ -4,6 +4,7 @@
     "config:base",
     "schedule:daily"
   ],
+  "ignoreDeps": ["github.com/prometheus/prometheus"],
   "dependencyDashboardLabels": ["dependencies"],
   "packageRules": [
     {
