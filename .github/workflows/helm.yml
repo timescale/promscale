@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Test helm chart static generation
       run: ./scripts/generate-deploy-script.sh
 
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -35,7 +35,7 @@ jobs:
       # Python is required because `ct lint` runs Yamale (https://github.com/23andMe/Yamale) and
       # yamllint (https://github.com/adrienverge/yamllint) which require Python
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
         with:
           python-version: 3.7
 
@@ -65,7 +65,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
