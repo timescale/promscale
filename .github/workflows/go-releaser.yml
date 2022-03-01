@@ -20,13 +20,13 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
       -
         name: Set up Go
-        uses: actions/setup-go@v2.2.0
+        uses: actions/setup-go@v3.0.0
         with:
           go-version: ${{ env.golang-version }}
       -
