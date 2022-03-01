@@ -18,6 +18,7 @@ go.sum @antekresic
 /pkg/migrations/ @jgpruitt
 /pkg/migration-tool @Harkishen-Singh
 /pkg/pgmodel/ingestor @niksajakovljevic @antekresic @Harkishen-Singh
+/pkg/pgmodel/querier @JamesGuthrie
 /pkg/promql @Harkishen-Singh
 /pkg/runner @antekresic
 /pkg/telemetry @Harkishen-Singh
