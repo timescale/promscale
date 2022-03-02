@@ -122,7 +122,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
 	fs.StringVar(&cfg.ThanosStoreAPIListenAddr, "thanos.store-api.server-address", "", "Address to listen on for Thanos Store API endpoints.")
-	fs.StringVar(&cfg.OTLPGRPCListenAddr, "tracing.otlp.server-address", "", "Address to listen on for OTLP GRPC server.")
+	fs.StringVar(&cfg.OTLPGRPCListenAddr, "tracing.otlp.server-address", ":9202", "Address to listen on for OpenTelemetry OTLP GRPC server.")
 	fs.StringVar(&corsOriginFlag, "web.cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	fs.DurationVar(&cfg.ThroughputInterval, "telemetry.log.throughput-report-interval", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
 	fs.StringVar(&migrateOption, "migrate", "true", fmt.Sprintf("Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. %s", deprecatedFlagSuffix))
@@ -181,16 +181,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	if err := validate(cfg); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
-	}
-
-	_, tracingEnabled := (cfg.APICfg.EnabledFeatureMap)["tracing"]
-	OLTPGRPCListenerConfigured := len(cfg.OTLPGRPCListenAddr) > 0
-
-	if !tracingEnabled && OLTPGRPCListenerConfigured {
-		return nil, fmt.Errorf("feature 'tracing' must be enabled (with `-enable-feature tracing`) to configure 'tracing.otlp.server-address'")
-	}
-	if tracingEnabled && !OLTPGRPCListenerConfigured {
-		return nil, fmt.Errorf("'tracing.otlp.server-address' must be configured if 'tracing' enabled")
 	}
 
 	cfg.StopAfterMigrate = false

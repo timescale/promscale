@@ -130,7 +130,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.StringVar(&cfg.Auth.BearerToken, "web.auth.bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
 	fs.StringVar(&cfg.Auth.BearerTokenFile, "web.auth.bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
 
-	fs.Var(&cfg.PromscaleEnabledFeatureList, "enable-feature", "Enable beta/experimental features as a comma-separated list. Currently the following values can be passed: tracing, promql-at-modifier, promql-negative-offset")
+	fs.Var(&cfg.PromscaleEnabledFeatureList, "enable-feature", "Enable beta/experimental features as a comma-separated list. Currently the following values can be passed: promql-at-modifier, promql-negative-offset")
 
 	fs.DurationVar(&cfg.MaxQueryTimeout, "metrics.promql.query-timeout", 2*time.Minute, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
 		"'/api/v1/query.*' endpoints.")
@@ -149,8 +149,10 @@ func Validate(cfg *Config) error {
 	cfg.EnabledFeatureMap = make(map[string]struct{})
 	for _, f := range cfg.PromscaleEnabledFeatureList {
 		switch f {
-		case "tracing", "promql-at-modifier", "promql-negative-offset":
+		case "promql-at-modifier", "promql-negative-offset":
 			cfg.EnabledFeatureMap[f] = struct{}{}
+		case "tracing":
+			log.Error("msg", "tracing feature is now on by default, no need to use it with --enable-feature flag")
 		default:
 			return fmt.Errorf("invalid feature: %s", f)
 		}

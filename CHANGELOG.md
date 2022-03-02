@@ -18,6 +18,9 @@ We use the following categories for changes:
 - Alerting rules for Promscale. You can find them [here](docs/promscale_alerting.md) [#1181, #1185]
 - Add database status and request metrics [#1185]
 
+### Changed
+- Enable tracing by default [#1213]
+
 ### Fixed
 - Register `promscale_ingest_channel_len_bucket` metric and make it a gauge [#1177]
 - Log warning when failing to write response to remote read requests [#1180]

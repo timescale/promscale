@@ -46,9 +46,9 @@ The following subsections cover all CLI flags which promscale supports. You can 
 |------|:-----:|:-------:|:-----------|
 | cache.memory-target | unsigned-integer or percentage | 80% | Target for max amount of memory to use. Specified in bytes or as a percentage of system memory (e.g. 80%). |
 | config | string | config.yml | YAML configuration file path for Promscale. |
-| enable-feature | string | "" | Enable one or more experimental promscale features (as a comma-separated list). Current experimental features are `tracing`, `promql-at-modifier`, and `promql-negative-offset`. For more information, please consult the following resources: [tracing](tracing.md), [promql-at-modifier](https://prometheus.io/docs/prometheus/latest/feature_flags/#modifier-in-promql), [promql-negative-offset](https://prometheus.io/docs/prometheus/latest/feature_flags/#negative-offset-in-promql). |
+| enable-feature | string | "" | Enable one or more experimental promscale features (as a comma-separated list). Current experimental features are `promql-at-modifier`, and `promql-negative-offset`. For more information, please consult the following resources: [promql-at-modifier](https://prometheus.io/docs/prometheus/latest/feature_flags/#modifier-in-promql), [promql-negative-offset](https://prometheus.io/docs/prometheus/latest/feature_flags/#negative-offset-in-promql). |
 | thanos.store-api.server-address | string | "" (disabled) | Address to listen on for Thanos Store API endpoints. |
-| tracing.otlp.server-address string | string | "" (disabled) | Address to listen on for OTLP GRPC server. |
+| tracing.otlp.server-address string | string | ":9202" | Address to listen on for OpenTelemetry OTLP GRPC server. |
 
 ### Auth flags
 

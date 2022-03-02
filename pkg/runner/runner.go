@@ -158,55 +158,53 @@ func Run(cfg *Config) error {
 		}()
 	}
 
-	if len(cfg.OTLPGRPCListenAddr) > 0 {
-		options := []grpc.ServerOption{
-			grpc.ChainUnaryInterceptor(loggingUnaryInterceptor, grpc_prometheus.UnaryServerInterceptor),
-			grpc.ChainStreamInterceptor(loggingStreamInterceptor, grpc_prometheus.StreamServerInterceptor),
-		}
-		if cfg.TLSCertFile != "" {
-			creds, err := credentials.NewServerTLSFromFile(cfg.TLSCertFile, cfg.TLSKeyFile)
-			if err != nil {
-				log.Error("msg", "Setting up TLS credentials for OTLP GRPC server failed", "err", err)
-				return err
-			}
-			options = append(options, grpc.Creds(creds))
-		}
-		grpcServer := grpc.NewServer(options...)
-		otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
-		grpc_prometheus.Register(grpcServer)
-		grpc_prometheus.EnableHandlingTimeHistogram(
-			grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
-		)
-
-		jaegerQuery, err := query.New(client.QuerierConnection, client.TelemetryEngine)
-		if err != nil {
-			log.Error("msg", "Creating jaeger query failed", "err", err)
-			return err
-		}
-
-		queryPlugin := shared.StorageGRPCPlugin{
-			Impl: jaegerQuery,
-		}
-		if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
-			log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
-			return err
-		}
-
-		go func() {
-			log.Info("msg", fmt.Sprintf("Start listening for OTLP GRPC server on %s", cfg.OTLPGRPCListenAddr))
-			listener, err := net.Listen("tcp", cfg.OTLPGRPCListenAddr)
-			if err != nil {
-				log.Error("msg", "Listening for OTLP GRPC server failed", "err", err)
-				return
-			}
-
-			log.Info("msg", "Start OTLP GRPC server")
-			if err := grpcServer.Serve(listener); err != nil {
-				log.Error("msg", "Starting the OTLP GRPC server failed", "err", err)
-				return
-			}
-		}()
+	options := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(loggingUnaryInterceptor, grpc_prometheus.UnaryServerInterceptor),
+		grpc.ChainStreamInterceptor(loggingStreamInterceptor, grpc_prometheus.StreamServerInterceptor),
 	}
+	if cfg.TLSCertFile != "" {
+		creds, err := credentials.NewServerTLSFromFile(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			log.Error("msg", "Setting up TLS credentials for OpenTelemetry GRPC server failed", "err", err)
+			return err
+		}
+		options = append(options, grpc.Creds(creds))
+	}
+	grpcServer := grpc.NewServer(options...)
+	otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
+	grpc_prometheus.Register(grpcServer)
+	grpc_prometheus.EnableHandlingTimeHistogram(
+		grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
+	)
+
+	jaegerQuery, err := query.New(client.QuerierConnection, client.TelemetryEngine)
+	if err != nil {
+		log.Error("msg", "Creating jaeger query failed", "err", err)
+		return err
+	}
+
+	queryPlugin := shared.StorageGRPCPlugin{
+		Impl: jaegerQuery,
+	}
+	if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
+		log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
+		return err
+	}
+
+	go func() {
+		log.Info("msg", fmt.Sprintf("Start listening for OpenTelemetry OTLP GRPC server on %s", cfg.OTLPGRPCListenAddr))
+		listener, err := net.Listen("tcp", cfg.OTLPGRPCListenAddr)
+		if err != nil {
+			log.Error("msg", "Listening for OpenTelemetry OTLP GRPC server failed", "err", err)
+			return
+		}
+
+		log.Info("msg", "Start OpenTelemetry OTLP GRPC server")
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Error("msg", "Starting the OpenTelemetry OTLP GRPC server failed", "err", err)
+			return
+		}
+	}()
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
