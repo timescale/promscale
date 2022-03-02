@@ -69,7 +69,6 @@ func TestParseFlags(t *testing.T) {
 				c.APICfg.PromscaleEnabledFeatureList = []string{"promql-at-modifier", "tracing"}
 				c.APICfg.EnabledFeatureMap = map[string]struct{}{
 					"promql-at-modifier": {},
-					"tracing":            {},
 				}
 				return c
 			},
@@ -159,23 +158,8 @@ func TestParseFlags(t *testing.T) {
 			shouldError: true,
 		},
 		{
-			name:        "setting tracing parameter without tracing enabled should fail",
-			args:        []string{"-otlp-grpc-server-listen-address", "bar"},
-			shouldError: true,
-		},
-		{
 			name:        "enable feature should fail on unknown feature",
 			args:        []string{"-enable-feature", "unknown"},
-			shouldError: true,
-		},
-		{
-			name:        "enable tracing should fail without OTLP",
-			args:        []string{"-enable-feature", "tracing"},
-			shouldError: true,
-		},
-		{
-			name:        "OTLP should fail without enable tracing",
-			args:        []string{"-otlp-grpc-server-listen-address", "someaddress"},
 			shouldError: true,
 		},
 		{
@@ -184,7 +168,6 @@ func TestParseFlags(t *testing.T) {
 			result: func(c Config) Config {
 				c.OTLPGRPCListenAddr = "someaddress"
 				c.APICfg.EnabledFeatureMap = map[string]struct{}{
-					"tracing":                {},
 					"promql-at-modifier":     {},
 					"promql-negative-offset": {},
 				}
