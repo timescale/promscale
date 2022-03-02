@@ -11,8 +11,8 @@ on:
     branches: ['**']
 
 env:
-  golang-version: 1.16.0
-  golangci-lint-version: v1.42.1
+  golang-version: 1.17.7
+  golangci-lint-version: v1.44.2
 
 jobs:
   build:
