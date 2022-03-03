@@ -274,19 +274,19 @@ groups:
     annotations:
       summary: Promscale maintenance job failed
       description: "Promscale maintenance job failed to successfully execute."
-  - alert: PromscaleCompressionRatioLow
+  - alert: PromscaleCompressionLow
     expr: |
       (
-          (
-            promscale_sql_database_chunks_compressed_count
-          /
-            promscale_sql_database_chunks_count
-          ) < 0.3
-        and
-          promscale_sql_database_compression_status == 1
+        (
+          (promscale_sql_database_chunks_count - promscale_sql_database_chunks_compressed_count) # Number of uncompressed chunks.
+        /
+          promscale_sql_database_metric_count
+        ) > 4 # If total number of average uncompressed chunk per metric is more than 4 chunks at maximum, we should alert.
+      and
+        promscale_sql_database_compression_status == 1
       )
     labels:
       severity: warning
     annotations:
-      summary: Promscale compression ratio is low
-      description: "Promscale compression ratio is low, with only {{ $value | humanizePercentage }} of total chunks being compressed."
+      summary: High uncompressed data
+      description: "High uncompressed data in Promscale, on average, {{ $value }} uncompressed chunks per metric."

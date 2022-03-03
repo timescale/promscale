@@ -48,3 +48,7 @@ func ExtractMetricValue(counterOrGauge prometheus.Metric) (float64, error) {
 		return 0, fmt.Errorf("both Gauge and Counter are nil")
 	}
 }
+
+func ExtractMetricDesc(metric prometheus.Metric) (string, error) {
+	return metric.Desc().String(), nil
+}

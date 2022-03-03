@@ -117,7 +117,10 @@ func Run(cfg *Config) error {
 		dbMetricsCtx, stopDBMetrics := context.WithCancel(context.Background())
 		defer stopDBMetrics()
 		engine := dbMetrics.NewEngine(dbMetricsCtx, client.Connection)
-		engine.Run()
+		if err = engine.Run(); err != nil {
+			log.Error("msg", "error running database metrics", "err", err.Error())
+			return fmt.Errorf("error running database metrics: %w", err)
+		}
 	}
 
 	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
