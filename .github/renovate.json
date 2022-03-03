@@ -35,8 +35,9 @@
     },
     {
       "addLabels": ["go"],
-      "groupName": "golang",
-      "matchManagers": ["gomod"]
+      "groupName": "golang dependencies",
+      "matchManagers": ["gomod"],
+      "commitMessageExtra": ""
     },
     {
       "addLabels": ["github_actions"],
