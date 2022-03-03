@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -119,15 +120,15 @@ func Run(cfg *Config) error {
 		return fmt.Errorf("generate router: %w", err)
 	}
 
-	log.Info("msg", "Starting up...")
-	log.Info("msg", "Listening", "addr", cfg.ListenAddr)
-
 	err = api.RegisterMetricsForTelemetry(client.TelemetryEngine)
 	if err != nil {
 		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
 		return fmt.Errorf("error registering metrics for telemetry: %w", err)
 	}
 
+	log.Info("msg", "Started Prometheus HTTP server", "listening-port", cfg.ListenAddr)
+
+	var wg sync.WaitGroup
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
 		srv := thanos.NewStorage(client.Queryable())
 		options := make([]grpc.ServerOption, 0)
@@ -142,15 +143,17 @@ func Run(cfg *Config) error {
 		grpcServer := grpc.NewServer(options...)
 		storepb.RegisterStoreServer(grpcServer, srv)
 
+		wg.Add(1)
 		go func() {
-			log.Info("msg", fmt.Sprintf("Start listening for Thanos StoreAPI on %s", cfg.ThanosStoreAPIListenAddr))
 			listener, err := net.Listen("tcp", cfg.ThanosStoreAPIListenAddr)
 			if err != nil {
+				wg.Done()
 				log.Error("msg", "Listening for Thanos StoreAPI failed", "err", err)
 				return
 			}
 
-			log.Info("msg", "Start thanos-store")
+			log.Info("msg", "Started Thanos StoreAPI GRPC server", "listening-port", cfg.ThanosStoreAPIListenAddr)
+			wg.Done()
 			if err := grpcServer.Serve(listener); err != nil {
 				log.Error("msg", "Starting the Thanos store failed", "err", err)
 				return
@@ -191,23 +194,29 @@ func Run(cfg *Config) error {
 		return err
 	}
 
-	go func() {
-		log.Info("msg", fmt.Sprintf("Start listening for OpenTelemetry OTLP GRPC server on %s", cfg.OTLPGRPCListenAddr))
-		listener, err := net.Listen("tcp", cfg.OTLPGRPCListenAddr)
-		if err != nil {
-			log.Error("msg", "Listening for OpenTelemetry OTLP GRPC server failed", "err", err)
-			return
-		}
+		wg.Add(1)
+		go func() {
+			listener, err := net.Listen("tcp", cfg.OTLPGRPCListenAddr)
+			if err != nil {
+				wg.Done()
+				log.Error("msg", "Listening for OTLP GRPC server failed", "err", err)
+				return
+			}
 
-		log.Info("msg", "Start OpenTelemetry OTLP GRPC server")
-		if err := grpcServer.Serve(listener); err != nil {
-			log.Error("msg", "Starting the OpenTelemetry OTLP GRPC server failed", "err", err)
-			return
-		}
-	}()
+			log.Info("msg", "Started OpenTelemetry OTLP GRPC server", "listening-port", cfg.OTLPGRPCListenAddr)
+			wg.Done()
+			if err := grpcServer.Serve(listener); err != nil {
+				log.Error("msg", "Starting the OTLP GRPC server failed", "err", err)
+				return
+			}
+		}()
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
+
+	wg.Wait()
+	log.Info("msg", "All components are ready!")
 
 	if cfg.TLSCertFile != "" {
 		err = http.ListenAndServeTLS(cfg.ListenAddr, cfg.TLSCertFile, cfg.TLSKeyFile, mux)
