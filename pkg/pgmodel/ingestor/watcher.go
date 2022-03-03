@@ -98,7 +98,7 @@ func warnHighRatio(ratio float64, inRate, outRate float64) {
 }
 
 func warnSlowIngestion(duration time.Duration) {
-	log.Warn("msg", "[WARNING] Ingestion is a very long time", "duration",
+	log.Warn("msg", "[WARNING] Ingestion is taking a very long time", "duration",
 		duration.String(), "threshold", reportDurationThreshold.String())
 }
 
