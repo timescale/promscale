@@ -14,7 +14,7 @@ import (
 )
 
 type Engine interface {
-	Run()
+	Run() error
 	IsRunning() bool
 }
 
@@ -61,57 +61,85 @@ func getMetrics(m []metricQueryWrap) []prometheus.Collector {
 }
 
 const (
-	timeout       = time.Minute
-	evalInterval  = time.Minute * 3
-	retry         = time.Minute * 10
-	stopThreshold = 5
+	timeout        = time.Minute
+	evalInterval   = time.Minute * 3
+	maxRetryWait   = time.Minute * 30
+	pauseThreshold = 5
 )
 
-func (e *metricsEngineImpl) Run() {
+func (e *metricsEngineImpl) Run() error {
+	if e.isRunning.Load().(bool) {
+		return fmt.Errorf("cannot run the engine: database metrics is already running")
+	}
 	e.register()
+	e.isRunning.Store(true)
 	go func() {
 		timeoutCount := 0
-		e.isRunning.Store(true)
-		up.Set(1)
 		defer func() {
 			e.isRunning.Store(false)
-			up.Set(0)
+			upMetric.Set(0)
 		}()
+		wait := evalInterval
 		for {
-			batch := e.conn.NewBatch()
-			for i := range e.metrics {
-				batch.Queue(e.metrics[i].query)
-			}
-
-			batchCtx, cancelBatch := context.WithTimeout(e.ctx, timeout)
-			results, err := e.conn.SendBatch(batchCtx, batch)
-			if err != nil || batchCtx.Err() != nil {
+			if err := e.Update(); err != nil {
+				// Consider any error as timeout since we want to limit db executions if updating metrics is erroring out.
 				timeoutCount++
-				log.Warn("msg", "error evaluating the batch", "err batch", err.Error(), "err batch context", batchCtx.Err())
-			}
-			handleResults(results, e.metrics)
-			if err := results.Close(); err != nil {
-				log.Warn("msg", "error closing batch", "err", err.Error())
-			}
-
-			cancelBatch() // Release resources if any.
-			wait := evalInterval
-			if timeoutCount > stopThreshold {
-				// Stop the metrics engine temporarily if the batch times out beyond stopThreshold consecutively.
-				log.Warn("msg", fmt.Sprintf("Database metric evaluation taking more time than expected. Stopping evaluation temporarily for %f minutes", retry.Minutes()))
+			} else {
+				// This is to reset the state of engine that was earlier prepared for handling database timeout.
+				// The moment the db is happy with the timeout (when there is no longer a timeout), hence
+				// we resume the normal wait operation and reset the timeout so that previous timeouts do not affect
+				// the next iterations.
 				timeoutCount = 0
-				wait = retry
-				up.Set(0)
+				wait = evalInterval
+				upMetric.Set(1)
+			}
+			if timeoutCount > pauseThreshold {
+				log.Warn("msg", fmt.Sprintf("Database metric evaluation taking more time than expected. Pausing evaluation for %.0f minutes", wait.Minutes()))
+				timeoutCount = 0
+				wait = getBackoff(wait)
+				upMetric.Set(0)
 			}
 			select {
 			case <-e.ctx.Done():
 				e.unregister()
 				return
 			case <-time.After(wait):
-				up.Set(1)
 			}
 		}
 	}()
+	return nil
+}
+
+// Update blocks until all db metrics are updated. This can be useful in E2E test when we want to avoid concurrent behaviour.
+func (e *metricsEngineImpl) Update() error {
+	batch := e.conn.NewBatch()
+	for i := range e.metrics {
+		batch.Queue(e.metrics[i].query)
+	}
+
+	batchCtx, cancelBatch := context.WithTimeout(e.ctx, timeout)
+	defer cancelBatch()
+
+	results, err := e.conn.SendBatch(batchCtx, batch)
+	if err != nil {
+		log.Warn("msg", "error evaluating the database metrics batch", "err", err.Error())
+		return err
+	}
+	if batchCtx.Err() != nil {
+		log.Warn("msg", "context error while evaluating the database metrics batch", "err", batchCtx.Err().Error())
+		return err
+	}
+	handleResults(results, e.metrics)
+	return results.Close()
+}
+
+// getBackoff returns a conditional backoff duration that is an exponential increment.
+func getBackoff(previous time.Duration) time.Duration {
+	now := previous * 2
+	if now > maxRetryWait {
+		now = maxRetryWait
+	}
+	return now
 }
 
 func (e *metricsEngineImpl) IsRunning() bool {
@@ -121,8 +149,8 @@ func (e *metricsEngineImpl) IsRunning() bool {
 func handleResults(results pgx.BatchResults, m []metricQueryWrap) {
 	for i := range m {
 		metric := m[i]
-		value := int64(0)
-		err := results.QueryRow().Scan(&value)
+		val := new(int64)
+		err := results.QueryRow().Scan(&val)
 		if err != nil {
 			if metric.isHealthCheck {
 				dbHealthErrors.Inc()
@@ -130,6 +158,10 @@ func handleResults(results pgx.BatchResults, m []metricQueryWrap) {
 			}
 			log.Warn("msg", fmt.Sprintf("error evaluating database metric: %s", metric.metric), "err", err.Error())
 			return
+		}
+		var value int64
+		if val != nil {
+			value = *val
 		}
 		updateMetric(metric.metric, value)
 	}

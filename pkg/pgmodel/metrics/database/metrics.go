@@ -1,8 +1,10 @@
 package database
 
 import (
+	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/util"
+	"strings"
 )
 
 var (
@@ -14,16 +16,17 @@ var (
 			Help:      "Total number of database health check errors.",
 		},
 	)
-	up = prometheus.NewGauge(
+	upMetric = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name:      "up",
+			Name:        "up",
+			Help:        "Up represents if the database metrics engine is running or not.",
 			ConstLabels: map[string]string{"type": "promscale_sql"},
 		},
 	)
 )
 
 func init() {
-	prometheus.MustRegister(dbHealthErrors)
+	prometheus.MustRegister(dbHealthErrors, upMetric)
 }
 
 type metricQueryWrap struct {
@@ -144,20 +147,36 @@ inner join
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
-				Name:      "chunks_bytes",
-				Help:      "Total bytes of all chunks in 'prom_data' & '_ps_trace' schema.",
+				Name:      "metric_count",
+				Help:      "Total number of metrics in the database.",
 			},
 		),
-		query: `select sum(total_bytes)::bigint from _timescaledb_internal.hypertable_chunk_local_size where hypertable_schema = 'prom_data' or hypertable_schema = '_ps_trace'`,
-	}, {
-		metric: prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Namespace: util.PromNamespace,
-				Subsystem: "sql_database",
-				Name:      "chunks_compressed_bytes",
-				Help:      "Total bytes of all compressed chunks in 'prom_data' & '_ps_trace' schema.",
-			},
-		),
-		query: `select sum(compressed_total_size)::bigint from _timescaledb_internal.hypertable_chunk_local_size where hypertable_schema = 'prom_data' or hypertable_schema = '_ps_trace'`,
+		query: `select count(*)::bigint from _prom_catalog.metric`,
 	},
+}
+
+// GetMetric returns the first metric whose Name matches the supplied name.
+func GetMetric(name string) (prometheus.Metric, error) {
+	for _, m := range metrics {
+		metric := getMetric(m.metric)
+		str, err := util.ExtractMetricDesc(metric)
+		if err != nil {
+			return nil, fmt.Errorf("extract metric string")
+		}
+		if strings.Contains(str, name) {
+			return metric, nil
+		}
+	}
+	return nil, nil
+}
+
+func getMetric(c prometheus.Collector) prometheus.Metric {
+	switch n := c.(type) {
+	case prometheus.Gauge:
+		return n
+	case prometheus.Counter:
+		return n
+	default:
+		panic(fmt.Sprintf("invalid type: %T", n))
+	}
 }

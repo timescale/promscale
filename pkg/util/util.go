@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -71,6 +72,7 @@ func IsTimescaleDBInstalled(conn pgxconn.PgxConn) bool {
 	var installed bool
 	err := conn.QueryRow(context.Background(), `SELECT count(*) > 0 FROM pg_extension where extname = 'timescaledb'`).Scan(&installed)
 	if err != nil {
+		log.Error("msg", "error checking if TimescaleDB is installed", "err", err.Error())
 		return false
 	}
 	return installed
