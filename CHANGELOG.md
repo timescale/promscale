@@ -24,6 +24,7 @@ We use the following categories for changes:
 ### Fixed
 - Register `promscale_ingest_channel_len_bucket` metric and make it a gauge [#1177]
 - Log warning when failing to write response to remote read requests [#1180]
+- Fix Promscale running even when some component may fail to start [#1217]
 
 ## [0.10.0] - 2022-02-17
 
