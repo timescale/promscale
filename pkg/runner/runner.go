@@ -29,6 +29,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/timescale/promscale/pkg/api"
+	jaegerHTTPQuery "github.com/timescale/promscale/pkg/jaeger"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
 	dbMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics/database"
@@ -214,6 +215,25 @@ func Run(cfg *Config) error {
 		}, func(error) {
 			log.Info("msg", "Stopping OpenTelemetry OTLP GRPC server")
 			grpcServer.Stop()
+		},
+	)
+
+	var jaegerHTTPServer *jaegerHTTPQuery.Server
+	group.Add(
+		func() error {
+			var err error
+			jaegerHTTPServer, err = jaegerHTTPQuery.New(client.Connection, cfg.TraceQueryListenAddr, client.TelemetryEngine)
+			if err != nil {
+				log.Error("msg", "Error creating Jaeger query HTTP server", "err", err.Error())
+				return err
+			}
+			log.Info("msg", "Started Jaeger-query HTTP server", "listening-port", cfg.TraceQueryListenAddr)
+			return jaegerHTTPServer.Start()
+		}, func(err error) {
+			log.Info("msg", "Stopping Jaeger-query HTTP server")
+			if err := jaegerHTTPServer.Stop(context.Background()); err != nil {
+				log.Error("msg", "Error stopping Jaeger-query HTTP server", "err", err.Error())
+			}
 		},
 	)
 
