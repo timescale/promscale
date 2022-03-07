@@ -17,12 +17,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
 
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -288,7 +290,7 @@ func defaultAPIConfig() *api.Config {
 }
 
 // buildRouter builds a testing router from a connection pool.
-func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
+func buildRouter(pool *pgxpool.Pool) (*mux.Router, *pgclient.Client, error) {
 	apiConfig := defaultAPIConfig()
 	apiConfig.ReadOnly = true
 	return buildRouterWithAPIConfig(pool, apiConfig)
@@ -296,7 +298,7 @@ func buildRouter(pool *pgxpool.Pool) (http.Handler, *pgclient.Client, error) {
 
 // buildRouterWithAPIConfig builds a testing router from a connection pool and
 // an API config.
-func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler, *pgclient.Client, error) {
+func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router, *pgclient.Client, error) {
 	api.InitMetrics()
 	conf := &pgclient.Config{
 		CacheConfig:             cache.DefaultConfig,
@@ -307,12 +309,12 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (http.Handler
 	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
 
 	if err != nil {
-		return nil, pgClient, fmt.Errorf("Cannot run test, cannot instantiate pgClient")
+		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient")
 	}
 
-	hander, err := api.GenerateRouter(cfg, pgClient, nil)
+	router, err := api.GenerateRouter(cfg, pgClient, nil, telemetry.NewNoopEngine())
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
-	return hander, pgClient, nil
+	return router, pgClient, nil
 }

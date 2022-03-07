@@ -11,8 +11,8 @@ import (
 	"net/http"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/route"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -23,8 +23,7 @@ func LabelValues(conf *Config, queryable promql.Queryable) http.Handler {
 
 func labelValues(queryable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		name := route.Param(ctx, "name")
+		name := mux.Vars(r)["name"]
 		if !model.LabelNameRE.MatchString(name) {
 			respondError(w, http.StatusBadRequest, fmt.Errorf("invalid label name: %s", name), "bad_data")
 			return

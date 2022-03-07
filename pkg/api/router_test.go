@@ -182,9 +182,9 @@ func TestAuthHandler(t *testing.T) {
 		},
 	}
 
-	handler := func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusOK)
-	}
+	})
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {

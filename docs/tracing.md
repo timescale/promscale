@@ -236,10 +236,12 @@ The Jaeger UI will be accessible on port 16686.
 
 ### Setting up Grafana
 
-Grafana can query and visualize traces in Promscale through Jaeger. You’ll need Grafana version 7.4 or higher.
+Grafana can query and visualize traces from Promscale. You'll need Grafana version 7.4 or higher.
 
-Go into Grafana and configure a Jaeger data source by passing the url of the Jaeger instance and credentials if you have enabled authentication in Jaeger. You have to specify the port you use to access the Jaeger UI which by default is 16686.
+Login into Grafana and configure a Jaeger data source by passing the url of the Promscale HTTP server i.e., `http://localhost:9201`
+and add credentials if you have enabled authentication in Promscale.
 
 You can read more details on how to configure a Jaeger data source in the [Grafana documentation](https://grafana.com/docs/grafana/latest/datasources/jaeger/).
 
-To access your traces go to Explore and select the Jaeger data source you just created. More details can be found in the [Grafana documentation](https://grafana.com/docs/grafana/latest/datasources/jaeger/).
+To access your traces go to Explore and select the Jaeger data source you just created.
+More details can be found in the [Grafana documentation](https://grafana.com/docs/grafana/latest/datasources/jaeger/).

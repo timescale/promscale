@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"sort"
 	"testing"
@@ -63,13 +64,21 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		require.NoError(t, err)
 
 		// Start Promscale's HTTP endpoint for Jaeger query.
-		server, err := promscaleJaeger.New(pgxconn.NewPgxConn(db), ":9203", telemetry.NewNoopEngine())
+		router, _, err := buildRouter(db)
 		require.NoError(t, err)
+
+		err = promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db), telemetry.NewNoopEngine())
+		require.NoError(t, err)
+
 		go func() {
-			require.NoError(t, server.Start())
+			listener, err := net.Listen("tcp", ":9201")
+			require.NoError(t, err)
+			server := http.Server{Handler: router}
+			require.NoError(t, server.Serve(listener))
 		}()
 
-		promscaleClient := httpClient{"http://localhost:9203"}
+		// Create client for querying and comparing results.
+		promscaleClient := httpClient{"http://localhost:9201"}
 		jaegerResponse, err := loadJaegerQueryResponses()
 		require.NoError(t, err)
 
