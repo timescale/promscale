@@ -26,7 +26,6 @@ type Config struct {
 	ListenAddr                  string
 	ThanosStoreAPIListenAddr    string
 	OTLPGRPCListenAddr          string
-	TraceQueryListenAddr        string
 	PgmodelCfg                  pgclient.Config
 	LogCfg                      log.Config
 	TracerCfg                   tracer.Config
@@ -124,8 +123,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.ListenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
 	fs.StringVar(&cfg.ThanosStoreAPIListenAddr, "thanos.store-api.server-address", "", "Address to listen on for Thanos Store API endpoints.")
 	fs.StringVar(&cfg.OTLPGRPCListenAddr, "tracing.otlp.server-address", ":9202", "Address to listen on for OpenTelemetry OTLP GRPC server.")
-	fs.StringVar(&cfg.TraceQueryListenAddr, "tracing.query.server-address", ":9203", "Address to listen for HTTP server for serving tracing queries. "+
-		"This server responds in the lines of the Jaeger HTTP API.")
 	fs.StringVar(&corsOriginFlag, "web.cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	fs.DurationVar(&cfg.ThroughputInterval, "telemetry.log.throughput-report-interval", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
 	fs.StringVar(&migrateOption, "migrate", "true", fmt.Sprintf("Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. %s", deprecatedFlagSuffix))

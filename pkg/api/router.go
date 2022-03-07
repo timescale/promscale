@@ -12,14 +12,15 @@ import (
 	"time"
 
 	"github.com/felixge/fgprof"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/route"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/ha"
 	haClient "github.com/timescale/promscale/pkg/ha/client"
+	"github.com/timescale/promscale/pkg/jaeger"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
@@ -28,7 +29,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (http.Handler, error) {
+func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector, t telemetry.Engine) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -50,76 +51,79 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		writeHandler = withWarnLog("trying to send metrics to write API while connector is in read-only mode", http.NotFoundHandler())
 	}
 
-	authWrapper := func(name string, h http.HandlerFunc) http.HandlerFunc {
+	authWrapper := func(h http.Handler) http.Handler {
 		return authHandler(apiConf, h)
 	}
 
-	router := route.New().WithInstrumentation(authWrapper)
+	router := mux.NewRouter().UseEncodedPath()
+	router.Use(mux.MiddlewareFunc(authWrapper))
 
-	router.Post("/write", writeHandler)
+	router.Path("/write").Methods(http.MethodPost).HandlerFunc(writeHandler)
 
 	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics, updateQueryMetrics))
-	router.Get("/read", readHandler)
-	router.Post("/read", readHandler)
+	router.Path("/read").Methods(http.MethodGet, http.MethodPost).HandlerFunc(readHandler)
 
 	deleteHandler := timeHandler(metrics.HTTPRequestDuration, "delete_series", Delete(apiConf, client))
-	router.Put("/delete_series", deleteHandler)
-	router.Post("/delete_series", deleteHandler)
+	router.Path("/delete_series").Methods(http.MethodPut, http.MethodPost).HandlerFunc(deleteHandler)
 
 	queryable := client.Queryable()
 	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.LookBackDelta, apiConf.SubQueryStepInterval, apiConf.MaxSamples, apiConf.EnabledFeatureMap)
 	if err != nil {
 		return nil, fmt.Errorf("creating query-engine: %w", err)
 	}
+
+	apiV1 := router.PathPrefix("/api/v1").Subrouter()
 	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, updateQueryMetrics))
-	router.Get("/api/v1/query", queryHandler)
-	router.Post("/api/v1/query", queryHandler)
+	apiV1.Path("/query").Methods(http.MethodGet, http.MethodPost).HandlerFunc(queryHandler)
 
 	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, updateQueryMetrics))
-	router.Get("/api/v1/query_range", queryRangeHandler)
-	router.Post("/api/v1/query_range", queryRangeHandler)
+	apiV1.Path("/query_range").Methods(http.MethodGet, http.MethodPost).HandlerFunc(queryRangeHandler)
 
 	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, updateQueryMetrics))
-	router.Get("/api/v1/query_exemplars", exemplarQueryHandler)
-	router.Post("/api/v1/query_exemplars", exemplarQueryHandler)
+	apiV1.Path("/query_exemplars").Methods(http.MethodGet, http.MethodPost).HandlerFunc(exemplarQueryHandler)
 
 	seriesHandler := timeHandler(metrics.HTTPRequestDuration, "series", Series(apiConf, queryable))
-	router.Get("/api/v1/series", seriesHandler)
-	router.Post("/api/v1/series", seriesHandler)
+	apiV1.Path("/series").Methods(http.MethodGet, http.MethodPost).HandlerFunc(seriesHandler)
 
 	labelsHandler := timeHandler(metrics.HTTPRequestDuration, "labels", Labels(apiConf, queryable))
-	router.Get("/api/v1/labels", labelsHandler)
-	router.Post("/api/v1/labels", labelsHandler)
+	apiV1.Path("/labels").Methods(http.MethodGet, http.MethodPost).HandlerFunc(labelsHandler)
 
 	metadataHandler := timeHandler(metrics.HTTPRequestDuration, "metadata", MetricMetadata(apiConf, client))
-	router.Get("/api/v1/metadata", metadataHandler)
-	router.Post("/api/v1/metadata", metadataHandler)
+	apiV1.Path("/metadata").Methods(http.MethodGet, http.MethodPost).HandlerFunc(metadataHandler)
 
 	labelValuesHandler := timeHandler(metrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
-	router.Get("/api/v1/label/:name/values", labelValuesHandler)
+	apiV1.Path("/label/{name}/values").Methods(http.MethodGet).HandlerFunc(labelValuesHandler)
 
 	healthChecker := func() error { return client.HealthCheck() }
-	router.Get("/healthz", Health(healthChecker))
+	router.Path("/healthz").Methods(http.MethodGet).HandlerFunc(Health(healthChecker))
+	router.Path(apiConf.TelemetryPath).Methods(http.MethodGet).HandlerFunc(promhttp.Handler().ServeHTTP)
 
-	router.Get(apiConf.TelemetryPath, promhttp.Handler().ServeHTTP)
-	router.Get("/debug/pprof/", pprof.Index)
-	router.Get("/debug/pprof/cmdline", pprof.Cmdline)
-	router.Get("/debug/pprof/profile", pprof.Profile)
-	router.Get("/debug/pprof/symbol", pprof.Symbol)
-	router.Get("/debug/pprof/trace", pprof.Trace)
-	router.Get("/debug/pprof/heap", pprof.Handler("heap").ServeHTTP)
-	router.Get("/debug/pprof/goroutine", pprof.Handler("goroutine").ServeHTTP)
-	router.Get("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
-	router.Get("/debug/pprof/block", pprof.Handler("block").ServeHTTP)
-	router.Get("/debug/pprof/allocs", pprof.Handler("allocs").ServeHTTP)
-	router.Get("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
+	if err = jaeger.ExtendQueryAPIs(router, client.Connection, t); err != nil {
+		return nil, fmt.Errorf("error extending router with Jaeger-query APIs: %w", err)
+	}
 
-	router.Get("/debug/fgprof", fgprof.Handler().ServeHTTP)
+	debugProf := router.PathPrefix("/debug/pprof").Subrouter()
+	debugProf.Path("").Methods(http.MethodGet).HandlerFunc(pprof.Index)
+	debugProf.Path("/cmdline").Methods(http.MethodGet).HandlerFunc(pprof.Cmdline)
+	debugProf.Path("/profile").Methods(http.MethodGet).HandlerFunc(pprof.Profile)
+	debugProf.Path("/symbol").Methods(http.MethodGet).HandlerFunc(pprof.Symbol)
+	debugProf.Path("/trace").Methods(http.MethodGet).HandlerFunc(pprof.Trace)
+	debugProf.Path("/heap").Methods(http.MethodGet).HandlerFunc(pprof.Handler("heap").ServeHTTP)
+	debugProf.Path("/goroutine").Methods(http.MethodGet).HandlerFunc(pprof.Handler("goroutine").ServeHTTP)
+	debugProf.Path("/threadcreate").Methods(http.MethodGet).HandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
+	debugProf.Path("/block").Methods(http.MethodGet).HandlerFunc(pprof.Handler("block").ServeHTTP)
+	debugProf.Path("/allocs").Methods(http.MethodGet).HandlerFunc(pprof.Handler("allocs").ServeHTTP)
+	debugProf.Path("/mutex").Methods(http.MethodGet).HandlerFunc(pprof.Handler("mutex").ServeHTTP)
 
+	router.Path("/debug/fgprof").Methods(http.MethodGet).HandlerFunc(fgprof.Handler().ServeHTTP)
+
+	if err = registerMetricsForTelemetry(t); err != nil {
+		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
+	}
 	return router, nil
 }
 
-func RegisterMetricsForTelemetry(t telemetry.Engine) error {
+func registerMetricsForTelemetry(t telemetry.Engine) error {
 	var err error
 	if err = t.RegisterMetric(
 		"promscale_ingested_samples_total",
@@ -152,13 +156,13 @@ func RegisterMetricsForTelemetry(t telemetry.Engine) error {
 	return nil
 }
 
-func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
+func authHandler(cfg *Config, handler http.Handler) http.Handler {
 	if cfg.Auth == nil {
 		return handler
 	}
 
 	if cfg.Auth.BasicAuthUsername != "" {
-		return func(w http.ResponseWriter, r *http.Request) {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, pass, ok := r.BasicAuth()
 			if !ok || cfg.Auth.BasicAuthUsername != user || cfg.Auth.BasicAuthPassword != pass {
 				log.Error("msg", "Unauthorized access to endpoint, invalid username or password")
@@ -166,11 +170,11 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			handler.ServeHTTP(w, r)
-		}
+		})
 	}
 
 	if cfg.Auth.BearerToken != "" {
-		return func(w http.ResponseWriter, r *http.Request) {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
 			if len(splitToken) < 2 || cfg.Auth.BearerToken != splitToken[1] {
 				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token")
@@ -178,7 +182,7 @@ func authHandler(cfg *Config, handler http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			handler.ServeHTTP(w, r)
-		}
+		})
 	}
 
 	return handler

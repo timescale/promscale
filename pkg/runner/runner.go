@@ -29,7 +29,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/timescale/promscale/pkg/api"
-	jaegerHTTPQuery "github.com/timescale/promscale/pkg/jaeger"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
 	dbMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics/database"
@@ -127,16 +126,10 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
+	router, err := api.GenerateRouter(&cfg.APICfg, client, elector, client.TelemetryEngine)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
-	}
-
-	err = api.RegisterMetricsForTelemetry(client.TelemetryEngine)
-	if err != nil {
-		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
-		return fmt.Errorf("error registering metrics for telemetry: %w", err)
 	}
 
 	var group run.Group
@@ -215,25 +208,6 @@ func Run(cfg *Config) error {
 		}, func(error) {
 			log.Info("msg", "Stopping OpenTelemetry OTLP GRPC server")
 			grpcServer.Stop()
-		},
-	)
-
-	var jaegerHTTPServer *jaegerHTTPQuery.Server
-	group.Add(
-		func() error {
-			var err error
-			jaegerHTTPServer, err = jaegerHTTPQuery.New(client.Connection, cfg.TraceQueryListenAddr, client.TelemetryEngine)
-			if err != nil {
-				log.Error("msg", "Error creating Jaeger query HTTP server", "err", err.Error())
-				return err
-			}
-			log.Info("msg", "Started Jaeger-query HTTP server", "listening-port", cfg.TraceQueryListenAddr)
-			return jaegerHTTPServer.Start()
-		}, func(err error) {
-			log.Info("msg", "Stopping Jaeger-query HTTP server")
-			if err := jaegerHTTPServer.Stop(context.Background()); err != nil {
-				log.Error("msg", "Error stopping Jaeger-query HTTP server", "err", err.Error())
-			}
 		},
 	)
 
