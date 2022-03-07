@@ -80,13 +80,13 @@ wait_for() {
 echo "Waiting for database to be up..."
 wait_for "$DB_URL"
 
-PROMSCALE_LOG_LEVEL=debug \
+PROMSCALE_TELEMETRY_LOG_LEVEL=debug \
 PROMSCALE_DB_CONNECT_RETRIES=10 \
 PROMSCALE_DB_PASSWORD=postgres \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale -migrate=only
+./promscale -startup.only
 
 docker exec e2e-tsdb psql -U postgres -d postgres \
   -c "CREATE ROLE writer PASSWORD 'test' LOGIN" \
@@ -94,14 +94,14 @@ docker exec e2e-tsdb psql -U postgres -d postgres \
   -c "CREATE ROLE reader PASSWORD 'test' LOGIN" \
   -c "GRANT prom_reader TO reader"
 
-PROMSCALE_LOG_LEVEL=debug \
-PROMSCALE_DB_CONNECT_RETRIES=10 \
+
+PROMSCALE_TELEMETRY_LOG_LEVEL=debug \
 PROMSCALE_DB_PASSWORD=test \
 PROMSCALE_DB_USER=writer \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale -install-extensions=false -migrate=false -upgrade-extensions=false &
+./promscale -startup.install-extensions=false -startup.skip-migrate -startup.upgrade-extensions=false &
 
 CONN_PID=$!
 
@@ -137,14 +137,13 @@ curl -v \
 
 kill $CONN_PID
 
-PROMSCALE_LOG_LEVEL=debug \
-PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_TELEMETRY_LOG_LEVEL=debug \
 PROMSCALE_DB_PASSWORD=test \
 PROMSCALE_DB_USER=writer \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale -install-extensions=false -migrate=false -upgrade-extensions=false &
+./promscale -startup.install-extensions=false -startup.skip-migrate -startup.upgrade-extensions=false &
 
 CONN_PID=$!
 
@@ -161,14 +160,13 @@ curl -f \
 
 kill $CONN_PID
 
-PROMSCALE_LOG_LEVEL=debug \
-PROMSCALE_DB_CONNECT_RETRIES=10 \
+PROMSCALE_TELEMETRY_LOG_LEVEL=debug \
 PROMSCALE_DB_PASSWORD=test \
 PROMSCALE_DB_USER=reader \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale -install-extensions=false -migrate=false -upgrade-extensions=false -read-only &
+./promscale -startup.install-extensions=false -startup.skip-migrate -startup.upgrade-extensions=false -db.read-only &
 
 CONN_PID=$!
 

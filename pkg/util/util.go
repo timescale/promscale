@@ -40,9 +40,7 @@ func ParseEnv(p string, fs *flag.FlagSet) error {
 		}
 		// Create an env var name
 		// based on the supplied prefix.
-		envVar := fmt.Sprintf("%s_%s", p, strings.ToUpper(f.Name))
-		envVar = strings.Replace(envVar, "-", "_", -1)
-		envVar = strings.Replace(envVar, ".", "_", -1)
+		envVar := GetEnvVarName(p, f.Name)
 
 		// Update the Flag.Value if the
 		// env var is non "".
@@ -66,6 +64,14 @@ func ParseEnv(p string, fs *flag.FlagSet) error {
 	})
 
 	return err
+}
+
+// GetEnvVarName returns the name of the environment variable used
+// for setting the configuration flag based on a prefix and flag name.
+func GetEnvVarName(prefix, fName string) (envVar string) {
+	envVar = fmt.Sprintf("%s_%s", prefix, strings.ToUpper(fName))
+	envVar = strings.ReplaceAll(envVar, "-", "_")
+	return strings.ReplaceAll(envVar, ".", "_")
 }
 
 func IsTimescaleDBInstalled(conn pgxconn.PgxConn) bool {

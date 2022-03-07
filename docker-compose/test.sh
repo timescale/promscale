@@ -10,7 +10,7 @@ echo "running tests"
 #build latest image
 docker build -t timescale/promscale:latest ../ --file ../build/Dockerfile
 
-docker-compose -p test_docker-compose up -d
+docker compose -p test_docker-compose up -d
 
 cleanup() {
     if (( $? != 0 )); then
@@ -41,7 +41,7 @@ done
 ## sleep for 30s so we can find ingestion logs in promscale
 sleep 30
 
-writeLog=$(docker logs test_docker-compose_promscale_1  2>&1| grep samples/sec | tail -n 1 || true)
+writeLog=$(docker logs test_docker-compose-promscale-1  2>&1| grep samples/sec | tail -n 1 || true)
    if [ -n "$writeLog" ]; then
     echo "promscale is ingesting data"
 else

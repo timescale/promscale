@@ -23,15 +23,13 @@ func main() {
 	cfg := &runner.Config{}
 	cfg, err := runner.ParseFlags(cfg, args)
 	if err != nil {
-		fmt.Println(version.Info())
-		fmt.Println("Fatal error: cannot parse flags: ", err)
-		os.Exit(1)
+		log.Info("msg", version.Info())
+		log.Fatal("msg", "cannot parse flags", "err", err)
 	}
 	err = log.Init(cfg.LogCfg)
 	if err != nil {
 		fmt.Println(version.Info())
-		fmt.Println("Fatal error: cannot start logger: ", err)
-		os.Exit(1)
+		log.Fatal("msg", "cannot start logger", "err", err)
 	}
 	err = runner.Run(cfg)
 	if err != nil {

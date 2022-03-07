@@ -31,6 +31,9 @@ We use the following categories for changes:
 - Log warning when failing to write response to remote read requests [#1180]
 - Fix Promscale running even when some component may fail to start [#1217]
 
+### Removed
+- Remove deprecated flags. More info can be found [here](docs/configuration.md#old-flag-removal-in-version-0.11.0) [#1229]
+
 ## [0.10.0] - 2022-02-17
 
 ### Added

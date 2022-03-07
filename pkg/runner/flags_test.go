@@ -45,12 +45,12 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:        "CORS Origin regex error",
-			args:        []string{"-web-cors-origin", "["},
+			args:        []string{"-web.cors-origin", "["},
 			shouldError: true,
 		},
 		{
 			name: "Don't migrate",
-			args: []string{"-migrate", "false"},
+			args: []string{"-startup.skip-migrate"},
 			result: func(c Config) Config {
 				c.Migrate = false
 				return c
@@ -74,13 +74,9 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
-			name: "Only migrate",
-			args: []string{"-migrate", "only"},
-			result: func(c Config) Config {
-				c.Migrate = true
-				c.StopAfterMigrate = true
-				return c
-			},
+			name:        "Old migrate flag",
+			args:        []string{"-migrate", "only"},
+			shouldError: true,
 		},
 		{
 			name:        "Invalid migrate option",
@@ -89,7 +85,7 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name: "Read-only mode",
-			args: []string{"-read-only"},
+			args: []string{"-db.read-only"},
 			result: func(c Config) Config {
 				c.APICfg.ReadOnly = true
 				c.Migrate = false
@@ -99,11 +95,6 @@ func TestParseFlags(t *testing.T) {
 				c.UpgradeExtensions = false
 				return c
 			},
-		},
-		{
-			name:        "Invalid migrate option",
-			args:        []string{"-migrate", "invalid"},
-			shouldError: true,
 		},
 		{
 			name: "Running HA and read-only error",
@@ -132,21 +123,21 @@ func TestParseFlags(t *testing.T) {
 		{
 			name: "invalid TLS setup, missing key file",
 			args: []string{
-				"-tls-cert-file", "foo",
+				"-auth.tls-cert-file", "foo",
 			},
 			shouldError: true,
 		},
 		{
 			name: "invalid TLS setup, missing cert file",
 			args: []string{
-				"-tls-key-file", "foo",
+				"-auth.tls-key-file", "foo",
 			},
 			shouldError: true,
 		},
 		{
 			name: "invalid auth setup",
 			args: []string{
-				"-auth-username", "foo",
+				"-web.auth.username", "foo",
 			},
 			shouldError: true,
 		},
@@ -164,7 +155,7 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name: "enable feature should populate map of enabled features",
-			args: []string{"-enable-feature", "tracing,promql-at-modifier,promql-negative-offset", "-otlp-grpc-server-listen-address", "someaddress"},
+			args: []string{"-enable-feature", "tracing,promql-at-modifier,promql-negative-offset", "-tracing.otlp.server-address", "someaddress"},
 			result: func(c Config) Config {
 				c.OTLPGRPCListenAddr = "someaddress"
 				c.APICfg.EnabledFeatureMap = map[string]struct{}{
@@ -176,12 +167,9 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
-			name: "test deprecated CLI flag",
-			args: []string{"-db-writer-connection-concurrency", "10"},
-			result: func(c Config) Config {
-				c.PgmodelCfg.WriteConnectionsPerProc = 10
-				return c
-			},
+			name:        "test deprecated CLI flag",
+			args:        []string{"-db-writer-connection-concurrency", "10"},
+			shouldError: true,
 		},
 	}
 
@@ -211,7 +199,6 @@ func TestParseFlags(t *testing.T) {
 		})
 	}
 }
-
 func TestParseFlagsConfigPrecedence(t *testing.T) {
 	// Clearing environment variables so they don't interfere with the test.
 	os.Clearenv()
@@ -234,7 +221,7 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 		},
 		{
 			name:               "Config file only",
-			configFileContents: "web-listen-address: localhost:9201",
+			configFileContents: "web.listen-address: localhost:9201",
 			result: func(c Config) Config {
 				c.ListenAddr = "localhost:9201"
 				return c
@@ -255,7 +242,7 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 			env: map[string]string{
 				"PROMSCALE_WEB_LISTEN_ADDRESS": "localhost:9201",
 			},
-			configFileContents: "web-listen-address: 127.0.0.1:9201",
+			configFileContents: "web.listen-address: 127.0.0.1:9201",
 			result: func(c Config) Config {
 				c.ListenAddr = "localhost:9201"
 				return c
@@ -264,7 +251,7 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 		{
 			name: "CLI arg takes precedence over env variable",
 			args: []string{
-				"-web-listen-address", "localhost:9201",
+				"-web.listen-address", "localhost:9201",
 			},
 			env: map[string]string{
 				"PROMSCALE_WEB_LISTEN_ADDRESS": "127.0.0.1:9201",
@@ -328,42 +315,117 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 	}
 }
 
+func TestRemovedFlagUsage(t *testing.T) {
+	// Clearing environment variables so they don't interfere with the test.
+	os.Clearenv()
+
+	testCases := []struct {
+		name               string
+		args               []string
+		env                map[string]string
+		configFileContents string
+		err                error
+	}{
+		{
+			name: "No error",
+			args: []string{"-web.listen-address", "127.0.0.1:9201"},
+			env: map[string]string{
+				"PROMSCALE_AUTH_TLS_CERT_FILE": "filepath",
+				"PROMSCALE_AUTH_TLS_KEY_FILE":  "filepath",
+			},
+			configFileContents: "web.listen-address: 127.0.0.1:9201",
+		},
+		{
+			name: "Old env variable",
+			env: map[string]string{
+				"PROMSCALE_TLS_CERT_FILE":     "filepath",
+				"PROMSCALE_AUTH_TLS_KEY_FILE": "filepath",
+			},
+			err: removedEnvVarError,
+		},
+		{
+			name: "Old migrate env variable",
+			env: map[string]string{
+				"PROMSCALE_MIGRATE": "invalid",
+			},
+			err: removedEnvVarError,
+		},
+		{
+			name:               "Old flag in config file",
+			configFileContents: "web-listen-address: 127.0.0.1:9201",
+			err:                removedConfigVarError,
+		},
+		{
+			name:               "Old flag in config file 2",
+			configFileContents: "db-connections-max: 1",
+			err:                removedConfigVarError,
+		},
+		{
+			name:               "Old migrate flag in config file",
+			configFileContents: "migrate: only",
+			err:                removedConfigVarError,
+		},
+		{
+			name: "Old flag in args",
+			args: []string{"-web-listen-address", "127.0.0.1:9201"},
+			err:  removedFlagsError,
+		},
+		{
+			name: "Old migrate flag in args",
+			args: []string{"-migrate", "false"},
+			err:  removedFlagsError,
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			// Clearing environment variables so they don't interfere with the test.
+			os.Clearenv()
+			for name, value := range c.env {
+				if err := os.Setenv(name, value); err != nil {
+					t.Fatalf("unexpected error when setting env variable: name %s, value %s, error %s", name, value, err)
+				}
+			}
+
+			if c.configFileContents != "" {
+				f, err := ioutil.TempFile("", "promscale.yml")
+				if err != nil {
+					t.Fatalf("unexpected error when creating config file: %s", err)
+				}
+
+				defer os.Remove(f.Name())
+
+				if _, err := f.Write([]byte(c.configFileContents)); err != nil {
+					t.Fatalf("unexpected error while writing configuration file: %s", err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatalf("unexpected error while closing configuration file: %s", err)
+				}
+
+				// Add config file path to args.
+				c.args = append(c.args, "-config="+f.Name())
+			}
+
+			_, err := ParseFlags(&Config{}, c.args)
+			require.ErrorIs(t, err, c.err)
+		})
+	}
+}
+
 func TestAddAlias(t *testing.T) {
-	aliases := map[string][]string{
-		"first_flag":  {"first_flag_alias", "first_flag_another_alias"},
-		"second_flag": {"second_flag_alias"},
+	aliases := map[string]string{
+		"first_flag":  "first_flag_alias",
+		"second_flag": "second_flag_alias",
 	}
 
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.Bool("first_flag", true, "First flag desc")
-	fs.String("second_flag", "empty", "Second flag desc")
+	addAliases(fs, aliases)
 
-	descSuffix := "Test description."
-
-	addAliases(fs, aliases, descSuffix)
-
-	ff := fs.Lookup("first_flag")
-	sf := fs.Lookup("second_flag")
+	ff := fs.Lookup("first_flag_alias")
+	sf := fs.Lookup("second_flag_alias")
 
 	require.NotNil(t, ff)
+	require.Equal(t, ff.Usage, fmt.Sprintf(aliasDescFormat, "first_flag"))
 	require.NotNil(t, sf)
-
-	alias := fs.Lookup("first_flag_alias")
-	require.NotNil(t, alias)
-	require.Equal(t, ff.Value, alias.Value)
-	require.Equal(t, ff.DefValue, alias.DefValue)
-	require.Equal(t, alias.Usage, fmt.Sprintf(aliasDescTemplate+descSuffix, ff.Name))
-
-	alias = fs.Lookup("first_flag_another_alias")
-	require.NotNil(t, alias)
-	require.Equal(t, ff.Value, alias.Value)
-	require.Equal(t, ff.DefValue, alias.DefValue)
-	require.Equal(t, alias.Usage, fmt.Sprintf(aliasDescTemplate+descSuffix, ff.Name))
-
-	alias = fs.Lookup("second_flag_alias")
-	require.NotNil(t, alias)
-	require.Equal(t, sf.Value, alias.Value)
-	require.Equal(t, sf.DefValue, alias.DefValue)
-	require.Equal(t, alias.Usage, fmt.Sprintf(aliasDescTemplate+descSuffix, sf.Name))
-
+	require.Equal(t, sf.Usage, fmt.Sprintf(aliasDescFormat, "second_flag"))
 }
