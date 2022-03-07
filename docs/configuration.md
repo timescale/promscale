@@ -134,3 +134,65 @@ The following subsections cover all CLI flags which promscale supports. You can 
 | web.enable-admin-api | boolean | false | Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series. |
 | web.listen-address | string | `:9201` | Address to listen on for web endpoints. |
 | web.telemetry-path | string | `/metrics` | Web endpoint for exposing Promscale's Prometheus metrics. |
+
+
+## Old flag removal in version 0.11.0
+
+With version 0.11.0, we are removing old versions of flag names and enviromental variables. If you run Promscale with those old names, you should get a warning with a suggestion to update the name to the corresponding flag name or environmental variable.
+
+This is the list of CLI flags that are removed in favor of the new flag names:
+
+-app
+-async-acks
+-auth-password
+-auth-password-file
+-auth-username
+-bearer-token
+-bearer-token-file
+-db-connection-timeout
+-db-connections-max
+-db-host
+-db-name
+-db-password
+-db-port
+-db-ssl-mode
+-db-statements-cache
+-db-uri
+-db-user
+-db-writer-connection-concurrency
+-exemplar-cache-size
+-high-availability
+-ignore-samples-written-to-compressed-chunks
+-install-extensions
+-labels-cache-size
+-log-format
+-log-level
+-memory-target
+-metrics-cache-size
+-migrate
+-multi-tenancy
+-multi-tenancy-allow-non-tenants
+-multi-tenancy-valid-tenants
+-otlp-grpc-server-listen-address
+-promql-default-subquery-step-interval
+-promql-lookback-delta
+-promql-max-points-per-ts
+-promql-max-samples
+-promql-query-timeout
+-read-only
+-series-cache-initial-size
+-series-cache-max-bytes
+-thanos-store-api-listen-address
+-tls-cert-file
+-tls-key-file
+-tput-report
+-upgrade-extensions
+-upgrade-prerelease-extensions
+-use-schema-version-lease
+-web-cors-origin
+-web-enable-admin-api
+-web-listen-address
+-web-telemetry-path
+
+
+One special case here is the `migrate` flag which has no direct translation to the new name. Instead, we suggest using `-startup.skip-migrate` or `-startup.only` flags depending on the value used with the old flag.

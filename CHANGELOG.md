@@ -33,6 +33,9 @@ We use the following categories for changes:
 - Fix Promscale running even when some component may fail to start [#1217]
 - Fix `promscale_ingest_max_sent_timestamp_milliseconds` metric for tracing [#1270]
 
+### Removed
+- Remove deprecated flags. More info can be found [here](docs/configuration.md#old-flag-removal-in-version-0.11.0) [#1229]
+
 ## [0.10.0] - 2022-02-17
 
 ### Added

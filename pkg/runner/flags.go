@@ -46,60 +46,66 @@ type Config struct {
 	StartupOnly                 bool
 }
 
+const (
+	envVarPrefix    = "PROMSCALE"
+	aliasDescFormat = "alias: %s"
+)
+
 var (
-	aliasDescTemplate    = "Alias for -%s flag. "
-	deprecatedFlagSuffix = "(DEPRECATED) Will be removed in version 0.11.0"
-	flagAliases          = map[string][]string{
-		"auth.tls-cert-file":                {"tls-cert-file"},
-		"auth.tls-key-file":                 {"tls-key-file"},
-		"cache.memory-target":               {"memory-target"},
-		"db.app":                            {"app"},
-		"db.connection-timeout":             {"db-connection-timeout"},
-		"db.connections-max":                {"db-connections-max"},
-		"db.host":                           {"db-host"},
-		"db.name":                           {"db-name"},
-		"db.num-writer-connections":         {"db-writer-connection-concurrency"},
-		"db.password":                       {"db-password"},
-		"db.port":                           {"db-port"},
-		"db.read-only":                      {"read-only"},
-		"db.ssl-mode":                       {"db-ssl-mode"},
-		"db.statements-cache":               {"db-statements-cache"},
-		"db.uri":                            {"db-uri"},
-		"db.user":                           {"db-user"},
-		"metrics.async-acks":                {"async-acks"},
-		"metrics.cache.exemplar.size":       {"exemplar-cache-size"},
-		"metrics.cache.labels.size":         {"labels-cache-size"},
-		"metrics.cache.metrics.size":        {"metrics-cache-size"},
-		"metrics.cache.series.initial-size": {"series-cache-initial-size"},
-		"metrics.cache.series.max-bytes":    {"series-cache-max-bytes"},
-		"metrics.high-availability":         {"high-availability"},
-		"metrics.ignore-samples-written-to-compressed-chunks": {"ignore-samples-written-to-compressed-chunks"},
-		"metrics.multi-tenancy":                               {"multi-tenancy"},
-		"metrics.multi-tenancy.allow-non-tenants":             {"multi-tenancy-allow-non-tenants"},
-		"metrics.multi-tenancy.valid-tenants":                 {"multi-tenancy-valid-tenants"},
-		"metrics.promql.default-subquery-step-interval":       {"promql-default-subquery-step-interval"},
-		"metrics.promql.lookback-delta":                       {"promql-lookback-delta"},
-		"metrics.promql.max-points-per-ts":                    {"promql-max-points-per-ts"},
-		"metrics.promql.max-samples":                          {"promql-max-samples"},
-		"metrics.promql.query-timeout":                        {"promql-query-timeout"},
-		"startup.install-extensions":                          {"install-extensions"},
-		"startup.upgrade-extensions":                          {"upgrade-extensions"},
-		"startup.upgrade-prerelease-extensions":               {"upgrade-prerelease-extensions"},
-		"startup.use-schema-version-lease":                    {"use-schema-version-lease"},
-		"telemetry.log.format":                                {"log-format"},
-		"telemetry.log.level":                                 {"log-level"},
-		"telemetry.log.throughput-report-interval":            {"tput-report"},
-		"thanos.store-api.server-address":                     {"thanos-store-api-listen-address"},
-		"tracing.otlp.server-address":                         {"otlp-grpc-server-listen-address"},
-		"web.auth.bearer-token":                               {"bearer-token"},
-		"web.auth.bearer-token-file":                          {"bearer-token-file"},
-		"web.auth.password":                                   {"auth-password"},
-		"web.auth.password-file":                              {"auth-password-file"},
-		"web.auth.username":                                   {"auth-username"},
-		"web.cors-origin":                                     {"web-cors-origin"},
-		"web.enable-admin-api":                                {"web-enable-admin-api"},
-		"web.listen-address":                                  {"web-listen-address"},
-		"web.telemetry-path":                                  {"web-telemetry-path"},
+	removedEnvVarError    = fmt.Errorf("using removed environmental variables, please update your configuration to new variable names to proceed")
+	removedFlagsError     = fmt.Errorf("using removed flags, please update to new flag names to proceed")
+	removedConfigVarError = fmt.Errorf("using removed configuration file variables, please update to new variable names to proceed")
+	flagAliases           = map[string]string{
+		"auth.tls-cert-file":                "tls-cert-file",
+		"auth.tls-key-file":                 "tls-key-file",
+		"cache.memory-target":               "memory-target",
+		"db.app":                            "app",
+		"db.connection-timeout":             "db-connection-timeout",
+		"db.connections-max":                "db-connections-max",
+		"db.host":                           "db-host",
+		"db.name":                           "db-name",
+		"db.num-writer-connections":         "db-writer-connection-concurrency",
+		"db.password":                       "db-password",
+		"db.port":                           "db-port",
+		"db.read-only":                      "read-only",
+		"db.ssl-mode":                       "db-ssl-mode",
+		"db.statements-cache":               "db-statements-cache",
+		"db.uri":                            "db-uri",
+		"db.user":                           "db-user",
+		"metrics.async-acks":                "async-acks",
+		"metrics.cache.exemplar.size":       "exemplar-cache-size",
+		"metrics.cache.labels.size":         "labels-cache-size",
+		"metrics.cache.metrics.size":        "metrics-cache-size",
+		"metrics.cache.series.initial-size": "series-cache-initial-size",
+		"metrics.cache.series.max-bytes":    "series-cache-max-bytes",
+		"metrics.high-availability":         "high-availability",
+		"metrics.ignore-samples-written-to-compressed-chunks": "ignore-samples-written-to-compressed-chunks",
+		"metrics.multi-tenancy":                               "multi-tenancy",
+		"metrics.multi-tenancy.allow-non-tenants":             "multi-tenancy-allow-non-tenants",
+		"metrics.multi-tenancy.valid-tenants":                 "multi-tenancy-valid-tenants",
+		"metrics.promql.default-subquery-step-interval":       "promql-default-subquery-step-interval",
+		"metrics.promql.lookback-delta":                       "promql-lookback-delta",
+		"metrics.promql.max-points-per-ts":                    "promql-max-points-per-ts",
+		"metrics.promql.max-samples":                          "promql-max-samples",
+		"metrics.promql.query-timeout":                        "promql-query-timeout",
+		"startup.install-extensions":                          "install-extensions",
+		"startup.upgrade-extensions":                          "upgrade-extensions",
+		"startup.upgrade-prerelease-extensions":               "upgrade-prerelease-extensions",
+		"startup.use-schema-version-lease":                    "use-schema-version-lease",
+		"telemetry.log.format":                                "log-format",
+		"telemetry.log.level":                                 "log-level",
+		"telemetry.log.throughput-report-interval":            "tput-report",
+		"thanos.store-api.server-address":                     "thanos-store-api-listen-address",
+		"tracing.otlp.server-address":                         "otlp-grpc-server-listen-address",
+		"web.auth.bearer-token":                               "bearer-token",
+		"web.auth.bearer-token-file":                          "bearer-token-file",
+		"web.auth.password":                                   "auth-password",
+		"web.auth.password-file":                              "auth-password-file",
+		"web.auth.username":                                   "auth-username",
+		"web.cors-origin":                                     "web-cors-origin",
+		"web.enable-admin-api":                                "web-enable-admin-api",
+		"web.listen-address":                                  "web-listen-address",
+		"web.telemetry-path":                                  "web-telemetry-path",
 	}
 )
 
@@ -108,7 +114,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		fs = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 
 		corsOriginFlag string
-		migrateOption  string
 		skipMigrate    bool
 	)
 
@@ -125,7 +130,6 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.OTLPGRPCListenAddr, "tracing.otlp.server-address", ":9202", "Address to listen on for OpenTelemetry OTLP GRPC server.")
 	fs.StringVar(&corsOriginFlag, "web.cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	fs.DurationVar(&cfg.ThroughputInterval, "telemetry.log.throughput-report-interval", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
-	fs.StringVar(&migrateOption, "migrate", "true", fmt.Sprintf("Update the Prometheus SQL schema to the latest version. Valid options are: [true, false, only]. %s", deprecatedFlagSuffix))
 	fs.StringVar(&cfg.DatasetConfig, "startup.dataset.config", "", "Dataset configuration in YAML format for Promscale. It is used for setting various dataset configuration like default metric chunk interval")
 	fs.BoolVar(&cfg.StartupOnly, "startup.only", false, "Only run startup configuration with Promscale (i.e. migrate) and exit. Can be used to run promscale as an init container for HA setups.")
 	fs.BoolVar(&skipMigrate, "startup.skip-migrate", false, "Skip migrating Promscale SQL schema to latest version on startup.")
@@ -137,9 +141,11 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.TLSCertFile, "auth.tls-cert-file", "", "TLS Certificate file used for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")
 	fs.StringVar(&cfg.TLSKeyFile, "auth.tls-key-file", "", "TLS Key file for server authentication, leave blank to disable TLS. NOTE: this option is used for all servers that Promscale runs (web and GRPC).")
 
-	addAliases(fs, flagAliases, deprecatedFlagSuffix)
+	if err := checkForRemovedEnvVarUsage(); err != nil {
+		return nil, err
+	}
 
-	if err := util.ParseEnv("PROMSCALE", fs); err != nil {
+	if err := util.ParseEnv(envVarPrefix, fs); err != nil {
 		return nil, fmt.Errorf("error parsing env variables: %w", err)
 	}
 
@@ -148,24 +154,13 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		ff.WithConfigFileParser(ffyaml.Parser),
 		ff.WithAllowMissingConfigFile(true),
 	); err != nil {
-		return nil, fmt.Errorf("configuration error: %w", err)
-	}
-
-	// Warn about deprecated flags.
-	if flagsForUpdate := deprecatedFlagsUsed(fs); len(flagsForUpdate) > 0 {
-		log.Warn("msg", "Using deprecated flags that will be dropped in a future version. Please update to new flag names.")
-		for oldFlag, newFlag := range flagsForUpdate {
-			log.Warn("msg", fmt.Sprintf("Update deprecated flag %s to new flag %s", oldFlag, newFlag))
+		// We might be dealing with old flags whose usage needs to be logged.
+		// TODO: remove handling of old flags in a future version
+		if oldFlagErr := checkForRemovedConfigFlags(fs, args); oldFlagErr != nil {
+			return nil, oldFlagErr
 		}
-	}
-	// Migrate flag is a special case that needs to be logged separately.
-	switch migrateOption {
-	case "false":
-		log.Warn("msg", "Using deprecated flag `migrate` set to `false` which will be dropped in a future version. "+
-			"Please update you configuration by using `startup.skip-migrate` flag.")
-	case "only":
-		log.Warn("msg", "Using deprecated flag `migrate` set to `only` which will be dropped in a future version. "+
-			"Please update you configuration by using `startup.only` flag.")
+
+		return nil, fmt.Errorf("configuration error when parsing flags: %w", err)
 	}
 
 	// Checking if TLS files are not both set or both empty.
@@ -184,19 +179,14 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	}
 
 	cfg.StopAfterMigrate = false
-	if strings.EqualFold(migrateOption, "true") {
-		cfg.Migrate = true
-	} else if strings.EqualFold(migrateOption, "false") {
-		cfg.Migrate = false
-	} else if strings.EqualFold(migrateOption, "only") {
-		cfg.Migrate = true
-		cfg.StopAfterMigrate = true
-	} else {
-		return nil, fmt.Errorf("Invalid option for migrate: %v. Valid options are [true, false, only]", migrateOption)
-	}
+	cfg.Migrate = true
 
 	if skipMigrate {
 		cfg.Migrate = false
+	}
+
+	if cfg.StartupOnly {
+		cfg.StopAfterMigrate = true
 	}
 
 	if cfg.APICfg.ReadOnly {
@@ -240,51 +230,159 @@ func validate(cfg *Config) error {
 	return nil
 }
 
-func addAliases(fs *flag.FlagSet, aliases map[string][]string, descSuffix string) {
-	aliasDescFormat := aliasDescTemplate + descSuffix
-	set := false
-	fs.VisitAll(func(f *flag.Flag) {
-		if flagAliases, ok := aliases[f.Name]; ok {
-			set = false
-			for _, alias := range flagAliases {
-				set = true
-				fs.Var(f.Value, alias, fmt.Sprintf(aliasDescFormat, f.Name))
-			}
-
-			if !set {
-				panic(fmt.Sprintf("trying to set an flag alias for a flag that is missing: %s", f.Name))
-			}
-		}
-	})
+func addAliases(fs *flag.FlagSet, aliases map[string]string) {
+	for newFlag, flagAlias := range aliases {
+		fs.String(flagAlias, "", fmt.Sprintf(aliasDescFormat, newFlag))
+	}
 }
 
-func deprecatedFlagsUsed(fs *flag.FlagSet) map[string]string {
-	var (
-		result      = make(map[string]string)
-		newFlagName string
-		count       int
-	)
-
-	fs.Visit(func(f *flag.Flag) {
-		if strings.Contains(f.Usage, deprecatedFlagSuffix) {
-			i, err := fmt.Sscanf(f.Usage, aliasDescTemplate, &newFlagName)
-
-			switch {
-			case f.Name == "migrate":
-				// Migrate flag is a special case since it's not just a rename
-				// of an old flag. We handle it separately when logging
-				// use of deprecated flags.
-				return
-			case err != nil:
-				fallthrough
-			case i != 1:
-				panic("deprecated flag usage not set in the correct format")
-			}
-
-			result[f.Name] = newFlagName
-			count++
+func checkForRemovedConfigFlags(fs *flag.FlagSet, args []string) error {
+	// Check arguments for old flags.
+	if oldFlags := removedFlagsUsed(args); len(oldFlags) > 0 {
+		for oldFlag, newFlag := range oldFlags {
+			handleOldFlags(oldFlag, newFlag)
 		}
+		return removedFlagsError
+	}
+
+	// Check config file for old names.
+	aliasFS := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	// Need to set config and migrate flags which are special cases.
+	// Config is for detecting config file and migrate for detecting that special configuration setting.
+	aliasFS.String("config", "config.yml", "")
+	aliasFS.String("migrate", "true", "")
+	addAliases(aliasFS, flagAliases)
+
+	if err := ff.Parse(aliasFS, args,
+		ff.WithConfigFileFlag("config"),
+		ff.WithConfigFileParser(ffyaml.Parser),
+		ff.WithIgnoreUndefined(true),
+		ff.WithAllowMissingConfigFile(true),
+	); err != nil {
+		// If are having trouble parsing the old flags, just ignore since there isn't much we can do.
+		// Logging this error would just create confusion for the user.
+		return nil
+	}
+
+	var (
+		foundOldFlags bool
+		newFlagName   string
+	)
+	aliasFS.Visit(func(f *flag.Flag) {
+		i, err := fmt.Sscanf(f.Usage, aliasDescFormat, &newFlagName)
+		switch {
+		case f.Name == "migrate":
+			// Migrate flag is a special case since it's not just a rename
+			// of an old flag. We handle it with regards to the flag value.
+			newFlagName = f.Value.String()
+		case err != nil || i != 1:
+			// If are having trouble parsing the old flags, just ignore since there isn't much we can do.
+			// Logging this error would just create confusion for the user.
+			println(err)
+			return
+		}
+		foundOldFlags = true
+		handleOldFlags(f.Name, newFlagName)
 	})
 
+	if foundOldFlags {
+		return removedConfigVarError
+	}
+	return nil
+}
+
+func handleOldFlags(oldFlag, newFlag string) {
+	if oldFlag != "migrate" {
+		log.Warn("msg", fmt.Sprintf("Update removed flag `%s` to new flag `%s`", oldFlag, newFlag))
+	}
+
+	// Handling the special migrate flag
+	switch newFlag {
+	case "false":
+		log.Warn("msg", "Using removed flag `migrate` set to `false`. "+
+			"Please update you configuration by using `startup.skip-migrate` flag.")
+	case "only":
+		log.Warn("msg", "Using removed flag `migrate` set to `only`. "+
+			"Please update you configuration by using `startup.only` flag.")
+	default:
+		log.Warn("msg", "Using removed flag `migrate` with an invalid value. "+
+			"Please update you configuration by using one of the startup flags.")
+	}
+}
+
+func checkForRemovedEnvVarUsage() (err error) {
+	for newName, oldName := range flagAliases {
+		newName, oldName = util.GetEnvVarName(envVarPrefix, newName), util.GetEnvVarName(envVarPrefix, oldName)
+
+		// We don't care if flags are using the same env variable.
+		if newName == oldName {
+			continue
+		}
+
+		if val := os.Getenv(oldName); val != "" {
+			err = removedEnvVarError
+			log.Warn("msg", fmt.Sprintf("using unsupported environment variable [%s] for configuration flag which has been removed. Please update to new name [%s].", oldName, newName))
+		}
+	}
+
+	oldMigrate := util.GetEnvVarName(envVarPrefix, "migrate")
+	// Handling the special migrate flag
+	if val := os.Getenv(oldMigrate); val != "" {
+		err = removedEnvVarError
+		switch val {
+		case "false":
+			log.Warn("msg", fmt.Sprintf("Using removed environment variable `%s` set to `false`. "+
+				"Please update you configuration by using `%s` environment variable.",
+				oldMigrate,
+				util.GetEnvVarName(envVarPrefix, "startup.skip-migrate")),
+			)
+		case "only":
+			log.Warn("msg", fmt.Sprintf("Using removed flag `%s` set to `only`. "+
+				"Please update you configuration by using `%s` environment variable.",
+				oldMigrate,
+				util.GetEnvVarName(envVarPrefix, "startup.only")),
+			)
+		default:
+			log.Warn("msg", fmt.Sprintf("Using removed flag `%s` with an invalid value. "+
+				"Please update you configuration by using one of the startup environment variables or flags.",
+				oldMigrate),
+			)
+		}
+	}
+
+	return err
+}
+
+func removedFlagsUsed(args []string) map[string]string {
+	result := make(map[string]string)
+
+argloop:
+	for i, arg := range args {
+		if arg[0] != '-' {
+			continue
+		}
+
+		splits := strings.SplitN(arg, "=", 2)
+		arg = strings.TrimLeft(splits[0], "-")
+
+		for newName, oldName := range flagAliases {
+			if arg == oldName {
+				result[oldName] = newName
+				continue argloop
+			}
+		}
+
+		// Migrate is a special case that needs to be handled according to its value.
+		if arg == "migrate" {
+			value := ""
+			switch {
+			case len(splits) > 1: // Value is after '=' delimiter.
+				value = splits[1]
+			case len(args) > i+1: // Value is the next argument.
+				value = args[i+1]
+			}
+			result["migrate"] = value
+		}
+	}
 	return result
 }
