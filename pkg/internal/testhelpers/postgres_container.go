@@ -60,9 +60,8 @@ const (
 )
 
 const (
-	VanillaPostgres ExtensionState = 0
-	Timescale2      ExtensionState = timescaleBit
-	Multinode       ExtensionState = timescaleBit | multinodeBit
+	Timescale ExtensionState = timescaleBit
+	Multinode ExtensionState = timescaleBit | multinodeBit
 
 	TimescaleNightly          ExtensionState = timescaleBit | timescaleNightlyBit
 	TimescaleNightlyMultinode ExtensionState = timescaleBit | multinodeBit | timescaleNightlyBit
@@ -406,9 +405,11 @@ func createMultinodeNetwork() (networkName string, closer func(), err error) {
 }
 
 func dropTimescaleExtensionInDB(dbname string) error {
-	db, err := pgx.Connect(context.Background(), PgConnectURL(dbname, Superuser))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	db, err := pgx.Connect(ctx, PgConnectURL(dbname, Superuser))
 	if err != nil {
-		return fmt.Errorf("could not connect to template1 db: %w", err)
+		return fmt.Errorf("could not connect to %s db: %w", dbname, err)
 	}
 
 	_, err = db.Exec(context.Background(), "DROP EXTENSION timescaledb")
@@ -425,12 +426,12 @@ func dropTimescaleExtensionInDB(dbname string) error {
 func removeTimescaleExtension(container testcontainers.Container) error {
 	err := dropTimescaleExtensionInDB("template1")
 	if err != nil {
-		return fmt.Errorf("could not connect to template1 db: %w", err)
+		return fmt.Errorf("error dropping timescale extension in template1 db: %w", err)
 	}
 
 	err = dropTimescaleExtensionInDB("postgres")
 	if err != nil {
-		return fmt.Errorf("could not connect to template1 db: %w", err)
+		return fmt.Errorf("error dropping timescale extension in postgres db: %w", err)
 	}
 
 	code, err := container.Exec(context.Background(), []string{

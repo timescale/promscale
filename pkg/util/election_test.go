@@ -24,7 +24,7 @@ var (
 	electionInterval = flag.Duration("election-interval", 1*time.Second, "Scheduled election interval")
 )
 
-const extensionState = testhelpers.Timescale2
+const extensionState = testhelpers.Timescale
 
 func TestPgLeaderLock(t *testing.T) {
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {

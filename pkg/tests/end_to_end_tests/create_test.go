@@ -745,9 +745,13 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 		var nextStartAfter time.Time
-		statsQuery := "SELECT delay_compression_until FROM _prom_catalog.metric " +
-			"WHERE metric_name = $1::text"
-		err = db.QueryRow(context.Background(), statsQuery, "Test").Scan(&nextStartAfter)
+		err = db.QueryRow(
+			context.Background(),
+			`SELECT delay_compression_until 
+			 FROM _prom_catalog.metric
+			 WHERE metric_name = $1::text`,
+			"Test",
+		).Scan(&nextStartAfter)
 		if err != nil {
 			t.Fatal(err)
 		}
