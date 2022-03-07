@@ -21,17 +21,6 @@ import (
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
-type API interface {
-	SpanReader() spanstore.Reader
-	DependencyReader() dependencystore.Reader
-	GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error)
-	GetServices(ctx context.Context) ([]string, error)
-	GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error)
-	FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error)
-	FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryParameters) ([]model.TraceID, error)
-	GetDependencies(ctx context.Context, endTs time.Time, lookback time.Duration) ([]model.DependencyLink, error)
-}
-
 type Query struct {
 	conn pgxconn.PgxConn
 }

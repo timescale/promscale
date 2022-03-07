@@ -19,6 +19,7 @@ We use the following categories for changes:
 - Add database status and request metrics [#1185]
 - Add database SQL stats as Prometheus metrics. These can be queried under `promscale_sql` namespace [#1193]
 - Add alerts for database SQL metrics [#1193]
+- Query Jaeger traces directly through Promscale [#1224]
 
 ### Changed
 - Enable tracing by default [#1213]
