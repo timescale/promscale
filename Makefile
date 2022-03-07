@@ -12,11 +12,8 @@ pkg/tests/testdata/traces-dataset.sz:
 
 .PHONY: e2e-test
 e2e-test: pkg/tests/testdata/traces-dataset.sz generate
-	go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false
-	go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false
-	go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false -use-timescaledb=false
-	go test -v ./pkg/tests/end_to_end_tests/ -use-timescale2
-	go test -v ./pkg/tests/end_to_end_tests/ -use-extension=false -use-timescale2
+	go test -v ./pkg/tests/end_to_end_tests/
+	go test -v ./pkg/tests/end_to_end_tests/ -use-timescaledb=false
 	go test -v ./pkg/tests/end_to_end_tests/ -use-multinode
 
 .PHONY: go-fmt

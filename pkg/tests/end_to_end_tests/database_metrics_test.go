@@ -15,8 +15,8 @@ import (
 )
 
 func TestDatabaseMetrics(t *testing.T) {
-	if !*useTimescale2 || *useTimescaleOSS {
-		t.Skip("test meaningless without TimescaleDB 2.x")
+	if !*useTimescaleDB {
+		t.Skip("test meaningless without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")

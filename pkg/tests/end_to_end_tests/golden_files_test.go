@@ -76,17 +76,18 @@ func TestSQLGoldenFiles(t *testing.T) {
 				t.Log(string(msg))
 			}
 
-			expectedFile := filepath.Join("../testdata/expected/", base+".out")
-			if outputDifferWithoutTimescale[base] {
-				if *useTimescaleDB {
-					expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+".out")
-				} else {
-					expectedFile = filepath.Join("../testdata/expected/", base+"-postgres.out")
-				}
+			var suffix string
+			switch {
+			case outputDifferWithMultinode[base] && *useMultinode:
+				suffix = "-timescaledb-multinode"
+			case outputDifferWithoutTimescale[base] && *useTimescaleDB:
+				suffix = "-timescaledb"
+			case outputDifferWithoutTimescale[base] && !*useTimescaleDB:
+				suffix = "-postgres"
+			default:
+				suffix = ""
 			}
-			if outputDifferWithMultinode[base] && *useMultinode {
-				expectedFile = filepath.Join("../testdata/expected/", base+"-timescaledb"+"-multinode.out")
-			}
+			expectedFile := filepath.Join("../testdata/expected/", base+suffix+".out")
 
 			if *updateGoldenFiles {
 				err = copyFile(actualFile, expectedFile)
