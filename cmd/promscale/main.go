@@ -23,13 +23,13 @@ func main() {
 	cfg := &runner.Config{}
 	cfg, err := runner.ParseFlags(cfg, args)
 	if err != nil {
-		fmt.Println("Version: ", version.Promscale, "Commit Hash: ", version.CommitHash)
+		fmt.Println(version.Info())
 		fmt.Println("Fatal error: cannot parse flags: ", err)
 		os.Exit(1)
 	}
 	err = log.Init(cfg.LogCfg)
 	if err != nil {
-		fmt.Println("Version: ", version.Promscale, "Commit Hash: ", version.CommitHash)
+		fmt.Println(version.Info())
 		fmt.Println("Fatal error: cannot start logger: ", err)
 		os.Exit(1)
 	}
