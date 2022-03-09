@@ -61,7 +61,7 @@ func loggingStreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.
 }
 
 func Run(cfg *Config) error {
-	log.Info("msg", "Version:"+version.Promscale+"; Commit Hash: "+version.CommitHash)
+	log.Info("msg", version.Info())
 
 	redacted := *cfg
 	redacted.PgmodelCfg.Password = "****"
