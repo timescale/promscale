@@ -242,6 +242,9 @@ func TestCleanStalePromscales(t *testing.T) {
 }
 
 func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
+	if !*useTimescaleDB {
+		t.Skip("telemetry requires TimescaleDB")
+	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -300,6 +303,24 @@ func TestTelemetrySQLStats(t *testing.T) {
 		err = conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
 		require.NoError(t, err)
 		require.Equal(t, "1", metrics)
+	})
+}
+
+func TestTelemetryWithoutTimescaleDB(t *testing.T) {
+	if *useTimescaleDB {
+		t.Skip("test requires unavailability of TimescaleDB")
+	}
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+		defer db.Close()
+
+		conn := pgxconn.NewPgxConn(db)
+
+		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
+		require.NoError(t, err)
+
+		// If TimescaleDB is unavailable, telemetry should be nil.
+		require.Nil(t, engine)
 	})
 }
 
