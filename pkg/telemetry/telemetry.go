@@ -79,6 +79,9 @@ func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Query
 }
 
 func isTelemetryOff(conn pgxconn.PgxConn) (bool, error) {
+	if !util.IsTimescaleDBInstalled(conn) {
+		return true, nil
+	}
 	var state string
 	err := conn.QueryRow(context.Background(), "SHOW timescaledb.telemetry_level").Scan(&state)
 	if err != nil {
