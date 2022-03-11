@@ -13,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migrations"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -75,7 +74,7 @@ func installExtensionAllBalls(db *pgx.Conn) error {
 func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryLock, extOptions extension.ExtensionMigrateOptions) error {
 	appSemver, err := semver.Make(appVersion.Version)
 	if err != nil {
-		return errors.ErrInvalidSemverFormat
+		return err
 	}
 
 	// At startup migrators attempt to grab the schema-version lock. If this
