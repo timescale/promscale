@@ -59,10 +59,7 @@ type traceWriterImpl struct {
 	tagCache     *clockcache.Cache
 }
 
-func NewWriter(conn pgxconn.PgxConn, t telemetry.Engine) *traceWriterImpl {
-	if err := t.RegisterMetric("promscale_ingested_spans_total", metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span", "subsystem": ""})); err != nil {
-		log.Debug("msg", "err registering telemetry metric promscale_ingested_spans_total", "err", err.Error())
-	}
+func NewWriter(conn pgxconn.PgxConn) *traceWriterImpl {
 	return &traceWriterImpl{
 		conn:         conn,
 		schemaCache:  newSchemaCache(),
@@ -70,6 +67,14 @@ func NewWriter(conn pgxconn.PgxConn, t telemetry.Engine) *traceWriterImpl {
 		opCache:      newOperationCache(),
 		tagCache:     newTagCache(),
 	}
+}
+
+func RegisterTelemetryMetrics(t telemetry.Engine) error {
+	err := t.RegisterMetric("promscale_ingested_spans_total", metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span", "subsystem": ""}))
+	if err != nil {
+		return fmt.Errorf("error registering telemetry metric promscale_ingested_spans_total: %w", err)
+	}
+	return nil
 }
 
 func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {

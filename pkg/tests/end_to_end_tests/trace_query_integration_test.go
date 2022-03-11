@@ -23,7 +23,6 @@ import (
 	promscaleJaeger "github.com/timescale/promscale/pkg/jaeger"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/telemetry"
 )
 
 type traceQuery struct {
@@ -67,8 +66,7 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		router, _, err := buildRouter(db)
 		require.NoError(t, err)
 
-		err = promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db), telemetry.NewNoopEngine())
-		require.NoError(t, err)
+		promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db))
 
 		go func() {
 			listener, err := net.Listen("tcp", ":9201")

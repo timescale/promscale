@@ -31,7 +31,7 @@ var (
 	})
 )
 
-func registerMetricsForTelemetry(t telemetry.Engine) error {
+func RegisterTelemetryMetrics(t telemetry.Engine) error {
 	var err error
 	if err = t.RegisterMetric("promscale_trace_query_requests_executed_total", traceRequestsExec); err != nil {
 		return fmt.Errorf("register 'promscale_trace_query_requests_executed_total' metric for telemetry: %w", err)
