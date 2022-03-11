@@ -14,51 +14,12 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
-	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tests/test_migrations"
 	"github.com/timescale/promscale/pkg/version"
 )
-
-func TestMigrate(t *testing.T) {
-	// TODO (james): We should probably just remove this whole test instead of skipping
-	t.Skip("skipping unneeded test")
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		var dbVersion string
-		extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true}
-		err := db.QueryRow(context.Background(), "SELECT version FROM prom_schema_migrations").Scan(&dbVersion)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if dbVersion != version.Promscale {
-			t.Errorf("Version unexpected:\ngot\n%s\nwanted\n%s", dbVersion, version.Promscale)
-		}
-
-		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
-		defer readOnly.Close()
-		conn, err := readOnly.Acquire(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer conn.Release()
-		err = extension.CheckVersions(conn.Conn(), false, extOptions)
-		if err != nil {
-			t.Error(err)
-		}
-
-		/*
-			err = pgmodel.CheckDependencies(conn.Conn(), pgmodel.VersionInfo{Version: "100.0.0"}, false, extOptions)
-			if err == nil {
-				t.Errorf("Expected error in CheckDependencies")
-			}
-		*/
-	})
-}
 
 func TestMigrateLock(t *testing.T) {
 	if testing.Short() {

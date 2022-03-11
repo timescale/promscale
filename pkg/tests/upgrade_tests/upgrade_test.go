@@ -188,7 +188,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 		},
 		/* postUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string) {
-			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
+			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 
 			db, err := pgxpool.Connect(context.Background(), connectURL)
 			if err != nil {
@@ -464,7 +464,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 		addNode2(t, *testDatabase)
 	}
 	defer func() { _ = closer.Close() }()
-	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
+	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 	db, err := pgxpool.Connect(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
