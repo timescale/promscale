@@ -15,7 +15,6 @@ import (
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/telemetry"
 )
 
 func TestIngestTraces(t *testing.T) {
@@ -64,8 +63,7 @@ func TestQueryTraces(t *testing.T) {
 		err = ingestor.IngestTraces(context.Background(), traces)
 		require.NoError(t, err)
 
-		q, err := query.New(pgxconn.NewQueryLoggingPgxConn(db), telemetry.NewNoopEngine())
-		require.NoError(t, err)
+		q := query.New(pgxconn.NewQueryLoggingPgxConn(db))
 
 		getOperationsTest(t, q)
 		findTraceTest(t, q)

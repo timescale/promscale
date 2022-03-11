@@ -20,6 +20,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/runner"
 	"github.com/timescale/promscale/pkg/telemetry"
 )
@@ -30,6 +31,18 @@ func generateUUID() uuid.UUID {
 
 func setTobsEnv(prop string) error {
 	return os.Setenv(fmt.Sprintf("TOBS_TELEMETRY_%s", prop), prop)
+}
+
+// e2eTelemetry allows calling Sync() to sync telemetry collection while running tests.
+type e2eTelemetry interface {
+	telemetry.Engine
+	Sync() error
+}
+
+func telemetryEngineForE2E(t testing.TB, conn pgxconn.PgxConn, qryable promql.Queryable) e2eTelemetry {
+	engine, err := telemetry.NewEngine(conn, generateUUID(), qryable)
+	require.NoError(t, err)
+	return engine.(e2eTelemetry)
 }
 
 func TestPromscaleTobsMetadata(t *testing.T) {
@@ -43,12 +56,11 @@ func TestPromscaleTobsMetadata(t *testing.T) {
 		require.NoError(t, setTobsEnv("random"))
 		conn := pgxconn.NewPgxConn(db)
 
-		_, err := telemetry.NewEngine(conn, generateUUID(), nil)
-		require.NoError(t, err)
+		telemetryEngineForE2E(t, conn, nil)
 
 		// Check if metadata is written.
 		var sysName string
-		err = conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_os_sys_name'").Scan(&sysName)
+		err := conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_os_sys_name'").Scan(&sysName)
 		require.NoError(t, err)
 		require.NotEqual(t, "", sysName)
 
@@ -69,9 +81,7 @@ func TestTelemetryInfoTableWrite(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
-		require.NoError(t, err)
-
+		engine := telemetryEngineForE2E(t, conn, nil)
 		engine.Start()
 		defer engine.Stop()
 
@@ -92,7 +102,7 @@ func TestTelemetryInfoTableWrite(t *testing.T) {
 		require.NoError(t, engine.Sync())
 
 		var value float64
-		err = conn.QueryRow(context.Background(), "SELECT sum(promscale_ingested_samples_total) FROM _ps_catalog.promscale_instance_information").Scan(&value)
+		err := conn.QueryRow(context.Background(), "SELECT sum(promscale_ingested_samples_total) FROM _ps_catalog.promscale_instance_information").Scan(&value)
 		require.NoError(t, err)
 		require.Equal(t, float64(100), value)
 
@@ -139,9 +149,7 @@ func TestHousekeeper(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
-		require.NoError(t, err)
-
+		engine := telemetryEngineForE2E(t, conn, nil)
 		engine.Start()
 		defer engine.Stop()
 
@@ -152,7 +160,7 @@ func TestHousekeeper(t *testing.T) {
 		require.NoError(t, engine.RegisterMetric("promscale_ingested_samples_total", mockMetric))
 
 		var val string
-		err = conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_ingested_samples_total'").Scan(&val)
+		err := conn.QueryRow(context.Background(), "select value from _timescaledb_catalog.metadata where key = 'promscale_ingested_samples_total'").Scan(&val)
 		require.Error(t, err)
 		require.Equal(t, "no rows in result set", err.Error())
 
@@ -176,14 +184,12 @@ func TestCleanStalePromscales(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
-		require.NoError(t, err)
-
+		engine := telemetryEngineForE2E(t, conn, nil)
 		engine.Start()
 		defer engine.Stop()
 
 		var cnt int64
-		err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
+		err := conn.QueryRow(context.Background(), "SELECT count(*) FROM _ps_catalog.promscale_instance_information").Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 1, int(cnt)) // The counter reset row.
 
@@ -258,7 +264,8 @@ func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
 
 		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
-		require.Nil(t, engine)
+		_, isNoop := engine.(telemetry.Noop)
+		require.True(t, isNoop)
 	})
 }
 
@@ -272,15 +279,13 @@ func TestTelemetrySQLStats(t *testing.T) {
 
 		conn := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
-		require.NoError(t, err)
-
+		engine := telemetryEngineForE2E(t, conn, nil)
 		engine.Start()
 		defer engine.Stop()
 
 		// Verify that no SQL stats have been written yet.
 		var metrics string
-		err = conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
+		err := conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
 		require.Error(t, err) // No such rows exists.
 		require.Equal(t, "no rows in result set", err.Error())
 
@@ -319,8 +324,9 @@ func TestTelemetryWithoutTimescaleDB(t *testing.T) {
 		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
 		require.NoError(t, err)
 
-		// If TimescaleDB is unavailable, telemetry should be nil.
-		require.Nil(t, engine)
+		// If TimescaleDB is unavailable, telemetry should be a noop.
+		_, isNoop := engine.(telemetry.Noop)
+		require.True(t, isNoop)
 	})
 }
 
@@ -361,8 +367,7 @@ func TestPromQLBasedTelemetry(t *testing.T) {
 
 		c := pgxconn.NewPgxConn(db)
 
-		engine, err := telemetry.NewEngine(c, generateUUID(), reader.Queryable())
-		require.NoError(t, err)
+		engine := telemetryEngineForE2E(t, c, reader.Queryable())
 
 		var value string
 		err = c.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_promql_query_execution_time_p99' AND value IS NOT NULL").Scan(&value)

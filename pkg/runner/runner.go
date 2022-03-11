@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/google/uuid"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
@@ -31,7 +32,10 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	dbMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics/database"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
@@ -42,7 +46,13 @@ import (
 var (
 	elector      *util.Elector
 	startupError = fmt.Errorf("startup error")
+	PromscaleID  uuid.UUID
 )
+
+func init() {
+	// PromscaleID must always be generated on start, so that it remains constant throughout the lifecycle.
+	PromscaleID = uuid.New()
+}
 
 func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	m, err := handler(ctx, req)
@@ -126,11 +136,15 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	router, err := api.GenerateRouter(&cfg.APICfg, client, elector, client.TelemetryEngine)
+	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
 	}
+
+	telemetryEngine := initTelemetryEngine(client)
+	telemetryEngine.Start()
+	defer telemetryEngine.Stop()
 
 	var group run.Group
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
@@ -182,14 +196,8 @@ func Run(cfg *Config) error {
 		grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
 	)
 
-	jaegerQuery, err := query.New(client.QuerierConnection, client.TelemetryEngine)
-	if err != nil {
-		log.Error("msg", "Creating jaeger query failed", "err", err)
-		return err
-	}
-
 	queryPlugin := shared.StorageGRPCPlugin{
-		Impl: jaegerQuery,
+		Impl: query.New(client.QuerierConnection),
 	}
 	if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
 		log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
@@ -254,4 +262,22 @@ func Run(cfg *Config) error {
 		log.Error("msg", "Execution failure, stopping Promscale", "err", err)
 	}
 	return err
+}
+
+func initTelemetryEngine(client *pgclient.Client) telemetry.Engine {
+	t, err := telemetry.NewEngine(client.Connection, PromscaleID, client.Queryable())
+	if err != nil {
+		log.Debug("msg", "err creating telemetry engine", "err", err.Error())
+		return t
+	}
+	if err := api.RegisterTelemetryMetrics(t); err != nil {
+		log.Error("msg", "error registering metrics for API telemetry", "err", err.Error())
+	}
+	if err := query.RegisterTelemetryMetrics(t); err != nil {
+		log.Error("msg", "error registering metrics for Jaeger-query telemetry", "err", err.Error())
+	}
+	if err := trace.RegisterTelemetryMetrics(t); err != nil {
+		log.Error("msg", "error registering metrics for Jaeger-ingest telemetry", "err", err.Error())
+	}
+	return t
 }
