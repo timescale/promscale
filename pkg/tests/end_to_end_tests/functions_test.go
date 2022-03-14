@@ -360,21 +360,47 @@ func TestExtensionFunctions(t *testing.T) {
 			}
 		}
 
-		operators := []string{
-			"==(prom_api.label_key,prom_api.pattern)",
-			"!==(prom_api.label_key,prom_api.pattern)",
-			"==~(prom_api.label_key,prom_api.pattern)",
-			"!=~(prom_api.label_key,prom_api.pattern)",
+		operators := [][]string{
+			{"ps_tag", "!==(text, anyelement)"},
+			{"ps_tag", "!==(text, text)"},
+			{"ps_tag", "!=~(text, text)"},
+			{"ps_tag", "#<(text, anyelement)"},
+			{"ps_tag", "#<(text, text)"},
+			{"ps_tag", "#<=(text, anyelement)"},
+			{"ps_tag", "#<=(text, text)"},
+			{"ps_tag", "#>(text, anyelement)"},
+			{"ps_tag", "#>(text, text)"},
+			{"ps_tag", "#>=(text, anyelement)"},
+			{"ps_tag", "#>=(text, text)"},
+			{"ps_tag", "==(text, anyelement)"},
+			{"ps_tag", "==(text, text)"},
+			{"ps_tag", "==~(text, text)"},
+			{"ps_tag", "@?(text, jsonpath)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_regexp_matches)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_regexp_not_matches)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_equals)"},
+			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_not_equals)"},
+			{"prom_api", "?(prom_api.label_array, prom_api.matcher_positive)"},
+			{"prom_api", "?(prom_api.label_array, prom_api.matcher_negative)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_jsonb_path_exists)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_regexp_matches)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_regexp_not_matches)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_equals)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_not_equals)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_less_than)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_less_than_or_equal)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_greater_than)"},
+			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_greater_than_or_equal)"},
 		}
 		for _, opr := range operators {
 			const query = "SELECT nspname FROM pg_operator LEFT JOIN pg_namespace ON oprnamespace = pg_namespace.oid WHERE pg_operator.oid = $1::regoperator;"
 			schema := ""
-			err := db.QueryRow(context.Background(), query, opr).Scan(&schema)
+			err := db.QueryRow(context.Background(), query, opr[1]).Scan(&schema)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if schema != extSchema {
-				t.Errorf("function %s in wrong schema\nexpected\n\t%s\nfound\n\t%s", opr, extSchema, schema)
+			if schema != opr[0] {
+				t.Errorf("function %s in wrong schema\nexpected\n\t%s\nfound\n\t%s", opr, opr[0], schema)
 			}
 		}
 	})
