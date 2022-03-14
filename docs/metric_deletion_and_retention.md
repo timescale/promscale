@@ -154,3 +154,17 @@ SELECT prom_api.reset_metric_retention_period('container_cpu_usage_seconds_total
 
 For TimescaleDB versions < 2.0, the retention policies are executed using a cron job. Please see the Promscale
 installation instructions for your platform to see how to set up the cron job.
+
+
+### Manually forcing retention to be applied
+
+Promscale leverages TimescaleDB's [User-Defined Actions] to schedule a maintenance job which drops data which is
+over its retention period. By default, it will automatically be executed every 30 minutes.
+
+You can also manually run this maintenance job with the following SQL command:
+
+```
+CALL prom_api.execute_maintenance();
+```
+
+[User-Defined Actions]: https://docs.timescale.com/api/latest/actions/
