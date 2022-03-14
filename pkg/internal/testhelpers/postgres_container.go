@@ -169,6 +169,9 @@ func setupRole(t testing.TB, dbName string, role string) {
 
 	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
 	require.NoError(t, err)
+
+	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", "prom_admin", promUser))
+	require.NoError(t, err)
 }
 
 func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
