@@ -245,7 +245,7 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		}
 	}
 
-	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
+	migratePool, err := pgxpool.Connect(context.Background(), superConnectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,6 +260,10 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		t.Fatal(err)
 	}
 
+	_, err = conn.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", "prom_admin", "prom"))
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func generatePGTestDirFiles() string {

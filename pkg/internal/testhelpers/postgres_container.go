@@ -123,8 +123,8 @@ func (e ExtensionState) GetPGMajor() string {
 
 func (e ExtensionState) GetDockerImageName() (string, error) {
 	var image string
-	PGMajor := e.GetPGMajor()
-	PGTag := "pg" + PGMajor
+	//PGMajor := e.GetPGMajor()
+	//PGTag := "pg" + PGMajor
 
 	switch {
 	case e.UsesTimescaleNightly():
@@ -132,7 +132,9 @@ func (e ExtensionState) GetDockerImageName() (string, error) {
 		panic("Nightly images are temporarily broken")
 		//image = "timescaledev/timescaledb:nightly-" + PGTag
 	default:
-		image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
+		image = LatestDBWithPromscaleImageBase + ":latest-ts2-pg13"
+		//TODO switch to HA image when it's ready
+		//image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
 	}
 
 	return image, nil
@@ -169,8 +171,14 @@ func setupRole(t testing.TB, dbName string, role string) {
 
 	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
 	require.NoError(t, err)
+}
 
-	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", "prom_admin", promUser))
+func MakePromUserPromAdmin(t testing.TB, dbName string) {
+	db, err := pgx.Connect(context.Background(), PgConnectURL(dbName, Superuser))
+	require.NoError(t, err)
+	defer db.Close(context.Background())
+
+	_, err = db.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", "prom_admin", promUser))
 	require.NoError(t, err)
 }
 
