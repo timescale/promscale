@@ -43,7 +43,7 @@ var (
 	PromMigrator               = "0.0.3"
 	CommitHash                 = ""      // Comes from -ldflags settings
 	Branch                     = ""      // Comes from -ldflags settings
-	EarliestUpgradeTestVersion = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0
+	EarliestUpgradeTestVersion = "0.3.0" // 0.1.4 earliest version that supports tsdb 2.0
 
 	PgVersionNumRange       = ">=12.x <15.x" // Corresponds to range within pg 12.0 to pg 14.99
 	pgAcceptedVersionsRange = semver.MustParseRange(PgVersionNumRange)
