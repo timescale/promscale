@@ -65,6 +65,20 @@ func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrate
 	return nil
 }
 
+func CheckPromscaleVersion(conn *pgx.Conn) error {
+	extensionVersion, b, err := FetchInstalledExtensionVersion(conn, "promscale")
+	if err != nil {
+		return err
+	}
+	if !b {
+		return fmt.Errorf("the promscale extension is required but is not installed")
+	}
+	if !version.ExtVersionRange(extensionVersion) {
+		return fmt.Errorf("the promscale extension is required but the installed version %v is not supported. supported versions: %v", extensionVersion, version.ExtVersionRangeString)
+	}
+	return nil
+}
+
 // CheckVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
 func CheckVersions(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	if err := checkPgVersion(conn); err != nil {

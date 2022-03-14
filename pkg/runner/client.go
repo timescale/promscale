@@ -248,5 +248,8 @@ func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {
 // said lease; in such an event the connector will be shutdown anyway, and
 // connection-death will close the connection.
 func getSchemaLease(ctx context.Context, conn *pgx.Conn) error {
-	return util.GetSharedLease(ctx, conn, schema.LockID)
+	if err := util.GetSharedLease(ctx, conn, schema.LockID); err != nil {
+		return err
+	}
+	return extension.CheckPromscaleVersion(conn)
 }
