@@ -24,9 +24,9 @@ var (
 	electionInterval = flag.Duration("election-interval", 1*time.Second, "Scheduled election interval")
 )
 
-const extensionState = testhelpers.Timescale
-
 func TestPgLeaderLock(t *testing.T) {
+	// TODO (james): Replace hardcoded value
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14")
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock, err := NewPgLeaderLock(1, connectURL, nil)
 		if err != nil {
@@ -66,6 +66,8 @@ func TestPgLeaderLock(t *testing.T) {
 }
 
 func TestElector(t *testing.T) {
+	// TODO (james): Replace hardcoded value
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14")
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgLeaderLock(2, connectURL, nil)
 		if err != nil {
@@ -101,6 +103,8 @@ func TestElector(t *testing.T) {
 }
 
 func TestPrometheusLivenessCheck(t *testing.T) {
+	// TODO (james): Replace hardcoded value
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14")
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgLeaderLock(3, connectURL, nil)
 		if err != nil {
@@ -151,6 +155,8 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
 
+		// TODO (james): Replace hardcoded value
+		extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14")
 		_, closer, err := testhelpers.StartPGContainer(ctx, extensionState, "", false)
 		if err != nil {
 			fmt.Println("Error setting up container", err)

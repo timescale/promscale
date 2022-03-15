@@ -118,13 +118,30 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine docker image
+      id: docker-image
+      run: |
+        branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
+        possible_branch_tag=$(echo ${branch_name}-ts2-pg${{matrix.pgversion}})
+        develop_branch_tag=$(echo develop-ts2-pg${{matrix.pgversion}})
+        image_base="ghcr.io/timescale/dev_promscale_extension"
+        docker_image=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${develop_branch_tag})
+        echo "::set-output name=docker_image::${docker_image}"
+
     - name: Test ${{ matrix.test-setups.name }}
       env:
-        PG: ${{ matrix.test-setups.pg }}
+        DOCKER_IMAGE: ${{steps.metadata.outputs.docker_image}}
         TSDB: ${{ matrix.test-setups.tsdb }}
         MULTI: ${{ matrix.test-setups.multi }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
-      run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -postgres-version-major=$PG | tee $SHORTNAME-test-run.log  2>&1
+      run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -timescale-docker-image=$DOCKER_IMAGE | tee $SHORTNAME-test-run.log  2>&1
 
     - name: 'Upload Log Artifact'
       if: ${{ always() }}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"runtime"
 	"testing"
 	"time"
@@ -33,9 +34,6 @@ const (
 
 	Superuser   = true
 	NoSuperuser = false
-
-	LatestDBWithPromscaleImageBase = "timescaledev/promscale-extension"
-	LatestDBHAPromscaleImageBase   = "timescale/timescaledb-ha"
 )
 
 var (
@@ -49,95 +47,80 @@ var (
 	}
 )
 
-type ExtensionState int
+type OptionState int
+
+type TestOptions struct {
+	options              OptionState
+	timescaleDockerImage string
+}
+
+func NewTestOptions(options OptionState, timescaleDockerImage string) TestOptions {
+	return TestOptions{
+		options,
+		timescaleDockerImage,
+	}
+}
 
 const (
 	timescaleBit        = 1 << iota
 	multinodeBit        = 1 << iota
-	postgres12Bit       = 1 << iota
-	postgres13Bit       = 1 << iota
 	timescaleNightlyBit = 1 << iota
 )
 
 const (
-	Timescale ExtensionState = timescaleBit
-	Multinode ExtensionState = timescaleBit | multinodeBit
+	Timescale OptionState = timescaleBit
+	Multinode OptionState = timescaleBit | multinodeBit
 
-	TimescaleNightly          ExtensionState = timescaleBit | timescaleNightlyBit
-	TimescaleNightlyMultinode ExtensionState = timescaleBit | multinodeBit | timescaleNightlyBit
+	TimescaleNightly          OptionState = timescaleBit | timescaleNightlyBit
+	TimescaleNightlyMultinode OptionState = timescaleBit | multinodeBit | timescaleNightlyBit
 )
 
-func (e *ExtensionState) UseTimescaleDB() {
-	*e |= timescaleBit
+func (e *TestOptions) UseTimescaleDB() {
+	e.options |= timescaleBit
 }
 
-func (e *ExtensionState) UseTimescaleNightly() {
-	*e |= timescaleBit | timescaleNightlyBit
+func (e *TestOptions) UseTimescaleNightly() {
+	e.options |= timescaleBit | timescaleNightlyBit
 }
 
-func (e *ExtensionState) UseTimescaleNightlyMultinode() {
-	*e |= timescaleBit | multinodeBit | timescaleNightlyBit
+func (e *TestOptions) UseTimescaleNightlyMultinode() {
+	e.options |= timescaleBit | multinodeBit | timescaleNightlyBit
 }
 
-func (e *ExtensionState) UseMultinode() {
-	*e |= timescaleBit | multinodeBit
+func (e *TestOptions) UseMultinode() {
+	e.options |= timescaleBit | multinodeBit
 }
 
-func (e *ExtensionState) UsePG12() {
-	*e |= postgres12Bit
+func (e *TestOptions) SetTimescaleDockerImage(timescaleDockerImage string) {
+	e.timescaleDockerImage = timescaleDockerImage
 }
 
-func (e *ExtensionState) UsePG13() {
-	*e |= postgres13Bit
+func (e TestOptions) UsesTimescaleDB() bool {
+	return (e.options & timescaleBit) != 0
 }
 
-func (e ExtensionState) UsesTimescaleDB() bool {
-	return (e & timescaleBit) != 0
+func (e TestOptions) UsesTimescaleNightly() bool {
+	return (e.options & timescaleNightlyBit) != 0
 }
 
-func (e ExtensionState) UsesTimescaleNightly() bool {
-	return (e & timescaleNightlyBit) != 0
+func (e TestOptions) UsesMultinode() bool {
+	return (e.options & multinodeBit) != 0
 }
 
-func (e ExtensionState) UsesMultinode() bool {
-	return (e & multinodeBit) != 0
+func (e TestOptions) GetDockerImageName() string {
+	return e.timescaleDockerImage
 }
 
-func (e ExtensionState) UsesPG12() bool {
-	return (e & postgres12Bit) != 0
-}
-
-func (e ExtensionState) UsesPG13() bool {
-	return (e & postgres13Bit) != 0
-}
-
-func (e ExtensionState) GetPGMajor() string {
-	PGMajor := "14"
-	if e.UsesPG13() {
-		PGMajor = "13"
-	} else if e.UsesPG12() {
-		PGMajor = "12"
+func (e TestOptions) TryGetDockerImagePgVersion() (string, error) {
+	r, err := regexp.Compile(`pg(\d+)`)
+	if err != nil {
+		return "", err
 	}
-	return PGMajor
-}
-
-func (e ExtensionState) GetDockerImageName() (string, error) {
-	var image string
-	//PGMajor := e.GetPGMajor()
-	//PGTag := "pg" + PGMajor
-
-	switch {
-	case e.UsesTimescaleNightly():
-		//TODO this is broken as we need a nightly image with the promscale extension.
-		panic("Nightly images are temporarily broken")
-		//image = "timescaledev/timescaledb:nightly-" + PGTag
-	default:
-		image = LatestDBWithPromscaleImageBase + ":latest-ts2-pg13"
-		//TODO switch to HA image when it's ready
-		//image = LatestDBHAPromscaleImageBase + ":" + PGTag + "-latest"
+	m := r.FindStringSubmatch(e.timescaleDockerImage)
+	if len(m) < 2 {
+		return "", fmt.Errorf("unable to determine postgres version")
 	}
-
-	return image, nil
+	return m[1], nil
 }
 
 var (
@@ -191,7 +174,7 @@ func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
 }
 
 // WithDB establishes a database for testing and calls the callback
-func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState ExtensionState, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
+func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState TestOptions, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
 	db, err := DbSetup(DBName, superuser, deferNode2Setup, extensionState)
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +205,7 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	return dbPool
 }
 
-func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState ExtensionState) (*pgxpool.Pool, error) {
+func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState TestOptions) (*pgxpool.Pool, error) {
 	defaultDb, err := pgx.Connect(context.Background(), PgConnectURL(defaultDB, Superuser))
 	if err != nil {
 		return nil, err
@@ -234,7 +217,7 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 		}
 
 		if extensionState.UsesMultinode() {
-			dropDistributed := "CALL distributed_exec($$ DROP DATABASE IF EXISTS %s $$, transactional => false)"
+			dropDistributed := "CALL public.distributed_exec($$ DROP DATABASE IF EXISTS %s $$, transactional => false)"
 			_, err = defaultDb.Exec(context.Background(), fmt.Sprintf(dropDistributed, DBName))
 			if err != nil {
 				return err
@@ -303,14 +286,11 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 // StartPGContainer starts a postgreSQL container for use in testing
 func StartPGContainer(
 	ctx context.Context,
-	extensionState ExtensionState,
+	extensionState TestOptions,
 	testDataDir string,
 	printLogs bool,
 ) (testcontainers.Container, io.Closer, error) {
-	image, err := extensionState.GetDockerImageName()
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not determine docker image: %w", err)
-	}
+	image := extensionState.GetDockerImageName()
 
 	return StartDatabaseImage(ctx, image, testDataDir, "", printLogs, extensionState)
 }
@@ -320,7 +300,7 @@ func StartDatabaseImage(ctx context.Context,
 	testDataDir string,
 	dataDir string,
 	printLogs bool,
-	extensionState ExtensionState,
+	extensionState TestOptions,
 ) (testcontainers.Container, io.Closer, error) {
 	c := CloseAll{}
 	var networks []string
@@ -465,7 +445,7 @@ func startPGInstance(
 	image string,
 	testDataDir string,
 	dataDir string,
-	extensionState ExtensionState,
+	extensionState TestOptions,
 	printLogs bool,
 	networks []string,
 	containerPort nat.Port,
@@ -622,7 +602,7 @@ func AddDataNode2(db *pgx.Conn, database string) error {
 }
 
 func addDataNode(db *pgx.Conn, database string, nodeName string, nodePort string) error {
-	_, err := db.Exec(context.Background(), "SELECT add_data_node('"+nodeName+"', host => 'db"+nodePort+"', port => "+nodePort+", if_not_exists=>true);")
+	_, err := db.Exec(context.Background(), "SELECT public.add_data_node('"+nodeName+"', host => 'db"+nodePort+"', port => "+nodePort+", if_not_exists=>true);")
 	if err != nil {
 		return err
 	}
@@ -633,7 +613,7 @@ func addDataNode(db *pgx.Conn, database string, nodeName string, nodePort string
 			return err
 		}
 	}
-	grantDistributed := "CALL distributed_exec($$ GRANT ALL ON DATABASE %s TO %s $$, transactional => false)"
+	grantDistributed := "CALL public.distributed_exec($$ GRANT ALL ON DATABASE %s TO %s $$, transactional => false)"
 	_, err = db.Exec(context.Background(), fmt.Sprintf(grantDistributed, database, promUser))
 	if err != nil {
 		return err

@@ -23,8 +23,6 @@ var (
 	testDatabase = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 )
 
-const extensionState = timescaleBit | postgres12Bit
-
 func TestPGConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -48,6 +46,8 @@ func TestWithDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
+	// TODO (james): Replace hardcoded value
+	extensionState := NewTestOptions(timescaleBit, "ghcr.io/timescale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14")
 	WithDB(t, *testDatabase, Superuser, false, extensionState, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		var res int
 		err := db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
@@ -63,6 +63,8 @@ func TestWithDB(t *testing.T) {
 func runMain(m *testing.M) int {
 	flag.Parse()
 	ctx := context.Background()
+	// TODO (james): Replace hardcoded value
+	extensionState := NewTestOptions(timescaleBit, "ghcr.io/timescale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14")
 	if !testing.Short() && *useDocker {
 		_, closer, err := StartPGContainer(ctx, extensionState, "", false)
 		if err != nil {
