@@ -439,7 +439,7 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
 		}
 		if _, err := db.Exec(context.Background(),
-			`CREATE MATERIALIZED VIEW twa_cagg( time, series_id, tw)
+			`CREATE MATERIALIZED VIEW public.twa_cagg( time, series_id, tw)
 WITH (timescaledb.continuous) AS
   SELECT public.time_bucket('1hour', time), series_id, time_weight('Linear', time, value) as tw
     FROM prom_data.metric_2
@@ -447,9 +447,9 @@ WITH (timescaledb.continuous) AS
 			t.Fatalf("unexpected error while creating metric view: %s", err)
 		}
 		if _, err := db.Exec(context.Background(),
-			`CREATE VIEW tw_1hour( time, series_id, value) AS
+			`CREATE VIEW public.tw_1hour( time, series_id, value) AS
   SELECT time, series_id, average(tw) as value
-    FROM twa_cagg`); err != nil {
+    FROM public.twa_cagg`); err != nil {
 			t.Fatalf("unexpected error while creating metric view: %s", err)
 		}
 

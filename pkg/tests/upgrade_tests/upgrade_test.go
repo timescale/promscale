@@ -42,7 +42,7 @@ import (
 var (
 	testDatabase       = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
 	printLogs          = flag.Bool("print-logs", false, "print TimescaleDB logs")
-	baseExtensionState testhelpers.ExtensionState
+	baseExtensionState testhelpers.TestOptions
 )
 
 func init() {
@@ -53,7 +53,8 @@ func TestMain(m *testing.M) {
 	var code int
 	flag.Parse()
 	baseExtensionState.UseTimescaleDB()
-	baseExtensionState.UsePG12()
+	// TODO (james): Replace hardcoded value
+	baseExtensionState.SetTimescaleDockerImage("ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14")
 	if err := os.Setenv("IS_TEST", "true"); err != nil {
 		// E2E tests calls prometheus.MustRegister() more than once in clockcache,
 		// hence, we set this environment variable to have a different behaviour
@@ -68,16 +69,21 @@ func TestMain(m *testing.M) {
 }
 
 /* Prev image is the db image with the old promscale extension. We do NOT test timescaleDB extension upgrades here. */
-func getDBImages(extensionState testhelpers.ExtensionState) (prev string, clean string) {
-	if !extensionState.UsesPG12() {
-		//using the oldest supported version of PG seems sufficient.
-		//we don't want to use any features in a newer PG version that isn't available in an older one
-		//but migration code that works in an older PG version should generally work in a newer one.
-		panic("Only use pg12 for upgrade tests")
-	}
-	return "timescaledev/promscale-extension:0.1.2-ts2-pg13", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg13"
+func getDBImages(extensionState testhelpers.TestOptions) (prev string, clean string, err error) {
 	// using pg13 until we deal with the lack of "trusted" support in pg12
-	//return "timescaledev/promscale-extension:0.1.1-ts2-pg12", testhelpers.LatestDBWithPromscaleImageBase + ":latest-ts2-pg12"
+	//if !extensionState.UsesPG12() {
+	//	//using the oldest supported version of PG seems sufficient.
+	//	//we don't want to use any features in a newer PG version that isn't available in an older one
+	//	//but migration code that works in an older PG version should generally work in a newer one.
+	//	panic("Only use pg12 for upgrade tests")
+	//}
+	// TODO: Extracting the pg version from the docker image name is a nasty hack. How can we avoid this?
+	dockerImageName := extensionState.GetDockerImageName()
+	pgVersion, err := extensionState.TryGetDockerImagePgVersion()
+	if err != nil {
+		panic("unable to get docker image version")
+	}
+	return "timescaledev/promscale-extension:0.1.2-ts2-" + pgVersion, dockerImageName, nil
 }
 
 func writeToFiles(t *testing.T, upgradedDbInfo, pristineDbInfo dbSnapshot) error {
@@ -154,7 +160,7 @@ func TestUpgradeFromEarliestNoData(t *testing.T) {
 	}
 }
 
-func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionState testhelpers.ExtensionState) (upgradedDbInfo dbSnapshot) {
+func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionState testhelpers.TestOptions) (upgradedDbInfo dbSnapshot) {
 	// We test that upgrading from both the earliest and the directly-previous versions works
 	// While it may seem that the earliest version is sufficient, idempotent scripts are only
 	// run on each completed updated and so testing the upgrade as it relates to the last idempotent
@@ -220,7 +226,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 	return
 }
 
-func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.ExtensionState) (pristineDbInfo dbSnapshot) {
+func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.TestOptions) (pristineDbInfo dbSnapshot) {
 	withNewDBAtCurrentVersion(t, *testDatabase, extensionState,
 		/* preRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
@@ -348,7 +354,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 	t testing.TB,
 	DBName string,
 	prevVersion semver.Version,
-	extensionState testhelpers.ExtensionState,
+	extensionState testhelpers.TestOptions,
 	preUpgrade func(dbContainer testcontainers.Container, dbTmpDir string, connectorHost string, connectorPort nat.Port),
 	postUpgrade func(dbContainer testcontainers.Container, dbTmpDir string)) {
 	var err error
@@ -364,7 +370,19 @@ func withDBStartingAtOldVersionAndUpgrading(
 		log.Fatal(err)
 	}
 
-	prevDBImage, cleanImage := getDBImages(extensionState)
+	ver, err := extensionState.TryGetDockerImagePgVersion()
+	if err != nil {
+		t.Fatal(err)
+	} else {
+		if ver == "14" {
+			t.Skip("cannot test upgrade on pg14")
+		}
+	}
+
+	prevDBImage, cleanImage, err := getDBImages(extensionState)
+	if err != nil {
+		t.Fatal("unable to get db image", err)
+	}
 	// Start a db with the prev extension and a prev connector as well
 	// Then run preUpgrade and shut everything down.
 	func() {
@@ -432,7 +450,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 // upgrade path to change the extension that is available. But, a restart causes
 // Sequences to skip values. So, in order to have equivalent data, we need to make
 // sure that both the upgrade and this pristine path both have restarts.
-func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testhelpers.ExtensionState,
+func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testhelpers.TestOptions,
 	preRestart func(container testcontainers.Container, connectURL string, db *pgxpool.Pool, tmpDir string),
 	postRestart func(container testcontainers.Container, connectURL string, db *pgxpool.Pool, tmpDir string)) {
 	var err error
@@ -447,7 +465,10 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 		log.Fatal(err)
 	}
 
-	_, cleanImage := getDBImages(extensionState)
+	_, cleanImage, err := getDBImages(extensionState)
+	if err != nil {
+		t.Fatal("unable to get docker image", err)
+	}
 
 	func() {
 		container, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
@@ -772,7 +793,10 @@ func startDB(t *testing.T, ctx context.Context) (*pgx.Conn, testcontainers.Conta
 		t.Fatal(err)
 	}
 
-	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, testhelpers.Timescale)
+	// TODO (james): Replace hardcoded value
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14")
+
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, extensionState)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}
