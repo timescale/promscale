@@ -91,7 +91,7 @@ PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
 docker exec e2e-tsdb psql -U postgres -d postgres \
   -c "CREATE ROLE writer PASSWORD 'test' LOGIN" \
   -c "GRANT prom_writer TO writer" \
-    -c "CREATE ROLE reader PASSWORD 'test' LOGIN" \
+  -c "CREATE ROLE reader PASSWORD 'test' LOGIN" \
   -c "GRANT prom_reader TO reader"
 
 PROMSCALE_LOG_LEVEL=debug \
