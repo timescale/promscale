@@ -151,6 +151,14 @@ var (
 			Help:      "Total items (samples/exemplars/spans) received.",
 		}, []string{"type", "kind"},
 	)
+	IngestorBytes = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "requests_bytes_total",
+			Help:      "Total requests bytes ingested for traces or metrics",
+		}, []string{"type"},
+	)
 	IngestorRequests = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
@@ -188,6 +196,7 @@ func init() {
 		IngestorActiveWriteRequests,
 		IngestorDuration,
 		IngestorItems,
+		IngestorBytes,
 		IngestorItemsReceived,
 		IngestorRequests,
 		InsertBatchSize,

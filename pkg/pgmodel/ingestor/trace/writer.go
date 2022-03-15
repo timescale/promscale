@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/timestamp"
 
+	"go.opentelemetry.io/collector/model/otlp"
 	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/jackc/pgtype"
@@ -115,6 +116,8 @@ var (
 	traceEventLabel = prometheus.Labels{"type": "trace", "kind": "event"}
 	traceLinkLabel  = prometheus.Labels{"type": "trace", "kind": "link"}
 )
+
+var tracesMarshaller = otlp.NewProtobufTracesMarshaler()
 
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
 	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
@@ -324,6 +327,13 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 
 	// Only report telemetry if ingestion successful.
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
+
+	// since otel is making Protobufs internal this is our only chance to get the size of the message
+	tracesSizer, ok := tracesMarshaller.(pdata.TracesSizer)
+	if ok {
+		size := tracesSizer.TracesSize(traces)
+		metrics.IngestorBytes.With(prometheus.Labels{"type": "trace"}).Add(float64(size))
+	}
 	return nil
 }
 
