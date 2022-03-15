@@ -2,10 +2,10 @@ name: mixin
 on:
   push:
     paths:
-    - 'docs/mixin/alerts/*.yml'
+    - 'docs/mixin/**'
   pull_request:
     paths:
-    - 'docs/mixin/alerts/*.yml'
+    - 'docs/mixin/**'
 
 env:
   golang-version: 1.17.7
@@ -27,7 +27,16 @@ jobs:
       with:
         go-version: ${{ env.golang-version }}
 
+    - name: download dashboard linter
+      run: go install -a github.com/grafana/dashboard-linter@latest
+
     - name: download promtool
-      run: go install -a github.com/prometheus/prometheus/cmd/promtool@latest
-      
-    - run: make check-alerts
+      run: |
+        VERSION=$(curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest | grep "tag_name" | awk '{print substr($2, 2, length($2)-3)}' | sed 's/v//')
+        curl -s -L "https://github.com/prometheus/prometheus/releases/download/v${VERSION}/prometheus-${VERSION}.linux-amd64.tar.gz" | tar -zxf - -C "${GITHUB_WORKSPACE}/" --strip-components 1 "prometheus-${VERSION}.linux-amd64/promtool"
+
+    - run: |
+        PATH="${PATH}:${GITHUB_WORKSPACE}"
+        make check-alerts
+
+    - run: make check-dashboards

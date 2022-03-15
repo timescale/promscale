@@ -37,5 +37,11 @@ check-alerts:
 	# go install -a github.com/prometheus/prometheus/cmd/promtool@latest
 	promtool check rules docs/mixin/alerts/alerts.yaml
 
+.PHONY: check-dashboards
+check-dashboards:
+	# If you don't have promtool, install it with
+	# go install -a github.com/grafana/dashboard-linter@latest
+	find docs/mixin/dashboards -name '*.json' -print0 | xargs -n 1 -0 dashboard-linter lint
+
 .PHONY: all
 all: build test e2e-test go-fmt go-lint

@@ -1,0 +1,4 @@
+# Those exclusions are needed due to usage of newer dashboard schema
+exclusions:
+  template-datasource-rule:
+  panel-datasource-rule:
