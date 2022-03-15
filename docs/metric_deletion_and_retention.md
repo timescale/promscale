@@ -158,10 +158,13 @@ installation instructions for your platform to see how to set up the cron job.
 
 ### Manually forcing retention to be applied
 
-Promscale leverages TimescaleDB's [User-Defined Actions] to schedule a maintenance job which drops data which is
-over its retention period. By default, it will automatically be executed every 30 minutes.
+Promscale leverages TimescaleDB's [User-Defined Actions] to schedule a maintenance job, which is automatically
+executed every 30 minutes. The maintenance job drops data which is over the retention period, and compresses
+data which needs to be compressed.
 
-You can also manually run this maintenance job with the following SQL command:
+When you adjust the retention period, it should be applied within about 30 minutes (depending on how long the
+maintenance job takes to run). If you're impatient, you can manually trigger the maintenance job with the
+following SQL command:
 
 ```
 CALL prom_api.execute_maintenance();
