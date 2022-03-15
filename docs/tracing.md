@@ -54,7 +54,7 @@ Next step is to configure your services to [send traces to Promscale](#ingest-tr
 
 Promscale consists of the Promscale Connector and TimescaleDB.
 
-There are images on DockerHub for both the [Promscale Connector](https://hub.docker.com/r/timescale/promscale/tags) and [TimescaleDB with the Promscale extension](https://hub.docker.com/r/timescaledev/promscale-extension).
+There are images on DockerHub for both the [Promscale Connector](https://hub.docker.com/r/timescale/promscale/tags) and [TimescaleDB with the Promscale extension](https://hub.docker.com/r/timescale/timescaledb-ha).
 
 For the Promscale Connector we recommend using the latest version with tracing support (`0.7.0-beta.latest`). For TimescaleDB with the Promscale extension the latest version with more recent TimescaleDB and Postgres versions (`latest-ts2-pg13`).
 
@@ -69,7 +69,7 @@ docker network create --driver bridge promscale-timescaledb
 Then let's run TimescaleDB with the Promscale extension (replace `<password>` with your selected password):
 
 ```bash
-docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --network promscale-timescaledb timescaledev/promscale-extension:latest-ts2-pg13 postgres -csynchronous_commit=off
+docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --network promscale-timescaledb timescale/timescaledb-ha:pg14-latest postgres -csynchronous_commit=off
 ```
 
 Finally let’s run the Promscale Connector with tracing enabled (replace `<password>` with the password you selected in the previous step):
