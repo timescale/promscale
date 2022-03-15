@@ -192,7 +192,7 @@ var replaceChildren = regexp.MustCompile("timescaledb_internal\\._hyper_.*\n")
 var replaceDistChildren = regexp.MustCompile("timescaledb_internal\\._dist_hyper_.*\n")
 var replaceSatisfiesOID = regexp.MustCompile("satisfies_hash_partition.{3,20}::oid")
 
-func expectedSchemas(extstate testhelpers.ExtensionState) []string {
+func expectedSchemas(extstate testhelpers.TestOptions) []string {
 	considerSchemas := schemas
 	if !extstate.UsesTimescaleDB() {
 		considerSchemas = schemasWOTimescaleDB
@@ -200,7 +200,7 @@ func expectedSchemas(extstate testhelpers.ExtensionState) []string {
 	return considerSchemas
 }
 
-func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, extstate testhelpers.ExtensionState) (info dbSnapshot) {
+func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, extstate testhelpers.TestOptions) (info dbSnapshot) {
 	info.schemaNames = getSchemas(t, db)
 	considerSchemas := expectedSchemas(extstate)
 
@@ -235,7 +235,7 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 	return
 }
 
-func GetDbInfoIgnoringTable(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, ignoreTableSchema string, ignoreTableName string, extState testhelpers.ExtensionState) dbSnapshot {
+func GetDbInfoIgnoringTable(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, ignoreTableSchema string, ignoreTableName string, extState testhelpers.TestOptions) dbSnapshot {
 	snapshot := SnapshotDB(t, container, dbName, outputDir, db, extState)
 	return ClearTableFromSnapshot(snapshot, ignoreTableSchema, ignoreTableName)
 }

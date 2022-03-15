@@ -112,7 +112,7 @@ jobs:
         TSDB: ${{ matrix.test-setups.tsdb }}
         MULTI: ${{ matrix.test-setups.multi }}
         NIGHTLY: ${{ matrix.test-setups.nightly }}
-      run: go test ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -use-timescaledb-nightly=$NIGHTLY -postgres-version-major=$PG
+      run: go test ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -use-timescaledb-nightly=$NIGHTLY -postgres-version-major=$PG -promscale-extension-version=jg-ha-dockerfile
 
   test-helm-chart:
     name: Test helm-chart template generation

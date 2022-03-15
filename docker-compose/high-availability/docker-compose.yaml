@@ -2,7 +2,8 @@ version: '3.0'
 
 services:
   db:
-    image: timescale/timescaledb-ha:pg14-latest
+    #TODO (james): replace with up-to-date timescale/timescaledb-ha image when it's ready
+    image: ghcr.io/timescale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14
     ports:
       - 5432:5432/tcp
     environment:

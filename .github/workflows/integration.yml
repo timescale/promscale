@@ -18,12 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        test-setups:
-        - {name: "TimescaleDB 2.x without Promscale extension (pg13)", image: "timescale/timescaledb:latest-pg13"}
-        - {name: "TimescaleDB 2.x with Promscale extension (pg13)", image: "timescaledev/promscale-extension:latest-ts2-pg13"}
-        - {name: "TimescaleDB 2.x with Promscale extension (pg12)", image: "timescaledev/promscale-extension:latest-ts2-pg12"}
-        - {name: "TimescaleDB 1.x with Promscale extension (pg12)", image: "timescaledev/promscale-extension:latest-ts1-pg12"}
-        - {name: "Test against first supported", image: "timescale/timescaledb:1.7.4-pg12"}
+        pgversion:
+          - 14
+          - 13
+          - 12
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
@@ -34,8 +32,24 @@ jobs:
         go-version: ${{ env.golang-version }}
       id: go
 
-    - name: ${{ matrix.test-setups.name }}
-      run: ./scripts/end_to_end_tests.sh ${{ matrix.test-setups.image }}
+    - name: Prepare metadata
+      id: metadata
+      run: |
+        branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
+        possible_branch_tag=$(echo ${branch_name}-ts2-pg${{matrix.pgversion}})
+        develop_branch_tag=$(echo develop-ts2-pg${{matrix.pgversion}})
+        image_base="ghcr.io/timescale/dev_promscale_extension"
+        echo "${image_base}:${possible_branch_tag} ${image_base}:${develop_branch_tag}"
+        echo $(which docker)
+        docker manifest inspect ${image_base}:${possible_branch_tag}
+        docker manifest inspect ${image_base}:${develop_branch_tag}
+        actual_branch_tag=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${develop_branch_tag})
+        echo "actual branch tag: ${actual_branch_tag}"
+        echo "::set-output name=branch_name::${actual_branch_tag}"
+        echo "manifest: ${manifest}"
+
+    - name: TimescaleDB 2.x with Promscale extension (pg${{matrix.pgversion}})
+      run: ./scripts/end_to_end_tests.sh ghcr.io/timescale/dev_promscale_extension:${{steps.metadata.outputs.branch_name}}-ts2-${{matrix.pgversion}}
       shell: bash
 
   # Added to summarize the matrix (otherwise we would need to list every single job in branch protection rules)

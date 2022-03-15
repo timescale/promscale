@@ -24,9 +24,8 @@ var (
 	electionInterval = flag.Duration("election-interval", 1*time.Second, "Scheduled election interval")
 )
 
-const extensionState = testhelpers.Timescale
-
 func TestPgLeaderLock(t *testing.T) {
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "jg-ha-dockerfile")
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock, err := NewPgLeaderLock(1, connectURL, nil)
 		if err != nil {
@@ -66,6 +65,7 @@ func TestPgLeaderLock(t *testing.T) {
 }
 
 func TestElector(t *testing.T) {
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "jg-ha-dockerfile")
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgLeaderLock(2, connectURL, nil)
 		if err != nil {
@@ -101,6 +101,7 @@ func TestElector(t *testing.T) {
 }
 
 func TestPrometheusLivenessCheck(t *testing.T) {
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "jg-ha-dockerfile")
 	testhelpers.WithDB(t, *testDatabase, testhelpers.NoSuperuser, false, extensionState, func(pool *pgxpool.Pool, t testing.TB, connectURL string) {
 		lock1, err := NewPgLeaderLock(3, connectURL, nil)
 		if err != nil {
@@ -151,6 +152,7 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
 
+		extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "jg-ha-dockerfile")
 		_, closer, err := testhelpers.StartPGContainer(ctx, extensionState, "", false)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
