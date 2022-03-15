@@ -8,12 +8,11 @@ on Docker Hub at [timescale/promscale](https://hub.docker.com/r/timescale/promsc
 To fetch the latest Promscale image, please refer to the [releases](https://github.com/timescale/promscale/releases)
 section of Promscale github repository.
 
-A docker image of TimescaleDB with the `promscale`
-extension is available at on Docker Hub at
-[`timescaledev/promscale-extension:latest-ts2-pg13`](https://hub.docker.com/r/timescaledev/promscale-extension). You can
-install this via `docker pull timescaledev/promscale-extension:latest-ts2-pg13`.
+A docker image of TimescaleDB with associated extensions including the `promscale`
+extension is available on Docker Hub at [`timescale/timescaledb-ha:pg14-latest`](https://hub.docker.com/r/timescale/timescaledb-ha).
+You can install this via `docker pull timescale/timescaledb-ha:pg14-latest`.
 
-The `ts2-pg13` suffix means TimescaleDB version 2 on PostgreSQL version 13. We also publish images to DockerHub for other combinations of TimescaleDB and PostgreSQL versions in case you have specific version requirements.
+The `pg14` suffix means this image is for PostgreSQL version 14. We also publish images to DockerHub for other PostgreSQL versions in case you have specific version requirements.
 
 **Example using docker:**
 
@@ -26,7 +25,7 @@ docker network create --driver bridge promscale-timescaledb
 Install and run TimescaleDB with Promscale extension:
 
 ```dockerfile
-docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --network promscale-timescaledb timescaledev/promscale-extension:latest-ts2-pg13 postgres -csynchronous_commit=off
+docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --network promscale-timescaledb timescale/timescaledb-ha:pg14-latest postgres -csynchronous_commit=off
 ```
 
 Finally, let's run Promscale:
@@ -105,3 +104,51 @@ our docs or by running with the `-h` flag (e.g. `promscale -h`).
 ## 🛠 Building from source
 
 You can build the Docker container using the [Dockerfile](../build/Dockerfile).
+
+## Upgrading from the previous alpine image
+
+Previously, our recommended image was located at [`timescaledev/promscale-extension`](https://hub.docker.com/r/timescaledev/promscale-extension).
+It was based on the [Alpine docker image for PostgreSQL](https://github.com/docker-library/postgres/blob/e8ebf74e50128123a8d0220b85e357ef2d73a7ec/12/alpine/Dockerfile).
+Because of [collation bugs](https://github.com/docker-library/postgres/issues/327) and other issues we have now switched our recommendation to the Debian-based image above.
+
+Our previous Alpine-based image will continue to be supported but all new installations should switch to the `timescaledb-ha` image specified above.
+
+You can also migrate to Debian version by doing the following (please note: this can be a lengthy process and involves downtime):
+
+1. Use `docker inspect` to determine the data volumes used by your database for the data directory.
+1. Shutdown all Promscale Connectors.
+1. Shutdown the original database docker image while preserving the volume mount for the data directory.
+   You will need to mount this same directory in the new image.
+1. Change the ownership of the data-directory to the postgres user and group in the new image. For example:
+    ```
+    docker run -v <data_dir_volume_mount>:/var/lib/postgresql/data timescale/timescaledb-ha:pg14-latest chown -R postgres:postgres /var/lib/postgresql/data
+    ```
+1. Start the new docker container with the same volume mounts as what the original container used.
+1. Connect to the new database using psql and reindex all the data that has data
+that is collatable.  This is necessary because the collation in the Alpine image
+is broken and so BTREE-based indexes will be incorrect until they are reindexed.
+It is extremely important to execute this step before ingesting new data to
+avoid data corruption. Note: This process can take a long time depending on how
+much indexed textual data the database has. You should use the following query to
+reindex all the necessary indexes:
+    ```
+      DO $$DECLARE r record;
+      BEGIN
+        FOR r IN
+          SELECT DISTINCT indclass
+ 		      FROM (SELECT indexrelid::regclass indclass, unnest(string_to_array(indcollation::text, ' ')) coll FROM pg_catalog.pg_index) sub
+ 		      INNER JOIN pg_catalog.pg_class c ON (c.oid = sub.indclass)
+ 		      WHERE coll !='0' AND c.relkind != 'I'
+        LOOP
+         EXECUTE 'REINDEX INDEX ' || r.indclass;
+      END LOOP;
+    END$$;
+    ```
+
+1. Restart the Promscale Connector
+
+If you are using Kubernetes instead of plain docker you should:
+1. Shutdown the Promscale Connector pods
+1. Change the database pod to use the debian docker image and restart it.
+1. Execute jobs for the script in steps 4 and 6 above.
+1. Restart the Promscale Connector pods.
