@@ -1,0 +1,203 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Map of upstream service dependencies for a specific service and operation",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 12,
+  "iteration": 1647423427843,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "ps-apm-home"
+      ],
+      "targetBlank": false,
+      "title": "Home",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "ps-apm-service"
+      ],
+      "targetBlank": false,
+      "title": "Service Menu",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "description": "A.K.A. \"Who called me?\"",
+      "gridPos": {
+        "h": 26,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+          },
+          "format": "table",
+          "group": [],
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "WITH RECURSIVE x AS\n(\n    SELECT\n        trace_id,\n        span_id,\n        parent_span_id,\n        service_name,\n        span_name\n    FROM ps_trace.span\n    WHERE start_time > NOW() - INTERVAL '10 minutes'\n    AND service_name = '${service}'\n    AND span_name = '${operation}'\n    UNION ALL\n    SELECT\n        s.trace_id,\n        s.span_id,\n        s.parent_span_id,\n        s.service_name,\n        s.span_name\n    FROM x\n    INNER JOIN ps_trace.span s\n    ON (x.trace_id = s.trace_id\n    AND x.parent_span_id = s.span_id)\n)\nSELECT\n    md5(service_name || '-' || span_name) as id,\n    span_name as title,\n    service_name as \"subTitle\",\n    count(*) as \"mainStat\"\nFROM x\nGROUP BY service_name, span_name",
+          "refId": "A",
+          "select": [
+            [
+              {
+                "params": [
+                  "span_duration_ms"
+                ],
+                "type": "column"
+              }
+            ]
+          ],
+          "table": "event",
+          "timeColumn": "\"time\"",
+          "timeColumnType": "timestamp",
+          "where": [
+            {
+              "name": "$__timeFilter",
+              "params": [],
+              "type": "macro"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+          },
+          "format": "table",
+          "group": [],
+          "hide": false,
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "WITH RECURSIVE x AS\n(\n    SELECT\n        trace_id,\n        span_id,\n        parent_span_id,\n        service_name,\n        span_name,\n        null::text as id,\n        null::text as target,\n        null::text as source\n    FROM ps_trace.span\n    WHERE start_time > NOW() - INTERVAL '10 minutes'\n    AND service_name = '${service}'\n    AND span_name = '${operation}'\n    UNION ALL\n    SELECT\n        s.trace_id,\n        s.span_id,\n        s.parent_span_id,\n        s.service_name,\n        s.span_name,\n        md5(s.service_name || '-' || s.span_name || '-' || x.service_name || '-' || x.span_name) as id,\n        md5(x.service_name || '-' || x.span_name) as target,\n        md5(s.service_name || '-' || s.span_name) as source\n    FROM x\n    INNER JOIN ps_trace.span s\n    ON (x.trace_id = s.trace_id\n    AND x.parent_span_id = s.span_id)\n)\nSELECT DISTINCT\n    x.id,\n    x.target,\n    x.source \nFROM x\nWHERE id is not null",
+          "refId": "B",
+          "select": [
+            [
+              {
+                "params": [
+                  "span_duration_ms"
+                ],
+                "type": "column"
+              }
+            ]
+          ],
+          "table": "event",
+          "timeColumn": "\"time\"",
+          "timeColumnType": "timestamp",
+          "where": [
+            {
+              "name": "$__timeFilter",
+              "params": [],
+              "type": "macro"
+            }
+          ]
+        }
+      ],
+      "title": "Map of Upstream Depencies (last 10 minutes)",
+      "transformations": [],
+      "type": "nodeGraph"
+    }
+  ],
+  "schemaVersion": 34,
+  "style": "dark",
+  "tags": [
+    "ps-apm-service"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": "ALL",
+        "current": {
+          "selected": false,
+          "text": "generator",
+          "value": "generator"
+        },
+        "definition": "SELECT value#>>'{}'\nFROM _ps_trace.tag\nWHERE key = 'service.name'\n",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Service",
+        "multi": false,
+        "name": "service",
+        "options": [],
+        "query": "SELECT value#>>'{}'\nFROM _ps_trace.tag\nWHERE key = 'service.name'\n",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "ALL",
+        "current": {
+          "selected": false,
+          "text": "HTTP GET",
+          "value": "HTTP GET"
+        },
+        "definition": "SELECT DISTINCT span_name\nFROM _ps_trace.operation\nWHERE service_name_id IN\n(\n    SELECT id\n    FROM _ps_trace.tag\n    WHERE key = 'service.name'\n    AND value#>>'{}' IN  (${service:sqlstring})\n)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Operation",
+        "multi": false,
+        "name": "operation",
+        "options": [],
+        "query": "SELECT DISTINCT span_name\nFROM _ps_trace.operation\nWHERE service_name_id IN\n(\n    SELECT id\n    FROM _ps_trace.tag\n    WHERE key = 'service.name'\n    AND value#>>'{}' IN  (${service:sqlstring})\n)",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "timezone": "",
+  "title": "Dependencies - Upstream",
+  "uid": "o4PPTDPnz",
+  "version": 14,
+  "weekStart": ""
+}
