@@ -50,7 +50,8 @@ func NewPendingBuffer() *pendingBuffer {
 }
 
 func (p *pendingBuffer) IsFull() bool {
-	return p.batch.CountSeries() > metrics.FlushSize
+	samples, exemplars := p.batch.Count()
+	return samples+exemplars >= metrics.FlushSize
 }
 
 func (p *pendingBuffer) IsEmpty() bool {
