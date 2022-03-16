@@ -16,8 +16,13 @@ const (
 	MetricBatcherChannelCap = 1000
 	// FlushSize defines the batch size. It is the maximum number of samples/exemplars per insert batch.
 	// This translates to the max array size that we pass into `insert_metric_row`
-	FlushSize           = 2000
-	MaxInsertStmtPerTxn = 100
+	FlushSize = 500
+	// MaxInsertStmtPerTxn and FlushSize should be looked at together: MaxInsertStmtPerTxn * FlushSize defines
+	// the maximum number of rows we might attempt to insert. Max is only reached in case copiers are not able
+	// to catch up with incoming batches. Currently we aim at 5K max however we might tune it further upon running
+	// more benchmarks. Obviously increasing the number of rows we insert within a transaction also increases the
+	// transaction time and might lead to increased lock contention (which we want to avoid).
+	MaxInsertStmtPerTxn = 10
 )
 
 var (
