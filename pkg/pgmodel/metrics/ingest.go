@@ -14,10 +14,8 @@ import (
 // Keep these const values in pgmodel/metrics to avoid cyclic import since 'trace' may also need this.
 const (
 	MetricBatcherChannelCap = 1000
-	// FlushSize is the maximum number of insertDataRequests that should be buffered before the
-	// insertHandler flushes to the next layer. We don't want too many as this
-	// increases the number of lost writes if the connector dies. This number
-	// was chosen arbitrarily.
+	// FlushSize defines the batch size. It is the maximum number of samples/exemplars per insert batch.
+	// This translates to the max array size that we pass into `insert_metric_row`
 	FlushSize           = 2000
 	MaxInsertStmtPerTxn = 100
 )
