@@ -15,17 +15,17 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/gorilla/mux v1.8.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/hashicorp/go-hclog v1.1.0
+	github.com/hashicorp/go-hclog v1.2.0
 	github.com/inhies/go-bytesize v0.0.0-20210819104631-275770b98743
 	github.com/jackc/pgconn v1.11.0
 	github.com/jackc/pgerrcode v0.0.0-20201024163028-a0d42d470451
 	github.com/jackc/pgproto3/v2 v2.2.0
 	github.com/jackc/pgtype v1.10.0
 	github.com/jackc/pgx/v4 v4.15.1-0.20220219175125-b6b24f9e8a5d
-	github.com/jaegertracing/jaeger v1.31.0
-	github.com/oklog/run v1.1.0 // indirect
+	github.com/jaegertracing/jaeger v1.32.0
+	github.com/oklog/run v1.1.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.46.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
@@ -39,23 +39,23 @@ require (
 	github.com/schollz/progressbar/v3 v3.8.6
 	github.com/sergi/go-diff v1.2.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	github.com/testcontainers/testcontainers-go v0.12.0
-	github.com/thanos-io/thanos v0.24.0
+	github.com/thanos-io/thanos v0.25.1
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
-	go.opentelemetry.io/collector/model v0.46.0
+	go.opentelemetry.io/collector/model v0.47.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.29.0
-	go.opentelemetry.io/otel v1.4.1
-	go.opentelemetry.io/otel/exporters/jaeger v1.4.1
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.4.1
-	go.opentelemetry.io/otel/sdk v1.4.1
-	go.opentelemetry.io/otel/trace v1.4.1
+	go.opentelemetry.io/otel v1.5.0
+	go.opentelemetry.io/otel/exporters/jaeger v1.5.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.5.0
+	go.opentelemetry.io/otel/sdk v1.5.0
+	go.opentelemetry.io/otel/trace v1.5.0
 	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
 	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
-	golang.org/x/sys v0.0.0-20220227234510-4e6760a101f9
+	golang.org/x/sys v0.0.0-20220317022123-2c4bbad7e934
 	google.golang.org/genproto v0.0.0-20220217155828-d576998c0009 // indirect
-	google.golang.org/grpc v1.44.0
+	google.golang.org/grpc v1.45.0
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/yaml.v2 v2.4.0
 )
