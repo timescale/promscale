@@ -83,7 +83,7 @@ GRANT USAGE ON SEQUENCE _ps_trace.instrumentation_lib_id_seq TO prom_writer;
 
 CREATE TABLE IF NOT EXISTS _ps_trace.span
 (
-    trace_id ps_trace.trace_id NOT NULL,
+    trace_id UUID NOT NULL,
     span_id bigint NOT NULL,
     parent_span_id bigint NULL,
     operation_id bigint NOT NULL,
@@ -116,7 +116,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.span TO prom_writer;
 CREATE TABLE IF NOT EXISTS _ps_trace.event
 (
     time timestamptz NOT NULL,
-    trace_id ps_trace.trace_id NOT NULL,
+    trace_id UUID NOT NULL,
     span_id bigint NOT NULL,
     event_nbr int NOT NULL DEFAULT 0,
     name text NOT NULL CHECK (name != ''),
@@ -130,10 +130,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.event TO prom_writer;
 
 CREATE TABLE IF NOT EXISTS _ps_trace.link
 (
-    trace_id ps_trace.trace_id NOT NULL,
+    trace_id UUID NOT NULL,
     span_id bigint NOT NULL,
     span_start_time timestamptz NOT NULL,
-    linked_trace_id ps_trace.trace_id NOT NULL,
+    linked_trace_id UUID NOT NULL,
     linked_span_id bigint NOT NULL,
     link_nbr int NOT NULL DEFAULT 0,
     trace_state text CHECK (trace_state != ''),

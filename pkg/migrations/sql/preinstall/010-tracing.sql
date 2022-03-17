@@ -1,8 +1,5 @@
 CALL _prom_catalog.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
 
-    CREATE DOMAIN ps_trace.trace_id uuid NOT NULL CHECK (value != '00000000-0000-0000-0000-000000000000');
-    GRANT USAGE ON DOMAIN ps_trace.trace_id TO prom_reader;
-
     CREATE DOMAIN ps_trace.tag_k text NOT NULL CHECK (value != '');
     GRANT USAGE ON DOMAIN ps_trace.tag_k TO prom_reader;
 
@@ -126,7 +123,7 @@ GRANT USAGE ON SEQUENCE _ps_trace.instrumentation_lib_id_seq TO prom_writer;
 
 CREATE TABLE IF NOT EXISTS _ps_trace.span
 (
-    trace_id ps_trace.trace_id NOT NULL,
+    trace_id UUID NOT NULL CHECK (trace_id != '00000000-0000-0000-0000-000000000000'),
     span_id bigint NOT NULL CHECK (span_id != 0),
     parent_span_id bigint NULL CHECK (parent_span_id != 0),
     operation_id bigint NOT NULL,
@@ -159,7 +156,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.span TO prom_writer;
 CREATE TABLE IF NOT EXISTS _ps_trace.event
 (
     time timestamptz NOT NULL,
-    trace_id ps_trace.trace_id NOT NULL,
+    trace_id UUID NOT NULL,
     span_id bigint NOT NULL CHECK (span_id != 0),
     event_nbr int NOT NULL DEFAULT 0,
     name text NOT NULL,
@@ -173,10 +170,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE _ps_trace.event TO prom_writer;
 
 CREATE TABLE IF NOT EXISTS _ps_trace.link
 (
-    trace_id ps_trace.trace_id NOT NULL,
+    trace_id UUID NOT NULL,
     span_id bigint NOT NULL CHECK (span_id != 0),
     span_start_time timestamptz NOT NULL,
-    linked_trace_id ps_trace.trace_id NOT NULL,
+    linked_trace_id UUID NOT NULL,
     linked_span_id bigint NOT NULL CHECK (linked_span_id != 0),
     link_nbr int NOT NULL DEFAULT 0,
     trace_state text CHECK (trace_state != ''),
@@ -264,7 +261,7 @@ BEGIN
                 'start_time'::name,
                 partitioning_column=>'trace_id'::name,
                 number_partitions=>1::int,
-                chunk_time_interval=>'07:57:57.345608'::interval,
+                chunk_time_interval=>'1 hour'::interval,
                 create_default_indexes=>false
             );
             PERFORM public.create_distributed_hypertable(
@@ -272,7 +269,7 @@ BEGIN
                 'time'::name,
                 partitioning_column=>'trace_id'::name,
                 number_partitions=>1::int,
-                chunk_time_interval=>'07:59:53.649542'::interval,
+                chunk_time_interval=>'1 hour'::interval,
                 create_default_indexes=>false
             );
             PERFORM public.create_distributed_hypertable(
@@ -280,7 +277,7 @@ BEGIN
                 'span_start_time'::name,
                 partitioning_column=>'trace_id'::name,
                 number_partitions=>1::int,
-                chunk_time_interval=>'07:59:48.644258'::interval,
+                chunk_time_interval=>'1 hour'::interval,
                 create_default_indexes=>false
             );
             execute format('SET search_path = %s', _saved_search_path);
@@ -290,7 +287,7 @@ BEGIN
                 'start_time'::name,
                 partitioning_column=>'trace_id'::name,
                 number_partitions=>1::int,
-                chunk_time_interval=>'07:57:57.345608'::interval,
+                chunk_time_interval=>'1 hour'::interval,
                 create_default_indexes=>false
             );
             PERFORM public.create_hypertable(
@@ -298,7 +295,7 @@ BEGIN
                 'time'::name,
                 partitioning_column=>'trace_id'::name,
                 number_partitions=>1::int,
-                chunk_time_interval=>'07:59:53.649542'::interval,
+                chunk_time_interval=>'1 hour'::interval,
                 create_default_indexes=>false
             );
             PERFORM public.create_hypertable(
@@ -306,27 +303,20 @@ BEGIN
                 'span_start_time'::name,
                 partitioning_column=>'trace_id'::name,
                 number_partitions=>1::int,
-                chunk_time_interval=>'07:59:48.644258'::interval,
+                chunk_time_interval=>'1 hour'::interval,
                 create_default_indexes=>false
             );
         END IF;
 
         IF (NOT _is_timescaledb_oss) AND _is_compression_available THEN
             -- turn on compression
-            ALTER TABLE _ps_trace.span SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
-            ALTER TABLE _ps_trace.event SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
-            ALTER TABLE _ps_trace.link SET (timescaledb.compress, timescaledb.compress_segmentby='trace_id,span_id');
+            ALTER TABLE _ps_trace.span SET (timescaledb.compress, timescaledb.compress_segmentby='', timescaledb.compress_orderby='trace_id,span_id,start_time');
+            ALTER TABLE _ps_trace.event SET (timescaledb.compress, timescaledb.compress_segmentby='', timescaledb.compress_orderby='trace_id,span_id');
+            ALTER TABLE _ps_trace.link SET (timescaledb.compress, timescaledb.compress_segmentby='', timescaledb.compress_orderby='trace_id,span_id');
 
-            IF _timescaledb_major_version < 2 THEN
-                BEGIN
-                    PERFORM public.add_compression_policy('_ps_trace.span', INTERVAL '1 hour');
-                    PERFORM public.add_compression_policy('_ps_trace.event', INTERVAL '1 hour');
-                    PERFORM public.add_compression_policy('_ps_trace.link', INTERVAL '1 hour');
-                EXCEPTION
-                    WHEN undefined_function THEN
-                        RAISE NOTICE 'add_compression_policy does not exist';
-                END;
-            END IF;
+            PERFORM public.add_compression_policy('_ps_trace.span', INTERVAL '1 hour');
+            PERFORM public.add_compression_policy('_ps_trace.event', INTERVAL '1 hour');
+            PERFORM public.add_compression_policy('_ps_trace.link', INTERVAL '1 hour');
         END IF;
     END IF;
 END;

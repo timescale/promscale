@@ -69,10 +69,10 @@ GRANT EXECUTE ON FUNCTION ps_trace.is_link_tag_type(ps_trace.tag_type) TO prom_r
 -------------------------------------------------------------------------------
 -- trace tree functions
 -------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION ps_trace.trace_tree(_trace_id ps_trace.trace_id)
+CREATE OR REPLACE FUNCTION ps_trace.trace_tree(_trace_id UUID)
 RETURNS TABLE
 (
-    trace_id ps_trace.trace_id,
+    trace_id UUID,
     parent_span_id bigint,
     span_id bigint,
     lvl int,
@@ -114,12 +114,12 @@ AS $func$
         x.path
     FROM x
 $func$ LANGUAGE sql STABLE STRICT PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION ps_trace.trace_tree(ps_trace.trace_id) TO prom_reader;
+GRANT EXECUTE ON FUNCTION ps_trace.trace_tree(UUID) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION ps_trace.upstream_spans(_trace_id ps_trace.trace_id, _span_id bigint, _max_dist int default null)
+CREATE OR REPLACE FUNCTION ps_trace.upstream_spans(_trace_id UUID, _span_id bigint, _max_dist int default null)
 RETURNS TABLE
 (
-    trace_id ps_trace.trace_id,
+    trace_id UUID,
     parent_span_id bigint,
     span_id bigint,
     dist int,
@@ -162,12 +162,12 @@ AS $func$
         x.path
     FROM x
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION ps_trace.upstream_spans(ps_trace.trace_id, bigint, int) TO prom_reader;
+GRANT EXECUTE ON FUNCTION ps_trace.upstream_spans(UUID, bigint, int) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION ps_trace.downstream_spans(_trace_id ps_trace.trace_id, _span_id bigint, _max_dist int default null)
+CREATE OR REPLACE FUNCTION ps_trace.downstream_spans(_trace_id UUID, _span_id bigint, _max_dist int default null)
 RETURNS TABLE
 (
-    trace_id ps_trace.trace_id,
+    trace_id UUID,
     parent_span_id bigint,
     span_id bigint,
     dist int,
@@ -208,12 +208,12 @@ AS $func$
         x.path
     FROM x
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION ps_trace.downstream_spans(ps_trace.trace_id, bigint, int) TO prom_reader;
+GRANT EXECUTE ON FUNCTION ps_trace.downstream_spans(UUID, bigint, int) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION ps_trace.sibling_spans(_trace_id ps_trace.trace_id, _span_id bigint)
+CREATE OR REPLACE FUNCTION ps_trace.sibling_spans(_trace_id UUID, _span_id bigint)
 RETURNS TABLE
 (
-    trace_id ps_trace.trace_id,
+    trace_id UUID,
     parent_span_id bigint,
     span_id bigint
 )
@@ -232,7 +232,7 @@ AS $func$
         AND x.span_id = _span_id
     )
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION ps_trace.sibling_spans(ps_trace.trace_id, bigint) TO prom_reader;
+GRANT EXECUTE ON FUNCTION ps_trace.sibling_spans(UUID, bigint) TO prom_reader;
 
 CREATE OR REPLACE FUNCTION ps_trace.operation_calls(_start_time_min timestamptz, _start_time_max timestamptz)
 RETURNS TABLE
@@ -263,10 +263,10 @@ SET  enable_nestloop = off
 STABLE PARALLEL SAFE;
 GRANT EXECUTE ON FUNCTION ps_trace.operation_calls(timestamptz, timestamptz) TO prom_reader;
 
-CREATE OR REPLACE FUNCTION ps_trace.span_tree(_trace_id ps_trace.trace_id, _span_id bigint, _max_dist int default null)
+CREATE OR REPLACE FUNCTION ps_trace.span_tree(_trace_id UUID, _span_id bigint, _max_dist int default null)
 RETURNS TABLE
 (
-    trace_id ps_trace.trace_id,
+    trace_id UUID,
     parent_span_id bigint,
     span_id bigint,
     dist int,
@@ -296,7 +296,7 @@ AS $func$
         path
     FROM ps_trace.downstream_spans(_trace_id, _span_id, _max_dist) d
 $func$ LANGUAGE sql STABLE PARALLEL SAFE;
-GRANT EXECUTE ON FUNCTION ps_trace.span_tree(ps_trace.trace_id, bigint, int) TO prom_reader;
+GRANT EXECUTE ON FUNCTION ps_trace.span_tree(UUID, bigint, int) TO prom_reader;
 
 -------------------------------------------------------------------------------
 -- get / put functions

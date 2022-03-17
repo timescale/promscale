@@ -49,9 +49,6 @@ END $$ $ee$);
 
 CALL _prom_catalog.execute_everywhere('tracing_types', $ee$ DO $$ BEGIN
 
-    CREATE DOMAIN ps_trace.trace_id uuid NOT NULL CHECK (value != '00000000-0000-0000-0000-000000000000');
-    GRANT USAGE ON DOMAIN ps_trace.trace_id TO prom_reader;
-
     CREATE DOMAIN ps_trace.tag_k text NOT NULL CHECK (value != '');
     GRANT USAGE ON DOMAIN ps_trace.tag_k TO prom_reader;
 
