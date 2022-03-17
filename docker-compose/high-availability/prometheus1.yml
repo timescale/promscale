@@ -9,7 +9,7 @@ global:
   # external systems (federation, remote storage, Alertmanager).
   external_labels:
       cluster: 'monitoring-cluster'
-      __replica__: 'promscale_deploy_ha-promscale-connector1-1'
+      __replica__: 'prometheus1'
 
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
 rule_files:
@@ -18,8 +18,10 @@ rule_files:
 
 remote_write:
     - url: "http://promscale-connector1:9201/write"
+    - url: "http://promscale-connector2:9201/write"
 remote_read:
     - url: "http://promscale-connector1:9201/read"
+    - url: "http://promscale-connector2:9201/read"
 
 # A scrape configuration containing exactly one endpoint to scrape:
 # Here it's Prometheus itself.
