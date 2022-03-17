@@ -1,4 +1,22 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_TIMESCALEDB",
+      "label": "TimescaleDB / PostgreSQL data source",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    },
+    {
+      "name": "DS_PROMSCALE_JAEGER",
+      "label": "Promscale Jaeger Tracing data source",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "jaeger",
+      "pluginName": "Jaeger"
+    }
+  ],
   "annotations": {
     "list": [
       {
@@ -22,7 +40,22 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 10,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "ps-apm"
+      ],
+      "targetBlank": false,
+      "title": "Menu",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
   "liveNow": false,
   "panels": [
     {
@@ -98,6 +131,23 @@
                 "value": "percentunit"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Service"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show service overview",
+                    "url": "/d/YWfN6wL7z/?var-service=${__value.raw}"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -116,21 +166,27 @@
           ],
           "show": false
         },
-        "showHeader": true
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Avg Latency"
+          }
+        ]
       },
       "pluginVersion": "8.3.3",
       "targets": [
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
           "hide": false,
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n    service_name,\n    count(*) / 60.0 as \"Throughput\",\n    AVG(duration_ms) as \"Avg Latency\",\n    ROUND(approx_percentile(0.90, percentile_agg(duration_ms))::numeric, 3) as \"p90 Latency\",\n    (count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*)) as \"Error rate\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nGROUP BY 1\nORDER BY 2",
+          "rawSql": "SELECT\n    service_name AS \"Service\",\n    COUNT(*)::numeric / (30 * 60) AS \"Throughput\",\n    AVG(duration_ms) AS \"Avg Latency\",\n    ROUND(approx_percentile(0.90, percentile_agg(duration_ms))::numeric, 3) AS \"p90 Latency\",\n    (count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*)) AS \"Error rate\"\nFROM ps_trace.span s\nWHERE start_time > NOW() - INTERVAL '30m'\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nGROUP BY 1\nORDER BY 2",
           "refId": "A",
           "select": [
             [
@@ -154,7 +210,7 @@
           ]
         }
       ],
-      "title": "Services",
+      "title": "Services (Last 30 minutes)",
       "type": "table"
     },
     {
@@ -219,7 +275,7 @@
                   {
                     "targetBlank": true,
                     "title": "View trace details",
-                    "url": "/explore?left=%5B%22${__from}%22,%22${__to}%22,%22Promscale-Tracing%22,%7B\"query\":\"${__value.raw}\"%7D%5D"
+                    "url": "/explore?left=%5B%22${__from}%22,%22${__to}%22,%22${DS_PROMSCALE_JAEGER}%22,%7B\"query\":\"${__value.raw}\"%7D%5D"
                   }
                 ]
               }
@@ -248,6 +304,23 @@
                 "value": 94
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Service"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show service overview",
+                    "url": "/d/YWfN6wL7z/?var-service=${__value.raw}"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -274,13 +347,13 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  replace(trace_id::text, '-'::text, ''::text) as \"Trace ID\",\n  service_name as \"Service\",\n  span_name as \"Operation\",\n  start_time as \"Time\",\n  duration_ms\nFROM ps_trace.span\nWHERE $__timeFilter(start_time)\nAND parent_span_id is null\nORDER BY duration_ms DESC\nLIMIT 50\n;",
+          "rawSql": "SELECT\n  replace(trace_id::text, '-'::text, ''::text) as \"Trace ID\",\n  service_name as \"Service\",\n  span_name as \"Operation\",\n  start_time as \"Time\",\n  duration_ms\nFROM ps_trace.span\nWHERE start_time > NOW() - INTERVAL '30m'\nAND parent_span_id is null\nORDER BY duration_ms DESC\nLIMIT 50\n;",
           "refId": "A",
           "select": [
             [
@@ -304,7 +377,7 @@
           ]
         }
       ],
-      "title": "Slowest Requests",
+      "title": "Slowest Requests (last 30 minutes)",
       "type": "table"
     },
     {
@@ -332,7 +405,25 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Service"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show service overview",
+                    "url": "/d/YWfN6wL7z/?var-service=${__value.raw}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 12,
@@ -357,13 +448,13 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  status_message as \"Error\",\n  service_name as \"Service\",\n  count(*) as \"Occurrences\"\nFROM ps_trace.event\nWHERE $__timeFilter(time) AND\nstatus_code = 'STATUS_CODE_ERROR'\nGROUP BY 1, 2\nORDER BY 3\n;",
+          "rawSql": "SELECT\n  status_message as \"Error\",\n  service_name as \"Service\",\n  count(*) as \"Occurrences\" \nFROM ps_trace.event\nWHERE time > NOW() - INTERVAL '30m'\nAND status_code = 'STATUS_CODE_ERROR'\nGROUP BY 1, 2\nORDER BY 3\n;",
           "refId": "A",
           "select": [
             [
@@ -387,24 +478,29 @@
           ]
         }
       ],
-      "title": "Common Errors",
+      "title": "Most Common Errors (last 30 minutes)",
       "type": "table"
     }
   ],
   "schemaVersion": 34,
   "style": "dark",
-  "tags": [],
+  "tags": [
+    "ps-apm",
+    "ps-apm-home"
+  ],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-1h",
     "to": "now"
   },
-  "timepicker": {},
+  "timepicker": {
+    "hidden": true
+  },
   "timezone": "",
-  "title": "Services",
+  "title": "Home",
   "uid": "vBhEewLnk",
-  "version": 17,
+  "version": 35,
   "weekStart": ""
 }

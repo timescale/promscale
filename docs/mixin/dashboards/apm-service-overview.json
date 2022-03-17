@@ -1,4 +1,22 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_TIMESCALEDB",
+      "label": "TimescaleDB / PostgreSQL data source",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    },
+    {
+      "name": "DS_PROMSCALE_JAEGER",
+      "label": "Promscale Jaeger Tracing data source",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "jaeger",
+      "pluginName": "Jaeger"
+    }
+  ],
   "annotations": {
     "list": [
       {
@@ -22,7 +40,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 2,
   "id": 9,
-  "iteration": 1647423335560,
+  "iteration": 1647523274899,
   "links": [
     {
       "asDropdown": false,
@@ -131,7 +149,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "time_series",
           "group": [],
@@ -240,7 +258,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "time_series",
           "group": [],
@@ -346,7 +364,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "time_series",
           "group": [],
@@ -466,7 +484,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
@@ -561,7 +579,7 @@
                   {
                     "targetBlank": true,
                     "title": "View trace details",
-                    "url": "/explore?left=%5B%22${__from}%22,%22${__to}%22,%22Promscale-Tracing%22,%7B\"query\":\"${__value.raw}\"%7D%5D"
+                    "url": "/explore?left=%5B%22${__from}%22,%22${__to}%22,%22${DS_PROMSCALE_JAEGER}%22,%7B\"query\":\"${__value.raw}\"%7D%5D"
                   }
                 ]
               }
@@ -616,7 +634,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
@@ -699,7 +717,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
@@ -765,7 +783,7 @@
     ]
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},

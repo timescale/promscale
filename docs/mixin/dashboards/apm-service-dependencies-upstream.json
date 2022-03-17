@@ -1,4 +1,14 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_TIMESCALEDB",
+      "label": "TimescaleDB / PostgreSQL data source",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
   "annotations": {
     "list": [
       {
@@ -23,7 +33,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 12,
-  "iteration": 1647423427843,
+  "iteration": 1647519937731,
   "links": [
     {
       "asDropdown": false,
@@ -69,7 +79,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
@@ -101,7 +111,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
@@ -189,7 +199,7 @@
     ]
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {
