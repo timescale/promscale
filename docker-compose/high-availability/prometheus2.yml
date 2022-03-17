@@ -17,8 +17,10 @@ rule_files:
   # - "second.rules"
 
 remote_write:
+    - url: "http://promscale-connector1:9201/write"
     - url: "http://promscale-connector2:9201/write"
 remote_read:
+    - url: "http://promscale-connector1:9201/read"
     - url: "http://promscale-connector2:9201/read"
 
 # A scrape configuration containing exactly one endpoint to scrape:
