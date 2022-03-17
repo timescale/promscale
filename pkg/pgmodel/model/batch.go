@@ -21,7 +21,9 @@ type Data struct {
 // Batch is an iterator over a collection of Insertables that returns
 // data in the format expected for the data table row.
 type Batch struct {
-	data []Insertable
+	data         []Insertable
+	numSamples   int
+	numExemplars int
 }
 
 // NewBatch returns a new batch that can hold samples and exemplars.
@@ -35,7 +37,7 @@ func (t *Batch) Reset() {
 		// nil all pointers to prevent memory leaks
 		t.data[i] = nil
 	}
-	*t = Batch{data: t.data[:0]}
+	*t = Batch{data: t.data[:0], numSamples: 0, numExemplars: 0}
 }
 
 func (t *Batch) CountSeries() int {
@@ -47,20 +49,20 @@ func (t *Batch) Data() []Insertable {
 }
 
 func (t *Batch) Count() (numSamples, numExemplars int) {
-	for _, d := range t.data {
-		if d.IsOfType(Sample) {
-			numSamples += d.Count()
-		} else if d.IsOfType(Exemplar) {
-			numExemplars += d.Count()
-		} else {
-			panic(fmt.Sprintf("invalid type %T. Valid options: ['Sample', 'Exemplar']", d))
-		}
-	}
-	return
+	return t.numSamples, t.numExemplars
 }
 
 func (t *Batch) AppendSlice(s []Insertable) {
 	t.data = append(t.data, s...)
+	for _, d := range s {
+		if d.IsOfType(Sample) {
+			t.numSamples += d.Count()
+		} else if d.IsOfType(Exemplar) {
+			t.numExemplars += d.Count()
+		} else {
+			panic(fmt.Sprintf("invalid type %T. Valid options: ['Sample', 'Exemplar']", d))
+		}
+	}
 }
 
 func (t *Batch) Visitor() *batchVisitor {
