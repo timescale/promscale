@@ -24,7 +24,6 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -312,7 +311,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient")
 	}
 
-	router, err := api.GenerateRouter(cfg, pgClient, nil, telemetry.NewNoopEngine())
+	router, err := api.GenerateRouter(cfg, pgClient, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}

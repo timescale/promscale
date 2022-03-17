@@ -29,7 +29,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector, t telemetry.Engine) (*mux.Router, error) {
+func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -98,9 +98,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	router.Path("/healthz").Methods(http.MethodGet).HandlerFunc(Health(healthChecker))
 	router.Path(apiConf.TelemetryPath).Methods(http.MethodGet).HandlerFunc(promhttp.Handler().ServeHTTP)
 
-	if err = jaeger.ExtendQueryAPIs(router, client.Connection, t); err != nil {
-		return nil, fmt.Errorf("error extending router with Jaeger-query APIs: %w", err)
-	}
+	jaeger.ExtendQueryAPIs(router, client.Connection)
 
 	debugProf := router.PathPrefix("/debug/pprof").Subrouter()
 	debugProf.Path("").Methods(http.MethodGet).HandlerFunc(pprof.Index)
@@ -116,14 +114,10 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 	debugProf.Path("/mutex").Methods(http.MethodGet).HandlerFunc(pprof.Handler("mutex").ServeHTTP)
 
 	router.Path("/debug/fgprof").Methods(http.MethodGet).HandlerFunc(fgprof.Handler().ServeHTTP)
-
-	if err = registerMetricsForTelemetry(t); err != nil {
-		log.Error("msg", "error registering metrics for telemetry", "err", err.Error())
-	}
 	return router, nil
 }
 
-func registerMetricsForTelemetry(t telemetry.Engine) error {
+func RegisterTelemetryMetrics(t telemetry.Engine) error {
 	var err error
 	if err = t.RegisterMetric(
 		"promscale_ingested_samples_total",

@@ -19,7 +19,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tracer"
 )
 
@@ -39,7 +38,7 @@ type DBIngestor struct {
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg, t telemetry.Engine) (*DBIngestor, error) {
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
 	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
 	if err != nil {
 		return nil, err
@@ -47,7 +46,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 	return &DBIngestor{
 		sCache:     sCache,
 		dispatcher: dispatcher,
-		tWriter:    trace.NewWriter(conn, t),
+		tWriter:    trace.NewWriter(conn),
 	}, nil
 }
 
@@ -61,7 +60,7 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	c := cache.NewMetricCache(cacheConfig)
 	s := cache.NewSeriesCache(cacheConfig, nil)
 	e := cache.NewExemplarLabelsPosCache(cacheConfig)
-	return NewPgxIngestor(conn, c, s, e, cfg, telemetry.NewNoopEngine())
+	return NewPgxIngestor(conn, c, s, e, cfg)
 }
 
 const (
@@ -93,20 +92,28 @@ func (ingestor *DBIngestor) Ingest(ctx context.Context, r *prompb.WriteRequest) 
 	var (
 		timeseries = r.Timeseries
 		metadata   = r.Metadata
+		size       = r.Size()
 	)
 	release := func() { FinishWriteRequest(r) }
+
+	defer func(size int) {
+		if err == nil {
+			metrics.IngestorBytes.With(prometheus.Labels{"type": "metric"}).Add(float64(size))
+		}
+	}(size)
+
 	switch numTs, numMeta := len(timeseries), len(metadata); {
 	case numTs > 0 && numMeta == 0:
 		// Write request contains only time-series.
-		n, err := ingestor.ingestTimeseries(ctx, timeseries, release)
-		return n, 0, err
+		numInsertablesIngested, err = ingestor.ingestTimeseries(ctx, timeseries, release)
+		return numInsertablesIngested, 0, err
 	case numTs == 0 && numMeta == 0:
 		release()
 		return 0, 0, nil
 	case numMeta > 0 && numTs == 0:
 		// Write request contains only metadata.
-		n, err := ingestor.ingestMetadata(ctx, metadata, release)
-		return 0, n, err
+		numMetadataIngested, err = ingestor.ingestMetadata(ctx, metadata, release)
+		return 0, numMetadataIngested, err
 	default:
 	}
 	release = func() {

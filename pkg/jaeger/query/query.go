@@ -6,7 +6,6 @@ package query
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,18 +17,14 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/telemetry"
 )
 
 type Query struct {
 	conn pgxconn.PgxConn
 }
 
-func New(conn pgxconn.PgxConn, t telemetry.Engine) (*Query, error) {
-	if err := registerMetricsForTelemetry(t); err != nil {
-		return nil, fmt.Errorf("register metrics for telemetry: %w", err)
-	}
-	return &Query{conn}, nil
+func New(conn pgxconn.PgxConn) *Query {
+	return &Query{conn}
 }
 
 func (p *Query) SpanReader() spanstore.Reader {

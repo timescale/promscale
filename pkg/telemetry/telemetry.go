@@ -44,18 +44,18 @@ type engineImpl struct {
 	metrics sync.Map
 }
 
-func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Queryable) (*engineImpl, error) {
+func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Queryable) (Engine, error) {
 	isTelemetryOff, err := isTelemetryOff(conn)
 	if err != nil {
 		log.Debug("msg", "unable to get TimescaleDB telemetry configuration. Maybe TimescaleDB is not installed", "err", err.Error())
+		return NewNoopEngine(), nil
 	}
 	if isTelemetryOff {
-		return nil, nil
-	} else {
-		// Warn the users about telemetry collection only if telemetry collection is enabled.
-		log.Warn("msg", "Promscale collects anonymous usage telemetry data to help the Promscale team better understand and assist users. "+
-			"This can be disabled via the process described at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
+		return NewNoopEngine(), nil
 	}
+	// Warn the users about telemetry collection only if telemetry collection is enabled.
+	log.Warn("msg", "Promscale collects anonymous usage telemetry data to help the Promscale team better understand and assist users. "+
+		"This can be disabled via the process described at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
 
 	t := &engineImpl{
 		conn: conn,
@@ -73,12 +73,15 @@ func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Query
 	}
 
 	if err := t.writeMetadata(); err != nil {
-		return nil, fmt.Errorf("writing metadata: %w", err)
+		return NewNoopEngine(), fmt.Errorf("writing metadata: %w", err)
 	}
 	return t, nil
 }
 
 func isTelemetryOff(conn pgxconn.PgxConn) (bool, error) {
+	if !util.IsTimescaleDBInstalled(conn) {
+		return true, nil
+	}
 	var state string
 	err := conn.QueryRow(context.Background(), "SHOW timescaledb.telemetry_level").Scan(&state)
 	if err != nil {
@@ -383,9 +386,9 @@ func convertIntToString(i int64) string {
 	return strconv.FormatInt(i, 10)
 }
 
-type noop struct{}
+type Noop struct{}
 
-func NewNoopEngine() Engine                                    { return noop{} }
-func (noop) Start()                                            {}
-func (noop) Stop()                                             {}
-func (noop) RegisterMetric(string, ...prometheus.Metric) error { return nil }
+func NewNoopEngine() Engine                                    { return Noop{} }
+func (Noop) Start()                                            {}
+func (Noop) Stop()                                             {}
+func (Noop) RegisterMetric(string, ...prometheus.Metric) error { return nil }
