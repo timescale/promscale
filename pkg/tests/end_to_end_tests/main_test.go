@@ -36,12 +36,11 @@ var (
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
 	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
 	// TODO (james): Replace hardcoded value
-	timescaleDockerImage  = flag.String("timescale-docker-image", "ghcr.io/timecale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14", "TimescaleDB docker image to run tests against")
-	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
-	useTimescaleDBNightly = flag.Bool("use-timescaledb-nightly", false, "use TimescaleDB nightly images")
-	printLogs             = flag.Bool("print-logs", false, "print TimescaleDB logs")
-	extendedTest          = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
-	logLevel              = flag.String("log-level", "debug", "Logging level")
+	timescaleDockerImage = flag.String("timescale-docker-image", "ghcr.io/timecale/dev_promscale_extension:jg-ha-dockerfile-ts2-pg14", "TimescaleDB docker image to run tests against")
+	useMultinode         = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
+	printLogs            = flag.Bool("print-logs", false, "print TimescaleDB logs")
+	extendedTest         = flag.Bool("extended-test", false, "run extended testing dataset and PromQL queries")
+	logLevel             = flag.String("log-level", "debug", "Logging level")
 
 	pgContainer            testcontainers.Container
 	pgContainerTestDataDir string
@@ -76,10 +75,6 @@ func init() {
 func setExtensionState() {
 	if *useTimescaleDB {
 		testOptions.UseTimescaleDB()
-	}
-
-	if *useTimescaleDBNightly {
-		testOptions.UseTimescaleNightly()
 	}
 
 	if *useMultinode {

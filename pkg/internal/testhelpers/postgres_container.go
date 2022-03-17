@@ -62,29 +62,17 @@ func NewTestOptions(options OptionState, timescaleDockerImage string) TestOption
 }
 
 const (
-	timescaleBit        = 1 << iota
-	multinodeBit        = 1 << iota
-	timescaleNightlyBit = 1 << iota
+	timescaleBit = 1 << iota
+	multinodeBit = 1 << iota
 )
 
 const (
 	Timescale OptionState = timescaleBit
 	Multinode OptionState = timescaleBit | multinodeBit
-
-	TimescaleNightly          OptionState = timescaleBit | timescaleNightlyBit
-	TimescaleNightlyMultinode OptionState = timescaleBit | multinodeBit | timescaleNightlyBit
 )
 
 func (e *TestOptions) UseTimescaleDB() {
 	e.options |= timescaleBit
-}
-
-func (e *TestOptions) UseTimescaleNightly() {
-	e.options |= timescaleBit | timescaleNightlyBit
-}
-
-func (e *TestOptions) UseTimescaleNightlyMultinode() {
-	e.options |= timescaleBit | multinodeBit | timescaleNightlyBit
 }
 
 func (e *TestOptions) UseMultinode() {
@@ -97,10 +85,6 @@ func (e *TestOptions) SetTimescaleDockerImage(timescaleDockerImage string) {
 
 func (e TestOptions) UsesTimescaleDB() bool {
 	return (e.options & timescaleBit) != 0
-}
-
-func (e TestOptions) UsesTimescaleNightly() bool {
-	return (e.options & timescaleNightlyBit) != 0
 }
 
 func (e TestOptions) UsesMultinode() bool {
