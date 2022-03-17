@@ -10,9 +10,9 @@ COPY ./cmd cmd/
 ARG TARGETOS
 ARG TARGETARCH
 RUN go generate ./...
-RUN GIT_COMMIT=$(git rev-list -1 HEAD) \
+RUN GIT_COMMIT=$(git rev-list -1 HEAD) && GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
     && GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} CGO_ENABLED=0 go build -a \
-    --ldflags '-w' --ldflags "-X version.CommitHash=$GIT_COMMIT" \
+    -ldflags "-w -X 'github.com/timescale/promscale/pkg/version.CommitHash=$GIT_COMMIT' -X 'github.com/timescale/promscale/pkg/version.Branch=$GIT_BRANCH'" \
     -o /bin/promscale ./cmd/promscale
 
 # Final image

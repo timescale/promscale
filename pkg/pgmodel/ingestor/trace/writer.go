@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/timestamp"
 
+	"go.opentelemetry.io/collector/model/otlp"
 	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/jackc/pgtype"
@@ -59,10 +60,7 @@ type traceWriterImpl struct {
 	tagCache     *clockcache.Cache
 }
 
-func NewWriter(conn pgxconn.PgxConn, t telemetry.Engine) *traceWriterImpl {
-	if err := t.RegisterMetric("promscale_ingested_spans_total", metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span", "subsystem": ""})); err != nil {
-		log.Debug("msg", "err registering telemetry metric promscale_ingested_spans_total", "err", err.Error())
-	}
+func NewWriter(conn pgxconn.PgxConn) *traceWriterImpl {
 	return &traceWriterImpl{
 		conn:         conn,
 		schemaCache:  newSchemaCache(),
@@ -70,6 +68,14 @@ func NewWriter(conn pgxconn.PgxConn, t telemetry.Engine) *traceWriterImpl {
 		opCache:      newOperationCache(),
 		tagCache:     newTagCache(),
 	}
+}
+
+func RegisterTelemetryMetrics(t telemetry.Engine) error {
+	err := t.RegisterMetric("promscale_ingested_spans_total", metrics.IngestorItems.With(prometheus.Labels{"type": "trace", "kind": "span", "subsystem": ""}))
+	if err != nil {
+		return fmt.Errorf("error registering telemetry metric promscale_ingested_spans_total: %w", err)
+	}
+	return nil
 }
 
 func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
@@ -115,6 +121,8 @@ var (
 	traceEventLabel = prometheus.Labels{"type": "trace", "kind": "event"}
 	traceLinkLabel  = prometheus.Labels{"type": "trace", "kind": "link"}
 )
+
+var tracesMarshaller = otlp.NewProtobufTracesMarshaler()
 
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
 	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
@@ -324,6 +332,13 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 
 	// Only report telemetry if ingestion successful.
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
+
+	// since otel is making Protobufs internal this is our only chance to get the size of the message
+	tracesSizer, ok := tracesMarshaller.(pdata.TracesSizer)
+	if ok {
+		size := tracesSizer.TracesSize(traces)
+		metrics.IngestorBytes.With(prometheus.Labels{"type": "trace"}).Add(float64(size))
+	}
 	return nil
 }
 

@@ -4,7 +4,13 @@
 
 package version
 
-import "github.com/blang/semver/v4"
+import (
+	"fmt"
+
+	"github.com/blang/semver/v4"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/timescale/promscale/pkg/util"
+)
 
 const (
 	Safe = iota
@@ -41,7 +47,8 @@ var (
 	Promscale                  = "0.11.0-dev.0"
 	PrevReleaseVersion         = "0.10.0"
 	PromMigrator               = "0.0.3"
-	CommitHash                 = ""
+	CommitHash                 = ""      // Comes from -ldflags settings
+	Branch                     = ""      // Comes from -ldflags settings
 	EarliestUpgradeTestVersion = "0.1.4" //0.1.4 earliest version that supports tsdb 2.0
 
 	PgVersionNumRange       = ">=12.x <15.x" // Corresponds to range within pg 12.0 to pg 14.99
@@ -63,6 +70,18 @@ var (
 	// support 0.1.x and 0.3.x
 	ExtVersionRangeString = ">=0.1.0 <0.3.99"
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
+
+	// Expose build info through Prometheus metric
+	buildInfoGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:      "build_info",
+		Namespace: util.PromNamespace,
+		Help:      "Shows Promscale build information like version, branch and commit",
+		ConstLabels: prometheus.Labels{
+			"version": Promscale,
+			"commit":  CommitHash,
+			"branch":  Branch,
+		},
+	})
 )
 
 // VerifyPgVersion verifies the Postgresql version compatibility.
@@ -78,4 +97,13 @@ func VerifyTimescaleVersion(version semver.Version) uint {
 		return Warn
 	}
 	return Err
+}
+
+func init() {
+	prometheus.MustRegister(buildInfoGauge)
+	buildInfoGauge.Set(1)
+}
+
+func Info() string {
+	return fmt.Sprintf("Version: %s, Commit Hash: %s, Branch: %s", Promscale, CommitHash, Branch)
 }

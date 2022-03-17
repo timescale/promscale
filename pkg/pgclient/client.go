@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"go.opentelemetry.io/collector/model/pdata"
@@ -25,16 +24,8 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
-	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
-
-var PromscaleID uuid.UUID
-
-func init() {
-	// PromscaleID must always be generated on start, so that it remains constant throughout the lifecycle.
-	PromscaleID = uuid.New()
-}
 
 // LockFunc does connect validation function, useful for things such as acquiring locks
 // that should live the duration of the connection
@@ -55,7 +46,6 @@ type Client struct {
 	closePool         bool
 	sigClose          chan struct{}
 	haService         *ha.Service
-	TelemetryEngine   telemetry.Engine
 }
 
 // NewClient creates a new PostgreSQL client
@@ -158,22 +148,10 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
-	var telemetryEngine telemetry.Engine
-	engine, err := telemetry.NewEngine(dbConn, PromscaleID, queryable)
-	if err != nil {
-		log.Debug("msg", "err creating telemetry engine", "err", err.Error())
-	}
-	if engine == nil {
-		telemetryEngine = telemetry.NewNoopEngine()
-	} else {
-		telemetryEngine = engine
-	}
-	telemetryEngine.Start() // We stop the engine at client.Close().
-
 	var dbIngestor *ingestor.DBIngestor
 	if !readOnly {
 		var err error
-		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, exemplarKeyPosCache, &c, telemetryEngine)
+		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
 		if err != nil {
 			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err
@@ -191,7 +169,6 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 		labelsCache:       labelsCache,
 		seriesCache:       seriesCache,
 		sigClose:          sigClose,
-		TelemetryEngine:   telemetryEngine,
 	}
 
 	InitClientMetrics(client)
@@ -201,9 +178,6 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 // Close closes the client and performs cleanup
 func (c *Client) Close() {
 	log.Info("msg", "Shutting down Client")
-	if c.TelemetryEngine != nil {
-		c.TelemetryEngine.Stop()
-	}
 	if c.ingestor != nil {
 		c.ingestor.Close()
 	}
