@@ -24,7 +24,6 @@ import (
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/util"
 )
 
 func TestDetectSnappyStreamFormat(t *testing.T) {
@@ -93,30 +92,24 @@ func TestWrite(t *testing.T) {
 		requestBody     string
 		receivedSamples int64
 		inserterErr     error
-		isLeader        bool
-		electionErr     error
 		customHeaders   map[string]string
 	}{
 		{
 			name:         "write request body error",
-			isLeader:     true,
 			responseCode: http.StatusBadRequest,
 		},
 		{
 			name:         "malformed compression data",
-			isLeader:     true,
 			responseCode: http.StatusBadRequest,
 			requestBody:  "123",
 		},
 		{
 			name:         "malformed write request",
-			isLeader:     true,
 			responseCode: http.StatusBadRequest,
 			requestBody:  string(snappy.Encode(nil, []byte("test"))),
 		},
 		{
 			name:         "bad header",
-			isLeader:     false,
 			responseCode: http.StatusBadRequest,
 			requestBody:  string(snappy.Encode(nil, []byte("test"))),
 			customHeaders: map[string]string{
@@ -125,7 +118,6 @@ func TestWrite(t *testing.T) {
 		},
 		{
 			name:            "write error",
-			isLeader:        true,
 			receivedSamples: 1,
 			responseCode:    http.StatusInternalServerError,
 			inserterErr:     fmt.Errorf("some error"),
@@ -140,15 +132,6 @@ func TestWrite(t *testing.T) {
 					},
 				},
 			),
-		},
-		{
-			name:         "elector error",
-			electionErr:  fmt.Errorf("some error"),
-			responseCode: http.StatusOK,
-		},
-		{
-			name:         "not a leader",
-			responseCode: http.StatusOK,
 		},
 		{
 			name:         "bad content type header",
@@ -183,7 +166,6 @@ func TestWrite(t *testing.T) {
 		},
 		{
 			name:            "happy path",
-			isLeader:        true,
 			responseCode:    http.StatusOK,
 			receivedSamples: 0,
 			requestBody: writeRequestToString(
@@ -198,14 +180,12 @@ func TestWrite(t *testing.T) {
 		},
 		{
 			name:          "malformed JSON",
-			isLeader:      true,
 			responseCode:  http.StatusBadRequest,
 			requestBody:   ``,
 			customHeaders: jsonHeaders,
 		},
 		{
 			name:            "happy path JSON",
-			isLeader:        true,
 			responseCode:    http.StatusOK,
 			receivedSamples: 3,
 			requestBody:     `{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`,
@@ -213,7 +193,6 @@ func TestWrite(t *testing.T) {
 		},
 		{
 			name:            "happy path JSON with snappy (stream format)",
-			isLeader:        true,
 			responseCode:    http.StatusOK,
 			receivedSamples: 3,
 			requestBody:     getSnappyStreamEncoded(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`),
@@ -224,7 +203,6 @@ func TestWrite(t *testing.T) {
 		},
 		{
 			name:            "happy path JSON with snappy (block format)",
-			isLeader:        true,
 			responseCode:    http.StatusOK,
 			receivedSamples: 3,
 			requestBody:     string(snappy.Encode(nil, []byte(`{"labels":{"labelName":"labelValue"}, "samples":[[1,2],[2,2],[3,2]]}`))),
@@ -237,12 +215,6 @@ func TestWrite(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			elector := util.NewElector(
-				&mockElection{
-					isLeader: c.isLeader,
-					err:      c.electionErr,
-				},
-			)
 			mock := &mockInserter{
 				result: c.receivedSamples,
 				err:    c.inserterErr,
@@ -250,7 +222,7 @@ func TestWrite(t *testing.T) {
 			metrics = &Metrics{LastRequestUnixNano: 0}
 			dataParser := parser.NewParser()
 			numSamplesReceived := &mockMetric{}
-			handler := Write(mock, dataParser, elector, mockUpdaterForIngest(&mockMetric{}, nil, numSamplesReceived, nil))
+			handler := Write(mock, dataParser, mockUpdaterForIngest(&mockMetric{}, nil, numSamplesReceived, nil))
 
 			headers := protobufHeaders
 			if len(c.customHeaders) != 0 {
@@ -297,27 +269,6 @@ func GenerateWriteHandleTester(t *testing.T, handleFunc http.Handler, headers ma
 		handleFunc.ServeHTTP(w, req)
 		return w
 	}
-}
-
-type mockElection struct {
-	isLeader bool
-	err      error
-}
-
-func (m *mockElection) ID() string {
-	return "ID"
-}
-
-func (m *mockElection) BecomeLeader() (bool, error) {
-	return true, nil
-}
-
-func (m *mockElection) IsLeader() (bool, error) {
-	return m.isLeader, m.err
-}
-
-func (m *mockElection) Resign() error {
-	return nil
 }
 
 type mockInserter struct {

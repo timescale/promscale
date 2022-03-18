@@ -44,7 +44,6 @@ import (
 )
 
 var (
-	elector      *util.Elector
 	startupError = fmt.Errorf("startup error")
 	PromscaleID  uuid.UUID
 )
@@ -136,7 +135,7 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	router, err := api.GenerateRouter(&cfg.APICfg, client, elector)
+	router, err := api.GenerateRouter(&cfg.APICfg, client)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)

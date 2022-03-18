@@ -311,7 +311,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient")
 	}
 
-	router, err := api.GenerateRouter(cfg, pgClient, nil)
+	router, err := api.GenerateRouter(cfg, pgClient)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
