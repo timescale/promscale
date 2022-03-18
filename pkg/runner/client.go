@@ -74,8 +74,8 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 			lease = nil
 		}
     err = pgmodel.Migrate(conn, appVersion, lease, extOptions)
-		migrationFailedDueToLockError = errors.Is(err, migrationLockError)
-		if err != nil && !errors.Is(err, migrationLockError) {
+		migrationFailedDueToLockError = errors.Is(err, pgmodel.migrationLockError)
+		if err != nil && !errors.Is(err, pgmodel.migrationLockError) {
 			return nil, fmt.Errorf("migration error: %w", err)
 		}
 
