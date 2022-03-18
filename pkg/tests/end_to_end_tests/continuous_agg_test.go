@@ -187,10 +187,11 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		if _, err := db.Exec(context.Background(),
 			`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
 WITH (timescaledb.continuous) AS
-  SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
+  SELECT public.time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
     FROM prom_data.metric_2
-    GROUP BY time_bucket('1hour', time), series_id`); err != nil {
+    GROUP BY public.time_bucket('1hour', time), series_id`); err != nil {
 			t.Fatalf("unexpected error while creating metric view: %s", err)
+
 		}
 		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')"); err != nil {
 			t.Fatalf("unexpected error while registering metric view: %s", err)
@@ -373,9 +374,9 @@ func TestContinuousAggDataRetention(t *testing.T) {
 		_, err = db.Exec(context.Background(),
 			`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
 WITH (timescaledb.continuous) AS
-  SELECT time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
+  SELECT public.time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
     FROM prom_data.test
-    GROUP BY time_bucket('1hour', time), series_id`)
+    GROUP BY public.time_bucket('1hour', time), series_id`)
 		require.NoError(t, err)
 		_, err = db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')")
 		require.NoError(t, err)
@@ -438,17 +439,17 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
 		}
 		if _, err := db.Exec(context.Background(),
-			`CREATE MATERIALIZED VIEW twa_cagg( time, series_id, tw)
+			`CREATE MATERIALIZED VIEW public.twa_cagg( time, series_id, tw)
 WITH (timescaledb.continuous) AS
-  SELECT time_bucket('1hour', time), series_id, time_weight('Linear', time, value) as tw
+  SELECT public.time_bucket('1hour', time), series_id, time_weight('Linear', time, value) as tw
     FROM prom_data.metric_2
-    GROUP BY time_bucket('1hour', time), series_id`); err != nil {
+    GROUP BY public.time_bucket('1hour', time), series_id`); err != nil {
 			t.Fatalf("unexpected error while creating metric view: %s", err)
 		}
 		if _, err := db.Exec(context.Background(),
-			`CREATE VIEW tw_1hour( time, series_id, value) AS
+			`CREATE VIEW public.tw_1hour( time, series_id, value) AS
   SELECT time, series_id, average(tw) as value
-    FROM twa_cagg`); err != nil {
+    FROM public.twa_cagg`); err != nil {
 			t.Fatalf("unexpected error while creating metric view: %s", err)
 		}
 

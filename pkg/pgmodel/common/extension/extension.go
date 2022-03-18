@@ -20,7 +20,6 @@ import (
 )
 
 var (
-	ExtensionIsInstalled      = false
 	PromscaleExtensionVersion semver.Version
 )
 
@@ -30,7 +29,7 @@ type ExtensionMigrateOptions struct {
 	UpgradePreRelease bool
 }
 
-// MigrateTimescaleDBExtension installs or updates TimescaleDB
+// InstallUpgradeTimescaleDBExtensions installs or updates TimescaleDB
 // Note that after this call any previous connections can break
 // so this has to be called ahead of opening connections.
 //
@@ -44,7 +43,7 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMig
 	}
 	defer func() { _ = db.Close(context.Background()) }()
 
-	err = MigrateExtension(db, "timescaledb", schema.Public, version.TimescaleVersionRange, version.TimescaleVersionRangeFullString, extOptions)
+	err = MigrateExtension(db, "timescaledb", schema.Public, version.TimescaleVersionRange, version.TimescaleVersionRangeString, extOptions)
 	if err != nil {
 		return fmt.Errorf("could not install timescaledb: %w", err)
 	}
@@ -53,18 +52,31 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMig
 
 }
 
-func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrateOptions) (bool, error) {
-	ExtensionIsInstalled = false
+func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrateOptions) error {
 	err := MigrateExtension(db, "promscale", schema.PromExt, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}
 
 	if err = CheckExtensionsVersion(db, false, extOptions); err != nil {
-		return false, fmt.Errorf("error encountered while migrating extension: %w", err)
+		return fmt.Errorf("error encountered while migrating extension: %w", err)
 	}
 
-	return ExtensionIsInstalled, nil
+	return nil
+}
+
+func CheckPromscaleVersion(conn *pgx.Conn) error {
+	extensionVersion, b, err := FetchInstalledExtensionVersion(conn, "promscale")
+	if err != nil {
+		return err
+	}
+	if !b {
+		return fmt.Errorf("the promscale extension is required but is not installed")
+	}
+	if !version.ExtVersionRange(extensionVersion) {
+		return fmt.Errorf("the promscale extension is required but the installed version %v is not supported. supported versions: %v", extensionVersion, version.ExtVersionRangeString)
+	}
+	return nil
 }
 
 // CheckVersions is responsible for verifying the version compatibility of installed Postgresql database and extensions.
@@ -115,7 +127,7 @@ func CheckExtensionsVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, 
 }
 
 func checkTimescaleDBVersion(conn *pgx.Conn) error {
-	timescaleVersion, isInstalled, err := fetchInstalledExtensionVersion(conn, "timescaledb")
+	timescaleVersion, isInstalled, err := FetchInstalledExtensionVersion(conn, "timescaledb")
 	if err != nil {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
 	}
@@ -123,21 +135,9 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 		log.Warn("msg", "Running Promscale without TimescaleDB. Some features will be disabled.")
 		return nil
 	}
-	switch version.VerifyTimescaleVersion(timescaleVersion) {
-	case version.Warn:
-		safeRanges := strings.Split(version.TimescaleVersionRangeString.Safe, " ")
-		log.Warn(
-			"msg",
-			fmt.Sprintf(
-				"Might lead to incompatibility issues due to TimescaleDB version. Expected version within %s to %s.",
-				safeRanges[0], safeRanges[1],
-			),
-			"Installed Timescaledb version:", timescaleVersion.String(),
-		)
-	case version.Err:
-		safeRanges := strings.Split(version.TimescaleVersionRangeString.Safe, " ")
+	if !version.VerifyTimescaleVersion(timescaleVersion) {
+		safeRanges := strings.Split(version.TimescaleVersionRangeString, " ")
 		return fmt.Errorf("incompatible Timescaledb version: %s. Expected version within %s to %s", timescaleVersion.String(), safeRanges[0], safeRanges[1])
-	case version.Safe:
 	}
 	return nil
 }
@@ -145,7 +145,6 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	currentVersion, newVersion, err := extensionVersions(conn, "promscale", version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
-		ExtensionIsInstalled = false
 		if errors.Is(err, promscale_errors.ErrExtUnavailable) {
 			//the promscale extension is optional
 			return nil
@@ -156,14 +155,12 @@ func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockErro
 		log.Warn("msg", "Unable to install/update the Promscale extension; failed to acquire the lock. Ensure there are no other connectors running and try again.")
 	}
 	if currentVersion == nil {
-		ExtensionIsInstalled = false
-		return nil
+		return fmt.Errorf("promscale extension is required but is not installed")
 	}
 	if version.ExtVersionRange(*currentVersion) {
-		ExtensionIsInstalled = true
 		PromscaleExtensionVersion = *currentVersion
 	} else {
-		ExtensionIsInstalled = false
+		return fmt.Errorf("promscale extension is installed but on an unsupported version: %s. Expected: %s", *currentVersion, version.ExtVersionRangeString)
 	}
 	return nil
 }
@@ -182,7 +179,7 @@ func extensionVersions(conn *pgx.Conn, extName string, validRange semver.Range, 
 		return nil, nil, fmt.Errorf("problem fetching default version: %w", err)
 	}
 
-	current, isInstalled, err := fetchInstalledExtensionVersion(conn, extName)
+	current, isInstalled, err := FetchInstalledExtensionVersion(conn, extName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("problem getting the installed extension version: %w", err)
 	}
@@ -219,9 +216,18 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 	}
 
 	if !isInstalled {
-		_, extErr := conn.Exec(context.Background(),
-			fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s WITH SCHEMA %s VERSION '%s'",
-				extName, extSchemaName, getSqlVersion(*newVersion, extName)))
+		var query string
+		switch extName {
+		case "timescaledb":
+			query = fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s WITH SCHEMA %s VERSION '%s'",
+				extName, extSchemaName, getSqlVersion(*newVersion, extName))
+		case "promscale":
+			query = fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s VERSION '%s'",
+				extName, getSqlVersion(*newVersion, extName))
+		default:
+			return fmt.Errorf("unknown extension: %s", extName)
+		}
+		_, extErr := conn.Exec(context.Background(), query)
 		if extErr != nil {
 			return extErr
 		}
@@ -274,6 +280,11 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 	return nil
 }
 
+func AreSupportedPromscaleExtensionVersionsAvailable(conn *pgx.Conn, extOptions ExtensionMigrateOptions) (bool, error) {
+	_, _, err := extensionVersions(conn, "promscale", version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
+	return err == nil, err
+}
+
 func fetchAvailableExtensionVersions(conn *pgx.Conn, extName string) (semver.Versions, error) {
 	var versionStrings []string
 	versions := make(semver.Versions, 0)
@@ -320,7 +331,7 @@ func fetchDefaultExtensionVersions(conn *pgx.Conn, extName string) (semver.Versi
 	return v, nil
 }
 
-func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semver.Version, bool, error) {
+func FetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semver.Version, bool, error) {
 	var versionString string
 	if err := conn.QueryRow(
 		context.Background(),

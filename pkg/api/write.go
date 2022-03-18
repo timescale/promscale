@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/golang/snappy"
@@ -21,7 +20,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tracer"
-	"github.com/timescale/promscale/pkg/util"
 )
 
 type writeStage func(http.ResponseWriter, *http.Request) bool
@@ -53,13 +51,11 @@ func (wh *writeHandler) handler() http.Handler {
 func Write(
 	inserter ingestor.DBInserter,
 	dataParser *parser.DefaultParser,
-	elector *util.Elector,
 	updateMetrics func(code string, duration, receivedSamples, receivedMetadata float64),
 ) http.Handler {
 	wh := writeHandler{}
 	wh.addStages(
 		validateWriteHeaders,
-		checkLegacyHA(elector, metrics),
 		decodeSnappy,
 		ingest(inserter, dataParser, updateMetrics),
 	)
@@ -107,33 +103,6 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	return true
-}
-
-// TODO (Harkishen): drop support for this unless function.
-func checkLegacyHA(elector *util.Elector, metrics *Metrics) func(http.ResponseWriter, *http.Request) bool {
-	if elector == nil {
-		return nil
-	}
-
-	return func(w http.ResponseWriter, r *http.Request) bool {
-		_, span := tracer.Default().Start(r.Context(), "check-legacy-ha")
-		defer span.End()
-		// We need to record this time even if we're not the leader as it's
-		// used to determine if we're eligible to become the leader.
-		atomic.StoreInt64(&metrics.LastRequestUnixNano, time.Now().UnixNano())
-
-		shouldWrite, err := elector.IsLeader()
-		if err != nil {
-			log.Error("msg", "IsLeader check failed", "err", err)
-			return false
-		}
-		if !shouldWrite {
-			log.DebugRateLimited("msg", fmt.Sprintf("Election id %v: Instance is not a leader. Can't write data", elector.ID()))
-			return false
-		}
-
-		return true
-	}
 }
 
 type readCloser struct {

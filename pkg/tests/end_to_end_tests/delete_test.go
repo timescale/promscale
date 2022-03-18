@@ -233,7 +233,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			var tableName string
 			err = dbOwner.QueryRow(context.Background(), "SELECT table_name from _prom_catalog.metric WHERE metric_name=$1", m.name).Scan(&tableName)
 			require.NoError(t, err)
-			_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("SELECT compress_chunk(i) from show_chunks('prom_data.\"%s\"') i;", tableName))
+			_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"%s\"') i;", tableName))
 			if err != nil {
 				var pgErr *pgconn.PgError
 				if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.DuplicateObject {

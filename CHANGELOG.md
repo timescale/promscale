@@ -23,6 +23,7 @@ We use the following categories for changes:
 
 ### Changed
 - Enable tracing by default [#1213]
+- The Promscale extension is now required, while the Timescaledb extension remains optional. The minimum Timescaledb version supported is now 2.6.0 [#1132]
 
 ### Fixed
 - Register `promscale_ingest_channel_len_bucket` metric and make it a gauge [#1177]

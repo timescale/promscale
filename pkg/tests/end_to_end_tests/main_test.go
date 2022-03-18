@@ -24,7 +24,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/promscale/pkg/runner"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
 
@@ -32,11 +31,12 @@ import (
 )
 
 var (
-	testDatabase          = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	updateGoldenFiles     = flag.Bool("update", false, "update the golden files of this test")
-	useDocker             = flag.Bool("use-docker", true, "start database using a docker container")
-	useTimescaleDB        = flag.Bool("use-timescaledb", true, "use TimescaleDB")
-	postgresVersion       = flag.Int("postgres-version-major", 14, "Major version of Postgres")
+	testDatabase      = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	updateGoldenFiles = flag.Bool("update", false, "update the golden files of this test")
+	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
+	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
+	// TODO (james): Replace hardcoded value
+	timescaleDockerImage  = flag.String("timescale-docker-image", "ghcr.io/timecale/dev_promscale_extension:develop-ts2-pg14", "TimescaleDB docker image to run tests against")
 	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
 	useTimescaleDBNightly = flag.Bool("use-timescaledb-nightly", false, "use TimescaleDB nightly images")
 	printLogs             = flag.Bool("print-logs", false, "print TimescaleDB logs")
@@ -55,8 +55,8 @@ var (
 	promExemplarContainer testcontainers.Container
 	promExemplarHost      string
 	promExemplarPort      nat.Port
-	// extensionState expects setExtensionState() to be called before using its value.
-	extensionState testhelpers.ExtensionState
+	// testOptions expects setExtensionState() to be called before using its value.
+	testOptions testhelpers.TestOptions
 	// timeseriesWithExemplars is a singleton instance for testing generated timeseries for exemplars based E2E tests.
 	// The called must ensure to use by call/copy only.
 	timeseriesWithExemplars []prompb.TimeSeries
@@ -72,32 +72,22 @@ func init() {
 	}
 }
 
-// setExtensionState sets the value of extensionState based on the input flags.
+// setExtensionState sets the value of testOptions based on the input flags.
 func setExtensionState() {
-	switch *postgresVersion {
-	case 12:
-		extensionState.UsePG12()
-	case 13:
-		extensionState.UsePG13()
-	case 14:
-		//this is the default
-	default:
-		panic("Unknown Postgres version")
-	}
-
 	if *useTimescaleDB {
-		extensionState.UseTimescaleDB()
+		testOptions.UseTimescaleDB()
 	}
 
 	if *useTimescaleDBNightly {
-		extensionState.UseTimescaleNightly()
+		testOptions.UseTimescaleNightly()
 	}
 
 	if *useMultinode {
-		extensionState.UseMultinode()
+		testOptions.UseMultinode()
 		*useTimescaleDB = true
 	}
 
+	testOptions.SetTimescaleDockerImage(*timescaleDockerImage)
 }
 
 func TestMain(m *testing.M) {
@@ -121,7 +111,7 @@ func TestMain(m *testing.M) {
 
 			pgContainer, closer, err = testhelpers.StartPGContainer(
 				ctx,
-				extensionState,
+				testOptions,
 				pgContainerTestDataDir,
 				*printLogs,
 			)
@@ -184,7 +174,7 @@ func attachDataNode2(t testing.TB, DBName string, connectURL string) {
 }
 
 func addPromNode(t testing.TB, pool *pgxpool.Pool, attachExisting bool) {
-	_, err := pool.Exec(context.Background(), "CALL add_prom_node('dn1', $1);", attachExisting)
+	_, err := pool.Exec(context.Background(), "CALL prom_api.add_prom_node('dn1', $1);", attachExisting)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,8 +186,8 @@ func withDB(t testing.TB, DBName string, f func(db *pgxpool.Pool, t testing.TB))
 
 /* When testing with multinode always add data node 2 after installing the extension, as that tests a strictly harder case */
 func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAddNode func(db *pgxpool.Pool, t testing.TB), afterAddNode func(db *pgxpool.Pool, t testing.TB)) {
-	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, extensionState, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
-		performMigrate(t, connectURL, testhelpers.PgConnectURL(DBName, testhelpers.Superuser))
+	testhelpers.WithDB(t, DBName, testhelpers.NoSuperuser, true, testOptions, func(_ *pgxpool.Pool, t testing.TB, connectURL string) {
+		performMigrate(t, connectURL)
 
 		if beforeAddNode != nil {
 			if !*useMultinode {
@@ -236,7 +226,7 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 	})
 }
 
-func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
+func performMigrate(t testing.TB, connectURL string) {
 	extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true}
 	if *useTimescaleDB {
 		migrateURL := connectURL
@@ -256,11 +246,14 @@ func performMigrate(t testing.TB, connectURL string, superConnectURL string) {
 		t.Fatal(err)
 	}
 	defer conn.Release()
-	err = runner.SetupDBState(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
+	err = pgmodel.Migrate(conn.Conn(), pgmodel.VersionInfo{Version: version.Promscale, CommitHash: "azxtestcommit"}, nil, extOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// after the migration, the promscale roles will exist
+	// we need grant the prom_admin role to the prom user
+	testhelpers.MakePromUserPromAdmin(t, conn.Conn().Config().Database)
 }
 
 func generatePGTestDirFiles() string {
