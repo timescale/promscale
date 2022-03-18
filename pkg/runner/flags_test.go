@@ -108,7 +108,7 @@ func TestParseFlags(t *testing.T) {
 		{
 			name: "Running HA and read-only error",
 			args: []string{
-				"-leader-election-pg-advisory-lock-id", "1",
+				"-metrics.high-availability",
 				"-read-only",
 			},
 			shouldError: true,
