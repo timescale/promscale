@@ -208,6 +208,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		if flagset["install-extensions"] && cfg.InstallExtensions {
 			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
 		}
+		if flagset["metrics.high-availability"] && cfg.APICfg.HighAvailability {
+			return nil, fmt.Errorf("cannot run Promscale in both HA and read-only mode")
+		}
 		cfg.Migrate = false
 		cfg.StopAfterMigrate = false
 		cfg.UseVersionLease = false
