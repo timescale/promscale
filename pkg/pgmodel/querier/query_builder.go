@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
@@ -125,7 +125,7 @@ func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeS
 		}
 
 		if row.times.Len() != len(row.values.Elements) {
-			return nil, errors.ErrQueryMismatchTimestampValue
+			return nil, promscale_errors.ErrQueryMismatchTimestampValue
 		}
 
 		promLabels := make([]prompb.Label, 0, len(row.labelIds))

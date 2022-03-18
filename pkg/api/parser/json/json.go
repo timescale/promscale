@@ -2,6 +2,7 @@ package json
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,7 +68,7 @@ func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
 		// Create a new map, otherwise previous alloc of map is re-used, leading to
 		// label pairs that do not belong to this iteration, also being re-used.
 		var i jsonPayload
-		if err := dec.Decode(&i); err == io.EOF {
+		if err := dec.Decode(&i); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return fmt.Errorf("JSON decode error: %w", err)

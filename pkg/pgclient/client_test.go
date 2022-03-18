@@ -6,6 +6,7 @@ package pgclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -154,7 +155,7 @@ func TestDBReaderRead(t *testing.T) {
 			res, err := r.Read(c.req)
 
 			if err != nil {
-				if c.err == nil || err != c.err {
+				if c.err == nil || !errors.Is(err, c.err) {
 					t.Errorf("unexpected error:\ngot\n%s\nwanted\n%s\n", err, c.err)
 				}
 				return

@@ -6,6 +6,7 @@ package writer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -159,7 +160,8 @@ func sendSamplesWithBackoff(ctx context.Context, client *utils.Client, samples *
 		}
 		if err := client.Store(ctx, *buf); err != nil {
 			// If the error is unrecoverable, we should not retry.
-			if _, ok := err.(remote.RecoverableError); !ok {
+			var rrerr remote.RecoverableError
+			if !errors.As(err, &rrerr) {
 				switch r := client.Config(); r.OnErr {
 				case utils.Retry:
 					if r.MaxRetry != 0 {

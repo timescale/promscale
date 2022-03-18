@@ -6,6 +6,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -74,8 +75,8 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 			lease = nil
 		}
 		err = SetupDBState(conn, appVersion, lease, extOptions)
-		migrationFailedDueToLockError = err == migrationLockError
-		if err != nil && err != migrationLockError {
+		migrationFailedDueToLockError = errors.Is(err, migrationLockError)
+		if err != nil && !errors.Is(err, migrationLockError) {
 			return nil, fmt.Errorf("migration error: %w", err)
 		}
 

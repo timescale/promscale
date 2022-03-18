@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -118,7 +118,7 @@ func (c *clauseBuilder) Build(includeMetricName bool) ([]string, []interface{}, 
 
 	/* no support for queries across all data */
 	if len(c.clauses) == 0 && c.metricName == "" {
-		return nil, nil, errors.ErrNoClausesGen
+		return nil, nil, promscale_errors.ErrNoClausesGen
 	}
 
 	if includeMetricName && c.metricName != "" {

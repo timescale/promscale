@@ -6,12 +6,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/pkg/errors"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/promql"
@@ -51,7 +51,7 @@ func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Query
 		step, err := parseDuration(r.FormValue("step"))
 		if err != nil {
 			log.Info("msg", "Query bad request:"+err.Error())
-			respondError(w, http.StatusBadRequest, errors.Wrap(err, "param step"), "bad_data")
+			respondError(w, http.StatusBadRequest, fmt.Errorf("param step %w", err), "bad_data")
 			return
 		}
 
@@ -104,16 +104,20 @@ func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Query
 
 		if res.Err != nil {
 			log.Error("msg", res.Err, "endpoint", "query_range")
-			switch res.Err.(type) {
-			case promql.ErrQueryCanceled:
+			var eqcErr promql.ErrQueryCanceled
+			if errors.As(res.Err, &eqcErr) {
 				statusCode = "503"
 				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
 				return
-			case promql.ErrQueryTimeout:
+			}
+			var eqtErr promql.ErrQueryTimeout
+			if errors.As(res.Err, &eqtErr) {
 				statusCode = "503"
 				respondError(w, http.StatusServiceUnavailable, res.Err, "timeout")
 				return
-			case promql.ErrStorage:
+			}
+			var es promql.ErrStorage
+			if errors.As(res.Err, &es) {
 				statusCode = "500"
 				respondError(w, http.StatusInternalServerError, res.Err, "internal")
 				return

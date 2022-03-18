@@ -6,6 +6,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -16,7 +17,6 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
@@ -235,7 +235,8 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			require.NoError(t, err)
 			_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("SELECT compress_chunk(i) from show_chunks('prom_data.\"%s\"') i;", tableName))
 			if err != nil {
-				if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
+				var pgErr *pgconn.PgError
+				if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.DuplicateObject {
 					// Already compressed (could happen if policy already ran). This is fine.
 				} else {
 					t.Fatal(err)
@@ -532,7 +533,7 @@ func parseTime(s string, d time.Time) (time.Time, error) {
 	case maxTimeFormatted:
 		return maxTime, nil
 	}
-	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
+	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
 }
 
 func getMatchers(s string) ([]*labels.Matcher, error) {

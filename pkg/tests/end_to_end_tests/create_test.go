@@ -6,6 +6,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -17,7 +18,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -414,7 +415,7 @@ func TestSQLIngest(t *testing.T) {
 			},
 			count:       0,
 			countSeries: 0,
-			expectErr:   errors.ErrNoMetricName,
+			expectErr:   promscale_errors.ErrNoMetricName,
 		},
 	}
 	for tcIndex, c := range testCases {
@@ -432,7 +433,7 @@ func TestSQLIngest(t *testing.T) {
 				defer ingestor.Close()
 
 				cnt, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(tcase.metrics)))
-				if err != nil && err != tcase.expectErr {
+				if err != nil && !errors.Is(err, tcase.expectErr) {
 					t.Fatalf("got an unexpected error %v", err)
 				}
 
@@ -537,7 +538,8 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		_, err = dbOwner.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.DuplicateObject {
 				//already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
@@ -568,7 +570,8 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		_, err = dbOwner.Exec(context.Background(), "SELECT compress_chunk(i) from show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.DuplicateObject {
 				//already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
@@ -733,7 +736,8 @@ func TestInsertCompressed(t *testing.T) {
 
 		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
@@ -954,7 +958,8 @@ func TestCompressionSetting(t *testing.T) {
 
 		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT compress_chunk(i) from show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
@@ -1040,8 +1045,8 @@ func TestCustomCompressionJob(t *testing.T) {
 			insert := fmt.Sprintf(`INSERT INTO prom_data."%s" VALUES ('%s', 0.1, 1);`, tableName, time)
 			_, err := db.Exec(context.Background(), insert)
 			if err != nil {
-				pgErr, ok := err.(*pgconn.PgError)
-				if !ok {
+				var pgErr *pgconn.PgError
+				if !errors.As(err, &pgErr) {
 					t.Fatal(err)
 				}
 				if pgErr.SQLState() == "42710" ||
@@ -1217,8 +1222,8 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 			insert := fmt.Sprintf("INSERT INTO prom_data.test VALUES ('%s', 0.1, 1);", time)
 			_, err := db.Exec(context.Background(), insert)
 			if err != nil {
-				pgErr, ok := err.(*pgconn.PgError)
-				if !ok {
+				var pgErr *pgconn.PgError
+				if !errors.As(err, &pgErr) {
 					t.Fatal(err)
 				}
 				if pgErr.SQLState() == "42710" ||
@@ -1379,8 +1384,8 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 			insert := fmt.Sprintf("INSERT INTO prom_data.test VALUES ('%s', 0.1, 1);", time)
 			_, err := db.Exec(context.Background(), insert)
 			if err != nil {
-				pgErr, ok := err.(*pgconn.PgError)
-				if !ok {
+				var pgErr *pgconn.PgError
+				if !errors.As(err, &pgErr) {
 					t.Fatal(err)
 				}
 				if pgErr.SQLState() == "42710" ||

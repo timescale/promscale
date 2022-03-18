@@ -5,6 +5,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -301,7 +302,7 @@ func TestSQLDropChunkWithLocked(t *testing.T) {
 			err = dbSuper.QueryRow(context.Background(),
 				"SELECT wait_event IS NOT NULL FROM pg_stat_activity WHERE query = $1", maintenanceQuery).
 				Scan(&waiting)
-			if err != pgx.ErrNoRows {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				require.NoError(t, err)
 			}
 			if waiting {

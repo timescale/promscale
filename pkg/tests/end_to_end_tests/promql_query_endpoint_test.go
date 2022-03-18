@@ -2630,12 +2630,12 @@ func querySamplesResultComparator(promContent []byte, tsContent []byte, log stri
 
 	err := json.Unmarshal(tsContent, &tsRes)
 	if err != nil {
-		return fmt.Errorf("Unexpected error returned when reading connector response body:\n%s\nbody:\n%s\n", err.Error(), tsContent)
+		return fmt.Errorf("Unexpected error returned when reading connector response body:\n%w\nbody:\n%s\n", err, tsContent)
 	}
 
 	err = json.Unmarshal(promContent, &promRes)
 	if err != nil {
-		return fmt.Errorf("Unexpected error returned when reading Prometheus response body:\n%s\nbody:\n%s\n", err.Error(), promContent)
+		return fmt.Errorf("Unexpected error returned when reading Prometheus response body:\n%w\nbody:\n%s\n", err, promContent)
 	}
 
 	// Sorting to make sure

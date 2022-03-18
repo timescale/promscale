@@ -5,6 +5,7 @@
 package lreader
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -81,7 +82,7 @@ func TestLabelsReaderLabelsNames(t *testing.T) {
 					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 					return
 				}
-			} else if expectedErr != err {
+			} else if !errors.Is(err, expectedErr) {
 				t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 				return
 			}
@@ -168,7 +169,7 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 					t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 					return
 				}
-			} else if expectedErr != err {
+			} else if !errors.Is(err, expectedErr) {
 				t.Errorf("unexpected error\n got: %v\n expected: %v", err, expectedErr)
 				return
 			}

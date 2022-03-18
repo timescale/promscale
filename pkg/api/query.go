@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -60,16 +61,20 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, update
 		res := qry.Exec(ctx)
 		if res.Err != nil {
 			log.Error("msg", res.Err, "endpoint", "query")
-			switch res.Err.(type) {
-			case promql.ErrQueryCanceled:
+			var eqcErr promql.ErrQueryCanceled
+			if errors.As(res.Err, &eqcErr) {
 				statusCode = "503"
 				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
 				return
-			case promql.ErrQueryTimeout:
+			}
+			var eqtErr promql.ErrQueryTimeout
+			if errors.As(res.Err, &eqtErr) {
 				statusCode = "503"
 				respondError(w, http.StatusServiceUnavailable, res.Err, "timeout")
 				return
-			case promql.ErrStorage:
+			}
+			var es promql.ErrStorage
+			if errors.As(res.Err, &es) {
 				statusCode = "500"
 				respondError(w, http.StatusInternalServerError, res.Err, "internal")
 				return

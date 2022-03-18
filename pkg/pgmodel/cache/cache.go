@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/timescale/promscale/pkg/clockcache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -73,7 +73,7 @@ func (m *MetricNameCache) Get(schema, metric string, isExemplar bool) (model.Met
 	)
 	result, ok := m.Metrics.Get(key)
 	if !ok {
-		return mInfo, errors.ErrEntryNotFound
+		return mInfo, promscale_errors.ErrEntryNotFound
 	}
 
 	mInfo, ok = result.(model.MetricInfo)

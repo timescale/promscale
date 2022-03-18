@@ -1,6 +1,7 @@
 package pgxconn
 
 import (
+	"errors"
 	"time"
 
 	"github.com/jackc/pgconn"
@@ -15,7 +16,7 @@ type rowWithTelemetry struct {
 
 func (w rowWithTelemetry) Scan(dest ...interface{}) error {
 	err := w.row.Scan(dest...)
-	if err != nil && err != pgx.ErrNoRows {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		errorsTotal.With(promMethodLabel("query_row")).Inc()
 	}
 	return err

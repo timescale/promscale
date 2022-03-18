@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -231,8 +232,8 @@ func tryRecovery(ctx context.Context, conn pgxconn.PgxConn, err error, req copyR
 	ctx, span := tracer.Default().Start(ctx, "try-recovery")
 	defer span.End()
 	// we only recover from postgres errors right now
-	pgErr, ok := err.(*pgconn.PgError)
-	if !ok {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
 		errMsg := err.Error()
 		log.Warn("msg", fmt.Sprintf("unexpected error while inserting to %s", req.info.TableName), "err", errMsg)
 		return err

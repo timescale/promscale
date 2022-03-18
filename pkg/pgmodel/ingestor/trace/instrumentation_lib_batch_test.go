@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -136,7 +136,7 @@ func TestInstrumentationLibraryBatch(t *testing.T) {
 			expectedBatchQueue: 1,
 			getIDCheck: func(t *testing.T, batch instrumentationLibraryBatch) {
 				_, err := batch.GetID(invalid.name, invalid.version, invalid.schemaURLID)
-				require.ErrorIs(t, err, errors.ErrInvalidCacheEntryType)
+				require.ErrorIs(t, err, promscale_errors.ErrInvalidCacheEntryType)
 			},
 		},
 	}

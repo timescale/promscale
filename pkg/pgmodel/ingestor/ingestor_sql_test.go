@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -862,7 +862,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				//cache errors recover
 				expErr = nil
 			case c.name == "Can't find/create table in DB":
-				expErr = pgmodelErrs.ErrMissingTableName
+				expErr = promscale_errors.ErrMissingTableName
 			default:
 				for _, q := range c.sqlQueries {
 					if q.Err != nil {

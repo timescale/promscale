@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -138,7 +138,7 @@ func (b batcher) GetID(i batchItem) (pgtype.Int8, error) {
 
 	id, ok := entry.(pgtype.Int8)
 	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, errors.ErrInvalidCacheEntryType
+		return pgtype.Int8{Status: pgtype.Null}, promscale_errors.ErrInvalidCacheEntryType
 	}
 	if id.Status != pgtype.Present {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("ID is null")

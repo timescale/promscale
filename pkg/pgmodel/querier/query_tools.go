@@ -2,11 +2,12 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -29,7 +30,7 @@ func (tools *queryTools) getMetricTableName(metricSchema, metricName string, isE
 	if err == nil {
 		return metricInfo, nil
 	}
-	if err != errors.ErrEntryNotFound {
+	if !errors.Is(err, promscale_errors.ErrEntryNotFound) {
 		return model.MetricInfo{}, fmt.Errorf("fetching metric info from cache: %w", err)
 	}
 
@@ -64,7 +65,7 @@ func queryExemplarMetricTableName(conn pgxconn.PgxConn, metric string) (string, 
 	defer res.Close()
 
 	if !res.Next() {
-		return "", errors.ErrMissingTableName
+		return "", promscale_errors.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName); err != nil {
@@ -83,8 +84,8 @@ func querySampleMetricTableName(conn pgxconn.PgxConn, schema, metric string) (mI
 	)
 
 	if err = row.Scan(&mInfo.MetricID, &mInfo.TableSchema, &mInfo.TableName, &mInfo.SeriesTable); err != nil {
-		if err == pgx.ErrNoRows {
-			err = errors.ErrMissingTableName
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = promscale_errors.ErrMissingTableName
 		}
 		return mInfo, err
 	}

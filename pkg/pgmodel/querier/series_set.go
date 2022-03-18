@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -78,7 +78,7 @@ func (p *pgxSamplesSeriesSet) At() storage.Series {
 		return nil
 	}
 	if row.times.Len() != len(row.values.Elements) {
-		p.err = errors.ErrInvalidRowData
+		p.err = promscale_errors.ErrInvalidRowData
 		return nil
 	}
 

@@ -6,6 +6,7 @@ package extension
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -145,7 +146,7 @@ func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockErro
 	currentVersion, newVersion, err := extensionVersions(conn, "promscale", version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
 		ExtensionIsInstalled = false
-		if err == errors.ErrExtUnavailable {
+		if errors.Is(err, promscale_errors.ErrExtUnavailable) {
 			//the promscale extension is optional
 			return nil
 		}
@@ -173,7 +174,7 @@ func extensionVersions(conn *pgx.Conn, extName string, validRange semver.Range, 
 		return nil, nil, fmt.Errorf("problem fetching available version: %w", err)
 	}
 	if len(availableVersions) == 0 {
-		return nil, nil, errors.ErrExtUnavailable
+		return nil, nil, promscale_errors.ErrExtUnavailable
 	}
 
 	defaultVersion, err := fetchDefaultExtensionVersions(conn, extName)
@@ -326,7 +327,7 @@ func fetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semve
 		"SELECT extversion FROM pg_extension WHERE extname=$1;",
 		extensionName,
 	).Scan(&versionString); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return semver.Version{}, false, nil
 		}
 		return semver.Version{}, true, err

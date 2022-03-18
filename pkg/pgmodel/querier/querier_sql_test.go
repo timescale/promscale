@@ -5,6 +5,7 @@
 package querier
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -729,7 +730,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				case c.err == nil:
 					found := false
 					for _, q := range c.sqlQueries {
-						if err == q.Err {
+						if errors.Is(err, q.Err) {
 							found = true
 							break
 						}

@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -512,7 +512,7 @@ func (m *MockMetricCache) Get(schema, metric string, isExemplar bool) (MetricInf
 
 	val, ok := m.MetricCache[fmt.Sprintf("%s_%s_%t", schema, metric, isExemplar)]
 	if !ok {
-		return val, errors.ErrEntryNotFound
+		return val, promscale_errors.ErrEntryNotFound
 	}
 
 	return val, nil

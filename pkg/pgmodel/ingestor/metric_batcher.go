@@ -14,7 +14,7 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	pgErrors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -54,7 +54,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (info model.MetricInfo
 		if err := res.Err(); err != nil {
 			return info, true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 		}
-		return info, true, pgErrors.ErrMissingTableName
+		return info, true, promscale_errors.ErrMissingTableName
 	}
 
 	if err := res.Scan(&info.MetricID, &info.TableName, &possiblyNew); err != nil {

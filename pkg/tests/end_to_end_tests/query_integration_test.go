@@ -7,6 +7,7 @@ package end_to_end_tests
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -28,7 +29,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
@@ -130,7 +131,7 @@ func TestDroppedViewQuery(t *testing.T) {
 			t.Fatalf("expected an error, got nil")
 		}
 
-		expectedMsg := fmt.Sprintf(errors.ErrTmplMissingUnderlyingRelation, "prom_view", "metric_view")
+		expectedMsg := fmt.Sprintf(promscale_errors.ErrTmplMissingUnderlyingRelation, "prom_view", "metric_view")
 		require.Equal(t, expectedMsg, err.Error(), "unexpected error message")
 	})
 }
@@ -1192,7 +1193,7 @@ func TestMetricNameResolutionFromMultipleSchemas(t *testing.T) {
 
 		// Fetch non-existant metric name
 		row = db.QueryRow(context.Background(), "SELECT table_schema, table_name FROM _prom_catalog.get_metric_table_name_if_exists('', 'dummy_metric')")
-		if err = row.Scan(&tableSchema, &tableName); err != pgx.ErrNoRows {
+		if err = row.Scan(&tableSchema, &tableName); !errors.Is(err, pgx.ErrNoRows) {
 			t.Fatalf("unexpected error fetching view schema and name: %v", err)
 		}
 	})

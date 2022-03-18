@@ -42,7 +42,7 @@ type Lease struct {
 func NewLease(c client.LeaseClient, cluster, potentialLeader string, minT, maxT, currentTime time.Time) (*Lease, error) {
 	stateFromDB, err := c.UpdateLease(context.Background(), cluster, potentialLeader, minT, maxT)
 	if err != nil {
-		return nil, fmt.Errorf("could not create new lease: %#v", err)
+		return nil, fmt.Errorf("could not create new lease: %w", err)
 	}
 
 	exposeHAStateToMetrics(cluster, "", stateFromDB.Leader)
@@ -116,7 +116,7 @@ func (h *Lease) updateLease(potentialLeader string, minT, maxT time.Time) error 
 	h._mu.RUnlock()
 	stateFromDB, err := h.client.UpdateLease(context.Background(), cluster, potentialLeader, minT, maxT)
 	if err != nil {
-		return fmt.Errorf("could not update lease from db: %#v", err)
+		return fmt.Errorf("could not update lease from db: %w", err)
 	}
 	h.setUpdateFromDB(stateFromDB)
 	return nil
@@ -150,7 +150,7 @@ func (l *Lease) TryChangeLeader(currT time.Time) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("could not call try change leader from db: %#v", err)
+		return fmt.Errorf("could not call try change leader from db: %w", err)
 	}
 
 	return nil
@@ -162,7 +162,7 @@ func (l *Lease) changeLeader(cluster string, leader string, maxTimeSeen time.Tim
 	)
 
 	if err != nil {
-		return fmt.Errorf("could not call try change leader from db: %#v", err)
+		return fmt.Errorf("could not call try change leader from db: %w", err)
 	}
 
 	l.setUpdateFromDB(stateFromDB)

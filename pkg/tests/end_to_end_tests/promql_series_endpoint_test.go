@@ -169,12 +169,12 @@ func seriesResultComparator(promContent []byte, tsContent []byte, log string) er
 
 	err := json.Unmarshal(tsContent, &got)
 	if err != nil {
-		return fmt.Errorf("unexpected error returned when reading connector response body:\n%s\nbody:\n%s\n", err.Error(), tsContent)
+		return fmt.Errorf("unexpected error returned when reading connector response body:\n%w\nbody:\n%s\n", err, tsContent)
 	}
 
 	err = json.Unmarshal(promContent, &wanted)
 	if err != nil {
-		return fmt.Errorf("unexpected error returned when reading Prometheus response body:\n%s\nbody:\n%s\n", err.Error(), promContent)
+		return fmt.Errorf("unexpected error returned when reading Prometheus response body:\n%w\nbody:\n%s\n", err, promContent)
 	}
 
 	if !reflect.DeepEqual(got, wanted) {

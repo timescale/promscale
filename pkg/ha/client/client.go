@@ -6,6 +6,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -77,7 +78,8 @@ func (l *leaseClientDB) UpdateLease(ctx context.Context, cluster, leader string,
 	leaderHasChanged := false
 	err := row.Scan(&(dbState.Cluster), &(dbState.Leader), &(dbState.LeaseStart), &(dbState.LeaseUntil))
 	if err != nil {
-		if e, ok := err.(*pgconn.PgError); !ok || e.Code != leaderChangedErrCode {
+		var e *pgconn.PgError
+		if !errors.As(err, &e) || e.Code != leaderChangedErrCode {
 			return dbState, fmt.Errorf("could not update lease: %w", err)
 		}
 
@@ -90,7 +92,7 @@ func (l *leaseClientDB) UpdateLease(ctx context.Context, cluster, leader string,
 		dbState, err = l.readLeaseState(context.Background(), cluster)
 		// couldn't get latest lease state
 		if err != nil {
-			return dbState, fmt.Errorf("could not update lease: %#v", err)
+			return dbState, fmt.Errorf("could not update lease: %w", err)
 		}
 	}
 	return dbState, nil
@@ -112,7 +114,7 @@ func (l *leaseClientDB) GetPastLeaseInfo(ctx context.Context, cluster, replica s
 	}
 	row := l.dbConn.QueryRow(ctx, getPastLeaseInfoSQL, cluster, replica, start, end)
 	if err := row.Scan(&(dbState.LeaseStart), &(dbState.LeaseUntil)); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return dbState, ErrNoPastLease
 		}
 		return dbState, err

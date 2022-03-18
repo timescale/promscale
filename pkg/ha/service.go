@@ -6,6 +6,7 @@ package ha
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -134,7 +135,7 @@ func (s *Service) getLocalClusterLease(clusterName, replicaName string, minT, ma
 
 func (s *Service) GetBackfillLeaseRange(start, end time.Time, cluster string, replica string) (time.Time, time.Time, error) {
 	state, err := s.leaseClient.GetPastLeaseInfo(context.Background(), cluster, replica, start, end)
-	if err == client.ErrNoPastLease {
+	if errors.Is(err, client.ErrNoPastLease) {
 		err = ErrNoLeasesInRange
 	}
 	return state.LeaseStart, state.LeaseUntil, err

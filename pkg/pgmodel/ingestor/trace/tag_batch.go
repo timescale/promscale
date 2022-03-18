@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -108,7 +108,7 @@ func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]by
 		}
 		tagIDs, ok := ids.(tagIDs)
 		if !ok {
-			return nil, fmt.Errorf("error getting tag %v from batch: %w", t, errors.ErrInvalidCacheEntryType)
+			return nil, fmt.Errorf("error getting tag %v from batch: %w", t, promscale_errors.ErrInvalidCacheEntryType)
 		}
 		if tagIDs.keyID.Status != pgtype.Present || tagIDs.valueID.Status != pgtype.Present {
 			return nil, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)

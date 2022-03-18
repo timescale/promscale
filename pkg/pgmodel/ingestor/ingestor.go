@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -189,7 +189,7 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 			return 0, err
 		}
 		if metricName == "" {
-			return 0, errors.ErrNoMetricName
+			return 0, promscale_errors.ErrNoMetricName
 		}
 
 		if len(ts.Samples) > 0 {

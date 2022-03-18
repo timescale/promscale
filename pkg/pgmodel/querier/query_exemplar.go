@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -11,7 +12,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -42,7 +43,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 		if metadata.isSingleMetric {
 			metricInfo, err := q.tools.getMetricTableName("", metadata.metric, true)
 			if err != nil {
-				if err == errors.ErrMissingTableName {
+				if errors.Is(err, promscale_errors.ErrMissingTableName) {
 					// The received metric does not have exemplars. Skip the remaining part and continue with
 					// the next matchers.
 					continue
@@ -93,7 +94,8 @@ func fetchSingleMetricExemplars(tools *queryTools, metadata *evalMetadata) ([]ex
 	if err != nil {
 		// If we are getting undefined table error, it means the query
 		// is looking for a metric which doesn't exist in the system.
-		if e, ok := err.(*pgconn.PgError); !ok || e.Code != pgerrcode.UndefinedTable {
+		var e *pgconn.PgError
+		if !errors.As(err, &e) || e.Code != pgerrcode.UndefinedTable {
 			return nil, fmt.Errorf("querying single metric exemplars: %w", err)
 		}
 	}
@@ -128,7 +130,7 @@ func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([
 		//TODO batch getMetricTableName
 		metricInfo, err := tools.getMetricTableName("", metrics[i], true)
 		if err != nil {
-			if err == errors.ErrMissingTableName {
+			if errors.Is(err, promscale_errors.ErrMissingTableName) {
 				// If the metric table is missing, there are no results for this query.
 				continue
 			}

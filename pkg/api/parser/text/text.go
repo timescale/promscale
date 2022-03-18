@@ -1,6 +1,7 @@
 package text
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -31,7 +32,7 @@ func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
 
 	for {
 		if et, err = p.Next(); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return fmt.Errorf("error parsing text entries: %w", err)

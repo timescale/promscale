@@ -5,6 +5,7 @@
 package pgclient
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"testing"
@@ -298,7 +299,7 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 				DbUri:                   tt.fields.DbUri,
 			}
 			err := cfg.validateConnectionSettings()
-			if (err != nil) != tt.wantErr || err != tt.err {
+			if (err != nil) != tt.wantErr || !errors.Is(err, tt.err) {
 				t.Errorf("validateConnectionSettings() error = %v, wantErr %v", err, tt.wantErr)
 			}
 

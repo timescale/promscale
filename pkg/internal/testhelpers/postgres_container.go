@@ -6,6 +6,7 @@ package testhelpers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -578,8 +579,8 @@ func startPGInstance(
 		_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE USER %s WITH NOSUPERUSER CREATEROLE PASSWORD 'password'", username))
 		if err != nil {
 			//ignore duplicate errors
-			pgErr, ok := err.(*pgconn.PgError)
-			if !ok || pgErr.Code != "42710" {
+			var pgErr *pgconn.PgError
+			if !errors.As(err, &pgErr) || pgErr.Code != "42710" {
 				return nil, closer, err
 			}
 		}

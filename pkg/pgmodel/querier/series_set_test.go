@@ -18,7 +18,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/model/labels"
-	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -174,7 +174,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					""),
 			}},
 			rowCount: 1,
-			err:      pgmodelErrs.ErrInvalidRowData,
+			err:      promscale_errors.ErrInvalidRowData,
 		},
 		{
 			name:     "happy path 1",
@@ -453,7 +453,7 @@ func (m mapQuerier) LabelsForIdMap(idMap map[int64]labels.Label) (err error) {
 	for id := range idMap {
 		kv, ok := m.mapping[id]
 		if !ok {
-			return pgmodelErrs.ErrInvalidRowData
+			return promscale_errors.ErrInvalidRowData
 		}
 		idMap[id] = labels.Label{Name: kv.k, Value: kv.v}
 	}

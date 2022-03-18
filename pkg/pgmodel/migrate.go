@@ -7,6 +7,7 @@ package pgmodel
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,7 +22,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migrations"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 )
 
@@ -99,7 +100,7 @@ func Migrate(db *pgx.Conn, versionInfo VersionInfo, extOptions extension.Extensi
 
 	appVersion, err := semver.Make(versionInfo.Version)
 	if err != nil {
-		return errors.ErrInvalidSemverFormat
+		return promscale_errors.ErrInvalidSemverFormat
 	}
 
 	mig := NewMigrator(db, migrations.MigrationFiles, tableOfContents)
@@ -274,8 +275,8 @@ func (t *Migrator) execMigrationFile(tx pgx.Tx, fileName string) error {
 	_, err = tx.Exec(context.Background(), contents)
 	if err != nil {
 		//special handling if we know the position of the error
-		pgErr, ok := err.(*pgconn.PgError)
-		if ok && pgErr.Position > 0 {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Position > 0 {
 			strC := contents
 			code := strC[pgErr.Position-1:]
 			return fmt.Errorf("error executing migration script: name %s, err %w, code at error position:\n  %s", fileName, err, code)

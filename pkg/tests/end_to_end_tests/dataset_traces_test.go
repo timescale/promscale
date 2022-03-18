@@ -7,6 +7,7 @@ package end_to_end_tests
 import (
 	"encoding/gob"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -229,7 +230,7 @@ func readTraces(t testing.TB, count int) []pdata.Traces {
 	for i < count {
 		err = gReader.Decode(&buf)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			panic(err)

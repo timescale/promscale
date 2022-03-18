@@ -6,6 +6,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -163,7 +164,7 @@ type streamServer interface {
 func proxyStream(client streamClient, server streamServer) error {
 	for {
 		m, err := client.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {

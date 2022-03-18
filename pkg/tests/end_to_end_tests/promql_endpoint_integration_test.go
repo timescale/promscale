@@ -6,6 +6,7 @@ package end_to_end_tests
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -269,7 +270,7 @@ func dateHeadersMatch(expected, actual []string) bool {
 	expectedDate, expectedErr := http.ParseTime(expected[0])
 	actualDate, actualErr := http.ParseTime(actual[0])
 
-	if expectedErr != actualErr {
+	if !errors.Is(actualErr, expectedErr) {
 		return false
 	}
 

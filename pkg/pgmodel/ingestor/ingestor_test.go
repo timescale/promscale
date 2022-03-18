@@ -6,11 +6,12 @@ package ingestor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -272,19 +273,19 @@ func TestDBIngestorIngest(t *testing.T) {
 			countSamples, countMetadata, err := i.Ingest(ctx, wr)
 
 			if err != nil {
-				if c.insertSeriesErr != nil && err != c.insertSeriesErr {
+				if c.insertSeriesErr != nil && !errors.Is(err, c.insertSeriesErr) {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.insertSeriesErr)
 				}
 				if c.insertDataErr != nil && err.Error() != c.insertDataErr.Error() {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.insertDataErr)
 				}
-				if c.getSeriesErr != nil && err != c.getSeriesErr {
+				if c.getSeriesErr != nil && !errors.Is(err, c.getSeriesErr) {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.getSeriesErr)
 				}
-				if c.setSeriesErr != nil && err != c.setSeriesErr {
+				if c.setSeriesErr != nil && !errors.Is(err, c.getSeriesErr) {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.setSeriesErr)
 				}
-				if err == errors.ErrNoMetricName {
+				if errors.Is(err, promscale_errors.ErrNoMetricName) {
 					for _, ts := range c.metrics {
 						for _, label := range ts.Labels {
 							if label.Name == model.MetricNameLabelName {

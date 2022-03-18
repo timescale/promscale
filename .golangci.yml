@@ -4,4 +4,13 @@ run:
   skip-dirs:
     - pkg/promql
     - pkg/promb
-
+linters:
+  enable:
+    - errorlint
+    - importas
+linters-settings:
+  importas:
+    no-unaliased: true
+    alias:
+      - pkg: github.com/timescale/promscale/pkg/pgmodel/common/errors
+        alias: promscale_errors

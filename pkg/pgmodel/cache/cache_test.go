@@ -5,11 +5,12 @@
 package cache
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/timescale/promscale/pkg/clockcache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -78,8 +79,8 @@ func TestMetricTableNameCache(t *testing.T) {
 				t.Fatal("found cache that should be missing, not stored yet")
 			}
 
-			if err != errors.ErrEntryNotFound {
-				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\n%s\n", err, errors.ErrEntryNotFound)
+			if !errors.Is(err, promscale_errors.ErrEntryNotFound) {
+				t.Fatalf("got unexpected error:\ngot\n%s\nwanted\n%s\n", err, promscale_errors.ErrEntryNotFound)
 			}
 
 			err = cache.Set(
@@ -140,7 +141,7 @@ func TestMetricNameCacheExemplarEntry(t *testing.T) {
 	mInfo := model.MetricInfo{TableName: table}
 	cache := NewMetricCache(Config{MetricsCacheSize: 2})
 	_, foundErr := cache.Get("", metric, false)
-	if foundErr != errors.ErrEntryNotFound {
+	if !errors.Is(foundErr, promscale_errors.ErrEntryNotFound) {
 		t.Fatal("entry found for non inserted data")
 	}
 	err := cache.Set("", metric, mInfo, false)
@@ -155,7 +156,7 @@ func TestMetricNameCacheExemplarEntry(t *testing.T) {
 		t.Fatalf("metric entry does not match table entry")
 	}
 	_, err = cache.Get("", metric, true)
-	if err != errors.ErrEntryNotFound {
+	if !errors.Is(err, promscale_errors.ErrEntryNotFound) {
 		t.Fatalf("exemplar metric not set, but still exists")
 	}
 	err = cache.Set("", metric, mInfo, true)

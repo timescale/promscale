@@ -5,6 +5,7 @@
 package ha
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -52,7 +53,7 @@ func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
 	maxT := model.Time(maxTUnix).Time()
 	allowInsert, leaseStart, err := h.service.CheckLease(minT, maxT, clusterName, replicaName)
 	if err != nil {
-		return fmt.Errorf("could not check ha lease: %#v", err)
+		return fmt.Errorf("could not check ha lease: %w", err)
 	}
 
 	// Short-circuit for no possible backfill data.
@@ -65,7 +66,7 @@ func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
 
 	hasBackfill, err := h.filterBackfill(wr, minT, leaseStart, clusterName, replicaName)
 	if err != nil {
-		return fmt.Errorf("could not check backfill ha lease: %#v", err)
+		return fmt.Errorf("could not check backfill ha lease: %w", err)
 	}
 
 	switch {
@@ -99,11 +100,11 @@ func (h *Filter) filterBackfill(wr *prompb.WriteRequest, minTIncl, maxTExcl time
 
 		keepRangeStart, keepRangeEnd, err := h.service.GetBackfillLeaseRange(backfillStart, maxTExcl, cluster, replica)
 		if err != nil {
-			if err == ErrNoLeasesInRange {
+			if errors.Is(err, ErrNoLeasesInRange) {
 				// Nothing else to keep.
 				break
 			}
-			return false, fmt.Errorf("could not check backfill ha lease: %#v", err)
+			return false, fmt.Errorf("could not check backfill ha lease: %w", err)
 		}
 
 		hasBackfill = true
