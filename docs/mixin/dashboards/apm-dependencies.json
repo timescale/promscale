@@ -39,30 +39,23 @@
       "includeVars": false,
       "keepTime": true,
       "tags": [
-        "ps-apm"
+        "promscale",
+        "apm"
       ],
       "targetBlank": false,
       "title": "Menu",
       "tooltip": "",
       "type": "dashboards",
       "url": ""
-    },
-    {
-      "asDropdown": false,
-      "icon": "doc",
-      "includeVars": false,
-      "keepTime": false,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Documentation",
-      "tooltip": "",
-      "type": "link",
-      "url": "https://docs.timescale.com/promscale/latest/"
     }
   ],
   "liveNow": false,
   "panels": [
     {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_TIMESCALEDB}"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -208,6 +201,11 @@
       "type": "table"
     },
     {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_TIMESCALEDB}"
+      },
+      "description": "This maps shows all services sending traces and the interactions between them.\nEach arrow represents a service calling a specific operation in another service. The legend in the arrows includes the requests per second for that interaction.  If you are downsampling your traces before sending them to Promscale, then the number of requests per second will not be accurate but you'll be able to see how it compares to other operations.",
       "gridPos": {
         "h": 19,
         "w": 24,
@@ -289,7 +287,8 @@
   "schemaVersion": 34,
   "style": "dark",
   "tags": [
-    "ps-apm"
+    "promscale",
+    "apm"
   ],
   "templating": {
     "list": []
@@ -302,7 +301,7 @@
     "hidden": true
   },
   "timezone": "",
-  "title": "Service Dependencies",
+  "title": "[3] Service Map",
   "uid": "K03UKvPnz",
   "version": 13,
   "weekStart": ""

@@ -40,24 +40,11 @@
       "includeVars": false,
       "keepTime": true,
       "tags": [
-        "ps-apm-home"
+        "promscale",
+        "apm"
       ],
       "targetBlank": false,
-      "title": "Home",
-      "tooltip": "",
-      "type": "dashboards",
-      "url": ""
-    },
-    {
-      "asDropdown": false,
-      "icon": "external link",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [
-        "ps-apm-service"
-      ],
-      "targetBlank": false,
-      "title": "Service Menu",
+      "title": "Menu",
       "tooltip": "",
       "type": "dashboards",
       "url": ""
@@ -66,6 +53,10 @@
   "liveNow": false,
   "panels": [
     {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_TIMESCALEDB}"
+      },
       "description": "A.K.A. \"Who do I call?\"",
       "gridPos": {
         "h": 20,
@@ -78,7 +69,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
@@ -110,7 +101,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "d7b6774ba1c1420aafd3b7ddfc9064c8"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "format": "table",
           "group": [],
@@ -149,25 +140,25 @@
   "schemaVersion": 34,
   "style": "dark",
   "tags": [
-    "ps-apm-service"
+    "promscale",
+    "apm"
   ],
   "templating": {
     "list": [
       {
-        "allValue": "ALL",
-        "current": {
-          "selected": false,
-          "text": "generator",
-          "value": "generator"
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_TIMESCALEDB}"
         },
-        "definition": "SELECT value#>>'{}'\nFROM _ps_trace.tag\nWHERE key = 'service.name'\n",
+        "allValue": "ALL",
+        "definition": "SELECT DISTINCT service_name FROM ps_trace.span WHERE start_time > NOW() - INTERVAL '10 minutes'\n",
         "hide": 0,
         "includeAll": false,
         "label": "Service",
         "multi": false,
         "name": "service",
         "options": [],
-        "query": "SELECT value#>>'{}'\nFROM _ps_trace.tag\nWHERE key = 'service.name'\n",
+        "query": "SELECT DISTINCT service_name FROM ps_trace.span WHERE start_time > NOW() - INTERVAL '10 minutes'\n",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -175,20 +166,19 @@
         "type": "query"
       },
       {
-        "allValue": "ALL",
-        "current": {
-          "selected": false,
-          "text": "HTTP GET",
-          "value": "HTTP GET"
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_TIMESCALEDB}"
         },
-        "definition": "SELECT DISTINCT span_name\nFROM _ps_trace.operation\nWHERE service_name_id IN\n(\n    SELECT id\n    FROM _ps_trace.tag\n    WHERE key = 'service.name'\n    AND value#>>'{}' IN  (${service:sqlstring})\n)",
+        "allValue": "ALL",
+        "definition": "SELECT DISTINCT span_name FROM ps_trace.span WHERE service_name = ${service:sqlstring} AND start_time > NOW() - INTERVAL '10 minutes'\n)",
         "hide": 0,
         "includeAll": false,
         "label": "Operation",
         "multi": false,
         "name": "operation",
         "options": [],
-        "query": "SELECT DISTINCT span_name\nFROM _ps_trace.operation\nWHERE service_name_id IN\n(\n    SELECT id\n    FROM _ps_trace.tag\n    WHERE key = 'service.name'\n    AND value#>>'{}' IN  (${service:sqlstring})\n)",
+        "query": "SELECT DISTINCT span_name FROM ps_trace.span WHERE service_name = ${service:sqlstring} AND start_time > NOW() - INTERVAL '10 minutes'\n",
         "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
@@ -205,7 +195,7 @@
     "hidden": true
   },
   "timezone": "",
-  "title": "Dependencies - Downstream",
+  "title": "[4] Downstream Dependencies",
   "uid": "SDJmJvPnz",
   "version": 7,
   "weekStart": ""
