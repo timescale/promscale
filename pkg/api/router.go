@@ -26,10 +26,9 @@ import (
 	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/telemetry"
-	"github.com/timescale/promscale/pkg/util"
 )
 
-func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elector) (*mux.Router, error) {
+func GenerateRouter(apiConf *Config, client *pgclient.Client) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -44,7 +43,7 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client, elector *util.Elec
 		dataParser.AddPreprocessor(preproc)
 	}
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(Write(client, dataParser, elector, updateIngestMetrics), "write-metrics"))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(Write(client, dataParser, updateIngestMetrics), "write-metrics"))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {
