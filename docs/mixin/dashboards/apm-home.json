@@ -47,18 +47,35 @@
       "includeVars": false,
       "keepTime": true,
       "tags": [
-        "ps-apm"
+        "promscale",
+        "apm"
       ],
       "targetBlank": false,
       "title": "Menu",
       "tooltip": "",
       "type": "dashboards",
       "url": ""
+    },
+    {
+      "asDropdown": false,
+      "icon": "doc",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Documentation",
+      "tooltip": "",
+      "type": "link",
+      "url": "https://docs.timescale.com/promscale/latest/"
     }
   ],
   "liveNow": false,
   "panels": [
     {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_TIMESCALEDB}"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -214,6 +231,10 @@
       "type": "table"
     },
     {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_TIMESCALEDB}"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -381,6 +402,10 @@
       "type": "table"
     },
     {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_TIMESCALEDB}"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -485,8 +510,8 @@
   "schemaVersion": 34,
   "style": "dark",
   "tags": [
-    "ps-apm",
-    "ps-apm-home"
+    "promscale",
+    "apm"
   ],
   "templating": {
     "list": []
@@ -499,7 +524,7 @@
     "hidden": true
   },
   "timezone": "",
-  "title": "Home",
+  "title": "[1] Overview",
   "uid": "vBhEewLnk",
   "version": 35,
   "weekStart": ""

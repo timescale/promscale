@@ -41,24 +41,11 @@
       "includeVars": false,
       "keepTime": true,
       "tags": [
-        "ps-apm-home"
+        "promscale",
+        "apm"
       ],
       "targetBlank": false,
-      "title": "Home",
-      "tooltip": "",
-      "type": "dashboards",
-      "url": ""
-    },
-    {
-      "asDropdown": false,
-      "icon": "external link",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [
-        "ps-apm-service"
-      ],
-      "targetBlank": false,
-      "title": "Service Menu",
+      "title": "Menu",
       "tooltip": "",
       "type": "dashboards",
       "url": ""
@@ -67,6 +54,10 @@
   "liveNow": false,
   "panels": [
     {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_TIMESCALEDB}"
+      },
       "description": "A.K.A. \"Who called me?\"",
       "gridPos": {
         "h": 26,
@@ -150,17 +141,17 @@
   "schemaVersion": 34,
   "style": "dark",
   "tags": [
-    "ps-apm-service"
+    "promscale",
+    "apm"
   ],
   "templating": {
     "list": [
       {
-        "allValue": "ALL",
-        "current": {
-          "selected": false,
-          "text": "generator",
-          "value": "generator"
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_TIMESCALEDB}"
         },
+        "allValue": "ALL",
         "definition": "SELECT value#>>'{}'\nFROM _ps_trace.tag\nWHERE key = 'service.name'\n",
         "hide": 0,
         "includeAll": false,
@@ -176,12 +167,11 @@
         "type": "query"
       },
       {
-        "allValue": "ALL",
-        "current": {
-          "selected": false,
-          "text": "HTTP GET",
-          "value": "HTTP GET"
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_TIMESCALEDB}"
         },
+        "allValue": "ALL",
         "definition": "SELECT DISTINCT span_name\nFROM _ps_trace.operation\nWHERE service_name_id IN\n(\n    SELECT id\n    FROM _ps_trace.tag\n    WHERE key = 'service.name'\n    AND value#>>'{}' IN  (${service:sqlstring})\n)",
         "hide": 0,
         "includeAll": false,
@@ -206,7 +196,7 @@
     "hidden": true
   },
   "timezone": "",
-  "title": "Dependencies - Upstream",
+  "title": "[5] Upstream Dependencies",
   "uid": "o4PPTDPnz",
   "version": 14,
   "weekStart": ""
