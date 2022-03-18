@@ -25,7 +25,9 @@ import (
 type dbSnapshot struct {
 	schemaNames       []string
 	schemas           []schemaInfo
+	users             string // \du
 	extensions        string // \dx
+	promscale         string // \dx+ promscale
 	schemaOutputs     string // \dn+
 	defaultPrivileges string // \ddp
 }
@@ -99,6 +101,7 @@ type schemaInfo struct {
 	privileges string // \dp+
 	indices    string // \di
 	triggers   string // \dy
+	operators  string // \do
 	data       []tableInfo
 }
 
@@ -109,7 +112,13 @@ type tableInfo struct {
 
 func (s dbSnapshot) writeToFile(f *os.File) error {
 	w := bufio.NewWriter(f)
+	if _, err := w.WriteString(s.users); err != nil {
+		return err
+	}
 	if _, err := w.WriteString(s.extensions); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(s.promscale); err != nil {
 		return err
 	}
 	if _, err := w.WriteString(s.schemaOutputs); err != nil {
@@ -136,6 +145,9 @@ func (s dbSnapshot) writeToFile(f *os.File) error {
 			return err
 		}
 		if _, err := w.WriteString(si.triggers); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(si.operators); err != nil {
 			return err
 		}
 		for _, ti := range si.data {
@@ -165,7 +177,9 @@ func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, 
 func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgradedDbInfo dbSnapshot) {
 	t.Errorf("upgrade differences")
 	printOutputDiff(t, fmt.Sprintf("%+v", upgradedDbInfo.schemaNames), fmt.Sprintf("%+v", pristineDbInfo.schemaNames), "schema names differ")
+	printOutputDiff(t, upgradedDbInfo.users, pristineDbInfo.users, "users differ")
 	printOutputDiff(t, upgradedDbInfo.extensions, pristineDbInfo.extensions, "extension outputs differ")
+	printOutputDiff(t, upgradedDbInfo.promscale, pristineDbInfo.promscale, "promscale extension members differ")
 	printOutputDiff(t, upgradedDbInfo.schemaOutputs, pristineDbInfo.schemaOutputs, "schema outputs differ")
 	printOutputDiff(t, upgradedDbInfo.defaultPrivileges, pristineDbInfo.defaultPrivileges, "default privileges differ")
 
@@ -184,6 +198,7 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 		printOutputDiff(t, upgradedSchema.privileges, pristineSchema.privileges, "privileges differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, upgradedSchema.indices, pristineSchema.indices, "indices differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, upgradedSchema.triggers, pristineSchema.triggers, "triggers differ for schema "+upgradedSchema.name)
+		printOutputDiff(t, upgradedSchema.operators, pristineSchema.operators, "operators differ for schema "+upgradedSchema.name)
 		printOutputDiff(t, fmt.Sprintf("%+v", upgradedSchema.data), fmt.Sprintf("%+v", pristineSchema.data), "data differs for schema "+upgradedSchema.name)
 	}
 }
@@ -212,7 +227,9 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 		)
 	}
 
+	info.users = getPsqlInfo(t, container, dbName, outputDir, "\\du")
 	info.extensions = getPsqlInfo(t, container, dbName, outputDir, "\\dx")
+	info.promscale = getPsqlInfo(t, container, dbName, outputDir, "\\dx+ promscale")
 	info.schemaOutputs = getPsqlInfo(t, container, dbName, outputDir, "\\dn+")
 	info.defaultPrivileges = getPsqlInfo(t, container, dbName, outputDir, "\\ddp")
 	info.schemas = make([]schemaInfo, len(ourSchemas))
@@ -229,6 +246,7 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 		// will be in tables anyway
 		info.indices = getPsqlInfo(t, container, dbName, outputDir, "\\di "+schema+".*")
 		info.triggers = getPsqlInfo(t, container, dbName, outputDir, "\\dy "+schema+".*")
+		info.operators = getPsqlInfo(t, container, dbName, outputDir, "\\do "+schema+".*")
 		info.data = getTableInfosForSchema(t, db, schema)
 	}
 	return
