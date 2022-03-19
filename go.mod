@@ -26,7 +26,7 @@ require (
 	github.com/jackc/pgx/v4 v4.15.1-0.20220219175125-b6b24f9e8a5d
 	github.com/jaegertracing/jaeger v1.32.0
 	github.com/oklog/run v1.1.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.46.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.47.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
@@ -44,7 +44,7 @@ require (
 	github.com/thanos-io/thanos v0.25.1
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	go.opentelemetry.io/collector/model v0.47.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.29.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.30.0
 	go.opentelemetry.io/otel v1.5.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.5.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.5.0
@@ -53,7 +53,7 @@ require (
 	go.uber.org/automaxprocs v1.4.0
 	go.uber.org/goleak v1.1.12
 	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
-	golang.org/x/sys v0.0.0-20220317022123-2c4bbad7e934
+	golang.org/x/sys v0.0.0-20220319134239-a9b59b0215f8
 	google.golang.org/genproto v0.0.0-20220217155828-d576998c0009 // indirect
 	google.golang.org/grpc v1.45.0
 	google.golang.org/protobuf v1.27.1
