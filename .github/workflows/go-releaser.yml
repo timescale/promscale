@@ -12,7 +12,7 @@ on:
     branches: ['**']
 
 env:
-  golang-version: 1.17.7
+  golang-version: 1.18.0
   goreleaser-version: v1.7.0
 
 jobs:
