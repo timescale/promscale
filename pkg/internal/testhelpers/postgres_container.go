@@ -161,7 +161,7 @@ func MakePromUserPromAdmin(t testing.TB, dbName string) {
 	require.NoError(t, err)
 	defer db.Close(context.Background())
 
-	_, err = db.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", "prom_admin", promUser))
+	_, err = db.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere('distributed_prom_user', $$ GRANT prom_admin TO %s $$);", promUser))
 	require.NoError(t, err)
 }
 
