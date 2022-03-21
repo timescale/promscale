@@ -70,51 +70,7 @@ jobs:
 
     - name: Test extended dataset
       run: go test -v -race -timeout=30m ./pkg/tests/end_to_end_tests/ -extended-test
-
-  test-end-to-end:
-    name: Test end-to-end extension combinations
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        test-setups:
-        - {name: "Singlenode (12)",                     tsdb: true,  multi: false, pg: 12, nightly: false}
-        - {name: "Singlenode (14)",                     tsdb: true,  multi: false, pg: 14, nightly: false}
-        - {name: "Without TimescaleDB",                 tsdb: false, multi: false, pg: 14, nightly: false}
-        - {name: "Multinode",                           tsdb: true,  multi: true,  pg: 14, nightly: false}
-        #- {name: "TimescaleDB Nightly (PG-13)",           tsdb: true,  multi: false, pg: 13, nightly: true}
-        #- {name: "TimescaleDB-Multinode Nightly (PG-13)", tsdb: true,  multi: true,  pg: 13, nightly: true}
-    steps:
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v3
-      with:
-        lfs: true
-
-    - name: Checkout LFS objects
-      run: git lfs checkout
-
-    - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.0.0
-      with:
-        go-version: ${{ env.golang-version }}
-      id: go
-
-    - name: Use Go module caching
-      uses: actions/cache@v2
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-
-    - name: Test ${{ matrix.test-setups.name }}
-      env:
-        PG: ${{ matrix.test-setups.pg }}
-        TSDB: ${{ matrix.test-setups.tsdb }}
-        MULTI: ${{ matrix.test-setups.multi }}
-        NIGHTLY: ${{ matrix.test-setups.nightly }}
-        DOCKER_IMAGE: ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg${{ matrix.test-setups.pg }}
-      run: go test ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -use-timescaledb-nightly=$NIGHTLY -timescale-docker-image=$DOCKER_IMAGE
-
+ 
   test-helm-chart:
     name: Test helm-chart template generation
     runs-on: ubuntu-latest
