@@ -534,7 +534,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), "SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"tEsT\"') i;")
+		_, err = dbOwner.Exec(context.Background(), "SELECT prom_api.compress_chunk(i) from public.show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -565,7 +565,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), "SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"tEsT\"') i;")
+		_, err = dbOwner.Exec(context.Background(), "SELECT prom_api.compress_chunk(i) from public.show_chunks('prom_data.\"tEsT\"') i;")
 
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
@@ -731,7 +731,7 @@ func TestInsertCompressed(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT public.compress_chunk(i) from public.show_chunks('prom_data."%s"') i;`, tableName))
+		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT prom_api.compress_chunk(i) from public.show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine
@@ -952,7 +952,7 @@ func TestCompressionSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT public.compress_chunk(i) from public.show_chunks('prom_data."%s"') i;`, tableName))
+		_, err = dbOwner.Exec(context.Background(), fmt.Sprintf(`SELECT prom_api.compress_chunk(i) from public.show_chunks('prom_data."%s"') i;`, tableName))
 		if err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
 				//already compressed (could happen if policy already ran). This is fine

@@ -464,7 +464,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec(context.Background(), "SELECT public.set_chunk_time_interval('prom_data.test', interval '8 hour')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.set_chunk_time_interval('prom_data.test', interval '8 hour')")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -718,7 +718,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 
 		if *useTimescaleDB {
 			//owner not admin since using timescale func to avoid randomness
-			_, err = dbOwner.Exec(context.Background(), "SELECT public.set_chunk_time_interval('prom_data.test', interval '8 hour')")
+			_, err = dbOwner.Exec(context.Background(), "SELECT prom_api.set_chunk_time_interval('prom_data.test', interval '8 hour')")
 			if err != nil {
 				t.Fatal(err)
 			}

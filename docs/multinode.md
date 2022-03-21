@@ -20,5 +20,4 @@ SELECT add_data_node('example_node_name', host => 'example_host_address');
 CALL add_prom_node('example_node_name');
 ```
 
-Note: `add_prom_node` should be run by the same database user, as the
-one writing data from Promscale.
+Note: `add_prom_node` should be run by a database superuser e.g. "postgres".
