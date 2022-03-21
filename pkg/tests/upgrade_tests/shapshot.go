@@ -206,6 +206,7 @@ func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgrade
 var replaceChildren = regexp.MustCompile("timescaledb_internal\\._hyper_.*\n")
 var replaceDistChildren = regexp.MustCompile("timescaledb_internal\\._dist_hyper_.*\n")
 var replaceSatisfiesOID = regexp.MustCompile("satisfies_hash_partition.{3,20}::oid")
+var replaceComprChildren = regexp.MustCompile("_timescaledb_internal\\._compressed_hypertable_.*\n")
 
 func expectedSchemas(extstate testhelpers.TestOptions) []string {
 	considerSchemas := schemas
@@ -215,7 +216,21 @@ func expectedSchemas(extstate testhelpers.TestOptions) []string {
 	return considerSchemas
 }
 
+func clearSearchPath(t *testing.T, db *pgxpool.Pool) {
+	var username string
+	err := db.QueryRow(context.Background(), "select current_user").Scan(&username)
+	if err != nil {
+		t.Errorf("failed to select current_user")
+		return
+	}
+	_, err = db.Exec(context.Background(), fmt.Sprintf("alter user %s set search_path to pg_catalog", pgx.Identifier{username}.Sanitize()))
+	if err != nil {
+		t.Errorf("failed to set search_path: %v", err)
+	}
+}
+
 func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, outputDir string, db *pgxpool.Pool, extstate testhelpers.TestOptions) (info dbSnapshot) {
+	clearSearchPath(t, db)
 	info.schemaNames = getSchemas(t, db)
 	considerSchemas := expectedSchemas(extstate)
 
@@ -230,6 +245,7 @@ func SnapshotDB(t *testing.T, container testcontainers.Container, dbName, output
 	info.users = getPsqlInfo(t, container, dbName, outputDir, "\\du")
 	info.extensions = getPsqlInfo(t, container, dbName, outputDir, "\\dx")
 	info.promscale = getPsqlInfo(t, container, dbName, outputDir, "\\dx+ promscale")
+	info.promscale = replaceComprChildren.ReplaceAllLiteralString(info.promscale, "_timescaledb_internal._compressed_hypertable_*\n")
 	info.schemaOutputs = getPsqlInfo(t, container, dbName, outputDir, "\\dn+")
 	info.defaultPrivileges = getPsqlInfo(t, container, dbName, outputDir, "\\ddp")
 	info.schemas = make([]schemaInfo, len(ourSchemas))
