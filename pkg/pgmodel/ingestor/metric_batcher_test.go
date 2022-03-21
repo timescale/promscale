@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -133,12 +134,13 @@ func TestInitializeMetricBatcher(t *testing.T) {
 
 }
 
+var makeSeries = func(seriesID int) *model.Series {
+	l := &model.Series{}
+	l.SetSeriesID(pgmodel.SeriesID(seriesID), 1)
+	return l
+}
+
 func TestSendBatches(t *testing.T) {
-	makeSeries := func(seriesID int) *model.Series {
-		l := &model.Series{}
-		l.SetSeriesID(pgmodel.SeriesID(seriesID), 1)
-		return l
-	}
 	var workFinished sync.WaitGroup
 	errChan := make(chan error, 1)
 	data := []model.Insertable{
@@ -160,6 +162,89 @@ func TestSendBatches(t *testing.T) {
 		}
 		require.Equal(t, fmt.Sprintf("%v", i+1), id.String())
 	}
+}
+
+var makeInsertableData = func(size int) []model.Insertable {
+	data := make([]model.Insertable, size)
+	for i := range data {
+		data[i] = model.NewPromSamples(makeSeries(i), make([]prompb.Sample, 1))
+	}
+
+	return data
+}
+
+func TestResizingOversizedBuffers(t *testing.T) {
+	var (
+		workFinished   sync.WaitGroup
+		inputChan      = make(chan *insertDataRequest)
+		copierCh       = make(chan readRequest)
+		errChan        = make(chan error, 1)
+		sizeOfOverflow = 10
+	)
+	defer close(inputChan)
+
+	workFinished.Add(1)
+	req := &insertDataRequest{
+		metric:   "test",
+		data:     makeInsertableData(metrics.FlushSize + sizeOfOverflow),
+		finished: &workFinished,
+		errChan:  errChan,
+	}
+
+	go sendBatches(req, inputChan, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, copierCh)
+
+	// First batch should be filled to the max.
+	copierReq := <-copierCh
+	batch := <-copierReq.copySender
+
+	require.Equal(t, metrics.FlushSize, len(batch.data.batch.Data()))
+	require.Equal(t, metrics.FlushSize, batch.data.total())
+	batch.data.reportResults(nil)
+
+	// Second batch should contain the rest of the data.
+	copierReq = <-copierCh
+	batch = <-copierReq.copySender
+
+	require.Equal(t, sizeOfOverflow, batch.data.total())
+	require.Equal(t, sizeOfOverflow, len(batch.data.batch.Data()))
+	batch.data.reportResults(nil)
+
+	// We are doing this as a test that the finishing WaitGroup was properly handled with the resize.
+	workFinished.Wait()
+
+	copierReq = <-copierCh
+
+	workFinished.Add(2)
+	inputChan <- &insertDataRequest{
+		metric:   "test",
+		data:     makeInsertableData((metrics.FlushSize / 2) + sizeOfOverflow),
+		finished: &workFinished,
+		errChan:  errChan,
+	}
+	inputChan <- &insertDataRequest{
+		metric:   "test",
+		data:     makeInsertableData((metrics.FlushSize / 2) + sizeOfOverflow),
+		finished: &workFinished,
+		errChan:  errChan,
+	}
+
+	// First batch should be filled to the max.
+	batch = <-copierReq.copySender
+
+	require.Equal(t, metrics.FlushSize, len(batch.data.batch.Data()))
+	require.Equal(t, metrics.FlushSize, batch.data.total())
+	batch.data.reportResults(nil)
+
+	// Second batch should contain the rest of the data.
+	copierReq = <-copierCh
+	batch = <-copierReq.copySender
+
+	require.Equal(t, 2*sizeOfOverflow, len(batch.data.batch.Data()))
+	require.Equal(t, 2*sizeOfOverflow, batch.data.total())
+	batch.data.reportResults(nil)
+
+	// We are doing this as a test that the finishing WaitGroup was properly handled with the resize.
+	workFinished.Wait()
 }
 
 type insertableVisitor []model.Insertable

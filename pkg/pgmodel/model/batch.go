@@ -65,6 +65,28 @@ func (t *Batch) AppendSlice(s []Insertable) {
 	}
 }
 
+// ResizeTo resizes the batch to the specified size and returns the
+// array of the overflown data.
+func (t *Batch) ResizeTo(size int) []Insertable {
+	if len(t.data) <= size {
+		return nil
+	}
+
+	overflow := t.data[size:]
+
+	for _, d := range overflow {
+		switch d.Type() {
+		case Sample:
+			t.numSamples -= 1
+		case Exemplar:
+			t.numExemplars -= 1
+		}
+	}
+
+	t.data = t.data[:size]
+	return overflow
+}
+
 func (t *Batch) Visitor() *batchVisitor {
 	return getBatchVisitor(t)
 }

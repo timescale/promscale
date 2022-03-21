@@ -49,13 +49,50 @@ func NewPendingBuffer() *pendingBuffer {
 	return pendingBuffers.Get().(*pendingBuffer)
 }
 
-func (p *pendingBuffer) IsFull() bool {
+func NewPendingBufferFromExisting(existing *pendingBuffer) *pendingBuffer {
+	if existing != nil {
+		return existing
+	}
+	return NewPendingBuffer()
+}
+
+// total returns total size of pendingBuffer, including both samples and exemplars.
+func (p *pendingBuffer) total() int {
 	samples, exemplars := p.batch.Count()
-	return samples+exemplars >= metrics.FlushSize
+	return samples + exemplars
+}
+func (p *pendingBuffer) IsFull() bool {
+	return p.total() >= metrics.FlushSize
 }
 
 func (p *pendingBuffer) IsEmpty() bool {
 	return p.batch.CountSeries() == 0
+}
+
+// ResizeToMax resizes the current buffer to maximum size and
+// returns the overflow as a new *pendingBuffer that can be used
+// to continue batching incoming data.
+func (p *pendingBuffer) ResizeToMax() *pendingBuffer {
+	if p.total() <= metrics.FlushSize {
+		// No need to resize.
+		return nil
+	}
+
+	// If we are oversized, resize current pendingBuffer and create a
+	// new one with the overflow. Since we check is the pendingBuffer full
+	// with each addition of a request, its safe to assume only the last
+	// request has overflown us.
+
+	lastRequest := p.needsResponse[len(p.needsResponse)-1]
+	// Since we are splitting up a single incoming request in two buffers,
+	// we need to wait for an additional done signal.
+	lastRequest.finished.Add(1)
+
+	overflow := NewPendingBuffer()
+	overflow.needsResponse = append(overflow.needsResponse, insertDataTask{finished: lastRequest.finished, errChan: lastRequest.errChan})
+	overflow.batch.AppendSlice(p.batch.ResizeTo(metrics.FlushSize))
+
+	return overflow
 }
 
 // Report completion of an insert batch to all goroutines that may be waiting

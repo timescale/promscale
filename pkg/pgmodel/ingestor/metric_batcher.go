@@ -185,6 +185,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 	var (
 		exemplarsInitialized = false
 		span                 trace.Span
+		overflow             *pendingBuffer
 	)
 
 	addReq := func(req *insertDataRequest, buf *pendingBuffer) {
@@ -228,12 +229,11 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 				return
 			}
 			addReq(req, pending)
-			copierReadRequestCh <- readRequest
-			span.AddEvent("Sent a read request")
 		}
 
 		recvCh := input
 		if pending.IsFull() {
+			overflow = pending.ResizeToMax()
 			span.AddEvent("Buffer is full")
 			recvCh = nil
 		}
@@ -246,9 +246,14 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
 			span.SetAttributes(attribute.Int("num_series", numSeries))
 			span.End()
-			pending = NewPendingBuffer()
+
+			pending = NewPendingBufferFromExisting(overflow)
+			overflow = nil
+
 			pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
 			span.SetAttributes(attribute.String("metric", info.TableName))
+			copierReadRequestCh <- readRequest
+			span.AddEvent("Sent a read request")
 		case req, ok := <-recvCh:
 			if !ok {
 				if !pending.IsEmpty() {

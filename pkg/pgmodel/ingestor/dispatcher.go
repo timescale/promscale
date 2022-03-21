@@ -182,9 +182,11 @@ func (p *pgxDispatcher) Close() {
 		close(value.(chan *insertDataRequest))
 		return true
 	})
-	close(p.copierReadRequestCh)
 	close(p.doneChannel)
 	p.doneWG.Wait()
+
+	// It's only safe to close this channel after all metric batchers are done.
+	close(p.copierReadRequestCh)
 }
 
 // InsertTs inserts a batch of data into the database.
@@ -294,7 +296,11 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
-			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh, p.labelArrayOID)
+			p.doneWG.Add(1)
+			go func() {
+				runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh, p.labelArrayOID)
+				p.doneWG.Done()
+			}()
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)
