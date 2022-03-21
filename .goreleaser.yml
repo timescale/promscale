@@ -126,7 +126,7 @@ dockers:
   ids: []
   skip_push: false
   dockerfile: ./build/Dockerfile
-  use_buildx: true
+  use: buildx
   build_flag_templates:
   - "--pull"
   - "--label=org.opencontainers.image.created={{.Date}}"
@@ -142,7 +142,7 @@ dockers:
   ids: []
   skip_push: false
   dockerfile: ./build/Dockerfile
-  use_buildx: true
+  use: buildx
   build_flag_templates:
   - "--pull"
   - "--label=org.opencontainers.image.created={{.Date}}"
