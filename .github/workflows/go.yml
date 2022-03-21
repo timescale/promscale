@@ -66,18 +66,18 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Test
-      run: make unit > complete-test-run.log  2>&1
+      run: make unit > unit-run.log  2>&1
 
     - name: 'Print failure logs'
       if: ${{ failure() }}
-      run: grep "^[- F]" complete-test-run.log
+      run: cat unit-run.log
 
     - name: 'Upload Log Artifact'
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: complete-test-run.log
-        path: complete-test-run.log
+        name: unit-run.log
+        path: unit-run.log
         retention-days: 5
 
     - name: Generated
@@ -85,84 +85,3 @@ jobs:
         go generate ./...
         git diff --exit-code
 
-  test-end-to-end:
-    name: e2e
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        test-setups:
-        - {name: "Singlenode (12)",          shortname: "singlenode-12",  tsdb: true,  multi: false, pg: 12}
-        - {name: "Singlenode (13)",          shortname: "singlenode-13",  tsdb: true,  multi: false, pg: 13}
-        - {name: "Singlenode",               shortname: "singlenode-14",  tsdb: true,  multi: false, pg: 14}
-        - {name: "Without TimescaleDB",      shortname: "no-timescaledb", tsdb: false, multi: false, pg: 14}
-        # TODO (james): Skipping multinode because tests are broken for now
-        # - {name: "Multinode",                shortname: "multinode",      tsdb: true,  multi: true,  pg: 14}
-    steps:
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v3
-
-    - name: Checkout test data files
-      run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
-
-    - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.0.0
-      with:
-        go-version: ${{ env.golang-version }}
-      id: go
-
-    - name: Use Go module caching
-      uses: actions/cache@v2
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Prepare metadata
-      id: metadata
-      run: |
-        branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
-        possible_branch_tag=$(echo ${branch_name}-ts2-pg${{matrix.test-setups.pg}})
-        develop_branch_tag=$(echo develop-ts2-pg${{matrix.test-setups.pg}})
-        image_base="ghcr.io/timescale/dev_promscale_extension"
-        docker_image=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${develop_branch_tag})
-        echo "::set-output name=docker_image::${docker_image}"
-
-    - name: Test ${{ matrix.test-setups.name }}
-      env:
-        DOCKER_IMAGE: ${{steps.metadata.outputs.docker_image}}
-        TSDB: ${{ matrix.test-setups.tsdb }}
-        MULTI: ${{ matrix.test-setups.multi }}
-        SHORTNAME: ${{ matrix.test-setups.shortname }}
-      run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -timescale-docker-image=$DOCKER_IMAGE | tee $SHORTNAME-test-run.log  2>&1
-
-    - name: 'Upload Log Artifact'
-      if: ${{ always() }}
-      uses: actions/upload-artifact@v2
-      with:
-        name: ${{ matrix.test-setups.shortname }}-test-run.log
-        path: ${{ matrix.test-setups.shortname }}-test-run.log
-        retention-days: 5
-
-  # Added to summarize the matrix (otherwise we would need to list every single
-  # job in bors.toml)
-  tests-result:
-    name: e2e results
-    if: always()
-    needs:
-      - test-end-to-end
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mark the job as a success
-        if: needs.test-end-to-end.result == 'success'
-        run: exit 0
-      - name: Mark the job as a failure
-        if: needs.test-end-to-end.result != 'success'
-        run: exit 1
