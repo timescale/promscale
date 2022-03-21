@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	baseExtensionState.UseTimescaleDB()
 	// TODO (james): Replace hardcoded value
-	baseExtensionState.SetTimescaleDockerImage("ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14")
+	baseExtensionState.SetTimescaleDockerImage("local/dev_promscale_extension:head-ts2-pg13")
 	if err := os.Setenv("IS_TEST", "true"); err != nil {
 		// E2E tests calls prometheus.MustRegister() more than once in clockcache,
 		// hence, we set this environment variable to have a different behaviour
@@ -83,7 +83,7 @@ func getDBImages(extensionState testhelpers.TestOptions) (prev string, clean str
 	if err != nil {
 		panic("unable to get docker image version")
 	}
-	return "timescaledev/promscale-extension:0.1.2-ts2-" + pgVersion, dockerImageName, nil
+	return "timescaledev/promscale-extension:0.3.2-2.6.0-pg" + pgVersion, dockerImageName, nil
 }
 
 func writeToFiles(t *testing.T, upgradedDbInfo, pristineDbInfo dbSnapshot) error {
