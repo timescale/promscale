@@ -17,6 +17,7 @@ We use the following categories for changes:
 
 ### Added
 - `-enable-feature=promql-per-step-stats` feature for statistics in PromQL evaluation
+- Add `readinessProbe` in helm chart [#1266]
 
 ## [0.11.0] - 2022-05-11
 
