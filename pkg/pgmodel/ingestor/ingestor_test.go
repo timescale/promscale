@@ -282,7 +282,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				if c.getSeriesErr != nil && !errors.Is(err, c.getSeriesErr) {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.getSeriesErr)
 				}
-				if c.setSeriesErr != nil && !errors.Is(err, c.getSeriesErr) {
+				if c.setSeriesErr != nil && !errors.Is(err, c.setSeriesErr) {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.setSeriesErr)
 				}
 				if errors.Is(err, promscale_errors.ErrNoMetricName) {
