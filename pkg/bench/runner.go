@@ -143,7 +143,8 @@ func Run(conf *BenchConfig) (err error) {
 				ewmaRateSent := qmi.samplesIn.Rate()
 				blockDuration := time.Since(blockStart)
 				runDuration += blockDuration
-				fmt.Println("single block took", blockDuration, "count", blockCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(blockCount)/blockDuration.Seconds())
+
+				fmt.Println("single block took", blockDuration, "count", blockCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(blockCount)/blockDuration.Seconds(), "maximum lag", qmi.timeLagRealMax)
 
 				qmi.qm.SeriesReset(seriesIndex)
 				seriesIndex++
@@ -154,7 +155,7 @@ func Run(conf *BenchConfig) (err error) {
 			}
 			//runtime.GC()
 		}
-		fmt.Println("single run took", runDuration, "count", runCount, "metrics/s db", float64(runCount)/runDuration.Seconds())
+		fmt.Println("single run took", runDuration, "count", runCount, "metrics/s db", float64(runCount)/runDuration.Seconds(), "maximum lag", qmi.timeLagRealMax)
 
 	}
 
@@ -164,6 +165,6 @@ func Run(conf *BenchConfig) (err error) {
 	ws.Stop()
 	qmi.qm.Stop()
 	took := time.Since(start)
-	fmt.Println("took", took, "count", totalCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(totalCount)/took.Seconds())
+	fmt.Println("took", took, "count", totalCount, "ewma metric/s sent", ewmaRateSent, "metrics/s db", float64(totalCount)/took.Seconds(), "maximum lag", qmi.timeLagRealMax)
 	return nil
 }
