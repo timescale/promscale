@@ -148,16 +148,7 @@
           "rawQuery": true,
           "rawSql": "SELECT\n    time_bucket_gapfill('$__interval', start_time) AS time,\n    coalesce(count(*)::numeric / (EXTRACT(epoch FROM '$__interval'::interval)), 0) AS \"Throughput\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "span_duration_ms"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
+          "select": [],
           "table": "event",
           "timeColumn": "\"time\"",
           "timeColumnType": "timestamp",
@@ -261,16 +252,7 @@
           "rawQuery": true,
           "rawSql": "SELECT\n    time_bucket_gapfill('$__interval', start_time) AS time,\n    COALESCE(ROUND(approx_percentile(0.99, percentile_agg(duration_ms))::numeric, 3), 0) as \"p99\",\n    COALESCE(ROUND(approx_percentile(0.90, percentile_agg(duration_ms))::numeric, 3), 0) as \"p90\",\n    COALESCE(ROUND(approx_percentile(0.50, percentile_agg(duration_ms))::numeric, 3), 0) as \"p50\",\n    COALESCE(AVG(duration_ms), 0) as \"Average\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "span_duration_ms"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
+          "select": [],
           "table": "event",
           "timeColumn": "\"time\"",
           "timeColumnType": "timestamp",
@@ -371,16 +353,7 @@
           "rawQuery": true,
           "rawSql": "SELECT\n    time_bucket('$__interval', start_time) as time,\n    coalesce(count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*), 0) as \"Error rate\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "span_duration_ms"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
+          "select": [],
           "table": "event",
           "timeColumn": "\"time\"",
           "timeColumnType": "timestamp",
@@ -495,16 +468,7 @@
           "rawQuery": true,
           "rawSql": "SELECT\n    span_name as \"Operation\",\n    count(*)::numeric / (${__to:date:seconds} - ${__from:date:seconds}) AS \"Throughput\",\n    sum(duration_ms) / count(*)::numeric as \"Avg Latency\",\n    coalesce((count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*)), 0) as \"Error rate\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "span_duration_ms"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
+          "select": [],
           "table": "event",
           "timeColumn": "\"time\"",
           "timeColumnType": "timestamp",
@@ -553,7 +517,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "duration_ms"
+              "options": "Duration"
             },
             "properties": [
               {
@@ -647,18 +611,9 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  replace(trace_id::text, '-'::text, ''::text) as \"Trace ID\",\n  span_name as \"Operation\",\n  start_time as \"Time\",\n  duration_ms\nFROM ps_trace.span\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nORDER BY duration_ms DESC\nLIMIT 50\n;",
+          "rawSql": "SELECT\n  replace(trace_id::text, '-'::text, ''::text) as \"Trace ID\",\n  span_name as \"Operation\",\n  start_time as \"Time\",\n  duration_ms as \"Duration\"\nFROM ps_trace.span\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nORDER BY duration_ms DESC\nLIMIT 50\n;",
           "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "span_duration_ms"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
+          "select": [],
           "table": "event",
           "timeColumn": "\"time\"",
           "timeColumnType": "timestamp",
@@ -736,16 +691,7 @@
           "rawQuery": true,
           "rawSql": "SELECT\n  status_message as \"Error\",\n  count(*) as \"Occurrences\"\nFROM ps_trace.span\nWHERE $__timeFilter(start_time) AND\nstatus_code = 'STATUS_CODE_ERROR' AND\nservice_name = '${service}'\nGROUP BY 1\nORDER BY 2 DESC\n;",
           "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "span_duration_ms"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
+          "select": [],
           "table": "event",
           "timeColumn": "\"time\"",
           "timeColumnType": "timestamp",
