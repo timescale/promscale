@@ -374,7 +374,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  replace(trace_id::text, '-'::text, ''::text) as \"Trace ID\",\n  service_name as \"Service\",\n  span_name as \"Operation\",\n  start_time as \"Time\",\n  duration_ms\nFROM ps_trace.span\nWHERE start_time > NOW() - INTERVAL '30m'\nAND parent_span_id is null\nORDER BY duration_ms DESC\nLIMIT 50\n;",
+          "rawSql": "SELECT\n  replace(trace_id::text, '-'::text, ''::text) as \"Trace ID\",\n  service_name as \"Service\",\n  span_name as \"Operation\",\n  start_time as \"Time\",\n  duration_ms as \"Duration\" \nFROM ps_trace.span\nWHERE start_time > NOW() - INTERVAL '30m'\nAND parent_span_id is null\nORDER BY duration_ms DESC\nLIMIT 50\n;",
           "refId": "A",
           "select": [
             [
