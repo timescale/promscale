@@ -27,6 +27,11 @@ jobs:
       with:
         go-version: ${{ env.golang-version }}
 
+    - name: check if alerts were propagated to helm chart
+      run: |
+        make generate-helm --always-make
+        git diff --exit-code
+
     - name: download dashboard linter
       run: go install -a github.com/grafana/dashboard-linter@latest
 

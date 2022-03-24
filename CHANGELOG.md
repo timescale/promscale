@@ -15,7 +15,7 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ## Added
-- Alerting rules for Promscale. You can find them [here](docs/promscale_alerting.md) [#1181, #1185]
+- Alerting rules for Promscale. You can find them [here](docs/promscale_alerting.md) [#1181, #1185, #1271]
 - Add database status and request metrics [#1185]
 - Add database SQL stats as Prometheus metrics. These can be queried under `promscale_sql` namespace [#1193]
 - Add alerts for database SQL metrics [#1193]

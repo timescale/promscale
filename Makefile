@@ -38,6 +38,12 @@ go-lint:
 generate:
 	go generate ./...
 
+.PHONY: generate-helm
+generate-helm: deploy/helm-chart/templates/prometheus-rule.yaml
+
+deploy/helm-chart/templates/prometheus-rule.yaml:
+	./scripts/generate-helm-alerts.sh
+
 .PHONY: check-alerts
 check-alerts:
 	# If you don't have promtool, install it with
