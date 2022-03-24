@@ -369,7 +369,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n    time_bucket('$__interval', start_time) as time,\n    coalesce((count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*)), 0) as \"Error rate\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n    time_bucket('$__interval', start_time) as time,\n    coalesce(count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*), 0) as \"Error rate\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
           "select": [
             [
