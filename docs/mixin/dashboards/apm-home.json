@@ -479,7 +479,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  status_message as \"Error\",\n  service_name as \"Service\",\n  count(*) as \"Occurrences\" \nFROM ps_trace.event\nWHERE time > NOW() - INTERVAL '30m'\nAND status_code = 'STATUS_CODE_ERROR'\nGROUP BY 1, 2\nORDER BY 3\n;",
+          "rawSql": "SELECT\n  status_message as \"Error\",\n  service_name as \"Service\",\n  count(*) as \"Occurrences\" \nFROM ps_trace.span\nWHERE start_time > NOW() - INTERVAL '30m'\nAND status_code = 'STATUS_CODE_ERROR'\nGROUP BY 1, 2\nORDER BY 3\n;",
           "refId": "A",
           "select": [
             [

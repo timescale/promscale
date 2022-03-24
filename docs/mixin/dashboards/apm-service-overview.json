@@ -734,7 +734,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  status_message as \"Error\",\n  count(*) as \"Occurrences\"\nFROM ps_trace.event\nWHERE $__timeFilter(time) AND\nstatus_code = 'STATUS_CODE_ERROR' AND\nservice_name = '${service}'\nGROUP BY 1\nORDER BY 2 DESC\n;",
+          "rawSql": "SELECT\n  status_message as \"Error\",\n  count(*) as \"Occurrences\"\nFROM ps_trace.span\nWHERE $__timeFilter(start_time) AND\nstatus_code = 'STATUS_CODE_ERROR' AND\nservice_name = '${service}'\nGROUP BY 1\nORDER BY 2 DESC\n;",
           "refId": "A",
           "select": [
             [
