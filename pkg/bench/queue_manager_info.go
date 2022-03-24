@@ -35,11 +35,17 @@ func (qmi *qmInfo) run() {
 			fmt.Printf("Error Gathering metrics from registry")
 		}
 
+		timeLagSeconds := int64(0)
 		for _, mf := range mfs {
-			fmt.Println(mf.GetName())
+			if mf.GetName() == "prometheus_remote_storage_queue_highest_sent_timestamp_seconds" {
+				highestSent := mf.GetMetric()[0].GetGauge().GetValue()
+				now := time.Now().Unix()
+
+				timeLagSeconds = now - int64(highestSent)
+			}
 		}
 
-		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\t\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate())
+		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d\t \n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSeconds)
 		w.Flush()
 	}
 }
