@@ -14,11 +14,12 @@ import (
 )
 
 type qmInfo struct {
-	qm         *remote.QueueManager
-	samplesIn  *remote.EwmaRate
-	samplesWal *remote.EwmaRate
-	highestTs  *remote.MaxTimestamp
-	ticker     *time.Ticker
+	qm              *remote.QueueManager
+	samplesIn       *remote.EwmaRate
+	samplesWal      *remote.EwmaRate
+	highestTs       *remote.MaxTimestamp
+	ticker          *time.Ticker
+	metricsRegistry *prometheus.Registry
 }
 
 func (qmi *qmInfo) run() {
@@ -28,6 +29,16 @@ func (qmi *qmInfo) run() {
 	for range qmi.ticker.C {
 		qmi.samplesIn.Tick()
 		qmi.samplesWal.Tick()
+
+		mfs, err := qmi.metricsRegistry.Gather()
+		if err != nil {
+			fmt.Printf("Error Gathering metrics from registry")
+		}
+
+		for _, mf := range mfs {
+			fmt.Println(mf.GetName())
+		}
+
 		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\t\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate())
 		w.Flush()
 	}
@@ -61,6 +72,8 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 		return nil, err
 	}
 
+	reg := prometheus.NewRegistry()
+
 	qmi := &qmInfo{
 		samplesIn:  remote.NewEwmaRate(ewmaWeight, shardUpdateDuration),
 		samplesWal: remote.NewEwmaRate(ewmaWeight, shardUpdateDuration),
@@ -71,6 +84,7 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 				Name:      "highest_timestamp_in_seconds",
 				Help:      "Highest timestamp that has come into the remote storage via the Appender interface, in seconds since epoch.",
 			})),
+		metricsRegistry: reg,
 	}
 
 	logLevel := &promlog.AllowedLevel{}
@@ -80,7 +94,7 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 	}
 
 	qmi.qm = remote.NewQueueManager(
-		remote.NewQueueManagerMetrics(nil, "", ""),
+		remote.NewQueueManagerMetrics(reg, "", ""),
 		nil,
 		nil,
 		promlog.New(&promlog.Config{Level: logLevel}),
