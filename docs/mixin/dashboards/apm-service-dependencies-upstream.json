@@ -76,7 +76,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "WITH RECURSIVE x AS\n(\n    SELECT\n        trace_id,\n        span_id,\n        parent_span_id,\n        service_name,\n        span_name\n    FROM ps_trace.span\n    WHERE start_time > NOW() - INTERVAL '10 minutes'\n    AND service_name = '${service}'\n    AND span_name = '${operation}'\n    UNION ALL\n    SELECT\n        s.trace_id,\n        s.span_id,\n        s.parent_span_id,\n        s.service_name,\n        s.span_name\n    FROM x\n    INNER JOIN ps_trace.span s\n    ON (x.trace_id = s.trace_id\n    AND x.parent_span_id = s.span_id)\n)\nSELECT\n    md5(service_name || '-' || span_name) as id,\n    span_name as title,\n    service_name as \"subTitle\",\n    count(*) as \"mainStat\"\nFROM x\nGROUP BY service_name, span_name",
+          "rawSql": "WITH RECURSIVE x AS\n(\n    SELECT\n        trace_id,\n        span_id,\n        parent_span_id,\n        service_name,\n        span_name\n    FROM ps_trace.span\n    WHERE start_time > NOW() - INTERVAL '10 minutes'\n    AND service_name = '${service}'\n    AND span_name = '${operation}'\n    UNION ALL\n    SELECT\n        s.trace_id,\n        s.span_id,\n        s.parent_span_id,\n        s.service_name,\n        s.span_name\n    FROM x\n    INNER JOIN ps_trace.span s\n    ON (x.trace_id = s.trace_id\n    AND x.parent_span_id = s.span_id)\n    AND s.start_time > NOW() - INTERVAL '10 minutes'\n)\nSELECT\n    md5(service_name || '-' || span_name) as id,\n    span_name as title,\n    service_name as \"subTitle\",\n    count(*) as \"mainStat\"\nFROM x\nGROUP BY service_name, span_name",
           "refId": "A",
           "select": [
             [
@@ -109,7 +109,7 @@
           "hide": false,
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "WITH RECURSIVE x AS\n(\n    SELECT\n        trace_id,\n        span_id,\n        parent_span_id,\n        service_name,\n        span_name,\n        null::text as id,\n        null::text as target,\n        null::text as source\n    FROM ps_trace.span\n    WHERE start_time > NOW() - INTERVAL '10 minutes'\n    AND service_name = '${service}'\n    AND span_name = '${operation}'\n    UNION ALL\n    SELECT\n        s.trace_id,\n        s.span_id,\n        s.parent_span_id,\n        s.service_name,\n        s.span_name,\n        md5(s.service_name || '-' || s.span_name || '-' || x.service_name || '-' || x.span_name) as id,\n        md5(x.service_name || '-' || x.span_name) as target,\n        md5(s.service_name || '-' || s.span_name) as source\n    FROM x\n    INNER JOIN ps_trace.span s\n    ON (x.trace_id = s.trace_id\n    AND x.parent_span_id = s.span_id)\n)\nSELECT DISTINCT\n    x.id,\n    x.target,\n    x.source \nFROM x\nWHERE id is not null",
+          "rawSql": "WITH RECURSIVE x AS\n(\n    SELECT\n        trace_id,\n        span_id,\n        parent_span_id,\n        service_name,\n        span_name,\n        null::text as id,\n        null::text as target,\n        null::text as source\n    FROM ps_trace.span\n    WHERE start_time > NOW() - INTERVAL '10 minutes'\n    AND service_name = '${service}'\n    AND span_name = '${operation}'\n    UNION ALL\n    SELECT\n        s.trace_id,\n        s.span_id,\n        s.parent_span_id,\n        s.service_name,\n        s.span_name,\n        md5(s.service_name || '-' || s.span_name || '-' || x.service_name || '-' || x.span_name) as id,\n        md5(x.service_name || '-' || x.span_name) as target,\n        md5(s.service_name || '-' || s.span_name) as source\n    FROM x\n    INNER JOIN ps_trace.span s\n    ON (x.trace_id = s.trace_id\n    AND x.parent_span_id = s.span_id)\n    AND s.start_time > NOW() - INTERVAL '10 minutes'\n)\nSELECT DISTINCT\n    x.id,\n    x.target,\n    x.source \nFROM x\nWHERE id is not null",
           "refId": "B",
           "select": [
             [
@@ -152,14 +152,14 @@
           "uid": "${DS_TIMESCALEDB}"
         },
         "allValue": "ALL",
-        "definition": "SELECT value#>>'{}'\nFROM _ps_trace.tag\nWHERE key = 'service.name'\n",
+        "definition": "SELECT DISTINCT service_name FROM ps_trace.span WHERE start_time > NOW() - INTERVAL '10 minutes'\n",
         "hide": 0,
         "includeAll": false,
         "label": "Service",
         "multi": false,
         "name": "service",
         "options": [],
-        "query": "SELECT value#>>'{}'\nFROM _ps_trace.tag\nWHERE key = 'service.name'\n",
+        "query": "SELECT DISTINCT service_name FROM ps_trace.span WHERE start_time > NOW() - INTERVAL '10 minutes'\n",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -172,14 +172,14 @@
           "uid": "${DS_TIMESCALEDB}"
         },
         "allValue": "ALL",
-        "definition": "SELECT DISTINCT span_name\nFROM _ps_trace.operation\nWHERE service_name_id IN\n(\n    SELECT id\n    FROM _ps_trace.tag\n    WHERE key = 'service.name'\n    AND value#>>'{}' IN  (${service:sqlstring})\n)",
+        "definition": "SELECT DISTINCT span_name FROM ps_trace.span WHERE service_name = ${service:sqlstring} AND start_time > NOW() - INTERVAL '10 minutes'\n)",
         "hide": 0,
         "includeAll": false,
         "label": "Operation",
         "multi": false,
         "name": "operation",
         "options": [],
-        "query": "SELECT DISTINCT span_name\nFROM _ps_trace.operation\nWHERE service_name_id IN\n(\n    SELECT id\n    FROM _ps_trace.tag\n    WHERE key = 'service.name'\n    AND value#>>'{}' IN  (${service:sqlstring})\n)",
+        "query": "SELECT DISTINCT span_name FROM ps_trace.span WHERE service_name = ${service:sqlstring} AND start_time > NOW() - INTERVAL '10 minutes'\n",
         "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
