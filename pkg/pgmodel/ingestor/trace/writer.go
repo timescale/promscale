@@ -222,7 +222,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		return err
 	}
 
-	maxEndTimestamp := uint64(0)
+	maxEndTime := time.Time{}
 	var (
 		spanRows  [][]interface{}
 		linkRows  [][]interface{}
@@ -291,8 +291,8 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					start, end = end, start
 				}
 
-				if maxEndTimestamp < uint64(end.Unix()) {
-					maxEndTimestamp = uint64(end.Unix())
+				if maxEndTime.Before(end) {
+					maxEndTime = end
 				}
 
 				spanRows = append(spanRows, []interface{}{traceID, spanID, parentSpanID,
@@ -328,7 +328,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 
 	code = "2xx"
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "trace", "subsystem": "", "kind": "span"}).Observe(time.Since(start).Seconds())
-	metrics.IngestorMaxSentTimestamp.With(traceLabel).Set(float64(maxEndTimestamp))
+	metrics.IngestorMaxSentTimestamp.With(traceLabel).Set(float64(maxEndTime.UnixNano() / 1e6))
 
 	// Only report telemetry if ingestion successful.
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
