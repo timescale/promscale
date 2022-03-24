@@ -263,7 +263,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "duration_ms"
+              "options": "Duration"
             },
             "properties": [
               {
