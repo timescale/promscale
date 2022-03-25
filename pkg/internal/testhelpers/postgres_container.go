@@ -476,6 +476,7 @@ func startPGInstance(
 		"-c", "port=" + containerPort.Port(),
 		"-c", "max_prepared_transactions=150",
 		"-c", "log_line_prefix=" + nodeType + " %m [%d]",
+		"-c", "timescaledb.telemetry_level=off",
 		"-i",
 	}
 
