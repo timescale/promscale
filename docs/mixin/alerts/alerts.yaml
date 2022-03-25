@@ -10,6 +10,7 @@ groups:
     annotations:
       summary: Promscale is down
       description: No Promscale instance was found.
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleDown.md
 - name: promscale-ingest
   rules:
   - alert: PromscaleIngestHighErrorRate
@@ -28,6 +29,7 @@ groups:
     annotations:
       summary: High error rate in Promscale ingestion
       description: "Promscale ingestion is having a {{ $value | humanizePercentage }} error rate."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighErrorRate.md
   - alert: PromscaleIngestHighErrorRate
     expr: |
       (
@@ -44,6 +46,7 @@ groups:
     annotations:
       summary: High error rate in Promscale ingestion
       description: "Promscale ingestion is having a {{ $value | humanizePercentage }} error rate."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighErrorRate.md
   - alert: PromscaleIngestHighLatency
     expr: |
       (
@@ -64,6 +67,7 @@ groups:
     annotations:
       summary: Slow Promscale ingestion
       description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighLatency.md
   - alert: PromscaleIngestHighLatency
     expr: |
       (
@@ -84,6 +88,7 @@ groups:
     annotations:
       summary: Slow Promscale ingestion
       description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighLatency.md
 - name: promscale-query
   rules:
   - alert: PromscaleQueryHighErrorRate
@@ -102,6 +107,7 @@ groups:
     annotations:
       summary: High error rate in querying Promscale
       description: "Evaluating queries via Promscale has {{ $value | humanizePercentage }} error rate."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighErrorRate.md
   - alert: PromscaleQueryHighErrorRate
     expr: |
       (
@@ -118,6 +124,7 @@ groups:
     annotations:
       summary: High error rate in querying Promscale
       description: "Evaluating queries via Promscale had {{ $value | humanizePercentage }} error rate."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighErrorRate.md
   - alert: PromscaleQueryHighLatency
     expr: |
       (
@@ -138,6 +145,7 @@ groups:
     annotations:
       summary: Slow Promscale querying
       description: "Slowest 10% of the queries took more than {{ $value }} seconds to evaluate."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighLatency.md
   - alert: PromscaleQueryHighLatency
     expr: |
       (
@@ -158,6 +166,7 @@ groups:
     annotations:
       summary: Slow Promscale querying
       description: "Slowest 10% of the queries took {{ $value }} seconds to evaluate."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighLatency.md
 - name: promscale-cache
   rules:
   - alert: PromscaleCacheHighNumberOfEvictions
@@ -176,6 +185,7 @@ groups:
     annotations:
       summary: High cache eviction in Promscale
       description: "Promscale {{ $labels.name }} is evicting at {{ $value }} entries a second."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCacheHighNumberOfEvictions.md
   - alert: PromscaleCacheTooSmall
     expr: |
       (
@@ -192,6 +202,7 @@ groups:
     annotations:
       summary: High cache eviction in Promscale
       description: "Promscale {{ $labels.name }} has a hit ratio of {{ $value | humanizePercentage }}."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCacheTooSmall.md
 - name: promscale-database-connection
   rules:
   - alert: PromscaleStorageHighErrorRate
@@ -211,6 +222,7 @@ groups:
     annotations:
       summary: Promscale experiences a high error rate when connecting to the database
       description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageHighErrorRate.md
   - alert: PromscaleStorageHighLatency
     expr: |
       (
@@ -229,6 +241,7 @@ groups:
     annotations:
       summary: Slow database response
       description: "Slowest 10% of database requests are taking more than {{ $value }} seconds to respond."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageHighLatency.md
 - name: promscale-database
   rules:
   - alert: PromscaleStorageUnhealthy
@@ -247,6 +260,7 @@ groups:
     annotations:
       summary: Promscale database is unhealthy
       description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageUnhealthy.md
   - alert: PromscaleMaintenanceJobRunningTooLong
     expr: |
       (
@@ -267,6 +281,7 @@ groups:
     annotations:
       summary: Promscale maintenance jobs taking too long to complete
       description: "Promscale Database is taking {{ $value }} seconds to respond to Promscale's requests."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobRunningTooLong.md
   - alert: PromscaleMaintenanceJobFailures
     expr: promscale_sql_database_worker_maintenance_job_failed == 1
     labels:
@@ -274,6 +289,7 @@ groups:
     annotations:
       summary: Promscale maintenance job failed
       description: "Promscale maintenance job failed to successfully execute."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobFailures.md
   - alert: PromscaleCompressionLow
     expr: |
       (
@@ -290,3 +306,4 @@ groups:
     annotations:
       summary: High uncompressed data
       description: "High uncompressed data in Promscale, on average, {{ $value }} uncompressed chunks per metric."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCompressionLow.md

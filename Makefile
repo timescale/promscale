@@ -44,6 +44,11 @@ check-alerts:
 	# go install -a github.com/prometheus/prometheus/cmd/promtool@latest
 	promtool check rules docs/mixin/alerts/alerts.yaml
 
+	# If you don't have gojsontoyaml, install it with
+	# go install -a github.com/brancz/gojsontoyaml@latest
+	gojsontoyaml -yamltojson < docs/mixin/alerts/alerts.yaml | jq -e '.groups[].rules[].annotations | has("runbook_url")' 
+
+
 .PHONY: check-dashboards
 check-dashboards:
 	# If you don't have promtool, install it with

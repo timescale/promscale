@@ -35,8 +35,13 @@ jobs:
         VERSION=$(curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest | grep "tag_name" | awk '{print substr($2, 2, length($2)-3)}' | sed 's/v//')
         curl -s -L "https://github.com/prometheus/prometheus/releases/download/v${VERSION}/prometheus-${VERSION}.linux-amd64.tar.gz" | tar -zxf - -C "${GITHUB_WORKSPACE}/" --strip-components 1 "prometheus-${VERSION}.linux-amd64/promtool"
 
-    - run: |
+    - name: download gojsontoyaml
+      run: go install github.com/brancz/gojsontoyaml@latest
+
+    - name: check alerts
+      run: |
         PATH="${PATH}:${GITHUB_WORKSPACE}"
         make check-alerts
 
-    - run: make check-dashboards
+    - name: check dashboards
+      run: make check-dashboards
