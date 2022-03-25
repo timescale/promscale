@@ -21,7 +21,8 @@ jobs:
         pg:
           - 14
           - 13
-          - 12
+          # TODO (mat): re-enable the pg12 test
+          #- 12
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
