@@ -38,6 +38,7 @@ require (
 	github.com/stretchr/testify v1.7.1
 	github.com/testcontainers/testcontainers-go v0.13.0
 	github.com/thanos-io/thanos v0.25.2
+	github.com/walle/targz v0.0.0-20140417120357-57fe4206da5a
 	go.opentelemetry.io/collector/model v0.49.0
 	go.opentelemetry.io/collector/pdata v0.49.0
 	go.opentelemetry.io/collector/semconv v0.52.0
@@ -51,6 +52,7 @@ require (
 	go.uber.org/automaxprocs v1.5.1
 	go.uber.org/goleak v1.1.12
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a
+	golang.org/x/time v0.0.0-20220411224347-583f2d630306
 	google.golang.org/grpc v1.46.2
 	google.golang.org/protobuf v1.28.0
 	gopkg.in/yaml.v2 v2.4.0
