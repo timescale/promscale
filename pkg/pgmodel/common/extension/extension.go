@@ -14,14 +14,12 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/log"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/version"
 )
 
-var (
-	PromscaleExtensionVersion semver.Version
-)
+var PromscaleExtensionVersion semver.Version
 
 type ExtensionMigrateOptions struct {
 	Install           bool
@@ -49,7 +47,6 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMig
 	}
 
 	return nil
-
 }
 
 func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrateOptions) error {
@@ -145,8 +142,8 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 func checkPromscaleExtensionVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	currentVersion, newVersion, err := extensionVersions(conn, "promscale", version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
-		if errors.Is(err, promscale_errors.ErrExtUnavailable) {
-			//the promscale extension is optional
+		if errors.Is(err, pgmodelcommon.ErrExtUnavailable) {
+			// the promscale extension is optional
 			return nil
 		}
 		return fmt.Errorf("could not get the extension versions: %w", err)
@@ -171,7 +168,7 @@ func extensionVersions(conn *pgx.Conn, extName string, validRange semver.Range, 
 		return nil, nil, fmt.Errorf("problem fetching available version: %w", err)
 	}
 	if len(availableVersions) == 0 {
-		return nil, nil, promscale_errors.ErrExtUnavailable
+		return nil, nil, pgmodelcommon.ErrExtUnavailable
 	}
 
 	defaultVersion, err := fetchDefaultExtensionVersions(conn, extName)
@@ -237,24 +234,24 @@ func MigrateExtension(conn *pgx.Conn, extName string, extSchemaName string, vali
 
 	comparator := currentVersion.Compare(*newVersion)
 	if comparator > 0 {
-		//check that we are within the accepted range
+		// check that we are within the accepted range
 		if !validRange(*newVersion) {
-			//currentVersion greater than what we can handle, don't use the extension
+			// currentVersion greater than what we can handle, don't use the extension
 			return fmt.Errorf("the extension at a greater version than supported by the connector: %v > %v", currentVersion, newVersion)
 		}
-		//we may be at a higher extension version than what we'd auto upgrade to (e.g. higher than the default version)
-		//and that may be fine, so do nothing.
+		// we may be at a higher extension version than what we'd auto upgrade to (e.g. higher than the default version)
+		// and that may be fine, so do nothing.
 		log.Info("msg", "using a higher extension version than expected", "extension_name", extName, "current_version", currentVersion, "expected_version", newVersion)
 		return nil
 	} else if comparator == 0 {
-		//Nothing to do we are at the correct version
+		// Nothing to do we are at the correct version
 		return nil
 	} else {
-		//Upgrade to the right version
+		// Upgrade to the right version
 		connAlter := conn
 		if extName == "timescaledb" {
-			//TimescaleDB requires a fresh connection for altering
-			//Note: all previously opened connections will become invalid
+			// TimescaleDB requires a fresh connection for altering
+			// Note: all previously opened connections will become invalid
 			connAlter, err = pgx.ConnectConfig(context.Background(), conn.Config())
 			if err != nil {
 				return err
@@ -290,7 +287,6 @@ func fetchAvailableExtensionVersions(conn *pgx.Conn, extName string) (semver.Ver
 	versions := make(semver.Versions, 0)
 	err := conn.QueryRow(context.Background(),
 		"SELECT array_agg(version) FROM pg_available_extension_versions WHERE name = $1", extName).Scan(&versionStrings)
-
 	if err != nil {
 		return versions, err
 	}
@@ -354,7 +350,7 @@ func FetchInstalledExtensionVersion(conn *pgx.Conn, extensionName string) (semve
 }
 
 func correctVersionString(v string, extName string) string {
-	//we originally published the extension as "0.1" which isn't a valid semver
+	// we originally published the extension as "0.1" which isn't a valid semver
 	if extName == "promscale" && v == "0.1" {
 		return "0.1.0"
 	}
@@ -375,7 +371,7 @@ func getNewExtensionVersion(extName string,
 	validRange semver.Range,
 	validCurrentVersion, upgradePreRelease bool,
 	currentVersion semver.Version) (semver.Version, bool) {
-	//sort higher extensions first
+	// sort higher extensions first
 	sort.Sort(sort.Reverse(availableVersions))
 	printedWarning := false
 	for i := range availableVersions {

@@ -12,7 +12,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -43,7 +43,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 		if metadata.isSingleMetric {
 			metricInfo, err := q.tools.getMetricTableName("", metadata.metric, true)
 			if err != nil {
-				if errors.Is(err, promscale_errors.ErrMissingTableName) {
+				if errors.Is(err, pgmodelcommon.ErrMissingTableName) {
 					// The received metric does not have exemplars. Skip the remaining part and continue with
 					// the next matchers.
 					continue
@@ -127,10 +127,10 @@ func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([
 
 	// Generate queries for each metric and send them in a single batch.
 	for i := range metrics {
-		//TODO batch getMetricTableName
+		// TODO batch getMetricTableName
 		metricInfo, err := tools.getMetricTableName("", metrics[i], true)
 		if err != nil {
-			if errors.Is(err, promscale_errors.ErrMissingTableName) {
+			if errors.Is(err, pgmodelcommon.ErrMissingTableName) {
 				// If the metric table is missing, there are no results for this query.
 				continue
 			}

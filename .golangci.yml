@@ -13,4 +13,4 @@ linters-settings:
     no-unaliased: true
     alias:
       - pkg: github.com/timescale/promscale/pkg/pgmodel/common/errors
-        alias: promscale_errors
+        alias: pgmodelcommon

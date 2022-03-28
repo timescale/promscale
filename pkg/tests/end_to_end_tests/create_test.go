@@ -18,7 +18,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -52,7 +52,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		}
 		savedMetricID := metricID
 
-		//query for same name should give same result
+		// query for same name should give same result
 		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
@@ -67,7 +67,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
 		}
 
-		//different metric id should give new result
+		// different metric id should give new result
 		metricName = "test_metric_2"
 		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
@@ -84,7 +84,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		}
 		savedMetricID = metricID
 
-		//test long names that don't fit as table names
+		// test long names that don't fit as table names
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_1"
 		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
@@ -102,7 +102,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 		savedTableName := tableName
 		savedMetricID = metricID
 
-		//another call return same info
+		// another call return same info
 		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
 			t.Fatal(err)
@@ -117,7 +117,7 @@ func TestSQLGetOrCreateMetricTableName(t *testing.T) {
 			t.Errorf("unexpected value for possiblyNew %v", possiblyNew)
 		}
 
-		//changing just ending returns new table
+		// changing just ending returns new table
 		metricName = "test_metric_very_very_long_name_have_to_truncate_it_longer_than_64_chars_2"
 		err = db.QueryRow(context.Background(), "SELECT * FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&metricID, &tableName, &possiblyNew)
 		if err != nil {
@@ -195,7 +195,7 @@ func TestSQLChunkInterval(t *testing.T) {
 		}
 		verifyChunkInterval(t, db, "Test2", time.Duration(6*time.Hour))
 
-		//set on a metric that doesn't exist should create the metric and set the parameter
+		// set on a metric that doesn't exist should create the metric and set the parameter
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_chunk_interval('test_new_metric1', INTERVAL '7 hours')")
 		if err != nil {
 			t.Error(err)
@@ -208,7 +208,6 @@ func TestSQLChunkInterval(t *testing.T) {
 		}
 
 		verifyChunkInterval(t, db, "test_new_metric1", time.Duration(7*time.Hour))
-
 	})
 }
 
@@ -415,7 +414,7 @@ func TestSQLIngest(t *testing.T) {
 			},
 			count:       0,
 			countSeries: 0,
-			expectErr:   promscale_errors.ErrNoMetricName,
+			expectErr:   pgmodelcommon.ErrNoMetricName,
 		},
 	}
 	for tcIndex, c := range testCases {
@@ -540,7 +539,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.DuplicateObject {
-				//already compressed (could happen if policy already ran). This is fine
+				// already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
 			}
@@ -572,7 +571,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.DuplicateObject {
-				//already compressed (could happen if policy already ran). This is fine
+				// already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
 			}
@@ -593,7 +592,7 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 			},
 		}
 
-		//ingest duplicate after compression
+		// ingest duplicate after compression
 		_, _, err = ingestor.Ingest(context.Background(), &prompb.WriteRequest{Timeseries: copyMetrics(ts)})
 		if err != nil {
 			t.Fatal(err)
@@ -738,12 +737,12 @@ func TestInsertCompressed(t *testing.T) {
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.SQLState() == "42710" {
-				//already compressed (could happen if policy already ran). This is fine
+				// already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
 			}
 		}
-		//ingest after compression
+		// ingest after compression
 		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
@@ -908,7 +907,6 @@ func TestCompressionSetting(t *testing.T) {
 		}
 		if compressionEnabled {
 			t.Error("compression should have been disabled")
-
 		}
 
 		ts := []prompb.TimeSeries{
@@ -960,7 +958,7 @@ func TestCompressionSetting(t *testing.T) {
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.SQLState() == "42710" {
-				//already compressed (could happen if policy already ran). This is fine
+				// already compressed (could happen if policy already ran). This is fine
 			} else {
 				t.Fatal(err)
 			}
@@ -976,7 +974,7 @@ func TestCompressionSetting(t *testing.T) {
 		}
 
 		if *useMultinode {
-			//TODO turning compression off in multinode is broken upstream.
+			// TODO turning compression off in multinode is broken upstream.
 			return
 		}
 
@@ -1051,7 +1049,7 @@ func TestCustomCompressionJob(t *testing.T) {
 				}
 				if pgErr.SQLState() == "42710" ||
 					pgErr.SQLState() == "0A000" {
-					//already compressed
+					// already compressed
 					return true
 				} else if pgErr.SQLState() == "23505" {
 					// violates unique constraint
@@ -1067,7 +1065,7 @@ func TestCustomCompressionJob(t *testing.T) {
 		}
 
 		runCompressionJob := func() {
-			//compress_metric_chunks and not execute_compression_policy since we don't want the decompression delay logic here.
+			// compress_metric_chunks and not execute_compression_policy since we don't want the decompression delay logic here.
 			_, err = dbJob.Exec(context.Background(), `CALL _prom_catalog.compress_metric_chunks('Test1')`)
 			if err != nil {
 				t.Fatal(err)
@@ -1228,7 +1226,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 				}
 				if pgErr.SQLState() == "42710" ||
 					pgErr.SQLState() == "0A000" {
-					//already compressed
+					// already compressed
 					return true
 				} else if pgErr.SQLState() == "23505" {
 					// violates unique constraint
@@ -1275,7 +1273,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 		}
 
 		runMaintenanceJob := func() {
-			//execute_maintenance and not execute_compression_policy since we want to test end-to-end
+			// execute_maintenance and not execute_compression_policy since we want to test end-to-end
 			_, err = dbJob.Exec(context.Background(), `CALL prom_api.execute_maintenance(log_verbose=>true)`)
 			if err != nil {
 				t.Fatal(err)
@@ -1339,7 +1337,7 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 			t.Error("second chunk compressed too soon")
 		}
 
-		//this will have a delay on compression and so it will not recompress
+		// this will have a delay on compression and so it will not recompress
 		runMaintenanceJob()
 
 		// first chunk should be compressed because of delay
@@ -1390,7 +1388,7 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 				}
 				if pgErr.SQLState() == "42710" ||
 					pgErr.SQLState() == "0A000" {
-					//already compressed
+					// already compressed
 					return true
 				} else if pgErr.SQLState() == "23505" {
 					// violates unique constraint
@@ -1437,7 +1435,7 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 		}
 
 		runMaintenanceJob := func() {
-			//execute_maintenance and not execute_compression_policy since we want to test end-to-end
+			// execute_maintenance and not execute_compression_policy since we want to test end-to-end
 			_, err = dbJob.Exec(context.Background(), `CALL prom_api.execute_maintenance()`)
 			if err != nil {
 				t.Fatal(err)
@@ -1491,7 +1489,6 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 		if isChunkCompressed("1970-03-01 00:00:00.001+00") {
 			t.Error("second chunk compressed too soon")
 		}
-
 	})
 }
 
@@ -1610,7 +1607,6 @@ func TestExecuteMaintJob(t *testing.T) {
 			if configErr {
 				t.Fatal("Expect config error")
 			}
-
 		}
 
 		execJob(dbOwner, nil, false)
@@ -1621,9 +1617,9 @@ func TestExecuteMaintJob(t *testing.T) {
 		config = `{"log_verbose": "rr"}`
 		execJob(dbOwner, &config, true)
 		config = `{"auto_explain": {"log_min_duration": 0, "log_nested_statements": "true"}}`
-		//dbOwner will not have enough permissions for auto_explain but this should still succeed
+		// dbOwner will not have enough permissions for auto_explain but this should still succeed
 		execJob(dbOwner, &config, false)
-		//the superuser should be able to use auto_explain
+		// the superuser should be able to use auto_explain
 		execJob(dbSuper, &config, false)
 	})
 }

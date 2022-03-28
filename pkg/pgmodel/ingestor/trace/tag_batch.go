@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -67,8 +67,8 @@ type tagIDs struct {
 	valueID pgtype.Int8
 }
 
-//tagBatch queues up items to send to the db but it sorts before sending
-//this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
+// tagBatch queues up items to send to the db but it sorts before sending
+// this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
 type tagBatch struct {
 	b batcher
 }
@@ -108,7 +108,7 @@ func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]by
 		}
 		tagIDs, ok := ids.(tagIDs)
 		if !ok {
-			return nil, fmt.Errorf("error getting tag %v from batch: %w", t, promscale_errors.ErrInvalidCacheEntryType)
+			return nil, fmt.Errorf("error getting tag %v from batch: %w", t, pgmodelcommon.ErrInvalidCacheEntryType)
 		}
 		if tagIDs.keyID.Status != pgtype.Present || tagIDs.valueID.Status != pgtype.Present {
 			return nil, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)

@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 )
@@ -271,7 +271,6 @@ func TestDBIngestorIngest(t *testing.T) {
 			wr.Timeseries = c.metrics
 			wr.Metadata = c.metadata
 			countSamples, countMetadata, err := i.Ingest(ctx, wr)
-
 			if err != nil {
 				if c.insertSeriesErr != nil && !errors.Is(err, c.insertSeriesErr) {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.insertSeriesErr)
@@ -285,7 +284,7 @@ func TestDBIngestorIngest(t *testing.T) {
 				if c.setSeriesErr != nil && !errors.Is(err, c.setSeriesErr) {
 					t.Errorf("wrong error returned: got\n%s\nwant\n%s\n", err, c.setSeriesErr)
 				}
-				if errors.Is(err, promscale_errors.ErrNoMetricName) {
+				if errors.Is(err, pgmodelcommon.ErrNoMetricName) {
 					for _, ts := range c.metrics {
 						for _, label := range ts.Labels {
 							if label.Name == model.MetricNameLabelName {

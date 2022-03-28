@@ -29,7 +29,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
@@ -131,7 +131,7 @@ func TestDroppedViewQuery(t *testing.T) {
 			t.Fatalf("expected an error, got nil")
 		}
 
-		expectedMsg := fmt.Sprintf(promscale_errors.ErrTmplMissingUnderlyingRelation, "prom_view", "metric_view")
+		expectedMsg := fmt.Sprintf(pgmodelcommon.ErrTmplMissingUnderlyingRelation, "prom_view", "metric_view")
 		require.Equal(t, expectedMsg, err.Error(), "unexpected error message")
 	})
 }
@@ -704,7 +704,6 @@ func TestSQLQuery(t *testing.T) {
 				if !reflect.DeepEqual(resp, c.expectResponse) {
 					t.Fatalf("unexpected response:\ngot\n%+v\nwanted\n%+v", resp, c.expectResponse)
 				}
-
 			})
 		}
 	})
@@ -717,7 +716,6 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.Tim
 	}
 	defer ingestor.Close()
 	cnt, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(metrics)))
-
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)
 	}
@@ -777,7 +775,6 @@ func TestPromQL(t *testing.T) {
 	}
 
 	promClient, err := NewPromClient(fmt.Sprintf("http://%s:%d/api/v1/read", promHost, promPort.Int()), 10*time.Second)
-
 	if err != nil {
 		t.Fatalf("unable to create read client for Prometheus: %s", err)
 	}
@@ -1219,9 +1216,11 @@ func TestPushdownDelta(t *testing.T) {
 			endMs:   startTime + 330*1000,
 			stepMs:  30 * 1000,
 			res: promql.Result{
-				Value: promql.Matrix{promql.Series{
-					Points: []promql.Point{{V: 20, T: startTime + 300000}, {V: 20, T: startTime + 330000}},
-					Metric: labels.FromStrings("foo", "bar", "instance", "1", "aaa", "000")},
+				Value: promql.Matrix{
+					promql.Series{
+						Points: []promql.Point{{V: 20, T: startTime + 300000}, {V: 20, T: startTime + 330000}},
+						Metric: labels.FromStrings("foo", "bar", "instance", "1", "aaa", "000"),
+					},
 				},
 			},
 		},
@@ -1230,9 +1229,11 @@ func TestPushdownDelta(t *testing.T) {
 			query: `delta(metric_1{instance="1"}[5m])`,
 			endMs: startTime + 300*1000,
 			res: promql.Result{
-				Value: promql.Vector{promql.Sample{
-					Point:  promql.Point{V: 20, T: startTime + 300*1000},
-					Metric: labels.FromStrings("foo", "bar", "instance", "1", "aaa", "000")},
+				Value: promql.Vector{
+					promql.Sample{
+						Point:  promql.Point{V: 20, T: startTime + 300*1000},
+						Metric: labels.FromStrings("foo", "bar", "instance", "1", "aaa", "000"),
+					},
 				},
 			},
 		},
@@ -1241,9 +1242,11 @@ func TestPushdownDelta(t *testing.T) {
 			query: `delta(metric_view{instance="1"}[5m])`,
 			endMs: startTime + 300*1000,
 			res: promql.Result{
-				Value: promql.Vector{promql.Sample{
-					Point:  promql.Point{V: 20, T: startTime + 300*1000},
-					Metric: labels.FromStrings(pgmodel.SchemaNameLabelName, "prom_view", "foo", "bar", "instance", "1", "aaa", "000")},
+				Value: promql.Vector{
+					promql.Sample{
+						Point:  promql.Point{V: 20, T: startTime + 300*1000},
+						Metric: labels.FromStrings(pgmodel.SchemaNameLabelName, "prom_view", "foo", "bar", "instance", "1", "aaa", "000"),
+					},
 				},
 			},
 		},
@@ -1316,9 +1319,11 @@ func TestPushdownVecSel(t *testing.T) {
 			endMs:   startTime + 330*1000,
 			stepMs:  30 * 1000,
 			res: promql.Result{
-				Value: promql.Matrix{promql.Series{
-					Points: []promql.Point{{V: 20, T: startTime + 300000}, {V: 22, T: startTime + 330000}},
-					Metric: labels.FromStrings("__name__", "metric_1", "foo", "bar", "instance", "1", "aaa", "000")},
+				Value: promql.Matrix{
+					promql.Series{
+						Points: []promql.Point{{V: 20, T: startTime + 300000}, {V: 22, T: startTime + 330000}},
+						Metric: labels.FromStrings("__name__", "metric_1", "foo", "bar", "instance", "1", "aaa", "000"),
+					},
 				},
 			},
 		},

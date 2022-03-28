@@ -6,10 +6,11 @@ package querier
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/log"
 	"math"
 	"sort"
 	"time"
+
+	"github.com/timescale/promscale/pkg/log"
 
 	"github.com/blang/semver/v4"
 	"github.com/prometheus/common/model"
@@ -17,7 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
@@ -100,7 +101,7 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 func initLabelIdIndexForSamples(index map[int64]labels.Label, rows []sampleRow) {
 	for i := range rows {
 		for _, id := range rows[i].labelIds {
-			//id==0 means there is no label for the key, so nothing to look up
+			// id==0 means there is no label for the key, so nothing to look up
 			if id == 0 {
 				continue
 			}
@@ -125,7 +126,7 @@ func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeS
 		}
 
 		if row.times.Len() != len(row.values.Elements) {
-			return nil, promscale_errors.ErrQueryMismatchTimestampValue
+			return nil, pgmodelcommon.ErrQueryMismatchTimestampValue
 		}
 
 		promLabels := make([]prompb.Label, 0, len(row.labelIds))
@@ -217,13 +218,12 @@ type aggregators struct {
 	valueClause string
 	valueParams []interface{}
 	unOrdered   bool
-	tsSeries    TimestampSeries //can be NULL and only present if timeClause == ""
+	tsSeries    TimestampSeries // can be NULL and only present if timeClause == ""
 }
 
 // getAggregators returns the aggregator which should be used to fetch data for
 // a single metric. It may apply pushdowns to functions.
 func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node) {
-
 	agg, node, err := tryPushDown(metadata)
 	if err != nil {
 		log.Info("msg", "error while trying to push down, will skip pushdown optimization", "error", err)
@@ -252,7 +252,6 @@ func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node) {
 // pushdown. If no pushdown is possible, it returns nil.
 // For more on top nodes, see `engine.populateSeries`
 func tryPushDown(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
-
 	// A function call like `rate(metric[5m])` parses to this AST:
 	//
 	// 	Call -> MatrixSelector -> VectorSelector
@@ -406,7 +405,7 @@ func buildVectorSelectorFunctionCallAggregator(lookback int64, selectHints *stor
 // anchorValue adds anchors to values in regexps since PromQL docs
 // states that "Regex-matches are fully anchored."
 func anchorValue(str string) string {
-	//Reference:  NewFastRegexMatcher in Prometheus source code
+	// Reference:  NewFastRegexMatcher in Prometheus source code
 	return "^(?:" + str + ")$"
 }
 

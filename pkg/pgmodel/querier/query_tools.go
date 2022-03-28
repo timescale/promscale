@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -30,7 +30,7 @@ func (tools *queryTools) getMetricTableName(metricSchema, metricName string, isE
 	if err == nil {
 		return metricInfo, nil
 	}
-	if !errors.Is(err, promscale_errors.ErrEntryNotFound) {
+	if !errors.Is(err, pgmodelcommon.ErrEntryNotFound) {
 		return model.MetricInfo{}, fmt.Errorf("fetching metric info from cache: %w", err)
 	}
 
@@ -65,7 +65,7 @@ func queryExemplarMetricTableName(conn pgxconn.PgxConn, metric string) (string, 
 	defer res.Close()
 
 	if !res.Next() {
-		return "", promscale_errors.ErrMissingTableName
+		return "", pgmodelcommon.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName); err != nil {
@@ -85,7 +85,7 @@ func querySampleMetricTableName(conn pgxconn.PgxConn, schema, metric string) (mI
 
 	if err = row.Scan(&mInfo.MetricID, &mInfo.TableSchema, &mInfo.TableName, &mInfo.SeriesTable); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = promscale_errors.ErrMissingTableName
+			err = pgmodelcommon.ErrMissingTableName
 		}
 		return mInfo, err
 	}

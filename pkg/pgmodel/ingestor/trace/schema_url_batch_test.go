@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -110,7 +110,7 @@ func TestSchemaURLBatch(t *testing.T) {
 			expectedBatchQueue: 1,
 			getIDCheck: func(t *testing.T, batch schemaURLBatch) {
 				_, err := batch.GetID("invalid")
-				require.ErrorIs(t, err, promscale_errors.ErrInvalidCacheEntryType)
+				require.ErrorIs(t, err, pgmodelcommon.ErrInvalidCacheEntryType)
 			},
 		},
 	}

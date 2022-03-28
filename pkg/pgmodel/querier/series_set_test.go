@@ -18,7 +18,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgtype"
 	"github.com/prometheus/prometheus/model/labels"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -92,13 +92,13 @@ func (m *mockPgxRows) Scan(dest ...interface{}) error {
 		panic("sample timestamps incorrect type")
 	}
 	ts.Elements = m.results[m.idx].timestamps
-	//TODO dims?
+	// TODO dims?
 	vs, ok := dest[2].(*pgtype.Float8Array)
 	if !ok {
 		return fmt.Errorf("sample values incorrect type")
 	}
 	vs.Elements = m.results[m.idx].values
-	//TODO dims?
+	// TODO dims?
 
 	return nil
 }
@@ -174,7 +174,7 @@ func TestPgxSeriesSet(t *testing.T) {
 					""),
 			}},
 			rowCount: 1,
-			err:      promscale_errors.ErrInvalidRowData,
+			err:      pgmodelcommon.ErrInvalidRowData,
 		},
 		{
 			name:     "happy path 1",
@@ -305,7 +305,8 @@ func TestPgxSeriesSet(t *testing.T) {
 				labels := make([]int64, len(c.labels))
 				copy(labels, c.labels)
 				c.input = [][]seriesSetRow{{
-					genSeries(labels, c.ts, c.vs, c.metricSchema, c.columnName)}}
+					genSeries(labels, c.ts, c.vs, c.metricSchema, c.columnName),
+				}}
 			}
 			p := buildSeriesSet(genPgxRows(c.input, c.rowErr), mapQuerier{labelMapping})
 			if p.Err() != nil {
@@ -453,7 +454,7 @@ func (m mapQuerier) LabelsForIdMap(idMap map[int64]labels.Label) (err error) {
 	for id := range idMap {
 		kv, ok := m.mapping[id]
 		if !ok {
-			return promscale_errors.ErrInvalidRowData
+			return pgmodelcommon.ErrInvalidRowData
 		}
 		idMap[id] = labels.Label{Name: kv.k, Value: kv.v}
 	}
@@ -511,7 +512,6 @@ func toFloat8Array(values []pgtype.Float8) *pgtype.Float8Array {
 }
 
 func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema, column string) seriesSetRow {
-
 	for i := range ts {
 		if ts[i].Status == pgtype.Undefined {
 			ts[i].Status = pgtype.Present

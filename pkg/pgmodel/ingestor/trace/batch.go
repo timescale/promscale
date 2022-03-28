@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -51,8 +51,8 @@ func (q sortableItems) Swap(i, j int) {
 	q[i], q[j] = q[j], q[i]
 }
 
-//batcher queues up items to send to the DB but it sorts before sending
-//this avoids deadlocks in the DB. It also avoids sending the same items repeatedly.
+// batcher queues up items to send to the DB but it sorts before sending
+// this avoids deadlocks in the DB. It also avoids sending the same items repeatedly.
 // batcher is not thread safe
 type batcher struct {
 	batch map[batchItem]interface{}
@@ -138,7 +138,7 @@ func (b batcher) GetID(i batchItem) (pgtype.Int8, error) {
 
 	id, ok := entry.(pgtype.Int8)
 	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, promscale_errors.ErrInvalidCacheEntryType
+		return pgtype.Int8{Status: pgtype.Null}, pgmodelcommon.ErrInvalidCacheEntryType
 	}
 	if id.Status != pgtype.Present {
 		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("ID is null")

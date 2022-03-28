@@ -14,7 +14,7 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -22,8 +22,10 @@ import (
 	"github.com/timescale/promscale/pkg/tracer"
 )
 
-const getCreateMetricsTableWithNewSQL = "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)"
-const createExemplarTable = "SELECT * FROM _prom_catalog.create_exemplar_table_if_not_exists($1)"
+const (
+	getCreateMetricsTableWithNewSQL = "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)"
+	createExemplarTable             = "SELECT * FROM _prom_catalog.create_exemplar_table_if_not_exists($1)"
+)
 
 func containsExemplars(data []model.Insertable) bool {
 	for _, row := range data {
@@ -44,7 +46,6 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (info model.MetricInfo
 		getCreateMetricsTableWithNewSQL,
 		metric,
 	)
-
 	if err != nil {
 		return info, true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 	}
@@ -54,7 +55,7 @@ func metricTableName(conn pgxconn.PgxConn, metric string) (info model.MetricInfo
 		if err := res.Err(); err != nil {
 			return info, true, fmt.Errorf("failed to get the table name for metric %s: %w", metric, err)
 		}
-		return info, true, promscale_errors.ErrMissingTableName
+		return info, true, pgmodelcommon.ErrMissingTableName
 	}
 
 	if err := res.Scan(&info.MetricID, &info.TableName, &possiblyNew); err != nil {
@@ -111,7 +112,7 @@ func initializeMetricBatcher(conn pgxconn.PgxConn, metricName string, completeMe
 	)
 
 	if possiblyNew {
-		//pass a signal if there is space
+		// pass a signal if there is space
 		select {
 		case completeMetricCreationSignal <- struct{}{}:
 		default:
@@ -160,14 +161,14 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 		}
 	}
 
-	//input channel was closed before getting a successful request
+	// input channel was closed before getting a successful request
 	if !firstReqSet {
 		return
 	}
 	sendBatches(firstReq, input, conn, &info, copierReadRequestCh)
 }
 
-//the basic structure of communication from the batcher to the copier is as follows:
+// the basic structure of communication from the batcher to the copier is as follows:
 // 1. the batcher gets a request from the input channel
 // 2. the batcher sends a readRequest to the copier on a channel shared by all the metric batchers
 // 3. the batcher keeps on batching together requests from the input channel as long as the copier isn't ready to receive the batch
@@ -207,8 +208,8 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		buf.addReq(req)
 		addSpan.End()
 	}
-	//This channel in synchronous (no buffering). This provides backpressure
-	//to the batcher to keep batching until the copier is ready to read.
+	// This channel in synchronous (no buffering). This provides backpressure
+	// to the batcher to keep batching until the copier is ready to read.
 	copySender := make(chan copyRequest)
 	defer close(copySender)
 	readRequest := readRequest{copySender: copySender}
@@ -241,7 +242,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		numSeries := pending.batch.CountSeries()
 
 		select {
-		//try to send first, if not then keep batching
+		// try to send first, if not then keep batching
 		case copySender <- copyRequest{pending, info}:
 			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
 			span.SetAttributes(attribute.Int("num_series", numSeries))

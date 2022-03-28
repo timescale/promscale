@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/timescale/promscale/pkg/clockcache"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -73,7 +73,7 @@ func (m *MetricNameCache) Get(schema, metric string, isExemplar bool) (model.Met
 	)
 	result, ok := m.Metrics.Get(key)
 	if !ok {
-		return mInfo, promscale_errors.ErrEntryNotFound
+		return mInfo, pgmodelcommon.ErrEntryNotFound
 	}
 
 	mInfo, ok = result.(model.MetricInfo)
@@ -87,13 +87,13 @@ func (m *MetricNameCache) Get(schema, metric string, isExemplar bool) (model.Met
 // Set stores metric info for specified metric with schema.
 func (m *MetricNameCache) Set(schema, metric string, val model.MetricInfo, isExemplar bool) error {
 	k := key{schema, metric, isExemplar}
-	//size includes an 8-byte overhead for each string
+	// size includes an 8-byte overhead for each string
 	m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 
 	// If the schema inserted above was empty, also populate the cache with the real schema.
 	if schema == "" {
 		k = key{val.TableSchema, metric, isExemplar}
-		//size includes an 8-byte overhead for each string
+		// size includes an 8-byte overhead for each string
 		m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 	}
 

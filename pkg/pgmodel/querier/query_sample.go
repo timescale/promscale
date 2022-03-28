@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 )
 
@@ -44,7 +44,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		// Single vector selector case.
 		mInfo, err := q.tools.getMetricTableName(filter.schema, filter.metric, false)
 		if err != nil {
-			if errors.Is(err, promscale_errors.ErrMissingTableName) {
+			if errors.Is(err, pgmodelcommon.ErrMissingTableName) {
 				return nil, nil, nil
 			}
 			return nil, nil, fmt.Errorf("get metric table name: %w", err)
@@ -87,7 +87,7 @@ func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]samp
 			case pgerrcode.UndefinedTable:
 				// If we are getting undefined table error, it means the metric we are trying to query
 				// existed at some point but the underlying relation was removed from outside of the system.
-				return nil, nil, fmt.Errorf(promscale_errors.ErrTmplMissingUnderlyingRelation, metadata.timeFilter.schema, metadata.timeFilter.metric)
+				return nil, nil, fmt.Errorf(pgmodelcommon.ErrTmplMissingUnderlyingRelation, metadata.timeFilter.schema, metadata.timeFilter.metric)
 			case pgerrcode.UndefinedColumn:
 				// If we are getting undefined column error, it means the column we are trying to query
 				// does not exist in the metric table so we return empty results.
@@ -130,11 +130,11 @@ func fetchMultipleMetricsSamples(tools *queryTools, metadata *evalMetadata) ([]s
 
 	// Generate queries for each metric and send them in a single batch.
 	for i := range metrics {
-		//TODO batch getMetricTableName
+		// TODO batch getMetricTableName
 		metricInfo, err := tools.getMetricTableName(schemas[i], metrics[i], false)
 		if err != nil {
 			// If the metric table is missing, there are no results for this query.
-			if errors.Is(err, promscale_errors.ErrMissingTableName) {
+			if errors.Is(err, pgmodelcommon.ErrMissingTableName) {
 				continue
 			}
 			return nil, err

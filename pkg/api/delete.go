@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	deletePkg "github.com/timescale/promscale/pkg/pgmodel/delete"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -59,7 +59,7 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 		}
 		if start != model.MinTime || end != model.MaxTime {
 			log.Warn("msg", "Time based series deletion is unsupported.")
-			respondError(w, http.StatusBadRequest, promscale_errors.ErrTimeBasedDeletion, "bad_data")
+			respondError(w, http.StatusBadRequest, pgmodelcommon.ErrTimeBasedDeletion, "bad_data")
 			return
 		}
 		for _, s := range r.Form["match[]"] {

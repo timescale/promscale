@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	promscale_errors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelcommon "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -170,10 +170,12 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			series: []labels.Labels{
 				{
 					{Name: "name_1", Value: "value_1"},
-					{Name: "__name__", Value: "metric_1"}},
+					{Name: "__name__", Value: "metric_1"},
+				},
 				{
 					{Name: "name_2", Value: "value_2"},
-					{Name: "__name__", Value: "metric_1"}},
+					{Name: "__name__", Value: "metric_1"},
+				},
 				{
 					{Name: "name_1", Value: "value_1"},
 					{Name: "__name__", Value: "metric_1"},
@@ -222,7 +224,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			series: []labels.Labels{
 				{
 					{Name: "name_1", Value: "value_1"},
-					{Name: "__name__", Value: "metric_1"}},
+					{Name: "__name__", Value: "metric_1"},
+				},
 				{
 					{Name: "name_2", Value: "value_2"},
 					{Name: "__name__", Value: "metric_1"},
@@ -671,7 +674,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					//this is the attempt on the full batch
+					// this is the attempt on the full batch
 					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}{int64(1)},
 					Results: model.RowResults{{[]byte{}}},
@@ -690,7 +693,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					//this is the attempt on the individual copyRequests
+					// this is the attempt on the individual copyRequests
 					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}{int64(1)},
 					Results: model.RowResults{{[]byte{}}},
@@ -785,7 +788,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 		},
 		{
-			//cache errors get recovered from and the insert succeeds
+			// cache errors get recovered from and the insert succeeds
 			name: "Metrics cache get error",
 			rows: map[string][]model.Insertable{
 				"metric_0": {
@@ -859,10 +862,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 			var expErr error
 			switch {
 			case c.metricsGetErr != nil:
-				//cache errors recover
+				// cache errors recover
 				expErr = nil
 			case c.name == "Can't find/create table in DB":
-				expErr = promscale_errors.ErrMissingTableName
+				expErr = pgmodelcommon.ErrMissingTableName
 			default:
 				for _, q := range c.sqlQueries {
 					if q.Err != nil {
