@@ -122,7 +122,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	}
 
 	if cfg.InstallExtensions {
-		// Only check for background workers if TimessaleDB is installed.
+		// Only check for background workers if TimescaleDB is installed.
 		if notOk, err := isBGWLessThanDBs(conn); err != nil {
 			return nil, fmt.Errorf("Error checking the number of background workers: %w", err)
 		} else if notOk {
@@ -131,7 +131,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 		}
 	}
 
-	isLicenseOSS, err := isTimescaleDBOSS(conn)
+	isTimescaleDB, isLicenseOSS, err := getDatabaseDetails(conn)
 	if err != nil {
 		return nil, fmt.Errorf("fetching license information: %w", err)
 	}
@@ -164,7 +164,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	}
 
 	if cfg.DatasetConfig != "" {
-		err = ApplyDatasetConfig(conn, cfg.DatasetConfig)
+		err = ApplyDatasetConfig(conn, cfg.DatasetConfig, isTimescaleDB)
 		if err != nil {
 			return nil, fmt.Errorf("error applying dataset configuration: %w", err)
 		}
@@ -180,24 +180,20 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	return client, nil
 }
 
-func isTimescaleDBOSS(conn *pgx.Conn) (bool, error) {
-	var (
-		isTimescaleDB bool
-		isLicenseOSS  bool
-	)
-	err := conn.QueryRow(context.Background(), "SELECT _prom_catalog.is_timescaledb_installed()").Scan(&isTimescaleDB)
+func getDatabaseDetails(conn *pgx.Conn) (isTimescaleDB, isLicenseOSS bool, err error) {
+	err = conn.QueryRow(context.Background(), "SELECT _prom_catalog.is_timescaledb_installed()").Scan(&isTimescaleDB)
 	if err != nil {
-		return false, fmt.Errorf("error fetching whether TimescaleDB is installed: %w", err)
+		return false, false, fmt.Errorf("error fetching whether TimescaleDB is installed: %w", err)
 	}
 	if !isTimescaleDB {
 		// Return false so that we don't warn for OSS TimescaleDB.
-		return false, nil
+		return false, false, nil
 	}
 	err = conn.QueryRow(context.Background(), "SELECT _prom_catalog.is_timescaledb_oss()").Scan(&isLicenseOSS)
 	if err != nil {
-		return false, fmt.Errorf("error fetching TimescaleDB license: %w", err)
+		return isTimescaleDB, false, fmt.Errorf("error fetching TimescaleDB license: %w", err)
 	}
-	return isLicenseOSS, nil
+	return isTimescaleDB, isLicenseOSS, nil
 }
 
 // isBGWLessThanDBs checks if the background workers count is less than the database count. It should be
@@ -225,8 +221,8 @@ func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
 	return false, nil
 }
 
-func ApplyDatasetConfig(conn *pgx.Conn, cfgFilename string) error {
-	cfg, err := dataset.NewConfig(cfgFilename)
+func ApplyDatasetConfig(conn *pgx.Conn, cfgFilename string, withTimescaleDB bool) error {
+	cfg, err := dataset.NewConfig(cfgFilename, withTimescaleDB)
 	if err != nil {
 		return err
 	}
