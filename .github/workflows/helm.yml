@@ -8,7 +8,7 @@ on:
     branches: [master, main, force_test, release-*]
 
 env:
-  helm-version: v3.8.0
+  helm-version: v3.8.1
 
 jobs:
   generate:
@@ -40,7 +40,7 @@ jobs:
           python-version: 3.7
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.2.0
+        uses: helm/chart-testing-action@v2.2.1
 
       - name: Run chart-testing (list-changed)
         id: list-changed

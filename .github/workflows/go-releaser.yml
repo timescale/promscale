@@ -12,7 +12,8 @@ on:
     branches: ['**']
 
 env:
-  golang-version: 1.17.7
+  golang-version: 1.18.0
+  goreleaser-version: v1.7.0
 
 jobs:
   goreleaser:
@@ -45,7 +46,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') != true
         with:
           distribution: goreleaser
-          version: latest
+          version: ${{ env.goreleaser-version }}
           args: release --snapshot --skip-publish --rm-dist -f .goreleaser.yml
       -
         name: GoReleaser Release
@@ -54,7 +55,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           distribution: goreleaser
-          version: latest
+          version: ${{ env.goreleaser-version }}
           args: release --rm-dist -f .goreleaser.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

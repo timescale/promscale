@@ -22,6 +22,12 @@
     },
     {
       "fileMatch": ["^\\.github\\/workflows\\/[^/]+\\.ya?ml$"],
+      "matchStrings": ["goreleaser-version:\\s(?<currentValue>.*?)\\n"],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "goreleaser/goreleaser"
+    },
+    {
+      "fileMatch": ["^\\.github\\/workflows\\/[^/]+\\.ya?ml$"],
       "matchStrings": ["golang-version:\\s(?<currentValue>.*?)\\n"],
       "datasourceTemplate": "golang-version",
       "depNameTemplate": "golang"
