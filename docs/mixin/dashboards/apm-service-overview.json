@@ -45,7 +45,7 @@
     {
       "asDropdown": false,
       "icon": "external link",
-      "includeVars": false,
+      "includeVars": true,
       "keepTime": true,
       "tags": [
         "promscale",
@@ -146,7 +146,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n    time_bucket_gapfill('$__interval', start_time) AS time,\n    coalesce(count(*)::numeric / (EXTRACT(epoch FROM '$__interval'::interval)), 0) AS \"Throughput\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n    time_bucket_gapfill('$__interval', start_time) AS time,\n    coalesce(count(*)::numeric / (EXTRACT(epoch FROM '$__interval'::interval)), 0) AS \"Requests\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
           "select": [],
           "table": "event",
@@ -161,7 +161,7 @@
           ]
         }
       ],
-      "title": "Throughput",
+      "title": "Requests",
       "type": "timeseries"
     },
     {
@@ -265,7 +265,7 @@
           ]
         }
       ],
-      "title": "Latency",
+      "title": "Duration",
       "type": "timeseries"
     },
     {
@@ -402,7 +402,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Throughput"
+              "options": "Requests"
             },
             "properties": [
               {
@@ -414,7 +414,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Avg Latency"
+              "options": "Avg Duration"
             },
             "properties": [
               {
@@ -466,7 +466,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n    span_name as \"Operation\",\n    count(*)::numeric / (${__to:date:seconds} - ${__from:date:seconds}) AS \"Throughput\",\n    sum(duration_ms) / count(*)::numeric as \"Avg Latency\",\n    coalesce((count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*)), 0) as \"Error rate\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n    span_name as \"Operation\",\n    count(*)::numeric / (${__to:date:seconds} - ${__from:date:seconds}) AS \"Requests\",\n    sum(duration_ms) / count(*)::numeric as \"Avg Duration\",\n    coalesce((count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*)), 0) as \"Error rate\"\nFROM ps_trace.span s\nWHERE $__timeFilter(start_time)\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nAND service_name = '${service}'\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
           "select": [],
           "table": "event",
