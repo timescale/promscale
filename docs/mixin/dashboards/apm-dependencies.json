@@ -173,7 +173,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n    p.service_name as \"Source\",\n    k.service_name as \"Target\",\n    k.span_name as \"Operation\",\n    count(*) as calls,\n    sum(k.duration_ms) as \"Total exec time\",\n    avg(k.duration_ms) as \"Avg exec time\"\nFROM ps_trace.span p\nINNER JOIN ps_trace.span k\nON (p.trace_id = k.trace_id\nAND p.span_id = k.parent_span_id\nAND p.service_name != k.service_name)\nWHERE p.start_time >= NOW() - INTERVAL '10 minutes'\nAND k.start_time >= NOW() - INTERVAL '10 minutes'\nGROUP BY 1, 2, 3\nORDER BY \"Total exec time\" DESC",
+          "rawSql": "SELECT\n    p.service_name as \"Source\",\n    k.service_name as \"Target\",\n    k.span_name as \"Operation\",\n    count(*) as calls,\n    sum(k.duration_ms) as \"Total exec time\",\n    avg(k.duration_ms) as \"Avg exec time\"\nFROM ps_trace.span p\nINNER JOIN ps_trace.span k\nON (p.trace_id = k.trace_id\nAND p.span_id = k.parent_span_id\nAND p.service_name != k.service_name)\nWHERE p.start_time >= NOW() - INTERVAL '10 minutes'\nAND k.start_time >= NOW() - INTERVAL '10 minutes'\nGROUP BY 1, 2, 3\nORDER BY 5 DESC",
           "refId": "A",
           "select": [
             [
