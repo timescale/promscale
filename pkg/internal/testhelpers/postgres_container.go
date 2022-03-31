@@ -494,6 +494,10 @@ func startPGInstance(
 
 	req.BindMounts = make(map[string]string)
 	if testDataDir != "" {
+		err := os.Chmod(testDataDir, 0777) // #nosec
+		if err != nil {
+			return nil, nil, err
+		}
 		req.BindMounts["/testdata"] = testDataDir
 	}
 	if dataDir != "" {
@@ -506,7 +510,11 @@ func startPGInstance(
 		if err := os.Mkdir(bindDir, 0700); err != nil && !os.IsExist(err) {
 			return nil, nil, err
 		}
-		req.BindMounts["/var/lib/postgresql/data"] = bindDir
+		err := os.Chmod(bindDir, 0777) // #nosec
+		if err != nil {
+			return nil, nil, err
+		}
+		req.BindMounts["/var/lib/postgresql"] = bindDir
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
