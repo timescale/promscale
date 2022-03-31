@@ -22,8 +22,54 @@ env:
   golang-version: 1.18.0
 
 jobs:
+  pick_docker_image:
+    name: pick_docker_image
+    runs-on: ubuntu-latest
+    outputs:
+      docker_image_12:  ${{ github.event_name == 'workflow_dispatch' && steps.metadata_wd.outputs.docker_image_12 || steps.metadata.outputs.docker_image_12 }}
+      docker_image_13:  ${{ github.event_name == 'workflow_dispatch' && steps.metadata_wd.outputs.docker_image_13 || steps.metadata.outputs.docker_image_13 }}
+      docker_image_14:  ${{ github.event_name == 'workflow_dispatch' && steps.metadata_wd.outputs.docker_image_14 || steps.metadata.outputs.docker_image_14 }}
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Figure out database container image from branch name
+      id: metadata
+      if:  github.event_name != 'workflow_dispatch'
+      run: |
+        branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
+        possible_branch_tag=$(echo ${branch_name}-ts2)
+        develop_branch_tag=$(echo develop-ts2)
+        image_base="ghcr.io/timescale/dev_promscale_extension"
+        docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${develop_branch_tag}-pg12)
+        docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${develop_branch_tag}-pg13)
+        docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${develop_branch_tag}-pg14)
+        echo "::set-output name=docker_image_12::${docker_image_12}"
+        echo "::set-output name=docker_image_13::${docker_image_13}"
+        echo "::set-output name=docker_image_14::${docker_image_14}"
+
+    - name: Figure out database container image via workflow input
+      id: metadata_wd
+      if:  github.event_name == 'workflow_dispatch'
+      run: |
+        docker_image_12=$(echo ${{github.event.inputs.docker_image_prefix}}-pg12)
+        docker_image_13=$(echo ${{github.event.inputs.docker_image_prefix}}-pg13)
+        docker_image_14=$(echo ${{github.event.inputs.docker_image_prefix}}-pg14)
+        echo "::set-output name=docker_image_12::${docker_image_12}"
+        echo "::set-output name=docker_image_13::${docker_image_13}"
+        echo "::set-output name=docker_image_14::${docker_image_14}"
+
+
   test-end-to-end:
     name: e2e
+    needs: pick_docker_image
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -63,32 +109,48 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Figure out database container image from branch name
-      id: metadata
-      if:  github.event_name != 'workflow_dispatch'
-      run: |
-        branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
-        possible_branch_tag=$(echo ${branch_name}-ts2-pg${{matrix.test-setups.pg}})
-        develop_branch_tag=$(echo develop-ts2-pg${{matrix.test-setups.pg}})
-        image_base="ghcr.io/timescale/dev_promscale_extension"
-        docker_image=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${develop_branch_tag})
-        echo "::set-output name=docker_image::${docker_image}"
-
-    - name: Figure out database container image via workflow input
-      id: metadata_wd
-      if:  github.event_name == 'workflow_dispatch'
-      run: |
-        docker_image=$(echo ${{github.event.inputs.docker_image_prefix}}-pg${{matrix.test-setups.pg}})
-        echo "::set-output name=docker_image::${docker_image}"
-
     - name: Test ${{ matrix.test-setups.name }}
       env:
-        DOCKER_IMAGE: ${{ github.event_name == 'workflow_dispatch' && steps.metadata_wd.outputs.docker_image || steps.metadata.outputs.docker_image }}
+        DOCKER_IMAGE: ${{  needs.pick_docker_image.outputs[ format('docker_image_{0}', matrix.test-setups.pg) ] }} }}
         TSDB: ${{ matrix.test-setups.tsdb }}
         MULTI: ${{ matrix.test-setups.multi }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
       run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -timescale-docker-image=$DOCKER_IMAGE
-      
+
+  upgrade_test:
+    name: upgrade_tests
+    needs: pick_docker_image
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+
+    - name: Set up Go ${{ env.golang-version }}
+      uses: actions/setup-go@v3.0.0
+      with:
+        go-version: ${{ env.golang-version }}
+      id: go
+
+    - name: Use Go module caching
+      uses: actions/cache@v2
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Test ${{ matrix.test-setups.name }}
+      env:
+        DOCKER_IMAGE:  ${{  needs.pick_docker_image.outputs.docker_image_13 }}
+      run: go test -race -v -timeout=30m ./pkg/tests/upgrade_tests/ -timescale-docker-image=$DOCKER_IMAGE
+
   # Added to summarize the matrix
   tests-result:
     name: e2e results
