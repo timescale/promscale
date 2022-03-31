@@ -43,7 +43,7 @@ var (
 	testDatabase = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
 	printLogs    = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	// use "local/dev_promscale_extension:head-ts2-pg13" for local testing
-	dockerImage        = flag.String("image", "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14", "docker image for database")
+	dockerImage        = flag.String("timescale-docker-image", "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14", "TimescaleDB docker image for latest version to run tests against")
 	baseExtensionState testhelpers.TestOptions
 )
 
@@ -85,7 +85,8 @@ func getDBImages(extensionState testhelpers.TestOptions) (prev string, clean str
 		panic("unable to get docker image version")
 	}
 
-	return "timescaledev/promscale-extension:0.1.2-ts2-pg" + pgVersion, dockerImageName, nil
+	//return "timescaledev/promscale-extension:0.1.2-ts2-pg" + pgVersion, dockerImageName, nil
+	return "timescale/timescaledb-ha:pg" + pgVersion + "-ts2.1-latest", dockerImageName, nil
 }
 
 func writeToFiles(t *testing.T, upgradedDbInfo, pristineDbInfo dbSnapshot) error {
