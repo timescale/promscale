@@ -32,21 +32,24 @@ func TestHasPermissionOnTable(t *testing.T) {
 			t.Fatal(err)
 		}
 		tests := [][]interface{}{
-			{"_ps_trace.span", 1},
-			{`prom_data."firstMetric"`, 1},
-			{`prom_data."secondMetric"`, 1},
-			{"public.foo", 0},                // not a part of the extension
-			{"ps_tag.tag_op_not_equals", -1}, // not a table
+			{"_ps_trace.span", true},
+			{"_ps_trace.tag", true},
+			{`prom_data."firstMetric"`, true},
+			{`prom_data_series."firstMetric"`, true},
+			{`prom_data."secondMetric"`, true},
+			{`prom_data_series."secondMetric"`, true},
+			{"public.foo", false},               // not a part of the extension
+			{"ps_tag.tag_op_not_equals", false}, // not a table
 		}
-		qry := `select case _prom_catalog.has_permission_on_table($1::regclass) when true then 1 when false then 0 else -1 end`
-		var actual int
+		qry := `select _prom_catalog.has_permission_on_table($1::regclass)`
+		var actual bool
 		for _, expected := range tests {
 			err = db.QueryRow(context.Background(), qry, expected[0]).Scan(&actual)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if expected[1] != actual {
-				t.Errorf("_prom_catalog.has_permission_on_table did not produce the expected results. expected: %d actual %d", expected[1], actual)
+				t.Errorf("_prom_catalog.has_permission_on_table did not produce the expected results. expected: %t actual %t", expected[1], actual)
 			}
 		}
 	})
