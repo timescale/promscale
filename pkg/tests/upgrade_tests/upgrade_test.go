@@ -381,7 +381,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 	// Start a db with the prev extension and a prev connector as well
 	// Then run preUpgrade and shut everything down.
 	func() {
-		dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, prevDBImage, tmpDir, dataDir, *printLogs, extensionState)
+		dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, t, prevDBImage, tmpDir, dataDir, *printLogs, extensionState)
 		if err != nil {
 			t.Fatal("Error setting up container", err)
 		}
@@ -400,7 +400,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		connectorHost, err := connector.Host(ctx)
 		if err != nil {
@@ -419,7 +419,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 
 	//Start a new connector and migrate.
 	//Then run postUpgrade
-	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, t, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}
@@ -466,7 +466,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 	}
 
 	func() {
-		container, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
+		container, closer, err := testhelpers.StartDatabaseImage(ctx, t, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
@@ -487,7 +487,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 			preRestart(container, connectURL, db, tmpDir)
 		})
 	}()
-	container, closer, err := testhelpers.StartDatabaseImage(ctx, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
+	container, closer, err := testhelpers.StartDatabaseImage(ctx, t, cleanImage, tmpDir, dataDir, *printLogs, extensionState)
 	if err != nil {
 		fmt.Println("Error setting up container", err)
 		os.Exit(1)
@@ -625,7 +625,7 @@ func TestExtensionUpgrade(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
 		if err != nil {
 			t.Fatal(err)
@@ -649,7 +649,7 @@ func TestExtensionUpgrade(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		var versionStr string
 		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
@@ -711,7 +711,7 @@ func TestMigrationFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
 		if err != nil {
@@ -739,7 +739,7 @@ func TestMigrationFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		var version string
 		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
@@ -791,7 +791,7 @@ func startDB(t *testing.T, ctx context.Context) (*pgx.Conn, testcontainers.Conta
 	// TODO (james): Replace hardcoded value
 	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14")
 
-	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, extensionState)
+	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, t, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, extensionState)
 	if err != nil {
 		t.Fatal("Error setting up container", err)
 	}
