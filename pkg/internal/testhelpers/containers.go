@@ -6,7 +6,9 @@ package testhelpers
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -37,7 +39,54 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 	}
 }
 
-func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool) {
+func PrintContainerLogs(container testcontainers.Container) {
+	logs, err := container.Logs(context.TODO())
+	if err != nil {
+		fmt.Println("Error fetching logs: ", err)
+		return
+	}
+	defer logs.Close()
+
+	logSlice := make([]string, 0)
+	h := make([]byte, 8)
+	for {
+		_, err := logs.Read(h)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Println("Error reading from logs: ", err)
+			return
+		}
+
+		count := binary.BigEndian.Uint32(h[4:])
+		if count == 0 {
+			continue
+		}
+		b := make([]byte, count)
+		_, err = logs.Read(b)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Println("Error reading from logs: ", err)
+			return
+		}
+		logSlice = append(logSlice, string(b))
+	}
+
+	fmt.Printf("DB container logs (last 100 lines): \n")
+	n := len(logSlice) - 100 /* get last 100 lines */
+	if n < 0 {
+		n = 0
+	}
+	fmt.Println(logSlice[n:])
+}
+
+func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool, t Result) {
+	if !printLogs && t != nil && t.Failed() {
+		PrintContainerLogs(container)
+	}
 	if printLogs {
 		err := container.StopLogProducer()
 		if err != nil {

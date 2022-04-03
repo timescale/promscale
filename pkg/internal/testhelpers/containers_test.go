@@ -66,7 +66,7 @@ func runMain(m *testing.M) int {
 	// TODO (james): Replace hardcoded value
 	extensionState := NewTestOptions(timescaleBit, "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14")
 	if !testing.Short() && *useDocker {
-		_, closer, err := StartPGContainer(ctx, extensionState, "", false)
+		_, closer, err := StartPGContainer(ctx, nil, extensionState, "", false)
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)

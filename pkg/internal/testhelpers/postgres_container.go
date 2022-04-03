@@ -36,6 +36,10 @@ const (
 	NoSuperuser = false
 )
 
+type Result interface {
+	Failed() bool
+}
+
 var (
 	users = []string{
 		promUser,
@@ -286,16 +290,18 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 // StartPGContainer starts a postgreSQL container for use in testing
 func StartPGContainer(
 	ctx context.Context,
+	t Result,
 	extensionState TestOptions,
 	testDataDir string,
 	printLogs bool,
 ) (testcontainers.Container, io.Closer, error) {
 	image := extensionState.GetDockerImageName()
 
-	return StartDatabaseImage(ctx, image, testDataDir, "", printLogs, extensionState)
+	return StartDatabaseImage(ctx, t, image, testDataDir, "", printLogs, extensionState)
 }
 
 func StartDatabaseImage(ctx context.Context,
+	t Result,
 	image string,
 	testDataDir string,
 	dataDir string,
@@ -316,6 +322,7 @@ func StartDatabaseImage(ctx context.Context,
 	startContainer := func(containerPort nat.Port) (testcontainers.Container, error) {
 		container, closer, err := startPGInstance(
 			ctx,
+			t,
 			image,
 			testDataDir,
 			dataDir,
@@ -442,6 +449,7 @@ func removeTimescaleExtension(container testcontainers.Container) error {
 
 func startPGInstance(
 	ctx context.Context,
+	t Result,
 	image string,
 	testDataDir string,
 	dataDir string,
@@ -462,7 +470,7 @@ func startPGInstance(
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
 			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
-		}).Timeout(120 * time.Second),
+		}).Timeout(60 * time.Second),
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
 			"PGDATA":            "/var/lib/postgresql/data",
@@ -531,6 +539,7 @@ func startPGInstance(
 
 	err = container.Start(context.Background())
 	if err != nil {
+		PrintContainerLogs(container)
 		return nil, nil, err
 	}
 
@@ -543,7 +552,7 @@ func startPGInstance(
 	}
 
 	closer := func() {
-		StopContainer(ctx, container, printLogs)
+		StopContainer(ctx, container, printLogs, t)
 	}
 
 	if isDataNode {

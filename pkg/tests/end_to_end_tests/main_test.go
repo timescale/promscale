@@ -90,8 +90,16 @@ func setExtensionState() {
 	testOptions.SetTimescaleDockerImage(*timescaleDockerImage)
 }
 
+type testResult struct {
+	code int
+}
+
+func (t *testResult) Failed() bool {
+	return t.code != 0
+}
+
 func TestMain(m *testing.M) {
-	var code int
+	res := &testResult{1}
 	func() {
 		flag.Parse()
 		ctx := context.Background()
@@ -111,6 +119,7 @@ func TestMain(m *testing.M) {
 
 			pgContainer, closer, err = testhelpers.StartPGContainer(
 				ctx,
+				res,
 				testOptions,
 				pgContainerTestDataDir,
 				*printLogs,
@@ -154,9 +163,9 @@ func TestMain(m *testing.M) {
 				}
 			}()
 		}
-		code = m.Run()
+		res.code = m.Run()
 	}()
-	os.Exit(code)
+	os.Exit(res.code)
 }
 
 func attachDataNode2(t testing.TB, DBName string, connectURL string) {
