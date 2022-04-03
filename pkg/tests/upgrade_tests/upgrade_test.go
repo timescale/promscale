@@ -400,7 +400,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		connectorHost, err := connector.Host(ctx)
 		if err != nil {
@@ -625,7 +625,7 @@ func TestExtensionUpgrade(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
 		if err != nil {
 			t.Fatal(err)
@@ -649,7 +649,7 @@ func TestExtensionUpgrade(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		var versionStr string
 		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
@@ -711,7 +711,7 @@ func TestMigrationFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))
 		if err != nil {
@@ -739,7 +739,7 @@ func TestMigrationFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testhelpers.StopContainer(ctx, connector, *printLogs)
+		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
 
 		var version string
 		db, err = pgx.Connect(ctx, testhelpers.PgConnectURL("postgres", testhelpers.Superuser))

@@ -5,11 +5,13 @@
 package testhelpers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"runtime"
+	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -37,7 +39,29 @@ func (s stdoutLogConsumer) Accept(l testcontainers.Log) {
 	}
 }
 
-func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool) {
+func PrintContainerLogs(container testcontainers.Container) {
+	logs, err := container.Logs(context.TODO())
+	if err != nil {
+		fmt.Println("Error fetching logs: ", err)
+		return
+	}
+	defer logs.Close()
+
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(logs)
+	if err != nil {
+		fmt.Println("Error reading from logs: ", err)
+		return
+	}
+
+	logStr := buf.String()
+	fmt.Printf("Error starting container, Logs: \n %s", logStr)
+}
+
+func StopContainer(ctx context.Context, container testcontainers.Container, printLogs bool, t testing.TB) {
+	if !printLogs && t != nil && t.Failed() {
+		PrintContainerLogs(container)
+	}
 	if printLogs {
 		err := container.StopLogProducer()
 		if err != nil {

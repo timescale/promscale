@@ -462,7 +462,7 @@ func startPGInstance(
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
 			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
-		}).Timeout(120 * time.Second),
+		}).Timeout(60 * time.Second),
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
 			"PGDATA":            "/var/lib/postgresql/data",
@@ -531,6 +531,7 @@ func startPGInstance(
 
 	err = container.Start(context.Background())
 	if err != nil {
+		PrintContainerLogs(container)
 		return nil, nil, err
 	}
 
@@ -543,7 +544,7 @@ func startPGInstance(
 	}
 
 	closer := func() {
-		StopContainer(ctx, container, printLogs)
+		StopContainer(ctx, container, printLogs, nil)
 	}
 
 	if isDataNode {
