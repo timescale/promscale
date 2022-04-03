@@ -168,7 +168,7 @@ insert into _ps_trace.span
 	resource_schema_url_id
 )
 select
-	x.trace_id::uuid,
+	x.trace_id::trace_id,
 	x.span_id,
 	x.parent_span_id,
 	x.operation_id,
