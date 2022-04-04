@@ -27,6 +27,6 @@ func NewManager(ctx context.Context, r prometheus.Registerer, amURL *url.URL, cl
 	rulesManager := prom_rules.NewManager(&prom_rules.ManagerOptions{
 		Appendable: appendable,
 		Queryable:  queryable,
-		QueryFunc:  engineQueryFunc(promqlEngine, queryable),
+		QueryFunc:  engineQueryFunc(promqlEngine, client.Queryable()),
 	})
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	prometheus_promql "github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
 	promscale_promql "github.com/timescale/promscale/pkg/promql"
 )
 
@@ -21,7 +20,7 @@ import (
 // It converts scalar into vector results.
 // Note: This function is copied from the link given in the starting of the file and modified
 // to adapt to Promscale's PromQL engine.
-func engineQueryFunc(engine *promscale_promql.Engine, q storage.Queryable) rules.QueryFunc {
+func engineQueryFunc(engine *promscale_promql.Engine, q promscale_promql.Queryable) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (prometheus_promql.Vector, error) {
 		q, err := engine.NewInstantQuery(q, qs, t)
 		if err != nil {
@@ -33,7 +32,7 @@ func engineQueryFunc(engine *promscale_promql.Engine, q storage.Queryable) rules
 		}
 		switch v := res.Value.(type) {
 		case promscale_promql.Vector:
-			return yoloVector(v), nil
+			return yoloVector(&v), nil
 		case promscale_promql.Scalar:
 			return prometheus_promql.Vector{prometheus_promql.Sample{
 				Point:  prometheus_promql.Point(v),
@@ -45,6 +44,7 @@ func engineQueryFunc(engine *promscale_promql.Engine, q storage.Queryable) rules
 	}
 }
 
+// todo: write a test and check this out first.
 func yoloVector(v *promscale_promql.Vector) prometheus_promql.Vector {
 	return *(*prometheus_promql.Vector)(unsafe.Pointer(v))
 }
