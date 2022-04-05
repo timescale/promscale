@@ -22,7 +22,7 @@ type appenderAdapter struct {
 	data map[uint64]*prompb.TimeSeries
 }
 
-func (a ingestAdapter) Appender(ctx context.Context) storage.Appender {
+func (a ingestAdapter) Appender(_ context.Context) storage.Appender {
 	return &appenderAdapter{
 		data: make(map[uint64]*prompb.TimeSeries),
 	}

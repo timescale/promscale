@@ -6,12 +6,16 @@ package rules
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/notifier"
 	prometheus_promql "github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/util/strutil"
+
 	promscale_promql "github.com/timescale/promscale/pkg/promql"
 )
 
@@ -44,7 +48,46 @@ func engineQueryFunc(engine *promscale_promql.Engine, q promscale_promql.Queryab
 	}
 }
 
-// todo: write a test and check this out first.
+// My guess is this should be way faster than looping through individual samples
+// and converting into Prometheus Vector type. This lets us convert the type with
+// very less processing.
 func yoloVector(v *promscale_promql.Vector) prometheus_promql.Vector {
 	return *(*prometheus_promql.Vector)(unsafe.Pointer(v))
+}
+
+type sender interface {
+	Send(alerts ...*notifier.Alert)
+}
+
+// sendAlerts implements the rules.NotifyFunc for a Notifier.
+func sendAlerts(s sender, externalURL string) rules.NotifyFunc {
+	return func(ctx context.Context, expr string, alerts ...*rules.Alert) {
+		var res []*notifier.Alert
+
+		for _, alert := range alerts {
+			a := &notifier.Alert{
+				StartsAt:     alert.FiredAt,
+				Labels:       alert.Labels,
+				Annotations:  alert.Annotations,
+				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+			}
+			if !alert.ResolvedAt.IsZero() {
+				a.EndsAt = alert.ResolvedAt
+			} else {
+				a.EndsAt = alert.ValidUntil
+			}
+			res = append(res, a)
+		}
+
+		if len(alerts) > 0 {
+			s.Send(res...)
+		}
+	}
+}
+
+func do(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return client.Do(req.WithContext(ctx))
 }

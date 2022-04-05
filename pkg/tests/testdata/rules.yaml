@@ -1,0 +1,14 @@
+groups:
+  - name: test-recording-rules
+    rules:
+      - record: rule:metric_1
+        expr: rate(metric_1[10m])
+  - name: test-alerting-rules
+    rules:
+      - alert: NoJobFound
+        expr: absent(up{job="absent_job"})
+        labels:
+          severity: critical
+        annotations:
+          summary: Promscale is down
+          description: No Promscale instance was found.
