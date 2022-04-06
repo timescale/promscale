@@ -19,6 +19,7 @@ type BenchConfig struct {
 	RateControl      bool
 	RateMultiplier   float64
 	SeriesMultiplier int
+	MetricMultiplier int
 	RepeatedRuns     int
 }
 

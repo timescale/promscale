@@ -34,21 +34,29 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, ser
 		si := &SeriesItem{ts, val, series, uint64(len(sth)), it, len(sth)}
 		sth = append(sth, si)
 
-		if conf.SeriesMultiplier == 1 {
+		if conf.SeriesMultiplier == 1 && conf.MetricMultiplier == 1 {
 			rs := record.RefSeries{
-				Ref:    getSeriesID(conf, si.series_id, 0),
+				Ref:    getSeriesID(conf, si.series_id, 0, 0),
 				Labels: si.series.Labels(),
 			}
 			refSeries = append(refSeries, rs)
 		} else {
-			build := labels.NewBuilder(si.series.Labels())
+			lbls := si.series.Labels()
+			build := labels.NewBuilder(lbls)
 			for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
-				build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
-				rs := record.RefSeries{
-					Ref:    getSeriesID(conf, si.series_id, seriesMultiplierIndex),
-					Labels: build.Labels(),
+				for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
+					if seriesMultiplierIndex != 0 {
+						build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
+					}
+					if metricMultiplierIndex != 0 {
+						build.Set("__name__", lbls.Get("__name__")+"_"+strconv.Itoa(metricMultiplierIndex))
+					}
+					rs := record.RefSeries{
+						Ref:    getSeriesID(conf, si.series_id, seriesMultiplierIndex, metricMultiplierIndex),
+						Labels: build.Labels(),
+					}
+					refSeries = append(refSeries, rs)
 				}
-				refSeries = append(refSeries, rs)
 			}
 		}
 	}

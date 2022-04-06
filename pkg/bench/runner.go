@@ -34,8 +34,8 @@ func checkSeriesSet(ss storage.SeriesSet) error {
 	return nil
 }
 
-func getSeriesID(conf *BenchConfig, rawSeriesID uint64, seriesMultipliedIndex int) (seriesID uint64) {
-	return (rawSeriesID * uint64(conf.SeriesMultiplier)) + uint64(seriesMultipliedIndex)
+func getSeriesID(conf *BenchConfig, rawSeriesID uint64, seriesMultipliedIndex int, metricMultiplierIndex int) (seriesID uint64) {
+	return (rawSeriesID * uint64(conf.SeriesMultiplier) * uint64(conf.MetricMultiplier)) + uint64(seriesMultipliedIndex) + uint64(metricMultiplierIndex)
 }
 
 func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *walSimulator, runNumber int) (time.Time, int, error) {
@@ -68,15 +68,17 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *wa
 		}
 		samplesSent := 0
 		for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
-			samples := []record.RefSample{
-				{
-					Ref: getSeriesID(conf, seriesID, seriesMultiplierIndex),
-					T:   dataTimestamp,
-					V:   val,
-				},
+			for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
+				samples := []record.RefSample{
+					{
+						Ref: getSeriesID(conf, seriesID, seriesMultiplierIndex, metricMultiplierIndex),
+						T:   dataTimestamp,
+						V:   val,
+					},
+				}
+				ws.Append(samples)
+				samplesSent++
 			}
-			ws.Append(samples)
-			samplesSent++
 		}
 		count += samplesSent
 		qmi.highestTs.Set(float64(dataTimestamp / 1000))

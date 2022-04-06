@@ -18,6 +18,7 @@ func main() {
 		RateControl:             true,
 		RateMultiplier:          10000.0,
 		SeriesMultiplier:        1,
+		MetricMultiplier:        1,
 		RemoteWriteConfig:       config.DefaultRemoteWriteConfig,
 		RepeatedRuns:            1,
 	}
