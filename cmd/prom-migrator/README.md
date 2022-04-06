@@ -72,6 +72,9 @@ as write endpoints are somewhat constrained.
 ./prom-migrator -start=1606408552 -end=1606415752 -reader-url=<read_endpoint_url_for_remote_read_storage> -writer-url=<write_endpoint_url_for_remote_write_storage> -progress-metric-url=<read_endpoint_url_for_remote_write_storage>
 ```
 
+**Note:** Prom-migrator does not support migrating data to a HA environment. If you have an HA setup,
+try running it in non-HA mode to ingest data from prom-migrator.
+
 ## CLI flags
 
 ### General flags
