@@ -252,7 +252,7 @@ func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node) {
 // pushdown. If no pushdown is possible, it returns nil.
 // For more on top nodes, see `engine.populateSeries`
 func tryPushDown(metadata *promqlMetadata) (*aggregators, parser.Node, error) {
-	fmt.Println("----came into PUSHDOWN------")
+	fmt.Println("-------PUSHDOWN------")
 	// A function call like `rate(metric[5m])` parses to this AST:
 	//
 	// 	Call -> MatrixSelector -> VectorSelector

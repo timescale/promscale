@@ -2,7 +2,6 @@ package end_to_end_tests
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -60,7 +59,6 @@ func TestRecordingRules(t *testing.T) {
 		err = manager.Update(time.Second, []string{"../testdata/rules.yaml"}, nil, "")
 		require.NoError(t, err)
 
-		fmt.Println("going into run")
 		manager.Run() // This will block.
 	})
 }
@@ -113,14 +111,9 @@ func TestSendingAlerts(t *testing.T) {
 		err = manager.ApplyConfig(promConfig)
 		require.NoError(t, err)
 
-		err = manager.Update(time.Second, []string{"../testdata/rules.yaml"}, nil, "http://localhost:9093")
+		err = manager.Update(time.Second, []string{"../testdata/rules.yaml"}, nil, "http://localhost:abcdefg")
 		require.NoError(t, err)
 
-		go func() {
-			manager.Run() // This will block.
-		}()
-		err = manager.ApplyConfig(promConfig)
-		require.NoError(t, err)
-		time.Sleep(time.Hour)
+		manager.Run() // This will block.
 	})
 }

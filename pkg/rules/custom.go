@@ -80,6 +80,7 @@ func sendAlerts(s sender, externalURL string) rules.NotifyFunc {
 		}
 
 		if len(alerts) > 0 {
+			fmt.Println("sending alerts")
 			s.Send(res...)
 		}
 	}

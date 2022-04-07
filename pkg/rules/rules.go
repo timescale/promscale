@@ -58,7 +58,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, uiURL string, clie
 		Registerer:      r,
 		OutageTolerance: time.Hour,
 		ForGracePeriod:  time.Minute * 10,
-		ResendDelay:     time.Minute,
+		ResendDelay:     time.Second * 10,
 	})
 	return &manager{
 		rulesManager:           rulesManager,
