@@ -24,6 +24,7 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, ser
 	sth := make(SeriesTimeHeap, 0, 100)
 	fmt.Println("Starting to load series")
 	seriesId := uint64(0)
+	build := labels.NewBuilder(nil)
 	for ss.Next() {
 		series := ss.At()
 		it := series.Iterator()
@@ -41,9 +42,9 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, ser
 			qmi.qm.StoreSeries([]record.RefSeries{rs}, seriesIndex)
 		} else {
 			lbls := series.Labels()
-			build := labels.NewBuilder(lbls)
 			for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
 				for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
+					build.Reset(lbls)
 					if seriesMultiplierIndex != 0 {
 						build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
 					}
