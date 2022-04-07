@@ -34,10 +34,6 @@ func checkSeriesSet(ss storage.SeriesSet) error {
 	return nil
 }
 
-func getSeriesID(conf *BenchConfig, rawSeriesID uint64, seriesMultipliedIndex int, metricMultiplierIndex int) (seriesID uint64) {
-	return (rawSeriesID * uint64(conf.SeriesMultiplier) * uint64(conf.MetricMultiplier)) + uint64(seriesMultipliedIndex) + uint64(metricMultiplierIndex)
-}
-
 func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *walSimulator, runNumber int) (time.Time, int, error) {
 	ss := q.Select(false, nil, labels.MustNewMatcher(labels.MatchRegexp, "", ".*"))
 
@@ -71,11 +67,12 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *wa
 			for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
 				samples := []record.RefSample{
 					{
-						Ref: getSeriesID(conf, seriesID, seriesMultiplierIndex, metricMultiplierIndex),
+						Ref: seriesID,
 						T:   dataTimestamp,
 						V:   val,
 					},
 				}
+				seriesID++
 				ws.Append(samples)
 				samplesSent++
 			}

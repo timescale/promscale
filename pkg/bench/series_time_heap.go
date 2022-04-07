@@ -14,34 +14,33 @@ import (
 type SeriesItem struct {
 	ts        int64 // The value of the item; arbitrary.
 	val       float64
-	series    storage.Series
 	series_id uint64 // a unique series identifier
 	it        chunkenc.Iterator
-	index     int //TODO: can remove?, stores the index into the slice
 }
 
 type SeriesTimeHeap []*SeriesItem
 
 func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, seriesIndex int) (SeriesTimeHeap, error) {
 	sth := make(SeriesTimeHeap, 0, 100)
-	refSeries := make([]record.RefSeries, 10000)
 	fmt.Println("Starting to load series")
+	seriesId := uint64(0)
 	for ss.Next() {
 		series := ss.At()
 		it := series.Iterator()
 		it.Next()
 		ts, val := it.At()
-		si := &SeriesItem{ts, val, series, uint64(len(sth)), it, len(sth)}
+		si := &SeriesItem{ts, val, seriesId, it}
 		sth = append(sth, si)
 
 		if conf.SeriesMultiplier == 1 && conf.MetricMultiplier == 1 {
 			rs := record.RefSeries{
-				Ref:    getSeriesID(conf, si.series_id, 0, 0),
-				Labels: si.series.Labels(),
+				Ref:    seriesId,
+				Labels: series.Labels(),
 			}
-			refSeries = append(refSeries, rs)
+			seriesId++
+			qmi.qm.StoreSeries([]record.RefSeries{rs}, seriesIndex)
 		} else {
-			lbls := si.series.Labels()
+			lbls := series.Labels()
 			build := labels.NewBuilder(lbls)
 			for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
 				for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
@@ -52,16 +51,16 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, ser
 						build.Set("__name__", lbls.Get("__name__")+"_"+strconv.Itoa(metricMultiplierIndex))
 					}
 					rs := record.RefSeries{
-						Ref:    getSeriesID(conf, si.series_id, seriesMultiplierIndex, metricMultiplierIndex),
+						Ref:    seriesId,
 						Labels: build.Labels(),
 					}
-					refSeries = append(refSeries, rs)
+					seriesId++
+					qmi.qm.StoreSeries([]record.RefSeries{rs}, seriesIndex)
 				}
 			}
 		}
 	}
-	qmi.qm.StoreSeries(refSeries, seriesIndex)
-	fmt.Println("Done loading series")
+	fmt.Println("Done loading series, # series", seriesId)
 
 	if err := checkSeriesSet(ss); err != nil {
 		return nil, err
@@ -79,14 +78,10 @@ func (pq SeriesTimeHeap) Less(i, j int) bool {
 
 func (pq SeriesTimeHeap) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
-	pq[i].index = i
-	pq[j].index = j
 }
 
 func (pq *SeriesTimeHeap) Push(x interface{}) {
-	n := len(*pq)
 	item := x.(*SeriesItem)
-	item.index = n
 	*pq = append(*pq, item)
 }
 
@@ -94,8 +89,7 @@ func (pq *SeriesTimeHeap) Pop() interface{} {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
-	old[n-1] = nil  // avoid memory leak
-	item.index = -1 // for safety
+	old[n-1] = nil // avoid memory leak
 	*pq = old[0 : n-1]
 	return item
 }
