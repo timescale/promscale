@@ -94,13 +94,20 @@ func (pq *SeriesTimeHeap) Pop() interface{} {
 	return item
 }
 
-func (pq *SeriesTimeHeap) Visit(visitor func(ts int64, val float64, seriesID uint64) error) error {
+func (pq *SeriesTimeHeap) Visit(conf *BenchConfig, visitor func(ts int64, val float64, seriesID uint64) error) error {
 	for pq.Len() > 0 {
 		item := (*pq)[0]
 		//fmt.Printf("%s %g %d\n", item.series.Labels(), item.val, item.ts)
-		err := visitor(item.ts, item.val, item.series_id)
-		if err != nil {
-			return err
+
+		seriesID := uint64(item.series_id)
+		for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
+			for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
+				err := visitor(item.ts, item.val, seriesID)
+				seriesID++
+				if err != nil {
+					return err
+				}
+			}
 		}
 		if item.it.Next() {
 			item.ts, item.val = item.it.At()

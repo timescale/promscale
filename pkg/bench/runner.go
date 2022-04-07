@@ -51,7 +51,7 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *wa
 	}
 
 	count := 0
-	err = sth.Visit(func(rawTs int64, val float64, seriesID uint64) error {
+	err = sth.Visit(conf, func(rawTs int64, val float64, seriesID uint64) error {
 		timestampDelta := int64(float64(rawTs-firstTs) / conf.RateMultiplier)
 		dataTimestamp := dataTimeStartTs + timestampDelta
 		wallTimestamp := startTs + timestampDelta
@@ -62,24 +62,17 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *wa
 				time.Sleep(wait)
 			}
 		}
-		samplesSent := 0
-		for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
-			for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
-				samples := []record.RefSample{
-					{
-						Ref: seriesID,
-						T:   dataTimestamp,
-						V:   val,
-					},
-				}
-				seriesID++
-				ws.Append(samples)
-				samplesSent++
-			}
+		samples := []record.RefSample{
+			{
+				Ref: seriesID,
+				T:   dataTimestamp,
+				V:   val,
+			},
 		}
-		count += samplesSent
+		ws.Append(samples)
+		count++
 		qmi.highestTs.Set(float64(dataTimestamp / 1000))
-		qmi.samplesIn.Incr(int64(samplesSent))
+		qmi.samplesIn.Incr(int64(1))
 		return nil
 	})
 	if err == nil {
