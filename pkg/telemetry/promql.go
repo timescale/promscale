@@ -20,7 +20,7 @@ type promqlTelemetry struct {
 
 func (t *promqlTelemetry) execute(engine *promql.Engine, queryable promql.Queryable) (float64, error) {
 	if t.parsedQuery == nil {
-		qry, err := engine.NewInstantQuery(queryable, t.query, time.Now())
+		qry, err := engine.NewInstantQuery(queryable, nil, t.query, time.Now())
 		if err != nil {
 			return 0, fmt.Errorf("creating instant query: %w", err)
 		}

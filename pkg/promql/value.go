@@ -166,10 +166,10 @@ func (m Matrix) String() string {
 }
 
 // TotalSamples returns the total number of samples in the series within a matrix.
-func (m Matrix) TotalSamples() int64 {
-	var numSamples int64
+func (m Matrix) TotalSamples() int {
+	var numSamples int
 	for _, series := range m {
-		numSamples += int64(len(series.Points))
+		numSamples += len(series.Points)
 	}
 	return numSamples
 }

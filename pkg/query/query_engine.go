@@ -12,7 +12,7 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultStepInterval time.Duration, maxSamples int64, enabledFeaturesMap map[string]struct{}) (*promql.Engine, error) {
+func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultStepInterval time.Duration, maxSamples int, enabledFeaturesMap map[string]struct{}) (*promql.Engine, error) {
 	engineOpts := promql.EngineOpts{
 		Logger:                   logger,
 		Reg:                      prometheus.NewRegistry(),
@@ -21,6 +21,7 @@ func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultSt
 		LookbackDelta:            lookBackDelta,
 		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(subqueryDefaultStepInterval) },
 	}
+	// todo (harkishen): add promql-per-step-stats feature
 	_, engineOpts.EnableAtModifier = enabledFeaturesMap["promql-at-modifier"]
 	_, engineOpts.EnableNegativeOffset = enabledFeaturesMap["promql-negative-offset"]
 	return promql.NewEngine(engineOpts), nil
