@@ -24,10 +24,14 @@ func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
 	}
 
 	var (
-		p       = textparse.New(b, r.Header.Get("Content-Type"))
 		defTime = int64(model.TimeFromUnixNano(timeProvider().UnixNano()))
 		et      textparse.Entry
 	)
+
+	p, err := textparse.New(b, r.Header.Get("Content-Type"))
+	if err != nil {
+		return fmt.Errorf("parsing contents from request body: %w", err)
+	}
 
 	for {
 		if et, err = p.Next(); err != nil {
