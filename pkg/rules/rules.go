@@ -15,11 +15,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/notifier"
 	prom_rules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/rules/adapters"
 )
 
 const (
@@ -43,9 +43,6 @@ type manager struct {
 }
 
 func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, opts *Options) (*manager, error) {
-	appendable := storage.Appendable(nil)
-	queryable := storage.Queryable(nil)
-
 	promqlEngine, err := query.NewEngineWithDefaults(log.GetLogger())
 	if err != nil {
 		return nil, fmt.Errorf("error creating PromQL engine with defaults: %w", err)
@@ -66,12 +63,12 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 	}
 
 	rulesManager := prom_rules.NewManager(&prom_rules.ManagerOptions{
-		Appendable:      appendable,
+		Appendable:      adapters.NewIngestAdapter(client.Ingestor()),
+		Queryable:       adapters.NewQueryAdapter(client.Queryable()),
 		Context:         ctx,
 		ExternalURL:     parsedUrl,
 		Logger:          log.GetLogger(),
 		NotifyFunc:      sendAlerts(notifierManager, parsedUrl.String()),
-		Queryable:       queryable,
 		QueryFunc:       engineQueryFunc(promqlEngine, client.Queryable()),
 		Registerer:      r,
 		OutageTolerance: opts.OutageTolerance,

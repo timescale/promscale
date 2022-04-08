@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/textparse"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 var timeProvider = time.Now
@@ -26,7 +27,6 @@ func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
 		p       = textparse.New(b, r.Header.Get("Content-Type"))
 		defTime = int64(model.TimeFromUnixNano(timeProvider().UnixNano()))
 		et      textparse.Entry
-		ll      []prompb.Label
 	)
 
 	for {
@@ -55,14 +55,7 @@ func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
 		var lset labels.Labels
 		_ = p.Metric(&lset)
 
-		ll = make([]prompb.Label, 0, len(lset))
-
-		for i := range lset {
-			ll = append(ll, prompb.Label{
-				Name:  lset[i].Name,
-				Value: lset[i].Value,
-			})
-		}
+		ll := util.LabelToPrompbLabels(lset)
 
 		wr.Timeseries = append(wr.Timeseries, prompb.TimeSeries{
 			Labels: ll,

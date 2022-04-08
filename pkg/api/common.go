@@ -24,6 +24,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -132,12 +133,12 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 
 	fs.Var(&cfg.PromscaleEnabledFeatureList, "enable-feature", "Enable beta/experimental features as a comma-separated list. Currently the following values can be passed: promql-at-modifier, promql-negative-offset")
 
-	fs.DurationVar(&cfg.MaxQueryTimeout, "metrics.promql.query-timeout", 2*time.Minute, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
+	fs.DurationVar(&cfg.MaxQueryTimeout, "metrics.promql.query-timeout", query.DefaultQueryTimeout, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
 		"'/api/v1/query.*' endpoints.")
-	fs.DurationVar(&cfg.SubQueryStepInterval, "metrics.promql.default-subquery-step-interval", 1*time.Minute, "Default step interval to be used for PromQL subquery evaluation. "+
+	fs.DurationVar(&cfg.SubQueryStepInterval, "metrics.promql.default-subquery-step-interval", query.DefaultSubqueryStepInterval, "Default step interval to be used for PromQL subquery evaluation. "+
 		"This value is used if the subquery does not specify the step value explicitly. Example: <metric_name>[30m:]. Note: in Prometheus this setting is set by the evaluation_interval option.")
-	fs.DurationVar(&cfg.LookBackDelta, "metrics.promql.lookback-delta", time.Minute*5, "Maximum lookback duration for retrieving metrics during expression evaluations and federation.")
-	fs.Int64Var(&cfg.MaxSamples, "metrics.promql.max-samples", 50000000, "Maximum number of samples a single "+
+	fs.DurationVar(&cfg.LookBackDelta, "metrics.promql.lookback-delta", query.DefaultLookBackDelta, "Maximum lookback duration for retrieving metrics during expression evaluations and federation.")
+	fs.Int64Var(&cfg.MaxSamples, "metrics.promql.max-samples", query.DefaultMaxSamples, "Maximum number of samples a single "+
 		"query can load into memory. Note that queries will fail if they try to load more samples than this into memory, "+
 		"so this also limits the number of samples a query can return.")
 	fs.Int64Var(&cfg.MaxPointsPerTs, "metrics.promql.max-points-per-ts", 11000, "Maximum number of points per time-series in a query-range request. "+
