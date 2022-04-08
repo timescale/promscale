@@ -71,18 +71,18 @@ func TestMain(m *testing.M) {
 
 /* Prev image is the db image with the old promscale extension. We do NOT test timescaleDB extension upgrades here. */
 func getDBImages(extensionState testhelpers.TestOptions) (prev string, clean string, err error) {
-	// using pg13 until we deal with the lack of "trusted" support in pg12
-	//if !extensionState.UsesPG12() {
-	//	//using the oldest supported version of PG seems sufficient.
-	//	//we don't want to use any features in a newer PG version that isn't available in an older one
-	//	//but migration code that works in an older PG version should generally work in a newer one.
-	//	panic("Only use pg12 for upgrade tests")
-	//}
 	// TODO: Extracting the pg version from the docker image name is a nasty hack. How can we avoid this?
 	dockerImageName := extensionState.GetDockerImageName()
 	pgVersion, err := extensionState.TryGetDockerImagePgVersion()
 	if err != nil {
 		panic("unable to get docker image version")
+	}
+
+	if pgVersion != "12" {
+		//using the oldest supported version of PG seems sufficient.
+		//we don't want to use any features in a newer PG version that isn't available in an older one
+		//but migration code that works in an older PG version should generally work in a newer one.
+		panic("Only use pg12 for upgrade tests")
 	}
 
 	//return "timescaledev/promscale-extension:0.1.2-ts2-pg" + pgVersion, dockerImageName, nil
