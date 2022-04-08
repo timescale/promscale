@@ -29,3 +29,7 @@ func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultSt
 func durationMilliseconds(d time.Duration) int64 {
 	return int64(d / (time.Millisecond / time.Nanosecond))
 }
+
+func NewEngineWithDefaults(logger log.Logger) (*promql.Engine, error) {
+	return NewEngine(logger, time.Minute*2, time.Minute*5, time.Minute*1, 50000000, map[string]struct{}{})
+}
