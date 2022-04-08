@@ -147,7 +147,7 @@ jobs:
 
     - name: Test ${{ matrix.test-setups.name }}
       env:
-        DOCKER_IMAGE:  ${{  needs.pick_docker_image.outputs.docker_image_13 }}
+        DOCKER_IMAGE:  ${{  needs.pick_docker_image.outputs.docker_image_12 }}
       run: go test -race -v -timeout=30m ./pkg/tests/upgrade_tests/ -timescale-docker-image=$DOCKER_IMAGE
 
   # Added to summarize the matrix
