@@ -77,8 +77,7 @@ jobs:
         - {name: "Singlenode (13)",          shortname: "singlenode-13",  tsdb: true,  multi: false, pg: 13}
         - {name: "Singlenode",               shortname: "singlenode-14",  tsdb: true,  multi: false, pg: 14}
         - {name: "Without TimescaleDB",      shortname: "no-timescaledb", tsdb: false, multi: false, pg: 14}
-        # TODO (mat) re-enable PG12 tests 
-        # - {name: "Singlenode (12)",          shortname: "singlenode-12",  tsdb: true,  multi: false, pg: 12}
+        - {name: "Singlenode (12)",          shortname: "singlenode-12",  tsdb: true,  multi: false, pg: 12}
         # TODO (james): Skipping multinode because tests are broken for now
         # - {name: "Multinode",                shortname: "multinode",      tsdb: true,  multi: true,  pg: 14}
     steps:
