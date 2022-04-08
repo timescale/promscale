@@ -48,6 +48,9 @@ func engineQueryFunc(engine *promscale_promql.Engine, q promscale_promql.Queryab
 	}
 }
 
+// Compile-time test to make sure that sizes of both vectors are the same.
+var _ = [1]bool{}[unsafe.Sizeof(promscale_promql.Vector{})-unsafe.Sizeof(prometheus_promql.Vector{})]
+
 // My guess is this should be way faster than looping through individual samples
 // and converting into Prometheus Vector type. This lets us convert the type with
 // very less processing.
@@ -59,7 +62,6 @@ type sender interface {
 	Send(alerts ...*notifier.Alert)
 }
 
-// sendAlerts implements the rules.NotifyFunc for a Notifier.
 func sendAlerts(s sender, externalURL string) rules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*rules.Alert) {
 		var res []*notifier.Alert
@@ -71,16 +73,14 @@ func sendAlerts(s sender, externalURL string) rules.NotifyFunc {
 				Annotations:  alert.Annotations,
 				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
 			}
-			if !alert.ResolvedAt.IsZero() {
-				a.EndsAt = alert.ResolvedAt
-			} else {
+			a.EndsAt = alert.ResolvedAt
+			if alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ValidUntil
 			}
 			res = append(res, a)
 		}
 
 		if len(alerts) > 0 {
-			fmt.Println("sending alerts")
 			s.Send(res...)
 		}
 	}

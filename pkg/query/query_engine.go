@@ -12,6 +12,13 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
+const (
+	DefaultQueryTimeout         = time.Minute * 2
+	DefaultLookBackDelta        = time.Minute * 5
+	DefaultSubqueryStepInterval = time.Minute
+	DefaultMaxSamples           = 50000000
+)
+
 func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultStepInterval time.Duration, maxSamples int64, enabledFeaturesMap map[string]struct{}) (*promql.Engine, error) {
 	engineOpts := promql.EngineOpts{
 		Logger:                   logger,
@@ -31,5 +38,5 @@ func durationMilliseconds(d time.Duration) int64 {
 }
 
 func NewEngineWithDefaults(logger log.Logger) (*promql.Engine, error) {
-	return NewEngine(logger, time.Minute*2, time.Minute*5, time.Minute*1, 50000000, map[string]struct{}{})
+	return NewEngine(logger, DefaultQueryTimeout, DefaultLookBackDelta, DefaultSubqueryStepInterval, DefaultMaxSamples, map[string]struct{}{})
 }

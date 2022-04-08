@@ -8,11 +8,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"strings"
-
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
+	"os"
+	"strings"
 )
 
 const PromNamespace = "promscale"
@@ -72,6 +73,18 @@ func GetEnvVarName(prefix, fName string) (envVar string) {
 	envVar = fmt.Sprintf("%s_%s", prefix, strings.ToUpper(fName))
 	envVar = strings.ReplaceAll(envVar, "-", "_")
 	return strings.ReplaceAll(envVar, ".", "_")
+}
+
+func LabelToPrompbLabels(l labels.Labels) []prompb.Label {
+	if len(l) == 0 {
+		return []prompb.Label{}
+	}
+	lbls := make([]prompb.Label, len(l))
+	for i := range l {
+		lbls[i].Name = l[i].Name
+		lbls[i].Value = l[i].Value
+	}
+	return lbls
 }
 
 func IsTimescaleDBInstalled(conn pgxconn.PgxConn) bool {

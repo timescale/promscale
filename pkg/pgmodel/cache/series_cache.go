@@ -251,7 +251,6 @@ func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model
 	if err != nil {
 		return nil, "", err
 	}
-
 	var series *model.Series
 	useByteAsStringNoCopy(builder.Bytes(), func(key string) {
 		series = t.loadSeries(key)
