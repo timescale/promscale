@@ -128,7 +128,6 @@ helm install --name my-release -f myvalues.yaml .
 | `connection.sslMode`              | SSL mode for connection                     | `require`                          |
 | `prometheus.port`                 | Port the connector Service accepts prometheus remote_write connections on | `9201`              |
 | `prometheus.annotations`          | Annotations to allow prometheus metrics collection. | `{ "prometheus.io/scrape": 'true', "prometheus.io/port": '9201', "prometheus.io/path": '/metrics'}` |
-| `openTelemetry.enabled`           | Enable OpenTelemetry tracing support in Promscale (in future releases tracing support will be enabled by default) | `false` |
 | `openTelemetry.port`              | Port the connector Service will accept otlp connections on | `9202`               |
 | `service.type`                    | Type of Service to be used                  | `ClusterIP`                        |
 | `service.annotations`             | Annotations to set to the Service           | `{}`                               |

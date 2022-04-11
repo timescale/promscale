@@ -39,15 +39,9 @@ spec:
         - image: {{ .Values.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           name: promscale-connector
-          {{- if or (.Values.openTelemetry.enabled) (.Values.extraArgs) }}
           args:
-          {{- if .Values.openTelemetry.enabled }}
-          - --enable-feature=tracing
-          - --otlp-grpc-server-listen-address=:9202
-          {{- end }}
           {{- with .Values.extraArgs }}
           {{ toYaml . | nindent 10 }}
-          {{- end }}
           {{- end }}
           {{- if .Values.extraEnv }}
           env:
@@ -67,10 +61,8 @@ spec:
           ports:
             - containerPort: 9201
               name: metrics-port
-          {{- if .Values.openTelemetry.enabled }}
             - containerPort: 9202
               name: otel-port
-          {{- end }}
       serviceAccountName: {{ template "promscale.fullname" . }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
