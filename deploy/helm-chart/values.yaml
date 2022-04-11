@@ -25,11 +25,8 @@ extraArgs: []
 # Environment variables that will be passed onto deployment pods
 extraEnv: []
 
-# Currently OpenTelemetry tracing support is in beta
-# so tracing features needs to be explicitly enabled.
+# OpenTelemetry ingest configuration
 openTelemetry:
-  # OpenTelemetry tracing is only enabled if below field is configured true
-  enabled: false
   port: 9202
 
 # selector used to provision your own Secret containing connection details

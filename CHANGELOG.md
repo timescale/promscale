@@ -23,7 +23,7 @@ We use the following categories for changes:
 - Additional dataset configuration options via `-startup.dataset.config` flag. Read more (here)[docs/dataset.md] [#1276]
 
 ### Changed
-- Enable tracing by default [#1213]
+- Enable tracing by default [#1213], [#1290]
 - The Promscale extension is now required, while the Timescaledb extension remains optional. The minimum Timescaledb version supported is now 2.6.1 [#1132], [#1297]
 - Disable running Promscale in HA and read-only simultaneously [#1254]
 - Metric tables and views are now owned by prom_admin [#1283]

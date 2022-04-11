@@ -25,9 +25,7 @@ spec:
     port: {{ .Values.prometheus.port }}
     targetPort: metrics-port
     protocol: TCP
-  {{- if .Values.openTelemetry.enabled }}
   - name: otel-port
     port: {{ .Values.openTelemetry.port }}
     targetPort: otel-port
     protocol: TCP
-  {{- end }}
