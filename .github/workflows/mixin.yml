@@ -10,6 +10,10 @@ on:
 env:
   golang-version: 1.18.0
 
+defaults:
+  run:
+    working-directory: docs/mixin
+
 jobs:
   check-mixin:
     runs-on: ubuntu-latest
@@ -31,9 +35,13 @@ jobs:
       run: |
         make generate-helm --always-make
         git diff --exit-code
+      working-directory: .
 
-    - name: download dashboard linter
-      run: go install -a github.com/grafana/dashboard-linter@latest
+    - name: download mixtool
+      run: go install -a github.com/monitoring-mixins/mixtool/cmd/mixtool@latest
+
+    - name: download jsonnetfmt
+      run: go install -a github.com/google/go-jsonnet/cmd/jsonnetfmt@latest
 
     - name: download promtool
       run: |
@@ -43,10 +51,16 @@ jobs:
     - name: download gojsontoyaml
       run: go install github.com/brancz/gojsontoyaml@latest
 
-    - name: check alerts
+    - name: lint
+      run: make lint
+      
+    - name: fmt
+      run: make fmt && git diff --exit-code
+
+    - name: build
+      run: make build
+
+    - name: test alerts
       run: |
         PATH="${PATH}:${GITHUB_WORKSPACE}"
-        make check-alerts
-
-    - name: check dashboards
-      run: make check-dashboards
+        make test

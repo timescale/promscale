@@ -19,5 +19,7 @@ go.sum @antekresic @paulfantom
 /pkg/tests/testdata/ @timescale/o11y-data-platform
 /pkg/tests/upgrade_tests/ @timescale/o11y-data-platform
 
+/docs/mixin @paulfantom 
+
 # helm and kubernetes related parts
 /deploy @cevian @paulfantom @JamesGuthrie
