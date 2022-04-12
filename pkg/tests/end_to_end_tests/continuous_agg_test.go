@@ -384,6 +384,8 @@ WITH (timescaledb.continuous) AS
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('cagg_schema', 'cagg', INTERVAL '180 days')")
 		require.NoError(t, err)
 
+		verifyRetentionPeriodWithSchema(t, db, "cagg_schema", "cagg", time.Hour*24*180)
+
 		caggHypertable := ""
 		err = db.QueryRow(context.Background(), "SELECT hypertable_relation FROM _prom_catalog.get_storage_hypertable_info('cagg_schema', 'cagg', true)").Scan(&caggHypertable)
 		require.NoError(t, err)
@@ -409,6 +411,10 @@ WITH (timescaledb.continuous) AS
 		err = db.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM public.show_chunks('%s', older_than => NOW())`, caggHypertable)).Scan(&cnt)
 		require.NoError(t, err)
 		require.Equal(t, 0, int(cnt), "Expected for cagg to have exactly 0 chunks since only data left in default retention period is too new to materialize")
+
+		_, err = db.Exec(context.Background(), `SELECT prom_api.reset_metric_retention_period('cagg_schema', 'cagg')`)
+		require.NoError(t, err)
+		verifyRetentionPeriodWithSchema(t, db, "cagg_schema", "cagg", time.Hour*24*90)
 	})
 }
 
@@ -475,5 +481,9 @@ WITH (timescaledb.continuous) AS
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('public', 'tw_1hour', INTERVAL '182 days')")
 		require.NoError(t, err)
 		verifyRetentionPeriodWithSchema(t, db, "public", "tw_1hour", time.Hour*24*182)
+
+		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('public', 'tw_1hour')")
+		require.NoError(t, err)
+		verifyRetentionPeriodWithSchema(t, db, "public", "tw_1hour", time.Hour*24*90)
 	})
 }
