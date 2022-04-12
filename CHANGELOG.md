@@ -33,6 +33,7 @@ We use the following categories for changes:
 - Log warning when failing to write response to remote read requests [#1180]
 - Fix Promscale running even when some component may fail to start [#1217]
 - Fix `promscale_ingest_max_sent_timestamp_milliseconds` metric for tracing [#1270]
+- Fix `prom_api.reset_metric_retention_period` on two-step continuous aggregates [#1294]
 
 ### Removed
 - Remove deprecated flags. More info can be found [here](docs/configuration.md#old-flag-removal-in-version-0.11.0) [#1229]
