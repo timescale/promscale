@@ -48,7 +48,7 @@ var (
 	PgVersionNumRange       = ">=12.x <15.x" // Corresponds to range within pg 12.0 to pg 14.99
 	pgAcceptedVersionsRange = semver.MustParseRange(PgVersionNumRange)
 
-	TimescaleVersionRangeString = ">=2.6.0 <2.99.0"
+	TimescaleVersionRangeString = ">=2.6.1 <2.99.0"
 	TimescaleVersionRange       = semver.MustParseRange(TimescaleVersionRangeString)
 
 	// ExtVersionRangeString is a range of required promscale extension versions
