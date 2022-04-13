@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.17.7-alpine AS builder
+FROM golang:1.18.1-alpine AS builder
 COPY ./.git build/.git
 COPY ./pkg  build/pkg
 COPY ./cmd  build/cmd

@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:1.17.7-alpine AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:1.18.1-alpine AS builder
 RUN apk update && apk add --no-cache git
 WORKDIR /promscale
 COPY ./go.mod ./go.sum ./
