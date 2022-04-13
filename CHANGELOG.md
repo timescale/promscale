@@ -24,7 +24,7 @@ We use the following categories for changes:
 
 ### Changed
 - Enable tracing by default [#1213]
-- The Promscale extension is now required, while the Timescaledb extension remains optional. The minimum Timescaledb version supported is now 2.6.0 [#1132]
+- The Promscale extension is now required, while the Timescaledb extension remains optional. The minimum Timescaledb version supported is now 2.6.1 [#1132], [#1297]
 - Disable running Promscale in HA and read-only simultaneously [#1254]
 - Metric tables and views are now owned by prom_admin [#1283]
 
