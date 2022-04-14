@@ -31,7 +31,7 @@ type Cfg struct {
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
-	SCache     cache.SeriesCache
+	sCache     cache.SeriesCache
 	dispatcher model.Dispatcher
 	tWriter    trace.Writer
 }
@@ -44,7 +44,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 		return nil, err
 	}
 	return &DBIngestor{
-		SCache:     sCache,
+		sCache:     sCache,
 		dispatcher: dispatcher,
 		tWriter:    trace.NewWriter(conn),
 	}, nil
@@ -184,7 +184,7 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 		}
 		// Normalize and canonicalize t.Labels.
 		// After this point t.Labels should never be used again.
-		series, metricName, err = ingestor.SCache.GetSeriesFromProtos(ts.Labels)
+		series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
 		if err != nil {
 			return 0, err
 		}
@@ -256,6 +256,10 @@ func (ingestor *DBIngestor) ingestMetadata(ctx context.Context, metadata []promp
 
 func (ingestor *DBIngestor) Dispatcher() model.Dispatcher {
 	return ingestor.dispatcher
+}
+
+func (ingestor *DBIngestor) SeriesCache() cache.SeriesCache {
+	return ingestor.sCache
 }
 
 // Parts of metric creation not needed to insert data

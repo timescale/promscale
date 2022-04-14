@@ -15,14 +15,15 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/query"
 )
 
-func QueryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.Handler {
-	hf := corsWrapper(conf, queryRange(conf, queryEngine, queryable, updateMetrics))
+func QueryRange(conf *Config, promqlConf *query.Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.Handler {
+	hf := corsWrapper(conf, queryRange(promqlConf, queryEngine, queryable, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
+func queryRange(promqlConf *query.Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
 		begin := time.Now()
@@ -64,9 +65,9 @@ func queryRange(conf *Config, queryEngine *promql.Engine, queryable promql.Query
 
 		// For safety, limit the number of returned points per timeseries.
 		// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-		if int64(end.Sub(start)/step) > conf.MaxPointsPerTs {
+		if int64(end.Sub(start)/step) > promqlConf.MaxPointsPerTs {
 			err := fmt.Errorf("exceeded maximum resolution of %d points per timeseries. Try decreasing the query resolution (?step=XX) or "+
-				"increasing the 'promql-max-points-per-ts' limit", conf.MaxPointsPerTs)
+				"increasing the 'promql-max-points-per-ts' limit", promqlConf.MaxPointsPerTs)
 			log.Info("msg", "Query bad request:"+err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return

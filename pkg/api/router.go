@@ -28,7 +28,7 @@ import (
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
-func GenerateRouter(apiConf *Config, client *pgclient.Client) (*mux.Router, error) {
+func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -66,16 +66,13 @@ func GenerateRouter(apiConf *Config, client *pgclient.Client) (*mux.Router, erro
 	router.Path("/delete_series").Methods(http.MethodPut, http.MethodPost).HandlerFunc(deleteHandler)
 
 	queryable := client.Queryable()
-	queryEngine, err := query.NewEngine(log.GetLogger(), apiConf.MaxQueryTimeout, apiConf.LookBackDelta, apiConf.SubQueryStepInterval, apiConf.MaxSamples, apiConf.EnabledFeatureMap)
-	if err != nil {
-		return nil, fmt.Errorf("creating query-engine: %w", err)
-	}
+	queryEngine := client.QueryEngine()
 
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
 	queryHandler := timeHandler(metrics.HTTPRequestDuration, "query", Query(apiConf, queryEngine, queryable, updateQueryMetrics))
 	apiV1.Path("/query").Methods(http.MethodGet, http.MethodPost).HandlerFunc(queryHandler)
 
-	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, queryEngine, queryable, updateQueryMetrics))
+	queryRangeHandler := timeHandler(metrics.HTTPRequestDuration, "query_range", QueryRange(apiConf, promqlConf, queryEngine, queryable, updateQueryMetrics))
 	apiV1.Path("/query_range").Methods(http.MethodGet, http.MethodPost).HandlerFunc(queryRangeHandler)
 
 	exemplarQueryHandler := timeHandler(metrics.HTTPRequestDuration, "query_exemplar", QueryExemplar(apiConf, queryable, updateQueryMetrics))

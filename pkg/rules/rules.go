@@ -18,7 +18,6 @@ import (
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
-	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/rules/adapters"
 )
 
@@ -43,11 +42,6 @@ type manager struct {
 }
 
 func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, opts *Options) (*manager, error) {
-	promqlEngine, err := query.NewEngineWithDefaults(log.GetLogger())
-	if err != nil {
-		return nil, fmt.Errorf("error creating PromQL engine with defaults: %w", err)
-	}
-
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
@@ -69,7 +63,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		ExternalURL:     parsedUrl,
 		Logger:          log.GetLogger(),
 		NotifyFunc:      sendAlerts(notifierManager, parsedUrl.String()),
-		QueryFunc:       engineQueryFunc(promqlEngine, client.Queryable()),
+		QueryFunc:       engineQueryFunc(client.QueryEngine(), client.Queryable()),
 		Registerer:      r,
 		OutageTolerance: opts.OutageTolerance,
 		ForGracePeriod:  opts.ForGracePeriod,

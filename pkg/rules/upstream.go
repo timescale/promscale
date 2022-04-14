@@ -49,13 +49,13 @@ func engineQueryFunc(engine *promscale_promql.Engine, q promscale_promql.Queryab
 }
 
 // Compile-time test to make sure that sizes of both vectors are the same.
-var _ = [1]bool{}[unsafe.Sizeof(promscale_promql.Vector{})-unsafe.Sizeof(prometheus_promql.Vector{})]
+var _ = [1]bool{}[unsafe.Sizeof(promscale_promql.Vector{})-unsafe.Sizeof(prometheus_promql.Vector{})] // #nosec
 
 // My guess is this should be way faster than looping through individual samples
 // and converting into Prometheus Vector type. This lets us convert the type with
 // very less processing.
 func yoloVector(v *promscale_promql.Vector) prometheus_promql.Vector {
-	return *(*prometheus_promql.Vector)(unsafe.Pointer(v))
+	return *(*prometheus_promql.Vector)(unsafe.Pointer(v)) // #nosec
 }
 
 type sender interface {

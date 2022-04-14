@@ -176,6 +176,9 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}
+	if err = client.InitPromQLEngine(&cfg.PromQLCfg); err != nil {
+		return nil, fmt.Errorf("initializing PromQL Engine: %w", err)
+	}
 
 	return client, nil
 }

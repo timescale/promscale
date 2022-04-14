@@ -263,7 +263,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			}
 			i := DBIngestor{
 				dispatcher: &inserter,
-				SCache:     sCache,
+				sCache:     sCache,
 			}
 
 			wr := NewWriteRequest()

@@ -24,6 +24,7 @@ type ingestAdapter struct {
 	ingestor *ingestor.DBIngestor
 }
 
+// NewIngestAdapter acts as an adapter to make Promscale's DBIngestor compatible with storage.Appendable
 func NewIngestAdapter(ingestor *ingestor.DBIngestor) *ingestAdapter {
 	return &ingestAdapter{ingestor}
 }
@@ -41,9 +42,9 @@ func (a ingestAdapter) Appender(_ context.Context) storage.Appender {
 }
 
 func (app *appenderAdapter) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
-	series, metricName, err := app.ingestor.SCache.GetSeriesFromProtos(util.LabelToPrompbLabels(l))
+	series, metricName, err := app.ingestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
 	if err != nil {
-		return 0, fmt.Errorf("error creating series: %w", err)
+		return 0, fmt.Errorf("get series from protos: %w", err)
 	}
 
 	samples := model.NewPromSamples(series, []prompb.Sample{{Timestamp: t, Value: v}})
@@ -69,6 +70,6 @@ func (app *appenderAdapter) Commit() error {
 }
 
 func (app *appenderAdapter) Rollback() error {
-	app.data = nil
+	app.data = map[string][]model.Insertable{}
 	return nil
 }

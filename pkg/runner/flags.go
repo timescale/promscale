@@ -17,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
@@ -32,6 +33,7 @@ type Config struct {
 	APICfg                      api.Config
 	LimitsCfg                   limits.Config
 	TenancyCfg                  tenancy.Config
+	PromQLCfg                   query.Config
 	ConfigFile                  string
 	DatasetConfig               string
 	TLSCertFile                 string
@@ -123,6 +125,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	api.ParseFlags(fs, &cfg.APICfg)
 	limits.ParseFlags(fs, &cfg.LimitsCfg)
 	tenancy.ParseFlags(fs, &cfg.TenancyCfg)
+	query.ParseFlags(fs, &cfg.PromQLCfg)
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
@@ -223,6 +226,9 @@ func validate(cfg *Config) error {
 	}
 	if err := pgclient.Validate(&cfg.PgmodelCfg, cfg.LimitsCfg); err != nil {
 		return fmt.Errorf("error validating client configuration: %w", err)
+	}
+	if err := query.Validate(&cfg.PromQLCfg); err != nil {
+		return fmt.Errorf("error validating PromQL configuration: %w", err)
 	}
 	if err := tenancy.Validate(&cfg.TenancyCfg); err != nil {
 		return fmt.Errorf("error validating multi-tenancy configuration: %w", err)
