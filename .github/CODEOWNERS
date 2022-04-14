@@ -1,31 +1,23 @@
-* @timescale/o11y-eng
+* @timescale/o11y-applications
 
 # sql related stuff
-*.sql @jgpruitt
-
-/cmd/prom-migrator @Harkishen-Singh
+*.sql @timescale/o11y-data-platform
 
 # Go deps
-go.mod @antekresic
-go.sum @antekresic
+go.mod @antekresic @paulfantom
+go.sum @antekresic @paulfantom
+
+# CI system and repository configuration
+.github/ @cevian @paulfantom
 
 # Go packages
-/pkg @niksajakovljevic
 /pkg/api @antekresic @Harkishen-Singh
-/pkg/ewma @Harkishen-Singh
-/pkg/ha @antekresic
-/pkg/internal @antekresic
-/pkg/migrations/ @jgpruitt
-/pkg/migration-tool @Harkishen-Singh
-/pkg/pgmodel/ingestor @niksajakovljevic @antekresic @Harkishen-Singh
-/pkg/pgmodel/querier @JamesGuthrie
-/pkg/promql @Harkishen-Singh
-/pkg/runner @antekresic
-/pkg/telemetry @Harkishen-Singh
-/pkg/tenancy @Harkishen-Singh
-/pkg/tests/test_migrations/ @jgpruitt
-/pkg/tests/testdata/ @jgpruitt
-/pkg/tests/upgrade_tests/ @jgpruitt
+/pkg/migrations/ @timescale/o11y-data-platform
+/pkg/migration-tool @timescale/o11y-applications
+/pkg/pgmodel/querier @timescale/o11y-data-platform
+/pkg/tests/test_migrations/ @timescale/o11y-data-platform
+/pkg/tests/testdata/ @timescale/o11y-data-platform
+/pkg/tests/upgrade_tests/ @timescale/o11y-data-platform
 
 # helm and kubernetes related parts
-/deploy @cevian @VineethReddy02 @paulfantom @JamesGuthrie
+/deploy @cevian @paulfantom @JamesGuthrie
