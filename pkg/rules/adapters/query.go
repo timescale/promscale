@@ -13,6 +13,7 @@ type queryAdapter struct {
 	queryable promql.Queryable
 }
 
+// NewQueryAdapter acts as an adapter to make Promscale's Queryable compatible with storage.Queryable
 func NewQueryAdapter(q promql.Queryable) *queryAdapter {
 	return &queryAdapter{q}
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -278,8 +279,13 @@ func dateHeadersMatch(expected, actual []string) bool {
 
 func defaultAPIConfig() *api.Config {
 	return &api.Config{
-		AllowedOrigin:        regexp.MustCompile(".*"),
-		TelemetryPath:        "/metrics",
+		AllowedOrigin: regexp.MustCompile(".*"),
+		TelemetryPath: "/metrics",
+	}
+}
+
+func defaultQueryConfig() *query.Config {
+	return &query.Config{
 		MaxQueryTimeout:      time.Minute * 2,
 		SubQueryStepInterval: time.Minute,
 		EnabledFeatureMap:    map[string]struct{}{"promql-at-modifier": {}, "promql-negative-offset": {}},
@@ -311,7 +317,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient")
 	}
 
-	router, err := api.GenerateRouter(cfg, pgClient)
+	router, err := api.GenerateRouter(cfg, defaultQueryConfig(), pgClient)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}

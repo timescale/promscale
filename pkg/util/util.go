@@ -8,12 +8,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
-	"os"
-	"strings"
 )
 
 const PromNamespace = "promscale"

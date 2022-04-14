@@ -37,6 +37,7 @@ type Client struct {
 	QuerierConnection pgxconn.PgxConn
 	ingestor          *ingestor.DBIngestor
 	querier           querier.Querier
+	promqlEngine      *promql.Engine
 	healthCheck       health.HealthCheckerFn
 	queryable         promql.Queryable
 	ConnectionStr     string
@@ -173,6 +174,19 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 
 	InitClientMetrics(client)
 	return client, nil
+}
+
+func (c *Client) InitPromQLEngine(cfg *query.Config) error {
+	engine, err := query.NewEngine(log.GetLogger(), cfg.MaxQueryTimeout, cfg.LookBackDelta, cfg.SubQueryStepInterval, cfg.MaxSamples, cfg.EnabledFeatureMap)
+	if err != nil {
+		return fmt.Errorf("error creating PromQL engine: %w", err)
+	}
+	c.promqlEngine = engine
+	return nil
+}
+
+func (c *Client) QueryEngine() *promql.Engine {
+	return c.promqlEngine
 }
 
 // Close closes the client and performs cleanup
