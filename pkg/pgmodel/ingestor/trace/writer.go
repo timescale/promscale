@@ -43,7 +43,7 @@ const (
 var (
 	linkTableColumns  = []string{"trace_id", "span_id", "span_start_time", "linked_trace_id", "linked_span_id", "trace_state", "tags", "dropped_tags_count", "link_nbr"}
 	eventTableColumns = []string{"time", "trace_id", "span_id", "name", "event_nbr", "tags", "dropped_tags_count"}
-	spanTableColumns  = []string{"trace_id", "span_id", "parent_span_id", "operation_id", "start_time", "end_time", "trace_state", "span_tags", "dropped_tags_count",
+	spanTableColumns  = []string{"trace_id", "span_id", "parent_span_id", "operation_id", "start_time", "end_time", "duration_ms", "trace_state", "span_tags", "dropped_tags_count",
 		"event_time", "dropped_events_count", "dropped_link_count", "status_code", "status_message", "instrumentation_lib_id", "resource_tags", "resource_dropped_tags_count", "resource_schema_url_id"}
 )
 
@@ -79,9 +79,15 @@ func RegisterTelemetryMetrics(t telemetry.Engine) error {
 }
 
 func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
+	if spanID.Status != pgtype.Present {
+		return fmt.Errorf("spanID must be set")
+	}
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
 		linkedSpanID := getSpanID(link.SpanID().Bytes())
+		if linkedSpanID.Status != pgtype.Present {
+			return fmt.Errorf("linkedSpanID must be set")
+		}
 
 		jsonTags, err := tagsBatch.GetTagMapJSON(link.Attributes().AsRaw(), LinkTagType)
 		if err != nil {
@@ -95,6 +101,9 @@ func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagB
 }
 
 func (t *traceWriterImpl) addSpanEvents(eventRows *[][]interface{}, tagsBatch tagBatch, events pdata.SpanEventSlice, traceID pgtype.UUID, spanID pgtype.Int8) error {
+	if spanID.Status != pgtype.Present {
+		return fmt.Errorf("spanID must be set")
+	}
 	for i := 0; i < events.Len(); i++ {
 		event := events.At(i)
 		jsonTags, err := tagsBatch.GetTagMapJSON(event.Attributes().AsRaw(), EventTagType)
@@ -256,6 +265,9 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 				span := spans.At(k)
 				traceID := TraceIDToUUID(span.TraceID().Bytes())
 				spanID := getSpanID(span.SpanID().Bytes())
+				if spanID.Status != pgtype.Present {
+					return fmt.Errorf("spanID must be set")
+				}
 				parentSpanID := getSpanID(span.ParentSpanID().Bytes())
 				spanName := span.Name()
 				spanKind := span.Kind().String()
@@ -296,7 +308,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 				}
 
 				spanRows = append(spanRows, []interface{}{traceID, spanID, parentSpanID,
-					operationID, start, end, getTraceStateValue(span.TraceState()), jsonTags, span.DroppedAttributesCount(), eventTimeRange, span.DroppedEventsCount(),
+					operationID, start, end, float64(end.Sub(start).Nanoseconds()) / float64(1e6), getTraceStateValue(span.TraceState()), jsonTags, span.DroppedAttributesCount(), eventTimeRange, span.DroppedEventsCount(),
 					span.DroppedLinksCount(), span.Status().Code().String(), span.Status().Message(), instLibID, jsonResourceTags, 0, rSchemaURLID})
 
 			}
