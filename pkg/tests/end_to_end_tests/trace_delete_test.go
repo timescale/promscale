@@ -36,7 +36,7 @@ func TestDeleteSpans(t *testing.T) {
 
 			INSERT INTO _ps_trace.span
 			(
-				trace_id, span_id, parent_span_id, operation_id, start_time, end_time, span_tags, status_code,
+				trace_id, span_id, parent_span_id, operation_id, start_time, end_time, duration_ms, span_tags, status_code,
 				resource_tags, resource_schema_url_id
 			)
 			VALUES
@@ -47,6 +47,7 @@ func TestDeleteSpans(t *testing.T) {
 				-1,
 				now(),
 				now(),
+				0,
 				'{}'::jsonb::tag_map,
 				'STATUS_CODE_OK',
 				'{}'::jsonb::tag_map,

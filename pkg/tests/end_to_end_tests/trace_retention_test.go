@@ -57,7 +57,7 @@ func TestTraceDropChunk(t *testing.T) {
 		_, err := db.Exec(ctx, `
 			INSERT INTO _ps_trace.span
 			(
-				trace_id, span_id, parent_span_id, operation_id, start_time, end_time, span_tags, status_code,
+				trace_id, span_id, parent_span_id, operation_id, start_time, end_time, duration_ms, span_tags, status_code,
 				resource_tags, resource_schema_url_id
 			)
 			VALUES
@@ -68,6 +68,7 @@ func TestTraceDropChunk(t *testing.T) {
 				-1,
 				$1,
 				$2,
+				$3,
 				'{}'::jsonb::tag_map,
 				'STATUS_CODE_OK',
 				'{}'::jsonb::tag_map,
@@ -80,12 +81,13 @@ func TestTraceDropChunk(t *testing.T) {
 				-1,
 				now(),
 				now(),
+				0,
 				'{}'::jsonb::tag_map,
 				'STATUS_CODE_OK',
 				'{}'::jsonb::tag_map,
 				-1
 			);
-		`, spanStart, spanEnd)
+		`, spanStart, spanEnd, spanEnd.Sub(spanStart).Milliseconds())
 		require.NoError(t, err, "Failed to insert span test data.")
 
 		_, err = db.Exec(ctx, `
@@ -191,7 +193,7 @@ func TestTraceDropDataWithoutTimescaleDB(t *testing.T) {
 		_, err := db.Exec(ctx, `
 			INSERT INTO _ps_trace.span
 			(
-				trace_id, span_id, parent_span_id, operation_id, start_time, end_time, span_tags, status_code,
+				trace_id, span_id, parent_span_id, operation_id, start_time, end_time, duration_ms, span_tags, status_code,
 				resource_tags, resource_schema_url_id
 			)
 			VALUES
@@ -202,6 +204,7 @@ func TestTraceDropDataWithoutTimescaleDB(t *testing.T) {
 				-1,
 				$1,
 				$2,
+				$3,
 				'{}'::jsonb::tag_map,
 				'STATUS_CODE_OK',
 				'{}'::jsonb::tag_map,
@@ -214,12 +217,13 @@ func TestTraceDropDataWithoutTimescaleDB(t *testing.T) {
 				-1,
 				now(),
 				now(),
+				0,
 				'{}'::jsonb::tag_map,
 				'STATUS_CODE_OK',
 				'{}'::jsonb::tag_map,
 				-1
 			);
-		`, spanStart, spanEnd)
+		`, spanStart, spanEnd, spanEnd.Sub(spanStart).Milliseconds())
 		require.NoError(t, err, "Failed to insert span test data.")
 
 		_, err = db.Exec(ctx, `
