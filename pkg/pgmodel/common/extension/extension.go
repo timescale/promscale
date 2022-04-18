@@ -52,7 +52,7 @@ func InstallUpgradeTimescaleDBExtensions(connstr string, extOptions ExtensionMig
 }
 
 func InstallUpgradePromscaleExtensions(db *pgx.Conn, extOptions ExtensionMigrateOptions) error {
-	err := MigrateExtension(db, "promscale", schema.PromExt, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
+	err := MigrateExtension(db, "promscale", schema.Public, version.ExtVersionRange, version.ExtVersionRangeString, extOptions)
 	if err != nil {
 		log.Warn("msg", fmt.Sprintf("could not install promscale: %v. continuing without extension", err))
 	}
