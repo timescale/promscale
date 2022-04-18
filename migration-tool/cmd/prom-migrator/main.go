@@ -17,11 +17,11 @@ import (
 	"github.com/inhies/go-bytesize"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	plan "github.com/timescale/promscale/migration-tool/pkg/planner"
+	"github.com/timescale/promscale/migration-tool/pkg/reader"
+	"github.com/timescale/promscale/migration-tool/pkg/utils"
+	"github.com/timescale/promscale/migration-tool/pkg/writer"
 	"github.com/timescale/promscale/pkg/log"
-	plan "github.com/timescale/promscale/pkg/migration-tool/planner"
-	"github.com/timescale/promscale/pkg/migration-tool/reader"
-	"github.com/timescale/promscale/pkg/migration-tool/utils"
-	"github.com/timescale/promscale/pkg/migration-tool/writer"
 	"github.com/timescale/promscale/pkg/version"
 )
 

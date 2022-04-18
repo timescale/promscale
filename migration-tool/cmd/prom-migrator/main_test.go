@@ -13,7 +13,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
-	"github.com/timescale/promscale/pkg/migration-tool/utils"
+	"github.com/timescale/promscale/migration-tool/pkg/utils"
 )
 
 func getReaderLabelsMatcher(matcherType labels.MatchType, labelValue string) []*labels.Matcher {

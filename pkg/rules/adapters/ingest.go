@@ -62,6 +62,12 @@ func (app *appenderAdapter) AppendExemplar(_ storage.SeriesRef, l labels.Labels,
 }
 
 func (app *appenderAdapter) Commit() error {
+	// Note: InsertTs does 2 things:
+	// 1. Ingest series
+	// 2. Ingest samples
+	//
+	// An error might occur while ingesting samples, so Prometheus will call the app.Rollback(). Do note that we cannot
+	// rollback the ingested series, rather only ingested samples since they were the last step that created the error.
 	numInsertablesIngested, err := app.ingestor.Dispatcher().InsertTs(context.Background(), model.Data{Rows: app.data, ReceivedTime: time.Now()})
 	if err == nil {
 		samplesIngested.Add(float64(numInsertablesIngested))
@@ -71,5 +77,6 @@ func (app *appenderAdapter) Commit() error {
 
 func (app *appenderAdapter) Rollback() error {
 	app.data = map[string][]model.Insertable{}
+	app.ingestor = nil
 	return nil
 }

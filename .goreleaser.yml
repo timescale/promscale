@@ -18,7 +18,8 @@ builds:
     - -s -w -X github.com/timescale/promscale/pkg/version.CommitHash={{.Commit}} -X github.com/timescale/promscale/pkg/version.Branch={{.Branch}} -X github.com/timescale/promscale/pkg/telemetry.BuildPlatform=goreleaser
 - env:
   - CGO_ENABLED=0
-  main: ./cmd/prom-migrator/
+  main: ./cmd/prom-migrator
+  dir: migration-tool
   id: prom-migrator
   binary: prom-migrator
 
