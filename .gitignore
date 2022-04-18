@@ -1,6 +1,7 @@
 *~
 /promscale*
 /prom-migrator*
+/migration-tool/prom-migrator*
 /cmd/promscale/promscale
 /cmd/prom-migrator/prom-migrator
 /dist

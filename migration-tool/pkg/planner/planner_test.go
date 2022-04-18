@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/migration-tool/utils"
+	"github.com/timescale/promscale/migration-tool/pkg/utils"
 )
 
 var slabSizeLimit int64 = utils.Megabyte * 500

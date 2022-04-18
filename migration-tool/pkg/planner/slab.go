@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/schollz/progressbar/v3"
-	"github.com/timescale/promscale/pkg/migration-tool/utils"
+	"github.com/timescale/promscale/migration-tool/pkg/utils"
 )
 
 var slabPool = sync.Pool{New: func() interface{} { return new(Slab) }}

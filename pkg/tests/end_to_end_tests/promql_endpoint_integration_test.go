@@ -312,12 +312,16 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 	}
 
 	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
-
 	if err != nil {
 		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient")
 	}
 
-	router, err := api.GenerateRouter(cfg, defaultQueryConfig(), pgClient)
+	qryCfg := defaultQueryConfig()
+	if err = pgClient.InitPromQLEngine(qryCfg); err != nil {
+		return nil, nil, fmt.Errorf("init promql engine: %w", err)
+	}
+
+	router, err := api.GenerateRouter(cfg, qryCfg, pgClient)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
