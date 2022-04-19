@@ -21,7 +21,7 @@ The instructions in this section use [tobs](https://github.com/timescale/tobs). 
 First, install tobs:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSLf  https://tsdb.co/install-tobs-sh |sh
+curl --proto '=https' -A 'tobs' --tlsv1.2 -sSLf  https://tsdb.co/install-tobs-sh |sh
 ```
 
 Once installed make sure tobs, the executable, is in your path. When you install it you’ll see some output asking you to copy the file to your system bin folder or to add it to your path. This is important because if you installed tobs in the past you may run the older version without noticing which doesn’t include tracing support. To check which version of tobs you’re running use the following command:
