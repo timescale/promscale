@@ -80,14 +80,14 @@ func getMetricsDefaultCompressionSetting(t testing.TB, conn *pgx.Conn) (compress
 	return compressionSetting
 }
 func getMetricsDefaultHALeaseRefresh(t testing.TB, conn *pgx.Conn) (haRefresh time.Duration) {
-	err := conn.QueryRow(context.Background(), "SELECT value::interval from _prom_catalog.default where key = 'ha_lease_refresh' LIMIT 1").Scan(&haRefresh)
+	err := conn.QueryRow(context.Background(), "SELECT _prom_catalog.get_default_value('ha_lease_refresh')::interval LIMIT 1").Scan(&haRefresh)
 	if err != nil {
 		t.Fatal("error getting default metric HA lease refresh duration", err)
 	}
 	return haRefresh
 }
 func getMetricsDefaultHALeaseTimeout(t testing.TB, conn *pgx.Conn) (haTimeout time.Duration) {
-	err := conn.QueryRow(context.Background(), "SELECT value::interval from _prom_catalog.default where key = 'ha_lease_timeout' LIMIT 1").Scan(&haTimeout)
+	err := conn.QueryRow(context.Background(), "SELECT _prom_catalog.get_default_value('ha_lease_timeout')::interval LIMIT 1").Scan(&haTimeout)
 	if err != nil {
 		t.Fatal("error getting default metric HA lease timeout duration", err)
 	}

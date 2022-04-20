@@ -2,9 +2,10 @@ package database
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/util"
-	"strings"
 )
 
 var (
@@ -89,7 +90,7 @@ var metrics = []metricQueryWrap{
 				Help:      "Compression status in TimescaleDB.",
 			},
 		),
-		query: `select (case when (value = 'true') then 1 else 0 end) from _prom_catalog.default where key = 'metric_compression'`,
+		query: `select (case when (value = 'true') then 1 else 0 end) from _prom_catalog.get_default_value('metric_compression')`,
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
