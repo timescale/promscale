@@ -20,18 +20,12 @@ const (
 )
 
 var (
-	setDefaultMetricChunkIntervalSQL = "SELECT prom_api.set_default_chunk_interval($1)"
-	setDefaultMetricCompressionSQL   = "SELECT prom_api.set_default_compression_setting($1)"
-	// TODO: Add proper SQL function for setting this.
-	setDefaultMetricHAReleaseRefreshSQL = `INSERT INTO _prom_catalog.default(key, value)
-		VALUES ('ha_lease_refresh', $1::text)
-		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
-	// TODO: Add proper SQL function for setting this.
-	setDefaultMetricHAReleaseTimeoutSQL = `INSERT INTO _prom_catalog.default(key, value)
-		VALUES ('ha_lease_timeout', $1::text)
-		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
-	setDefaultMetricRetentionPeriodSQL = "SELECT prom_api.set_default_retention_period($1)"
-	setDefaultTraceRetentionPeriodSQL  = "SELECT ps_trace.set_trace_retention_period($1)"
+	setDefaultMetricChunkIntervalSQL    = "SELECT prom_api.set_default_chunk_interval($1)"
+	setDefaultMetricCompressionSQL      = "SELECT prom_api.set_default_compression_setting($1)"
+	setDefaultMetricHAReleaseRefreshSQL = `SELECT _prom_catalog.set_default_value('ha_lease_refresh', $1::text)`
+	setDefaultMetricHAReleaseTimeoutSQL = `SELECT _prom_catalog.set_default_value('ha_lease_timeout', $1::text)`
+	setDefaultMetricRetentionPeriodSQL  = "SELECT prom_api.set_default_retention_period($1)"
+	setDefaultTraceRetentionPeriodSQL   = "SELECT ps_trace.set_trace_retention_period($1)"
 
 	defaultMetricCompressionVar = defaultMetricCompression
 )
