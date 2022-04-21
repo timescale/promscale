@@ -6,6 +6,7 @@
 [![GoDoc](https://godoc.org/github.com/timescale/promscale?status.svg)](https://pkg.go.dev/github.com/timescale/promscale)
 
 - **[Website](https://www.timescale.com/promscale)**
+- **[Docs](https://docs.timescale.com/promscale/latest/)**
 - **[Slack Community](https://timescaledb.slack.com/)** (join the #promscale channel) 
 - **[Forum](https://www.timescale.com/forum/c/promscale-and-observability)**
 - **[Blog](https://blog.timescale.com/tag/observability/)** 
