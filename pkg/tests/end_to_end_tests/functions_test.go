@@ -256,7 +256,7 @@ func TestSQLJsonLabelArray(t *testing.T) {
 					}
 
 					var seriesIDKeyVal int
-					err = dbWriter.QueryRow(context.Background(), "SELECT series_id FROM get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
+					err = dbWriter.QueryRow(context.Background(), "SELECT series_id FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, $2, $3)", metricName, keys, values).Scan(&seriesIDKeyVal)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -340,12 +340,12 @@ func TestExtensionFunctions(t *testing.T) {
 		//}
 
 		functions := []string{
-			"label_jsonb_each_text",
-			"label_unnest",
-			"label_find_key_equal",
-			"label_find_key_not_equal",
-			"label_find_key_regex",
-			"label_find_key_not_regex",
+			"_prom_catalog.label_jsonb_each_text",
+			"_prom_catalog.label_unnest",
+			"_prom_catalog.label_find_key_equal",
+			"_prom_catalog.label_find_key_not_equal",
+			"_prom_catalog.label_find_key_regex",
+			"_prom_catalog.label_find_key_not_regex",
 		}
 		extSchema := "_prom_catalog"
 		for _, fn := range functions {
@@ -376,10 +376,10 @@ func TestExtensionFunctions(t *testing.T) {
 			{"ps_tag", "==(text, text)"},
 			{"ps_tag", "==~(text, text)"},
 			{"ps_tag", "@?(text, jsonpath)"},
-			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_regexp_matches)"},
-			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_regexp_not_matches)"},
-			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_equals)"},
-			{"_prom_catalog", "?(prom_api.label_array, ps_tag.tag_op_not_equals)"},
+			{"prom_api", "?(prom_api.label_array, ps_tag.tag_op_regexp_matches)"},
+			{"prom_api", "?(prom_api.label_array, ps_tag.tag_op_regexp_not_matches)"},
+			{"prom_api", "?(prom_api.label_array, ps_tag.tag_op_equals)"},
+			{"prom_api", "?(prom_api.label_array, ps_tag.tag_op_not_equals)"},
 			{"prom_api", "?(prom_api.label_array, prom_api.matcher_positive)"},
 			{"prom_api", "?(prom_api.label_array, prom_api.matcher_negative)"},
 			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_jsonb_path_exists)"},
@@ -439,17 +439,17 @@ func TestExtensionGapfillDelta(t *testing.T) {
 		}
 		var res string
 		err = db.QueryRow(context.Background(),
-			"SELECT prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, NULL, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
+			"SELECT _prom_ext.prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, NULL, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
 		if !(err.Error() == "ERROR: sample_time is null (SQLSTATE XX000)" || err.Error() == `ERROR: NULL value for non-nullable argument "time" (SQLSTATE XX000)`) {
 			t.Error(err)
 		}
 		err = db.QueryRow(context.Background(),
-			"SELECT prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, '2020-01-02 15:00:00 UTC'::TIMESTAMPTZ, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
+			"SELECT _prom_ext.prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, '2020-01-02 15:00:00 UTC'::TIMESTAMPTZ, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
 		if err.Error() != "ERROR: input time less than lowest time (SQLSTATE XX000)" {
 			t.Error(err)
 		}
 		err = db.QueryRow(context.Background(),
-			"SELECT prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, t, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
+			"SELECT _prom_ext.prom_delta('2000-01-02 15:00:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, t, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -459,7 +459,7 @@ func TestExtensionGapfillDelta(t *testing.T) {
 		}
 
 		err = db.QueryRow(context.Background(),
-			"SELECT prom_delta('2000-01-02 14:15:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, t, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
+			"SELECT _prom_ext.prom_delta('2000-01-02 14:15:00 UTC'::TIMESTAMPTZ, '2000-01-02 15:45:00 UTC'::TIMESTAMPTZ, 20 * 60 * 1000, 20 * 60 * 1000, t, v order by t)::TEXT FROM gfd_test_table;").Scan(&res)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -582,7 +582,7 @@ func TestExtensionGapfillIncrease(t *testing.T) {
 				}
 				var res string
 				err = db.QueryRow(context.Background(),
-					"SELECT prom_increase($1::TIMESTAMPTZ, $2::TIMESTAMPTZ, $3, $3, t, v order by t)::TEXT FROM gfi_test_table;",
+					"SELECT _prom_ext.prom_increase($1::TIMESTAMPTZ, $2::TIMESTAMPTZ, $3, $3, t, v order by t)::TEXT FROM gfi_test_table;",
 					startTime, startTime.Add(time.Duration(testCase.window)*time.Millisecond), testCase.window,
 				).Scan(&res)
 				if err != nil {

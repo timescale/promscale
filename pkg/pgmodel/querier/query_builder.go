@@ -347,7 +347,7 @@ func buildPromQlFunctionCallAggregator(selectHints *storage.SelectHints, funcNam
 	// buildSingleMetricSamplesQuery
 
 	qf := aggregators{
-		valueClause: "prom_" + funcName + "($%d, $%d, $%d, $%d, time, value)",
+		valueClause: "_prom_ext.prom_" + funcName + "($%d, $%d, $%d, $%d, time, value)",
 		valueParams: []interface{}{model.Time(selectHints.Start).Time(), model.Time(selectHints.End).Time(), stepDuration.Milliseconds(), rangeDuration.Milliseconds()},
 		unOrdered:   false,
 		tsSeries:    newRegularTimestampSeries(model.Time(resultStart).Time(), model.Time(selectHints.End).Time(), stepDuration),
@@ -395,7 +395,7 @@ func buildVectorSelectorFunctionCallAggregator(lookback int64, selectHints *stor
 	resultStart := selectHints.Start + lookback
 	resultEnd := selectHints.End
 	qf := aggregators{
-		valueClause: "vector_selector($%d, $%d, $%d, $%d, time, value)",
+		valueClause: "_prom_ext.vector_selector($%d, $%d, $%d, $%d, time, value)",
 		valueParams: []interface{}{model.Time(resultStart).Time(), model.Time(resultEnd).Time(), selectHints.Step, lookback},
 		unOrdered:   true,
 		tsSeries:    newRegularTimestampSeries(model.Time(resultStart).Time(), model.Time(resultEnd).Time(), time.Duration(selectHints.Step)*time.Millisecond),

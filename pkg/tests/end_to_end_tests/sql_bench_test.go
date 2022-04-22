@@ -316,7 +316,7 @@ func BenchmarkGetOrCreateMetricTableName(b *testing.B) {
 
 func keyValueArrayToLabelArray(db *pgxpool.Pool, metricName string, keys []string, values []string) error {
 	var labelArray []int
-	return db.QueryRow(context.Background(), "SELECT get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArray)
+	return db.QueryRow(context.Background(), "SELECT _prom_catalog.get_or_create_label_array($1, $2, $3)", metricName, keys, values).Scan(&labelArray)
 }
 
 func createMetricTableName(db *pgxpool.Pool, name string) (metricID int64, tableName string, err error) {
