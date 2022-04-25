@@ -30,7 +30,8 @@ spec:
         app.kubernetes.io/part-of: "promscale-connector"
         app.kubernetes.io/component: "connector"
       annotations: 
-        checksum/config: {{ printf "%s" .Values.connection | sha256sum -}}
+        checksum/config: {{ printf "%s" .Values.connection | sha256sum }}
+        checksum/dataset: {{ printf "%s" .Values.datasetConfig | sha256sum }}
         {{- if .Values.prometheus.annotations }}
         {{- .Values.prometheus.annotations | toYaml | nindent 8 }}
         {{- end }}
@@ -40,6 +41,7 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           name: promscale-connector
           args:
+          - "-startup.dataset.config=/etc/promscale/dataset.yaml"
           {{- with .Values.extraArgs }}
           {{ toYaml . | nindent 10 }}
           {{- end }}
@@ -63,6 +65,13 @@ spec:
               name: metrics-port
             - containerPort: 9202
               name: otel-port
+          volumeMounts:
+            - name: configs
+              mountPath: /etc/promscale/
+      volumes:
+        - name: configs
+          configMap:
+            name: {{ include "promscale.fullname" . }}
       serviceAccountName: {{ template "promscale.fullname" . }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
