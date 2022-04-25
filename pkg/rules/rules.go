@@ -109,7 +109,9 @@ func (m *manager) Run() error {
 	g.Add(func() error {
 		log.Info("msg", "starting discovery manager...")
 		return errors.WithMessage(m.discoveryManager.Run(), "error running discovery manager")
-	}, func(err error) {})
+	}, func(err error) {
+		log.Info("msg", "stopping discovery manager")
+	})
 
 	g.Add(func() error {
 		log.Info("msg", "starting notifier manager...")

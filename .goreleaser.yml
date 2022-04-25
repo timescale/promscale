@@ -163,7 +163,7 @@ dockers:
   - go.sum
   - go.mod
   - pkg
-  - cmd
+  - migration-tool
   image_templates:
   - "timescale/prom-migrator:0.0.3"
   - "timescale/prom-migrator:latest"

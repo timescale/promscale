@@ -32,8 +32,19 @@ func NewIngestAdapter(ingestor *ingestor.DBIngestor) *ingestAdapter {
 type appenderAdapter struct {
 	data     map[string][]model.Insertable
 	ingestor *ingestor.DBIngestor
+	closed   bool
 }
 
+// Appender creates a new appender for Prometheus rules manager.
+// Lifecycle
+// ---------
+// An appender is a type that stores data belonging to a single transaction. A new appender is created
+// in each evaluation of a rule in Prometheus. No appender should ingest data concurrently.
+//
+// The appended samples must become persistent only after a Commit(). If Commit() returns any error,
+// Rollback() is called, after which, the appender must never be used.
+//
+// Note: The rule manager does not call Rollback() yet.
 func (a ingestAdapter) Appender(_ context.Context) storage.Appender {
 	return &appenderAdapter{
 		data:     make(map[string][]model.Insertable),
@@ -42,6 +53,9 @@ func (a ingestAdapter) Appender(_ context.Context) storage.Appender {
 }
 
 func (app *appenderAdapter) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+	if err := app.shouldAppend(); err != nil {
+		return 0, err
+	}
 	series, metricName, err := app.ingestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
 	if err != nil {
 		return 0, fmt.Errorf("get series from protos: %w", err)
@@ -56,12 +70,18 @@ func (app *appenderAdapter) Append(_ storage.SeriesRef, l labels.Labels, t int64
 }
 
 func (app *appenderAdapter) AppendExemplar(_ storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
+	if err := app.shouldAppend(); err != nil {
+		return 0, err
+	}
 	// We do not support appending exemplars in recording rules since this is not yet implemented upstream.
 	// Once upstream implements this feature, we can modify this function.
-	return 0, nil
+	return 0, fmt.Errorf("promscale: appending exemplars in rules not implemented")
 }
 
 func (app *appenderAdapter) Commit() error {
+	if err := app.shouldAppend(); err != nil {
+		return err
+	}
 	// Note: InsertTs does 2 things:
 	// 1. Ingest series
 	// 2. Ingest samples
@@ -75,7 +95,15 @@ func (app *appenderAdapter) Commit() error {
 	return errors.WithMessage(err, "rules: error ingesting data into db-ingestor")
 }
 
+func (app *appenderAdapter) shouldAppend() error {
+	if app.closed {
+		return fmt.Errorf("cannot append: closed appender")
+	}
+	return nil
+}
+
 func (app *appenderAdapter) Rollback() error {
+	app.closed = true
 	app.data = map[string][]model.Insertable{}
 	app.ingestor = nil
 	return nil
