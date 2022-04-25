@@ -49,6 +49,15 @@ connection:
   # must be created before start
   dbName: tsdb
 
+# dataset configuration options. Values presented in this section are defaults. For full list of settings
+# and their default values go to https://github.com/timescale/promscale/blob/master/docs/dataset.md
+datasetConfig:
+  metrics:
+    compress_data: true
+    default_retention_period: 90d
+  traces:
+    default_retention_period: 30d
+
 # Enable ServiceMonitor used by prometheus-operator to configure prometheus for metrics scraping
 serviceMonitor:
   enabled: false

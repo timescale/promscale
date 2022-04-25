@@ -126,6 +126,7 @@ helm install --name my-release -f myvalues.yaml .
 | `connection.port`                 | Port the db listens to                      | `5432`                             |
 | `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
 | `connection.sslMode`              | SSL mode for connection                     | `require`                          |
+| `datasetConfig`                   | Dataset configuration options. Full list of options is available at [docs/dataset.md](https://github.com/timescale/promscale/blob/master/docs/dataset.md)                     | ``                          |
 | `prometheus.port`                 | Port the connector Service accepts prometheus remote_write connections on | `9201`              |
 | `prometheus.annotations`          | Annotations to allow prometheus metrics collection. | `{ "prometheus.io/scrape": 'true', "prometheus.io/port": '9201', "prometheus.io/path": '/metrics'}` |
 | `openTelemetry.port`              | Port the connector Service will accept otlp connections on | `9202`               |
