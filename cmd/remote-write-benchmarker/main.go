@@ -2,13 +2,24 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math"
+	"net/http"
+
+	_ "net/http/pprof"
+
+	"github.com/felixge/fgprof"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/timescale/promscale/pkg/bench"
 )
 
 func main() {
+	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
+	go func() {
+		log.Println(http.ListenAndServe(":8080", nil))
+	}()
+
 	config := &bench.BenchConfig{
 		TSDBPath:                "/Users/arye/promdata/hk_default_tenant",
 		Mint:                    math.MinInt64,
