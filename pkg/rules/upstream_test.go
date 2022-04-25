@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -9,6 +11,22 @@ import (
 
 	promscale_promql "github.com/timescale/promscale/pkg/promql"
 )
+
+func TestVectorCompatibility(t *testing.T) {
+	// Note: We check for Sample for incompatibilities and not Vector
+	// since Vector is not a struct, rather a type on []Sample. Hence, we
+	// use Sample for checks as that's what the Vector relies on.
+	typA := reflect.ValueOf(prometheus_promql.Sample{}).Type()
+	typB := reflect.ValueOf(promscale_promql.Sample{}).Type()
+
+	numA := typA.NumField()
+	numB := typB.NumField()
+	require.Equal(t, numB, numA, "number of struct fields mismatch")
+
+	for i := 0; i < numA; i++ {
+		require.Equal(t, typB.Field(i).Type.Kind(), typA.Field(i).Type.Kind(), "mismatch in field type at ", fmt.Sprint(i))
+	}
+}
 
 func TestYoloVector(t *testing.T) {
 	cases := []struct {

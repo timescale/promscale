@@ -48,7 +48,10 @@ func engineQueryFunc(engine *promscale_promql.Engine, q promscale_promql.Queryab
 	}
 }
 
-// Compile-time test to make sure that sizes of both vectors are the same.
+// Note: This is a compile-time test to make sure that sizes of both vectors are the same.
+// If the upstream vector changes, then this will block compilation. This protects the yoloVector
+// function from breaking with unexpected changes in Prometheus mod version.
+// We also have a unit test for this that compares the equality of these two structs.
 var _ = [1]bool{}[unsafe.Sizeof(promscale_promql.Vector{})-unsafe.Sizeof(prometheus_promql.Vector{})] // #nosec
 
 // My guess is this should be way faster than looping through individual samples

@@ -37,8 +37,14 @@ func (q querierAdapter) Select(sortSeries bool, hints *storage.SelectHints, matc
 	return seriesSet
 }
 
-func (q querierAdapter) LabelValues(name string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
-	// Weak TODO: We need to implement the matchers.
+func (q querierAdapter) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	if len(matchers) > 0 {
+		// Weak TODO: We need to implement the matchers.
+		// Note: We behave the same as Prometheus does at the moment.
+		// See https://github.com/prometheus/prometheus/blob/9558b9b54bd3d0cb1d63b9084f8cbcda6b0d72fb/tsdb/index/index.go#L1483
+		return nil, nil, fmt.Errorf("searching by matchers not implemented in LabelValues()")
+	}
+
 	return q.qr.LabelValues(name)
 }
 

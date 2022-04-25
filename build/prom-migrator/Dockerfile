@@ -2,7 +2,6 @@
 FROM golang:1.18.1-alpine AS builder
 COPY ./.git build/.git
 COPY ./pkg  build/pkg
-COPY ./cmd  build/cmd
 COPY ./migration-tool build/migration-tool
 COPY ./go.mod build/go.mod
 COPY ./go.sum build/go.sum
