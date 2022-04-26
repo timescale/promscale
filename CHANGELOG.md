@@ -20,7 +20,7 @@ We use the following categories for changes:
 - Add database SQL stats as Prometheus metrics. These can be queried under `promscale_sql` namespace [#1193]
 - Add alerts for database SQL metrics [#1193]
 - Query Jaeger traces directly through Promscale [#1224]
-- Additional dataset configuration options via `-startup.dataset.config` flag. Read more (here)[docs/dataset.md] [#1276, #1310]
+- Additional dataset configuration options via `-startup.dataset.config` flag. Read more [here](docs/dataset.md) [#1276, #1310]
 
 ### Changed
 - Enable tracing by default [#1213], [#1290]
