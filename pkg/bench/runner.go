@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/record"
 
@@ -34,13 +33,19 @@ func checkSeriesSet(ss storage.SeriesSet) error {
 	return nil
 }
 
-func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *walSimulator, runNumber int) (time.Time, int, error) {
-	ss := q.Select(false, nil, labels.MustNewMatcher(labels.MatchRegexp, "", ".*"))
-
-	sth, err := NewSeriesTimeHeap(conf, ss, qmi, seriesIndex)
+func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *walSimulator, runNumber int) (time.Time, int, error) {
+	sth, closers, err := NewSeriesTimeHeap(conf, block, qmi, seriesIndex)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
+	defer func() {
+		for _, c := range closers {
+			err := c.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+	}()
 
 	start := time.Now()
 	startTs := int64(model.TimeFromUnixNano(start.UnixNano()))
@@ -75,9 +80,9 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, q storage.Querier, ws *wa
 		qmi.samplesIn.Incr(int64(1))
 		return nil
 	})
-	if err == nil {
+	/*if err == nil {
 		err = checkSeriesSet(ss)
-	}
+	}*/
 	return start, count, err
 }
 
@@ -117,13 +122,8 @@ func Run(conf *BenchConfig) (err error) {
 			err := func() error {
 				block := blocks[blockIdx].(*tsdb.Block)
 				fmt.Println("Starting processing block", block.Meta().MinTime, block.Meta().MaxTime)
-				q, err := tsdb.NewBlockQuerier(block, conf.Mint, conf.Maxt)
-				if err != nil {
-					return err
-				}
-				defer q.Close()
 
-				blockStart, blockCount, err := RunFullSimulation(conf, qmi, q, ws, i)
+				blockStart, blockCount, err := RunFullSimulation(conf, qmi, block, ws, i)
 				if err != nil {
 					return err
 				}

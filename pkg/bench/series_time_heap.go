@@ -3,11 +3,13 @@ package bench
 import (
 	"container/heap"
 	"fmt"
+	"io"
 	"strconv"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 )
 
@@ -20,14 +22,42 @@ type SeriesItem struct {
 
 type SeriesTimeHeap []*SeriesItem
 
-func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, seriesIndex int) (SeriesTimeHeap, error) {
+func NewSeriesTimeHeap(conf *BenchConfig, block *tsdb.Block, qmi *qmInfo, seriesIndex int) (SeriesTimeHeap, []io.Closer, error) {
 	sth := make(SeriesTimeHeap, 0, 100)
 	fmt.Println("Starting to load series")
 	seriesId := uint64(0)
 	build := labels.NewBuilder(nil)
-	for ss.Next() {
-		series := ss.At()
-		it := series.Iterator()
+	closers := []io.Closer{}
+
+	ir, err := block.Index()
+	if err != nil {
+		return nil, closers, err
+	}
+
+	p, err := ir.Postings("", "") // The special all key.
+	if err != nil {
+		return nil, closers, err
+	}
+	closers = append(closers, ir)
+
+	chunkr, err := block.Chunks()
+	if err != nil {
+		return nil, closers, err
+	}
+	closers = append(closers, chunkr)
+
+	lbls := labels.Labels{}
+	chks := []chunks.Meta{}
+	for p.Next() {
+		if err = ir.Series(p.At(), &lbls, &chks); err != nil {
+			return nil, closers, err
+		}
+
+		chk, err := chunkr.Chunk(chks[0].Ref)
+		if err != nil {
+			return nil, closers, err
+		}
+		it := chk.Iterator(nil)
 		it.Next()
 		ts, val := it.At()
 		si := &SeriesItem{ts, val, seriesId, it}
@@ -36,12 +66,11 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, ser
 		if conf.SeriesMultiplier == 1 && conf.MetricMultiplier == 1 {
 			rs := record.RefSeries{
 				Ref:    seriesId,
-				Labels: series.Labels(),
+				Labels: lbls,
 			}
 			seriesId++
 			qmi.qm.StoreSeries([]record.RefSeries{rs}, seriesIndex)
 		} else {
-			lbls := series.Labels()
 			for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
 				for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
 					build.Reset(lbls)
@@ -63,12 +92,12 @@ func NewSeriesTimeHeap(conf *BenchConfig, ss storage.SeriesSet, qmi *qmInfo, ser
 	}
 	fmt.Println("Done loading series, # series", seriesId)
 
-	if err := checkSeriesSet(ss); err != nil {
+	/*if err := checkSeriesSet(ss); err != nil {
 		return nil, err
-	}
+	}*/
 
 	heap.Init(&sth)
-	return sth, nil
+	return sth, closers, nil
 }
 
 func (pq SeriesTimeHeap) Len() int { return len(pq) }
