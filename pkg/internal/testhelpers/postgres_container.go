@@ -465,21 +465,7 @@ func startPGInstance(
 		nodeType = "DN" + containerPort.Port()
 	}
 
-	req := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{string(containerPort)},
-		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
-			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
-		}).Timeout(60 * time.Second),
-		Env: map[string]string{
-			"POSTGRES_PASSWORD": "password",
-			"PGDATA":            "/var/lib/postgresql/data",
-		},
-		Networks:       networks,
-		NetworkAliases: map[string][]string{"promscale-network": {"db" + containerPort.Port()}},
-		SkipReaper:     false, /* switch to true not to kill docker container */
-	}
-	req.Cmd = []string{
+	cmd := []string{
 		"-c", "max_connections=100",
 		"-c", "port=" + containerPort.Port(),
 		"-c", "max_prepared_transactions=150",
@@ -488,25 +474,25 @@ func startPGInstance(
 	}
 
 	if extensionState.UsesTimescaleDB() {
-		req.Cmd = append(req.Cmd,
+		cmd = append(cmd,
 			"-c", "shared_preload_libraries=timescaledb",
 			"-c", "timescaledb.max_background_workers=0",
 		)
 	}
 
-	req.Cmd = append(req.Cmd,
+	cmd = append(cmd,
 		"-c", "local_preload_libraries=pgextwlist",
 		//timescale_prometheus_extra included for upgrade tests with old extension name
 		"-c", "extwlist.extensions=promscale,timescaledb,timescale_prometheus_extra",
 	)
 
-	req.BindMounts = make(map[string]string)
+	var mounts []testcontainers.ContainerMount
 	if testDataDir != "" {
 		err := os.Chmod(testDataDir, 0777) // #nosec
 		if err != nil {
 			return nil, nil, err
 		}
-		req.BindMounts["/testdata"] = testDataDir
+		mounts = append(mounts, testcontainers.BindMount(testDataDir, "/testdata"))
 	}
 	if dataDir != "" {
 		var bindDir string
@@ -522,7 +508,24 @@ func startPGInstance(
 		if err != nil {
 			return nil, nil, err
 		}
-		req.BindMounts["/var/lib/postgresql"] = bindDir
+		mounts = append(mounts, testcontainers.BindMount(bindDir, "/var/lib/postgresql"))
+	}
+
+	req := testcontainers.ContainerRequest{
+		Cmd:          cmd,
+		Image:        image,
+		ExposedPorts: []string{string(containerPort)},
+		WaitingFor: wait.ForSQL(containerPort, "pgx", func(port nat.Port) string {
+			return "dbname=postgres password=password user=postgres host=127.0.0.1 port=" + port.Port()
+		}).Timeout(60 * time.Second),
+		Env: map[string]string{
+			"POSTGRES_PASSWORD": "password",
+			"PGDATA":            "/var/lib/postgresql/data",
+		},
+		Networks:       networks,
+		NetworkAliases: map[string][]string{"promscale-network": {"db" + containerPort.Port()}},
+		Mounts:         testcontainers.Mounts(mounts...),
+		SkipReaper:     false, /* switch to true not to kill docker container */
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -669,22 +672,22 @@ func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Con
 		dbHost = "host.docker.internal"
 	}
 
+	cmd := []string{
+		"-db-host", dbHost,
+		"-db-port", pgPort.Port(),
+		"-db-user", dbUser,
+		"-db-password", "password",
+		"-db-name", dbname,
+		"-db-ssl-mode", "prefer",
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image:        image,
 		ExposedPorts: []string{string(ConnectorPort)},
 		WaitingFor:   wait.ForHTTP("/metrics").WithPort(ConnectorPort).WithAllowInsecure(true),
 		SkipReaper:   false, /* switch to true not to kill docker container */
-		Cmd: []string{
-			"-db-host", dbHost,
-			"-db-port", pgPort.Port(),
-			"-db-user", dbUser,
-			"-db-password", "password",
-			"-db-name", dbname,
-			"-db-ssl-mode", "prefer",
-		},
+		Cmd:          append(cmd, cmds...),
 	}
-
-	req.Cmd = append(req.Cmd, cmds...)
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,

@@ -39,10 +39,10 @@ func StartPromContainer(storagePath string, ctx context.Context) (testcontainers
 		Image:        prometheusImage,
 		ExposedPorts: []string{string(prometheusPort)},
 		WaitingFor:   wait.ForListeningPort(prometheusPort),
-		BindMounts: map[string]string{
-			"/prometheus":                    storagePath,
-			"/etc/prometheus/prometheus.yml": promConfigFile,
-		},
+		Mounts: testcontainers.Mounts(
+			testcontainers.BindMount(storagePath, "/prometheus"),
+			testcontainers.BindMount(promConfigFile, "/etc/prometheus/prometheus.yml"),
+		),
 		Cmd: []string{
 			// Default configuration.
 			"--config.file=/etc/prometheus/prometheus.yml",
