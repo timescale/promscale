@@ -18,6 +18,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/rules"
 	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
@@ -34,6 +35,7 @@ type Config struct {
 	LimitsCfg                   limits.Config
 	TenancyCfg                  tenancy.Config
 	PromQLCfg                   query.Config
+	RulesCfg                    rules.Config
 	ConfigFile                  string
 	DatasetConfig               string
 	TLSCertFile                 string
@@ -126,6 +128,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	limits.ParseFlags(fs, &cfg.LimitsCfg)
 	tenancy.ParseFlags(fs, &cfg.TenancyCfg)
 	query.ParseFlags(fs, &cfg.PromQLCfg)
+	rules.ParseFlags(fs, &cfg.RulesCfg)
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
@@ -232,6 +235,9 @@ func validate(cfg *Config) error {
 	}
 	if err := tenancy.Validate(&cfg.TenancyCfg); err != nil {
 		return fmt.Errorf("error validating multi-tenancy configuration: %w", err)
+	}
+	if err := rules.Validate(&cfg.RulesCfg); err != nil {
+		return fmt.Errorf("error validating rules configuration: %w", err)
 	}
 	return nil
 }

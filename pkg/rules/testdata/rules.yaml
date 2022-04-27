@@ -1,0 +1,7 @@
+groups:
+- name: promscale-general
+  rules:
+  - record: Rule
+    expr: up
+    labels:
+      component: rule
