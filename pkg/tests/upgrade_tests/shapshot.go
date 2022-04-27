@@ -164,42 +164,55 @@ func (s dbSnapshot) writeToFile(f *os.File) error {
 	return w.Flush()
 }
 
-func printOutputDiff(t *testing.T, upgradedOuput string, pristineOutput string, msg string) bool {
-	if upgradedOuput == pristineOutput {
+func printOutputDiff(t *testing.T, before string, after string, msg string) bool {
+	if before == after {
 		return false
 	}
 	dmp := diffmatchpatch.New()
-	diffs := dmp.DiffMain(upgradedOuput, pristineOutput, false)
+	diffs := dmp.DiffMain(before, after, false)
 	t.Logf("%s:\n%v", msg, dmp.DiffPrettyText(diffs))
 	return true
 }
 
-func PrintDbSnapshotDifferences(t *testing.T, pristineDbInfo dbSnapshot, upgradedDbInfo dbSnapshot) {
+func PrintDbSnapshotDifferences(t *testing.T, before dbSnapshot, after dbSnapshot) {
 	t.Errorf("upgrade differences")
-	printOutputDiff(t, fmt.Sprintf("%+v", upgradedDbInfo.schemaNames), fmt.Sprintf("%+v", pristineDbInfo.schemaNames), "schema names differ")
-	printOutputDiff(t, upgradedDbInfo.users, pristineDbInfo.users, "users differ")
-	printOutputDiff(t, upgradedDbInfo.extensions, pristineDbInfo.extensions, "extension outputs differ")
-	printOutputDiff(t, upgradedDbInfo.promscale, pristineDbInfo.promscale, "promscale extension members differ")
-	printOutputDiff(t, upgradedDbInfo.schemaOutputs, pristineDbInfo.schemaOutputs, "schema outputs differ")
-	printOutputDiff(t, upgradedDbInfo.defaultPrivileges, pristineDbInfo.defaultPrivileges, "default privileges differ")
+	printOutputDiff(t, fmt.Sprintf("%+v", before.schemaNames), fmt.Sprintf("%+v", after.schemaNames), "schema names differ")
+	printOutputDiff(t, before.users, after.users, "users differ")
+	printOutputDiff(t, before.extensions, after.extensions, "extension outputs differ")
+	printOutputDiff(t, before.promscale, after.promscale, "promscale extension members differ")
+	printOutputDiff(t, before.schemaOutputs, after.schemaOutputs, "schema outputs differ")
+	printOutputDiff(t, before.defaultPrivileges, after.defaultPrivileges, "default privileges differ")
 
-	pristineSchemas := make(map[string]schemaInfo)
-	for _, schema := range pristineDbInfo.schemas {
-		pristineSchemas[schema.name] = schema
+	allSchemas := make(map[string]struct{})
+	beforeSchemas := make(map[string]schemaInfo)
+	for _, beforeSchema := range before.schemas {
+		beforeSchemas[beforeSchema.name] = beforeSchema
+		allSchemas[beforeSchema.name] = struct{}{}
 	}
-	for _, upgradedSchema := range upgradedDbInfo.schemas {
-		pristineSchema, ok := pristineSchemas[upgradedSchema.name]
+	afterSchemas := make(map[string]schemaInfo)
+	for _, afterSchema := range after.schemas {
+		afterSchemas[afterSchema.name] = afterSchema
+		allSchemas[afterSchema.name] = struct{}{}
+	}
+
+	for schemaName := range allSchemas {
+		beforeSchema, ok := beforeSchemas[schemaName]
 		if !ok {
-			t.Logf("extra schema %s", upgradedSchema.name)
+			printOutputDiff(t, "", schemaName, "schemas differ")
 			continue
 		}
-		printOutputDiff(t, upgradedSchema.tables, pristineSchema.tables, "tables differ for schema "+upgradedSchema.name)
-		printOutputDiff(t, upgradedSchema.functions, pristineSchema.functions, "functions differ for schema "+upgradedSchema.name)
-		printOutputDiff(t, upgradedSchema.privileges, pristineSchema.privileges, "privileges differ for schema "+upgradedSchema.name)
-		printOutputDiff(t, upgradedSchema.indices, pristineSchema.indices, "indices differ for schema "+upgradedSchema.name)
-		printOutputDiff(t, upgradedSchema.triggers, pristineSchema.triggers, "triggers differ for schema "+upgradedSchema.name)
-		printOutputDiff(t, upgradedSchema.operators, pristineSchema.operators, "operators differ for schema "+upgradedSchema.name)
-		printOutputDiff(t, fmt.Sprintf("%+v", upgradedSchema.data), fmt.Sprintf("%+v", pristineSchema.data), "data differs for schema "+upgradedSchema.name)
+		afterSchema, ok := afterSchemas[schemaName]
+		if !ok {
+			printOutputDiff(t, schemaName, "", "schemas differ")
+			continue
+		}
+		printOutputDiff(t, beforeSchema.tables, afterSchema.tables, "tables differ for schema "+schemaName)
+		printOutputDiff(t, beforeSchema.functions, afterSchema.functions, "functions differ for schema "+schemaName)
+		printOutputDiff(t, beforeSchema.privileges, afterSchema.privileges, "privileges differ for schema "+schemaName)
+		printOutputDiff(t, beforeSchema.indices, afterSchema.indices, "indices differ for schema "+schemaName)
+		printOutputDiff(t, beforeSchema.triggers, afterSchema.triggers, "triggers differ for schema "+schemaName)
+		printOutputDiff(t, beforeSchema.operators, afterSchema.operators, "operators differ for schema "+schemaName)
+		printOutputDiff(t, fmt.Sprintf("%+v", beforeSchema.data), fmt.Sprintf("%+v", afterSchema.data), "data differs for schema "+schemaName)
 	}
 }
 
