@@ -27,6 +27,7 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/timescale/promscale/pkg/api"
@@ -35,6 +36,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	dbMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics/database"
+	"github.com/timescale/promscale/pkg/rules"
 	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/thanos"
 	"github.com/timescale/promscale/pkg/tracer"
@@ -217,6 +219,37 @@ func Run(cfg *Config) error {
 			grpcServer.Stop()
 		},
 	)
+
+	if cfg.RulesCfg.Opts.UseRulesManager {
+		rulesCtx, stopRuler := context.WithCancel(context.Background())
+		defer stopRuler()
+		manager, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg)
+		if err != nil {
+			return fmt.Errorf("error creating rules manager: %w", err)
+		}
+		group.Add(
+			func() error {
+				promCfg := cfg.RulesCfg.PrometheusConfig
+				if err = manager.ApplyConfig(promCfg); err != nil {
+					return fmt.Errorf("error applying Prometheus configuration to rules manager: %w", err)
+				}
+				if err = manager.Update(
+					time.Duration(promCfg.GlobalConfig.EvaluationInterval),
+					promCfg.RuleFiles,
+					promCfg.GlobalConfig.ExternalLabels,
+					"",
+				); err != nil {
+					return fmt.Errorf("error updating rules manager: %w", err)
+				}
+				log.Info("msg", "Starting rule-manager ...")
+				return manager.Run()
+			}, func(err error) {
+				log.Info("msg", "Stopping rule-manager")
+				stopRuler()    // Stops the discovery manager.
+				manager.Stop() // Stops the internal group of rule-manager.
+			},
+		)
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)

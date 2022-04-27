@@ -27,6 +27,7 @@ type Config struct {
 	ForGracePeriod          time.Duration
 	ResendDelay             time.Duration
 	PrometheusConfigAddress string
+	PrometheusConfig        *prometheus_config.Config
 	Opts                    Options
 }
 
@@ -58,6 +59,7 @@ func Validate(cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("error loading Prometheus configuration file: %w", err)
 	}
+	cfg.PrometheusConfig = promCfg
 
 	if len(promCfg.RuleFiles) > 0 {
 		cfg.Opts.UseRulesManager = true
