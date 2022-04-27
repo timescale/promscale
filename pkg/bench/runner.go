@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/prometheus/prometheus/tsdb"
@@ -23,18 +22,9 @@ const (
 	WALSimulatorChannelSize = 100000000
 )
 
-func checkSeriesSet(ss storage.SeriesSet) error {
-	if ws := ss.Warnings(); len(ws) > 0 {
-		return ws[0]
-	}
-	if ss.Err() != nil {
-		return ss.Err()
-	}
-	return nil
-}
-
 func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *walSimulator, runNumber int) (time.Time, int, error) {
-	sth, closers, err := NewSeriesTimeHeap(conf, block, qmi, seriesIndex)
+	dm := NewDataModifier(conf)
+	sth, closers, err := NewSeriesTimeHeap(dm, block, qmi, seriesIndex)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
@@ -48,41 +38,20 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *wa
 	}()
 
 	start := time.Now()
-	startTs := int64(model.TimeFromUnixNano(start.UnixNano()))
-	firstTs, _ := sth[0].it.At()
-	dataTimeStartTs := firstTs
-	if conf.UseWallClockForDataTime {
-		dataTimeStartTs = startTs
-	}
-
 	count := 0
-	err = sth.Visit(conf, func(rawTs int64, val float64, seriesID uint64) error {
-		timestampDelta := int64(float64(rawTs-firstTs) / conf.RateMultiplier)
-		dataTimestamp := dataTimeStartTs + timestampDelta
-		wallTimestamp := startTs + timestampDelta
-
+	err = sth.Visit(dm, func(recs []record.RefSample, wallTs int64) error {
 		if conf.RateControl {
-			wait := time.Until(model.Time(wallTimestamp).Time())
+			wait := time.Until(model.Time(wallTs).Time())
 			if wait > 0 {
 				time.Sleep(wait)
 			}
 		}
-		samples := []record.RefSample{
-			{
-				Ref: seriesID,
-				T:   dataTimestamp,
-				V:   val,
-			},
-		}
-		ws.Append(samples)
+		ws.Append(recs)
 		count++
-		qmi.highestTs.Set(float64(dataTimestamp / 1000))
+		qmi.highestTs.Set(float64(recs[0].T / 1000))
 		qmi.samplesIn.Incr(int64(1))
 		return nil
 	})
-	/*if err == nil {
-		err = checkSeriesSet(ss)
-	}*/
 	return start, count, err
 }
 

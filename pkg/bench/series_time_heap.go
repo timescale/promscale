@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
@@ -20,11 +19,10 @@ type SeriesItem struct {
 
 type SeriesTimeHeap []*SeriesItem
 
-func NewSeriesTimeHeap(conf *BenchConfig, block *tsdb.Block, qmi *qmInfo, seriesIndex int) (SeriesTimeHeap, []io.Closer, error) {
+func NewSeriesTimeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesIndex int) (SeriesTimeHeap, []io.Closer, error) {
 	sth := make(SeriesTimeHeap, 0, 100)
 	fmt.Println("Starting to load series")
 	seriesId := uint64(0)
-	build := labels.NewBuilder(nil)
 	closers := []io.Closer{}
 
 	ir, err := block.Index()
@@ -58,38 +56,16 @@ func NewSeriesTimeHeap(conf *BenchConfig, block *tsdb.Block, qmi *qmInfo, series
 		si := &SeriesItem{seriesId, it}
 		sth = append(sth, si)
 
-		if conf.SeriesMultiplier == 1 && conf.MetricMultiplier == 1 {
-			rs := record.RefSeries{
-				Ref:    seriesId,
-				Labels: lbls,
-			}
+		dm.VisitSeries(seriesId, lbls, func(rec record.RefSeries) {
 			seriesId++
-			qmi.qm.StoreSeries([]record.RefSeries{rs}, seriesIndex)
-		} else {
-			for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
-				for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
-					build.Reset(lbls)
-					if seriesMultiplierIndex != 0 {
-						build.Set("multiplier", strconv.Itoa(seriesMultiplierIndex))
-					}
-					if metricMultiplierIndex != 0 {
-						build.Set("__name__", lbls.Get("__name__")+"_"+strconv.Itoa(metricMultiplierIndex))
-					}
-					rs := record.RefSeries{
-						Ref:    seriesId,
-						Labels: build.Labels(),
-					}
-					seriesId++
-					qmi.qm.StoreSeries([]record.RefSeries{rs}, seriesIndex)
-				}
-			}
-		}
+			qmi.qm.StoreSeries([]record.RefSeries{rec}, seriesIndex)
+		})
 	}
 	fmt.Println("Done loading series, # series", seriesId)
 
-	/*if err := checkSeriesSet(ss); err != nil {
-		return nil, err
-	}*/
+	if err := p.Err(); err != nil {
+		return nil, closers, err
+	}
 
 	heap.Init(&sth)
 	return sth, closers, nil
@@ -121,26 +97,21 @@ func (pq *SeriesTimeHeap) Pop() interface{} {
 	return item
 }
 
-func (pq *SeriesTimeHeap) Visit(conf *BenchConfig, visitor func(ts int64, val float64, seriesID uint64) error) error {
+func (pq *SeriesTimeHeap) Visit(dm *DataModifier, visitor func([]record.RefSample, int64) error) error {
 	for pq.Len() > 0 {
 		item := (*pq)[0]
 		//fmt.Printf("%s %g %d\n", item.series.Labels(), item.val, item.ts)
 
 		seriesID := uint64(item.series_id)
 		ts, val := item.it.At()
-		for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
-			for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
-				err := visitor(ts, val, seriesID)
-				seriesID++
-				if err != nil {
-					return err
-				}
-			}
-		}
+		dm.VisitSamples(seriesID, ts, val, visitor)
 
 		if item.it.Next() {
 			heap.Fix(pq, 0)
 		} else {
+			if err := item.it.Err(); err != nil {
+				return err
+			}
 			item2 := heap.Pop(pq)
 			if item != item2 {
 				panic("items not equal")
