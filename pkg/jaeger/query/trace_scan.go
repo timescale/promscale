@@ -12,6 +12,8 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 type spanDBResult struct {
@@ -114,12 +116,12 @@ func populateSpan(
 	}
 	pdata.NewAttributeMapFromMap(attr).CopyTo(resourceSpan.Resource().Attributes())
 
-	instrumentationLibSpan := resourceSpan.InstrumentationLibrarySpans().AppendEmpty()
+	instrumentationLibSpan := resourceSpan.ScopeSpans().AppendEmpty()
 	if dbResult.instLibSchemaUrl != nil {
 		instrumentationLibSpan.SetSchemaUrl(*dbResult.instLibSchemaUrl)
 	}
 
-	instLib := instrumentationLibSpan.InstrumentationLibrary()
+	instLib := instrumentationLibSpan.Scope()
 	if dbResult.instLibName != nil {
 		instLib.SetName(*dbResult.instLibName)
 	}
@@ -196,16 +198,16 @@ func populateSpan(
 	return nil
 }
 
-func setStatus(ref pdata.Span, dbRes *spanDBResult) error {
+func setStatus(ref ptrace.Span, dbRes *spanDBResult) error {
 	if dbRes.statusCode != "" {
-		var code pdata.StatusCode
+		var code ptrace.StatusCode
 		switch dbRes.statusCode {
-		case pdata.StatusCodeOk.String():
-			code = pdata.StatusCodeOk
-		case pdata.StatusCodeError.String():
-			code = pdata.StatusCodeError
-		case pdata.StatusCodeUnset.String():
-			code = pdata.StatusCodeUnset
+		case ptrace.StatusCodeOk.String():
+			code = ptrace.StatusCodeOk
+		case ptrace.StatusCodeError.String():
+			code = ptrace.StatusCodeError
+		case ptrace.StatusCodeUnset.String():
+			code = ptrace.StatusCodeUnset
 		default:
 			return fmt.Errorf("invalid status-code received: %s", dbRes.statusCode)
 		}
@@ -271,21 +273,21 @@ func populateLinks(
 }
 
 // makeAttributes makes attribute map using tags.
-func makeAttributes(tags map[string]interface{}) (map[string]pdata.AttributeValue, error) {
-	m := make(map[string]pdata.AttributeValue, len(tags))
+func makeAttributes(tags map[string]interface{}) (map[string]pcommon.Value, error) {
+	m := make(map[string]pcommon.Value, len(tags))
 	// todo: attribute val as array?
 	for k, v := range tags {
 		switch val := v.(type) {
 		case int64:
-			m[k] = pdata.NewAttributeValueInt(val)
+			m[k] = pcommon.NewValueInt(val)
 		case bool:
-			m[k] = pdata.NewAttributeValueBool(val)
+			m[k] = pcommon.NewValueBool(val)
 		case string:
-			m[k] = pdata.NewAttributeValueString(val)
+			m[k] = pcommon.NewValueString(val)
 		case float64:
-			m[k] = pdata.NewAttributeValueDouble(val)
+			m[k] = pcommon.NewValueDouble(val)
 		case []byte:
-			m[k] = pdata.NewAttributeValueBytes(val)
+			m[k] = pcommon.NewValueBytes(val)
 		default:
 			return nil, fmt.Errorf("unknown tag type %T", v)
 		}
@@ -311,21 +313,21 @@ func makeSpanId(s *int64) pdata.SpanID {
 	return pdata.NewSpanID(b8)
 }
 
-func makeKind(s string) (pdata.SpanKind, error) {
+func makeKind(s string) (ptrace.SpanKind, error) {
 	switch s {
 	case "SPAN_KIND_CLIENT":
-		return pdata.SpanKindClient, nil
+		return ptrace.SpanKindClient, nil
 	case "SPAN_KIND_SERVER":
-		return pdata.SpanKindServer, nil
+		return ptrace.SpanKindServer, nil
 	case "SPAN_KIND_INTERNAL":
-		return pdata.SpanKindInternal, nil
+		return ptrace.SpanKindInternal, nil
 	case "SPAN_KIND_CONSUMER":
-		return pdata.SpanKindConsumer, nil
+		return ptrace.SpanKindConsumer, nil
 	case "SPAN_KIND_PRODUCER":
-		return pdata.SpanKindProducer, nil
+		return ptrace.SpanKindProducer, nil
 	case "SPAN_KIND_UNSPECIFIED":
-		return pdata.SpanKindUnspecified, nil
+		return ptrace.SpanKindUnspecified, nil
 	default:
-		return pdata.SpanKindUnspecified, fmt.Errorf("unknown span kind: %s", s)
+		return ptrace.SpanKindUnspecified, fmt.Errorf("unknown span kind: %s", s)
 	}
 }

@@ -152,7 +152,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		url := rSpan.SchemaUrl()
 		sURLBatch.Queue(url)
 
-		instLibSpans := rSpan.InstrumentationLibrarySpans()
+		instLibSpans := rSpan.ScopeSpans()
 		for j := 0; j < instLibSpans.Len(); j++ {
 			instLibSpan := instLibSpans.At(j)
 			url := instLibSpan.SchemaUrl()
@@ -169,10 +169,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 	for i := 0; i < rSpans.Len(); i++ {
 		rSpan := rSpans.At(i)
 		serviceName := getServiceName(rSpan)
-		instLibSpans := rSpan.InstrumentationLibrarySpans()
+		instLibSpans := rSpan.ScopeSpans()
 		for j := 0; j < instLibSpans.Len(); j++ {
 			instLibSpan := instLibSpans.At(j)
-			instLib := instLibSpan.InstrumentationLibrary()
+			instLib := instLibSpan.Scope()
 
 			sURLID, err := sURLBatch.GetID(instLibSpan.SchemaUrl())
 			if err != nil {
@@ -239,7 +239,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 	)
 	for i := 0; i < rSpans.Len(); i++ {
 		rSpan := rSpans.At(i)
-		instLibSpans := rSpan.InstrumentationLibrarySpans()
+		instLibSpans := rSpan.ScopeSpans()
 		serviceName := getServiceName(rSpan)
 
 		url := rSpan.SchemaUrl()
@@ -249,7 +249,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 		}
 		for j := 0; j < instLibSpans.Len(); j++ {
 			instLibSpan := instLibSpans.At(j)
-			instLib := instLibSpan.InstrumentationLibrary()
+			instLib := instLibSpan.Scope()
 
 			sURLID, err := sURLBatch.GetID(instLibSpan.SchemaUrl())
 			if err != nil {
