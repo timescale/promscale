@@ -35,13 +35,13 @@ func TestOperationBatch(t *testing.T) {
 		{
 			name: "happy path",
 			operations: []operation{
-				operation{"second", "test", ""},
-				operation{"first", "test", ""},
-				operation{"", "anotherTest", "second"},
-				operation{"", "anotherTest", "first"},
-				operation{"", "null", ""},
-				operation{"", "zero", ""},
-				operation{"", "incache", ""},
+				{"second", "test", ""},
+				{"first", "test", ""},
+				{"", "anotherTest", "second"},
+				{"", "anotherTest", "first"},
+				{"", "null", ""},
+				{"", "zero", ""},
+				{"", "incache", ""},
 			},
 			expectedBatchQueue: 7,
 			queries: []model.SqlQuery{

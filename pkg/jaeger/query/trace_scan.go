@@ -12,6 +12,8 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 type spanDBResult struct {
@@ -114,12 +116,12 @@ func populateSpan(
 	}
 	pdata.NewAttributeMapFromMap(attr).CopyTo(resourceSpan.Resource().Attributes())
 
-	instrumentationLibSpan := resourceSpan.InstrumentationLibrarySpans().AppendEmpty()
+	instrumentationLibSpan := resourceSpan.ScopeSpans().AppendEmpty()
 	if dbResult.instLibSchemaUrl != nil {
 		instrumentationLibSpan.SetSchemaUrl(*dbResult.instLibSchemaUrl)
 	}
 
-	instLib := instrumentationLibSpan.InstrumentationLibrary()
+	instLib := instrumentationLibSpan.Scope()
 	if dbResult.instLibName != nil {
 		instLib.SetName(*dbResult.instLibName)
 	}
@@ -196,7 +198,7 @@ func populateSpan(
 	return nil
 }
 
-func setStatus(ref pdata.Span, dbRes *spanDBResult) error {
+func setStatus(ref ptrace.Span, dbRes *spanDBResult) error {
 	if dbRes.statusCode != "" {
 		code, err := makeStatusCode(dbRes.statusCode)
 		if err != nil {
@@ -275,15 +277,15 @@ func makeAttributes(tagsJson pgtype.JSONB) (map[string]pdata.AttributeValue, err
 	for k, v := range tags {
 		switch val := v.(type) {
 		case int64:
-			m[k] = pdata.NewAttributeValueInt(val)
+			m[k] = pcommon.NewValueInt(val)
 		case bool:
-			m[k] = pdata.NewAttributeValueBool(val)
+			m[k] = pcommon.NewValueBool(val)
 		case string:
-			m[k] = pdata.NewAttributeValueString(val)
+			m[k] = pcommon.NewValueString(val)
 		case float64:
-			m[k] = pdata.NewAttributeValueDouble(val)
+			m[k] = pcommon.NewValueDouble(val)
 		case []byte:
-			m[k] = pdata.NewAttributeValueBytes(val)
+			m[k] = pcommon.NewValueBytes(val)
 		default:
 			return nil, fmt.Errorf("unknown tag type %T", v)
 		}
@@ -343,7 +345,7 @@ func makeKind(s string) (pdata.SpanKind, error) {
 	case "unspecified":
 		return pdata.SpanKindUnspecified, nil
 	default:
-		return pdata.SpanKindUnspecified, fmt.Errorf("unknown span kind: %s", s)
+		return ptrace.SpanKindUnspecified, fmt.Errorf("unknown span kind: %s", s)
 	}
 }
 
