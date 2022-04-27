@@ -17,6 +17,8 @@ import (
 	"github.com/golang/snappy"
 	"go.opentelemetry.io/collector/model/otlp"
 	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 var (
@@ -33,9 +35,9 @@ var (
 
 	service0 = "service-name-0"
 
-	spanAttributes      = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-attr": pdata.NewAttributeValueString("span-attr-val")})
-	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-event-attr": pdata.NewAttributeValueString("span-event-attr-val")})
-	spanLinkAttributes  = pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{"span-link-attr": pdata.NewAttributeValueString("span-link-attr-val")})
+	spanAttributes      = pdata.NewAttributeMapFromMap(map[string]pcommon.Value{"span-attr": pcommon.NewValueString("span-attr-val")})
+	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pcommon.Value{"span-event-attr": pcommon.NewValueString("span-event-attr-val")})
+	spanLinkAttributes  = pdata.NewAttributeMapFromMap(map[string]pcommon.Value{"span-link-attr": pcommon.NewValueString("span-link-attr-val")})
 )
 
 func getTraceId(bSlice [16]byte) string {
@@ -48,7 +50,7 @@ func generateTestTrace() pdata.Traces {
 	td := pdata.NewTraces()
 	rs := td.ResourceSpans().AppendEmpty()
 	initResourceAttributes(rs.Resource().Attributes(), 0)
-	libSpans := rs.InstrumentationLibrarySpans().AppendEmpty()
+	libSpans := rs.ScopeSpans().AppendEmpty()
 	initInstLib(libSpans, 0)
 	for i := 0; i < spanCount; i++ {
 		fillSpanOne(libSpans.Spans().AppendEmpty())
@@ -61,7 +63,7 @@ func generateTestTrace() pdata.Traces {
 	}
 	rs = td.ResourceSpans().AppendEmpty()
 	initResourceAttributes(rs.Resource().Attributes(), 1)
-	libSpans = rs.InstrumentationLibrarySpans().AppendEmpty()
+	libSpans = rs.ScopeSpans().AppendEmpty()
 	initInstLib(libSpans, 1)
 	for _, parentID := range ids {
 		fillSpanThree(libSpans.Spans().AppendEmpty(), parentID)
@@ -79,7 +81,7 @@ func generateTestTraceManyRS() []pdata.Traces {
 			rs := td.ResourceSpans().AppendEmpty()
 			initResourceAttributes(rs.Resource().Attributes(), resourceIndex)
 			for libIndex := 0; libIndex < 5; libIndex++ {
-				libSpans := rs.InstrumentationLibrarySpans().AppendEmpty()
+				libSpans := rs.ScopeSpans().AppendEmpty()
 				initInstLib(libSpans, libIndex)
 				for i := 0; i < spanCount; i++ {
 					fillSpanOne(libSpans.Spans().AppendEmpty())
@@ -94,35 +96,35 @@ func generateTestTraceManyRS() []pdata.Traces {
 	return traces
 }
 
-func initInstLib(dest pdata.InstrumentationLibrarySpans, index int) {
+func initInstLib(dest pdata.ScopeSpans, index int) {
 	// Only add schema URL on half of instrumentation libs.
 	if index%2 == 0 {
 		dest.SetSchemaUrl(fmt.Sprintf("url-%d", index%2))
 	}
-	dest.InstrumentationLibrary().SetName(fmt.Sprintf("inst-lib-name-%d", index))
-	dest.InstrumentationLibrary().SetVersion(fmt.Sprintf("1.%d.0", index%2))
+	dest.Scope().SetName(fmt.Sprintf("inst-lib-name-%d", index))
+	dest.Scope().SetVersion(fmt.Sprintf("1.%d.0", index%2))
 }
 
-func initResourceAttributes(dest pdata.AttributeMap, index int) {
-	tmpl := pdata.NewAttributeMapFromMap(map[string]pdata.AttributeValue{
-		"resource-attr": pdata.NewAttributeValueString(fmt.Sprintf("resource-attr-val-%d", index%2)),
-		"service.name":  pdata.NewAttributeValueString(fmt.Sprintf("service-name-%d", index)),
+func initResourceAttributes(dest pdata.Map, index int) {
+	tmpl := pdata.NewAttributeMapFromMap(map[string]pdata.Value{
+		"resource-attr": pcommon.NewValueString(fmt.Sprintf("resource-attr-val-%d", index%2)),
+		"service.name":  pcommon.NewValueString(fmt.Sprintf("service-name-%d", index)),
 	})
 	dest.Clear()
 	tmpl.CopyTo(dest)
 }
 
-func initSpanEventAttributes(dest pdata.AttributeMap) {
+func initSpanEventAttributes(dest pcommon.Map) {
 	dest.Clear()
 	spanEventAttributes.CopyTo(dest)
 }
 
-func initSpanAttributes(dest pdata.AttributeMap) {
+func initSpanAttributes(dest pcommon.Map) {
 	dest.Clear()
 	spanAttributes.CopyTo(dest)
 }
 
-func initSpanLinkAttributes(dest pdata.AttributeMap) {
+func initSpanLinkAttributes(dest pcommon.Map) {
 	dest.Clear()
 	spanLinkAttributes.CopyTo(dest)
 }
@@ -154,7 +156,7 @@ func fillSpanOne(span pdata.Span) {
 	ev1.SetDroppedAttributesCount(2)
 	span.SetDroppedEventsCount(1)
 	status := span.Status()
-	status.SetCode(pdata.StatusCodeError)
+	status.SetCode(ptrace.StatusCodeError)
 	status.SetMessage("status-cancelled")
 }
 

@@ -30,7 +30,7 @@ func TestTagBatch(t *testing.T) {
 		{
 			name: "happy path",
 			tags: map[TagType]map[string]interface{}{
-				SpanTagType: map[string]interface{}{
+				SpanTagType: {
 					"test":    "",
 					"second":  "anotherTest",
 					"first":   "anotherTest",
@@ -38,10 +38,10 @@ func TestTagBatch(t *testing.T) {
 					"zero":    "",
 					"incache": "",
 				},
-				EventTagType: map[string]interface{}{
+				EventTagType: {
 					"test": "",
 				},
-				ResourceTagType: map[string]interface{}{
+				ResourceTagType: {
 					"test": "first",
 				},
 			},
