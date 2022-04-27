@@ -49,7 +49,7 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *wa
 
 	start := time.Now()
 	startTs := int64(model.TimeFromUnixNano(start.UnixNano()))
-	firstTs := sth[0].ts[0]
+	firstTs, _ := sth[0].it.At()
 	dataTimeStartTs := firstTs
 	if conf.UseWallClockForDataTime {
 		dataTimeStartTs = startTs

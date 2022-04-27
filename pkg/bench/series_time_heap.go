@@ -8,15 +8,14 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 )
 
 type SeriesItem struct {
-	ts        []int64 // The value of the item; arbitrary.
-	val       []float64
 	series_id uint64 // a unique series identifier
-	index     int
+	it        chunkenc.Iterator
 }
 
 type SeriesTimeHeap []*SeriesItem
@@ -52,19 +51,11 @@ func NewSeriesTimeHeap(conf *BenchConfig, block *tsdb.Block, qmi *qmInfo, series
 			return nil, closers, err
 		}
 
-		tss := make([]int64, 0, 120)
-		vals := make([]float64, 0, 120)
-		chk, err := chunkr.Chunk(chks[0].Ref)
-		if err != nil {
-			return nil, closers, err
+		it := NewBufferingIterator(chunkr, chks)
+		if !it.Next() { //initialize to first position
+			panic("can't get first item")
 		}
-		it := chk.Iterator(nil)
-		for it.Next() {
-			ts, val := it.At()
-			tss = append(tss, ts)
-			vals = append(vals, val)
-		}
-		si := &SeriesItem{tss, vals, seriesId, 0}
+		si := &SeriesItem{seriesId, it}
 		sth = append(sth, si)
 
 		if conf.SeriesMultiplier == 1 && conf.MetricMultiplier == 1 {
@@ -107,7 +98,9 @@ func NewSeriesTimeHeap(conf *BenchConfig, block *tsdb.Block, qmi *qmInfo, series
 func (pq SeriesTimeHeap) Len() int { return len(pq) }
 
 func (pq SeriesTimeHeap) Less(i, j int) bool {
-	return pq[i].ts[pq[i].index] < pq[j].ts[pq[j].index]
+	tsi, _ := pq[i].it.At()
+	tsj, _ := pq[j].it.At()
+	return tsi < tsj
 }
 
 func (pq SeriesTimeHeap) Swap(i, j int) {
@@ -134,17 +127,18 @@ func (pq *SeriesTimeHeap) Visit(conf *BenchConfig, visitor func(ts int64, val fl
 		//fmt.Printf("%s %g %d\n", item.series.Labels(), item.val, item.ts)
 
 		seriesID := uint64(item.series_id)
+		ts, val := item.it.At()
 		for seriesMultiplierIndex := 0; seriesMultiplierIndex < conf.SeriesMultiplier; seriesMultiplierIndex++ {
 			for metricMultiplierIndex := 0; metricMultiplierIndex < conf.MetricMultiplier; metricMultiplierIndex++ {
-				err := visitor(item.ts[item.index], item.val[item.index], seriesID)
+				err := visitor(ts, val, seriesID)
 				seriesID++
 				if err != nil {
 					return err
 				}
 			}
 		}
-		item.index = item.index + 1
-		if item.index < len(item.ts)-1 {
+
+		if item.it.Next() {
 			heap.Fix(pq, 0)
 		} else {
 			item2 := heap.Pop(pq)
