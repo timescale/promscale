@@ -21,31 +21,17 @@ import (
 	"github.com/timescale/promscale/pkg/rules/adapters"
 )
 
-const (
-	DefaultQueueCapacity   = 10000
-	DefaultOutageTolerance = time.Hour
-	DefaultForGracePeriod  = time.Minute * 10
-	DefaultResendDelay     = time.Minute
-)
-
-type Options struct {
-	QueueCapacity   int
-	OutageTolerance time.Duration
-	ForGracePeriod  time.Duration
-	ResendDelay     time.Duration
-}
-
 type manager struct {
 	rulesManager     *prom_rules.Manager
 	notifierManager  *notifier.Manager
 	discoveryManager *discovery.Manager
 }
 
-func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, opts *Options) (*manager, error) {
+func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*manager, error) {
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
-		QueueCapacity: opts.QueueCapacity,
+		QueueCapacity: cfg.QueueCapacity,
 		Registerer:    r,
 		Do:            do,
 	}, log.GetLogger())
@@ -65,9 +51,9 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		NotifyFunc:      sendAlerts(notifierManager, parsedUrl.String()),
 		QueryFunc:       engineQueryFunc(client.QueryEngine(), client.Queryable()),
 		Registerer:      r,
-		OutageTolerance: opts.OutageTolerance,
-		ForGracePeriod:  opts.ForGracePeriod,
-		ResendDelay:     opts.ResendDelay,
+		OutageTolerance: cfg.OutageTolerance,
+		ForGracePeriod:  cfg.ForGracePeriod,
+		ResendDelay:     cfg.ResendDelay,
 	})
 	return &manager{
 		rulesManager:     rulesManager,

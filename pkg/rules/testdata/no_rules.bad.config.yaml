@@ -1,0 +1,5 @@
+global:
+  scrape_interval: 20s
+  evaluation_interval: 30s
+
+rules_files: []
