@@ -34,6 +34,7 @@ require (
 	//it's on 1.x but the commit is from the v2 branch
 	//to update: go get -u github.com/prometheus/prometheus@<commit hash>
 	github.com/prometheus/prometheus v1.8.2-0.20210119214810-e4487274853c
+	github.com/prometheus/tsdb v0.10.0
 	github.com/schollz/progressbar/v3 v3.7.2
 	github.com/sergi/go-diff v1.0.0
 	github.com/stretchr/testify v1.6.1

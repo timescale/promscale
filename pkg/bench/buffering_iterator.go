@@ -2,6 +2,7 @@ package bench
 
 import (
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 )
 
@@ -10,44 +11,58 @@ import (
 //because of the memory mapping. It makes it impossible for the benchmarker
 //to keep up.
 type BufferingIterator struct {
-	chunkR     tsdb.ChunkReader
-	chunksMeta []chunks.Meta
-	chunkIndex int
-	tsSlice    []int64
-	valSlice   []float64
-	valIndex   int
-	err        error
+	chunkR        tsdb.ChunkReader
+	chunksMeta    []chunks.Meta
+	pool          chunkenc.Pool
+	chunkIndex    int
+	chunk         chunkenc.Chunk
+	chunkIterator chunkenc.Iterator
+	err           error
 }
 
 func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *BufferingIterator {
 	return &BufferingIterator{
 		chunkR:     chunkR,
 		chunksMeta: chunksMeta,
+		pool:       chunkenc.NewPool(),
 		chunkIndex: -1,
-		tsSlice:    make([]int64, 0, 120),
-		valSlice:   make([]float64, 0, 120),
 	}
 }
 
-func (bi *BufferingIterator) fillVals() {
+func (bi *BufferingIterator) nextChunk() bool {
+	if bi.chunkIndex >= len(bi.chunksMeta)-1 {
+		return false
+	}
+	bi.chunkIndex++
+
 	chk, err := bi.chunkR.Chunk(bi.chunksMeta[bi.chunkIndex].Ref)
 	if err != nil {
 		bi.err = err
-		return
+		return false
 	}
 
-	bi.tsSlice = bi.tsSlice[:0]
-	bi.valSlice = bi.valSlice[:0]
-	bi.valIndex = 0
+	encoding := chk.Encoding()
+	dataOriginal := chk.Bytes()
+	data := make([]byte, len(dataOriginal))
+	//this is the key part, we are copying the bytes
+	copy(data, dataOriginal)
 
-	it := chk.Iterator(nil)
-	for it.Next() {
-		ts, val := it.At()
-		bi.tsSlice = append(bi.tsSlice, ts)
-		bi.valSlice = append(bi.valSlice, val)
+	if bi.chunk != nil {
+		if bi.chunkIterator.Next() {
+			panic("old chunk isn't exhausted")
+		}
+		bi.chunkIterator = nil
+		bi.pool.Put(bi.chunk)
 	}
 
-	bi.err = it.Err()
+	bi.chunk, err = bi.pool.Get(encoding, data)
+	if err != nil {
+		bi.err = err
+		return false
+	}
+
+	bi.chunkIterator = bi.chunk.Iterator(bi.chunkIterator)
+	return bi.chunkIterator.Next()
 }
 
 func (bi *BufferingIterator) Next() bool {
@@ -55,22 +70,15 @@ func (bi *BufferingIterator) Next() bool {
 		return false
 	}
 
-	if bi.valIndex < (len(bi.tsSlice) - 1) {
-		bi.valIndex++
+	if bi.chunkIterator != nil && bi.chunkIterator.Next() {
 		return true
 	}
 
-	if bi.chunkIndex < (len(bi.chunksMeta) - 1) {
-		bi.chunkIndex++
-		bi.fillVals()
-		return bi.err == nil
-	}
-
-	return false
+	return bi.nextChunk()
 }
 
 func (bi *BufferingIterator) At() (int64, float64) {
-	return bi.tsSlice[bi.valIndex], bi.valSlice[bi.valIndex]
+	return bi.chunkIterator.At()
 }
 
 func (bi *BufferingIterator) Seek(t int64) bool {
