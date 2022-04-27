@@ -25,6 +25,7 @@ type manager struct {
 	rulesManager     *prom_rules.Manager
 	notifierManager  *notifier.Manager
 	discoveryManager *discovery.Manager
+	stop             chan struct{}
 }
 
 func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*manager, error) {
@@ -59,6 +60,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		rulesManager:     rulesManager,
 		notifierManager:  notifierManager,
 		discoveryManager: discoveryManagerNotify,
+		stop:             make(chan struct{}),
 	}, nil
 }
 
@@ -93,29 +95,39 @@ func (m *manager) Run() error {
 	var g run.Group
 
 	g.Add(func() error {
-		log.Info("msg", "starting discovery manager...")
+		log.Debug("msg", "Starting discovery manager...")
 		return errors.WithMessage(m.discoveryManager.Run(), "error running discovery manager")
 	}, func(err error) {
-		log.Info("msg", "stopping discovery manager")
+		log.Debug("msg", "Stopping discovery manager")
 	})
 
 	g.Add(func() error {
-		log.Info("msg", "starting notifier manager...")
+		log.Debug("msg", "Starting notifier manager...")
 		m.notifierManager.Run(m.discoveryManager.SyncCh())
 		return nil
 	}, func(error) {
-		log.Info("msg", "stopping notifier manager")
+		log.Debug("msg", "Stopping notifier manager")
 		m.notifierManager.Stop()
 	})
 
 	g.Add(func() error {
-		log.Info("msg", "starting rules manager...")
+		log.Debug("msg", "Starting internal rule-manager...")
 		m.rulesManager.Run()
 		return nil
 	}, func(error) {
-		log.Info("msg", "stopping rules manager")
+		log.Debug("msg", "Stopping internal rule-manager")
 		m.rulesManager.Stop()
 	})
 
+	g.Add(func() error {
+		// This stops all actors in the group on receiving request from manager.Stop()
+		<-m.stop
+		return nil
+	}, func(err error) {})
+
 	return errors.WithMessage(g.Run(), "error running the rule manager groups")
+}
+
+func (m *manager) Stop() {
+	close(m.stop)
 }
