@@ -32,7 +32,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
-		QueueCapacity: cfg.QueueCapacity,
+		QueueCapacity: cfg.NotificationQueueCapacity,
 		Registerer:    r,
 		Do:            do,
 	}, log.GetLogger())

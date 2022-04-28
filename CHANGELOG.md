@@ -21,6 +21,7 @@ We use the following categories for changes:
 - Add alerts for database SQL metrics [#1193]
 - Query Jaeger traces directly through Promscale [#1224]
 - Additional dataset configuration options via `-startup.dataset.config` flag. Read more [here](docs/dataset.md) [#1276, #1310]
+- Adds support for alerting and recording rules in Promscale [#1286, #1315]
 
 ### Changed
 - Enable tracing by default [#1213], [#1290]

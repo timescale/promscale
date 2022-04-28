@@ -220,7 +220,7 @@ func Run(cfg *Config) error {
 		},
 	)
 
-	if cfg.RulesCfg.Opts.UseRulesManager {
+	if cfg.RulesCfg.ContainsRules() {
 		rulesCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 		manager, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg)
