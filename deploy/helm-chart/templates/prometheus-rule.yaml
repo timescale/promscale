@@ -223,7 +223,7 @@ spec:
         runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCacheTooSmall.md
   - name: promscale-database-connection
     rules:
-    - alert: PromscaleStorageHighErrorRate
+    - alert: PromscaleDBHighErrorRate
       expr: |
         (
           sum by (job) (
@@ -240,7 +240,7 @@ spec:
       annotations:
         summary: Promscale experiences a high error rate when connecting to the database
         description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
-        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageHighErrorRate.md
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleDBHighErrorRate.md
     - alert: PromscaleStorageHighLatency
       expr: |
         (
