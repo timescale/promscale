@@ -40,7 +40,7 @@ connection:
   # sslMode properties are used.
   uri: ""
   # user used to connect to TimescaleDB
-  user: postgres
+  user: ""
   password: ""
   host: "timescaledb.{{ .Release.Namespace }}.svc.cluster.local"
   port: 5432
