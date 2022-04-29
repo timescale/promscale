@@ -25,6 +25,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/rules"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -321,7 +322,10 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, nil, fmt.Errorf("init promql engine: %w", err)
 	}
 
-	router, err := api.GenerateRouter(cfg, qryCfg, pgClient)
+	router, err := api.GenerateRouter(cfg, qryCfg, api.Provider{
+		Client: pgClient,
+		Rules:  rules.NewNoopManager(),
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
