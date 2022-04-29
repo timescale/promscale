@@ -146,8 +146,8 @@ func (m *impleManager) Stop() {
 
 type noopImple struct{}
 
-func NewNoopManager() noopImple {
-	return noopImple{}
+func NewNoopManager() *noopImple {
+	return &noopImple{}
 }
 
 func (noopImple) ApplyConfig(*prometheus_config.Config) error                         { return nil }

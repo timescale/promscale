@@ -137,10 +137,7 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	provider := api.Provider{
-		Client: client,
-		Rules:  rules.NewNoopManager(),
-	}
+	provider := api.NewProviderWith(client, rules.NewNoopManager())
 	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, provider)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
@@ -227,13 +224,13 @@ func Run(cfg *Config) error {
 	if cfg.RulesCfg.ContainsRules() {
 		rulesCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
+
 		manager, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg)
 		if err != nil {
 			return fmt.Errorf("error creating rules manager: %w", err)
 		}
-		// This will not cause a race since its in the same routine as the api's Router,
-		// plus Promscale hasn't started yet.
-		provider.Rules = manager
+		provider.UpdateRulesManager(manager)
+
 		group.Add(
 			func() error {
 				promCfg := cfg.RulesCfg.PrometheusConfig
@@ -248,10 +245,10 @@ func Run(cfg *Config) error {
 				); err != nil {
 					return fmt.Errorf("error updating rules manager: %w", err)
 				}
-				log.Info("msg", "Starting rule-manager ...")
+				log.Info("msg", "Started Rule-Manager")
 				return manager.Run()
 			}, func(err error) {
-				log.Info("msg", "Stopping rule-manager")
+				log.Info("msg", "Stopping Rule-Manager")
 				stopRuler()    // Stops the discovery manager.
 				manager.Stop() // Stops the internal group of rule-manager.
 			},

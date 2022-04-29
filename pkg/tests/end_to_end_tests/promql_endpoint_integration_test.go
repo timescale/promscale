@@ -322,10 +322,8 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, nil, fmt.Errorf("init promql engine: %w", err)
 	}
 
-	router, err := api.GenerateRouter(cfg, qryCfg, api.Provider{
-		Client: pgClient,
-		Rules:  rules.NewNoopManager(),
-	})
+	provider := api.NewProviderWith(pgClient, rules.NewNoopManager())
+	router, err := api.GenerateRouter(cfg, qryCfg, provider)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
