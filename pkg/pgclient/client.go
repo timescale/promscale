@@ -25,6 +25,7 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/tenancy"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 // LockFunc does connect validation function, useful for things such as acquiring locks
@@ -50,13 +51,13 @@ type Client struct {
 }
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
+func NewClient(cfg *Config, mt tenancy.Authorizer, afterConnect util.AfterConnectFunc, readOnly bool) (*Client, error) {
 	pgConfig, numCopiers, err := getPgConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	pgConfig.AfterConnect = schemaLocker
+	pgConfig.AfterConnect = afterConnect
 	connectionPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
 	if err != nil {
 		log.Error("msg", "err creating connection pool for new client", "err", err.Error())

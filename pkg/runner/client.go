@@ -150,6 +150,20 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 		leasingFunction = nil
 	}
 
+	afterConnect := func(ctx context.Context, conn *pgx.Conn) error {
+		if leasingFunction != nil {
+			if err := leasingFunction(ctx, conn); err != nil {
+				return err
+			}
+		}
+		/* PG JIT compilation doesn't play nicely with TimescaleDB planner and causes a huge slowdown so we are turning it off
+		   We might revisit this once JIT issues get addressed in TimescaleDB */
+		if _, err := conn.Exec(ctx, "SET jit=off;"); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	multiTenancy := tenancy.NewNoopAuthorizer()
 	if cfg.TenancyCfg.EnableMultiTenancy {
 		multiTenancyConfig := tenancy.NewAllowAllTenantsConfig(cfg.TenancyCfg.AllowNonMTWrites)
@@ -172,7 +186,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly)
+	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, afterConnect, cfg.APICfg.ReadOnly)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}
