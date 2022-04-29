@@ -1,0 +1,42 @@
+name: docker
+on:
+  push:
+    branches:
+      - master
+      - main
+      - force_test
+      - release-*
+      - ci-docker
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Gather metadata
+        id: metadata
+        run: |
+          branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
+          echo "::set-output name=branch_name::${branch_name}"
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: build/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/timescale/dev_promscale_connector:${{steps.metadata.outputs.branch_name}}
+
