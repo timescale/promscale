@@ -25,11 +25,22 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/rules"
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
-func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client) (*mux.Router, error) {
-	var writePreprocessors []parser.Preprocessor
+// Provider provides the API, an access to the application level implementations.
+// None of its fields should be nil.
+type Provider struct {
+	Client *pgclient.Client
+	Rules  rules.Manager
+}
+
+func GenerateRouter(apiConf *Config, promqlConf *query.Config, provider Provider) (*mux.Router, error) {
+	var (
+		writePreprocessors []parser.Preprocessor
+		client             = provider.Client
+	)
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
 		writePreprocessors = append(writePreprocessors, ha.NewFilter(service))

@@ -137,7 +137,11 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client)
+	provider := api.Provider{
+		Client: client,
+		Rules:  rules.NewNoopManager(),
+	}
+	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, provider)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
@@ -227,6 +231,9 @@ func Run(cfg *Config) error {
 		if err != nil {
 			return fmt.Errorf("error creating rules manager: %w", err)
 		}
+		// This will not cause a race since its in the same routine as the api's Router,
+		// plus Promscale hasn't started yet.
+		provider.Rules = manager
 		group.Add(
 			func() error {
 				promCfg := cfg.RulesCfg.PrometheusConfig

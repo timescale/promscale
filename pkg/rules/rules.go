@@ -21,14 +21,22 @@ import (
 	"github.com/timescale/promscale/pkg/rules/adapters"
 )
 
-type manager struct {
+type Manager interface {
+	ApplyConfig(*prometheus_config.Config) error
+	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error
+	Run() error
+	Stop()
+	RuleGroups() []*prom_rules.Group
+}
+
+type impleManager struct {
 	rulesManager     *prom_rules.Manager
 	notifierManager  *notifier.Manager
 	discoveryManager *discovery.Manager
 	stop             chan struct{}
 }
 
-func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*manager, error) {
+func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*impleManager, error) {
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
@@ -56,7 +64,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		ForGracePeriod:  cfg.ForGracePeriod,
 		ResendDelay:     cfg.ResendDelay,
 	})
-	return &manager{
+	return &impleManager{
 		rulesManager:     rulesManager,
 		notifierManager:  notifierManager,
 		discoveryManager: discoveryManagerNotify,
@@ -64,7 +72,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 	}, nil
 }
 
-func (m *manager) ApplyConfig(cfg *prometheus_config.Config) error {
+func (m *impleManager) ApplyConfig(cfg *prometheus_config.Config) error {
 	if err := m.applyDiscoveryManagerConfig(cfg); err != nil {
 		return err
 	}
@@ -74,7 +82,7 @@ func (m *manager) ApplyConfig(cfg *prometheus_config.Config) error {
 	return nil
 }
 
-func (m *manager) applyDiscoveryManagerConfig(cfg *prometheus_config.Config) error {
+func (m *impleManager) applyDiscoveryManagerConfig(cfg *prometheus_config.Config) error {
 	c := make(map[string]discovery.Configs)
 	for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
 		c[k] = v.ServiceDiscoveryConfigs
@@ -82,16 +90,20 @@ func (m *manager) applyDiscoveryManagerConfig(cfg *prometheus_config.Config) err
 	return errors.WithMessage(m.discoveryManager.ApplyConfig(c), "error applying config to discover manager")
 }
 
-func (m *manager) applyNotifierManagerConfig(cfg *prometheus_config.Config) error {
+func (m *impleManager) applyNotifierManagerConfig(cfg *prometheus_config.Config) error {
 	return errors.WithMessage(m.notifierManager.ApplyConfig(cfg), "error applying config to notifier manager")
 }
 
-func (m *manager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error {
+func (m *impleManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error {
 	return errors.WithMessage(m.rulesManager.Update(interval, files, externalLabels, externalURL), "error updating the rules manager")
 }
 
+func (m *impleManager) RuleGroups() []*prom_rules.Group {
+	return m.rulesManager.RuleGroups()
+}
+
 // Run runs the managers and blocks on either a graceful exit or on error.
-func (m *manager) Run() error {
+func (m *impleManager) Run() error {
 	var g run.Group
 
 	g.Add(func() error {
@@ -128,6 +140,18 @@ func (m *manager) Run() error {
 	return errors.WithMessage(g.Run(), "error running the rule manager groups")
 }
 
-func (m *manager) Stop() {
+func (m *impleManager) Stop() {
 	close(m.stop)
 }
+
+type noopImple struct{}
+
+func NewNoopManager() noopImple {
+	return noopImple{}
+}
+
+func (noopImple) ApplyConfig(*prometheus_config.Config) error                         { return nil }
+func (noopImple) Update(_ time.Duration, _ []string, _ labels.Labels, _ string) error { return nil }
+func (noopImple) RuleGroups() []*prom_rules.Group                                     { return []*prom_rules.Group{} }
+func (noopImple) Run() error                                                          { return nil }
+func (noopImple) Stop()                                                               {}
