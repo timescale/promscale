@@ -28,7 +28,7 @@ func TestDeleteSpans(t *testing.T) {
 			insert into _ps_trace.instrumentation_lib (name, version, schema_url_id)
 			select 'inst_lib_1', '1.0.0', (select id from _ps_trace.schema_url where url = 'fake.url.com' limit 1);
 
-			select ps_trace.put_operation('my.service.name', 'my.span.name', 'SPAN_KIND_UNSPECIFIED');
+			select ps_trace.put_operation('my.service.name', 'my.span.name', 'unspecified');
 
 			select ps_trace.put_tag_key('my.tag.key', 1::ps_trace.tag_type);
 
@@ -49,14 +49,14 @@ func TestDeleteSpans(t *testing.T) {
 				now(),
 				0,
 				'{}'::jsonb::tag_map,
-				'STATUS_CODE_OK',
+				'ok',
 				'{}'::jsonb::tag_map,
 				-1
 			);
 
 			INSERT INTO _ps_trace.link
 			(
-				trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, link_nbr, trace_state, 
+				trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, link_nbr, trace_state,
 				tags, dropped_tags_count
 			)
 			SELECT

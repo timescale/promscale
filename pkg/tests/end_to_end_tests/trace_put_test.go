@@ -240,8 +240,8 @@ func testPutOperation(t *testing.T, db *pgxpool.Pool, ctx context.Context) {
 				require.Equal(t, id, actualId)
 			}
 		}
-		put(1, "super duper service", "span 1", "SPAN_KIND_CLIENT")
-		put(2, "super duper service", "span 2", "SPAN_KIND_SERVER")
-		put(3, "my new service", "span 3", "SPAN_KIND_CONSUMER")
+		put(1, "super duper service", "span 1", "client")
+		put(2, "super duper service", "span 2", "server")
+		put(3, "my new service", "span 3", "consumer")
 	})
 }

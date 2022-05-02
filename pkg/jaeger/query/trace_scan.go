@@ -198,16 +198,9 @@ func populateSpan(
 
 func setStatus(ref pdata.Span, dbRes *spanDBResult) error {
 	if dbRes.statusCode != "" {
-		var code pdata.StatusCode
-		switch dbRes.statusCode {
-		case pdata.StatusCodeOk.String():
-			code = pdata.StatusCodeOk
-		case pdata.StatusCodeError.String():
-			code = pdata.StatusCodeError
-		case pdata.StatusCodeUnset.String():
-			code = pdata.StatusCodeUnset
-		default:
-			return fmt.Errorf("invalid status-code received: %s", dbRes.statusCode)
+		code, err := makeStatusCode(dbRes.statusCode)
+		if err != nil {
+			return err
 		}
 		ref.Status().SetCode(code)
 	}
@@ -311,21 +304,53 @@ func makeSpanId(s *int64) pdata.SpanID {
 	return pdata.NewSpanID(b8)
 }
 
+func getPGKindEnum(jaegerKind string) (string, error) {
+	switch jaegerKind {
+	case pdata.SpanKindClient.String():
+		return "client", nil
+	case pdata.SpanKindServer.String():
+		return "server", nil
+	case pdata.SpanKindInternal.String():
+		return "internal", nil
+	case pdata.SpanKindConsumer.String():
+		return "consumer", nil
+	case pdata.SpanKindProducer.String():
+		return "producer", nil
+	case pdata.SpanKindUnspecified.String():
+		return "unspecified", nil
+	default:
+		return "", fmt.Errorf("unknown span kind: %v", jaegerKind)
+	}
+}
+
 func makeKind(s string) (pdata.SpanKind, error) {
 	switch s {
-	case "SPAN_KIND_CLIENT":
+	case "client":
 		return pdata.SpanKindClient, nil
-	case "SPAN_KIND_SERVER":
+	case "server":
 		return pdata.SpanKindServer, nil
-	case "SPAN_KIND_INTERNAL":
+	case "internal":
 		return pdata.SpanKindInternal, nil
-	case "SPAN_KIND_CONSUMER":
+	case "consumer":
 		return pdata.SpanKindConsumer, nil
-	case "SPAN_KIND_PRODUCER":
+	case "producer":
 		return pdata.SpanKindProducer, nil
-	case "SPAN_KIND_UNSPECIFIED":
+	case "unspecified":
 		return pdata.SpanKindUnspecified, nil
 	default:
 		return pdata.SpanKindUnspecified, fmt.Errorf("unknown span kind: %s", s)
+	}
+}
+
+func makeStatusCode(s string) (pdata.StatusCode, error) {
+	switch s {
+	case "ok":
+		return pdata.StatusCodeOk, nil
+	case "error":
+		return pdata.StatusCodeError, nil
+	case "unset":
+		return pdata.StatusCodeUnset, nil
+	default:
+		return pdata.StatusCodeUnset, fmt.Errorf("unknown status-code kind: %s", s)
 	}
 }

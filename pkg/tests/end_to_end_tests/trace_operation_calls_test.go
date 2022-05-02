@@ -140,21 +140,21 @@ values
 insert into _ps_trace.operation (id, service_name_id, span_kind, span_name)
 overriding system value
 values
-    (1, 1, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 1 server'),
-    (2, 1, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 1 client'),
-    (3, 2, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 2 server'),
-    (4, 2, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 2 client'),
-    (5, 3, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 3 server'),
-    (6, 3, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 3 client'),
-    (7, 4, 'SPAN_KIND_SERVER'::ps_trace.span_kind, 'service 4 server'),
-    (8, 4, 'SPAN_KIND_CLIENT'::ps_trace.span_kind, 'service 4 client')
+    (1, 1, 'server'::ps_trace.span_kind, 'service 1 server'),
+    (2, 1, 'client'::ps_trace.span_kind, 'service 1 client'),
+    (3, 2, 'server'::ps_trace.span_kind, 'service 2 server'),
+    (4, 2, 'client'::ps_trace.span_kind, 'service 2 client'),
+    (5, 3, 'server'::ps_trace.span_kind, 'service 3 server'),
+    (6, 3, 'client'::ps_trace.span_kind, 'service 3 client'),
+    (7, 4, 'server'::ps_trace.span_kind, 'service 4 server'),
+    (8, 4, 'client'::ps_trace.span_kind, 'service 4 client')
 `
 	exec, err = db.Exec(ctx, insertOperations)
 	require.NoError(t, err, "Failed to insert operations")
 	require.Equal(t, int64(8), exec.RowsAffected(), "Expected to insert 8 operations. Got: %v", exec.RowsAffected())
 
 	var insertSpans = `
-insert into _ps_trace.span 
+insert into _ps_trace.span
 (
 	trace_id,
 	span_id,
@@ -177,7 +177,7 @@ select
 	x.start_time::timestamptz + interval '1 minute',
 	60000,
 	'{}'::jsonb::tag_map,
-	'STATUS_CODE_OK',
+	'ok',
 	'{}'::jsonb::tag_map,
 	-1
 from
@@ -275,14 +275,14 @@ values
 insert into _ps_trace.operation (id, service_name_id, span_kind, span_name)
 overriding system value
 values
-    (1, 1, 'SPAN_KIND_SERVER'::ps_trace.span_kind,   'service 1 server'),
-    (2, 1, 'SPAN_KIND_CLIENT'::ps_trace.span_kind,   'service 1 client'),
-    (3, 2, 'SPAN_KIND_SERVER'::ps_trace.span_kind,   'service 2 server'),
-    (4, 2, 'SPAN_KIND_CLIENT'::ps_trace.span_kind,   'service 2 client'),
-    (5, 3, 'SPAN_KIND_SERVER'::ps_trace.span_kind,   'service 3 server'),
-    (6, 3, 'SPAN_KIND_CLIENT'::ps_trace.span_kind,   'service 3 client'),
-    (7, 4, 'SPAN_KIND_SERVER'::ps_trace.span_kind,   'service 4 server'),
-    (8, 4, 'SPAN_KIND_CLIENT'::ps_trace.span_kind,   'service 4 client')
+    (1, 1, 'server'::ps_trace.span_kind,   'service 1 server'),
+    (2, 1, 'client'::ps_trace.span_kind,   'service 1 client'),
+    (3, 2, 'server'::ps_trace.span_kind,   'service 2 server'),
+    (4, 2, 'client'::ps_trace.span_kind,   'service 2 client'),
+    (5, 3, 'server'::ps_trace.span_kind,   'service 3 server'),
+    (6, 3, 'client'::ps_trace.span_kind,   'service 3 client'),
+    (7, 4, 'server'::ps_trace.span_kind,   'service 4 server'),
+    (8, 4, 'client'::ps_trace.span_kind,   'service 4 client')
 ;
 
 do $block$
@@ -303,8 +303,8 @@ begin
                 c.id as client_operation_id
             from _ps_trace.operation s
             cross join _ps_trace.operation c
-            where s.span_kind = 'SPAN_KIND_SERVER'
-            and c.span_kind = 'SPAN_KIND_CLIENT'
+            where s.span_kind = 'server'
+            and c.span_kind = 'client'
             and s.service_name_id != c.service_name_id
             order by s.id, c.id
         ) x
@@ -332,7 +332,7 @@ begin
             '2021-11-07 09:00:01 UTC'::timestamptz + (_rec.start_minute * interval '1 minute'),
             '2021-11-07 09:01:01 UTC'::timestamptz + (_rec.start_minute * interval '1 minute'),
             '{}'::jsonb::tag_map,
-            'STATUS_CODE_OK',
+            'ok',
             '{}'::jsonb::tag_map,
             -1
         returning span_id into strict _span_id
