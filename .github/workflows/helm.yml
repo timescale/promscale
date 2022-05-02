@@ -19,6 +19,11 @@ jobs:
     - name: Test helm chart static generation
       run: ./scripts/generate-deploy-script.sh
 
+    - name: check if alerts were propagated to helm chart
+      run: |
+        make generate-helm --always-make
+        git diff --exit-code
+
   lint-test:
     runs-on: ubuntu-latest
     steps:
