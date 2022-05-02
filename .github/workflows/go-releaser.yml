@@ -69,10 +69,17 @@ jobs:
         env:
           PACKAGECLOUD_TOKEN: ${{ secrets.IO_PACKAGECLOUD_TOKEN }}
         run: |
+          version="$(echo "${GITHUB_REF}" | sed -e 's|refs/tags/||')";
+          # a dash indicates a pre-release version in semver
+          if [[ "$version" =~ '-' ]]; then \
+            repo='timescale/timescaledb-exp'; \
+          else \
+            repo='timescale/timescaledb'; \
+          fi;
           ls dist/*.deb
-          package_cloud push timescale/timescaledb/debian/stretch dist/*.deb
-          package_cloud push timescale/timescaledb/debian/buster dist/*.deb
-          package_cloud push timescale/timescaledb/debian/bullseye dist/*.deb
+          package_cloud push ${repo}/debian/stretch dist/*.deb
+          package_cloud push ${repo}/debian/buster dist/*.deb
+          package_cloud push ${repo}/debian/bullseye dist/*.deb
           ls dist/*.rpm
-          package_cloud push timescale/timescaledb/el/7 dist/*.rpm
-          package_cloud push timescale/timescaledb/el/8 dist/*.rpm
+          package_cloud push ${repo}/el/7 dist/*.rpm
+          package_cloud push ${repo}/el/8 dist/*.rpm
