@@ -31,12 +31,6 @@ jobs:
       with:
         go-version: ${{ env.golang-version }}
 
-    - name: check if alerts were propagated to helm chart
-      run: |
-        make generate-helm --always-make
-        git diff --exit-code
-      working-directory: .
-
     - name: download mixtool
       run: go install -a github.com/monitoring-mixins/mixtool/cmd/mixtool@latest
 
