@@ -19,13 +19,14 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 )
 
-func Rules(conf *Config, p *provider, updateMetrics func(handler, code string, duration float64)) http.Handler {
-	hf := corsWrapper(conf, rulesHandler(p, updateMetrics))
+func Rules(conf *Config, updateMetrics func(handler, code string, duration float64)) http.Handler {
+	hf := corsWrapper(conf, rulesHandler(conf, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-// Below types and code is copied from prometheus/web/api.v1
+// Below types and code is copied from prometheus/web/api.v1, starting from
 // https://github.com/prometheus/prometheus/blob/854d671b6bc5d3ae7960936103ff23863c8a3f91/web/api/v1/api.go#L1168
+// upto https://github.com/prometheus/prometheus/blob/854d671b6bc5d3ae7960936103ff23863c8a3f91/web/api/v1/api.go#L1288
 //
 // Note: We cannot directly import prometheus/web/api/v1 package and use these exported structs from there.
 // This is because then we get duplicate enum registration in prompb, which is likely due to
@@ -95,7 +96,7 @@ type Alert struct {
 	Value       string        `json:"value"`
 }
 
-func rulesHandler(p *provider, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
+func rulesHandler(apiConf *Config, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
 		begin := time.Now()
@@ -103,17 +104,23 @@ func rulesHandler(p *provider, updateMetrics func(handler, code string, duration
 			updateMetrics("/api/v1/rules", statusCode, time.Since(begin).Seconds())
 		}()
 
-		typ := strings.ToLower(r.URL.Query().Get("type"))
-		if typ != "" && typ != "alert" && typ != "record" {
-			log.Error("msg", "unsupported type", "type", typ)
-			respondError(w, http.StatusBadRequest, fmt.Errorf("unsupported type: type %s", typ), "bad_data")
+		queryType := strings.ToLower(r.URL.Query().Get("type"))
+		if queryType != "" && queryType != "alert" && queryType != "record" {
+			log.Error("msg", "unsupported type", "type", queryType)
+			respondError(w, http.StatusBadRequest, fmt.Errorf("unsupported type: type %s", queryType), "bad_data")
 			return
 		}
 
-		returnAlerts := typ == "" || typ == "alert"
-		returnRecording := typ == "" || typ == "record"
+		if apiConf.Rules == nil {
+			statusCode = "200"
+			respond(w, http.StatusOK, &RuleDiscovery{RuleGroups: []*RuleGroup{}})
+			return
+		}
 
-		ruleGroups := p.RulesManager().RuleGroups()
+		returnAlerts := queryType == "" || queryType == "alert"
+		returnRecording := queryType == "" || queryType == "record"
+
+		ruleGroups := apiConf.Rules.RuleGroups()
 		res := &RuleDiscovery{RuleGroups: make([]*RuleGroup, len(ruleGroups))}
 
 		for i, grp := range ruleGroups {
@@ -180,7 +187,7 @@ func rulesHandler(p *provider, updateMetrics func(handler, code string, duration
 			res.RuleGroups[i] = apiRuleGroup
 		}
 		statusCode = "200"
-		respond(w, 200, res)
+		respond(w, http.StatusOK, res)
 	}
 }
 

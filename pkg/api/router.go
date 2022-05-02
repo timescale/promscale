@@ -22,16 +22,14 @@ import (
 	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/jaeger"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgclient"
 	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
-func GenerateRouter(apiConf *Config, promqlConf *query.Config, provider *provider) (*mux.Router, error) {
-	var (
-		writePreprocessors []parser.Preprocessor
-		client             = provider.client
-	)
+func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client) (*mux.Router, error) {
+	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
 		writePreprocessors = append(writePreprocessors, ha.NewFilter(service))
@@ -89,8 +87,11 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, provider *provide
 	metadataHandler := timeHandler(metrics.HTTPRequestDuration, "metadata", MetricMetadata(apiConf, client))
 	apiV1.Path("/metadata").Methods(http.MethodGet, http.MethodPost).HandlerFunc(metadataHandler)
 
-	rulesHandler := timeHandler(metrics.HTTPRequestDuration, "rules", Rules(apiConf, provider, updateQueryMetrics))
+	rulesHandler := timeHandler(metrics.HTTPRequestDuration, "rules", Rules(apiConf, updateQueryMetrics))
 	apiV1.Path("/rules").Methods(http.MethodGet).HandlerFunc(rulesHandler)
+
+	alertsHandler := timeHandler(metrics.HTTPRequestDuration, "alerts", Alerts(apiConf, updateQueryMetrics))
+	apiV1.Path("/alerts").Methods(http.MethodGet).HandlerFunc(alertsHandler)
 
 	labelValuesHandler := timeHandler(metrics.HTTPRequestDuration, "label/:name/values", LabelValues(apiConf, queryable))
 	apiV1.Path("/label/{name}/values").Methods(http.MethodGet).HandlerFunc(labelValuesHandler)

@@ -24,6 +24,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
+	"github.com/timescale/promscale/pkg/rules"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -91,6 +92,7 @@ type Config struct {
 
 	Auth         *Auth
 	MultiTenancy tenancy.Authorizer
+	Rules        *rules.Manager
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
@@ -192,8 +194,11 @@ func respond(w http.ResponseWriter, status int, message interface{}) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 
+	// The ideal response to code 200 should be "success" as per Prometheus.
+	// Hence, we do not do http.StatusText(200) as that will return "OK"
+	// which does not align with Prometheus.
 	statusText := "success"
-	if status != 200 {
+	if status != http.StatusOK {
 		statusText = http.StatusText(status)
 	}
 
