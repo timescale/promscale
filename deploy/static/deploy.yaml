@@ -63,6 +63,10 @@ spec:
     port: 9201
     targetPort: metrics-port
     protocol: TCP
+  - name: otel-port
+    port: 9202
+    targetPort: otel-port
+    protocol: TCP
 ---
 # Source: promscale/templates/deployment-promscale.yaml
 apiVersion: apps/v1
@@ -98,6 +102,7 @@ spec:
         app.kubernetes.io/component: "connector"
       annotations: 
         checksum/config: af0eae966aacabe43c12f83955e5a5cbf0c4853b5678c536b9f84d83b9d658b7
+        checksum/dataset: 917edb0f9f4467795390e9087696a76af67a9df6de793a132c5406c1e8f54ddd
         prometheus.io/path: /metrics
         prometheus.io/port: "9201"
         prometheus.io/scrape: "true"
@@ -106,10 +111,48 @@ spec:
         - image: timescale/promscale
           imagePullPolicy: IfNotPresent
           name: promscale-connector
+          args:
+          - "-startup.dataset.config=/etc/promscale/dataset.yaml"
           envFrom:
           - secretRef:
               name: promscale
           ports:
             - containerPort: 9201
               name: metrics-port
+            - containerPort: 9202
+              name: otel-port
+          volumeMounts:
+            - name: configs
+              mountPath: /etc/promscale/
+      volumes:
+        - name: configs
+          configMap:
+            name: promscale
       serviceAccountName: promscale
+---
+# Source: promscale/templates/config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promscale
+  namespace: default
+  labels:
+    app: promscale
+    chart: promscale-0.10.0
+    release: promscale
+    heritage: Helm
+    app.kubernetes.io/name: "promscale-connector"
+    app.kubernetes.io/version: 0.10.0
+    app.kubernetes.io/part-of: "promscale-connector"
+    app.kubernetes.io/component: "connector"
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade,post-delete
+    "helm.sh/hook-weight": "0"
+data:
+  dataset.yaml: |
+    
+    metrics:
+      compress_data: true
+      default_retention_period: 90d
+    traces:
+      default_retention_period: 30d
