@@ -53,7 +53,7 @@ var (
 
 	// ExtVersionRangeString is a range of required promscale extension versions
 	// support 0.5.x
-	ExtVersionRangeString = ">=0.5.0 <0.5.99"
+	ExtVersionRangeString = ">=0.5.0-alpha <0.5.99"
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 
 	// Expose build info through Prometheus metric
