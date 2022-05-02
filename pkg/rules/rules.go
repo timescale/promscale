@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package rules
 
 import (
@@ -21,22 +25,14 @@ import (
 	"github.com/timescale/promscale/pkg/rules/adapters"
 )
 
-type Manager interface {
-	ApplyConfig(*prometheus_config.Config) error
-	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error
-	Run() error
-	Stop()
-	RuleGroups() []*prom_rules.Group
-}
-
-type impleManager struct {
+type Manager struct {
 	rulesManager     *prom_rules.Manager
 	notifierManager  *notifier.Manager
 	discoveryManager *discovery.Manager
 	stop             chan struct{}
 }
 
-func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*impleManager, error) {
+func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*Manager, error) {
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
@@ -64,7 +60,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		ForGracePeriod:  cfg.ForGracePeriod,
 		ResendDelay:     cfg.ResendDelay,
 	})
-	return &impleManager{
+	return &Manager{
 		rulesManager:     rulesManager,
 		notifierManager:  notifierManager,
 		discoveryManager: discoveryManagerNotify,
@@ -72,7 +68,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 	}, nil
 }
 
-func (m *impleManager) ApplyConfig(cfg *prometheus_config.Config) error {
+func (m *Manager) ApplyConfig(cfg *prometheus_config.Config) error {
 	if err := m.applyDiscoveryManagerConfig(cfg); err != nil {
 		return err
 	}
@@ -82,7 +78,7 @@ func (m *impleManager) ApplyConfig(cfg *prometheus_config.Config) error {
 	return nil
 }
 
-func (m *impleManager) applyDiscoveryManagerConfig(cfg *prometheus_config.Config) error {
+func (m *Manager) applyDiscoveryManagerConfig(cfg *prometheus_config.Config) error {
 	c := make(map[string]discovery.Configs)
 	for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
 		c[k] = v.ServiceDiscoveryConfigs
@@ -90,20 +86,24 @@ func (m *impleManager) applyDiscoveryManagerConfig(cfg *prometheus_config.Config
 	return errors.WithMessage(m.discoveryManager.ApplyConfig(c), "error applying config to discover manager")
 }
 
-func (m *impleManager) applyNotifierManagerConfig(cfg *prometheus_config.Config) error {
+func (m *Manager) applyNotifierManagerConfig(cfg *prometheus_config.Config) error {
 	return errors.WithMessage(m.notifierManager.ApplyConfig(cfg), "error applying config to notifier manager")
 }
 
-func (m *impleManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error {
+func (m *Manager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error {
 	return errors.WithMessage(m.rulesManager.Update(interval, files, externalLabels, externalURL), "error updating the rules manager")
 }
 
-func (m *impleManager) RuleGroups() []*prom_rules.Group {
+func (m *Manager) RuleGroups() []*prom_rules.Group {
 	return m.rulesManager.RuleGroups()
 }
 
+func (m *Manager) AlertingRules() []*prom_rules.AlertingRule {
+	return m.rulesManager.AlertingRules()
+}
+
 // Run runs the managers and blocks on either a graceful exit or on error.
-func (m *impleManager) Run() error {
+func (m *Manager) Run() error {
 	var g run.Group
 
 	g.Add(func() error {
@@ -140,18 +140,6 @@ func (m *impleManager) Run() error {
 	return errors.WithMessage(g.Run(), "error running the rule manager groups")
 }
 
-func (m *impleManager) Stop() {
+func (m *Manager) Stop() {
 	close(m.stop)
 }
-
-type noopImple struct{}
-
-func NewNoopManager() *noopImple {
-	return &noopImple{}
-}
-
-func (noopImple) ApplyConfig(*prometheus_config.Config) error                         { return nil }
-func (noopImple) Update(_ time.Duration, _ []string, _ labels.Labels, _ string) error { return nil }
-func (noopImple) RuleGroups() []*prom_rules.Group                                     { return []*prom_rules.Group{} }
-func (noopImple) Run() error                                                          { return nil }
-func (noopImple) Stop()                                                               {}

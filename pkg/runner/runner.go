@@ -137,8 +137,7 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	provider := api.NewProviderWith(client, rules.NewNoopManager())
-	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, provider)
+	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
@@ -229,7 +228,7 @@ func Run(cfg *Config) error {
 		if err != nil {
 			return fmt.Errorf("error creating rules manager: %w", err)
 		}
-		provider.UpdateRulesManager(manager)
+		cfg.APICfg.Rules = manager
 
 		group.Add(
 			func() error {
