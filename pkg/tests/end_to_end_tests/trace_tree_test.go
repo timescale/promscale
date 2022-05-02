@@ -89,7 +89,7 @@ SELECT
 	now(),
 	0,
     '{}'::jsonb::tag_map,
-    'STATUS_CODE_OK',
+    'ok',
     '{}'::jsonb::tag_map,
     -1
 FROM x
@@ -122,7 +122,7 @@ SELECT
 	now(),
 	0,
     '{}'::jsonb::tag_map,
-    'STATUS_CODE_OK',
+    'ok',
     '{}'::jsonb::tag_map,
     -1
 ;`
@@ -134,7 +134,7 @@ SELECT
 func testTraceTree(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	const qry = `
 	select span_id, coalesce(parent_span_id, -1), lvl, path::text
-	from trace_tree('3dadb2bf-0035-433e-b74b-9075cc9260e8') 
+	from trace_tree('3dadb2bf-0035-433e-b74b-9075cc9260e8')
 	order by span_id`
 
 	type result struct {
@@ -263,7 +263,7 @@ func testDownstreamSpans(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Run("downstream_spans", func(t *testing.T) {
 		const qry = `
 		select span_id, coalesce(parent_span_id, -1), dist, path::text
-		from downstream_spans('3dadb2bf-0035-433e-b74b-9075cc9260e8', 2) 
+		from downstream_spans('3dadb2bf-0035-433e-b74b-9075cc9260e8', 2)
 		order by span_id`
 		expectedResults := []result{
 			{2, 1, 0, "{2}"},
@@ -280,7 +280,7 @@ func testDownstreamSpans(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Run("downstream_spans_max_dist", func(t *testing.T) {
 		const qry = `
 		select span_id, coalesce(parent_span_id, -1), dist, path::text
-		from downstream_spans('3dadb2bf-0035-433e-b74b-9075cc9260e8', 2, 2) 
+		from downstream_spans('3dadb2bf-0035-433e-b74b-9075cc9260e8', 2, 2)
 		order by span_id`
 		expectedResults := []result{
 			{2, 1, 0, "{2}"},
@@ -296,7 +296,7 @@ func testDownstreamSpans(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 func testSiblingSpans(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	const qry = `
 	select span_id, coalesce(parent_span_id, -1)
-	from sibling_spans('3dadb2bf-0035-433e-b74b-9075cc9260e8', 8) 
+	from sibling_spans('3dadb2bf-0035-433e-b74b-9075cc9260e8', 8)
 	order by span_id`
 
 	type result struct {
@@ -358,7 +358,7 @@ func testSpanTree(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Run("span_tree", func(t *testing.T) {
 		const qry = `
 		select span_id, coalesce(parent_span_id, -1), dist, is_upstream, is_downstream, path::text
-		from span_tree('3dadb2bf-0035-433e-b74b-9075cc9260e8', 6) 
+		from span_tree('3dadb2bf-0035-433e-b74b-9075cc9260e8', 6)
 		order by span_id`
 		expectedResults := []result{
 			{1, -1, 2, true, false, "{1,2,6}"},
@@ -374,7 +374,7 @@ func testSpanTree(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Run("span_tree_max_dist", func(t *testing.T) {
 		const qry = `
 		select span_id, coalesce(parent_span_id, -1), dist, is_upstream, is_downstream, path::text
-		from span_tree('3dadb2bf-0035-433e-b74b-9075cc9260e8', 6, 1) 
+		from span_tree('3dadb2bf-0035-433e-b74b-9075cc9260e8', 6, 1)
 		order by span_id`
 		expectedResults := []result{
 			{2, 1, 1, true, false, "{2,6}"},

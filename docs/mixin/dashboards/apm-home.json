@@ -203,7 +203,7 @@
           "hide": false,
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n    service_name AS \"Service\",\n    COUNT(*)::numeric / (30 * 60) AS \"Requests\",\n    AVG(duration_ms) AS \"Avg Duration\",\n    ROUND(approx_percentile(0.90, percentile_agg(duration_ms))::numeric, 3) AS \"p90 Duration\",\n    (count(*) filter (where status_code = 'STATUS_CODE_ERROR')::numeric / count(*)) AS \"Error rate\"\nFROM ps_trace.span s\nWHERE start_time > NOW() - INTERVAL '30m'\nAND (span_kind = 'SPAN_KIND_SERVER' OR parent_span_id is NULL)\nGROUP BY 1\nORDER BY 2",
+          "rawSql": "SELECT\n    service_name AS \"Service\",\n    COUNT(*)::numeric / (30 * 60) AS \"Requests\",\n    AVG(duration_ms) AS \"Avg Duration\",\n    ROUND(approx_percentile(0.90, percentile_agg(duration_ms))::numeric, 3) AS \"p90 Duration\",\n    (count(*) filter (where status_code = 'error')::numeric / count(*)) AS \"Error rate\"\nFROM ps_trace.span s\nWHERE start_time > NOW() - INTERVAL '30m'\nAND (span_kind = 'server' OR parent_span_id is NULL)\nGROUP BY 1\nORDER BY 2",
           "refId": "A",
           "select": [
             [
@@ -479,7 +479,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  status_message as \"Error\",\n  service_name as \"Service\",\n  count(*) as \"Occurrences\" \nFROM ps_trace.span\nWHERE start_time > NOW() - INTERVAL '30m'\nAND status_code = 'STATUS_CODE_ERROR'\nGROUP BY 1, 2\nORDER BY 3\n;",
+          "rawSql": "SELECT\n  status_message as \"Error\",\n  service_name as \"Service\",\n  count(*) as \"Occurrences\" \nFROM ps_trace.span\nWHERE start_time > NOW() - INTERVAL '30m'\nAND status_code = 'error'\nGROUP BY 1, 2\nORDER BY 3\n;",
           "refId": "A",
           "select": [
             [

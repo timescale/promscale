@@ -184,7 +184,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
 				spanName := span.Name()
-				spanKind := span.Kind().String()
+				spanKind, err := getPGKindEnum(span.Kind())
+				if err != nil {
+					return err
+				}
 
 				operationBatch.Queue(serviceName, spanName, spanKind)
 
@@ -270,7 +273,10 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 				}
 				parentSpanID := getSpanID(span.ParentSpanID().Bytes())
 				spanName := span.Name()
-				spanKind := span.Kind().String()
+				spanKind, err := getPGKindEnum(span.Kind())
+				if err != nil {
+					return err
+				}
 				operationID, err := operationBatch.GetID(serviceName, spanName, spanKind)
 				if err != nil {
 					return err
@@ -307,9 +313,14 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 					maxEndTime = end
 				}
 
+				statusCode, err := getPGStatusCode(span.Status().Code())
+				if err != nil {
+					return err
+				}
+
 				spanRows = append(spanRows, []interface{}{traceID, spanID, parentSpanID,
 					operationID, start, end, float64(end.Sub(start).Nanoseconds()) / float64(1e6), getTraceStateValue(span.TraceState()), jsonTags, span.DroppedAttributesCount(), eventTimeRange, span.DroppedEventsCount(),
-					span.DroppedLinksCount(), span.Status().Code().String(), span.Status().Message(), instLibID, jsonResourceTags, 0, rSchemaURLID})
+					span.DroppedLinksCount(), statusCode, span.Status().Message(), instLibID, jsonResourceTags, 0, rSchemaURLID})
 
 			}
 		}
@@ -464,4 +475,17 @@ func getTraceStateValue(ts pdata.TraceState) (result pgtype.Text) {
 	}
 
 	return result
+}
+
+func getPGStatusCode(pk pdata.StatusCode) (string, error) {
+	switch pk {
+	case pdata.StatusCodeOk:
+		return "ok", nil
+	case pdata.StatusCodeError:
+		return "error", nil
+	case pdata.StatusCodeUnset:
+		return "unset", nil
+	default:
+		return "", fmt.Errorf("unknown status code: %v", pk)
+	}
 }

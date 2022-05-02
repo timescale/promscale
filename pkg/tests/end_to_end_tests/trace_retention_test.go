@@ -70,7 +70,7 @@ func TestTraceDropChunk(t *testing.T) {
 				$2,
 				$3,
 				'{}'::jsonb::tag_map,
-				'STATUS_CODE_OK',
+				'ok',
 				'{}'::jsonb::tag_map,
 				-1
 			),
@@ -83,7 +83,7 @@ func TestTraceDropChunk(t *testing.T) {
 				now(),
 				0,
 				'{}'::jsonb::tag_map,
-				'STATUS_CODE_OK',
+				'ok',
 				'{}'::jsonb::tag_map,
 				-1
 			);
@@ -93,7 +93,7 @@ func TestTraceDropChunk(t *testing.T) {
 		_, err = db.Exec(ctx, `
 			INSERT INTO _ps_trace.link
 			(
-				trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, link_nbr, trace_state, 
+				trace_id, span_id, span_start_time, linked_trace_id, linked_span_id, link_nbr, trace_state,
 				tags, dropped_tags_count
 			)
 			SELECT
@@ -206,7 +206,7 @@ func TestTraceDropDataWithoutTimescaleDB(t *testing.T) {
 				$2,
 				$3,
 				'{}'::jsonb::tag_map,
-				'STATUS_CODE_OK',
+				'ok',
 				'{}'::jsonb::tag_map,
 				-1
 			),
@@ -219,7 +219,7 @@ func TestTraceDropDataWithoutTimescaleDB(t *testing.T) {
 				now(),
 				0,
 				'{}'::jsonb::tag_map,
-				'STATUS_CODE_OK',
+				'ok',
 				'{}'::jsonb::tag_map,
 				-1
 			);

@@ -107,16 +107,16 @@ def generate_instrumentation_lib() -> InstrumentationLib:
 
 def generate_span_kind() -> str:
     return random.choice([
-        'SPAN_KIND_UNSPECIFIED',
-        'SPAN_KIND_INTERNAL',
-        'SPAN_KIND_SERVER',
-        'SPAN_KIND_CLIENT',
-        'SPAN_KIND_PRODUCER',
-        'SPAN_KIND_CONSUMER'])
+        'unspecified',
+        'internal',
+        'server',
+        'client',
+        'producer',
+        'consumer'])
 
 
 def generate_status_code() -> str:
-    return random.choice(['STATUS_CODE_UNSET', 'STATUS_CODE_OK', 'STATUS_CODE_ERROR'])
+    return random.choice(['unset', 'ok', 'error'])
 
 
 def generate_span(trace: Trace, parent_span: Optional[Span], depth: int, child: int, siblings: int, min_breadth: int, max_breadth: int) -> None:
@@ -199,8 +199,8 @@ def save_span_name(service_name: str, span_name: str, span_kind: str, cur) -> in
 
 def save_span(span: Span, cur) -> None:
     sql = '''
-    insert into _ps_trace.schema_url (url) 
-    values (%s) 
+    insert into _ps_trace.schema_url (url)
+    values (%s)
     on conflict (url) do nothing'''
     cur.execute(sql, (span.resource.schema_url,))
     sql = '''
@@ -230,10 +230,10 @@ def save_span(span: Span, cur) -> None:
         %(trace_state)s,
         %(parent_span_id)s,
         (
-            select n.id 
+            select n.id
             from _ps_trace.operation n
-            inner join _ps_trace.tag t on (t.key = 'service.name' and n.service_name_id = t.id) 
-            where n.span_name = %(span_name)s 
+            inner join _ps_trace.tag t on (t.key = 'service.name' and n.service_name_id = t.id)
+            where n.span_name = %(span_name)s
             and n.span_kind = %(span_kind)s
             and t.value = to_jsonb(%(service_name)s::text)
             limit 1
