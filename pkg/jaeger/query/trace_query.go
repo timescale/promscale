@@ -156,7 +156,7 @@ func buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interfac
 			FROM _ps_trace.tag
 			WHERE key = 'service.name'
 			AND key_id = 1
-			AND value = to_jsonb($%d::text)
+			AND _prom_ext.jsonb_digest(value) = _prom_ext.jsonb_digest(to_jsonb($%d::text))
 		)`, len(params))
 		operation_clauses = append(operation_clauses, qual)
 	}

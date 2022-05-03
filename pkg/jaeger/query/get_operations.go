@@ -26,7 +26,7 @@ WHERE
 		FROM _ps_trace.tag
 		WHERE key = 'service.name'
 		AND key_id = 1
-		AND value = to_jsonb($1::text)
+		AND _prom_ext.jsonb_digest(value) = _prom_ext.jsonb_digest(to_jsonb($1::text))
 	)
 	AND %s
 `
