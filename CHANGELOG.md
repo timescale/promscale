@@ -23,6 +23,7 @@ We use the following categories for changes:
 - Additional dataset configuration options via `-startup.dataset.config` flag. Read more [here](docs/dataset.md) [#1276, #1310]
 - Support for alerting and recording rules in Promscale [#1286, #1315]
 - Support for `/api/v1/rules` & `/api/v1/alerts` API [#1320]
+- Log mandatory requirement of Promscale extension when upgrading from older versions [#1329]
 
 ### Changed
 - Enable tracing by default [#1213], [#1290]
