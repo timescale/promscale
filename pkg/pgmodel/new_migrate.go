@@ -105,10 +105,12 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 
 	// make sure a supported version of the extension is available before making any database changes
 	available, err := extension.AreSupportedPromscaleExtensionVersionsAvailable(conn, extOptions)
-	if err != nil {
+	switch {
+	case err != nil:
+		log.Warn("msg", "as of Promscale version 0.11.0, the Promscale database extension is mandatory. please install the latest version of this extension in your TimescaleDB/PostgreSQL database in order to proceed.")
 		return fmt.Errorf("error while checking for supported and available promscale extension versions: %w", err)
-	}
-	if !available {
+	case !available:
+		log.Warn("msg", "as of Promscale version 0.11.0, the Promscale database extension is mandatory. please install the latest version of the extension in your TimescaleDB/PostgreSQL database in order to proceed.")
 		return fmt.Errorf("no supported promscale extension versions are available and the extension is required")
 	}
 
@@ -130,6 +132,7 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 		if err = installExtensionAllBalls(conn); err != nil {
 			return fmt.Errorf("error while installing promscale extension version 0.0.0: %w", err)
 		}
+		log.Info("msg", "upgrading old version of Promscale to version 0.11.0, the Promscale database extension is required moving forward")
 	}
 
 	err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
