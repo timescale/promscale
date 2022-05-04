@@ -49,7 +49,7 @@ This repository also contains the source code for **prom-migrator**. **Prom-migr
 an **open-source**, **community-driven** and **free-to-use**, **universal prometheus
 data migration tool**, that migrates data from one storage system to another, leveraging Prometheus's
 remote storage endpoints. For more information about prom-migrator, visit
-[prom-migrator's README](https://github.com/timescale/promscale/blob/master/cmd/prom-migrator/README.md).
+[prom-migrator's README](https://github.com/timescale/promscale/blob/master/migration-tool/cmd/prom-migrator/README.md).
 
 # Documentation
 
