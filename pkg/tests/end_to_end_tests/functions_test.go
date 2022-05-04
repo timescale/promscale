@@ -382,15 +382,6 @@ func TestExtensionFunctions(t *testing.T) {
 			{"prom_api", "?(prom_api.label_array, ps_tag.tag_op_not_equals)"},
 			{"prom_api", "?(prom_api.label_array, prom_api.matcher_positive)"},
 			{"prom_api", "?(prom_api.label_array, prom_api.matcher_negative)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_jsonb_path_exists)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_regexp_matches)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_regexp_not_matches)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_equals)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_not_equals)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_less_than)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_less_than_or_equal)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_greater_than)"},
-			{"ps_trace", "?(ps_trace.tag_map, ps_tag.tag_op_greater_than_or_equal)"},
 		}
 		for _, opr := range operators {
 			const query = "SELECT nspname FROM pg_operator LEFT JOIN pg_namespace ON oprnamespace = pg_namespace.oid WHERE pg_operator.oid = $1::regoperator;"

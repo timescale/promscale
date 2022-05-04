@@ -31,12 +31,12 @@ const (
 		s.trace_state 			trace_states,
 		s_url.url 				schema_urls,
 		o.span_name     		span_names,
-	   	ps_trace.jsonb(s.resource_tags) 	resource_tags,
-	   	ps_trace.jsonb(s.span_tags) 		span_tags,
+		_ps_trace.tag_map_denormalize(s.resource_tags) 	resource_tags,
+		_ps_trace.tag_map_denormalize(s.span_tags) 		span_tags,
 	   	array_agg(e.name ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)			event_names,
 		array_agg(e.time ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)			event_times,
 	   	array_agg(e.dropped_tags_count ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)	event_dropped_tags_count,
-	   	jsonb_agg(ps_trace.jsonb(e.tags) ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)	event_tags,
+		array_agg(_ps_trace.tag_map_denormalize(e.tags) ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)	event_tags,
 	   	inst_lib.name 				library_name,
 	   	inst_lib.version 			library_version,
 		inst_lib_url.url 			library_schema_url,
@@ -44,7 +44,7 @@ const (
 		array_agg(lk.linked_span_id ORDER BY lk.link_nbr)  FILTER(WHERE lk IS NOT NULL)	links_linked_span_ids,
 		array_agg(lk.trace_state ORDER BY lk.link_nbr)     FILTER(WHERE lk IS NOT NULL)	links_trace_states,
 		array_agg(lk.dropped_tags_count ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL) 	links_dropped_tags_count,
-		jsonb_agg(lk.tags ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL)			links_tags
+		array_agg(_ps_trace.tag_map_denormalize(lk.tags) ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL)			links_tags
 	FROM
 		_ps_trace.span s
 	INNER JOIN
@@ -181,8 +181,9 @@ func buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interfac
 
 	if len(q.Tags) > 0 {
 		for k, v := range q.Tags {
-			params = append(params, k, v)
-			qual := fmt.Sprintf(`s.span_tags ? ($%d == $%d)`, len(params)-1, len(params))
+			//TODO make sure this is optimized correctly
+			params = append(params, k, "\""+v+"\"")
+			qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
 			clauses = append(clauses, qual)
 		}
 	}
