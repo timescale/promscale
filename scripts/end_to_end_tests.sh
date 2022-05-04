@@ -86,7 +86,7 @@ PROMSCALE_DB_PASSWORD=postgres \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale -startup.only
+./promscale -startup.only -startup.upgrade-prerelease-extensions
 
 docker exec e2e-tsdb psql -U postgres -d postgres \
   -c "CREATE ROLE writer PASSWORD 'test' LOGIN" \
@@ -197,8 +197,8 @@ DATASET_END_TIME="2020-08-10T11:43:50Z"
 # Check that backfilled dataset is present in both sources.
 compare_connector_and_prom "query_range?query=demo_disk_usage_bytes%7Binstance%3D%22demo.promlabs.com%3A10002%22%7D&start=$DATASET_START_TIME&end=$DATASET_END_TIME&step=30s"
 compare_connector_and_prom "query?query=demo_cpu_usage_seconds_total%7Binstance%3D%22demo.promlabs.com%3A10000%22%2Cmode%3D%22user%22%7D&time=$DATASET_START_TIME"
-# Check that connector metrics are scraped.  
-compare_connector_and_prom "query?query=ts_prom_received_samples_total&time=$START_TIME" 
+# Check that connector metrics are scraped.
+compare_connector_and_prom "query?query=ts_prom_received_samples_total&time=$START_TIME"
 # Check that connector is up.
 compare_connector_and_prom "query?query=up&time=$START_TIME"
 # Check series endpoint matches on connector series.
