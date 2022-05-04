@@ -94,34 +94,34 @@ func (t tagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err erro
 	return t.b.SendBatch(ctx, conn)
 }
 
-func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]byte, error) {
+func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) (pgtype.JSONB, error) {
 	tagMap := make(map[int64]int64)
 	for k, v := range tags {
 		byteVal, err := json.Marshal(v)
 		if err != nil {
-			return nil, err
+			return pgtype.JSONB{}, err
 		}
 		t := tag{k, string(byteVal), typ}
 		ids, err := tb.b.Get(t)
 		if err != nil {
-			return nil, fmt.Errorf("error getting tag from batch %v: %w", t, err)
+			return pgtype.JSONB{}, fmt.Errorf("error getting tag from batch %v: %w", t, err)
 		}
 		tagIDs, ok := ids.(tagIDs)
 		if !ok {
-			return nil, fmt.Errorf("error getting tag %v from batch: %w", t, errors.ErrInvalidCacheEntryType)
+			return pgtype.JSONB{}, fmt.Errorf("error getting tag %v from batch: %w", t, errors.ErrInvalidCacheEntryType)
 		}
 		if tagIDs.keyID.Status != pgtype.Present || tagIDs.valueID.Status != pgtype.Present {
-			return nil, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)
+			return pgtype.JSONB{}, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)
 		}
 		if tagIDs.keyID.Int == 0 || tagIDs.valueID.Int == 0 {
-			return nil, fmt.Errorf("tag IDs have 0 values: %#v", tagIDs)
+			return pgtype.JSONB{}, fmt.Errorf("tag IDs have 0 values: %#v", tagIDs)
 		}
 		tagMap[tagIDs.keyID.Int] = tagIDs.valueID.Int
 	}
 
 	jsonBytes, err := json.Marshal(tagMap)
 	if err != nil {
-		return nil, err
+		return pgtype.JSONB{}, err
 	}
-	return jsonBytes, nil
+	return pgtype.JSONB{Bytes: jsonBytes, Status: pgtype.Present}, nil
 }

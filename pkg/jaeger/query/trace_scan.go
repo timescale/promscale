@@ -29,15 +29,15 @@ type spanDBResult struct {
 	traceState          pgtype.Text
 	schemaUrl           pgtype.Text
 	spanName            string
-	resourceTags        map[string]interface{}
-	spanTags            map[string]interface{}
+	resourceTags        pgtype.JSONB
+	spanTags            pgtype.JSONB
 
 	// From events table.
 	// for events, the entire slice can be nil but not any element within the slice
 	eventNames            *[]string
 	eventTimes            *[]time.Time
 	eventDroppedTagsCount *[]int
-	eventTags             *[]map[string]interface{}
+	eventTags             pgtype.JSONBArray
 
 	// From instrumentation lib table.
 	instLibName      *string
@@ -49,7 +49,7 @@ type spanDBResult struct {
 	linksLinkedSpanIds    *[]int64
 	linksTraceStates      *[]*string
 	linksDroppedTagsCount *[]int
-	linksTags             *[]map[string]interface{}
+	linksTags             pgtype.JSONBArray
 }
 
 func ScanRow(row pgxconn.PgxRows, traces *pdata.Traces) error {
@@ -221,7 +221,7 @@ func populateEvents(
 		event.SetName((*dbResult.eventNames)[i])
 		event.SetTimestamp(pdata.NewTimestampFromTime((*dbResult.eventTimes)[i]))
 		event.SetDroppedAttributesCount(uint32((*dbResult.eventDroppedTagsCount)[i]))
-		attr, err := makeAttributes((*dbResult.eventTags)[i])
+		attr, err := makeAttributes(dbResult.eventTags.Elements[i])
 		if err != nil {
 			return fmt.Errorf("making event tags: %w", err)
 		}
@@ -254,7 +254,7 @@ func populateLinks(
 			link.SetTraceState(pdata.TraceState(traceState))
 		}
 		link.SetDroppedAttributesCount(uint32((*dbResult.linksDroppedTagsCount)[i]))
-		attr, err := makeAttributes((*dbResult.linksTags)[i])
+		attr, err := makeAttributes(dbResult.linksTags.Elements[i])
 		if err != nil {
 			return fmt.Errorf("making link tags: %w", err)
 		}
@@ -264,7 +264,12 @@ func populateLinks(
 }
 
 // makeAttributes makes attribute map using tags.
-func makeAttributes(tags map[string]interface{}) (map[string]pdata.AttributeValue, error) {
+func makeAttributes(tagsJson pgtype.JSONB) (map[string]pdata.AttributeValue, error) {
+	var tags map[string]interface{}
+	if err := tagsJson.AssignTo(&tags); err != nil {
+		return nil, fmt.Errorf("tags assign to: %w", err)
+	}
+
 	m := make(map[string]pdata.AttributeValue, len(tags))
 	// todo: attribute val as array?
 	for k, v := range tags {
