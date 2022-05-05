@@ -16,5 +16,5 @@ metadata:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
     "helm.sh/hook-weight": "0"
 data:
-  dataset.yaml: |
-    {{ toYaml .Values.datasetConfig | nindent 4 }}
+  config.yaml: |
+    {{ toYaml .Values.config | nindent 4 }}
