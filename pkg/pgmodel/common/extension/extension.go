@@ -386,7 +386,7 @@ func getNewExtensionVersion(extName string,
 		// if upgradePreRelease is false skip the pre-releases.
 		// if the current installed version is an rc version return it as an valid available version.
 		if len(availableVersions[i].Pre) > 0 && !upgradePreRelease && availableVersions[i].String() != currentVersion.String() {
-			log.Warn("msg", "skipping upgrade to prerelease version "+availableVersions[i].String()+" as --upgrade-prerelease-extensions is disabled.")
+			log.Warn("msg", "skipping upgrade to prerelease version "+availableVersions[i].String()+", use -startup.upgrade-prerelease-extensions to force.")
 			continue
 		}
 
