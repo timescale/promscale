@@ -33,6 +33,9 @@ services:
       PROMSCALE_TRACING_OTLP_SERVER_ADDRESS: ":9202"
       PROMSCALE_TELEMETRY_TRACE_JAEGER_ENDPOINT: "http://otel-collector:14268/api/traces"
       PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
+    # FIXME(paulfantom): remove before doing a release!
+    command:
+      - "-startup.upgrade-prerelease-extensions"
 
   otel-collector:
     platform: linux/amd64

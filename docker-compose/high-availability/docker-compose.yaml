@@ -40,6 +40,9 @@ services:
       PROMSCALE_DB_PASSWORD: postgres
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_SSL_MODE: allow
+    # FIXME(paulfantom): remove before doing a release!
+    command:
+      - "-startup.upgrade-prerelease-extensions"
 
   promscale-connector2:
     image: timescale/promscale:latest
@@ -58,3 +61,7 @@ services:
       PROMSCALE_DB_PASSWORD: postgres
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_SSL_MODE: allow
+    # FIXME(paulfantom): remove before doing a release!
+    command:
+      - "-startup.upgrade-prerelease-extensions"
+
