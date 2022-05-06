@@ -10,13 +10,13 @@ echo "running tests"
 #build latest image
 docker build -t timescale/promscale:latest ../ --file ../build/Dockerfile
 
-docker compose -p test_docker-compose up -d
+docker compose -p test up -d
 
 cleanup() {
     if (( $? != 0 )); then
         echo "ERROR"
     fi
-    docker-compose -p test_docker-compose down > /dev/null 2>&1
+    docker compose -p test down > /dev/null 2>&1
 }
 
 trap cleanup EXIT
@@ -37,16 +37,15 @@ else
 fi
 done
 
-## As prometheus scrape interval is 10s
-## sleep for 30s so we can find ingestion logs in promscale
-sleep 30
-
-writeLog=$(docker logs test_docker-compose-promscale-1  2>&1| grep samples/sec | tail -n 1 || true)
-   if [ -n "$writeLog" ]; then
-    echo "promscale is ingesting data"
-else
-    echo "failed to find promscale ingesting data logs"
-    exit 1
-fi
+i=0
+while [ "$(docker logs -n10 test-promscale-1 2>&1| grep samples/sec | wc -l)" -lt 1 ]; do
+	i=$((i+=1))
+	if [ "$i" -gt 600 ]; then
+		echo "ERROR: Promscale couldn't ingest data for over 600s. Exiting."
+		exit 1
+	fi
+	echo "Waiting for promscale to ingest data"
+	sleep 1
+done
 
 echo "SUCCESS"
