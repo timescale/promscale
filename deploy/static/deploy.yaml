@@ -99,8 +99,8 @@ spec:
         app.kubernetes.io/part-of: "promscale-connector"
         app.kubernetes.io/component: "connector"
       annotations: 
-        checksum/config: ff05ff54cbc0eadd9ce97781ed753f30c19ece1aa39b35d2eb5a70ad656daf69
-        checksum/dataset: 917edb0f9f4467795390e9087696a76af67a9df6de793a132c5406c1e8f54ddd
+        checksum/connection: ff05ff54cbc0eadd9ce97781ed753f30c19ece1aa39b35d2eb5a70ad656daf69
+        checksum/config: a1171a41877cc559fe699480d7c9bc731055fde6ccbe0b47e5c9a279cfe38962
         prometheus.io/path: /metrics
         prometheus.io/port: "9201"
         prometheus.io/scrape: "true"
@@ -110,7 +110,7 @@ spec:
           imagePullPolicy: IfNotPresent
           name: promscale-connector
           args:
-          - "-startup.dataset.config=/etc/promscale/dataset.yaml"
+          - "-config=/etc/promscale/config.yaml"
           envFrom:
           - secretRef:
               name: promscale
@@ -147,10 +147,11 @@ metadata:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
     "helm.sh/hook-weight": "0"
 data:
-  dataset.yaml: |
+  config.yaml: |
     
-    metrics:
-      compress_data: true
-      default_retention_period: 90d
-    traces:
-      default_retention_period: 30d
+    startup.dataset.config: |
+      metrics:
+        compress_data: true
+        default_retention_period: 90d
+      traces:
+        default_retention_period: 30d
