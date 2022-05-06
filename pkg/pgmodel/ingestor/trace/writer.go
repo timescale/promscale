@@ -391,7 +391,7 @@ func (t *traceWriterImpl) insertRows(ctx context.Context, table string, columns 
 		}
 	}()
 
-	if _, err = tx.Exec(ctx, fmt.Sprintf("CREATE TEMPORARY TABLE temp ON COMMIT DROP AS TABLE _ps_trace.%s WITH NO DATA", table)); err != nil {
+	if _, err = tx.Exec(ctx, fmt.Sprintf("CREATE TEMPORARY TABLE IF NOT EXISTS trace_writer_temp ON COMMIT DELETE ROWS AS TABLE _ps_trace.%s WITH NO DATA", table)); err != nil {
 		return err
 	}
 
@@ -399,7 +399,7 @@ func (t *traceWriterImpl) insertRows(ctx context.Context, table string, columns 
 		return err
 	}
 
-	if _, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO _ps_trace.%s(%[2]s) SELECT %[2]s FROM temp ON CONFLICT DO NOTHING", table, strings.Join(columns, ","))); err != nil {
+	if _, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO _ps_trace.%s(%[2]s) SELECT %[2]s FROM trace_writer_temp ON CONFLICT DO NOTHING", table, strings.Join(columns, ","))); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
