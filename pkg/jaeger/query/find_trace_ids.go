@@ -14,8 +14,8 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-func findTraceIDs(ctx context.Context, conn pgxconn.PgxConn, q *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
-	query, params := findTraceIDsQuery(q)
+func findTraceIDs(ctx context.Context, builder *Builder, conn pgxconn.PgxConn, q *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
+	query, params := builder.findTraceIDsQuery(q)
 	rows, err := conn.Query(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("querying traces: %w", err)

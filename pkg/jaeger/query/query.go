@@ -20,11 +20,13 @@ import (
 )
 
 type Query struct {
-	conn pgxconn.PgxConn
+	conn    pgxconn.PgxConn
+	cfg     *Config
+	builder *Builder
 }
 
-func New(conn pgxconn.PgxConn) *Query {
-	return &Query{conn}
+func New(conn pgxconn.PgxConn, cfg *Config) *Query {
+	return &Query{conn, cfg, NewBuilder(cfg)}
 }
 
 func (p *Query) SpanReader() spanstore.Reader {
@@ -46,7 +48,7 @@ func (p *Query) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Tra
 		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code}).Inc()
 		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code}).Observe(time.Since(start).Seconds())
 	}()
-	res, err := getTrace(ctx, p.conn, traceID)
+	res, err := getTrace(ctx, p.builder, p.conn, traceID)
 	if err != nil {
 		return nil, logError(err)
 	}
@@ -92,7 +94,7 @@ func (p *Query) FindTraces(ctx context.Context, query *spanstore.TraceQueryParam
 		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code}).Inc()
 		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code}).Observe(time.Since(start).Seconds())
 	}()
-	res, err := findTraces(ctx, p.conn, query)
+	res, err := findTraces(ctx, p.builder, p.conn, query)
 	if err != nil {
 		return nil, logError(err)
 	}
@@ -108,7 +110,7 @@ func (p *Query) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryPar
 		metrics.Query.With(prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code}).Inc()
 		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code}).Observe(time.Since(start).Seconds())
 	}()
-	res, err := findTraceIDs(ctx, p.conn, query)
+	res, err := findTraceIDs(ctx, p.builder, p.conn, query)
 	if err != nil {
 		return nil, logError(err)
 	}

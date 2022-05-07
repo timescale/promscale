@@ -21,6 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/ha"
 	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/jaeger"
+	jaegerQuery "github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
@@ -28,7 +29,7 @@ import (
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
-func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client) (*mux.Router, error) {
+func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, query *jaegerQuery.Query) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.Connection))
@@ -100,7 +101,7 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 	router.Path("/healthz").Methods(http.MethodGet).HandlerFunc(Health(healthChecker))
 	router.Path(apiConf.TelemetryPath).Methods(http.MethodGet).HandlerFunc(promhttp.Handler().ServeHTTP)
 
-	jaeger.ExtendQueryAPIs(router, client.Connection)
+	jaeger.ExtendQueryAPIs(router, client.Connection, query)
 
 	debugProf := router.PathPrefix("/debug/pprof").Subrouter()
 	debugProf.Path("").Methods(http.MethodGet).HandlerFunc(pprof.Index)

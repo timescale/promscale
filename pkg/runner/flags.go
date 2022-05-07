@@ -14,6 +14,7 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffyaml"
 	"github.com/timescale/promscale/pkg/api"
+	tracingquery "github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -36,6 +37,7 @@ type Config struct {
 	TenancyCfg                  tenancy.Config
 	PromQLCfg                   query.Config
 	RulesCfg                    rules.Config
+	TracingCfg                  tracingquery.Config
 	ConfigFile                  string
 	DatasetConfig               string
 	TLSCertFile                 string
@@ -128,6 +130,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	limits.ParseFlags(fs, &cfg.LimitsCfg)
 	tenancy.ParseFlags(fs, &cfg.TenancyCfg)
 	query.ParseFlags(fs, &cfg.PromQLCfg)
+	tracingquery.ParseFlags(fs, &cfg.TracingCfg)
 	rules.ParseFlags(fs, &cfg.RulesCfg)
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
@@ -232,6 +235,9 @@ func validate(cfg *Config) error {
 	}
 	if err := query.Validate(&cfg.PromQLCfg); err != nil {
 		return fmt.Errorf("error validating PromQL configuration: %w", err)
+	}
+	if err := tracingquery.Validate(&cfg.TracingCfg); err != nil {
+		return fmt.Errorf("error validating Tracing query configuration: %w", err)
 	}
 	if err := tenancy.Validate(&cfg.TenancyCfg); err != nil {
 		return fmt.Errorf("error validating multi-tenancy configuration: %w", err)
