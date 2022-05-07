@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	promscaleJaeger "github.com/timescale/promscale/pkg/jaeger"
+	jaegerquery "github.com/timescale/promscale/pkg/jaeger/query"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -65,8 +66,8 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		// Start Promscale's HTTP endpoint for Jaeger query.
 		router, _, err := buildRouter(db)
 		require.NoError(t, err)
-
-		promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db))
+		jaegerQuery := jaegerquery.New(pgxconn.NewPgxConn(db), &jaegerquery.DefaultConfig)
+		promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db), jaegerQuery)
 
 		go func() {
 			listener, err := net.Listen("tcp", ":9201")

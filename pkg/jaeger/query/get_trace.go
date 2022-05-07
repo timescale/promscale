@@ -13,8 +13,8 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-func getTrace(ctx context.Context, conn pgxconn.PgxConn, traceID model.TraceID) (*model.Trace, error) {
-	query, params, err := getTraceQuery(traceID)
+func getTrace(ctx context.Context, builder *Builder, conn pgxconn.PgxConn, traceID model.TraceID) (*model.Trace, error) {
+	query, params, err := builder.getTraceQuery(traceID)
 	if err != nil {
 		return nil, fmt.Errorf("get trace query: %w", err)
 	}

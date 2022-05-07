@@ -63,7 +63,7 @@ func TestQueryTraces(t *testing.T) {
 		err = ingestor.IngestTraces(context.Background(), traces)
 		require.NoError(t, err)
 
-		q := query.New(pgxconn.NewQueryLoggingPgxConn(db))
+		q := query.New(pgxconn.NewQueryLoggingPgxConn(db), &query.DefaultConfig)
 
 		getOperationsTest(t, q)
 		findTraceTest(t, q)

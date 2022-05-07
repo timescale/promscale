@@ -137,7 +137,9 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client)
+	jaegerQuery := query.New(client.QuerierConnection, &cfg.TracingCfg)
+
+	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerQuery)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
@@ -198,7 +200,7 @@ func Run(cfg *Config) error {
 	)
 
 	queryPlugin := shared.StorageGRPCPlugin{
-		Impl: query.New(client.QuerierConnection),
+		Impl: jaegerQuery,
 	}
 	if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
 		log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)

@@ -108,42 +108,50 @@ const (
 	`
 )
 
-func buildCompleteTraceQuery(traceIDClause string) string {
+type Builder struct {
+	cfg *Config
+}
+
+func NewBuilder(cfg *Config) *Builder {
+	return &Builder{cfg}
+}
+
+func (b *Builder) buildCompleteTraceQuery(traceIDClause string) string {
 	return fmt.Sprintf(
 		completeTraceSQLFormat,
 		traceIDClause)
 }
 
-func findTracesQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
-	subquery, params := buildTraceIDSubquery(q)
+func (b *Builder) findTracesQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
+	subquery, params := b.buildTraceIDSubquery(q)
 	traceIDClause := "s.trace_id = trace_ids.trace_id"
-	completeTraceSQL := buildCompleteTraceQuery(traceIDClause)
+	completeTraceSQL := b.buildCompleteTraceQuery(traceIDClause)
 	return fmt.Sprintf(findTraceSQLFormat, subquery, completeTraceSQL), params
 }
 
-func findTraceIDsQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
-	subquery, params := buildTraceIDSubquery(q)
+func (b *Builder) findTraceIDsQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
+	subquery, params := b.buildTraceIDSubquery(q)
 	return subquery, params
 }
 
-func getTraceQuery(traceID model.TraceID) (string, []interface{}, error) {
-	var b [16]byte
-	n, err := traceID.MarshalTo(b[:])
+func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, error) {
+	var buf [16]byte
+	n, err := traceID.MarshalTo(buf[:])
 	if n != 16 || err != nil {
 		return "", nil, fmt.Errorf("marshaling TraceID: %w", err)
 	}
 
 	var uuid pgtype.UUID
-	if err := uuid.Set(b); err != nil {
+	if err := uuid.Set(buf); err != nil {
 		return "", nil, fmt.Errorf("setting TraceID: %w", err)
 	}
 	params := []interface{}{uuid}
 
 	traceIDClause := "s.trace_id = $1"
-	return buildCompleteTraceQuery(traceIDClause), params, nil
+	return b.buildCompleteTraceQuery(traceIDClause), params, nil
 }
 
-func buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
+func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
 	clauses := make([]string, 0, 15)
 	params := make([]interface{}, 0, 15)
 

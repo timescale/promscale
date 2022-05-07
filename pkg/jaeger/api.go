@@ -9,8 +9,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-func ExtendQueryAPIs(r *mux.Router, conn pgxconn.PgxConn) {
-	reader := query.New(conn)
+func ExtendQueryAPIs(r *mux.Router, conn pgxconn.PgxConn, reader *query.Query) {
 	handler := jaegerQueryApp.NewAPIHandler(
 		jaegerQueryService.NewQueryService(reader, reader, jaegerQueryService.QueryServiceOptions{}),
 	)
