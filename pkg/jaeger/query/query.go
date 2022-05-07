@@ -21,12 +21,11 @@ import (
 
 type Query struct {
 	conn    pgxconn.PgxConn
-	cfg     *Config
 	builder *Builder
 }
 
 func New(conn pgxconn.PgxConn, cfg *Config) *Query {
-	return &Query{conn, cfg, NewBuilder(cfg)}
+	return &Query{conn, NewBuilder(cfg)}
 }
 
 func (p *Query) SpanReader() spanstore.Reader {

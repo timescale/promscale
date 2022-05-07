@@ -52,15 +52,15 @@ const (
 	LEFT JOIN
 		_ps_trace.schema_url s_url ON s.resource_schema_url_id = s_url.id
 	LEFT JOIN
-		_ps_trace.event e ON e.span_id = s.span_id AND e.trace_id = s.trace_id
+		_ps_trace.event e ON e.span_id = s.span_id AND e.trace_id = s.trace_id %[3]s
 	LEFT JOIN
 		_ps_trace.instrumentation_lib inst_lib ON s.instrumentation_lib_id = inst_lib.id
 	LEFT JOIN
 		_ps_trace.schema_url inst_lib_url ON inst_lib_url.id = inst_lib.schema_url_id
 	LEFT JOIN
-		_ps_trace.link lk ON lk.trace_id = s.trace_id AND lk.span_id = s.span_id
+		_ps_trace.link lk ON lk.trace_id = s.trace_id AND lk.span_id = s.span_id %[4]s
 	WHERE
-	  %s
+	  %[1]s %[2]s
 	GROUP BY
 	  s.trace_id,
 	  s.span_id,
@@ -78,14 +78,14 @@ const (
 
 	subqueryFormat = `
 	SELECT
-		trace_sub.trace_id
+		trace_sub.trace_id, start_time_max - $%[1]d::interval as time_low, start_time_max + $%[1]d::interval as time_high
 	FROM (
 		SELECT
 			trace_id,
 			max(start_time) as start_time_max
 		FROM _ps_trace.span s
 		WHERE
-			%s
+			%[2]s
 		GROUP BY trace_id
 	) as trace_sub
 	ORDER BY trace_sub.start_time_max DESC
@@ -116,16 +116,34 @@ func NewBuilder(cfg *Config) *Builder {
 	return &Builder{cfg}
 }
 
-func (b *Builder) buildCompleteTraceQuery(traceIDClause string) string {
+func (b *Builder) buildCompleteTraceQuery(traceIDClause string, timeLowRef string, timeHighRef string) string {
+	spanTimeClause := ""
+	eventTimeClause := ""
+	linkTimeClause := ""
+	if timeLowRef != "" {
+		spanTimeClause += " AND s.start_time > " + timeLowRef
+		eventTimeClause += " AND e.time > " + timeLowRef
+		linkTimeClause += " AND lk.span_start_time > " + timeLowRef
+	}
+	if timeHighRef != "" {
+		spanTimeClause += " AND s.start_time < " + timeHighRef
+		eventTimeClause += " AND e.time < " + timeHighRef
+		linkTimeClause += " AND lk.span_start_time < " + timeHighRef
+	}
+
 	return fmt.Sprintf(
 		completeTraceSQLFormat,
-		traceIDClause)
+		traceIDClause,
+		spanTimeClause,
+		eventTimeClause,
+		linkTimeClause,
+	)
 }
 
 func (b *Builder) findTracesQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
 	subquery, params := b.buildTraceIDSubquery(q)
 	traceIDClause := "s.trace_id = trace_ids.trace_id"
-	completeTraceSQL := b.buildCompleteTraceQuery(traceIDClause)
+	completeTraceSQL := b.buildCompleteTraceQuery(traceIDClause, "trace_ids.time_low", "trace_ids.time_high")
 	return fmt.Sprintf(findTraceSQLFormat, subquery, completeTraceSQL), params
 }
 
@@ -148,7 +166,7 @@ func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, e
 	params := []interface{}{uuid}
 
 	traceIDClause := "s.trace_id = $1"
-	return b.buildCompleteTraceQuery(traceIDClause), params, nil
+	return b.buildCompleteTraceQuery(traceIDClause, "", ""), params, nil
 }
 
 func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
@@ -228,12 +246,16 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 
 	}
 
-	query := ""
+	clauseString := ""
 	if len(clauses) > 0 {
-		query = fmt.Sprintf(subqueryFormat, strings.Join(clauses, " AND "))
+		clauseString = strings.Join(clauses, " AND ")
 	} else {
-		query = fmt.Sprintf(subqueryFormat, "TRUE")
+		clauseString = "TRUE"
 	}
+	params = append(params, b.cfg.MaxTraceDuration)
+	//Note: the parameter number for b.cfg.MaxTraceDuration is used in two places ($%[1]d in subqueryFormat)
+	//to both add and subtract from start_time_max.
+	query := fmt.Sprintf(subqueryFormat, len(params), clauseString)
 
 	if q.NumTraces != 0 {
 		query += fmt.Sprintf(" LIMIT %d", q.NumTraces)
