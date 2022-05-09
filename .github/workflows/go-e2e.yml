@@ -19,7 +19,7 @@ on:
         default: 'ghcr.io/timescale/dev_promscale_extension:develop-ts2'
 
 env:
-  golang-version: 1.18.0
+  golang-version: 1.18.1
 
 jobs:
   pick_docker_image:

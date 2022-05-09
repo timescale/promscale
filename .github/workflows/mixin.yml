@@ -8,7 +8,7 @@ on:
     - 'docs/mixin/**'
 
 env:
-  golang-version: 1.18.0
+  golang-version: 1.18.1
 
 defaults:
   run:
