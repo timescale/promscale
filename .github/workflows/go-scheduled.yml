@@ -11,7 +11,7 @@ on:
     - cron: "6 0 * * *"
 
 env:
-  golang-version: 1.18.0
+  golang-version: 1.18.1
 
 jobs:
 
