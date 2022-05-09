@@ -58,7 +58,7 @@ jobs:
       id: go
 
     - name: Use Go module caching
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -74,7 +74,7 @@ jobs:
 
     - name: 'Upload Log Artifact'
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: unit-run.log
         path: unit-run.log
