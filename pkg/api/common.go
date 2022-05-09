@@ -139,7 +139,7 @@ func corsWrapper(conf *Config, f http.HandlerFunc) http.HandlerFunc {
 
 func setResponseHeaders(w http.ResponseWriter, samples *promql.Result, isExemplar bool, warnings storage.Warnings) {
 	w.Header().Set("Content-Type", "application/json")
-	if warnings != nil && len(warnings) > 0 {
+	if len(warnings) > 0 {
 		w.Header().Set("Cache-Control", "no-store")
 	}
 	if isExemplar {
