@@ -1,8 +1,11 @@
 # PromscaleIngestHighErrorRate
+
 ## Meaning
+
 Promscale is experiencing high number of errors while ingesting metric samples or traces
 
 ## Impact
+
 For metric data, high error rates will affect Prometheus remote-storage component, leading to frequent
 retrying of samples batch and buffering of samples in the WAL, increasing Prometheus disk usage.
 If left untreated, this will lead to upsharding, increasing Prometheus memory usage. Longer retry
@@ -20,7 +23,9 @@ High error rates may also indicate an unhealthy database or a lack of any disk s
 5. Check the Postgres logs for any errors. If found, check [Database is unhealthy](#database-is-unhealthy) for mitigation
 
 ## Mitigation
+
 ### Ingestion data is invalid or corrupt
+
 Reconfigure your data source (Prometheus, Opentelemetry Collector, etc.) to ensure that all applied configurations
 are as specified in the documentation
 

@@ -99,12 +99,12 @@ Imagine if Promscale contains data from `tenant-A`, `tenant-B` and `tenant-C`. I
 
 If the PromQL query is
 1. `metric_name{__tenant__=tenant-A}` then data corresponding to `metric_name` from `tenant-A` will
-    only be returned.
+   only be returned.
 2. `metric_name{__tenant__=tenant-C}` then no data will be returned.
 3. `metric_name{__tenant__=~tenant-A|tenant-B}` then data from `metric_name` from tenants `tenant-A` and `tenant-B`
-    will be returned.
+   will be returned.
 4. `metric_name{__tenant__=~tenant-A|tenant-C}` then data from `metric_name` will be only from `tenant-A` and
-    not from `tenant-C`. This is because the Promscale instance is configured to return data from only `tenant-A` and `tenant-B`.
+   not from `tenant-C`. This is because the Promscale instance is configured to return data from only `tenant-A` and `tenant-B`.
 5. `metric_name` then the data from `metric_name` will be from `tenant-A` and `tenant-B` only.
 
 Now, if the same database also contains samples without any tenant label and `-multi-tenancy-allow-non-tenants` is applied then

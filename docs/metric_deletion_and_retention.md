@@ -17,7 +17,7 @@ retention period as well as overwrite that default on a particular metric.
 
 Promscale exposes an HTTP API for deletion of series, simply by using the label_matchers. This works the same as the Prometheus delete HTTP API.
 However, for deleting data in Promscale, you will need to enable permissions for advanced users. This is done by setting
-[`web-enable-admin-api`](https://github.com/timescale/promscale/blob/master/docs/cli.md#general-flags) flag to `true`.
+[`web.enable-admin-api`](https://github.com/timescale/promscale/blob/master/docs/configuration.md#web-server-flags) flag to `true`.
 
 **Note**: The start and end timestamp options are not supported yet. Currently, the `delete_series` HTTP API lets you
 delete the series across the entire time-range only.
@@ -60,11 +60,11 @@ SELECT prom_api.drop_metric('container_cpu_load_average_10s');
 
 ### HTTP API
 
-In order to delete all the data in the metric via the HTTP API, you can use the `/delete_series` endpoint and pass the metric name to 
-be deleted, as the matcher. Please note that this is different from dropping the metric as shown in the SQL above since 
+In order to delete all the data in the metric via the HTTP API, you can use the `/delete_series` endpoint and pass the metric name to
+be deleted, as the matcher. Please note that this is different from dropping the metric as shown in the SQL above since
 this will delete all the data but leave the metric itself. Moreover, for deleting data in Promscale,
 you will need to enable permissions for advanced users. This is done by setting
-[`web-enable-admin-api`](https://github.com/timescale/promscale/blob/master/docs/cli.md#general-flags) flag to `true`.
+[`web.enable-admin-api`](https://github.com/timescale/promscale/blob/master/docs/configuration.md#web-server-flags) flag to `true`.
 
 URL query parameters:
 

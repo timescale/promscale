@@ -10,6 +10,7 @@ This document is a guide to setup and run Promscale on bare metal (i.e a non-con
 The instructions below are for Ubuntu 18.04 or later (excluding obsoleted versions), but can easily be modified to deploy Promscale on the operating system of your choice. You can modify the instructions by choosing binaries of TimescaleDB, Promscale, Prometheus & Grafana which are specific to your target operating system.
 
 There are 3 steps to deploy Promscale on bare metal:
+
 <ol>
 <li> Deploy TimescaleDB </li>
 <li> Deploy Promscale </li>
@@ -21,9 +22,11 @@ Instructions to deploy and run Grafana are included as an optional, but commonly
 ### 1. Deploying TimescaleDB
 
 #### Build and install TimescaleDB
+
 Follow the steps on timescaledb installation (instructions for other platforms available [on the TimescaleDB install page](https://docs.timescale.com/latest/getting-started/installation))
 
 **If you don't already have PostgreSQL installed**, add PostgreSQL's third party repository to get the latest PostgreSQL packages (if you are using Ubuntu older than 19.04):
+
 ```
 # `lsb_release -c -s` should return the correct codename of your OS
 echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -c -s)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
@@ -34,6 +37,7 @@ sudo apt-get update
 ```
 
 Next, add TimescaleDB's third party repository and install TimescaleDB, which will download any dependencies it needs from the PostgreSQL repo:
+
 ```
 # Add our PPA
 sudo add-apt-repository ppa:timescale/timescaledb-ppa
@@ -42,8 +46,11 @@ sudo apt-get update
 # Now install appropriate package for PG version
 sudo apt install timescaledb-postgresql-12
 ```
+
 #### Configure TimescaleDB
+
 Configure your database using `timescaledb-tune`. This will ensure that TimescaelDB is properly added to the parameter `shared_preload_libraries` as well as offer suggestions for tuning memory, parallelism, and other settings:
+
 ```
 sudo timescaledb-tune
 
@@ -53,7 +60,7 @@ sudo service postgresql restart
 
 #### Making Promscale Extension Available (optional)
 
-The Promscale extension contains support functions to improve performance of Promscale. While Promscale will run without it, adding this extension will support it to perfrom better. 
+The Promscale extension contains support functions to improve performance of Promscale. While Promscale will run without it, adding this extension will support it to perfrom better.
 
 Follow the steps to compile Promscale extension from source available on [Promscale extension page](https://github.com/timescale/promscale_extension).
 
@@ -73,12 +80,14 @@ chmod +x promscale
 ```
 
 To deploy Promscale, run the following command:
+
 ```
 ./promscale --db-name <DBNAME> --db-password <DB-Password> --db-ssl-mode allow
 ```
+
 Note that the flags `db-name` and `db-password` refer to the name and password of your TimescaleDB database from Step 1.
 
-Furthermore, note that the command above is to deploy Promscale with SSL mode as optional. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and set the `--db-ssl-mode` flag to `require`.  Promscale will then force authentication via SSL.
+Furthermore, note that the command above is to deploy Promscale with SSL mode as optional. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and set the `--db-ssl-mode` flag to `require`. Promscale will then force authentication via SSL.
 
 ### 3. Deploying Prometheus
 
@@ -101,9 +110,8 @@ tar -xzvf prometheus-${LATEST_VERSION}.linux-amd64.tar.gz
 cd prometheus-${LATEST_VERSION}.linux-amd64
 ```
 
+Edit the `prometheus.yml` file in order to add **Promscale** as a `remote_write` and `remote_read` endpoint for Prometheus:
 
-Edit the `prometheus.yml` file in order to add **Promscale** as a `remote_write` and `remote_read` endpoint for Prometheus: 
- 
 ```
 remote_write:
  - url: "http://<promscale-host>:9201/write"
@@ -113,7 +121,8 @@ remote_read:
    read_recent: true
 ```
 
-Run Prometheus using the following command: 
+Run Prometheus using the following command:
+
 ```
 ./prometheus
 ```
@@ -123,11 +132,13 @@ Run Prometheus using the following command:
 ### Access TimescaleDB
 
 To access TimescaleDB, login to your PostgresSQL database using `psql` as user `postgres`:
+
 ```
 su - postgres
 ```
 
 To open a connection to your TimescaleDB instance via psql, run:
+
 ```
 psql
 ```
@@ -162,17 +173,18 @@ To run Grafana, run the following command:
 
 **Configuring Promscale as a Grafana datasource**
 
-To configure Promscale as a Prometheus datasource in Grafana, use the following host URL: 
+To configure Promscale as a Prometheus datasource in Grafana, use the following host URL:
+
 ```
 http://<promscale-host>:9201
-``` 
+```
 
 All other parameters are left as default.
 
 To configure TimescaleDB as a PostgreSQL / TimescaleDB datasource in Grafana, use the host URL and database credentials which were used to setup TimescaleDB in Step 1.
 
-
 ### Next Steps
+
 Congratulations, you've successfully deployed Promscale, Prometheus and Grafana on bare metal. You can explore your metrics data by connecting to your TimescaleDB instance (as shown in Step 1 using `psql`) or through visuals in Grafana.
 
 To continue your Promscale learning journey, check out:

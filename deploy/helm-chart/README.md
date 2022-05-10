@@ -8,22 +8,23 @@ Promscale, Grafana and other tools, we suggest using
 This chart will do the following:
 
 * Create a Kubernetes Deployment (by default) with one pod
-  * The pod has a container created using the [Promscale Connector Docker Image][docker-image]
+  * The pod has a container created using the [Promscale Connector Docker Image](https://hub.docker.com/timescale/promscale)
 * Create a Kubernetes Service exposing access to the Connector pods
   * By default a LoadBalancer, but can be disabled to only a ClusterIP with a configurable port
 * Create a Kubernetes CronJob that deletes the data chunks that fall out of the retention period
 
-**Note:** We have dropped compatibility with TimescaleDB 1.x. If you would like to use Promscale with TimescaleDB 1.x then use the helm charts from Promscale release 0.6.0. 
+**Note:** We have dropped compatibility with TimescaleDB 1.x. If you would like to use Promscale with TimescaleDB 1.x then use the helm charts from Promscale release 0.6.0.
 
 ## Prerequisites
 
-For promscale to work correctly it needs a set of data to connect to timescale database. This 
+For promscale to work correctly it needs a set of data to connect to timescale database. This
 configuration can be supplied in two ways either by using DB URI or by specifying connection
 parameters. Options are mutually exclusive and specifying URI takes priority.
 
 ### Using DB URI
 
 You can use db uri to connect to TimescaleDB. To do so, specify the URI in values.yaml as follows:
+
 ```yaml
 connection:
   uri: <TIMESCALE_DB_URI>
@@ -53,6 +54,7 @@ connection:
 If you would like to provide connections details via your own secret which is managed outside the lifecycle of this helm chart, you can do so. The secret must contain the environment variables corresponding to Promscale's connection configuration. Additionally, the `connectionSecretName` parameter of this helm chart must be configured with the name of your secret, and your secret must be in the same namespace as the deployment.
 
 An example of what this could look like is as follows:
+
 ```yaml
 # secret.yaml
 apiVersion: v1
@@ -80,6 +82,7 @@ connectionSecretName: my-promscale-connection-secret
 ## Installing
 
 To install the chart with the release name `my-release`:
+
 ```shell script
 helm install --name my-release .
 ```
@@ -87,6 +90,7 @@ helm install --name my-release .
 You can override parameters using the `--set key=value[,key=value]` argument
 to `helm install`, e.g. to install the chart with specifying a previously created
 secret `timescale-secret` and an existing TimescaleDB instance:
+
 ```shell script
 helm install --name my-release . \
       --set connectionSecretName="promscale-connection-secret"
@@ -98,40 +102,39 @@ You can also install by referencing the db uri secret created previously:
 helm install --name my-release . \
       --set connectionSecretName="promscale-connection-secret"
 ```
- 
+
 Alternatively, a YAML file the specifies the values for the parameters can be provided
 while installing the chart. For example:
+
 ```shell script
 helm install --name my-release -f myvalues.yaml .
 ```
 
 ## Configuration
 
-|       Parameter                   |           Description                       |               Default              |
-|-----------------------------------|---------------------------------------------|------------------------------------|
-| `image`                           | The image (with tag) to pull                | `timescale/promscale`              |
-| `imagePullPolicy`                 | The image pull policy                       | `IfNotPresent`                     |
-| `replicaCount`                    | Number of pods for the connector            | `1`                                |
-| `upgradeStrategy`                 | Promscale deployment upgrade strategy, By default set to `Recreate` as during Promscale upgrade we expect no Promscale to be connected to TimescaleDB       | `Recreate` |
-| `resources`                       | Requests and limits for each of the pods    | `{}`                               |
-| `nodeSelector`                    | Node labels to use for scheduling           | `{}`                               |
-| `tolerations`                     | Tolerations to use for scheduling           | `[]`                               |
-| `affinity`                        | PodAffinity and PodAntiAffinity settings    | `{}`                               |
-| `extraArgs`                       | Additional promscale CLI arguments          | `[]`                               |
-| `extraEnv`                        | Additional promscale environment variables  | `[]`                               |
-| `connection.uri`                  | DB uri string used for database connection. When not empty it takes priority over other settings in `connection` map. | `""` |
-| `connection.user`                 | Username to connect to TimescaleDB with     | `postgres`                         |
-| `connection.password`             | The DB password for user specified in `connection.user` | `""`                   |
-| `connection.host`                 | Hostname of timescaledb instance            | `db.timescaledb.svc.cluster.local` |
-| `connection.port`                 | Port the db listens to                      | `5432`                             |
-| `connection.dbName`               | Database name in TimescaleDB to connect to  | `timescale`                        |
-| `connection.sslMode`              | SSL mode for connection                     | `require`                          |
-| `config`                          | Promscale configuration options. Full list of options is available at [docs/configuration.md](https://github.com/timescale/promscale/blob/master/docs/configuration.md)                     | ``                          |
-| `prometheus.port`                 | Port the connector Service accepts prometheus remote_write connections on | `9201`              |
-| `prometheus.annotations`          | Annotations to allow prometheus metrics collection. | `{ "prometheus.io/scrape": 'true', "prometheus.io/port": '9201', "prometheus.io/path": '/metrics'}` |
-| `openTelemetry.port`              | Port the connector Service will accept otlp connections on | `9202`               |
-| `service.type`                    | Type of Service to be used                  | `ClusterIP`                        |
-| `service.annotations`             | Annotations to set to the Service           | `{}`                               |
-| `serviceMonitor.enabled`          | Enable creation of serviceMonitor object used by prometheus-operator. `prometheus.annotations` should be set to `{}` when using this option.| `false` |
-
-[docker-image]: https://hub.docker.com/timescale/promscale
+| Parameter                | Description                                                                                                                                                             | Default                                                                                             |
+|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| `image`                  | The image (with tag) to pull                                                                                                                                            | `timescale/promscale`                                                                               |
+| `imagePullPolicy`        | The image pull policy                                                                                                                                                   | `IfNotPresent`                                                                                      |
+| `replicaCount`           | Number of pods for the connector                                                                                                                                        | `1`                                                                                                 |
+| `upgradeStrategy`        | Promscale deployment upgrade strategy, By default set to `Recreate` as during Promscale upgrade we expect no Promscale to be connected to TimescaleDB                   | `Recreate`                                                                                          |
+| `resources`              | Requests and limits for each of the pods                                                                                                                                | `{}`                                                                                                |
+| `nodeSelector`           | Node labels to use for scheduling                                                                                                                                       | `{}`                                                                                                |
+| `tolerations`            | Tolerations to use for scheduling                                                                                                                                       | `[]`                                                                                                |
+| `affinity`               | PodAffinity and PodAntiAffinity settings                                                                                                                                | `{}`                                                                                                |
+| `extraArgs`              | Additional promscale CLI arguments                                                                                                                                      | `[]`                                                                                                |
+| `extraEnv`               | Additional promscale environment variables                                                                                                                              | `[]`                                                                                                |
+| `connection.uri`         | DB uri string used for database connection. When not empty it takes priority over other settings in `connection` map.                                                   | `""`                                                                                                |
+| `connection.user`        | Username to connect to TimescaleDB with                                                                                                                                 | `postgres`                                                                                          |
+| `connection.password`    | The DB password for user specified in `connection.user`                                                                                                                 | `""`                                                                                                |
+| `connection.host`        | Hostname of timescaledb instance                                                                                                                                        | `db.timescaledb.svc.cluster.local`                                                                  |
+| `connection.port`        | Port the db listens to                                                                                                                                                  | `5432`                                                                                              |
+| `connection.dbName`      | Database name in TimescaleDB to connect to                                                                                                                              | `timescale`                                                                                         |
+| `connection.sslMode`     | SSL mode for connection                                                                                                                                                 | `require`                                                                                           |
+| `config`                 | Promscale configuration options. Full list of options is available at [docs/configuration.md](https://github.com/timescale/promscale/blob/master/docs/configuration.md) | ``                                                                                                  |
+| `prometheus.port`        | Port the connector Service accepts prometheus remote_write connections on                                                                                               | `9201`                                                                                              |
+| `prometheus.annotations` | Annotations to allow prometheus metrics collection.                                                                                                                     | `{ "prometheus.io/scrape": 'true', "prometheus.io/port": '9201', "prometheus.io/path": '/metrics'}` |
+| `openTelemetry.port`     | Port the connector Service will accept otlp connections on                                                                                                              | `9202`                                                                                              |
+| `service.type`           | Type of Service to be used                                                                                                                                              | `ClusterIP`                                                                                         |
+| `service.annotations`    | Annotations to set to the Service                                                                                                                                       | `{}`                                                                                                |
+| `serviceMonitor.enabled` | Enable creation of serviceMonitor object used by prometheus-operator. `prometheus.annotations` should be set to `{}` when using this option.                            | `false`                                                                                             |

@@ -18,17 +18,19 @@ chmod +x promscale
 ```
 
 To deploy Promscale, run the following command:
+
 ```
 ./promscale --db-host <DB_HOSTNAME> --db-port <DB_PORT> --db-name <DBNAME> --db-password <DB-Password> --db-ssl-mode allow
 ```
+
 Note that the flags `db-name` and `db-password` refer to the name and password of your TimescaleDB database.
 
-Further note that the command above is to deploy Promscale with SSL mode being allowed but not required. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and drop the `--db-ssl-mode` flag.  Promscale will then authenticate via SSL by default.
+Further note that the command above is to deploy Promscale with SSL mode being allowed but not required. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and drop the `--db-ssl-mode` flag. Promscale will then authenticate via SSL by default.
 
 We recommend installing the [promscale](https://github.com/timescale/promscale_extension/releases)
 PostgreSQL extension into the TimescaleDB database you are connecting to.
 Instructions on how to compile and install the extension are in the
-extensions [README](https://github.com/timescale/promscale_extension/blob/master/Readme.md). While this isn't a requirement, it
+extensions [README](https://github.com/timescale/promscale_extension/blob/master/README.md). While this isn't a requirement, it
 does optimize certain queries.
 Please note that the extension requires Postgres version 12 of newer.
 
@@ -63,6 +65,7 @@ Install the cron job:
 
 You must tell prometheus to use this remote storage connector by adding
 the following lines to `prometheus.yml`:
+
 ```yaml
 remote_write:
   - url: "http://<connector-address>:9201/write"
@@ -77,7 +80,7 @@ You can configure Prometheus remote-write with our recommended configurations fr
 
 ## ⚙️ Configuration
 
-The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file. 
+The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file.
 Precedence goes like this: CLI flag value, if not set, environment variable value, if not set, configuration file value, if not set, default value.
 
 All environment variables are prefixed with `PROMSCALE`.

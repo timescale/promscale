@@ -1,13 +1,17 @@
 # PromscaleMaintenanceJobFailures
+
 ## Meaning
+
 Promscale maintenance jobs failed to execute successfully
 
 ## Impact
+
 Delay in compression and retention policy, leading to high disk usage
 
 ## Diagnosis
 1. Open psql
 2. Run the following debugging query:
+
 ```postgresql
 select * from
     timescaledb_information.job_stats stats
@@ -16,14 +20,18 @@ inner join
         on jobs.job_id = stats.job_id
 where jobs.proc_name = 'execute_maintenance_job';
 ```
+
 This will give you information about the maintenance jobs. The `last_run_status` column will indicate any failed jobs.
 For mitigation, see [Unexpected maintenance jobs behaviour](#unexpected-maintenance-jobs-behaviour)
 
 3. Check Postgres logs for any failure
 
 ## Mitigation
+
 ### Unexpected maintenance jobs behaviour
+
 Run the following debugging query
+
 ```postgresql
 SELECT * FROM timescaledb_information.job_stats js 
     INNER JOIN timescaledb_information.jobs j ON (js.job_id = j.job_id) 
