@@ -85,3 +85,19 @@ jobs:
         go generate ./...
         git diff --exit-code
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+
+    - name: Set up Go ${{ env.golang-version }}
+      uses: actions/setup-go@v3.0.0
+      with:
+        go-version: ${{ env.golang-version }}
+
+    - name: download mdox
+      run: go install -a github.com/bwplotka/mdox@latest
+    
+    - run: make check-docs
+
