@@ -16,6 +16,7 @@ import (
 
 	"go.opentelemetry.io/collector/model/otlp"
 	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
@@ -479,11 +480,11 @@ func getTraceStateValue(ts pdata.TraceState) (result pgtype.Text) {
 
 func getPGStatusCode(pk pdata.StatusCode) (string, error) {
 	switch pk {
-	case pdata.StatusCodeOk:
+	case ptrace.StatusCodeOk:
 		return "ok", nil
-	case pdata.StatusCodeError:
+	case ptrace.StatusCodeError:
 		return "error", nil
-	case pdata.StatusCodeUnset:
+	case ptrace.StatusCodeUnset:
 		return "unset", nil
 	default:
 		return "", fmt.Errorf("unknown status code: %v", pk)

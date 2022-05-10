@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgtype"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+
+	"github.com/jackc/pgtype"
+
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type spanDBResult struct {
@@ -266,13 +268,13 @@ func populateLinks(
 }
 
 // makeAttributes makes attribute map using tags.
-func makeAttributes(tagsJson pgtype.JSONB) (map[string]pdata.AttributeValue, error) {
+func makeAttributes(tagsJson pgtype.JSONB) (map[string]pcommon.Value, error) {
 	var tags map[string]interface{}
 	if err := tagsJson.AssignTo(&tags); err != nil {
 		return nil, fmt.Errorf("tags assign to: %w", err)
 	}
 
-	m := make(map[string]pdata.AttributeValue, len(tags))
+	m := make(map[string]pcommon.Value, len(tags))
 	// todo: attribute val as array?
 	for k, v := range tags {
 		switch val := v.(type) {
@@ -313,17 +315,17 @@ func makeSpanId(s *int64) pdata.SpanID {
 
 func getPGKindEnum(jaegerKind string) (string, error) {
 	switch jaegerKind {
-	case pdata.SpanKindClient.String():
+	case ptrace.SpanKindClient.String():
 		return "client", nil
-	case pdata.SpanKindServer.String():
+	case ptrace.SpanKindServer.String():
 		return "server", nil
-	case pdata.SpanKindInternal.String():
+	case ptrace.SpanKindInternal.String():
 		return "internal", nil
-	case pdata.SpanKindConsumer.String():
+	case ptrace.SpanKindConsumer.String():
 		return "consumer", nil
-	case pdata.SpanKindProducer.String():
+	case ptrace.SpanKindProducer.String():
 		return "producer", nil
-	case pdata.SpanKindUnspecified.String():
+	case ptrace.SpanKindUnspecified.String():
 		return "unspecified", nil
 	default:
 		return "", fmt.Errorf("unknown span kind: %v", jaegerKind)
@@ -333,17 +335,17 @@ func getPGKindEnum(jaegerKind string) (string, error) {
 func makeKind(s string) (pdata.SpanKind, error) {
 	switch s {
 	case "client":
-		return pdata.SpanKindClient, nil
+		return ptrace.SpanKindClient, nil
 	case "server":
-		return pdata.SpanKindServer, nil
+		return ptrace.SpanKindServer, nil
 	case "internal":
-		return pdata.SpanKindInternal, nil
+		return ptrace.SpanKindInternal, nil
 	case "consumer":
-		return pdata.SpanKindConsumer, nil
+		return ptrace.SpanKindConsumer, nil
 	case "producer":
-		return pdata.SpanKindProducer, nil
+		return ptrace.SpanKindProducer, nil
 	case "unspecified":
-		return pdata.SpanKindUnspecified, nil
+		return ptrace.SpanKindUnspecified, nil
 	default:
 		return ptrace.SpanKindUnspecified, fmt.Errorf("unknown span kind: %s", s)
 	}
@@ -352,12 +354,12 @@ func makeKind(s string) (pdata.SpanKind, error) {
 func makeStatusCode(s string) (pdata.StatusCode, error) {
 	switch s {
 	case "ok":
-		return pdata.StatusCodeOk, nil
+		return ptrace.StatusCodeOk, nil
 	case "error":
-		return pdata.StatusCodeError, nil
+		return ptrace.StatusCodeError, nil
 	case "unset":
-		return pdata.StatusCodeUnset, nil
+		return ptrace.StatusCodeUnset, nil
 	default:
-		return pdata.StatusCodeUnset, fmt.Errorf("unknown status-code kind: %s", s)
+		return ptrace.StatusCodeUnset, fmt.Errorf("unknown status-code kind: %s", s)
 	}
 }

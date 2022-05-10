@@ -8,10 +8,11 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/collector/pdata/ptrace"
+
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"go.opentelemetry.io/collector/model/pdata"
 )
 
 const insertOperationSQL = `SELECT ps_trace.put_operation($1, $2, $3)`
@@ -79,19 +80,19 @@ func (o operationBatch) GetID(serviceName, spanName, spanKind string) (pgtype.In
 	return id, nil
 }
 
-func getPGKindEnum(pk pdata.SpanKind) (string, error) {
+func getPGKindEnum(pk ptrace.SpanKind) (string, error) {
 	switch pk {
-	case pdata.SpanKindClient:
+	case ptrace.SpanKindClient:
 		return "client", nil
-	case pdata.SpanKindServer:
+	case ptrace.SpanKindServer:
 		return "server", nil
-	case pdata.SpanKindInternal:
+	case ptrace.SpanKindInternal:
 		return "internal", nil
-	case pdata.SpanKindConsumer:
+	case ptrace.SpanKindConsumer:
 		return "consumer", nil
-	case pdata.SpanKindProducer:
+	case ptrace.SpanKindProducer:
 		return "producer", nil
-	case pdata.SpanKindUnspecified:
+	case ptrace.SpanKindUnspecified:
 		return "unspecified", nil
 	default:
 		return "", fmt.Errorf("unknown span kind: %v", pk)
