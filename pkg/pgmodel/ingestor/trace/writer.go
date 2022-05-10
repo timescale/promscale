@@ -390,10 +390,10 @@ func (t *traceWriterImpl) insertRows(ctx context.Context, table string, columns 
 		}
 	}()
 
-	tempTableName := pgx.Identifier{"_trace_temp_" + table}
-	tempTableNameString := tempTableName.Sanitize()
+	tempTableNameRawString := "_trace_temp_" + table
+	tempTableName := pgx.Identifier{tempTableNameRawString}
 
-	if _, err = tx.Exec(ctx, fmt.Sprintf("CREATE TEMPORARY TABLE IF NOT EXISTS %s ON COMMIT DELETE ROWS AS TABLE _ps_trace.%s WITH NO DATA", tempTableNameString, table)); err != nil {
+	if _, err = tx.Exec(ctx, "SELECT _ps_trace.ensure_trace_ingest_temp_table($1, $2)", tempTableNameRawString, table); err != nil {
 		return err
 	}
 
@@ -401,7 +401,7 @@ func (t *traceWriterImpl) insertRows(ctx context.Context, table string, columns 
 		return err
 	}
 
-	if _, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO _ps_trace.%[1]s(%[2]s) SELECT %[2]s FROM %[3]s ON CONFLICT DO NOTHING", table, strings.Join(columns, ","), tempTableNameString)); err != nil {
+	if _, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO _ps_trace.%[1]s(%[2]s) SELECT %[2]s FROM %[3]s ON CONFLICT DO NOTHING", table, strings.Join(columns, ","), tempTableName.Sanitize())); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
