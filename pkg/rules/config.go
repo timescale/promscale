@@ -52,9 +52,9 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.DurationVar(&cfg.OutageTolerance, "metrics.rules.alert.for-outage-tolerance", defaultOutageTolerance, "Max time to tolerate Promscale outage for restoring \"for\" state of alert.")
 	fs.DurationVar(&cfg.ForGracePeriod, "metrics.rules.alert.for-grace-period", defaultForGracePeriod, "Minimum duration between alert and restored \"for\" state. This is maintained only for alerts with configured \"for\" time greater than grace period.")
 	fs.DurationVar(&cfg.ResendDelay, "metrics.rules.alert.resend-delay", defaultResendDelay, "Minimum amount of time to wait before resending an alert to Alertmanager.")
-	fs.StringVar(&cfg.PrometheusConfigAddress, "metrics.rules.prometheus-config", "", "Address of the Prometheus configuration. This is used to extract the"+
-		" alertmanager configuration and the addresses of rules files."+
-		"Note: If this is empty or `rule_files` is empty, Promscale rule-manager will not start. If `alertmanager_config` is empty, alerting will not be initialized.")
+	fs.StringVar(&cfg.PrometheusConfigAddress, "metrics.rules.config-file", "", "Path to configuration file in Prometheus-format, containing `rule_files` and optional `alerting`, `global` fields. "+
+		"For more details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/. "+
+		"Note: If this is flag empty or `rule_files` is empty, Promscale rule-manager will not start. If `alertmanagers` is empty, alerting will not be initialized.")
 	return cfg
 }
 
