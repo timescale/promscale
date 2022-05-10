@@ -1,0 +1,6 @@
+version: 1
+
+validators:
+  # Ignore localhost links.
+  - regex: 'localhost'
+    type: "ignore"
