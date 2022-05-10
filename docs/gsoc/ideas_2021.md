@@ -4,16 +4,16 @@ This document contains ideas that are participating in GSoC 2021.
 
 ### Project Ideas table
 
-| **Project** | **Number of related ideas** |
-|:--------------------------|:-----:|
-| **Promscale**                 | 1 |
-| **Prom-migrator**             | 2 |
-| **Tobs**                      | 1 |
-| **Remote-write-benchmarker**  | 1 |
+| **Project**                  | **Number of related ideas** |
+|:-----------------------------|:---------------------------:|
+| **Promscale**                |              1              |
+| **Prom-migrator**            |              2              |
+| **Tobs**                     |              1              |
+| **Remote-write-benchmarker** |              1              |
 
 **Note:**
 * We recommend that you contribute to the projects in code, before writing the proposal.
-* If you plan to include something else in the proposal than the mentioned ideas, you are most welcome to do so. But to 
+* If you plan to include something else in the proposal than the mentioned ideas, you are most welcome to do so. But to
   confirm if it’s in the interest of the maintainers to mentor it, please have a conversation with them before
   proceeding. This will help save your precious time.
 
@@ -53,7 +53,7 @@ system, in regular intervals which can be enabled or disabled via a CLI flag.
 **Skills:** Golang, writing tests in Golang, some familiarity with Docker
 
 **Explanation:** Prom-migrator is a Prometheus data migration tool that migrates data from one remote-storage system to
-another. Currently, we do various integration tests ([see here for reference](https://github.com/timescale/promscale/tree/master/pkg/migration-tool/integration_tests))
+another. Currently, we do various integration tests ([see here for reference](https://github.com/timescale/promscale/tree/master/migration-tool/pkg/integration_tests))
 to make sure that the migrator is behaving
 as per what is the intent.
 
@@ -123,4 +123,3 @@ required systems, initiate the test, provide real-time updates, stop or pause th
 (on user call) and show the performance outputs.
 
 **Mentor(s):** Matvey, Harkishen
-

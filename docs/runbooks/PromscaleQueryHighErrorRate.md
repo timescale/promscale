@@ -1,8 +1,11 @@
 # PromscaleQueryHighErrorRate
+
 ## Meaning
+
 Promscale is experiencing high error rates while evaluating queries
 
 ## Impact
+
 Frequent query evaluation failures. Alerts based on data retrieved via Promscale may not be accurate
 
 ## Diagnosis
@@ -13,6 +16,7 @@ Frequent query evaluation failures. Alerts based on data retrieved via Promscale
 5. Go to [Database is unhealthy](#database-is-unhealthy) for mitigation steps
 
 ## Mitigation
+
 ### Database is unhealthy
 1. Ensure database has proper resources
 2. Check Postgres logs and fix errors if any

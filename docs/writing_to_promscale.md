@@ -1,39 +1,31 @@
 # Writing data to Promscale
 
-
 Promscale provides a remote write endpoint which Prometheus uses to ingest metric data. Documentation on the details of the endpoint can be found in Prometheus documentation:
 https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations
-
 
 Location of the endpoint is `http://{Promscale web URL and port}/write`.
 Promscale URL and port depend on your specific setup and configuration. For example, if you are running it locally with the default port, the complete endpoint would be:
 http://localhost:9201/write
 
-
 This endpoint only supports the HTTP POST method.
-
 
 The default format for this endpoint are protocol buffers but Promscale also supports a JSON streaming format and a text format which is detailed in the next sections.
 
-
 If you are using Prometheus, simply configure `remote_write` to point to this endpoint and you are done. If, however, you are writing a custom application to push data to Promscale, keep reading.
 
-
 ## General time-series format rules
+
 A time-series must always contain both labels and samples.
 
-
-Labels are a collection of label name/value pairs with unique label names. Every request must  contain a label named `__name__` which cannot have an empty value. All other labels are optional metadata.
-
+Labels are a collection of label name/value pairs with unique label names. Every request must contain a label named `__name__` which cannot have an empty value. All other labels are optional metadata.
 
 A series entry always contains two things:
-* An integer timestamp in milliseconds since epoch, i.e. 1970-01-01 00:00:00 UTC, excluding leap second, represented as required by Go's [ParseInt](https://golang.org/pkg/strconv/#ParseInt) function. 
+* An integer timestamp in milliseconds since epoch, i.e. 1970-01-01 00:00:00 UTC, excluding leap second, represented as required by Go's [ParseInt](https://golang.org/pkg/strconv/#ParseInt) function.
 * Floating point number that represents the actual measured value.
 
 ## JSON streaming format
 
-This format was introduced in Promscale to enable easier usage of the endpoint when ingesting metric data from 3rd party tools. It is not part of the `remote_write` specification for Prometheus. It is slightly less efficient to use this format than the Protobuf format. 
-
+This format was introduced in Promscale to enable easier usage of the endpoint when ingesting metric data from 3rd party tools. It is not part of the `remote_write` specification for Prometheus. It is slightly less efficient to use this format than the Protobuf format.
 
 This format is a JSON stream of objects with two fields:
 * `labels` JSON object in which all the labels are represented as fields
@@ -68,11 +60,9 @@ As you can see, the labels object is pretty self explanatory. Fields represent t
 * First value is a UNIX timestamp in milliseconds which has to be an integer value
 * Second value is a floating point number which represents the corresponding value of the metric.
 
-
 In order to send a request to Promscale, you would need to send an HTTP POST request with the request body set to the JSON payload and set the required header values:
 * `Content-Type` header should be set to `application/json`
 * If using Snappy compression set `Content-Encoding` header to `snappy`, otherwise leave unset
-
 
 Here is an example of a request sent using `curl` tool:
 
@@ -82,6 +72,7 @@ curl --header "Content-Type: application/json" \
 --data '{"labels":{"__name__":"foo"},"samples":[[1577836800000, 100]]}' \
 "http://localhost:9201/write"
 ```
+
 Another example using snappy encoding:
 
 ```
@@ -100,8 +91,7 @@ In order to use the endpoint, there are a few steps that need to be done:
 * Fetch the protocol buffer definition files [here](https://github.com/prometheus/prometheus/blob/master/prompb/)
 * [Compile them](https://developers.google.com/protocol-buffers/docs/tutorials) in into structures of the programming language you intend to use
 * Finally, use those structures to construct requests which you can then send to the Promscale write endpoint
-Next section will show a simple example of how to make a request to Promscale using the Go programming language.
-
+  Next section will show a simple example of how to make a request to Promscale using the Go programming language.
 
 ## Protobuf write request example in Go
 
@@ -188,7 +178,6 @@ Advanced details on the format can be found here:
 * [Prometheus text based format docs](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format).
 * [OpenMetrics format spec] (https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md)
 
-
 Here is a short example of what a simple payload would look like:
 
 ```
@@ -214,14 +203,13 @@ http_request_duration_seconds_count 144320
 Basic line format for non-metadata is as follows (in this order):
 * Metric name which is (optionally) followed by a collection label name and values in curly braces.
 * Floating point number that represents the actual measured value.
-* (Optional) An integer timestamp in milliseconds since epoch, i.e. 1970-01-01 00:00:00 UTC, excluding leap second, represented as required by Go's [ParseInt](https://golang.org/pkg/strconv/#ParseInt) function. 
+* (Optional) An integer timestamp in milliseconds since epoch, i.e. 1970-01-01 00:00:00 UTC, excluding leap second, represented as required by Go's [ParseInt](https://golang.org/pkg/strconv/#ParseInt) function.
 
 If the timestamp is omitted, request time is used in its place.
 
 In order to send a request to Promscale, you would need to send an HTTP POST request with the request body set to the plain-text payload and set the required header values:
 * `Content-Type` header should be set to `text/plain` or `application/openmetrics-text` (depending on the actual format).
 * If using Snappy compression set `Content-Encoding` header to `snappy`, otherwise leave unset
-
 
 Here is an example of a request sent using `curl` tool:
 
@@ -231,6 +219,7 @@ curl --header "Content-Type: text/plain" \
 --data 'test_metric 1\nanother_metric 2' \
 "http://localhost:9201/write"
 ```
+
 Another example using snappy encoding:
 
 ```

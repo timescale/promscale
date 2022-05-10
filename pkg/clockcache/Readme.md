@@ -1,11 +1,11 @@
-# clockcache #
+# clockcache
 
 This package contains a CLOCK based approximate-LRU cache optimized for
 concurrent usage. It minimizes both the number of locks held, and the number of
 writes to shared cache lines. In the worst case, this implementation requires
-_at most_ 1 shared-cache write on a hit, not counting lock acquisition.
+*at most* 1 shared-cache write on a hit, not counting lock acquisition.
 
-## Issues With Concurrent LRU ##
+## Issues With Concurrent LRU
 
 Typically, LRU is implemented with a map and a doubly-linked list, all elements
 are stored in both the map, and the list. Whenever there's a hit on a
@@ -14,13 +14,13 @@ of the list. This ensures that it's always the least-recently-hit element that's
 evicted.
 
 While conceptually simple, the standard implementation of LRU as significant
-issues in a multi-processor setting, since _every_ read to the cache writes to
+issues in a multi-processor setting, since *every* read to the cache writes to
 the underlying datastructures. Updating the LRU list requires at least 4 writes
 on shared cache lines; 2 to unlink the element from it's old place in the list,
 and 2 more to add it to the head. When the LRU is being accessed from multiple
 cores, these cache lines will bounce among them, causing a significant slowdown.
 
-## CLOCK-based LRU ##
+## CLOCK-based LRU
 
 The CLOCK algorithm approximates LRU. Conceptually, it augments a map with a
 bitset, with each element owning one bit in the bitset. Whenever an element is
@@ -40,7 +40,7 @@ the last time the evictor ran, and, since it reads the element in order, the
 first such element is the element that hasn't been touched the longest since the
 last run.
 
-### Concurrent CLOCK ###
+### Concurrent CLOCK
 
 CLOCK two important benefits over regular LRU in a concurrent setting; the state
 that changes on a hit is per-element instead of shared, and the changes made by
@@ -56,7 +56,7 @@ any successive hits before an eviction need not change any state; the bit is
 already set to `1`. This means that we can check the bit before writing it, and
 do nothing if it's already set, further reducing the number of writes.
 
-## Other Optimizations ##
+## Other Optimizations
 
 The map consists of a hashmap and slice. The map is used to perform key
 lookups, and the slice is used to ensure a consistent order for eviction checks.

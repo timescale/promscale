@@ -65,6 +65,7 @@ First, let's create a network specific to Promscale:
 ```bash
 docker network create --driver bridge promscale-timescaledb
 ```
+
 Then let's run TimescaleDB with the Promscale extension (replace `<password>` with your selected password):
 
 ```bash
@@ -176,7 +177,7 @@ These hypertables have [compression](https://docs.timescale.com/timescaledb/late
 ### Retention
 
 The `_ps_trace.span`, `_ps_trace.event`, and `_ps_trace.link` hypertables have an automated data retention policy which will
-drop chunks beyond a certain age. This policy is driven by the `trace_retention_period` which is defaulted to 30 days in 
+drop chunks beyond a certain age. This policy is driven by the `trace_retention_period` which is defaulted to 30 days in
 new installations. The `ps_trace.set_trace_retention_period(_trace_retention_period INTERVAL)` function can be used to change
 this value. The `ps_trace.get_trace_retention_period()` function can be used to get the current trace retention period.
 
@@ -189,7 +190,7 @@ SELECT ps_trace.get_trace_retention_period();
 ### Deleting ALL Trace Data
 
 The `ps_trace.delete_all_traces()` function can be used to delete all trace data from the database, effectively restoring
-the schema to a "freshly installed" state. Beware, this function will truncate the tables in the `_ps_trace` schema, 
+the schema to a "freshly installed" state. Beware, this function will truncate the tables in the `_ps_trace` schema,
 deleting all the data. There is no "undo" for this aside from restoring from a database backup, which depending on your
 backup strategy may still result in some data loss.
 
@@ -200,6 +201,7 @@ backup strategy may still result in some data loss.
 If you used tobs to install Promscale and also deployed all the other components it includes, everything is already set up for you to access [Grafana](https://github.com/grafana/grafana) and [Jaeger](https://github.com/jaegertracing/jaeger) to explore and visualize your traces.
 
 To access the Jaeger UI from your machine run
+
 ```bash
 tobs jaeger port-forward
 ```

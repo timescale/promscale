@@ -1,10 +1,11 @@
 # Dataset configuration format
 
-Promscale stores some configuration information in the Postgres database which it is connected to. We call this configuration the _Promscale dataset configuration_. Promscale accepts an option to set the dataset values. This document describes its format and mechanics.
+Promscale stores some configuration information in the Postgres database which it is connected to. We call this configuration the *Promscale dataset configuration*. Promscale accepts an option to set the dataset values. This document describes its format and mechanics.
 
 Setup is done by using the `-startup.dataset.config` flag which should contain this configuration structure in YAML format
 
 Example usage:
+
 ```bash
 promscale -startup.dataset.config=$'metrics:\n  default_chunk_interval: 6h'
 ```
@@ -29,7 +30,7 @@ Note: Any configuration omitted from the configuration structure will be set to 
 
 ## Configurable values and their defaults
 
-| Section | Setting                  |   Type   | Default | Description                                                                                                     |
+| Section | Setting                  | Type     | Default | Description                                                                                                     |
 |:--------|:-------------------------|:--------:|:-------:|:----------------------------------------------------------------------------------------------------------------|
 | metric  | default_chunk_interval   | duration |   8h    | Chunk interval used to create hypertable chunks that store the metric data                                      |
 | metric  | compress_data            |   bool   |  true   | Boolean setting to turn on or off compression of metric data                                                    |

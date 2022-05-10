@@ -1,15 +1,16 @@
 # Promscale
+
 [![Go](https://github.com/timescale/promscale/workflows/Go/badge.svg)](https://github.com/timescale/promscale/actions?query=workflow%3AGo)
 [![reviewdog - golangci](https://github.com/timescale/promscale/workflows/reviewdog%20-%20golangci/badge.svg)](https://github.com/timescale/promscale/actions?query=workflow%3A%22reviewdog+-+golangci%22)
 [![Go Report Card](https://goreportcard.com/badge/github.com/timescale/promscale)](https://goreportcard.com/report/github.com/timescale/promscale)
-[![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)](https://codeclimate.com/github/timescale/promscale/maintainability)
+[![Code Climate](https://api.codeclimate.com/v1/badges/c6b16c0bbcb0690c9c71/maintainability)]()
 [![GoDoc](https://godoc.org/github.com/timescale/promscale?status.svg)](https://pkg.go.dev/github.com/timescale/promscale)
 
 - **[Website](https://www.timescale.com/promscale)**
 - **[Docs](https://docs.timescale.com/promscale/latest/)**
-- **[Slack Community](https://timescaledb.slack.com/)** (join the #promscale channel) 
+- **[Slack Community](https://timescaledb.slack.com/)** (join the #promscale channel)
 - **[Forum](https://www.timescale.com/forum/c/promscale-and-observability)**
-- **[Blog](https://blog.timescale.com/tag/observability/)** 
+- **[Blog](https://blog.timescale.com/tag/observability/)**
 
 <img alt="Promscale" src="images/promscale-logo.png" width="600px">
 
@@ -30,7 +31,7 @@ operational maturity** of a system that is run on millions of instances worldwid
 
 For Prometheus users, Promscale provides a robust and highly scalable long-term storage
 system that is 100% PromQL compliant.
-✅  Promscale has consistently been one of the only long-term stores for Prometheus data that continue to maintain its top-performance, receiving
+✅ Promscale has consistently been one of the only long-term stores for Prometheus data that continue to maintain its top-performance, receiving
 [100% compliance test score](https://promlabs.com/promql-compliance-test-results/2020-12-01/promscale)
 each time (with no cross-cutting concerns) from PromLab's
 [PromQL Compliance Test Suite](https://promlabs.com/promql-compliance-tests/).
@@ -40,7 +41,7 @@ each time (with no cross-cutting concerns) from PromLab's
 **Tracing** support is currently in beta. Read [the documentation](docs/tracing.md) to get started.
 
 For a detailed description of the initial architecture of Promscale for Prometheus metrics that covers
-some key design principles, please see [our design doc][design-doc].
+some key design principles, please see [our design doc](https://tsdb.co/prom-design-doc).
 
 If you have any questions, please join the #promscale channel on
 [TimescaleDB Slack](https://slack.timescale.com/).
@@ -49,7 +50,7 @@ This repository also contains the source code for **prom-migrator**. **Prom-migr
 an **open-source**, **community-driven** and **free-to-use**, **universal prometheus
 data migration tool**, that migrates data from one storage system to another, leveraging Prometheus's
 remote storage endpoints. For more information about prom-migrator, visit
-[prom-migrator's README](https://github.com/timescale/promscale/blob/master/cmd/prom-migrator/README.md).
+[prom-migrator's README](https://github.com/timescale/promscale/blob/master/migration-tool/cmd/prom-migrator/README.md).
 
 # Documentation
 
@@ -57,10 +58,10 @@ remote storage endpoints. For more information about prom-migrator, visit
 * **[Timescale cloud](#-timescale-cloud)**
 * **[Features](#-features)**
 * **[Installation](#-choose-your-own-installation-adventure)**
-  * [The Observability Suite for Kubernetes][tobs]
+  * [The Observability Suite for Kubernetes](https://github.com/timescale/tobs)
   * [Docker](docs/docker.md)
   * [Binaries](docs/binary.md)
-  * [Source](docs/binary.md#building-from-source)
+  * [Source](docs/binary.md#-building-from-source)
   * [Helm](deploy/helm-chart/README.md)
   * [Tutorial: Bare Metal Setup for a Monitoring Suite](docs/bare-metal-promscale-stack.md)
   * [Configuring Prometheus](docs/configuring_prometheus.md)
@@ -81,8 +82,7 @@ remote storage endpoints. For more information about prom-migrator, visit
 * **[Deleting Data](docs/metric_deletion_and_retention.md)**
 * **[Quick Tips](#-quick-tips)**
 * **[FAQ](docs/faq.md)**
-* **[Contributing](#%EF%B8%8F-contributing)**
-
+* **[Contributing](#-contributing)**
 
 ## 🐯 About TimescaleDB
 
@@ -116,14 +116,14 @@ backend datasource for Zabbix users and is natively supported in Grafana.
 All you have to do to integrate with Timescale cloud is configure the db uri using `-db-uri` flag in Promscale to database
 instance running in Timescale cloud.
 
-**Note:** Timescale cloud offers a 30-day free trial.  
+**Note:** Timescale cloud offers a 30-day free trial.
 
 ## 🌟 Features
 
 Click the video below for an overview of Promscale:
 
 <p align="center">
-<a href="https://www.youtube.com/watch?v=FWZju1De5lc&list=PLsceB9ac9MHTrmU-q7WCEvies-o7"> <img src="https://media.giphy.com/media/aLIuNJwflN425UvYjR/giphy.gif"> </a>
+<a href="https://www.youtube.com/watch?v=FWZju1De5lc&amp;list=PLsceB9ac9MHTrmU-q7WCEvies-o7"> <img src="https://media.giphy.com/media/aLIuNJwflN425UvYjR/giphy.gif"> </a>
 </p>
 
 * **Analysis in PromQL and SQL** get the ability to analyze data in both query languages. Use PromQL for monitoring and alerting and
@@ -146,7 +146,7 @@ We have four main ways to set up Promscale:
 
 #### tobs (recommended for Kubernetes environments)
 
-[The Observability Suite for Kubernetes][tobs] is a
+[The Observability Suite for Kubernetes](https://github.com/timescale/tobs) is a
 CLI tool and Helm chart that makes installing a full observability suite into your
 Kubernetes cluster really easy. Tobs includes Prometheus, TimescaleDB,
 Promscale Connector, and Grafana.
@@ -157,7 +157,7 @@ To get started, run the following in your terminal, then follow the on-screen in
 curl --proto '=https' --tlsv1.2 -sSLf  https://tsdb.co/install-tobs-sh |sh
 ```
 
-Or visit the [tobs GitHub repo][tobs] for more information and instructions
+Or visit the [tobs GitHub repo](https://github.com/timescale/tobs) for more information and instructions
 on advanced configuration.
 
 #### 🐳 Docker
@@ -171,7 +171,7 @@ Instructions on how to use our docker images are available [here](docs/docker.md
 We have [pre-packaged binaries](https://github.com/timescale/promscale/releases) available for MacOS and Linux on both the x86_64 and i386 architectures.
 Instructions on how to use our prepackaged binaries are available [here](docs/binary.md).
 
-You can also [build binaries from source](docs/binary.md#building-from-source).
+You can also [build binaries from source](docs/binary.md#-building-from-source).
 
 #### ⎈ Helm (sub)chart for Promscale Connector only
 
@@ -241,15 +241,12 @@ Additional information about setting up relabel configs, the
 `source_labels` field, and the possible actions can be found in the
 [Prometheus Docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
 
-## ✏️ Contributing
+## ✎ Contributing
 
 We welcome contributions to the Promscale Connector, which is
 licensed and released under the open-source Apache License, Version 2.
 The same [Contributor's
-Agreement](//github.com/timescale/timescaledb/blob/master/CONTRIBUTING.md)
+Agreement](https://github.com/timescale/timescaledb/blob/master/CONTRIBUTING.md)
 applies as in TimescaleDB; please sign the [Contributor License
 Agreement](https://cla-assistant.io/timescale/promscale)
 (CLA) if you're a new contributor.
-
-[design-doc]: https://tsdb.co/prom-design-doc
-[tobs]: https://github.com/timescale/tobs

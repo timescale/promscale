@@ -24,16 +24,18 @@ docker network create --driver bridge promscale-timescaledb
 ```
 
 Install and run TimescaleDB with Promscale extension:
+
 ```dockerfile
 docker run --name timescaledb -e POSTGRES_PASSWORD=<password> -d -p 5432:5432 --network promscale-timescaledb timescaledev/promscale-extension:latest-ts2-pg13 postgres -csynchronous_commit=off
 ```
 
 Finally, let's run Promscale:
+
 ```dockerfile
 docker run --name promscale -d -p 9201:9201 --network promscale-timescaledb timescale/promscale:latest -db-password=<password> -db-port=5432 -db-name=postgres -db-host=timescaledb -db-ssl-mode=allow
 ```
-If you want to run a specific version of Promscale, replace latest with the specific version you want to run. You can see all versions available in [DockerHub](https://hub.docker.com/r/timescale/promscale/tags)
 
+If you want to run a specific version of Promscale, replace latest with the specific version you want to run. You can see all versions available in [DockerHub](https://hub.docker.com/r/timescale/promscale/tags)
 
 **Note:** `db-ssl-mode=allow` is just for explanatory purposes. In production environments,
 we advise you to use `db-ssl-mode=require` for security purposes.
@@ -76,6 +78,7 @@ docker exec \
 
 You must tell prometheus to use this remote storage connector by adding
 the following lines to `prometheus.yml`:
+
 ```yaml
 remote_write:
   - url: "http://<connector-address>:9201/write"
@@ -86,11 +89,11 @@ remote_read:
 
 **Note:** Setting `read_recent` to `true` will make Prometheus query data from Promscale for all PromQL queries. This is highly recommended.
 
-You can configure Prometheus remote-write with our recommended configurations from [here](/docs/configuring_prometheus.md). 
+You can configure Prometheus remote-write with our recommended configurations from [here](/docs/configuring_prometheus.md).
 
 ## ⚙️ Configuration
 
-The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file. 
+The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file.
 
 All environment variables are prefixed with `PROMSCALE`.
 
@@ -101,4 +104,4 @@ our docs or by running with the `-h` flag (e.g. `promscale -h`).
 
 ## 🛠 Building from source
 
-You can build the Docker container using the [Dockerfile](build/Dockerfile).
+You can build the Docker container using the [Dockerfile](../build/Dockerfile).

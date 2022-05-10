@@ -26,17 +26,15 @@ You can assign roles to users with the following sql command:
 `GRANT <role> to <user>`. A user can be assigned multiple roles. More information
 can be found in the [PostgreSQL docs about permissions](https://www.postgresql.org/docs/current/user-manag.html).
 
-
 Promscale can be run by the owner or a user with the `prom_modifier`, `prom_writer` or `prom_reader` role.
 The following table describes what features of promscale are available with each role:
 
-|user / role| schema migration | delete series api | write api | read api |
-| --- | --- | --- | --- | --- |
-| owner | ✅ | ✅ | ✅ | ✅|
-| prom_modifier | ❌ | ✅ | ✅ | ✅|
-| prom_writer | ❌ | ❌ | ✅ | ✅|
-| prom_reader | ❌ | ❌ | ❌ | ✅|
-
+| user / role   | schema migration | delete series api | write api | read api |
+|---------------|------------------|-------------------|-----------|----------|
+| owner         | ✅               | ✅                | ✅        | ✅       |
+| prom_modifier | ❌               | ✅                | ✅        | ✅       |
+| prom_writer   | ❌               | ❌                | ✅        | ✅       |
+| prom_reader   | ❌               | ❌                | ❌        | ✅       |
 
 # Examples
 
@@ -72,8 +70,7 @@ and executing:
 ```
 
 Now, start promscale with that user:
-`PGPASSWORD=<password> ./promscale -db-uri="postgres://promscale_modifier_user@<hostname>:<port>/<databasename>?sslmode=require"  -install-extensions=false -migrate=false -upgrade-extensions=false`
-
+`PGPASSWORD=<password> ./promscale -db-uri="postgres://promscale_modifier_user@<hostname>:<port>/<databasename>?sslmode=require" -install-extensions=false -migrate=false -upgrade-extensions=false`
 
 # Using a non-superuser owner with pgextwlist
 
@@ -83,6 +80,7 @@ and upgrade the promscale and timescaledb PostgreSQL extensions.
 Normally extension installation and upgrade requires superuser permissions. To avoid
 using superuser, you could use the [pgextwlist](https://github.com/dimitri/pgextwlist) extension with the following PostgreSQL
 config:
+
 ```
 local_preload_libraries=pgextwlist
 extwlist.extensions=promscale,timescaledb

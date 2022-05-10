@@ -2,7 +2,7 @@
 
 Promscale collects anonymous usage data to help us better understand how the
 community uses our products and as a result make our product better for our
-users. Your privacy is the most important thing to us so we don't collect any 
+users. Your privacy is the most important thing to us so we don't collect any
 personally identifiable information.
 
 You can see at all times the data collected by Promscale by running the following
@@ -12,7 +12,7 @@ query in the database:
 
 The query will return something similar to this:
 
-|                             key                             |    value     |
+| key                                                         | value        |
 |-------------------------------------------------------------|--------------|
 | promscale_arch                                              | amd64        |
 | promscale_build_platform                                    |              |
@@ -60,9 +60,8 @@ The query will return something similar to this:
 | promscale_traces_total_approx                               | 0            |
 | promscale_version                                           | 0.8.0        |
 
-
 This data together with usage data collected by
-[TimescaleDB](https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/) 
+[TimescaleDB](https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/)
 is sent to our servers every 24 hours.
 
 ## Disable Telemetry
@@ -70,4 +69,4 @@ is sent to our servers every 24 hours.
 Promscale usage telemetry is collected through TimescaleDB's telemetry feature.
 
 You can [exclude specific items](https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#change-what-is-included-the-telemetry-report) you are not confortable sharing
- or [completely disable the feature](https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disable-telemetry).
+or [completely disable the feature](https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disable-telemetry).

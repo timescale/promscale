@@ -1,4 +1,5 @@
 # Changelog
+
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -15,7 +16,7 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ## Added
-- Alerting rules for Promscale. You can find them [here](docs/promscale_alerting.md) [#1181, #1185, #1271]
+- Alerting rules for Promscale. You can find them [here](docs/mixin/alerts/alerts.yaml) [#1181, #1185, #1271]
 - Add database status and request metrics [#1185]
 - Add database SQL stats as Prometheus metrics. These can be queried under `promscale_sql` namespace [#1193]
 - Add alerts for database SQL metrics [#1193]
@@ -38,7 +39,7 @@ We use the following categories for changes:
 - Fix `prom_api.reset_metric_retention_period` on two-step continuous aggregates [#1294]
 
 ### Removed
-- Remove deprecated flags. More info can be found [here](docs/configuration.md#old-flag-removal-in-version-0.11.0) [#1229]
+- Remove deprecated flags. More info can be found [here](docs/configuration.md#old-flag-removal-in-version-0110) [#1229]
 
 ## [0.10.0] - 2022-02-17
 

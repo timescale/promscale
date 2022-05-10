@@ -14,9 +14,7 @@ Benefits of continous aggregates:
 * **Timeliness**: continuous aggregates have a feature called real-time aggregates (enabled by default) where the database automatically combines the materialized results with a query over the newest not-yet-materialized data to provide an accurate up-to-the-second view of your data.
 * **Rollups**: continuous aggregates store the intermediate state of an aggregate in the materialization, making further rollups possible. Read more about the way you define aggregates in this [blog post](https://blog.timescale.com/blog/how-postgresql-aggregation-works-and-how-it-inspired-our-hyperfunctions-design-2/).
 * **Query flexibility for retrospective analysis**: continuous aggregates allows for multi-purpose aggregates. For instance, Timescale’s toolkit extension has aggregates that support percentile queries on any percentile, and statistical aggregates supporting multiple summary aggregates. The aggregates that you define when you configure the materialization are much more flexible in what data you can derive at query time.
-* **Backfilling**: Continuous aggregates automatically downsample all data available including past data so that you can start benefiting from the performance improvements the aggregated metric brings as soon as it is created.  
-
-
+* **Backfilling**: Continuous aggregates automatically downsample all data available including past data so that you can start benefiting from the performance improvements the aggregated metric brings as soon as it is created.
 
 Creating a continuous aggregate in Promscale consists of two operations: creating a TimescaleDB continuous aggregate and registering the new metric so it's available to PromQL queries and other Promscale functions like the one used to configure retention. Let's use an example to illustrate how this works.
 
@@ -40,8 +38,8 @@ WITH (timescaledb.continuous) AS
 For Promscale to be able to use a continuous aggregate as a metric view it must meet the following requirements:
 * It must be based on a raw metric series ingested by Promscale that is specified in the FROM clause.
 * It must include a column named `time` of type `timestamptz` that corresponds to the time associated to each aggregated metric sample. Note we add 1 hour to time_bucket in the SELECT clause to match the PromQL semantics of representing a bucket with the timestamp at the end of the bucket instead of the start of the bucket.
-* It must include a column named `series_id` of type `bigint`  that corresponds to the `series_id`  from the raw metrics.
-* A number of additional columns of type `double precision`  that correspond to the metric values you want to store.
+* It must include a column named `series_id` of type `bigint` that corresponds to the `series_id` from the raw metrics.
+* A number of additional columns of type `double precision` that correspond to the metric values you want to store.
 
 Currently continuous aggregates only supports one metric metric series in the FROM clause and can only generate aggregations within the same series_id (a series_id corresponds to a specific metric name and set of labels).
 
@@ -63,6 +61,7 @@ FROM node_memfree_1hour
 WHERE $__timeFilter(time)
 ORDER BY time asc
 ```
+
 To do the same with PromQL the query would be
 
 ```
@@ -173,7 +172,7 @@ Read more in the [metric retention documentation](metric_deletion_and_retention.
 
 There are a few things to take into account when deciding a downsampling solution:
 
-* **Access to recent data**. If this materialization will be used in operational or real-time dashboards prefer continuous aggregates because of the  real-time aggregate feature.
+* **Access to recent data**. If this materialization will be used in operational or real-time dashboards prefer continuous aggregates because of the real-time aggregate feature.
 * **Size of the time-bucket**. Continuous aggregates materialize the intermediate, not the final form, so querying the data is a bit more expensive than with recording rules. Thus, continuous aggregates are better when aggregating more data points together (1 hour or more of data), while recording rules are better for small buckets.
 * **Number of metrics in materialization**. Currently, continuous aggregates can only be defined on a single metric. If you need to materialize queries on more than one metric, use recording rules. However, you should also consider whether joining the materialized metrics (the result of the materialization instead of the raw input) may be a better approach.
 * **Query flexibility**. If you know the exact queries that will be run on the materialization, recording rules may be more efficient. However, if you want flexibility, continuous aggregates can answer more queries based on the materialized data.

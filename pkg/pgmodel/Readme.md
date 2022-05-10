@@ -1,4 +1,4 @@
-# Core Promscale Functionality #
+# Core Promscale Functionality
 
 This package contains the core Promscale functionality: the code to translate Read and Write requests into things the database can understand. Logically this code is divided into two mostly separate paths:
 
@@ -9,11 +9,11 @@ The code paths for these two areas of functionality are large independent (I bel
 
 **NOTE:** This document is non-normative, and is merely a snapshot of the state of the code a particular point in time. In general, code comments supersede this document in the even they disagree.
 
-## Read Path ##
+## Read Path
 
 TODO (@ante do you want to write this?)
 
-## Write Path ##
+## Write Path
 
 A `WriteRequest` is made out of a `[]TimeSeries` each of which contains a set of lables, each a `{string, string}`, and a set of samples, each a `{Timestamp, Value}`. Logically, the write path deals with this write request multiple stages. In Go notation, this can be thought of as follows
 
@@ -53,6 +53,7 @@ The purpose of this metric layer is to allow for greater batching series-id fetc
 After a batch is finished by the metric layer its forwarded to an arbitrary physical inserter, which translates the insert request into the actual SQL doing the insert, sends the request to the DB, and reports the result back to the original goroutine. We maintain a fixed number of physical inserters based on the number of connections to the DB we possess.
 
 Diagrammatically the write path cn be visualized as follows:
+
 ```
 |, /, \ are go channels
 = is for network connections

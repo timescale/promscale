@@ -1,6 +1,6 @@
 # Data Model Schema
 
-The design of the internal SQL schema is described in [our design doc][design-doc].
+The design of the internal SQL schema is described in [our design doc](https://tsdb.co/prom-design-doc).
 This document describes how to query the data once it is ingested. We aim
 to make querying easier using view, operators, and functions.
 
@@ -29,6 +29,7 @@ function. A full json for the series can be retrieved with `jsonb(labels)`.
 The array of labels can be retrieved from a series_id with `labels(series_id)`.
 
 For example:
+
 ```
 # \d+ cpu_usage
                                    View "prom_metric.cpu_usage"
@@ -51,7 +52,9 @@ SELECT
 FROM cpu_usage
 WHERE time < now();
 ```
+
 Results:
+
 ```
                      labels                   | value
 ----------------------------------------------+-------
@@ -71,6 +74,7 @@ FROM cpu_usage
 WHERE time < now()
 GROUP BY node_id
 ```
+
 Results:
 
 ```
@@ -93,6 +97,7 @@ column:
 - plus a column for each label name's value in the metric's label set
 
 For example:
+
 ```
 # \d+ prom_series.cpu_usage
                           View "prom_series.cpu_usage"
@@ -105,6 +110,7 @@ For example:
 ```
 
 Example query to look at all the series:
+
 ```
 # SELECT * FROM prom_series.cpu_usage;
  series_id | labels  | namespace  | node
@@ -131,6 +137,7 @@ the following columns
 - compressed_chunks - number of chunks that have been compressed
 
 Example:
+
 ```
  id | metric_name | table_name | retention_period | chunk_interval |            label_keys             | size  |    compression_ratio    | total_chunks | compressed_chunks
 ----+-------------+------------+------------------+----------------+-----------------------------------+-------+-------------------------+--------------+-------------------
@@ -211,7 +218,6 @@ For those coming from PromQL there are a few differences to keep in mind:
 - The logic for whether series that are missing the tag key pass the qualifier is slightly different:
   If the key on the left-hand side is not found `!==` and `!=~` always match, while `==` and `==~` never match.
 
-
 ### Equivalence
 
 The `eq` function tests exact equivalence between labels, without comparing the metric name (`__name__`) label key.
@@ -244,7 +250,8 @@ section above.
 ## Data Retention
 
 This default data retention period can be changed by using the SQL function
-`set_default_retention_period(new interval)`.  For example,
+`set_default_retention_period(new interval)`. For example,
+
 ```SQL
 SELECT set_default_retention_period(180 * INTERVAL '1 day')
 ```
@@ -256,8 +263,6 @@ and undo this override with `reset_metric_retention_period(metric_name)`.
 Note: The default applies to all metrics that do not have override,
 no matter whether they were created before or after the call to
 `set_default_retention_period`.
-
-[design-doc]: https://tsdb.co/prom-design-doc
 
 ## Compression
 

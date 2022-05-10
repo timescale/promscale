@@ -1,13 +1,17 @@
 # PromscaleMaintenanceJobRunningTooLong
+
 ## Meaning
+
 Promscale maintenance jobs are taking longer than expected to complete
 
 ## Impact
+
 Delay in compressing chunks and executing retention policy, leading to high disk usage and data past retention period
 
 ## Diagnosis
 1. Open psql
 2. Execute the following debugging query:
+
 ```postgresql
 SELECT
     avg(chunk_interval) as avg_chunk_interval_new_chunk,
@@ -25,22 +29,25 @@ If `avg_not_yet_compressed_interval is high AND avg_not_yet_compressed_chunks is
 This can lead to maintenance jobs stuck on compressing this large chunk or waiting for the current chunk to stop getting new data.
 See [Very large uncompressed chunks](#very-large-uncompressed-chunks) for mitigation.
 
-3. Open Postgres logs and look for errors or deadlocks. If found, see [Deadlock/bug in background jobs](#deadlock/bug-in-background-jobs) for mitigation 
+3. Open Postgres logs and look for errors or deadlocks. If found, see [Deadlock/bug in background jobs](#deadlockbug-in-background-jobs) for mitigation
 
 ## Mitigation
+
 ### Lots of uncompressed chunks
 1. An immediate solution to this is manually compressing chunks by calling: `call prom_api.execute_maintenance();`. This will also perform retention policies.
 2. Try increasing background maintenance jobs using: `SELECT prom_api.config_maintenance_jobs(number_jobs=>X)`. The given `number_jobs` will run every 30 mins. Maintenance jobs are responsible for performing compression and retention policy
 
 ### Very large uncompressed chunks
+
 Decrease the chunk interval.
 
 1. Get the current interval by:
    1. Seeing the Promscale configuration file
-   Or
+      Or
    2. Running SQL: `select value from _prom_catalog.default where key = 'chunk_interval';`
 2. Update the interval:
    1. [Updating Promscale configuration](https://github.com/timescale/promscale/blob/master/docs/dataset.md)
 
 ### Deadlock/bug in background jobs
+
 If you find any errors in Postgres logs or anything related to this topic, please open an issue at https://github.com/timescale/promscale/issues

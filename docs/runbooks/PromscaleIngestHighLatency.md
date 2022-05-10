@@ -1,8 +1,11 @@
 # PromscaleIngestHighLatency
+
 ## Meaning
+
 Promscale data ingestion is taking more time than expected
 
 ## Impact
+
 Ingestion performance will be poor
 
 ## Diagnosis
@@ -11,6 +14,7 @@ Ingestion performance will be poor
 3. Verify CPU and memory resource consumption of the timescale DB. Go to [Database is under high load](#database-is-under-high-load) for mitigation steps.
 
 ## Mitigation
+
 ### Database is under high load
 1. Allocate more resources to the database.
 2. Tune the database. Refer to [timescaledb-tune tool](https://github.com/timescale/timescaledb-tune) to do so.
