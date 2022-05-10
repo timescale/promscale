@@ -17,11 +17,11 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/go-hclog v1.2.0
-	github.com/jackc/pgconn v1.12.0
+	github.com/jackc/pgconn v1.11.0
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pgproto3/v2 v2.3.0
 	github.com/jackc/pgtype v1.11.0
-	github.com/jackc/pgx/v4 v4.16.0
+	github.com/jackc/pgx/v4 v4.15.0
 	github.com/jaegertracing/jaeger v1.33.0
 	github.com/oklog/run v1.1.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.49.0
