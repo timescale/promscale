@@ -39,15 +39,13 @@ If you want to run a specific version of Promscale, replace latest with the spec
 **Note:** `db-ssl-mode=allow` is just for explanatory purposes. In production environments,
 we advise you to use `db-ssl-mode=require` for security purposes.
 
-This should make Promscale running along with TimescaleDB.
-
 **Example using docker-compose:**
 
-You can also run Promscale also by using docker-compose. The `docker-compose.yaml` is available in the
+You can also run Promscale with docker-compose. The `docker-compose.yaml` is available in the
 [docker-compose](https://github.com/timescale/promscale/blob/master/docker-compose/docker-compose.yaml) directory of our repository.
 You can start Promscale and related services simply via `docker-compose up`.
 
-For updating Promscale in this method, you need to stop the Promscale that is currently running using
+**Note:** To update Promscale with docker-compose, you need to stop the Promscale that is currently running using
 `docker-compose stop` and then pull the image with the tag you want to upgrade to with `docker pull timescale/promscale:<version-tag>`.
 This will pull the respective image to your local docker registry. You can then run the updated image with `docker-compose up`.
 
@@ -94,12 +92,7 @@ You can configure Prometheus remote-write with our recommended configurations fr
 
 The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file.
 
-All environment variables are prefixed with `PROMSCALE`.
-
-Configuration file is a YAML file where the keys are CLI flag names and values are their respective flag values.
-
-The list of available cli flags is available in [here](/docs/configuration.md) in
-our docs or by running with the `-h` flag (e.g. `promscale -h`).
+For more information about configuration, consult our documentation [here](/docs/configuration.md).
 
 ## 🛠 Building from source
 
@@ -113,7 +106,7 @@ Because of [collation bugs](https://github.com/docker-library/postgres/issues/32
 
 Our previous Alpine-based image will continue to be supported but all new installations should switch to the `timescaledb-ha` image specified above.
 
-You can also migrate to Debian version by doing the following (please note: this can be a lengthy process and involves downtime):
+You can migrate to the Debian version by doing the following (please note: this can be a lengthy process and involves downtime):
 
 1. Use `docker inspect` to determine the data volumes used by your database for the data directory.
 2. Shutdown all Promscale Connectors.
