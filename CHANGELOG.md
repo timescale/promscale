@@ -15,6 +15,8 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+## [0.11.0] - 2022-05-11
+
 ## Added
 - Alerting rules for Promscale. You can find them [here](docs/mixin/alerts/alerts.yaml) [#1181, #1185, #1271]
 - Add database status and request metrics [#1185]
