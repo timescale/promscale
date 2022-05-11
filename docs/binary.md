@@ -19,7 +19,7 @@ apt-get install -y promscale-extension-postgresql-14
 
 ### Setup the Promscale Connector
 
-Similarly, you can get the latest version of the Promscale Connector from the official TimescaleDB package repository.
+Similarly, you can get the latest version of the Promscale Connector from the official [TimescaleDB package repository](https://packagecloud.io/timescale/timescaledb) (instructions for installing packages from the repository can be found [here](https://packagecloud.io/timescale/timescaledb/install)).
 
 ```bash
 apt-get install -y promscale
@@ -30,12 +30,12 @@ If you're using systemd, you can use our unit and an associated configuration fi
 Otherwise, you can start the Promscale connector directly:
 
 ```bash
-promscale --db-host <DB_HOSTNAME> --db-port <DB_PORT> --db-name <DBNAME> --db-password <DB-Password> --db-ssl-mode allow
+promscale -db.host <DB_HOSTNAME> -db.port <DB_PORT> -db.name <DBNAME> -db.password <DB-Password> -db.ssl-mode allow
 ```
 
-Note that the flags `db-name` and `db-password` refer to the name and password of your TimescaleDB database.
+Note that the flags `db.name` and `db.password` refer to the name and password of your TimescaleDB database.
 
-Further note that the command above starts the Promscale connector in "SSL allowed" mode. For production setups it's recommended to start Promscale in "SSL required" mode enabled. To do so, configure your TimescaleDB instance with ssl certificates and drop the `--db-ssl-mode` flag. Promscale will then authenticate via SSL by default.
+Further note that the command above starts the Promscale connector in "SSL allowed" mode. For production setups it's recommended to start Promscale in "SSL required" mode enabled. To do so, configure your TimescaleDB instance with ssl certificates and drop the `-db.ssl-mode` flag. Promscale will then authenticate via SSL by default.
 
 ## 🔥 Configuring Prometheus to use this remote storage connector
 
