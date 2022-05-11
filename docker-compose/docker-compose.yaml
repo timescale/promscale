@@ -3,7 +3,7 @@ version: '3.0'
 services:
   db:
     #TODO (james): Replace hardcoded value
-    image: timescale/timescaledb-ha:pg14-latest
+    image: ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14
     ports:
       - 5432:5432/tcp
     environment:
