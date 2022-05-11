@@ -23,3 +23,5 @@ go.sum @antekresic @paulfantom
 
 # helm and kubernetes related parts
 /deploy @cevian @paulfantom @onprem @JamesGuthrie
+
+shell.nix @JamesGuthrie
