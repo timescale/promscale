@@ -1,6 +1,6 @@
 name: promscale
-version: 0.11.0-alpha.2
-appVersion: 0.11.0-alpha.2
+version: 0.11.0-alpha.3
+appVersion: 0.11.0-alpha.3
 apiVersion: v2
 home: https://github.com/timescale/promscale
 description: Promscale Connector deployment
