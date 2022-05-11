@@ -39,15 +39,13 @@ If you want to run a specific version of Promscale, replace latest with the spec
 **Note:** `db-ssl-mode=allow` is just for explanatory purposes. In production environments,
 we advise you to use `db-ssl-mode=require` for security purposes.
 
-This should make Promscale running along with TimescaleDB.
-
 **Example using docker-compose:**
 
-You can also run Promscale also by using docker-compose. The `docker-compose.yaml` is available in the
+You can also run Promscale with docker-compose. The `docker-compose.yaml` is available in the
 [docker-compose](https://github.com/timescale/promscale/blob/master/docker-compose/docker-compose.yaml) directory of our repository.
 You can start Promscale and related services simply via `docker-compose up`.
 
-For updating Promscale in this method, you need to stop the Promscale that is currently running using
+**Note:** To update Promscale with docker-compose, you need to stop the Promscale that is currently running using
 `docker-compose stop` and then pull the image with the tag you want to upgrade to with `docker pull timescale/promscale:<version-tag>`.
 This will pull the respective image to your local docker registry. You can then run the updated image with `docker-compose up`.
 
@@ -94,12 +92,7 @@ You can configure Prometheus remote-write with our recommended configurations fr
 
 The Promscale Connector binary is configured through either CLI flags, environment variables, or a YAML configuration file.
 
-All environment variables are prefixed with `PROMSCALE`.
-
-Configuration file is a YAML file where the keys are CLI flag names and values are their respective flag values.
-
-The list of available cli flags is available in [here](/docs/configuration.md) in
-our docs or by running with the `-h` flag (e.g. `promscale -h`).
+For more information about configuration, consult our documentation [here](/docs/configuration.md).
 
 ## 🛠 Building from source
 
@@ -113,42 +106,44 @@ Because of [collation bugs](https://github.com/docker-library/postgres/issues/32
 
 Our previous Alpine-based image will continue to be supported but all new installations should switch to the `timescaledb-ha` image specified above.
 
-You can also migrate to Debian version by doing the following (please note: this can be a lengthy process and involves downtime):
+You can migrate to the Debian version by doing the following (please note: this can be a lengthy process and involves downtime):
 
 1. Use `docker inspect` to determine the data volumes used by your database for the data directory.
-1. Shutdown all Promscale Connectors.
-1. Shutdown the original database docker image while preserving the volume mount for the data directory.
+2. Shutdown all Promscale Connectors.
+3. Shutdown the original database docker image while preserving the volume mount for the data directory.
    You will need to mount this same directory in the new image.
-1. Change the ownership of the data-directory to the postgres user and group in the new image. For example:
-    ```
-    docker run -v <data_dir_volume_mount>:/var/lib/postgresql/data timescale/timescaledb-ha:pg14-latest chown -R postgres:postgres /var/lib/postgresql/data
-    ```
-1. Start the new docker container with the same volume mounts as what the original container used.
-1. Connect to the new database using psql and reindex all the data that has data
-that is collatable.  This is necessary because the collation in the Alpine image
-is broken and so BTREE-based indexes will be incorrect until they are reindexed.
-It is extremely important to execute this step before ingesting new data to
-avoid data corruption. Note: This process can take a long time depending on how
-much indexed textual data the database has. You should use the following query to
-reindex all the necessary indexes:
-    ```
-      DO $$DECLARE r record;
-      BEGIN
-        FOR r IN
-          SELECT DISTINCT indclass
- 		      FROM (SELECT indexrelid::regclass indclass, unnest(string_to_array(indcollation::text, ' ')) coll FROM pg_catalog.pg_index) sub
- 		      INNER JOIN pg_catalog.pg_class c ON (c.oid = sub.indclass)
- 		      WHERE coll !='0' AND c.relkind != 'I'
-        LOOP
-         EXECUTE 'REINDEX INDEX ' || r.indclass;
-      END LOOP;
-    END$$;
-    ```
+4. Change the ownership of the data-directory to the postgres user and group in the new image. For example:
 
-1. Restart the Promscale Connector
+   ```
+   docker run -v <data_dir_volume_mount>:/var/lib/postgresql/data timescale/timescaledb-ha:pg14-latest chown -R postgres:postgres /var/lib/postgresql/data
+   ```
+5. Start the new docker container with the same volume mounts as what the original container used.
+6. Connect to the new database using psql and reindex all the data that has data
+   that is collatable. This is necessary because the collation in the Alpine image
+   is broken and so BTREE-based indexes will be incorrect until they are reindexed.
+   It is extremely important to execute this step before ingesting new data to
+   avoid data corruption. Note: This process can take a long time depending on how
+   much indexed textual data the database has. You should use the following query to
+   reindex all the necessary indexes:
+
+   ```
+     DO $$DECLARE r record;
+     BEGIN
+       FOR r IN
+         SELECT DISTINCT indclass
+             FROM (SELECT indexrelid::regclass indclass, unnest(string_to_array(indcollation::text, ' ')) coll FROM pg_catalog.pg_index) sub
+             INNER JOIN pg_catalog.pg_class c ON (c.oid = sub.indclass)
+             WHERE coll !='0' AND c.relkind != 'I'
+       LOOP
+        EXECUTE 'REINDEX INDEX ' || r.indclass;
+     END LOOP;
+   END$$;
+   ```
+
+7. Restart the Promscale Connector
 
 If you are using Kubernetes instead of plain docker you should:
 1. Shutdown the Promscale Connector pods
-1. Change the database pod to use the debian docker image and restart it.
-1. Execute jobs for the script in steps 4 and 6 above.
-1. Restart the Promscale Connector pods.
+2. Change the database pod to use the debian docker image and restart it.
+3. Execute jobs for the script in steps 4 and 6 above.
+4. Restart the Promscale Connector pods.
