@@ -2,8 +2,7 @@ version: '3.0'
 
 services:
   db:
-    #TODO (james): Replace hardcoded value
-    image: ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14
+    image: timescale/timescaledb-ha:pg14-latest
     ports:
       - 5432:5432/tcp
     environment:
@@ -33,9 +32,6 @@ services:
       PROMSCALE_TRACING_OTLP_SERVER_ADDRESS: ":9202"
       PROMSCALE_TELEMETRY_TRACE_JAEGER_ENDPOINT: "http://otel-collector:14268/api/traces"
       PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
-    # FIXME(paulfantom): remove before doing a release!
-    command:
-      - "-startup.upgrade-prerelease-extensions"
 
   otel-collector:
     platform: linux/amd64
