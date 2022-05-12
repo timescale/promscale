@@ -116,39 +116,41 @@ Our previous Alpine-based image will continue to be supported but all new instal
 You can also migrate to Debian version by doing the following (please note: this can be a lengthy process and involves downtime):
 
 1. Use `docker inspect` to determine the data volumes used by your database for the data directory.
-1. Shutdown all Promscale Connectors.
-1. Shutdown the original database docker image while preserving the volume mount for the data directory.
+2. Shutdown all Promscale Connectors.
+3. Shutdown the original database docker image while preserving the volume mount for the data directory.
    You will need to mount this same directory in the new image.
-1. Change the ownership of the data-directory to the postgres user and group in the new image. For example:
-    ```
-    docker run -v <data_dir_volume_mount>:/var/lib/postgresql/data timescale/timescaledb-ha:pg14-latest chown -R postgres:postgres /var/lib/postgresql/data
-    ```
-1. Start the new docker container with the same volume mounts as what the original container used.
-1. Connect to the new database using psql and reindex all the data that has data
-that is collatable.  This is necessary because the collation in the Alpine image
-is broken and so BTREE-based indexes will be incorrect until they are reindexed.
-It is extremely important to execute this step before ingesting new data to
-avoid data corruption. Note: This process can take a long time depending on how
-much indexed textual data the database has. You should use the following query to
-reindex all the necessary indexes:
-    ```
-      DO $$DECLARE r record;
-      BEGIN
-        FOR r IN
-          SELECT DISTINCT indclass
- 		      FROM (SELECT indexrelid::regclass indclass, unnest(string_to_array(indcollation::text, ' ')) coll FROM pg_catalog.pg_index) sub
- 		      INNER JOIN pg_catalog.pg_class c ON (c.oid = sub.indclass)
- 		      WHERE coll !='0' AND c.relkind != 'I'
-        LOOP
-         EXECUTE 'REINDEX INDEX ' || r.indclass;
-      END LOOP;
-    END$$;
-    ```
+4. Change the ownership of the data-directory to the postgres user and group in the new image. For example:
 
-1. Restart the Promscale Connector
+   ```
+   docker run -v <data_dir_volume_mount>:/var/lib/postgresql/data timescale/timescaledb-ha:pg14-latest chown -R postgres:postgres /var/lib/postgresql/data
+   ```
+5. Start the new docker container with the same volume mounts as what the original container used.
+6. Connect to the new database using psql and reindex all the data that has data
+   that is collatable. This is necessary because the collation in the Alpine image
+   is broken and so BTREE-based indexes will be incorrect until they are reindexed.
+   It is extremely important to execute this step before ingesting new data to
+   avoid data corruption. Note: This process can take a long time depending on how
+   much indexed textual data the database has. You should use the following query to
+   reindex all the necessary indexes:
+
+   ```
+     DO $$DECLARE r record;
+     BEGIN
+       FOR r IN
+         SELECT DISTINCT indclass
+             FROM (SELECT indexrelid::regclass indclass, unnest(string_to_array(indcollation::text, ' ')) coll FROM pg_catalog.pg_index) sub
+             INNER JOIN pg_catalog.pg_class c ON (c.oid = sub.indclass)
+             WHERE coll !='0' AND c.relkind != 'I'
+       LOOP
+        EXECUTE 'REINDEX INDEX ' || r.indclass;
+     END LOOP;
+   END$$;
+   ```
+
+7. Restart the Promscale Connector
 
 If you are using Kubernetes instead of plain docker you should:
 1. Shutdown the Promscale Connector pods
-1. Change the database pod to use the debian docker image and restart it.
-1. Execute jobs for the script in steps 4 and 6 above.
-1. Restart the Promscale Connector pods.
+2. Change the database pod to use the debian docker image and restart it.
+3. Execute jobs for the script in steps 4 and 6 above.
+4. Restart the Promscale Connector pods.
