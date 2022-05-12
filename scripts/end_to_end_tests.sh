@@ -86,7 +86,7 @@ PROMSCALE_DB_PASSWORD=postgres \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
-./promscale -startup.only -startup.upgrade-prerelease-extensions
+./promscale -startup.only
 
 docker exec e2e-tsdb psql -U postgres -d postgres \
   -c "CREATE ROLE writer PASSWORD 'test' LOGIN" \

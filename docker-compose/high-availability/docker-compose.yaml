@@ -2,8 +2,7 @@ version: '3.0'
 
 services:
   db:
-    #TODO (james): Replace hardcoded value
-    image: ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14
+    image: timescale/timescaledb-ha:pg14-latest
     ports:
       - 5432:5432/tcp
     environment:
@@ -40,9 +39,6 @@ services:
       PROMSCALE_DB_PASSWORD: postgres
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_SSL_MODE: allow
-    # FIXME(paulfantom): remove before doing a release!
-    command:
-      - "-startup.upgrade-prerelease-extensions"
 
   promscale-connector2:
     image: timescale/promscale:latest
@@ -61,7 +57,4 @@ services:
       PROMSCALE_DB_PASSWORD: postgres
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_SSL_MODE: allow
-    # FIXME(paulfantom): remove before doing a release!
-    command:
-      - "-startup.upgrade-prerelease-extensions"
 
