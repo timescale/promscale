@@ -127,7 +127,7 @@ You can migrate to the Debian version by doing the following (please note: this 
    reindex all the necessary indexes:
 
    ```
-     DO $$DECLARE r record;
+   DO $$DECLARE r record;
      BEGIN
        FOR r IN
          SELECT DISTINCT indclass
