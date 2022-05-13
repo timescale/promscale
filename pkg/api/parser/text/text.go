@@ -24,8 +24,8 @@ func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
 	}
 
 	var (
-		defTime = int64(model.TimeFromUnixNano(timeProvider().UnixNano()))
 		et      textparse.Entry
+		defTime = int64(model.TimeFromUnixNano(timeProvider().UnixNano()))
 	)
 
 	p, err := textparse.New(b, r.Header.Get("Content-Type"))

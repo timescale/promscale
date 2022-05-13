@@ -12,12 +12,12 @@ import (
 	"math/rand"
 	"net/http"
 	"reflect"
-	"regexp"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/grafana/regexp"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
 

@@ -12,10 +12,11 @@ import (
 	"io/ioutil"
 	"math"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/grafana/regexp"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"

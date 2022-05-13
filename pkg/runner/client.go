@@ -7,10 +7,12 @@ package runner
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 
 	"github.com/jackc/pgx/v4"
+
+	"github.com/grafana/regexp"
+
 	"github.com/timescale/promscale/pkg/dataset"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"

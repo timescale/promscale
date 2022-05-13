@@ -93,7 +93,7 @@ func (m *Manager) applyNotifierManagerConfig(cfg *prometheus_config.Config) erro
 }
 
 func (m *Manager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error {
-	return errors.WithMessage(m.rulesManager.Update(interval, files, externalLabels, externalURL), "error updating the rules manager")
+	return errors.WithMessage(m.rulesManager.Update(interval, files, externalLabels, externalURL, nil), "error updating the rules manager")
 }
 
 func (m *Manager) RuleGroups() []*prom_rules.Group {
