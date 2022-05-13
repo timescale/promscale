@@ -37,7 +37,8 @@ each time (with no cross-cutting concerns) from PromLab's
 [PromQL Compliance Test Suite](https://promlabs.com/promql-compliance-tests/).
 
 For OpenTelemetry, Jaeger and Zipkin users, Promscale provides the ability to run deep analysis
-on traces using SQL. Install our lightweight [opentelemetry-demo](https://github.com/timescale/opentelemetry-demo)
+on traces using SQL while visualizing the distributed traces in Jaeger or Grafana.
+Install our lightweight [opentelemetry-demo](https://github.com/timescale/opentelemetry-demo)
 on your computer to quickly get a feel of what's possible. More details in
 [this blog post](https://www.timescale.com/blog/learn-opentelemetry-tracing-with-this-lightweight-microservices-demo/).
 
