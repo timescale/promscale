@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/oklog/run"
@@ -17,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	prometheus_config "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/notifier"
 	prom_rules "github.com/prometheus/prometheus/rules"
 
@@ -27,11 +25,11 @@ import (
 )
 
 type Manager struct {
-	rulesManager     *prom_rules.Manager
-	notifierManager  *notifier.Manager
-	discoveryManager *discovery.Manager
-	stop             chan struct{}
-	wg               sync.WaitGroup
+	ctx                 context.Context
+	rulesManager        *prom_rules.Manager
+	notifierManager     *notifier.Manager
+	discoveryManager    *discovery.Manager
+	postRulesProcessing prom_rules.RuleGroupPostProcessFunc
 }
 
 func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*Manager, error) {
@@ -63,11 +61,15 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		ResendDelay:     cfg.ResendDelay,
 	})
 	return &Manager{
+		ctx:              ctx,
 		rulesManager:     rulesManager,
 		notifierManager:  notifierManager,
 		discoveryManager: discoveryManagerNotify,
-		stop:             make(chan struct{}),
 	}, nil
+}
+
+func (m *Manager) WithPostRulesProcess(f prom_rules.RuleGroupPostProcessFunc) {
+	m.postRulesProcessing = f
 }
 
 func (m *Manager) ApplyConfig(cfg *prometheus_config.Config) error {
@@ -76,6 +78,9 @@ func (m *Manager) ApplyConfig(cfg *prometheus_config.Config) error {
 	}
 	if err := m.applyNotifierManagerConfig(cfg); err != nil {
 		return err
+	}
+	if err := m.rulesManager.Update(time.Duration(cfg.GlobalConfig.EvaluationInterval), cfg.RuleFiles, cfg.GlobalConfig.ExternalLabels, "", m.postRulesProcessing); err != nil {
+		return fmt.Errorf("error updating rule-manager: %w", err)
 	}
 	return nil
 }
@@ -90,10 +95,6 @@ func (m *Manager) applyDiscoveryManagerConfig(cfg *prometheus_config.Config) err
 
 func (m *Manager) applyNotifierManagerConfig(cfg *prometheus_config.Config) error {
 	return errors.WithMessage(m.notifierManager.ApplyConfig(cfg), "error applying config to notifier manager")
-}
-
-func (m *Manager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error {
-	return errors.WithMessage(m.rulesManager.Update(interval, files, externalLabels, externalURL, nil), "error updating the rules manager")
 }
 
 func (m *Manager) RuleGroups() []*prom_rules.Group {
@@ -134,20 +135,10 @@ func (m *Manager) Run() error {
 	})
 
 	g.Add(func() error {
-		// This stops all actors in the group on receiving request from manager.Stop()
-		<-m.stop
+		// This stops all actors in the group on context done.
+		<-m.ctx.Done()
 		return nil
 	}, func(err error) {})
 
-	m.wg.Add(1)
-	defer func() {
-		m.wg.Done()
-	}()
 	return errors.WithMessage(g.Run(), "error running the rule manager groups")
-}
-
-func (m *Manager) Stop() {
-	close(m.stop)
-	// we need to wait for all group actor to shutdown which happens after g.Run() returns
-	m.wg.Wait()
 }
