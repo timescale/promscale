@@ -1,0 +1,5 @@
+groups:
+- name: rules
+  rules:
+  - record: rate:node_cpu_seconds_total
+    expr: rate(node_cpu_seconds_total{mode!='idle'}[5m]) * 100 / 2

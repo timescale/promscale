@@ -18,6 +18,11 @@ services:
     volumes:
       - ${PWD}/prometheus.yml:/etc/prometheus/prometheus.yml
 
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - 9093:9093/tcp
+
   promscale:
     image: timescale/promscale:latest
     ports:
@@ -26,12 +31,17 @@ services:
     restart: on-failure
     depends_on:
       - db
+    volumes:
+      - ${PWD}/promscale_prometheus.yml:/prometheus.yml
+      - ${PWD}/rules.yml:/rules.yml
+      - ${PWD}/alerts.yml:/alerts.yml
     environment:
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
       PROMSCALE_TRACING_OTLP_SERVER_ADDRESS: ":9202"
       PROMSCALE_TELEMETRY_TRACE_JAEGER_ENDPOINT: "http://otel-collector:14268/api/traces"
       PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
+      PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
 
   otel-collector:
     platform: linux/amd64

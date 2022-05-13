@@ -1,0 +1,16 @@
+# Rules and alerts are read from the specified file(s)
+rule_files:
+  - rules.yml
+  - alerts.yml
+
+# Alerting specifies settings related to the Alertmanager
+alerting:
+  alert_relabel_configs:
+   - replacement: "production"
+     target_label: "env"
+     action: "replace"
+  alertmanagers:
+    - static_configs:
+      - targets:
+        # Alertmanager's default port is 9093
+        - alertmanager:9093

@@ -6,9 +6,8 @@ services:
     ports:
       - 5432:5432/tcp
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: password
       POSTGRES_USER: postgres
-      POSTGRES_DB: timescale
 
   prometheus1:
     image: prom/prometheus:latest
@@ -24,6 +23,11 @@ services:
     volumes:
       - ./prometheus2.yml:/etc/prometheus/prometheus.yml:ro
 
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - 9093:9093/tcp
+
   promscale-connector1:
     image: timescale/promscale:latest
     ports:
@@ -32,29 +36,35 @@ services:
     depends_on:
       - db
       - prometheus1
+    volumes:
+      - ${PWD}/../promscale_prometheus.yml:/prometheus.yml
+      - ${PWD}/../rules.yml:/rules.yml
+      - ${PWD}/../alerts.yml:/alerts.yml
     environment:
       PROMSCALE_METRICS_HIGH_AVAILABILITY: true
-      PROMSCALE_DB_CONNECT_RETRIES: 10
-      PROMSCALE_DB_HOST: db
-      PROMSCALE_DB_PASSWORD: postgres
+      PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
-      PROMSCALE_DB_SSL_MODE: allow
+      PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
 
   promscale-connector2:
     image: timescale/promscale:latest
     ports:
       - 9202:9201/tcp
-    build:
-      context: .
     restart: on-failure
     depends_on:
       - db
       - prometheus2
+    volumes:
+      - ${PWD}/../promscale_prometheus.yml:/prometheus.yml
+      - ${PWD}/../rules.yml:/rules.yml
+      - ${PWD}/../alerts.yml:/alerts.yml
     environment:
       PROMSCALE_METRICS_HIGH_AVAILABILITY: true
-      PROMSCALE_DB_CONNECT_RETRIES: 10
-      PROMSCALE_DB_HOST: db
-      PROMSCALE_DB_PASSWORD: postgres
+      PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
       PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
-      PROMSCALE_DB_SSL_MODE: allow
+      PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
 
+  node_exporter:
+    image: quay.io/prometheus/node-exporter
+    ports:
+      - "9100:9100"

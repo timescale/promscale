@@ -1,0 +1,12 @@
+groups:
+- name: alerts
+  rules:
+
+  - alert: HostHighCpuLoad
+    expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 0
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: Host high CPU load (instance {{ $labels.instance }})
+      description: "CPU load is > 0%\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
