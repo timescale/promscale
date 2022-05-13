@@ -435,7 +435,7 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
 		require.NoError(t, err)
 		defer dbSuper.Close()
-		_, err = dbSuper.Exec(context.Background(), "CREATE EXTENSION timescaledb_toolkit")
+		_, err = dbSuper.Exec(context.Background(), "CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit")
 		require.NoError(t, err)
 
 		// Ingest test dataset.
