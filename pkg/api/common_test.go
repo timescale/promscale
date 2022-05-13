@@ -12,10 +12,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/grafana/regexp"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 

@@ -7,12 +7,13 @@ package end_to_end_tests
 import (
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/regexp"
 	"github.com/jackc/pgx/v4/pgxpool"
+
 	"github.com/timescale/promscale/pkg/api"
 )
 

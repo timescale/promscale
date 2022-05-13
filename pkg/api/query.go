@@ -50,7 +50,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, update
 			defer cancel()
 		}
 
-		qry, err := queryEngine.NewInstantQuery(queryable, r.FormValue("query"), ts)
+		qry, err := queryEngine.NewInstantQuery(queryable, nil, r.FormValue("query"), ts)
 		if err != nil {
 			log.Error("msg", "Query error", "err", err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")

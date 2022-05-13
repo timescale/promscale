@@ -26,7 +26,7 @@ import (
 // to adapt to Promscale's PromQL engine.
 func engineQueryFunc(engine *promscale_promql.Engine, q promscale_promql.Queryable) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (prometheus_promql.Vector, error) {
-		q, err := engine.NewInstantQuery(q, qs, t)
+		q, err := engine.NewInstantQuery(q, nil, qs, t)
 		if err != nil {
 			return nil, err
 		}

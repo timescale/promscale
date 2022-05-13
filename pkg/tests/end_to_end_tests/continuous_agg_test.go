@@ -226,9 +226,9 @@ WITH (timescaledb.continuous) AS
 				var err error
 
 				if tc.stepMs == 0 {
-					qry, err = queryEngine.NewInstantQuery(queryable, c.query, model.Time(tc.endMs).Time())
+					qry, err = queryEngine.NewInstantQuery(queryable, nil, c.query, model.Time(tc.endMs).Time())
 				} else {
-					qry, err = queryEngine.NewRangeQuery(queryable, tc.query, model.Time(tc.startMs).Time(), model.Time(tc.endMs).Time(), time.Duration(tc.stepMs)*time.Millisecond)
+					qry, err = queryEngine.NewRangeQuery(queryable, nil, tc.query, model.Time(tc.startMs).Time(), model.Time(tc.endMs).Time(), time.Duration(tc.stepMs)*time.Millisecond)
 				}
 				if err != nil {
 					t.Fatal(err)
