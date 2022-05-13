@@ -64,7 +64,7 @@ observability stack built on Prometheus, OpenTelemetry and Promscale in Kubernet
 
 # Documentation
 
-Complete user documentation is available in https://docs.timescale.com/promscale/latest/
+Complete user documentation is available at https://docs.timescale.com/promscale/latest/
 
 ## ✎ Contributing
 
