@@ -1,0 +1,7 @@
+groups:
+- name: e2e
+  rules:
+  - record: test_rule
+    expr: firstMetric @ 4 + firstMetric @ 5
+    labels:
+      kind: recording

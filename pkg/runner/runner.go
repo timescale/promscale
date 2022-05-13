@@ -238,20 +238,11 @@ func Run(cfg *Config) error {
 				if err = manager.ApplyConfig(promCfg); err != nil {
 					return fmt.Errorf("error applying Prometheus configuration to rules manager: %w", err)
 				}
-				if err = manager.Update(
-					time.Duration(promCfg.GlobalConfig.EvaluationInterval),
-					promCfg.RuleFiles,
-					promCfg.GlobalConfig.ExternalLabels,
-					"",
-				); err != nil {
-					return fmt.Errorf("error updating rules manager: %w", err)
-				}
 				log.Info("msg", "Started Rule-Manager")
 				return manager.Run()
 			}, func(err error) {
 				log.Info("msg", "Stopping Rule-Manager")
-				stopRuler()    // Stops the discovery manager.
-				manager.Stop() // Stops the internal group of rule-manager.
+				stopRuler()
 			},
 		)
 	}

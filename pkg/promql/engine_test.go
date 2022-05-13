@@ -776,7 +776,7 @@ load 10s
 	cases := []struct {
 		Query               string
 		SkipMaxCheck        bool
-		TotalSamples        int
+		TotalSamples        int64
 		TotalSamplesPerStep stats.TotalSamplesPerStep
 		PeakSamples         int
 		Start               time.Time
