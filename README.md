@@ -15,7 +15,7 @@
 
 <img alt="Promscale" src="images/promscale-logo.png" width="600px">
 
-**Promscale the a unified observability backend for metrics and traces
+**Promscale the unified observability backend for metrics and traces
 powered by SQL and built on PostgreSQL and TimescaleDB**.
 
 It has native support for **Prometheus** metrics and
