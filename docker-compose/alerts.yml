@@ -1,12 +1,12 @@
 groups:
 - name: alerts
   rules:
-
-  - alert: HostHighCpuLoad
-    expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 0
-    for: 0m
-    labels:
-      severity: warning
+  - alert: Watchdog
     annotations:
-      summary: Host high CPU load (instance {{ $labels.instance }})
-      description: "CPU load is > 0%\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+      description: > 
+        This is a Watchdog alert is meant to ensure that the entire Alerting  
+        pipeline is functional. It is always firing in normal operation
+      summary: Alerting Watchdog
+    expr: vector(1)
+
+
