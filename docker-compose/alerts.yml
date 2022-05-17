@@ -1,0 +1,10 @@
+groups:
+- name: alerts
+  rules:
+  - alert: Watchdog
+    annotations:
+      description: > 
+        This is a Watchdog alert is meant to ensure that the entire Alerting  
+        pipeline is functional. It is always firing in normal operation
+      summary: Alerting Watchdog
+    expr: vector(1)
