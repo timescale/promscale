@@ -1,0 +1,7 @@
+groups:
+- name: rules
+  rules:
+  - record: instance_cpu:node_cpu_seconds_not_idle:rate5m
+    expr: >
+      sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) 
+      without (mode,cpu)
