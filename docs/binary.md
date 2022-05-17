@@ -2,64 +2,40 @@
 
 ## 🔧 Installing pre-built binaries
 
-You can download pre-built binaries for the Promscale
-Connector [from our release page](https://github.com/timescale/promscale/releases).
+A full Promscale installation consists of both the promscale connector, and a TimescaleDB instance with the Promscale
+Extension installed. We provide pre-built binaries (and packages) for the both.
 
-Download Promscale
+### Setup TimescaleDB with Promscale Extension
 
-```
-curl -L -o promscale https://github.com/timescale/promscale/releases/download/<VERSION>/<PROMSCALE_DISTRIBUTION>
-```
+The simplest way to get started with TimescaleDB and the Promscale Extension is to install both from the TimescaleDB
+package repository. You can find instructions on how to install TimescaleDB for your favourite distribution
+[here](https://docs.timescale.com/install/latest/self-hosted/). Once you have installed TimescaleDB for a specific
+Postgres version from our package repository, you can simply install the Promscale Extension for the same Postgres
+version, e.g.:
 
-Grant executable permissions to Promscale:
-
-```
-chmod +x promscale
-```
-
-To deploy Promscale, run the following command:
-
-```
-./promscale --db-host <DB_HOSTNAME> --db-port <DB_PORT> --db-name <DBNAME> --db-password <DB-Password> --db-ssl-mode allow
+```bash
+apt-get install -y promscale-extension-postgresql-14
 ```
 
-Note that the flags `db-name` and `db-password` refer to the name and password of your TimescaleDB database.
+### Setup the Promscale Connector
 
-Further note that the command above is to deploy Promscale with SSL mode being allowed but not required. To deploy Promscale with SSL mode enabled, configure your TimescaleDB instance with ssl certificates and drop the `--db-ssl-mode` flag. Promscale will then authenticate via SSL by default.
+Similarly, you can get the latest version of the Promscale Connector from the official [TimescaleDB package repository](https://packagecloud.io/timescale/timescaledb) (instructions for installing packages from the repository can be found [here](https://packagecloud.io/timescale/timescaledb/install)).
 
-We recommend installing the [promscale](https://github.com/timescale/promscale_extension/releases)
-PostgreSQL extension into the TimescaleDB database you are connecting to.
-Instructions on how to compile and install the extension are in the
-extensions [README](https://github.com/timescale/promscale_extension/blob/master/README.md). While this isn't a requirement, it
-does optimize certain queries.
-Please note that the extension requires Postgres version 12 of newer.
-
-## 🕞 Setting up cron jobs for Timescale DB 1.X
-
-If you are using TimescaleDB 1.X you need to make sure the `execute_maintenance()`
-procedure on a regular basis (e.g. via cron). We recommend executing it every
-30 minutes. This is necessary to execute maintenance tasks such as enforcing
-data retention policies according to the configured policy.
-
-**Note:** This is not needed if you are using TimescaleDB 2.X because it has native support for task scheduling which
-is automatically configured by Promscale to run the `execute_maintenance()` procedure.
-
-Copy the code snippet from the file [docs/scripts/prom-execute-maintenance.sh](/docs/scripts/prom-execute-maintenance.sh) and add the database password in place of `<PASSWORD>`.
-
-Create an other script with the code snippet from the file [docs/scripts/install-crontab.sh](/docs/scripts/install-crontab.sh) and make sure to configure the absolute path to `prom-execute-maintenance.sh` in the script. This script will create a crontab for the above defined task.
-
-Then, grant executable privileges to both files:
-
-```
-chmod +x prom-execute-maintenance.sh
-chmod +x install-crontab.sh
+```bash
+apt-get install -y promscale
 ```
 
-Install the cron job:
+If you're using systemd, you can use our unit and an associated configuration file to configure the Promscale connector.
 
+Otherwise, you can start the Promscale connector directly:
+
+```bash
+promscale -db.host <DB_HOSTNAME> -db.port <DB_PORT> -db.name <DBNAME> -db.password <DB-Password> -db.ssl-mode allow
 ```
-./install-crontab.sh
-```
+
+Note that the flags `db.name` and `db.password` refer to the name and password of your TimescaleDB database.
+
+Further note that the command above starts the Promscale connector in "SSL allowed" mode. For production setups it's recommended to start Promscale in "SSL required" mode enabled. To do so, configure your TimescaleDB instance with ssl certificates and drop the `-db.ssl-mode` flag. Promscale will then authenticate via SSL by default.
 
 ## 🔥 Configuring Prometheus to use this remote storage connector
 
