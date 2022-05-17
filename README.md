@@ -45,7 +45,7 @@ on your computer to quickly get a feel of what's possible. More details in
 <img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
 This repository contains the source code of the Promscale Connector. Promscale also requires that the Promscale Extension
-which lives in [this repository](https://github.com/timescale/promscale_extension) is installed in the TimescaleDB/PostgreSQL 
+which lives in [this repository](https://github.com/timescale/promscale_extension) is installed in the TimescaleDB/PostgreSQL
 database. The extension sets up and manages the database schemas and provides performance and SQL query experience improvements.
 
 For a detailed description of the initial architecture of Promscale for Prometheus metrics that covers
