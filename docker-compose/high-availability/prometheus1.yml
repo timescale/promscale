@@ -25,10 +25,15 @@ remote_read:
 # Here it's Prometheus itself.
 scrape_configs:
   # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
-  - job_name: 'prometheus'
-
-    # metrics_path defaults to '/metrics'
-    # scheme defaults to 'http'.
-
+  - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
+  - job_name: node-exporter
+    static_configs:
+      - targets: ['node_exporter:9100']
+  - job_name: promscale
+    metrics_path: '/metrics-text'
+    static_configs:
+      - targets: 
+          - 'promscale-connector1:9201'
+          - 'promscale-connector2:9201'
