@@ -1,0 +1,8 @@
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'localhost:8080'
+
+rule_files:
+  - alerts.yaml
