@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
@@ -134,13 +135,13 @@ func initializeExemplars(conn pgxconn.PgxConn, metricName string) error {
 }
 
 func runMetricBatcher(conn pgxconn.PgxConn,
+	wg *sync.WaitGroup,
 	input chan *insertDataRequest,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
 	copierReadRequestCh chan<- readRequest,
-	labelArrayOID uint32) {
-
+) {
 	var (
 		info        model.MetricInfo
 		firstReq    *insertDataRequest
@@ -162,9 +163,10 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 
 	//input channel was closed before getting a successful request
 	if !firstReqSet {
+		wg.Done()
 		return
 	}
-	sendBatches(firstReq, input, conn, &info, copierReadRequestCh)
+	sendBatches(wg, firstReq, input, conn, &info, copierReadRequestCh)
 }
 
 //the basic structure of communication from the batcher to the copier is as follows:
@@ -181,7 +183,8 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 //     of requests consecutively so as to minimize processing delays. That's what the mutex in the copier does.
 // 2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
 // 3. The batcher has only a single read request out at a time.
-func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, info *model.MetricInfo, copierReadRequestCh chan<- readRequest) {
+func sendBatches(wg *sync.WaitGroup, firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, info *model.MetricInfo, copierReadRequestCh chan<- readRequest) {
+	defer wg.Done()
 	var (
 		exemplarsInitialized = false
 		span                 trace.Span

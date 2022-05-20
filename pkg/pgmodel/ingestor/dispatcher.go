@@ -45,9 +45,10 @@ type pgxDispatcher struct {
 	copierReadRequestCh    chan<- readRequest
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
-	doneWG                 sync.WaitGroup
-	labelArrayOID          uint32
 	closed                 *uber_atomic.Bool
+	metricBatchers         sync.WaitGroup
+	batchersMux            sync.RWMutex
+	doneWG                 sync.WaitGroup
 }
 
 var _ model.Dispatcher = &pgxDispatcher{}
@@ -97,6 +98,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		doneChannel:        make(chan struct{}),
 		closed:             uber_atomic.NewBool(false),
 	}
+	inserter.closed.Store(false)
 	runBatchWatcher(inserter.doneChannel)
 
 	//on startup run a completeMetricCreation to recover any potentially
@@ -190,10 +192,15 @@ func (p *pgxDispatcher) Close() {
 	}
 	p.closed.Store(true)
 	close(p.completeMetricCreation)
+	p.batchersMux.Lock()
 	p.batchers.Range(func(key, value interface{}) bool {
 		close(value.(chan *insertDataRequest))
 		return true
 	})
+	p.batchersMux.Unlock()
+	// Wait for metric batchers to shutdown.
+	p.metricBatchers.Wait()
+
 	close(p.copierReadRequestCh)
 	close(p.doneChannel)
 	p.doneWG.Wait()
@@ -231,7 +238,15 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 			}
 		}
 		// the following is usually non-blocking, just a channel insert
-		p.getMetricBatcher(metricName) <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		acceptDataRequest := p.getMetricBatcher(metricName)
+		// Technically, we are doing a write in the next line. But, we use a read lock here since
+		// batchersMux is designed to prevent race between close of channel A in p.Close() and
+		// inserting of data in channel A here.
+		// Hence, taking a read lock here is performant as there is no harm in sending data
+		// concurrently in the channel.
+		p.batchersMux.RLock()
+		acceptDataRequest <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.batchersMux.RUnlock()
 	}
 	span.SetAttributes(attribute.String("num_rows", fmt.Sprintf("%d", numRows)))
 	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
@@ -312,7 +327,8 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
-			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh, p.labelArrayOID)
+			p.metricBatchers.Add(1)
+			go runMetricBatcher(p.conn, &p.metricBatchers, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh)
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)
