@@ -15,6 +15,9 @@ We use the following categories for changes:
 
 ## [Unreleased]
 
+### Added
+- `-enable-feature=promql-per-step-stats` feature for statistics in PromQL evaluation
+
 ## [0.11.0] - 2022-05-11
 
 ## Added

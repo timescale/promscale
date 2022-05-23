@@ -89,7 +89,7 @@ func queryRange(promqlConf *query.Config, queryEngine *promql.Engine, queryable 
 
 		qry, err := queryEngine.NewRangeQuery(
 			queryable,
-			nil,
+			&promql.QueryOpts{EnablePerStepStats: true},
 			r.FormValue("query"),
 			start,
 			end,

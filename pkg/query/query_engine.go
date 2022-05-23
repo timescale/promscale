@@ -21,9 +21,10 @@ func NewEngine(logger log.Logger, queryTimeout, lookBackDelta, subqueryDefaultSt
 		LookbackDelta:            lookBackDelta,
 		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(subqueryDefaultStepInterval) },
 	}
-	// todo (harkishen): add promql-per-step-stats feature
+
 	_, engineOpts.EnableAtModifier = enabledFeaturesMap["promql-at-modifier"]
 	_, engineOpts.EnableNegativeOffset = enabledFeaturesMap["promql-negative-offset"]
+	_, engineOpts.EnablePerStepStats = enabledFeaturesMap["promql-per-step-stats"]
 	return promql.NewEngine(engineOpts), nil
 }
 
