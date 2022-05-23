@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"testing"
 
+	"go.uber.org/atomic"
+
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -264,6 +266,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			i := DBIngestor{
 				dispatcher: &inserter,
 				sCache:     sCache,
+				closed:     atomic.NewBool(false),
 			}
 
 			wr := NewWriteRequest()

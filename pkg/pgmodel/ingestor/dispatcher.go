@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	uber_atomic "go.uber.org/atomic"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -28,6 +29,8 @@ const (
 	finalizeMetricCreation = "CALL _prom_catalog.finalize_metric_creation()"
 	getEpochSQL            = "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1"
 )
+
+var ErrDispatcherClosed = fmt.Errorf("dispatcher is closed")
 
 // pgxDispatcher redirects incoming samples to the appropriate metricBatcher
 // corresponding to the metric in the sample.
@@ -44,6 +47,7 @@ type pgxDispatcher struct {
 	doneChannel            chan struct{}
 	doneWG                 sync.WaitGroup
 	labelArrayOID          uint32
+	closed                 *uber_atomic.Bool
 }
 
 var _ model.Dispatcher = &pgxDispatcher{}
@@ -91,6 +95,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
 		doneChannel:        make(chan struct{}),
+		closed:             uber_atomic.NewBool(false),
 	}
 	runBatchWatcher(inserter.doneChannel)
 
@@ -167,6 +172,9 @@ func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
 }
 
 func (p *pgxDispatcher) CompleteMetricCreation(ctx context.Context) error {
+	if p.closed.Load() {
+		return ErrDispatcherClosed
+	}
 	_, span := tracer.Default().Start(ctx, "dispatcher-complete-metric-creation")
 	defer span.End()
 	_, err := p.conn.Exec(
@@ -177,6 +185,10 @@ func (p *pgxDispatcher) CompleteMetricCreation(ctx context.Context) error {
 }
 
 func (p *pgxDispatcher) Close() {
+	if p.closed.Load() {
+		return
+	}
+	p.closed.Store(true)
 	close(p.completeMetricCreation)
 	p.batchers.Range(func(key, value interface{}) bool {
 		close(value.(chan *insertDataRequest))
@@ -194,6 +206,9 @@ func (p *pgxDispatcher) Close() {
 // Though we may insert data to multiple tables concurrently, if asyncAcks is
 // unset this function will wait until _all_ the insert attempts have completed.
 func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64, error) {
+	if p.closed.Load() {
+		return 0, ErrDispatcherClosed
+	}
 	_, span := tracer.Default().Start(ctx, "dispatcher-insert-ts")
 	defer span.End()
 	var (
@@ -256,6 +271,9 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 }
 
 func (p *pgxDispatcher) InsertMetadata(ctx context.Context, metadata []model.Metadata) (uint64, error) {
+	if p.closed.Load() {
+		return 0, ErrDispatcherClosed
+	}
 	_, span := tracer.Default().Start(ctx, "dispatcher-insert-metadata")
 	defer span.End()
 	totalRows := uint64(len(metadata))
