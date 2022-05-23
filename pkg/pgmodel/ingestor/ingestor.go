@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/collector/model/pdata"
+	"go.uber.org/atomic"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
@@ -34,6 +35,7 @@ type DBIngestor struct {
 	sCache     cache.SeriesCache
 	dispatcher model.Dispatcher
 	tWriter    trace.Writer
+	closed     *atomic.Bool
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
@@ -47,6 +49,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 		sCache:     sCache,
 		dispatcher: dispatcher,
 		tWriter:    trace.NewWriter(conn),
+		closed:     atomic.NewBool(false),
 	}, nil
 }
 
@@ -76,6 +79,9 @@ type result struct {
 }
 
 func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces pdata.Traces) error {
+	if ingestor.closed.Load() {
+		return fmt.Errorf("ingestor is closed and can't ingest traces")
+	}
 	return ingestor.tWriter.InsertTraces(ctx, traces)
 }
 
@@ -85,6 +91,9 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces pdata.Trace
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
 func (ingestor *DBIngestor) Ingest(ctx context.Context, r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
+	if ingestor.closed.Load() {
+		return 0, 0, fmt.Errorf("ingestor is closed and can't ingest metrics")
+	}
 	ctx, span := tracer.Default().Start(ctx, "db-ingest")
 	defer span.End()
 	metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Inc()
@@ -269,5 +278,9 @@ func (ingestor *DBIngestor) CompleteMetricCreation(ctx context.Context) error {
 
 // Close closes the ingestor
 func (ingestor *DBIngestor) Close() {
+	if ingestor.closed.Load() {
+		return
+	}
+	ingestor.closed.Store(true)
 	ingestor.dispatcher.Close()
 }

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/oklog/run"
@@ -30,6 +31,7 @@ type Manager struct {
 	notifierManager  *notifier.Manager
 	discoveryManager *discovery.Manager
 	stop             chan struct{}
+	wg               sync.WaitGroup
 }
 
 func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*Manager, error) {
@@ -137,9 +139,15 @@ func (m *Manager) Run() error {
 		return nil
 	}, func(err error) {})
 
+	m.wg.Add(1)
+	defer func() {
+		m.wg.Done()
+	}()
 	return errors.WithMessage(g.Run(), "error running the rule manager groups")
 }
 
 func (m *Manager) Stop() {
 	close(m.stop)
+	// we need to wait for all group actor to shutdown which happens after g.Run() returns
+	m.wg.Wait()
 }
