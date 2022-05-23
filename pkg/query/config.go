@@ -42,7 +42,7 @@ type Config struct {
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
-	fs.Var(&cfg.PromscaleEnabledFeatureList, "enable-feature", "Enable beta/experimental features as a comma-separated list. Currently the following values can be passed: promql-at-modifier, promql-negative-offset")
+	fs.Var(&cfg.PromscaleEnabledFeatureList, "enable-feature", "Enable beta/experimental features as a comma-separated list. Currently the following values can be passed: promql-at-modifier, promql-negative-offset, promql-per-step-stats")
 
 	fs.DurationVar(&cfg.MaxQueryTimeout, "metrics.promql.query-timeout", DefaultQueryTimeout, "Maximum time a query may take before being aborted. This option sets both the default and maximum value of the 'timeout' parameter in "+
 		"'/api/v1/query.*' endpoints.")
@@ -61,7 +61,7 @@ func Validate(cfg *Config) error {
 	cfg.EnabledFeatureMap = make(map[string]struct{})
 	for _, f := range cfg.PromscaleEnabledFeatureList {
 		switch f {
-		case "promql-at-modifier", "promql-negative-offset":
+		case "promql-at-modifier", "promql-negative-offset", "promql-per-step-stats":
 			cfg.EnabledFeatureMap[f] = struct{}{}
 		case "tracing":
 			log.Error("msg", "tracing feature is now on by default, no need to use it with --enable-feature flag")
