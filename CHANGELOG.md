@@ -33,6 +33,7 @@ We use the following categories for changes:
 - The Promscale extension is now required, while the Timescaledb extension remains optional. The minimum Timescaledb version supported is now 2.6.1 [#1132], [#1297]
 - Disable running Promscale in HA and read-only simultaneously [#1254]
 - Metric tables and views are now owned by prom_admin [#1283]
+- The only HTTP verb `/healthz` endpoint supports is `GET`, because HTTP router was changed in [#1224].
 
 ### Fixed
 - Register `promscale_ingest_channel_len_bucket` metric and make it a gauge [#1177]
