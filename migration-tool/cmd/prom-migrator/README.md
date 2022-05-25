@@ -177,9 +177,5 @@ In case of any issues/bugs/support, please feel free to open github issues at th
 ## Help
 
 For additional details/queries/feedback/support, please feel free to ask us on the
-**#promscale** channel on [TimescaleDB Slack](https://slack.timescale.com/).
-You can also email us at **promscale@timescale.com**
-or **meet us virtually** by joining the promscale community call, which is held on second
-wednesday of every month on [zoom (link)](https://zoom.us/j/99530717170?pwd=N1hDOU9qNSt1SW9iaDZiUDBQWG9aQT09)
-([agenda link](https://tsdb.co/promscale-agenda)) or open topics on the required help at
-[Promscale Users Google Group](https://groups.google.com/forum/#!forum/promscale-users).
+**#promscale** channel on [TimescaleDB Slack](https://slack.timescale.com/) or
+start a discussion in [our forum](https://www.timescale.com/forum/).
