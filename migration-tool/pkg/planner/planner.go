@@ -12,12 +12,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
+
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
-	"github.com/schollz/progressbar/v3"
+	"github.com/timescale/promscale/migration-tool/pkg/log"
 	"github.com/timescale/promscale/migration-tool/pkg/utils"
-	"github.com/timescale/promscale/pkg/log"
 )
 
 const numStepsWriter = 5 // Number of progress steps for the progress-bar of the writer.

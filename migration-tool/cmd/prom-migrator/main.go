@@ -15,14 +15,14 @@ import (
 	"time"
 
 	"github.com/inhies/go-bytesize"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/timescale/promscale/migration-tool/pkg/log"
 	plan "github.com/timescale/promscale/migration-tool/pkg/planner"
 	"github.com/timescale/promscale/migration-tool/pkg/reader"
 	"github.com/timescale/promscale/migration-tool/pkg/utils"
 	"github.com/timescale/promscale/migration-tool/pkg/writer"
-	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/version"
 )
 
 const (
@@ -35,6 +35,7 @@ const (
 	defaultStartTime       = "1970-01-01T00:00:00+00:00" // RFC3339 based time.Unix from 0 seconds.
 	defaultMaxReadDuration = time.Hour * 2
 	defaultLaIncrement     = time.Minute
+	version                = "0.0.4"
 )
 
 // timeNowUnix returns the current Unix timestamp.
@@ -82,11 +83,11 @@ func main() {
 	parseFlags(conf, os.Args[1:])
 
 	if err := log.Init(log.Config{Format: "logfmt", Level: "debug"}); err != nil {
-		fmt.Println("Version: ", version.PromMigrator)
+		fmt.Println("Version: ", version)
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	log.Info("Version", version.PromMigrator)
+	log.Info("Version", version)
 	if err := validateConf(conf); err != nil {
 		log.Error("msg", "could not parse flags", "error", err)
 		os.Exit(1)
@@ -319,7 +320,7 @@ func parseArgs(args []string) (shouldProceed bool) {
 		switch f {
 		case "version":
 			shouldProceed = false
-			fmt.Println(version.PromMigrator)
+			fmt.Println(version)
 		}
 	}
 	return
