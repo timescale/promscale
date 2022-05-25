@@ -98,7 +98,7 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 	apiV1.Path("/label/{name}/values").Methods(http.MethodGet).HandlerFunc(labelValuesHandler)
 
 	healthChecker := func() error { return client.HealthCheck() }
-	router.Path("/healthz").Methods(http.MethodGet).HandlerFunc(Health(healthChecker))
+	router.Path("/healthz").Methods(http.MethodGet, http.MethodOptions, http.MethodHead).HandlerFunc(Health(healthChecker))
 	router.Path(apiConf.TelemetryPath).Methods(http.MethodGet).HandlerFunc(promhttp.Handler().ServeHTTP)
 
 	jaeger.ExtendQueryAPIs(router, client.Connection, query)
