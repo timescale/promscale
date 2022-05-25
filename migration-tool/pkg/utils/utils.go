@@ -6,26 +6,35 @@ package utils
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/cespare/xxhash/v2"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/timescale/promscale/pkg/clockcache"
+
+	"github.com/timescale/promscale/migration-tool/pkg/log"
 )
 
 const (
-	LabelJob           = "job"
-	Megabyte           = 1024 * 1024
-	maxLabelsCacheSize = 50 * 1000
+	LabelJob        = "job"
+	Megabyte        = 1024 * 1024
+	labelsCacheSize = 50 * 1000
 )
 
 var (
-	labelsCache *clockcache.Cache
+	labelsCache *lru.Cache
 	seps        = []byte{'\xff'}
 )
 
 func init() {
-	labelsCache = clockcache.WithMax(maxLabelsCacheSize)
+	var err error
+	labelsCache, err = lru.New(labelsCacheSize)
+	if err != nil {
+		// Error only when size < 0.
+		log.Error("msg", "error creating labels cache. Please open an issue at https://github.com/timescale/promscale/issues/new", "err", err.Error())
+		os.Exit(1)
+	}
 }
 
 // CreatePrombQuery creates a new promb query based on the matchers.
@@ -69,7 +78,7 @@ func HashLabels(lset prompb.Labels) uint64 {
 	}
 	sum := xxhash.Sum64(b)
 	str := lset.String()
-	labelsCache.Insert(str, sum, uint64(len(str)+8+8))
+	labelsCache.Add(str, sum)
 	return sum
 }
 

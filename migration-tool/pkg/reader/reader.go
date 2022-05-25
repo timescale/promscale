@@ -10,9 +10,10 @@ import (
 
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/timescale/promscale/migration-tool/pkg/log"
 	plan "github.com/timescale/promscale/migration-tool/pkg/planner"
 	"github.com/timescale/promscale/migration-tool/pkg/utils"
-	"github.com/timescale/promscale/pkg/log"
 )
 
 // Config is config for reader.

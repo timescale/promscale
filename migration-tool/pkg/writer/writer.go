@@ -13,9 +13,10 @@ import (
 
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/prompb"
+
+	"github.com/timescale/promscale/migration-tool/pkg/log"
 	"github.com/timescale/promscale/migration-tool/pkg/planner"
 	"github.com/timescale/promscale/migration-tool/pkg/utils"
-	"github.com/timescale/promscale/pkg/log"
 )
 
 // Config is config for writer.

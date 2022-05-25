@@ -13,8 +13,12 @@ build: generate
 test: unit e2e upgrade-test
 
 .PHONY: unit
-unit: generate
+unit: generate prom-migrator
 	go test -v -race $(shell go list ./... | grep -v tests/end_to_end_tests | grep -v tests/upgrade_tests) -timeout 40m
+
+.PHONY: prom-migrator
+prom-migrator:
+	cd migration-tool && go test -v -race ./...
 
 # traces-dataset.sz is used by ./pkg/tests/end_to_end_tests/ingest_trace_test.go
 pkg/tests/testdata/traces-dataset.sz:

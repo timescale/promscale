@@ -40,7 +40,6 @@ var (
 
 	Promscale                  = "0.11.0"
 	PrevReleaseVersion         = "0.10.0"
-	PromMigrator               = "0.0.3"
 	CommitHash                 = ""      // Comes from -ldflags settings
 	Branch                     = ""      // Comes from -ldflags settings
 	EarliestUpgradeTestVersion = "0.3.0" // 0.3.0 earliest version an image with correct extension versions exists

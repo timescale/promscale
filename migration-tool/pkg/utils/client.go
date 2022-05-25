@@ -24,7 +24,8 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/schollz/progressbar/v3"
-	"github.com/timescale/promscale/pkg/log"
+
+	"github.com/timescale/promscale/migration-tool/pkg/log"
 )
 
 var userAgent = fmt.Sprintf("Prometheus/%s", version.Version)
