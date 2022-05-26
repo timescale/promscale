@@ -109,6 +109,7 @@ func initResourceAttributes(dest pdata.Map, index int) {
 	tmpl := pdata.NewAttributeMapFromMap(map[string]pdata.Value{
 		"resource-attr": pcommon.NewValueString(fmt.Sprintf("resource-attr-val-%d", index%2)),
 		"service.name":  pcommon.NewValueString(fmt.Sprintf("service-name-%d", index)),
+		"test-slice":    pcommon.NewValueSlice(),
 	})
 	dest.Clear()
 	tmpl.CopyTo(dest)

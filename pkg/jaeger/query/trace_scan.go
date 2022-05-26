@@ -273,25 +273,13 @@ func makeAttributes(tagsJson pgtype.JSONB) (map[string]pcommon.Value, error) {
 	if err := tagsJson.AssignTo(&tags); err != nil {
 		return nil, fmt.Errorf("tags assign to: %w", err)
 	}
-
+	otMap := pcommon.NewMapFromRaw(tags)
 	m := make(map[string]pcommon.Value, len(tags))
-	// todo: attribute val as array?
-	for k, v := range tags {
-		switch val := v.(type) {
-		case int64:
-			m[k] = pcommon.NewValueInt(val)
-		case bool:
-			m[k] = pcommon.NewValueBool(val)
-		case string:
-			m[k] = pcommon.NewValueString(val)
-		case float64:
-			m[k] = pcommon.NewValueDouble(val)
-		case []byte:
-			m[k] = pcommon.NewValueBytes(val)
-		default:
-			return nil, fmt.Errorf("unknown tag type %T", v)
-		}
+	populateMap := func(k string, v pcommon.Value) bool {
+		m[k] = v
+		return true
 	}
+	otMap.Range(populateMap)
 	return m, nil
 }
 
