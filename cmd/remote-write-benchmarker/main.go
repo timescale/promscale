@@ -39,13 +39,15 @@ func main() {
 	//just for imports
 	_ = model.Duration(time.Second)
 
-	//config.RemoteWriteConfig.QueueConfig.MinShards = 32
-	//config.RemoteWriteConfig.QueueConfig.MaxShards = 32
-	//config.RemoteWriteConfig.QueueConfig.Capacity = 300000
-	//config.RemoteWriteConfig.QueueConfig.MaxSamplesPerSend = 30000
-	//config.RemoteWriteConfig.QueueConfig.BatchSendDeadline = model.Duration(30 * time.Second)
-
-	//config.RemoteWriteConfig.RemoteTimeout = model.Duration(90 * time.Second)
+	//default recommended config: https://docs.timescale.com/promscale/latest/installation/recomm-guide/#metrics
+	config.RemoteWriteConfig.RemoteTimeout = model.Duration(100 * time.Second)
+	config.RemoteWriteConfig.QueueConfig.Capacity = 100000
+	config.RemoteWriteConfig.QueueConfig.MaxSamplesPerSend = 10000
+	config.RemoteWriteConfig.QueueConfig.BatchSendDeadline = model.Duration(30 * time.Second)
+	config.RemoteWriteConfig.QueueConfig.MinShards = 20
+	config.RemoteWriteConfig.QueueConfig.MaxShards = 20
+	config.RemoteWriteConfig.QueueConfig.MinBackoff = model.Duration(100 * time.Millisecond)
+	config.RemoteWriteConfig.QueueConfig.MaxBackoff = model.Duration(10 * time.Second)
 
 	if err := config.Validate(); err != nil {
 		fmt.Println(err)
