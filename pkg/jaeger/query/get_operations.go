@@ -41,7 +41,7 @@ func getOperations(ctx context.Context, conn pgxconn.PgxConn, query spanstore.Op
 	args := []interface{}{query.ServiceName}
 	kindQual := "TRUE"
 	if len(query.SpanKind) > 0 {
-		pgEnum, err := getPGKindEnum(query.SpanKind)
+		pgEnum, err := spanKindStringToInternal(query.SpanKind)
 		if err != nil {
 			return operationsResp, fmt.Errorf("converting query enum: %w", err)
 		}
