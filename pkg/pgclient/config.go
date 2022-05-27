@@ -124,11 +124,10 @@ func (cfg *Config) GetConnectionStr() string {
 		v.Set("sslmode", cfg.SslMode)
 		v.Set("connect_timeout", fmt.Sprintf("%.f", cfg.DbConnectionTimeout.Seconds()))
 		u := url.URL{
-			Scheme:   "postgresql",
-			User:     url.UserPassword(cfg.User, cfg.Password),
-			Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
-			Path:     cfg.Database,
-			RawQuery: v.Encode(),
+			Scheme: "postgresql",
+			User:   url.UserPassword(cfg.User, cfg.Password),
+			Host:   net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+			Path:   cfg.Database, RawQuery: v.Encode(),
 		}
 		return u.String()
 	}
@@ -140,15 +139,16 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 	if cfg.WriteConnectionsPerProc < 1 {
 		return 0, 0, 0, fmt.Errorf("invalid number of connections-per-proc %v, must be at least 1", cfg.WriteConnectionsPerProc)
 	}
+
+	conn, err := pgx.Connect(context.Background(), cfg.GetConnectionStr())
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+
 	perProc := cfg.WriteConnectionsPerProc
 	max = cfg.MaxConnections
 	if max < 1 {
-		connStr := cfg.GetConnectionStr()
-		conn, err := pgx.Connect(context.Background(), connStr)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		defer func() { _ = conn.Close(context.Background()) }()
 		var maxStr string
 		row := conn.QueryRow(context.Background(), "SHOW max_connections")
 		err = row.Scan(&maxStr)
@@ -170,26 +170,35 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 			log.Warn("msg", "database can only handle 1 connection")
 			return 1, 1, 1, nil
 		}
-		// we try to only use 80% the database connections, capped at 50
+		// we try to only use 80% the database connections, capped at 100
 		max = int(0.8 * float32(max))
 		if max > 100 {
 			max = 100
 		}
 	}
 
-	// we want to leave some connections for non-copier usages, so in the event
-	// there aren't enough connections available to satisfy our per-process
-	// preferences we'll scale down the number of copiers
-	min = maxProcs
+	err = conn.QueryRow(context.Background(), "SELECT _prom_ext.num_cpus()").Scan(&numCopiers)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("error fetching number of CPUs from extension: %w", err)
+	}
+
+	// TODO: change this setting to be absolute number of copiers.
+	if perProc > 1 {
+		numCopiers = perProc * numCopiers
+	}
+
+	// We want to leave some connections for non-copier usages, so in the event
+	// there aren't enough connections available to satisfy our copier
+	// preferences we'll scale down the number of copiers.
+	min = numCopiers
 	if max <= min {
 		log.Warn("msg", fmt.Sprintf("database can only handle %v connection; connector has %v procs", max, maxProcs))
 		return 1, max, max / 2, nil
 	}
 
-	numCopiers = perProc * maxProcs
-	// we try to leave one connection per-core for non-copier usages, otherwise using half the connections.
+	// We try to leave one connection per-core for non-copier usages.
 	if numCopiers > max-maxProcs {
-		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max/2))
+		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max-maxProcs))
 		numCopiers = max - maxProcs
 	}
 	return

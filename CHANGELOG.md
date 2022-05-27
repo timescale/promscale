@@ -19,6 +19,7 @@ We use the following categories for changes:
 - `-enable-feature=promql-per-step-stats` feature for statistics in PromQL evaluation
 - Add `readinessProbe` in helm chart [#1266]
 - Telemetry for recording rules and alerting [#1424]
+- Set number of ingest copiers to the number of DB CPUs [#1387]
 
 ### Fixed
 - Trace query returns empty result when queried with 
