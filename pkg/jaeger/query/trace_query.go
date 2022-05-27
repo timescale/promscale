@@ -1,7 +1,6 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-
 package query
 
 import (
@@ -12,6 +11,9 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+	semconv "go.opentelemetry.io/collector/semconv/v1.6.1"
 )
 
 const (
@@ -106,6 +108,13 @@ const (
 		%s
 	) AS complete_trace ON (TRUE)
 	`
+
+	// Keys used to represent OTLP constructs from Jaeger tags which are then dropped from the tag map.
+	TagError         = "error"
+	TagHostname      = "hostname"
+	TagJaegerVersion = "jaeger.version"
+	TagSpanKind      = "span.kind"
+	TagW3CTraceState = "w3c.tracestate"
 )
 
 type Builder struct {
@@ -148,8 +157,7 @@ func (b *Builder) findTracesQuery(q *spanstore.TraceQueryParameters) (string, []
 }
 
 func (b *Builder) findTraceIDsQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
-	subquery, params := b.buildTraceIDSubquery(q)
-	return subquery, params
+	return b.buildTraceIDSubquery(q)
 }
 
 func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, error) {
@@ -192,6 +200,50 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 		operation_clauses = append(operation_clauses, qual)
 	}
 
+	if len(q.Tags) > 0 {
+		for k, v := range q.Tags {
+			switch k {
+			case TagError:
+				var sc pdata.StatusCode
+				switch v {
+				case "true":
+					sc = ptrace.StatusCodeError
+				case "false":
+					sc = ptrace.StatusCodeUnset
+				default:
+					// Ignore tag if we don't match boolean.
+					continue
+				}
+				params = append(params, statusCodeToInternal(sc))
+				qual := fmt.Sprintf(`s.status_code = $%d`, len(params))
+				clauses = append(clauses, qual)
+			case TagHostname:
+				// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/a13030ca6208fa7d4477f0805f3b95e271f32b24/pkg/translator/jaeger/jaegerproto_to_traces.go#L109
+				params = append(params, semconv.AttributeHostName, "\""+v+"\"")
+				qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
+				clauses = append(clauses, qual)
+			case TagJaegerVersion:
+				// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/a13030ca6208fa7d4477f0805f3b95e271f32b24/pkg/translator/jaeger/jaegerproto_to_traces.go#L119
+				params = append(params, "opencensus.exporterversion", "\"Jaeger-"+v+"\"")
+				qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
+				clauses = append(clauses, qual)
+			case TagSpanKind:
+				params = append(params, jSpanKindToInternal(v))
+				qual := fmt.Sprintf("span_kind = $%d", len(params))
+				operation_clauses = append(operation_clauses, qual)
+			case TagW3CTraceState:
+				params = append(params, v)
+				qual := fmt.Sprintf(`s.trace_state = $%d`, len(params))
+				clauses = append(clauses, qual)
+			default:
+				//TODO make sure this is optimized correctly
+				params = append(params, k, "\""+v+"\"")
+				qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
+				clauses = append(clauses, qual)
+			}
+		}
+	}
+
 	if len(operation_clauses) > 0 {
 		qual := fmt.Sprintf(`
 		   s.operation_id IN (
@@ -203,15 +255,6 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 		   )
 		`, strings.Join(operation_clauses, " AND "))
 		clauses = append(clauses, qual)
-	}
-
-	if len(q.Tags) > 0 {
-		for k, v := range q.Tags {
-			//TODO make sure this is optimized correctly
-			params = append(params, k, "\""+v+"\"")
-			qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
-			clauses = append(clauses, qual)
-		}
 	}
 
 	//todo check the inclusive semantics here

@@ -35,13 +35,31 @@ var (
 
 	service0 = "service-name-0"
 
-	spanAttributes      = pdata.NewAttributeMapFromMap(map[string]pcommon.Value{"span-attr": pcommon.NewValueString("span-attr-val")})
+	spanAttributes = pdata.NewAttributeMapFromMap(
+		map[string]pcommon.Value{
+			"span-attr":                  pcommon.NewValueString("span-attr-val"),
+			"host.name":                  pcommon.NewValueString("hostname1"),
+			"opencensus.exporterversion": pcommon.NewValueString("Jaeger-1.0.0"),
+		},
+	)
 	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pcommon.Value{"span-event-attr": pcommon.NewValueString("span-event-attr-val")})
 	spanLinkAttributes  = pdata.NewAttributeMapFromMap(map[string]pcommon.Value{"span-link-attr": pcommon.NewValueString("span-link-attr-val")})
 )
 
 func getTraceId(bSlice [16]byte) string {
 	return hex.EncodeToString(bSlice[:])
+}
+
+// generateBrokenTestTraces switches start and end times for every span to check if
+// we handle this broken situation correctly and reverse the times while ingesting.
+func generateBrokenTestTraces() pdata.Traces {
+	data := generateTestTrace()
+	startTime := data.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).StartTimestamp()
+	endTime := data.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).EndTimestamp()
+
+	data.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).SetStartTimestamp(endTime)
+	data.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).SetEndTimestamp(startTime)
+	return data
 }
 
 func generateTestTrace() pdata.Traces {
@@ -139,11 +157,11 @@ func fillSpanOne(span pdata.Span) {
 	span.SetTraceID(pdata.NewTraceID(traceID1))
 	span.SetSpanID(pdata.NewSpanID(generateRandSpanID()))
 	span.SetName("operationA")
-	// test the logic that detects and fixes end < start
-	span.SetStartTimestamp(testSpanEndTimestamp)
-	span.SetEndTimestamp(testSpanStartTimestamp)
+	span.SetStartTimestamp(testSpanStartTimestamp)
+	span.SetEndTimestamp(testSpanEndTimestamp)
 	span.SetDroppedAttributesCount(1)
 	span.SetTraceState("span-trace-state1")
+	span.SetKind(ptrace.SpanKindClient)
 	initSpanAttributes(span.Attributes())
 	evs := span.Events()
 	ev0 := evs.AppendEmpty()

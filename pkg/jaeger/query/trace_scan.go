@@ -163,11 +163,7 @@ func populateSpan(
 	ref.SetName(dbResult.spanName)
 
 	if dbResult.kind.Status == pgtype.Present {
-		kind, err := makeKind(dbResult.kind.String)
-		if err != nil {
-			return err
-		}
-		ref.SetKind(kind)
+		ref.SetKind(internalToSpanKind(dbResult.kind.String))
 	}
 
 	ref.SetStartTimestamp(pdata.NewTimestampFromTime(dbResult.startTime))
@@ -202,11 +198,7 @@ func populateSpan(
 
 func setStatus(ref ptrace.Span, dbRes *spanDBResult) error {
 	if dbRes.statusCode != "" {
-		code, err := makeStatusCode(dbRes.statusCode)
-		if err != nil {
-			return err
-		}
-		ref.Status().SetCode(code)
+		ref.Status().SetCode(internalToStatusCode(dbRes.statusCode))
 	}
 	if dbRes.statusMessage.Status != pgtype.Null {
 		message := dbRes.statusMessage.String
@@ -299,55 +291,4 @@ func makeSpanId(s *int64) pdata.SpanID {
 
 	b8 := trace.Int64ToByteArray(*s)
 	return pdata.NewSpanID(b8)
-}
-
-func getPGKindEnum(jaegerKind string) (string, error) {
-	switch jaegerKind {
-	case ptrace.SpanKindClient.String():
-		return "client", nil
-	case ptrace.SpanKindServer.String():
-		return "server", nil
-	case ptrace.SpanKindInternal.String():
-		return "internal", nil
-	case ptrace.SpanKindConsumer.String():
-		return "consumer", nil
-	case ptrace.SpanKindProducer.String():
-		return "producer", nil
-	case ptrace.SpanKindUnspecified.String():
-		return "unspecified", nil
-	default:
-		return "", fmt.Errorf("unknown span kind: %v", jaegerKind)
-	}
-}
-
-func makeKind(s string) (pdata.SpanKind, error) {
-	switch s {
-	case "client":
-		return ptrace.SpanKindClient, nil
-	case "server":
-		return ptrace.SpanKindServer, nil
-	case "internal":
-		return ptrace.SpanKindInternal, nil
-	case "consumer":
-		return ptrace.SpanKindConsumer, nil
-	case "producer":
-		return ptrace.SpanKindProducer, nil
-	case "unspecified":
-		return ptrace.SpanKindUnspecified, nil
-	default:
-		return ptrace.SpanKindUnspecified, fmt.Errorf("unknown span kind: %s", s)
-	}
-}
-
-func makeStatusCode(s string) (pdata.StatusCode, error) {
-	switch s {
-	case "ok":
-		return ptrace.StatusCodeOk, nil
-	case "error":
-		return ptrace.StatusCodeError, nil
-	case "unset":
-		return ptrace.StatusCodeUnset, nil
-	default:
-		return ptrace.StatusCodeUnset, fmt.Errorf("unknown status-code kind: %s", s)
-	}
 }

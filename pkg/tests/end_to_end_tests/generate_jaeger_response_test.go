@@ -70,7 +70,7 @@ func insertDataIntoJaeger(endpoint string, data pdata.Traces) error {
 
 	client := jaegerproto.NewCollectorServiceClient(conn)
 
-	batches, err := jaegertranslator.InternalTracesToJaegerProto(data)
+	batches, err := jaegertranslator.ProtoFromTraces(data)
 	if err != nil {
 		panic(err)
 	}
