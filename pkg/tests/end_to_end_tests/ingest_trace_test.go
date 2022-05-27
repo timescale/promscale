@@ -28,6 +28,17 @@ func TestIngestTraces(t *testing.T) {
 	})
 }
 
+func TestIngestBrokenTraces(t *testing.T) {
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		require.NoError(t, err)
+		defer ingestor.Close()
+		traces := generateBrokenTestTraces()
+		err = ingestor.IngestTraces(context.Background(), traces)
+		require.NoError(t, err)
+	})
+}
+
 func TestIngestTracesMultiTraces(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
@@ -92,18 +103,19 @@ func getOperationsTest(t testing.TB, q *query.Query) {
 	}
 	ops, err = q.GetOperations(context.Background(), request)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(ops))
+	require.Equal(t, 1, len(ops))
 
 	request = spanstore.OperationQueryParameters{
-		ServiceName: "servic-name-0",
+		ServiceName: "service-name-0",
 		SpanKind:    "SPAN_KIND_CLIENT",
 	}
 	ops, err = q.GetOperations(context.Background(), request)
 	require.NoError(t, err)
-	require.Equal(t, 0, len(ops))
+	require.Equal(t, 1, len(ops))
 }
 
 func findTraceTest(t testing.TB, q *query.Query) {
+	// TODO: refactor this to table driven test.
 	request := &spanstore.TraceQueryParameters{
 		ServiceName: "service-name-0",
 	}
@@ -206,6 +218,175 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	traces, err = q.FindTraces(context.Background(), request)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(traces))
+
+	// Verify that we find traces by status code based on translated tag.
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"error": "true",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationB",
+		Tags: map[string]string{
+			"error": "true",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationB",
+		Tags: map[string]string{
+			"error": "false",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationB",
+		Tags: map[string]string{
+			"error": "",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span.kind": "client",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationB",
+		Tags: map[string]string{
+			"span.kind": "client",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"w3c.tracestate": "span-trace-state1",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationB",
+		Tags: map[string]string{
+			"w3c.tracestate": "span-trace-state1",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"hostname": "hostname1",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationC",
+		Tags: map[string]string{
+			"hostname": "hostname1",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"jaeger.version": "1.0.0",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationC",
+		Tags: map[string]string{
+			"jaeger.version": "1.0.0",
+		},
+		StartTimeMin: testSpanStartTime,
+		StartTimeMax: testSpanStartTime,
+		DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
 
 	request = &spanstore.TraceQueryParameters{
 		ServiceName:   "service-name-0",
