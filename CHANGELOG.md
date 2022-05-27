@@ -13,7 +13,10 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [0.11.1] - 2022-06-08
+
+### Fixed
+- Fix trace querying by status code tag [#1384]
 
 ## [0.11.0] - 2022-05-11
 
