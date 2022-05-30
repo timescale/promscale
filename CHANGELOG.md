@@ -16,7 +16,10 @@ We use the following categories for changes:
 ## [0.11.1] - 2022-06-08
 
 ### Fixed
-- Fix trace querying by status code tag [#1384]
+- Trace query returns empty result when queried with 
+  - Tags from process table in Jaeger UI [#1385]
+  - Tags that have a numeric value, like `http.status_code=200` [#1385]
+  - Tags that involve status code [#1384]
 
 ## [0.11.0] - 2022-05-11
 

@@ -40,6 +40,7 @@ var (
 			"span-attr":                  pcommon.NewValueString("span-attr-val"),
 			"host.name":                  pcommon.NewValueString("hostname1"),
 			"opencensus.exporterversion": pcommon.NewValueString("Jaeger-1.0.0"),
+			"http.status_code":           pcommon.NewValueInt(200),
 		},
 	)
 	spanEventAttributes = pdata.NewAttributeMapFromMap(map[string]pcommon.Value{"span-event-attr": pcommon.NewValueString("span-event-attr-val")})
