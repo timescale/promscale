@@ -232,10 +232,11 @@ type httpClient struct {
 }
 
 const (
-	servicesEndpoint    = "%s/api/services"
-	operationsEndpoint  = "%s/api/services/%s/operations"
-	singleTraceEndpoint = "%s/api/traces/%s"
-	fetchTracesEndpoint = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
+	servicesEndpoint           = "%s/api/services"
+	operationsEndpoint         = "%s/api/services/%s/operations"
+	singleTraceEndpoint        = "%s/api/traces/%s"
+	fetchTracesEndpoint        = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
+	fetchTracesEndpointWithTag = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
 )
 
 func getServices(t testing.TB, c httpClient) []string {

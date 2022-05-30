@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/regexp"
 	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
@@ -116,6 +117,8 @@ const (
 	TagSpanKind      = "span.kind"
 	TagW3CTraceState = "w3c.tracestate"
 )
+
+var digitCheck = regexp.MustCompile(`^[0-9]+$`)
 
 type Builder struct {
 	cfg *Config
@@ -237,8 +240,22 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 				clauses = append(clauses, qual)
 			default:
 				//TODO make sure this is optimized correctly
-				params = append(params, k, "\""+v+"\"")
-				qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
+				val := "\"" + v + "\""
+				if digitCheck.MatchString(v) {
+					// Do not add double quotes if value is numeric.
+					// This allows to query via tags that are like `http.status_code=200`
+					//
+					// Note: We can remove this block once the `->` operator becomes
+					// generic and respects integers, booleans, etc.
+					val = v
+				}
+				params = append(params, k, val)
+				// Note: We do not need to check resource tags in above cases, since they
+				// come from Jaeger conversion that are specific to span_tags.
+				qual := fmt.Sprintf(
+					`(_ps_trace.tag_map_denormalize(s.span_tags)->$%[1]d = $%[2]d OR _ps_trace.tag_map_denormalize(s.resource_tags)->$%[1]d = $%[2]d)`,
+					len(params)-1, len(params),
+					len(params)-1, len(params))
 				clauses = append(clauses, qual)
 			}
 		}
