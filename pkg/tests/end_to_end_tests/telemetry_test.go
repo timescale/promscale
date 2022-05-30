@@ -19,6 +19,7 @@ import (
 
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/promql"
 	"github.com/timescale/promscale/pkg/runner"
@@ -354,6 +355,7 @@ func TestPromQLBasedTelemetry(t *testing.T) {
 				SslMode:                 "allow",
 				MaxConnections:          -1,
 				WriteConnectionsPerProc: 1,
+				CacheConfig:             cache.DefaultConfig,
 			},
 		}
 		defer conn.Release()

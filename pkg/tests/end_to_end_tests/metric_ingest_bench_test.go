@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tests/testsupport"
@@ -60,7 +61,10 @@ func BenchmarkMetricIngest(b *testing.B) {
 
 	withDB(b, "bench_e2e_metric_ingest", func(db *pgxpool.Pool, t testing.TB) {
 		b.StopTimer()
-		metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Cfg{NumCopiers: 8})
+		metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Cfg{
+			NumCopiers:              8,
+			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
+		})
 		require.NoError(t, err)
 		defer metricsIngestor.Close()
 		b.ResetTimer()

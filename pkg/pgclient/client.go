@@ -137,9 +137,10 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
 	seriesCache := cache.NewSeriesCache(cfg.CacheConfig, sigClose)
 	c := ingestor.Cfg{
-		NumCopiers:             numCopiers,
-		IgnoreCompressedChunks: cfg.IgnoreCompressedChunks,
-		AsyncAcks:              cfg.AsyncAcks,
+		NumCopiers:              numCopiers,
+		IgnoreCompressedChunks:  cfg.IgnoreCompressedChunks,
+		AsyncAcks:               cfg.AsyncAcks,
+		InvertedLabelsCacheSize: cfg.CacheConfig.InvertedLabelsCacheSize,
 	}
 
 	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache, mt.ReadAuthorizer())

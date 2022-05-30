@@ -24,10 +24,11 @@ import (
 )
 
 type Cfg struct {
-	AsyncAcks              bool
-	NumCopiers             int
-	DisableEpochSync       bool
-	IgnoreCompressedChunks bool
+	AsyncAcks               bool
+	NumCopiers              int
+	DisableEpochSync        bool
+	IgnoreCompressedChunks  bool
+	InvertedLabelsCacheSize uint64
 }
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
@@ -57,7 +58,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 // with an empty config, a new default size metrics cache and a non-ha-aware data parser
 func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error) {
 	if cfg == nil {
-		cfg = &Cfg{}
+		cfg = &Cfg{InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize}
 	}
 	cacheConfig := cache.DefaultConfig
 	c := cache.NewMetricCache(cacheConfig)

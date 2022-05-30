@@ -14,6 +14,7 @@ import (
 
 const (
 	DefaultMetricCacheSize = 10000
+	DefaultLabelsCacheSize = 100000
 )
 
 type LabelsCache interface {

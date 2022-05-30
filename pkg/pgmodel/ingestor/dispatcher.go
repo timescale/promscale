@@ -51,7 +51,7 @@ type pgxDispatcher struct {
 
 var _ model.Dispatcher = &pgxDispatcher{}
 
-func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
+func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
 	numCopiers := cfg.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")
@@ -76,7 +76,11 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 	}
 
 	labelArrayOID := model.GetCustomTypeOID(model.LabelArray)
-	sw := NewSeriesWriter(conn, labelArrayOID)
+	labelsCache, err := cache.NewInvertedLablesCache(cfg.InvertedLabelsCacheSize)
+	if err != nil {
+		return nil, err
+	}
+	sw := NewSeriesWriter(conn, labelArrayOID, labelsCache)
 	elf := NewExamplarLabelFormatter(conn, eCache)
 
 	for i := 0; i < numCopiers; i++ {
@@ -85,7 +89,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, cache cache.MetricCache, scache cach
 
 	inserter := &pgxDispatcher{
 		conn:                   conn,
-		metricTableNames:       cache,
+		metricTableNames:       mCache,
 		scache:                 scache,
 		exemplarKeyPosCache:    eCache,
 		completeMetricCreation: make(chan struct{}, 1),
