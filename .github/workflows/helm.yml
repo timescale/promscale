@@ -46,6 +46,8 @@ jobs:
 
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.2.1
+        with:
+          version: v3.6.0
 
       - name: Run chart-testing (list-changed)
         id: list-changed
@@ -61,8 +63,29 @@ jobs:
         uses: helm/kind-action@v1.2.0
         if: steps.list-changed.outputs.changed == 'true'
 
+      - name: Install TimescaleDB in the cluster
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          helm repo add timescale 'https://charts.timescale.com'
+          helm repo update
+          helm install \
+            --set image.tag="pg14.3-ts2.7.0-p0" \
+            --set replicaCount=1 \
+            timescaledb timescale/timescaledb-single
+          kubectl rollout status statefulset timescaledb
+
       - name: Run chart-testing (install)
-        run: ct install --config ct.yaml
+        run: |
+          PGPASSWORD_POSTGRES=$(kubectl \
+            get secret \
+            --namespace default \
+            timescaledb-credentials \
+            -o jsonpath="{.data.PATRONI_SUPERUSER_PASSWORD}" | \
+            base64 --decode \
+          )
+          ct install \
+            --config ct.yaml \
+            --helm-extra-set-args="--set=connection.uri=postgres://postgres:$PGPASSWORD_POSTGRES@timescaledb.default.svc.cluster.local:5432/postgres?sslmode=require"
 
   publish-chart:
     runs-on: ubuntu-latest
