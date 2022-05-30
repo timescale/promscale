@@ -24,6 +24,8 @@ import (
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
+var testConfig = pgclient.Config{CacheConfig: cache.DefaultConfig}
+
 func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 	ts, tenants := generateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
@@ -33,7 +35,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&pgclient.Config{}, 1, db, mt, false)
+		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -214,7 +216,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&pgclient.Config{}, 1, db, mt, false)
+		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -399,7 +401,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&pgclient.Config{}, 1, db, mt, false)
+		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -608,7 +610,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&pgclient.Config{}, 1, db, mt, false)
+		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -83,7 +84,10 @@ func TestInsertInCompressedChunks(t *testing.T) {
 
 	// With decompress chunks being false.
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingstr.Cfg{IgnoreCompressedChunks: true})
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingstr.Cfg{
+			IgnoreCompressedChunks:  true,
+			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
+		})
 		require.NoError(t, err)
 		defer ingestor.Close()
 		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))

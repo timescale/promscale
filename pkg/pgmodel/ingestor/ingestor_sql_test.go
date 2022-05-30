@@ -274,8 +274,8 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
-
-			sw := NewSeriesWriter(mock, 0)
+			lCache, _ := cache.NewInvertedLablesCache(10)
+			sw := NewSeriesWriter(mock, 0, lCache)
 
 			lsi := make([]model.Insertable, 0)
 			for _, ser := range c.series {
@@ -392,21 +392,6 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{Sql: "COMMIT;"},
 		{Sql: "BEGIN;"},
 		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
-			Args: []interface{}{
-				"metric_1",
-				tableName,
-				[]string{"__name__", "name_1", "name_1"},
-				[]string{"metric_1", "value_1", "value_2"},
-			},
-			Results: model.RowResults{
-				{[]int32{1, 2, 2}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_1"}, []string{"metric_1", "value_1", "value_2"}},
-			},
-			Err: error(nil),
-		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
-		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{
 				metricID,
@@ -432,8 +417,8 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	mock := model.NewSqlRecorder(sqlQueries, t)
 	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
-
-	sw := NewSeriesWriter(mock, 0)
+	lcache, _ := cache.NewInvertedLablesCache(10)
+	sw := NewSeriesWriter(mock, 0, lcache)
 	inserter := pgxDispatcher{
 		conn:   mock,
 		scache: scache,
@@ -848,7 +833,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error setting up mock cache: %s", err.Error())
 			}
-			inserter, err := newPgxDispatcher(mock, mockMetrics, scache, nil, &Cfg{DisableEpochSync: true})
+			inserter, err := newPgxDispatcher(mock, mockMetrics, scache, nil, &Cfg{DisableEpochSync: true, InvertedLabelsCacheSize: 10})
 			if err != nil {
 				t.Fatal(err)
 			}

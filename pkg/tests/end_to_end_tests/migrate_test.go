@@ -14,6 +14,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/runner"
@@ -73,6 +74,7 @@ func TestMigrateLock(t *testing.T) {
 				SslMode:                 "allow",
 				MaxConnections:          -1,
 				WriteConnectionsPerProc: 1,
+				CacheConfig:             cache.DefaultConfig,
 			},
 		}
 		conn.Release()

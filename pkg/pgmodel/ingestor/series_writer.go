@@ -9,6 +9,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgtype"
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -24,15 +26,7 @@ const (
 type seriesWriter struct {
 	conn          pgxconn.PgxConn
 	labelArrayOID uint32
-}
-
-type labelInfo struct {
-	labelID int32
-	Pos     int32
-}
-
-type labelKey struct {
-	MetricName, Name, Value string
+	labelsCache   *cache.InvertedLabelsCache
 }
 
 type SeriesVisitor interface {
@@ -41,14 +35,15 @@ type SeriesVisitor interface {
 
 func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} }
 
-func NewSeriesWriter(conn pgxconn.PgxConn, labelArrayOID uint32) *seriesWriter {
-	return &seriesWriter{conn, labelArrayOID}
+func NewSeriesWriter(conn pgxconn.PgxConn, labelArrayOID uint32, labelsCache *cache.InvertedLabelsCache) *seriesWriter {
+	return &seriesWriter{conn, labelArrayOID, labelsCache}
 }
 
 type perMetricInfo struct {
 	metricName             string
 	series                 []*model.Series
-	labelList              *model.LabelList
+	labelsToFetch          *model.LabelList // labels we haven't found in our cache and need to fetch from DB
+	cachedLabels           []cache.LabelKey
 	maxPos                 int
 	labelArraySet          *pgtype.ArrayType
 	labelArraySetNumLabels int
@@ -68,9 +63,10 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 			info, ok := infos[metricName]
 			if !ok {
 				info = &perMetricInfo{
-					metricInfo: metricInfo,
-					metricName: metricName,
-					labelList:  model.NewLabelList(10),
+					metricInfo:    metricInfo,
+					metricName:    metricName,
+					labelsToFetch: model.NewLabelList(10),
+					cachedLabels:  make([]cache.LabelKey, 0),
 				}
 				infos[metricName] = info
 			}
@@ -88,7 +84,7 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 
 	span.SetAttributes(attribute.Int("series_count", seriesCount))
 
-	labelMap := make(map[labelKey]labelInfo, seriesCount)
+	labelMap := make(map[cache.LabelKey]cache.LabelInfo, seriesCount)
 	//logically should be a separate function but we want
 	//to prevent labelMap from escaping, so keeping inline.
 	{
@@ -100,11 +96,16 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 					continue
 				}
 				for i := range names {
-					key := labelKey{MetricName: series.MetricName(), Name: names[i], Value: values[i]}
-					_, ok = labelMap[key]
-					if !ok {
-						labelMap[key] = labelInfo{}
-						if err := info.labelList.Add(names[i], values[i]); err != nil {
+					key := cache.LabelKey{MetricName: series.MetricName(), Name: names[i], Value: values[i]}
+					_, added := labelMap[key]
+					if !added {
+						labelInfo, cached := h.labelsCache.GetLabelsId(cache.NewLabelKey(series.MetricName(), names[i], values[i]))
+						labelMap[key] = labelInfo
+						if cached {
+							info.cachedLabels = append(info.cachedLabels, key)
+							continue
+						}
+						if err := info.labelsToFetch.Add(names[i], values[i]); err != nil {
 							return fmt.Errorf("failed to add label to labelList: %w", err)
 						}
 					}
@@ -193,7 +194,7 @@ func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error 
 	return nil
 }
 
-func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[labelKey]labelInfo) (model.SeriesEpoch, error) {
+func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[cache.LabelKey]cache.LabelInfo) (model.SeriesEpoch, error) {
 	_, span := tracer.Default().Start(ctx, "fill-label-ids")
 	defer span.End()
 	//we cannot use the label cache here because that maps label ids => name, value.
@@ -212,7 +213,7 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 	infoBatches := make([]*perMetricInfo, 0)
 	items := 0
 	for metricName, info := range infos {
-		names, values := info.labelList.Get()
+		names, values := info.labelsToFetch.Get()
 		//getLabels in batches of 1000 to prevent locks on label creation
 		//from being taken for too long.
 		itemsPerBatch := 1000
@@ -235,7 +236,16 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 			infoBatches = append(infoBatches, info)
 			items += len(namesSlice.Elements)
 		}
+		// since info.maxPos is only updated with fetched labels we need to iterate through cached as well
+		for _, cachedLabel := range info.cachedLabels {
+			if val, ok := labelMap[cachedLabel]; ok {
+				if int(val.Pos) > info.maxPos {
+					info.maxPos = int(val.Pos)
+				}
+			}
+		}
 	}
+
 	br, err := h.conn.SendBatch(context.Background(), batch)
 	if err != nil {
 		return dbEpoch, fmt.Errorf("error filling labels: %w", err)
@@ -276,8 +286,11 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 			values = labelValues.Get().([]string)
 
 			for i := range pos {
-				res := labelInfo{Pos: pos[i], labelID: labelIDs[i]}
-				key := labelKey{MetricName: info.metricName, Name: names[i], Value: values[i]}
+				res := cache.NewLabelInfo(labelIDs[i], pos[i])
+				key := cache.NewLabelKey(info.metricName, names[i], values[i])
+				if !h.labelsCache.Put(cache.NewLabelKey(info.metricName, names[i], values[i]), cache.NewLabelInfo(labelIDs[i], pos[i])) {
+					log.Warn("failed to add label ID to inverted cache")
+				}
 				_, ok := labelMap[key]
 				if !ok {
 					return fmt.Errorf("error filling labels: getting a key never sent to the db")
@@ -303,7 +316,7 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 	return dbEpoch, nil
 }
 
-func (h *seriesWriter) buildLabelArrays(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[labelKey]labelInfo) error {
+func (h *seriesWriter) buildLabelArrays(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[cache.LabelKey]cache.LabelInfo) error {
 	_, span := tracer.Default().Start(ctx, "build-label-arrays")
 	defer span.End()
 	for _, info := range infos {
@@ -324,7 +337,7 @@ func (h *seriesWriter) buildLabelArrays(ctx context.Context, infos map[string]*p
 	return nil
 }
 
-func createLabelArrays(series []*model.Series, labelMap map[labelKey]labelInfo, maxPos int) ([][]int32, []*model.Series, error) {
+func createLabelArrays(series []*model.Series, labelMap map[cache.LabelKey]cache.LabelInfo, maxPos int) ([][]int32, []*model.Series, error) {
 	labelArraySet := make([][]int32, 0, len(series))
 	dest := 0
 	for src := 0; src < len(series); src++ {
@@ -335,17 +348,17 @@ func createLabelArrays(series []*model.Series, labelMap map[labelKey]labelInfo, 
 		lArray := make([]int32, maxPos)
 		maxIndex := 0
 		for i := range names {
-			key := labelKey{MetricName: series[src].MetricName(), Name: names[i], Value: values[i]}
+			key := cache.LabelKey{MetricName: series[src].MetricName(), Name: names[i], Value: values[i]}
 			res, ok := labelMap[key]
 			if !ok {
 				return nil, nil, fmt.Errorf("error generating label array: missing key in map: %v", key)
 			}
-			if res.labelID == 0 {
+			if res.LabelID == 0 {
 				return nil, nil, fmt.Errorf("error generating label array: missing id for label %v=>%v", names[i], values[i])
 			}
 			//Pos is 1-indexed, slices are 0-indexed
 			sliceIndex := int(res.Pos) - 1
-			lArray[sliceIndex] = int32(res.labelID)
+			lArray[sliceIndex] = int32(res.LabelID)
 			if sliceIndex > maxIndex {
 				maxIndex = sliceIndex
 			}

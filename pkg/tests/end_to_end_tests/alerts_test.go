@@ -75,7 +75,7 @@ func TestAlerts(t *testing.T) {
 		rulesCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 
-		manager, err := rules.NewManager(rulesCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
+		manager, _, err := rules.NewManager(rulesCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
 		require.NoError(t, err)
 
 		require.NotNil(t, rulesCfg.PrometheusConfig)
