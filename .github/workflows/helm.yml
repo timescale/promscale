@@ -47,6 +47,7 @@ jobs:
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.2.1
         with:
+          # FIXME(onprem): Remove this once chart-testing-action has a new release with ct v3.6.0 by default.
           version: v3.6.0
 
       - name: Run chart-testing (list-changed)
@@ -68,6 +69,7 @@ jobs:
         run: |
           helm repo add timescale 'https://charts.timescale.com'
           helm repo update
+          # FIXME(onprem): Remove the image.tag override once new timescaledb-single helm chart is released.
           helm install \
             --set image.tag="pg14.3-ts2.7.0-p0" \
             --set replicaCount=1 \
