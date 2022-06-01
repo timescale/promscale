@@ -38,9 +38,9 @@ jobs:
       run: |
         branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
         possible_branch_tag=$(echo ${branch_name}-ts2-pg${{matrix.pg}})
-        develop_branch_tag=$(echo develop-ts2-pg${{matrix.pg}})
+        master_branch_tag=$(echo master-ts2-pg${{matrix.pg}})
         image_base="ghcr.io/timescale/dev_promscale_extension"
-        docker_image=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${develop_branch_tag})
+        docker_image=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${master_branch_tag})
         echo "::set-output name=docker_image::${docker_image}"
 
     - name: TimescaleDB 2.x with Promscale extension (pg${{matrix.pg}})
