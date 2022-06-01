@@ -403,7 +403,7 @@ func createMultinodeNetwork() (networkName string, closer func(), err error) {
 	return networkName, closer, nil
 }
 
-func dropTimescaleExtensionInDB(dbname string) error {
+func dropTimescaleAndToolkitExtensionsInDB(dbname string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	db, err := pgx.Connect(ctx, PgConnectURL(dbname, Superuser))
@@ -415,6 +415,10 @@ func dropTimescaleExtensionInDB(dbname string) error {
 	if err != nil {
 		return fmt.Errorf("could not uninstall timescaledb: %w", err)
 	}
+	_, err = db.Exec(context.Background(), "DROP EXTENSION IF EXISTS timescaledb_toolkit")
+	if err != nil {
+		return fmt.Errorf("could not uninstall timescaledb: %w", err)
+	}
 	err = db.Close(context.Background())
 	if err != nil {
 		return err
@@ -422,13 +426,13 @@ func dropTimescaleExtensionInDB(dbname string) error {
 	return nil
 }
 
-func removeTimescaleExtension(container testcontainers.Container) error {
-	err := dropTimescaleExtensionInDB("template1")
+func removeTimescaleAndToolkitExtensions(container testcontainers.Container) error {
+	err := dropTimescaleAndToolkitExtensionsInDB("template1")
 	if err != nil {
 		return fmt.Errorf("error dropping timescale extension in template1 db: %w", err)
 	}
 
-	err = dropTimescaleExtensionInDB("postgres")
+	err = dropTimescaleAndToolkitExtensionsInDB("postgres")
 	if err != nil {
 		return fmt.Errorf("error dropping timescale extension in postgres db: %w", err)
 	}
@@ -580,7 +584,7 @@ func startPGInstance(
 		return nil, closer, err
 	}
 	if !extensionState.UsesTimescaleDB() {
-		err = removeTimescaleExtension(container)
+		err = removeTimescaleAndToolkitExtensions(container)
 		if err != nil {
 			return nil, closer, err
 		}

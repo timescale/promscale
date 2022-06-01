@@ -55,6 +55,7 @@ var schemas = []string{
 	"ps_trace",
 	"public",
 	"timescaledb_information",
+	"toolkit_experimental",
 }
 
 var schemasWOTimescaleDB = []string{
