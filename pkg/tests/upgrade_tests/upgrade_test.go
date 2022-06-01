@@ -43,7 +43,7 @@ var (
 	testDatabase = flag.String("database", "tmp_db_timescale_upgrade_test", "database to run integration tests on")
 	printLogs    = flag.Bool("print-logs", false, "print TimescaleDB logs")
 	// use "local/dev_promscale_extension:head-ts2-pg13" for local testing
-	dockerImage        = flag.String("timescale-docker-image", "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14", "TimescaleDB docker image for latest version to run tests against")
+	dockerImage        = flag.String("timescale-docker-image", "ghcr.io/timescale/dev_promscale_extension:master-ts2-pg14", "TimescaleDB docker image for latest version to run tests against")
 	baseExtensionState testhelpers.TestOptions
 )
 
@@ -790,7 +790,7 @@ func startDB(t *testing.T, ctx context.Context) (*pgx.Conn, testcontainers.Conta
 	}
 
 	// TODO (james): Replace hardcoded value
-	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14")
+	extensionState := testhelpers.NewTestOptions(testhelpers.Timescale, "ghcr.io/timescale/dev_promscale_extension:master-ts2-pg14")
 
 	dbContainer, closer, err := testhelpers.StartDatabaseImage(ctx, t, "timescaledev/promscale-extension:testing-extension-upgrade", tmpDir, dataDir, *printLogs, extensionState)
 	if err != nil {

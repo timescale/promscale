@@ -36,7 +36,7 @@ var (
 	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
 	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
 	// TODO (james): Replace hardcoded value
-	timescaleDockerImage  = flag.String("timescale-docker-image", "ghcr.io/timescale/dev_promscale_extension:develop-ts2-pg14", "TimescaleDB docker image to run tests against")
+	timescaleDockerImage  = flag.String("timescale-docker-image", "ghcr.io/timescale/dev_promscale_extension:master-ts2-pg14", "TimescaleDB docker image to run tests against")
 	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
 	useTimescaleDBNightly = flag.Bool("use-timescaledb-nightly", false, "use TimescaleDB nightly images")
 	printLogs             = flag.Bool("print-logs", false, "print TimescaleDB logs")
