@@ -16,7 +16,12 @@ on:
       docker_image_prefix:
         description: 'Docker image prefix'
         required: true
-        default: 'ghcr.io/timescale/dev_promscale_extension:<branch>-ts2'
+        default: 'ghcr.io/timescale/dev_promscale_extension:master-ts2'
+  workflow_call:
+    inputs:
+      docker_image_prefix:
+        required: true
+        type: string
 
 env:
   golang-version: 1.18.1
@@ -26,12 +31,14 @@ jobs:
     name: pick_docker_image
     runs-on: ubuntu-latest
     outputs:
-      docker_image_12:  ${{ github.event_name == 'workflow_dispatch' && steps.metadata_wd.outputs.docker_image_12 || steps.metadata.outputs.docker_image_12 }}
-      docker_image_13:  ${{ github.event_name == 'workflow_dispatch' && steps.metadata_wd.outputs.docker_image_13 || steps.metadata.outputs.docker_image_13 }}
-      docker_image_14:  ${{ github.event_name == 'workflow_dispatch' && steps.metadata_wd.outputs.docker_image_14 || steps.metadata.outputs.docker_image_14 }}
+      docker_image_12:  ${{ steps.metadata.outputs.docker_image_12 }}
+      docker_image_13:  ${{ steps.metadata.outputs.docker_image_13 }}
+      docker_image_14:  ${{ steps.metadata.outputs.docker_image_14 }}
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
+      with:
+        repository: timescale/promscale
 
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v2
@@ -42,31 +49,27 @@ jobs:
 
     - name: Figure out database container image from branch name
       id: metadata
-      if:  github.event_name != 'workflow_dispatch'
       run: |
-        branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
-        possible_branch_tag=$(echo ${branch_name}-ts2)
-        extension_version=$(cat EXTENSION_VERSION | tr -d '[:space:]')
-        stable_branch_tag=$(echo ${extension_version}-ts2)
-        image_base="ghcr.io/timescale/dev_promscale_extension"
-        docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${stable_branch_tag}-pg12)
-        docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${stable_branch_tag}-pg13)
-        docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${stable_branch_tag}-pg14)
+        if [[ "${{ github.event_name }}" =~ 'workflow_dispatch' ]]; then \
+          docker_image_12=$(echo ${{github.event.inputs.docker_image_prefix}}-pg12) \
+          docker_image_13=$(echo ${{github.event.inputs.docker_image_prefix}}-pg13) \
+          docker_image_14=$(echo ${{github.event.inputs.docker_image_prefix}}-pg14) \
+        elif [[ "${{ github.event_name }}" =~ 'workflow_call' ]]; then \
+          docker_image_12=$(echo ${{inputs.docker_image_prefix}}-pg12) \
+          docker_image_13=$(echo ${{inputs.docker_image_prefix}}-pg13) \
+          docker_image_14=$(echo ${{inputs.docker_image_prefix}}-pg14) \
+        else \
+          branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#') \
+          possible_branch_tag=$(echo ${branch_name}-ts2) \
+          master_branch_tag=$(echo master-ts2) \
+          image_base="ghcr.io/timescale/dev_promscale_extension" \
+          docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${master_branch_tag}-pg12) \
+          docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${master_branch_tag}-pg13) \
+          docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${master_branch_tag}-pg14) \
+        fi;
         echo "::set-output name=docker_image_12::${docker_image_12}"
         echo "::set-output name=docker_image_13::${docker_image_13}"
         echo "::set-output name=docker_image_14::${docker_image_14}"
-
-    - name: Figure out database container image via workflow input
-      id: metadata_wd
-      if:  github.event_name == 'workflow_dispatch'
-      run: |
-        docker_image_12=$(echo ${{github.event.inputs.docker_image_prefix}}-pg12)
-        docker_image_13=$(echo ${{github.event.inputs.docker_image_prefix}}-pg13)
-        docker_image_14=$(echo ${{github.event.inputs.docker_image_prefix}}-pg14)
-        echo "::set-output name=docker_image_12::${docker_image_12}"
-        echo "::set-output name=docker_image_13::${docker_image_13}"
-        echo "::set-output name=docker_image_14::${docker_image_14}"
-
 
   test-end-to-end:
     name: e2e
@@ -84,6 +87,8 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
+      with:
+        repository: timescale/promscale
 
     - name: Checkout test data files
       run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
