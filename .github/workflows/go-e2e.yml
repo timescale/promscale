@@ -16,7 +16,7 @@ on:
       docker_image_prefix:
         description: 'Docker image prefix'
         required: true
-        default: 'ghcr.io/timescale/dev_promscale_extension:develop-ts2'
+        default: 'ghcr.io/timescale/dev_promscale_extension:master-ts2'
 
 env:
   golang-version: 1.18.1
@@ -46,11 +46,11 @@ jobs:
       run: |
         branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
         possible_branch_tag=$(echo ${branch_name}-ts2)
-        develop_branch_tag=$(echo develop-ts2)
+        master_branch_tag=$(echo master-ts2)
         image_base="ghcr.io/timescale/dev_promscale_extension"
-        docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${develop_branch_tag}-pg12)
-        docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${develop_branch_tag}-pg13)
-        docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${develop_branch_tag}-pg14)
+        docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${master_branch_tag}-pg12)
+        docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${master_branch_tag}-pg13)
+        docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${master_branch_tag}-pg14)
         echo "::set-output name=docker_image_12::${docker_image_12}"
         echo "::set-output name=docker_image_13::${docker_image_13}"
         echo "::set-output name=docker_image_14::${docker_image_14}"
