@@ -22,6 +22,10 @@ on:
       docker_image_prefix:
         required: true
         type: string
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
 
 env:
   golang-version: 1.18.1
@@ -39,6 +43,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: timescale/promscale
+        ref: ${{ inputs.ref }}
 
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v2
@@ -50,22 +55,22 @@ jobs:
     - name: Figure out database container image from branch name
       id: metadata
       run: |
-        if [[ "${{ github.event_name }}" =~ 'workflow_dispatch' ]]; then \
-          docker_image_12=$(echo ${{github.event.inputs.docker_image_prefix}}-pg12) \
-          docker_image_13=$(echo ${{github.event.inputs.docker_image_prefix}}-pg13) \
-          docker_image_14=$(echo ${{github.event.inputs.docker_image_prefix}}-pg14) \
-        elif [[ "${{ github.event_name }}" =~ 'workflow_call' ]]; then \
-          docker_image_12=$(echo ${{inputs.docker_image_prefix}}-pg12) \
-          docker_image_13=$(echo ${{inputs.docker_image_prefix}}-pg13) \
-          docker_image_14=$(echo ${{inputs.docker_image_prefix}}-pg14) \
-        else \
-          branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#') \
-          possible_branch_tag=$(echo ${branch_name}-ts2) \
-          master_branch_tag=$(echo master-ts2) \
-          image_base="ghcr.io/timescale/dev_promscale_extension" \
-          docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${master_branch_tag}-pg12) \
-          docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${master_branch_tag}-pg13) \
-          docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${master_branch_tag}-pg14) \
+        if [[ "${{ github.event_name }}" =~ 'workflow_dispatch' ]]; then
+          docker_image_12=$(echo ${{github.event.inputs.docker_image_prefix}}-pg12)
+          docker_image_13=$(echo ${{github.event.inputs.docker_image_prefix}}-pg13)
+          docker_image_14=$(echo ${{github.event.inputs.docker_image_prefix}}-pg14)
+        elif [[ "${{ github.event_name }}" =~ 'workflow_call' ]]; then
+          docker_image_12=$(echo ${{inputs.docker_image_prefix}}-pg12)
+          docker_image_13=$(echo ${{inputs.docker_image_prefix}}-pg13)
+          docker_image_14=$(echo ${{inputs.docker_image_prefix}}-pg14)
+        else
+          branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
+          possible_branch_tag=$(echo ${branch_name}-ts2)
+          master_branch_tag=$(echo master-ts2)
+          image_base="ghcr.io/timescale/dev_promscale_extension"
+          docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${master_branch_tag}-pg12)
+          docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${master_branch_tag}-pg13)
+          docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${master_branch_tag}-pg14)
         fi;
         echo "::set-output name=docker_image_12::${docker_image_12}"
         echo "::set-output name=docker_image_13::${docker_image_13}"
@@ -89,6 +94,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: timescale/promscale
+        ref: ${{ inputs.ref }}
 
     - name: Checkout test data files
       run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
@@ -129,6 +135,9 @@ jobs:
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
+      with:
+        repository: timescale/promscale
+        ref: ${{ inputs.ref }}
 
     - name: Set up Go ${{ env.golang-version }}
       uses: actions/setup-go@v3.0.0
