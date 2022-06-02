@@ -48,6 +48,11 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *wa
 		}
 		ws.Append(recs)
 		count++
+		prevHighest := qmi.highestTs.Get()
+		if prevHighest != 0 && prevHighest > float64(recs[0].T/1000) {
+			fmt.Printf("Time going backwards! prevHighest=%v this=%v count=%v, config=%#v, wallTs=%v, T=%v, wall=%v, now=%v",
+				prevHighest, float64(recs[0].T/1000), count, conf, wallTs, recs[0].T, model.Time(wallTs).Time(), time.Now())
+		}
 		qmi.highestTs.Set(float64(recs[0].T / 1000))
 		qmi.samplesIn.Incr(int64(1))
 		return nil
