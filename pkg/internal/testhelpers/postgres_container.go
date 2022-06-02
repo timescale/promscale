@@ -270,6 +270,11 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 		// that case timescaledb should always be installed by the time the
 		// connector runs)
 		_, err = ourDb.Exec(context.Background(), "DROP EXTENSION IF EXISTS timescaledb")
+		// Some docker images may also have timescaledb_toolkit installed in
+		// a template, but this messes with our upgrade tests because toolkit
+		// was not always present. It's easier to remove it here and install it
+		// in the specific tests which require toolkit.
+		_, err = ourDb.Exec(context.Background(), "DROP EXTENSION IF EXISTS timescaledb_toolkit")
 		if err != nil {
 			_ = ourDb.Close(context.Background())
 			return nil, err
