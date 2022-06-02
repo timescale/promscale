@@ -69,9 +69,7 @@ jobs:
         run: |
           helm repo add timescale 'https://charts.timescale.com'
           helm repo update
-          # FIXME(onprem): Remove the image.tag override once new timescaledb-single helm chart is released.
           helm install \
-            --set image.tag="pg14.3-ts2.7.0-p0" \
             --set replicaCount=1 \
             timescaledb timescale/timescaledb-single
           kubectl rollout status statefulset timescaledb
