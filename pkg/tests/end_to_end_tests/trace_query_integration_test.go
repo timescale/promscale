@@ -32,6 +32,7 @@ type traceQuery struct {
 	end     int64
 	service string
 	traceID [16]byte // For testing getTrace API.
+	tag     *tag
 }
 
 // To generate Jaeger responses, run the TestGenerateJaegerAPIResponses test function
@@ -47,6 +48,30 @@ var traceQueryCases = []traceQuery{
 		end:     timestamp.FromTime(testSpanEndTime) * 1000,
 		service: service0,
 		traceID: traceID1,
+	},
+	{
+		name:    "simple trace with numeric tag",
+		start:   timestamp.FromTime(testSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testSpanEndTime) * 1000,
+		service: service0,
+		traceID: traceID1,
+		tag:     &tag{"http.status_code", "200"},
+	},
+	{
+		name:    "simple trace with resource tag",
+		start:   timestamp.FromTime(testSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testSpanEndTime) * 1000,
+		service: service0,
+		traceID: traceID1,
+		tag:     &tag{"resource-attr", "resource-attr-val-0"},
+	},
+	{
+		name:    "simple trace with error tag",
+		start:   timestamp.FromTime(testSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testSpanEndTime) * 1000,
+		service: service0,
+		traceID: traceID1,
+		tag:     &tag{"error", "true"},
 	},
 }
 
@@ -97,7 +122,7 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 			require.Exactly(t, tcJaegerResponse.Trace, promscaleTrace, tc.name)
 
 			// Verify fetch traces API.
-			promscaleTraces := getTraces(t, promscaleClient, tc.service, tc.start, tc.end)
+			promscaleTraces := getTraces(t, promscaleClient, tc.service, tc.start, tc.end, tc.tag)
 			require.Exactly(t, tcJaegerResponse.Traces, promscaleTraces, tc.name)
 		}
 	})
@@ -236,7 +261,7 @@ const (
 	operationsEndpoint         = "%s/api/services/%s/operations"
 	singleTraceEndpoint        = "%s/api/traces/%s"
 	fetchTracesEndpoint        = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
-	fetchTracesEndpointWithTag = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration"
+	fetchTracesEndpointWithTag = "%s/api/traces?start=%d&end=%d&service=%s&lookback=custom&limit=20&maxDuration&minDuration&tags={\"%s\":\"%s\"}"
 )
 
 func getServices(t testing.TB, c httpClient) []string {
@@ -267,8 +292,16 @@ func getTrace(t testing.TB, c httpClient, traceId [16]byte) jaegerJSONModel.Trac
 	return trace
 }
 
-func getTraces(t testing.TB, c httpClient, service string, start, end int64) []jaegerJSONModel.Trace {
-	r, err := do(fmt.Sprintf(fetchTracesEndpoint, c.url, start, end, service))
+type tag struct {
+	k, v string
+}
+
+func getTraces(t testing.TB, c httpClient, service string, start, end int64, useTag *tag) []jaegerJSONModel.Trace {
+	queryUrl := fmt.Sprintf(fetchTracesEndpoint, c.url, start, end, service)
+	if useTag != nil {
+		queryUrl = fmt.Sprintf(fetchTracesEndpointWithTag, c.url, start, end, service, useTag.k, useTag.v)
+	}
+	r, err := do(queryUrl)
 	require.NoError(t, err)
 
 	traces := convertToTraces(r.Data.([]interface{}))
