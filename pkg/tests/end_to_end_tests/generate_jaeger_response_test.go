@@ -49,7 +49,7 @@ func TestGenerateJaegerAPIResponses(t *testing.T) {
 		services := getServices(t, client)
 		operations := getOperations(t, client, tc.service)
 		trace := getTrace(t, client, tc.traceID)
-		traces := getTraces(t, client, tc.service, tc.start, tc.end)
+		traces := getTraces(t, client, tc.service, tc.start, tc.end, tc.tag)
 		store.Responses = append(store.Responses, traceResponse{
 			Services:   services,
 			Operations: operations,
