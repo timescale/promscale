@@ -265,6 +265,7 @@ func makeAttributes(tagsJson pgtype.JSONB) (map[string]pcommon.Value, error) {
 	if err := tagsJson.AssignTo(&tags); err != nil {
 		return nil, fmt.Errorf("tags assign to: %w", err)
 	}
+	tags = sanitizeInt(tags)
 	otMap := pcommon.NewMapFromRaw(tags)
 	m := make(map[string]pcommon.Value, len(tags))
 	populateMap := func(k string, v pcommon.Value) bool {
@@ -273,6 +274,23 @@ func makeAttributes(tagsJson pgtype.JSONB) (map[string]pcommon.Value, error) {
 	}
 	otMap.Range(populateMap)
 	return m, nil
+}
+
+// Hotfix of potential bug: Postgres returns tags as a JSONB map. In this format,
+// integers were being returned as float. Hence, this function converts back to integer.
+func sanitizeInt(tags map[string]interface{}) map[string]interface{} {
+	for k, v := range tags {
+		if val, isFloat := v.(float64); isFloat {
+			if isIntegral(val) {
+				tags[k] = int64(val)
+			}
+		}
+	}
+	return tags
+}
+
+func isIntegral(val float64) bool {
+	return val == float64(int(val))
 }
 
 func makeTraceId(s pgtype.UUID) (pdata.TraceID, error) {

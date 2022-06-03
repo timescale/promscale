@@ -118,7 +118,7 @@ const (
 	TagW3CTraceState = "w3c.tracestate"
 )
 
-var digitCheck = regexp.MustCompile(`^[0-9]+$`)
+var digitCheck = regexp.MustCompile(`^\d*\.?\d+$`) // Ints or Floats.
 
 type Builder struct {
 	cfg *Config
@@ -254,7 +254,6 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 				// come from Jaeger conversion that are specific to span_tags.
 				qual := fmt.Sprintf(
 					`(_ps_trace.tag_map_denormalize(s.span_tags)->$%[1]d = $%[2]d OR _ps_trace.tag_map_denormalize(s.resource_tags)->$%[1]d = $%[2]d)`,
-					len(params)-1, len(params),
 					len(params)-1, len(params))
 				clauses = append(clauses, qual)
 			}
