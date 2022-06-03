@@ -1,6 +1,8 @@
 package bench
 
 import (
+	"fmt"
+
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -27,6 +29,16 @@ func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *Bu
 		pool:       chunkenc.NewPool(),
 		chunkIndex: -1,
 	}
+}
+
+func (bi *BufferingIterator) Debug() {
+	t, v := bi.At()
+	fmt.Printf("Buffering iterator debug: chunkIndex=%v len=%v T=%v V=%v \n", bi.chunkIndex, len(bi.chunksMeta), t, v)
+	fmt.Printf("Buffering iterator meta debug current: min=%v max=%v \n", bi.chunksMeta[bi.chunkIndex].MinTime, bi.chunksMeta[bi.chunkIndex].MaxTime)
+	if bi.chunkIndex > 0 {
+		fmt.Printf("Buffering iterator meta debug prev: min=%v max=%v \n", bi.chunksMeta[bi.chunkIndex-1].MinTime, bi.chunksMeta[bi.chunkIndex-1].MaxTime)
+	}
+
 }
 
 func (bi *BufferingIterator) nextChunk() bool {

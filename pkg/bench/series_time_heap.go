@@ -97,6 +97,19 @@ func (pq *SeriesTimeHeap) Pop() interface{} {
 	return item
 }
 
+func (pq *SeriesTimeHeap) Debug() {
+	item := (*pq)[0]
+	seriesID := uint64(item.series_id)
+	ts, val := item.it.At()
+	fmt.Printf("SeriesTimeHeap Debug seriesID=%v T=%v val=%v\n", seriesID, ts, val)
+	bi, ok := item.it.(*BufferingIterator)
+	if ok {
+		bi.Debug()
+	} else {
+		fmt.Println("Not buffering iterator")
+	}
+}
+
 func (pq *SeriesTimeHeap) Visit(dm *DataModifier, visitor func([]record.RefSample, int64) error) error {
 	for pq.Len() > 0 {
 		item := (*pq)[0]
