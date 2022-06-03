@@ -50,7 +50,11 @@ func NewSeriesTimeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesI
 			return nil, closers, err
 		}
 
-		it := NewBufferingIterator(chunkr, chks)
+		chksCopy := make([]chunks.Meta, len(chks))
+		copy(chksCopy, chks)
+		chks = nil
+
+		it := NewBufferingIterator(chunkr, chksCopy)
 		if !it.Next() { //initialize to first position
 			panic("can't get first item")
 		}
