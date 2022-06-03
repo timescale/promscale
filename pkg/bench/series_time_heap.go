@@ -42,9 +42,9 @@ func NewSeriesTimeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesI
 	}
 	closers = append(closers, chunkr)
 
+	chks := []chunks.Meta{}
 	for p.Next() {
 		lbls := labels.Labels{}
-		chks := []chunks.Meta{}
 
 		if err = ir.Series(p.At(), &lbls, &chks); err != nil {
 			return nil, closers, err
@@ -52,7 +52,6 @@ func NewSeriesTimeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesI
 
 		chksCopy := make([]chunks.Meta, len(chks))
 		copy(chksCopy, chks)
-		chks = nil
 
 		it := NewBufferingIterator(chunkr, chksCopy)
 		if !it.Next() { //initialize to first position
