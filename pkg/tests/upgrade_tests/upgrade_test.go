@@ -71,7 +71,7 @@ func TestMain(m *testing.M) {
 }
 
 /* Prev image is the db image with the old promscale extension. We do NOT test timescaleDB extension upgrades here. */
-func getDBImages(extensionState testhelpers.TestOptions) (prev string, clean string, err error) {
+func getDBImages(extensionState testhelpers.TestOptions, prevPromscaleVersion *semver.Version) (prev string, clean string, err error) {
 	// TODO: Extracting the pg version from the docker image name is a nasty hack. How can we avoid this?
 	dockerImageName := extensionState.GetDockerImageName()
 	pgVersion, err := extensionState.TryGetDockerImagePgVersion()
@@ -84,6 +84,11 @@ func getDBImages(extensionState testhelpers.TestOptions) (prev string, clean str
 		//we don't want to use any features in a newer PG version that isn't available in an older one
 		//but migration code that works in an older PG version should generally work in a newer one.
 		panic("Only use pg12 for upgrade tests")
+	}
+
+	// From Promscale 0.11.0 onwards the minimum extension version is 0.5.0
+	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.11.0")) {
+		return "timescale/timescaledb-ha:pg" + pgVersion + "-ts2.6-latest", dockerImageName, nil
 	}
 
 	//return "timescaledev/promscale-extension:0.1.2-ts2-pg" + pgVersion, dockerImageName, nil
@@ -376,7 +381,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		}
 	}
 
-	prevDBImage, cleanImage, err := getDBImages(extensionState)
+	prevDBImage, cleanImage, err := getDBImages(extensionState, &prevVersion)
 	if err != nil {
 		t.Fatal("unable to get db image", err)
 	}
@@ -398,7 +403,7 @@ func withDBStartingAtOldVersionAndUpgrading(
 		db.Close()
 
 		connectorImage := "timescale/promscale:" + prevVersion.String()
-		connector, err := testhelpers.StartConnectorWithImage(context.Background(), dbContainer, connectorImage, *printLogs, []string{}, *testDatabase)
+		connector, err := testhelpers.StartConnectorWithImage(context.Background(), dbContainer, connectorImage, prevVersion, *printLogs, []string{}, *testDatabase)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -462,7 +467,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 		log.Fatal(err)
 	}
 
-	_, cleanImage, err := getDBImages(extensionState)
+	_, cleanImage, err := getDBImages(extensionState, nil)
 	if err != nil {
 		t.Fatal("unable to get docker image", err)
 	}
@@ -587,7 +592,7 @@ func copyMetrics(metrics []prompb.TimeSeries) []prompb.TimeSeries {
 
 func TestExtensionUpgrade(t *testing.T) {
 	var err error
-	var version string
+	var ver string
 
 	if true {
 		t.Skip("Temporarily disabled test")
@@ -609,12 +614,12 @@ func TestExtensionUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+	err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&ver)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if version != extVersion {
+	if ver != extVersion {
 		t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
 	}
 
@@ -623,17 +628,17 @@ func TestExtensionUpgrade(t *testing.T) {
 	func() {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
-		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, []string{}, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, semver.MustParse(version.Promscale), *printLogs, []string{}, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer testhelpers.StopContainer(ctx, connector, *printLogs, t)
-		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&ver)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if version != extVersion {
+		if ver != extVersion {
 			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
 		}
 		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions false")
@@ -642,12 +647,12 @@ func TestExtensionUpgrade(t *testing.T) {
 	db.Close(ctx)
 
 	// start a new connector and test --upgrade-prerelease-extensions as true
-	// the default installed ext version is rc2 now it should upgrade it to rc4
+	// the default installed ext ver is rc2 now it should upgrade it to rc4
 	func() {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
 		flags := []string{"-upgrade-prerelease-extensions", "true"}
-		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, flags, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, semver.MustParse(version.Promscale), *printLogs, flags, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -674,7 +679,7 @@ func TestExtensionUpgrade(t *testing.T) {
 
 func TestMigrationFailure(t *testing.T) {
 	var err error
-	var version string
+	var ver string
 
 	if true {
 		t.Skip("Temporarily disabled test")
@@ -694,13 +699,13 @@ func TestMigrationFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+	err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&ver)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	db.Close(ctx)
-	if version != extVersion {
+	if ver != extVersion {
 		t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
 	}
 
@@ -709,7 +714,7 @@ func TestMigrationFailure(t *testing.T) {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
 		flags := []string{"-upgrade-extensions", "false"}
-		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, flags, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, semver.MustParse(version.Promscale), *printLogs, flags, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -720,13 +725,13 @@ func TestMigrationFailure(t *testing.T) {
 			t.Fatal(err)
 
 		}
-		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&version)
+		err = db.QueryRow(ctx, `SELECT extversion FROM pg_extension where extname='timescaledb'`).Scan(&ver)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		db.Close(ctx)
-		if version != "1.7.3" {
+		if ver != "1.7.3" {
 			t.Fatal("failed to verify upgrade extension with -upgrade-prerelease-extension false")
 		}
 		t.Logf("successfully tested extension upgrade flow with --upgrade-prereleases-extensions false.")
@@ -737,7 +742,7 @@ func TestMigrationFailure(t *testing.T) {
 	func() {
 		connectorImage := "timescale/promscale:latest"
 		databaseName := "postgres"
-		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, *printLogs, []string{}, databaseName)
+		connector, err := testhelpers.StartConnectorWithImage(ctx, dbContainer, connectorImage, semver.MustParse(version.Promscale), *printLogs, []string{}, databaseName)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -7,6 +7,7 @@ package testhelpers
 import (
 	"context"
 	"fmt"
+	"github.com/blang/semver/v4"
 	"io"
 	"os"
 	"regexp"
@@ -671,7 +672,7 @@ func setDataNodePermissions(container testcontainers.Container) error {
 
 var ConnectorPort = nat.Port("9201/tcp")
 
-func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Container, image string, printLogs bool, cmds []string, dbname string) (testcontainers.Container, error) {
+func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Container, image string, version semver.Version, printLogs bool, cmds []string, dbname string) (testcontainers.Container, error) {
 	dbUser := promUser
 	if dbname == "postgres" {
 		dbUser = "postgres"
@@ -681,13 +682,27 @@ func StartConnectorWithImage(ctx context.Context, dbContainer testcontainers.Con
 		dbHost = "host.docker.internal"
 	}
 
-	cmd := []string{
-		"-db-host", dbHost,
-		"-db-port", pgPort.Port(),
-		"-db-user", dbUser,
-		"-db-password", "password",
-		"-db-name", dbname,
-		"-db-ssl-mode", "prefer",
+	// In Promscale 0.10.0 we renamed some flags. We need to keep the old ones around for older promscale versions (used in upgrade tests).
+	var cmd []string
+	if version.GE(semver.MustParse("0.10.0")) {
+
+		cmd = []string{
+			"-db.host", dbHost,
+			"-db.port", pgPort.Port(),
+			"-db.user", dbUser,
+			"-db.password", "password",
+			"-db.name", dbname,
+			"-db.ssl-mode", "prefer",
+		}
+	} else {
+		cmd = []string{
+			"-db-host", dbHost,
+			"-db-port", pgPort.Port(),
+			"-db-user", dbUser,
+			"-db-password", "password",
+			"-db-name", dbname,
+			"-db-ssl-mode", "prefer",
+		}
 	}
 
 	req := testcontainers.ContainerRequest{
