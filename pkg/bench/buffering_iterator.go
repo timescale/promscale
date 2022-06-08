@@ -16,6 +16,7 @@ import (
 
 var pool = chunkenc.NewPool()
 var needNextChunks int32 = 0
+var sentChunkRequests int32 = 0
 var fetchChunks int32 = 0
 var asyncFetchChunks int32 = 0
 
@@ -106,6 +107,7 @@ func (bi *BufferingIterator) sendNextChunkRequest() {
 		select {
 		case chunkFetchCh <- chunkRequest{bi.chunkR, bi.chunksMeta[bi.chunkIndex+1], bi.nextChunkCh}:
 			bi.nextChunkRequestSent = true
+			atomic.AddInt32(&sentChunkRequests, 1)
 		default:
 		}
 	}
