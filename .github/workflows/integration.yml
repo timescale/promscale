@@ -38,7 +38,8 @@ jobs:
       run: |
         branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
         possible_branch_tag=$(echo ${branch_name}-ts2-pg${{matrix.pg}})
-        stable_branch_tag=$(echo 0.5.0-ts2-pg${{matrix.pg}})
+        extension_version=$(cat EXTENSION_VERSION | tr -d '[:space:]')
+        stable_branch_tag=$(echo ${extension_version}-ts2-pg${{matrix.pg}})
         image_base="ghcr.io/timescale/dev_promscale_extension"
         docker_image=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${stable_branch_tag})
         echo "::set-output name=docker_image::${docker_image}"

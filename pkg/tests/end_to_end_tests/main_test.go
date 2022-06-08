@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	constants "github.com/timescale/promscale/pkg/tests"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,12 +32,11 @@ import (
 )
 
 var (
-	testDatabase      = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	updateGoldenFiles = flag.Bool("update", false, "update the golden files of this test")
-	useDocker         = flag.Bool("use-docker", true, "start database using a docker container")
-	useTimescaleDB    = flag.Bool("use-timescaledb", true, "use TimescaleDB")
-	// TODO (james): Replace hardcoded value
-	timescaleDockerImage  = flag.String("timescale-docker-image", "ghcr.io/timescale/dev_promscale_extension:0.5.0-ts2-pg14", "TimescaleDB docker image to run tests against")
+	testDatabase          = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	updateGoldenFiles     = flag.Bool("update", false, "update the golden files of this test")
+	useDocker             = flag.Bool("use-docker", true, "start database using a docker container")
+	useTimescaleDB        = flag.Bool("use-timescaledb", true, "use TimescaleDB")
+	timescaleDockerImage  = flag.String("timescale-docker-image", constants.PromscaleExtensionContainer, "TimescaleDB docker image to run tests against")
 	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
 	useTimescaleDBNightly = flag.Bool("use-timescaledb-nightly", false, "use TimescaleDB nightly images")
 	printLogs             = flag.Bool("print-logs", false, "print TimescaleDB logs")
