@@ -12,10 +12,12 @@ import (
 //The buffering is needed because iterating inside the chunk causes io seeks
 //because of the memory mapping. It makes it impossible for the benchmarker
 //to keep up.
+
+var pool = chunkenc.NewPool()
+
 type BufferingIterator struct {
 	chunkR        tsdb.ChunkReader
 	chunksMeta    []chunks.Meta
-	pool          chunkenc.Pool
 	chunkIndex    int
 	chunk         chunkenc.Chunk
 	chunkIterator chunkenc.Iterator
@@ -26,7 +28,6 @@ func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *Bu
 	return &BufferingIterator{
 		chunkR:     chunkR,
 		chunksMeta: chunksMeta,
-		pool:       chunkenc.NewPool(),
 		chunkIndex: -1,
 	}
 }
@@ -64,10 +65,10 @@ func (bi *BufferingIterator) nextChunk() bool {
 			panic("old chunk isn't exhausted")
 		}
 		bi.chunkIterator = nil
-		bi.pool.Put(bi.chunk)
+		pool.Put(bi.chunk)
 	}
 
-	bi.chunk, err = bi.pool.Get(encoding, data)
+	bi.chunk, err = pool.Get(encoding, data)
 	if err != nil {
 		bi.err = err
 		return false
