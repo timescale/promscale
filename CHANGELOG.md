@@ -16,7 +16,9 @@ We use the following categories for changes:
 ## [0.11.1] - 2022-06-08
 
 ### Fixed
-- Trace query returns empty result when queried with 
+- Support arrays as trace attribute values [#1381]
+- Add HEAD and OPTIONS methods for `/healthz` endpoint [#1378]
+- Trace query returns empty result when queried with
   - Tags from process table in Jaeger UI [#1385]
   - Tags that have a numeric value, like `http.status_code=200` [#1385]
   - Tags that involve status code [#1384]
