@@ -15,7 +15,9 @@ import (
 //to keep up.
 
 var pool = chunkenc.NewPool()
-var needNextChunk int32 = 0
+var needNextChunks int32 = 0
+var fetchChunks int32 = 0
+var asyncFetchChunks int32 = 0
 
 type chunkRequest struct {
 	chunkR     tsdb.ChunkReader
@@ -47,7 +49,7 @@ func fetchChunk(chunkR tsdb.ChunkReader, chunkMeta chunks.Meta) (chunkenc.Chunk,
 	//this is the key part, we are copying the bytes
 	copy(data, dataOriginal)
 
-	atomic.AddInt32(&needNextChunk, -1)
+	atomic.AddInt32(&fetchChunks, 1)
 	return pool.Get(encoding, data)
 }
 
@@ -58,6 +60,7 @@ func chunkFetchWorker(requests <-chan chunkRequest) {
 			panic(err)
 		}
 		request.responseCh <- chk
+		atomic.AddInt32(&asyncFetchChunks, 1)
 	}
 }
 
@@ -79,7 +82,7 @@ func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *Bu
 		chunkIndex:  -1,
 		nextChunkCh: make(chan chunkenc.Chunk, 1),
 	}
-	atomic.AddInt32(&needNextChunk, 1)
+	atomic.AddInt32(&needNextChunks, 1)
 	bi.sendNextChunkRequest()
 	return bi
 }
@@ -128,10 +131,11 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 			return false, err
 		}
 	}
-	atomic.AddInt32(&needNextChunk, 1)
+	atomic.AddInt32(&needNextChunks, 1)
 	bi.nextChunkRequestSent = false
 	bi.chunkIterator = bi.chunk.Iterator(bi.chunkIterator)
 	bi.chunkIndex++
+	bi.sendNextChunkRequest()
 	return true, nil
 }
 
