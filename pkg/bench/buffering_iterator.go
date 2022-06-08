@@ -2,6 +2,7 @@ package bench
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -14,6 +15,7 @@ import (
 //to keep up.
 
 var pool = chunkenc.NewPool()
+var needNextChunk int32 = 0
 
 type chunkRequest struct {
 	chunkR     tsdb.ChunkReader
@@ -45,6 +47,7 @@ func fetchChunk(chunkR tsdb.ChunkReader, chunkMeta chunks.Meta) (chunkenc.Chunk,
 	//this is the key part, we are copying the bytes
 	copy(data, dataOriginal)
 
+	atomic.AddInt32(&needNextChunk, -1)
 	return pool.Get(encoding, data)
 }
 
@@ -76,6 +79,7 @@ func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *Bu
 		chunkIndex:  -1,
 		nextChunkCh: make(chan chunkenc.Chunk, 1),
 	}
+	atomic.AddInt32(&needNextChunk, 1)
 	bi.sendNextChunkRequest()
 	return bi
 }
@@ -124,6 +128,7 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 			return false, err
 		}
 	}
+	atomic.AddInt32(&needNextChunk, 1)
 	bi.nextChunkRequestSent = false
 	bi.chunkIterator = bi.chunk.Iterator(bi.chunkIterator)
 	bi.chunkIndex++
