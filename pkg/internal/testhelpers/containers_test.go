@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	constants "github.com/timescale/promscale/pkg/tests"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -46,8 +47,7 @@ func TestWithDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	// TODO (james): Replace hardcoded value
-	extensionState := NewTestOptions(timescaleBit, "ghcr.io/timescale/dev_promscale_extension:0.5.0-ts2-pg14")
+	extensionState := NewTestOptions(timescaleBit, constants.PromscaleExtensionContainer)
 	WithDB(t, *testDatabase, Superuser, false, extensionState, func(db *pgxpool.Pool, t testing.TB, connectURL string) {
 		var res int
 		err := db.QueryRow(context.Background(), "SELECT 1").Scan(&res)
@@ -63,8 +63,7 @@ func TestWithDB(t *testing.T) {
 func runMain(m *testing.M) int {
 	flag.Parse()
 	ctx := context.Background()
-	// TODO (james): Replace hardcoded value
-	extensionState := NewTestOptions(timescaleBit, "ghcr.io/timescale/dev_promscale_extension:0.5.0-ts2-pg14")
+	extensionState := NewTestOptions(timescaleBit, constants.PromscaleExtensionContainer)
 	if !testing.Short() && *useDocker {
 		_, closer, err := StartPGContainer(ctx, nil, extensionState, "", false)
 		if err != nil {

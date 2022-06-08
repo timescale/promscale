@@ -26,7 +26,8 @@ pkg/tests/testdata/traces-dataset.sz:
 
 .PHONY: e2e
 e2e: CURRENT_BRANCH?=$(shell git branch --show-current | sed 's#/#-#')
-e2e: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg14 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg14 $(GHCR_DOCKER_BASE):0.5.0-ts2-pg14)
+e2e: EXTENSION_VERSION=$(shell cat EXTENSION_VERSION | tr -d '[:space:]')
+e2e: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg14 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg14 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg14)
 e2e: pkg/tests/testdata/traces-dataset.sz generate
 	go test -v ./pkg/tests/end_to_end_tests/ -timescale-docker-image=$(DOCKER_IMAGE)
 	go test -v ./pkg/tests/end_to_end_tests/ -use-timescaledb=false -timescale-docker-image=$(DOCKER_IMAGE)
@@ -34,7 +35,8 @@ e2e: pkg/tests/testdata/traces-dataset.sz generate
 
 .PHONY: upgrade-test
 upgrade-test: CURRENT_BRANCH?=$(shell git branch --show-current | sed 's#/#-#')
-upgrade-test: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg13 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg13 $(GHCR_DOCKER_BASE):0.5.0-ts2-pg13)
+upgrade-test: EXTENSION_VERSION=$(shell cat EXTENSION_VERSION | tr -d '[:space:]')
+upgrade-test: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg13 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg13 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg13)
 upgrade-test:
 	go test -v ./pkg/tests/upgrade_tests/ -timescale-docker-image=$(DOCKER_IMAGE)
 
