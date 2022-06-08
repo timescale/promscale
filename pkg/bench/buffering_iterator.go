@@ -83,7 +83,9 @@ func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *Bu
 		chunkIndex:  -1,
 		nextChunkCh: make(chan chunkenc.Chunk, 1),
 	}
-	atomic.AddInt32(&needNextChunks, 1)
+	if bi.nextChunkExists() {
+		atomic.AddInt32(&needNextChunks, 1)
+	}
 	bi.sendNextChunkRequest()
 	return bi
 }
@@ -133,7 +135,9 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 			return false, err
 		}
 	}
-	atomic.AddInt32(&needNextChunks, 1)
+	if bi.nextChunkExists() {
+		atomic.AddInt32(&needNextChunks, 1)
+	}
 	bi.nextChunkRequestSent = false
 	bi.chunkIterator = bi.chunk.Iterator(bi.chunkIterator)
 	bi.chunkIndex++
