@@ -137,12 +137,13 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 			return false, err
 		}
 	}
-	if bi.nextChunkExists() {
-		atomic.AddInt32(&needNextChunks, 1)
-	}
+
 	bi.nextChunkRequestSent = false
 	bi.chunkIterator = bi.chunk.Iterator(bi.chunkIterator)
 	bi.chunkIndex++
+	if bi.nextChunkExists() {
+		atomic.AddInt32(&needNextChunks, 1)
+	}
 	bi.sendNextChunkRequest()
 	return true, nil
 }
