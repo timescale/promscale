@@ -17,6 +17,7 @@ import (
 var pool = chunkenc.NewPool()
 var needNextChunks int32 = 0
 var sentChunkRequests int32 = 0
+var sentChunkFull int32 = 0
 var fetchChunks int32 = 0
 var asyncFetchChunks int32 = 0
 
@@ -111,6 +112,7 @@ func (bi *BufferingIterator) sendNextChunkRequest() {
 			bi.nextChunkRequestSent = true
 			atomic.AddInt32(&sentChunkRequests, 1)
 		default:
+			atomic.AddInt32(&sentChunkFull, 1)
 		}
 	}
 }
