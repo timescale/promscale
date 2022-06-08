@@ -51,11 +51,7 @@ jobs:
     - name: Figure out database container image from branch name
       id: metadata
       run: |
-        if [[ "${{ github.event_name }}" =~ 'workflow_dispatch' ]]; then
-          docker_image_12=$(echo ${{github.event.inputs.docker_image_prefix}}-pg12)
-          docker_image_13=$(echo ${{github.event.inputs.docker_image_prefix}}-pg13)
-          docker_image_14=$(echo ${{github.event.inputs.docker_image_prefix}}-pg14)
-        elif [[ "${{ github.event_name }}" =~ 'workflow_call' ]]; then
+        if [[ "${{ github.event_name }}" =~ 'workflow_call' ]]; then
           docker_image_12=$(echo ${{inputs.docker_image_prefix}}-pg12)
           docker_image_13=$(echo ${{inputs.docker_image_prefix}}-pg13)
           docker_image_14=$(echo ${{inputs.docker_image_prefix}}-pg14)
