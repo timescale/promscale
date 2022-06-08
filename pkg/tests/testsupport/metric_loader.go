@@ -21,14 +21,36 @@ type PromLoader interface {
 }
 
 type promLoader struct {
-	db     *tsdb.DBReadOnly
-	blocks []tsdb.BlockReader
+	db       *tsdb.DBReadOnly
+	blocks   []tsdb.BlockReader
+	inMemory bool
 }
 
 // PromIterator allows us to iterate over Prometheus data
 type PromIterator interface {
 	Next() bool
 	Get() TimeSeries
+}
+
+type inMemoryIterator struct {
+	data   []TimeSeries
+	curIdx int
+}
+
+func (s *inMemoryIterator) Next() bool {
+	if s.curIdx == len(s.data)-1 {
+		return false
+	}
+	s.curIdx++
+	return true
+}
+
+func (s *inMemoryIterator) Get() TimeSeries {
+	return s.data[s.curIdx]
+}
+
+func (s *inMemoryIterator) append(ts TimeSeries) {
+	s.data = append(s.data, ts)
 }
 
 type TimeSeries struct {
@@ -47,7 +69,7 @@ type promIterator struct {
 	blocks       []tsdb.BlockReader
 	curBlockIdx  int
 	labelsCache  map[uint64]labels.Labels
-	blockSamples []*BlockSample
+	blockSamples []BlockSample
 	curSampleIdx int
 }
 
@@ -81,7 +103,7 @@ func (i *promIterator) Next() bool {
 func (it *promIterator) loadBlockSamples() error {
 	log.Info("msg", "loading blocks", "total samples", it.blocks[it.curBlockIdx].Meta().Stats.NumSamples,
 		"series", it.blocks[it.curBlockIdx].Meta().Stats.NumSeries)
-	it.blockSamples = make([]*BlockSample, it.blocks[it.curBlockIdx].Meta().Stats.NumSamples)
+	it.blockSamples = make([]BlockSample, it.blocks[it.curBlockIdx].Meta().Stats.NumSamples)
 	it.labelsCache = make(map[uint64]labels.Labels, it.blocks[it.curBlockIdx].Meta().Stats.NumSeries)
 	querier, err := tsdb.NewBlockQuerier(it.blocks[it.curBlockIdx], math.MinInt64, math.MaxInt64)
 	if err != nil {
@@ -103,8 +125,7 @@ func (it *promIterator) loadBlockSamples() error {
 		}
 		for seriesIt.Next() {
 			ts, val := seriesIt.At()
-			sample := &BlockSample{ts, val, lblsHash}
-			it.blockSamples[sampleCounter] = sample
+			it.blockSamples[sampleCounter] = BlockSample{ts, val, lblsHash}
 			sampleCounter++
 		}
 	}
@@ -130,11 +151,13 @@ func (i *promIterator) Get() TimeSeries {
 		Labels:  protoLabels,
 		Samples: []prompb.Sample{sample},
 	}
-
 	return TimeSeries{blockSample.lblsHash, ts}
 }
 
-func NewPromLoader(dataDir string) (PromLoader, error) {
+// PromLoader can preload the whole dataset in memory which can be useful to
+// get accurate memory allocations when benchmarking. However it does mean that bench
+// test needs more memory to run so make sure that test dataset can fit into memory
+func NewPromLoader(dataDir string, inMemory bool) (PromLoader, error) {
 	db, err := tsdb.OpenDBReadOnly(dataDir, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error starting Prometheus TSDB in read-only: %v", err)
@@ -143,11 +166,20 @@ func NewPromLoader(dataDir string) (PromLoader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error loading data blocks: %v", err)
 	}
-	return &promLoader{db: db, blocks: blocks}, nil
+	return &promLoader{db: db, blocks: blocks, inMemory: inMemory}, nil
 }
 
 func (loader *promLoader) Iterator() PromIterator {
-	return &promIterator{blocks: loader.blocks, curSampleIdx: -1, curBlockIdx: -1}
+	it := &promIterator{blocks: loader.blocks, curSampleIdx: -1, curBlockIdx: -1}
+	if loader.inMemory {
+		store := &inMemoryIterator{data: make([]TimeSeries, 0), curIdx: -1}
+		for it.Next() {
+			ts := it.Get()
+			store.append(ts)
+		}
+		return store
+	}
+	return it
 }
 
 func (loader *promLoader) Close() error {
@@ -200,7 +232,7 @@ func (si *sampleIngestor) shardSamples() {
 			si.shards[shardIdx] <- sample.Val
 			if si.rate != nil {
 				if err := si.rate.Wait(context.Background()); err != nil {
-					log.Error(err)
+					log.Error("msg", err)
 				}
 			}
 		}
@@ -208,21 +240,32 @@ func (si *sampleIngestor) shardSamples() {
 }
 
 func (si *sampleIngestor) ingestSamples(ingest IngestFunc) {
-	var wg sync.WaitGroup
+	var shardWg sync.WaitGroup
+	var ingestWg sync.WaitGroup
+	reqCh := make(chan prompb.WriteRequest, 100)
 	for i := 0; i < len(si.shards); i++ {
-		wg.Add(1)
+		ingestWg.Add(1)
+		go func() {
+			defer func() {
+				ingestWg.Done()
+			}()
+			for req := range reqCh {
+				if _, _, err := ingest(context.Background(), &req); err != nil {
+					log.Error("msg", err)
+				}
+			}
+		}()
+		shardWg.Add(1)
 		go func(shard int) {
 			defer func() {
-				wg.Done()
+				shardWg.Done()
 			}()
 			var req prompb.WriteRequest = prompb.WriteRequest{Timeseries: make([]prompb.TimeSeries, si.batchSize)}
 			counter := 0
 			for ts := range si.shards[shard] {
 				if counter == si.batchSize {
-					if _, _, err := ingest(context.Background(), &req); err != nil {
-						log.Error(err)
-					}
 					req = prompb.WriteRequest{Timeseries: make([]prompb.TimeSeries, si.batchSize)}
+					reqCh <- req
 					counter = 0
 				} else {
 					req.Timeseries[counter] = ts
@@ -231,11 +274,11 @@ func (si *sampleIngestor) ingestSamples(ingest IngestFunc) {
 			}
 			if len(req.Timeseries) > 0 {
 				// flush leftovers
-				if _, _, err := ingest(context.Background(), &req); err != nil {
-					log.Error(err)
-				}
+				reqCh <- req
 			}
 		}(i)
 	}
-	wg.Wait()
+	shardWg.Wait()
+	close(reqCh)
+	ingestWg.Wait()
 }

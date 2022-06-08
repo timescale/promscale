@@ -21,7 +21,7 @@ var prometheusDataGzip = "../testdata/prometheus-data.tar.gz"
 func TestPromLoader(t *testing.T) {
 	data, err := extractPrometheusData(prometheusDataGzip, t.TempDir())
 	require.NoError(t, err, "failed to extract prometheus data")
-	loader, err := testsupport.NewPromLoader(data)
+	loader, err := testsupport.NewPromLoader(data, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func BenchmarkMetricIngest(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to extract prometheus data: %v", err)
 	}
-	loader, err := testsupport.NewPromLoader(data)
+	loader, err := testsupport.NewPromLoader(data, true) // load whole dataset in memory so we can better track allocations during ingest
 	require.NoError(b, err)
 	defer func() {
 		if err := loader.Close(); err != nil {
