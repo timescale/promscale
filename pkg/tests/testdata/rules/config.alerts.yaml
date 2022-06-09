@@ -1,8 +1,10 @@
+global:
+  evaluation_interval: 1s
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - 'localhost:8080'
+            - 'localhost:9093'
 
 rule_files:
   - alerts.yaml

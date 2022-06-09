@@ -148,8 +148,7 @@ func TestSendBatches(t *testing.T) {
 	}
 	firstReq := &insertDataRequest{metric: "test", data: data, finished: &workFinished, errChan: errChan}
 	copierCh := make(chan readRequest)
-	batcherWG := sync.WaitGroup{}
-	go sendBatches(&batcherWG, firstReq, nil, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, copierCh)
+	go sendBatches(firstReq, nil, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, copierCh)
 	copierReq := <-copierCh
 	batch := <-copierReq.copySender
 

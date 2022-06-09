@@ -46,8 +46,6 @@ type pgxDispatcher struct {
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
 	closed                 *uber_atomic.Bool
-	metricBatchers         sync.WaitGroup
-	batchersMux            sync.RWMutex
 	doneWG                 sync.WaitGroup
 }
 
@@ -192,14 +190,10 @@ func (p *pgxDispatcher) Close() {
 	}
 	p.closed.Store(true)
 	close(p.completeMetricCreation)
-	p.batchersMux.Lock()
 	p.batchers.Range(func(key, value interface{}) bool {
 		close(value.(chan *insertDataRequest))
 		return true
 	})
-	p.batchersMux.Unlock()
-	// Wait for metric batchers to shutdown.
-	p.metricBatchers.Wait()
 
 	close(p.copierReadRequestCh)
 	close(p.doneChannel)
@@ -237,16 +231,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 				maxt = ts
 			}
 		}
-		// the following is usually non-blocking, just a channel insert
-		acceptDataRequest := p.getMetricBatcher(metricName)
-		// Technically, we are doing a write in the next line. But, we use a read lock here since
-		// batchersMux is designed to prevent race between close of channel A in p.Close() and
-		// inserting of data in channel A here.
-		// Hence, taking a read lock here is performant as there is no harm in sending data
-		// concurrently in the channel.
-		p.batchersMux.RLock()
-		acceptDataRequest <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
-		p.batchersMux.RUnlock()
+		p.getMetricBatcher(metricName) <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
 	span.SetAttributes(attribute.String("num_rows", fmt.Sprintf("%d", numRows)))
 	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
@@ -327,8 +312,7 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
-			p.metricBatchers.Add(1)
-			go runMetricBatcher(p.conn, &p.metricBatchers, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh)
+			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh)
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)

@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -72,44 +72,63 @@ func TestAlerts(t *testing.T) {
 		require.NoError(t, rules.Validate(rulesCfg))
 		require.True(t, rulesCfg.ContainsRules())
 
-		manager, err := rules.NewManager(context.Background(), prometheus.NewRegistry(), pgClient, rulesCfg)
+		rulesCtx, stopRuler := context.WithCancel(context.Background())
+		defer stopRuler()
+
+		manager, err := rules.NewManager(rulesCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
 		require.NoError(t, err)
 
 		require.NotNil(t, rulesCfg.PrometheusConfig)
 		require.NoError(t, manager.ApplyConfig(rulesCfg.PrometheusConfig))
-		require.NoError(t, manager.Update(time.Millisecond*100, rulesCfg.PrometheusConfig.RuleFiles, nil, ""))
 
-		stopManager := make(chan struct{})
+		// Start the dummy alertmanager.
 		go func() {
-			go func() {
-				require.NoError(t, manager.Run(), "error running rules manager")
+			defer func() {
+				stopRuler()
 			}()
-			<-stopManager
-			manager.Stop()
+			// Start alerts receiver.
+			err := waitForAlertWithName("Test")
+			require.NoError(t, err) // If expected alert was received, no error will be returned.
 		}()
 
-		// Start alerts receiver.
-		alertReceived := make(chan bool)
-		stopAM := make(chan struct{})
-		alertsReceiver(t, stopAM, alertReceived)
-
-		success := <-alertReceived // Wait for the expected alert to receive.
-		require.True(t, success, "did not get expected alert")
-
-		stopAM <- struct{}{} // Stop AM.
-		<-stopAM             // Wait for AM to shutdown.
-
-		close(stopManager)
-		close(alertReceived) // This should always be called after AM is stopped, otherwise it may cause a panic.
+		require.NoError(t, manager.Run(), "error running rules manager")
 	})
 }
 
-// alertsReceiver looks for alert requests by reusing modules from alertmanager.
+// waitForAlertWithName looks for alert requests by reusing modules from alertmanager.
 // Most of the implementation is coped from
 // https://github.com/prometheus/alertmanager/blob/f958b8be84b870e363f7dafcbeb807b463269a75/cmd/alertmanager/main.go#L186
-func alertsReceiver(t testing.TB, stop chan struct{}, alertReceived chan<- bool) {
+//
+// The below code aims to be a dummy alertmanager, that can accept an alert from Promscale.
+func waitForAlertWithName(expected string) error {
+	apiAM, wg, handler, err := setupAM(expected) // This function contains the code from alertmanager.
+	if err != nil {
+		return fmt.Errorf("error setting up dummy alert server: %w", err)
+	}
+
+	router := route.New()
+	mux := apiAM.Register(router, "") // URL same as that given in alerting config.
+
+	server := http.Server{Addr: "localhost:9093", Handler: mux}
+	wg.Add(1)
+	go func() {
+		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
+	wg.Wait()
+	server.Close()
+
+	return handler.err
+}
+
+// The aim of this function is to abstract out the code of setting up alertmanager that is copied from alertmanager repo
+// from the actual test.
+func setupAM(expected string) (*api.API, *sync.WaitGroup, *fakeAlerts, error) {
 	f, err := ioutil.TempFile(os.TempDir(), "*.alerts.test")
-	require.NoError(t, err)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	silences, err := silence.New(silence.Options{
 		SnapshotFile: f.Name(),
@@ -117,45 +136,35 @@ func alertsReceiver(t testing.TB, stop chan struct{}, alertReceived chan<- bool)
 		Logger:       log.GetLogger(),
 		Metrics:      prometheus.DefaultRegisterer,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	var disp *dispatch.Dispatcher
 	groupFn := func(routeFilter func(*dispatch.Route) bool, alertFilter func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
 		return disp.Groups(routeFilter, alertFilter)
 	}
 
+	alertsReceiverWG := new(sync.WaitGroup)
+	alertsHandler := newFakeAlerts([]*types.Alert{}, false, alertsReceiverWG, expected)
 	apiAM, err := api.New(api.Options{
-		Alerts:     newFakeAlerts([]*types.Alert{}, false, alertReceived),
+		Alerts:     alertsHandler,
 		Silences:   silences,
 		StatusFunc: types.NewMarker(prometheus.NewRegistry()).Status,
 		Logger:     log.GetLogger(),
 		Registry:   prometheus.NewRegistry(),
 		GroupFunc:  groupFn,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	conf, err := amConfig.LoadFile(amConfigPath)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	apiAM.Update(conf, func(model.LabelSet) {})
-
-	u, err := url.Parse("http://localhost:8080")
-	require.NoError(t, err)
-
-	router := route.New()
-	mux := apiAM.Register(router, u.Path)
-	srv := &http.Server{Addr: ":8080", Handler: mux}
-	go func() {
-		go func() {
-			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-				log.Warn("msg", "unexpected error serving alert requests", "err", err.Error())
-			}
-		}()
-		<-stop // Wait for test to complete before shutdown.
-		require.NoError(t, srv.Shutdown(context.Background()))
-		disp.Stop()
-		require.NoError(t, os.RemoveAll(f.Name()))
-		stop <- struct{}{}
-	}()
+	return apiAM, alertsReceiverWG, alertsHandler, nil
 }
 
 // copied from
@@ -163,21 +172,23 @@ func alertsReceiver(t testing.TB, stop chan struct{}, alertReceived chan<- bool)
 //
 // fakeAlerts is a struct implementing the provider.Alerts interface for tests.
 type fakeAlerts struct {
-	fps     map[model.Fingerprint]int
-	alerts  []*types.Alert
-	success chan<- bool
-	err     error
+	fps               map[model.Fingerprint]int
+	alerts            []*types.Alert
+	expectedAlertName string
+	wg                *sync.WaitGroup
+	err               error
 }
 
-func newFakeAlerts(alerts []*types.Alert, withErr bool, sigSuccess chan<- bool) *fakeAlerts {
+func newFakeAlerts(alerts []*types.Alert, withErr bool, wg *sync.WaitGroup, expectedAlertName string) *fakeAlerts {
 	fps := make(map[model.Fingerprint]int)
 	for i, a := range alerts {
 		fps[a.Fingerprint()] = i
 	}
 	f := &fakeAlerts{
-		alerts:  alerts,
-		fps:     fps,
-		success: sigSuccess,
+		alerts:            alerts,
+		fps:               fps,
+		expectedAlertName: expectedAlertName,
+		wg:                wg,
 	}
 	if withErr {
 		f.err = fmt.Errorf("error occurred")
@@ -190,7 +201,14 @@ func (f *fakeAlerts) Get(model.Fingerprint) (*types.Alert, error) {
 	return nil, nil
 }
 func (f *fakeAlerts) Put(alerts ...*types.Alert) error {
-	f.success <- alerts[0].Name() == "Test"
+	// Check if the first alert name matches with the expected alert name that is declared in Promscale rules config .
+	if alerts[0].Name() == f.expectedAlertName { // Declared in /testdata/rules/alerts.yaml
+		log.Info("msg", "alert received matches with expected alert name")
+	} else {
+		f.err = fmt.Errorf("received alert does not match with the expected alert name")
+		log.Error("msg", f.err.Error())
+	}
+	f.wg.Done()
 	return f.err
 }
 
