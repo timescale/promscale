@@ -31,20 +31,11 @@ type Config struct {
 }
 
 func (cfg *Config) ContainsRules() bool {
-	if cfg.PrometheusConfig == nil {
-		return false
-	}
-	promCfg := cfg.PrometheusConfig
-	if len(promCfg.RuleFiles) == 0 {
-		log.Info("msg", "Rules files not found in the given Prometheus configuration file. Both rule-manager and alerting will not be initialized")
-		return false
-	}
+	return cfg.PrometheusConfig != nil && len(cfg.PrometheusConfig.RuleFiles) != 0
+}
 
-	if promCfg.AlertingConfig.AlertRelabelConfigs == nil && promCfg.AlertingConfig.AlertmanagerConfigs == nil {
-		// This is true when alerting config is not applied.
-		log.Info("msg", "Alerting configuration not present in the given Prometheus configuration file. Alerting will not be initialized")
-	}
-	return true
+func (cfg *Config) ContainsAlertingConfig() bool {
+	return cfg.PrometheusConfig != nil && len(cfg.PrometheusConfig.AlertingConfig.AlertmanagerConfigs) != 0
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
