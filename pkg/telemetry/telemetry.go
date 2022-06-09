@@ -27,7 +27,11 @@ import (
 // that will be monitored every hour and filled into _ps_catalog.promscale_instance_information table and then into
 // the _timescaledb_catalog.metadata table.
 type Engine interface {
+	// RegisterMetric registers a Prometheus metric with a column name. This metric is
+	// monitored every telemetrySync and updated in the telemetry table.
 	RegisterMetric(columnName string, gaugeOrCounterMetric ...prometheus.Metric) error
+	// Write writes a telemetry information into the database instantly.
+	Write(key, value string)
 	Start()
 	Stop()
 }
@@ -119,6 +123,10 @@ func (t *engineImpl) writeToTimescaleMetadataTable(m Metadata) {
 		// in case we fix the _timescaledb_catalog.metadata permissions in the future.
 		_ = t.syncWithMetadataTable(metadataUpdateNoExtension, m)
 	}
+}
+
+func (t *engineImpl) Write(key, value string) {
+	t.writeToTimescaleMetadataTable(map[string]string{key: value})
 }
 
 func (t *engineImpl) syncWithMetadataTable(queryFormat string, m Metadata) error {
@@ -391,4 +399,5 @@ type Noop struct{}
 func NewNoopEngine() Engine                                    { return Noop{} }
 func (Noop) Start()                                            {}
 func (Noop) Stop()                                             {}
+func (Noop) Write(string, string)                              {}
 func (Noop) RegisterMetric(string, ...prometheus.Metric) error { return nil }

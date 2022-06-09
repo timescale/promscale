@@ -222,7 +222,18 @@ func Run(cfg *Config) error {
 		},
 	)
 
+	pendingTelemetry := map[string]string{
+		"rules_enabled":    "false", // Will be written in telemetry table as `promscale_rules_enabled: false`
+		"alerting_enabled": "false", // `promscale_alerting_enabled: false`
+	}
 	if cfg.RulesCfg.ContainsRules() {
+		pendingTelemetry["rules_enabled"] = "true"
+		if cfg.RulesCfg.ContainsAlertingConfig() {
+			pendingTelemetry["alerting_enabled"] = "true"
+		} else {
+			log.Debug("msg", "Alerting configuration not present in the given Prometheus configuration file. Alerting will not be initialized")
+		}
+
 		rulesCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 
@@ -245,7 +256,16 @@ func Run(cfg *Config) error {
 				stopRuler()
 			},
 		)
+	} else {
+		log.Debug("msg", "Rules files not found in the given Prometheus configuration file. Both rule-manager and alerting will not be initialized")
 	}
+
+	// Asynchronously update the telemetry information.
+	go func() {
+		for k, v := range pendingTelemetry {
+			telemetryEngine.Write(k, v)
+		}
+	}()
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
