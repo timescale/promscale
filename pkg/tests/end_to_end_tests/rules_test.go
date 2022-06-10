@@ -23,7 +23,10 @@ import (
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
-const RecordingRulesEvalConfigPath = "../testdata/rules/config.recording_rules_eval.yaml"
+const (
+	RecordingRulesEvalConfigPath  = "../testdata/rules/config.recording_rules_eval.yaml"
+	EmptyRecordingRulesConfigPath = "../testdata/rules/config.empty_rules.yaml"
+)
 
 func TestRecordingRulesEval(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
@@ -56,22 +59,27 @@ func TestRecordingRulesEval(t *testing.T) {
 			OutageTolerance:           rules.DefaultOutageTolerance,
 			ForGracePeriod:            rules.DefaultForGracePeriod,
 			ResendDelay:               rules.DefaultResendDelay,
-			PrometheusConfigAddress:   RecordingRulesEvalConfigPath,
+			PrometheusConfigAddress:   EmptyRecordingRulesConfigPath, // Start with empty rules.
 		}
 		require.NoError(t, rules.Validate(rulesCfg))
-		require.True(t, rulesCfg.ContainsRules())
+		require.False(t, rulesCfg.ContainsRules())
 
 		ruleCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 
-		manager, err := rules.NewManager(ruleCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
+		manager, reloadRules, err := rules.NewManager(ruleCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
 		require.NoError(t, err)
 
 		require.NotNil(t, rulesCfg.PrometheusConfig)
+		require.NoError(t, reloadRules())
+		require.False(t, rulesCfg.ContainsRules())
+
+		ruleGroups := manager.RuleGroups()
+		require.Equal(t, 0, len(ruleGroups))
 
 		manager.WithPostRulesProcess(func(*prom_rules.Group, time.Time, log.Logger) error {
 			defer func() {
-				stopRuler() // Cancels the context so that the blocking manager.Run() is released when the test finishes.
+				stopRuler() // Shuts down the manager.Run() as soon as the test completes.
 			}()
 			// Check if recording rule as a metric exists in metric catalog table.
 			var exists bool
@@ -88,8 +96,13 @@ func TestRecordingRulesEval(t *testing.T) {
 
 			return nil
 		})
-		require.NoError(t, manager.ApplyConfig(rulesCfg.PrometheusConfig))
-		require.NoError(t, manager.Run(), "error running rules manager") // This is blocking. It will be released after stopRuler() in defer func.
+		// Reload with configuration file that contains some rules.
+		rulesCfg.PrometheusConfigAddress = RecordingRulesEvalConfigPath
+		require.NoError(t, reloadRules())
+		require.True(t, rulesCfg.ContainsRules())
+		require.Equal(t, 1, len(manager.RuleGroups()))
+
+		require.NoError(t, manager.Run(), "error running rules manager")
 	})
 }
 

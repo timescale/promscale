@@ -32,7 +32,7 @@ type Manager struct {
 	postRulesProcessing prom_rules.RuleGroupPostProcessFunc
 }
 
-func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*Manager, error) {
+func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*Manager, func() error, error) {
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
@@ -44,7 +44,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 	// For the moment, we do not have any external UI url, hence we provide an empty one.
 	parsedUrl, err := url.Parse("")
 	if err != nil {
-		return nil, fmt.Errorf("parsing UI-URL: %w", err)
+		return nil, nil, fmt.Errorf("parsing UI-URL: %w", err)
 	}
 
 	rulesManager := prom_rules.NewManager(&prom_rules.ManagerOptions{
@@ -60,12 +60,24 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		ForGracePeriod:  cfg.ForGracePeriod,
 		ResendDelay:     cfg.ResendDelay,
 	})
-	return &Manager{
+
+	manager := &Manager{
 		ctx:              ctx,
 		rulesManager:     rulesManager,
 		notifierManager:  notifierManager,
 		discoveryManager: discoveryManagerNotify,
-	}, nil
+	}
+	return manager, manager.getReloader(cfg), nil
+}
+
+func (m *Manager) getReloader(cfg *Config) func() error {
+	return func() error {
+		err := Validate(cfg) // This refreshes the RulesCfg.PrometheusConfig entry in RulesCfg after reading the PrometheusConfigAddress.
+		if err != nil {
+			return fmt.Errorf("error validating rules-config: %w", err)
+		}
+		return errors.WithMessage(m.ApplyConfig(cfg.PrometheusConfig), "error applying config")
+	}
 }
 
 func (m *Manager) WithPostRulesProcess(f prom_rules.RuleGroupPostProcessFunc) {
