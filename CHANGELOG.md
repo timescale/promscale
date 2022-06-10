@@ -21,6 +21,7 @@ We use the following categories for changes:
 - Telemetry for recording rules and alerting [#1424]
 - Set number of ingest copiers to the number of DB CPUs [#1387]
 - Telemetry for helm chart installations [#1429]
+- Ability to reload rules and alerting config [#1426]
 
 ### Fixed
 - Trace query returns empty result when queried with 

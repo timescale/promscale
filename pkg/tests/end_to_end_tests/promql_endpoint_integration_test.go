@@ -324,7 +324,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 
 	jaegerQuery := jaegerquery.New(pgClient.QuerierConnection, &jaegerquery.DefaultConfig)
 
-	router, err := api.GenerateRouter(cfg, qryCfg, pgClient, jaegerQuery)
+	router, err := api.GenerateRouter(cfg, qryCfg, pgClient, jaegerQuery, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}
