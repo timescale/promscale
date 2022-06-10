@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"container/heap"
 	"fmt"
 	"sync/atomic"
 
@@ -16,10 +17,52 @@ import (
 
 var pool = chunkenc.NewPool()
 var needNextChunks int32 = 0
-var sentChunkRequests int32 = 0
-var sentChunkFull int32 = 0
+var enqueued int32 = 0
+var dequeued int32 = 0
 var fetchChunks int32 = 0
+var enqueueInRotate int32 = 0
+var waitInRotate int32 = 0
 var asyncFetchChunks int32 = 0
+
+type BufferingIteratorHeap []*BufferingIterator
+
+func NewBufferingIteratorHeap() BufferingIteratorHeap {
+	bit := BufferingIteratorHeap(make([]*BufferingIterator, 0))
+	heap.Init(&bit)
+	return bit
+}
+
+func (pq BufferingIteratorHeap) Len() int { return len(pq) }
+
+func (pq BufferingIteratorHeap) Less(i, j int) bool {
+	tsi := int64(-1)
+	tsj := int64(-1)
+	if pq[i].chunkIterator != nil {
+		tsi, _ = pq[i].At()
+	}
+	if pq[j].chunkIterator != nil {
+		tsj, _ = pq[j].At()
+	}
+	return tsi < tsj
+}
+
+func (pq *BufferingIteratorHeap) Swap(i, j int) {
+	(*pq)[i], (*pq)[j] = (*pq)[j], (*pq)[i]
+}
+
+func (pq *BufferingIteratorHeap) Push(x interface{}) {
+	item := x.(*BufferingIterator)
+	*pq = append(*pq, item)
+}
+
+func (pq *BufferingIteratorHeap) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil // avoid memory leak
+	*pq = old[0 : n-1]
+	return item
+}
 
 type chunkRequest struct {
 	chunkR     tsdb.ChunkReader
@@ -28,6 +71,7 @@ type chunkRequest struct {
 }
 
 var chunkFetchCh chan chunkRequest
+var q BufferingIteratorHeap = NewBufferingIteratorHeap()
 
 //todo move out of init
 func init() {
@@ -67,14 +111,14 @@ func chunkFetchWorker(requests <-chan chunkRequest) {
 }
 
 type BufferingIterator struct {
-	chunkR               tsdb.ChunkReader
-	chunksMeta           []chunks.Meta
-	chunkIndex           int
-	chunk                chunkenc.Chunk
-	nextChunkCh          chan chunkenc.Chunk
-	nextChunkRequestSent bool
-	chunkIterator        chunkenc.Iterator
-	err                  error
+	chunkR        tsdb.ChunkReader
+	chunksMeta    []chunks.Meta
+	chunkIndex    int
+	chunk         chunkenc.Chunk
+	nextChunkCh   chan chunkenc.Chunk
+	isInQueue     bool
+	chunkIterator chunkenc.Iterator
+	err           error
 }
 
 func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *BufferingIterator {
@@ -86,8 +130,8 @@ func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *Bu
 	}
 	if bi.nextChunkExists() {
 		atomic.AddInt32(&needNextChunks, 1)
+		bi.enqueue()
 	}
-	bi.sendNextChunkRequest()
 	return bi
 }
 
@@ -105,16 +149,31 @@ func (bi *BufferingIterator) nextChunkExists() bool {
 	return len(bi.chunksMeta)-1 >= bi.chunkIndex+1
 }
 
-func (bi *BufferingIterator) sendNextChunkRequest() {
-	if !bi.nextChunkRequestSent && bi.nextChunkExists() {
+func distributeRequests() {
+	for {
+		if len(q) == 0 {
+			return
+		}
+		next := q[0]
 		select {
-		case chunkFetchCh <- chunkRequest{bi.chunkR, bi.chunksMeta[bi.chunkIndex+1], bi.nextChunkCh}:
-			bi.nextChunkRequestSent = true
-			atomic.AddInt32(&sentChunkRequests, 1)
+		case chunkFetchCh <- chunkRequest{next.chunkR, next.chunksMeta[next.chunkIndex+1], next.nextChunkCh}:
+			next.dequeue()
 		default:
-			atomic.AddInt32(&sentChunkFull, 1)
+			return
 		}
 	}
+}
+
+func (bi *BufferingIterator) enqueue() {
+	atomic.AddInt32(&enqueued, 1)
+	bi.isInQueue = true
+	heap.Push(&q, bi)
+}
+
+func (bi *BufferingIterator) dequeue() {
+	atomic.AddInt32(&dequeued, 1)
+	bi.isInQueue = false
+	heap.Pop(&q)
 }
 
 func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
@@ -128,23 +187,29 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 		pool.Put(bi.chunk)
 	}
 
-	if bi.nextChunkRequestSent {
-		bi.chunk = <-bi.nextChunkCh
-	} else {
-		var err error
-		bi.chunk, err = fetchChunk(bi.chunkR, bi.chunksMeta[bi.chunkIndex+1])
-		if err != nil {
-			return false, err
+	if bi.isInQueue {
+		next := q[0]
+		if next != bi {
+			panic("expected the current bi to be next in rotate")
 		}
+		atomic.AddInt32(&enqueueInRotate, 1)
+		chunkFetchCh <- chunkRequest{next.chunkR, next.chunksMeta[next.chunkIndex+1], next.nextChunkCh}
+		bi.dequeue()
+	}
+	select {
+	case bi.chunk = <-bi.nextChunkCh:
+	default:
+		atomic.AddInt32(&waitInRotate, 1)
+		bi.chunk = <-bi.nextChunkCh
 	}
 
-	bi.nextChunkRequestSent = false
 	bi.chunkIterator = bi.chunk.Iterator(bi.chunkIterator)
 	bi.chunkIndex++
+
 	if bi.nextChunkExists() {
 		atomic.AddInt32(&needNextChunks, 1)
+		bi.enqueue()
 	}
-	bi.sendNextChunkRequest()
 	return true, nil
 }
 
@@ -166,12 +231,17 @@ func (bi *BufferingIterator) Next() bool {
 	}
 
 	if bi.chunkIterator != nil && bi.chunkIterator.Next() {
-		//only send request if I can fulfill curren sample and haven't already sent one
-		if !bi.nextChunkRequestSent {
-			bi.sendNextChunkRequest()
+		if bi.isInQueue {
+			next := q[0]
+			if next != bi {
+				panic("expected the current bi to be next")
+			}
+			heap.Fix(&q, 0)
 		}
 		return true
 	}
+
+	distributeRequests()
 
 	return bi.nextChunk()
 }
