@@ -211,7 +211,7 @@ WITH (timescaledb.continuous) AS
 		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
-		labelsReader := lreader.NewLabelsReader(dbConn, lCache)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, nil)

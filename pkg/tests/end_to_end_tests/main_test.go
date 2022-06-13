@@ -8,12 +8,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	constants "github.com/timescale/promscale/pkg/tests"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/timescale/promscale/pkg/tenancy"
+	constants "github.com/timescale/promscale/pkg/tests"
 
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
@@ -60,6 +62,7 @@ var (
 	// timeseriesWithExemplars is a singleton instance for testing generated timeseries for exemplars based E2E tests.
 	// The called must ensure to use by call/copy only.
 	timeseriesWithExemplars []prompb.TimeSeries
+	noopReadAuthorizer      = tenancy.NewNoopAuthorizer().ReadAuthorizer()
 )
 
 func init() {

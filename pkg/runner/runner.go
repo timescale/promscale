@@ -251,8 +251,9 @@ func Run(cfg *Config) error {
 	mux.Handle("/", router)
 
 	server := http.Server{
-		Addr:    cfg.ListenAddr,
-		Handler: mux,
+		Addr:              cfg.ListenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: time.Second * 30, // To mitigate Slowloris DDoS attack. Value is arbitrary picked
 	}
 	group.Add(
 		func() error {

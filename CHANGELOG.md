@@ -24,6 +24,7 @@ We use the following categories for changes:
   - Tags from process table in Jaeger UI [#1385]
   - Tags that have a numeric value, like `http.status_code=200` [#1385]
   - Tags that involve status code [#1384]
+- List label values of allowed tenants only [#1427] 
 
 ## [0.11.0] - 2022-05-11
 

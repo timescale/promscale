@@ -23,6 +23,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/query"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 var rawExemplar = []prompb.Exemplar{
@@ -198,7 +199,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		// We do not check num of insertablesIngested and metadataIngested returned above from ingestor.Ingest,
 		// since the return will be 0, as they have already been ingested by TestExemplarIngestion.
 
-		labelsReader := lreader.NewLabelsReader(pgxconn.NewPgxConn(db), cache.NewLabelsCache(cache.DefaultConfig))
+		labelsReader := lreader.NewLabelsReader(pgxconn.NewPgxConn(db), cache.NewLabelsCache(cache.DefaultConfig), tenancy.NewNoopAuthorizer().ReadAuthorizer())
 		r := querier.NewQuerier(
 			pgxconn.NewPgxConn(db),
 			cache.NewMetricCache(cache.DefaultConfig),

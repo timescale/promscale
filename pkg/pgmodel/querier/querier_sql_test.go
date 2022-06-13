@@ -17,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 func TestPGXQuerierQuery(t *testing.T) {
@@ -720,7 +721,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error setting up mock cache: %s", err.Error())
 			}
-			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0))}}
+			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0), tenancy.NewNoopAuthorizer().ReadAuthorizer())}}
 
 			result, err := querier.RemoteReadQuerier().Query(c.query)
 
