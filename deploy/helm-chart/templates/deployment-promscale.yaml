@@ -45,8 +45,12 @@ spec:
           {{- with .Values.extraArgs }}
           {{ toYaml . | nindent 10 }}
           {{- end }}
-          {{- if .Values.extraEnv }}
           env:
+            - name: TOBS_TELEMETRY_INSTALLED_BY
+              value: "promscale"
+            - name: "TOBS_TELEMETRY_VERSION"
+              value: "{{ .Chart.Version }}"
+          {{- if .Values.extraEnv }}
             {{- range $.Values.extraEnv }}
             - name: {{ .name }}
               value: {{ tpl (.value | quote) $ }}
