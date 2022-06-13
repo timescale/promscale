@@ -20,6 +20,7 @@ We use the following categories for changes:
 - Add `readinessProbe` in helm chart [#1266]
 - Telemetry for recording rules and alerting [#1424]
 - Set number of ingest copiers to the number of DB CPUs [#1387]
+- Telemetry for helm chart installations [#1429]
 
 ### Fixed
 - Trace query returns empty result when queried with 

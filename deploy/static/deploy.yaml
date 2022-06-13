@@ -111,6 +111,11 @@ spec:
           name: promscale-connector
           args:
           - "-config=/etc/promscale/config.yaml"
+          env:
+            - name: TOBS_TELEMETRY_INSTALLED_BY
+              value: "promscale"
+            - name: "TOBS_TELEMETRY_VERSION"
+              value: "0.11.0"
           envFrom:
           - secretRef:
               name: promscale
