@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 func TestLabelsReaderLabelsNames(t *testing.T) {
@@ -105,6 +106,8 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 		name        string
 		expectedRes []string
 		sqlQueries  []model.SqlQuery
+		labelName   string
+		tenant      tenancy.AuthConfig
 	}{
 		{
 			name: "Error on query",
@@ -116,6 +119,7 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 					Err:     fmt.Errorf("some error"),
 				},
 			},
+			labelName: "m",
 		}, {
 			name: "Error on scanning values",
 			sqlQueries: []model.SqlQuery{
@@ -125,6 +129,7 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 					Results: model.RowResults{{1}},
 				},
 			},
+			labelName: "m",
 		}, {
 			name: "Empty result, is ok",
 			sqlQueries: []model.SqlQuery{
@@ -134,6 +139,7 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 					Results: model.RowResults{},
 				},
 			},
+			labelName:   "m",
 			expectedRes: []string{},
 		}, {
 			name: "Result should be sorted",
@@ -145,6 +151,32 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 				},
 			},
 			expectedRes: []string{"a", "b"},
+			labelName:   "m",
+		},
+		{
+			name: "Tenant values are not filtered when tenant is not configured",
+			sqlQueries: []model.SqlQuery{
+				{
+					Sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					Args:    []interface{}{tenancy.TenantLabelKey},
+					Results: model.RowResults{{"a"}, {"b"}},
+				},
+			},
+			expectedRes: []string{"a", "b"},
+			labelName:   tenancy.TenantLabelKey,
+		},
+		{
+			name: "Tenant values are filtered when tenant is configured",
+			sqlQueries: []model.SqlQuery{
+				{
+					Sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
+					Args:    []interface{}{tenancy.TenantLabelKey},
+					Results: model.RowResults{{"a"}, {"b"}},
+				},
+			},
+			expectedRes: []string{"a"},
+			labelName:   tenancy.TenantLabelKey,
+			tenant:      tenancy.NewSelectiveTenancyConfig([]string{"a"}, false),
 		},
 	}
 
@@ -152,7 +184,10 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(tc.sqlQueries, t)
 			querier := labelsReader{conn: mock}
-			res, err := querier.LabelValues("m")
+			if tc.tenant != nil {
+				querier = labelsReader{conn: mock, authConfig: tc.tenant}
+			}
+			res, err := querier.LabelValues(tc.labelName)
 
 			var expectedErr error
 			for _, q := range tc.sqlQueries {

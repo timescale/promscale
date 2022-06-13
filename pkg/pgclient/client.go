@@ -142,7 +142,7 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 		AsyncAcks:              cfg.AsyncAcks,
 	}
 
-	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache)
+	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache, mt.ReadAuthorizer())
 	exemplarKeyPosCache := cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
 
 	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)

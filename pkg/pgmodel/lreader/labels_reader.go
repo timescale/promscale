@@ -15,6 +15,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 const (
@@ -33,13 +34,18 @@ type LabelsReader interface {
 	LabelsForIdMap(idMap map[int64]labels.Label) (err error)
 }
 
-func NewLabelsReader(conn pgxconn.PgxConn, labels cache.LabelsCache) LabelsReader {
-	return &labelsReader{conn: conn, labels: labels}
+func NewLabelsReader(conn pgxconn.PgxConn, labels cache.LabelsCache, mt tenancy.ReadAuthorizer) LabelsReader {
+	var authConfig tenancy.AuthConfig
+	if mt != nil {
+		authConfig = mt.(tenancy.AuthConfig)
+	}
+	return &labelsReader{conn: conn, labels: labels, authConfig: authConfig}
 }
 
 type labelsReader struct {
-	conn   pgxconn.PgxConn
-	labels cache.LabelsCache
+	conn       pgxconn.PgxConn
+	labels     cache.LabelsCache
+	authConfig tenancy.AuthConfig
 }
 
 // LabelValues implements the LabelsReader interface. It returns all distinct values
@@ -59,8 +65,13 @@ func (lr *labelsReader) LabelValues(labelName string) ([]string, error) {
 		if err := rows.Scan(&value); err != nil {
 			return nil, err
 		}
-
-		labelValues = append(labelValues, value)
+		if labelName == tenancy.TenantLabelKey && lr.authConfig != nil {
+			if lr.authConfig.IsTenantAllowed(value) {
+				labelValues = append(labelValues, value)
+			}
+		} else {
+			labelValues = append(labelValues, value)
+		}
 	}
 
 	sort.Strings(labelValues)
