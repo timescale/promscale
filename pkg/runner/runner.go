@@ -136,6 +136,7 @@ func Run(cfg *Config) error {
 			return fmt.Errorf("error running database metrics: %w", err)
 		}
 	}
+	dbMetrics.InitHealthCheck(client.Connection)
 
 	rulesCtx, stopRuler := context.WithCancel(context.Background())
 	defer stopRuler()
