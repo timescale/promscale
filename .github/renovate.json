@@ -9,6 +9,12 @@
   "labels": ["dependencies"],
   "regexManagers": [
     {
+      "fileMatch": ["^EXTENSION_VERSION$"],
+      "matchStrings": ["(?<currentValue>.*?)"],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "timescale/promscale_extension"
+    },
+    {
       "fileMatch": ["^\\.github\\/workflows\\/[^/]+\\.ya?ml$"],
       "matchStrings": ["golangci-lint-version:\\s(?<currentValue>.*?)\\n"],
       "datasourceTemplate": "github-tags",
