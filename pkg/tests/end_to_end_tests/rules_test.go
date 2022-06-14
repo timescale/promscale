@@ -31,9 +31,8 @@ const (
 func TestRecordingRulesEval(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		conf := &pgclient.Config{
-			CacheConfig:             cache.DefaultConfig,
-			WriteConnectionsPerProc: 4,
-			MaxConnections:          -1,
+			CacheConfig:    cache.DefaultConfig,
+			MaxConnections: -1,
 		}
 
 		pgClient, err := pgclient.NewClientWithPool(conf, 1, db, tenancy.NewNoopAuthorizer(), false)

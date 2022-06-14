@@ -23,22 +23,22 @@ import (
 
 // Config for the database.
 type Config struct {
-	CacheConfig             cache.Config
-	AppName                 string
-	Host                    string
-	Port                    int
-	User                    string
-	Password                string
-	Database                string
-	SslMode                 string
-	DbConnectionTimeout     time.Duration
-	IgnoreCompressedChunks  bool
-	AsyncAcks               bool
-	WriteConnectionsPerProc int
-	MaxConnections          int
-	UsesHA                  bool
-	DbUri                   string
-	EnableStatementsCache   bool
+	CacheConfig            cache.Config
+	AppName                string
+	Host                   string
+	Port                   int
+	User                   string
+	Password               string
+	Database               string
+	SslMode                string
+	DbConnectionTimeout    time.Duration
+	IgnoreCompressedChunks bool
+	AsyncAcks              bool
+	WriteConnections       int
+	MaxConnections         int
+	UsesHA                 bool
+	DbUri                  string
+	EnableStatementsCache  bool
 }
 
 const (
@@ -74,7 +74,8 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.BoolVar(&cfg.IgnoreCompressedChunks, "metrics.ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
 		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
 		"However, setting this to true will save your resources that may be required during decompression. ")
-	fs.IntVar(&cfg.WriteConnectionsPerProc, "db.num-writer-connections", 1, "Maximum number of database connections for writing per go thread (as configured via GOMAXPROCS)")
+	fs.IntVar(&cfg.WriteConnections, "db.num-writer-connections", 0, "Number of database connections for writing metrics to database. "+
+		"By default, this will be set based on the number of CPUs available to the DB Promscale is connected to.")
 	fs.IntVar(&cfg.MaxConnections, "db.connections-max", -1, "Maximum number of connections to the database that should be opened at once. "+
 		"It defaults to 80% of the maximum connections that the database can handle.")
 	fs.StringVar(&cfg.DbUri, "db.uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. "+
@@ -136,8 +137,8 @@ func (cfg *Config) GetConnectionStr() string {
 
 func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err error) {
 	maxProcs := runtime.GOMAXPROCS(-1)
-	if cfg.WriteConnectionsPerProc < 1 {
-		return 0, 0, 0, fmt.Errorf("invalid number of connections-per-proc %v, must be at least 1", cfg.WriteConnectionsPerProc)
+	if cfg.WriteConnections < 0 {
+		return 0, 0, 0, fmt.Errorf("invalid number of writer connections %v, cannot be a negative number", cfg.WriteConnections)
 	}
 
 	conn, err := pgx.Connect(context.Background(), cfg.GetConnectionStr())
@@ -146,7 +147,6 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 	}
 	defer func() { _ = conn.Close(context.Background()) }()
 
-	perProc := cfg.WriteConnectionsPerProc
 	max = cfg.MaxConnections
 	if max < 1 {
 		var maxStr string
@@ -182,9 +182,8 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 		return 0, 0, 0, fmt.Errorf("error fetching number of CPUs from extension: %w", err)
 	}
 
-	// TODO: change this setting to be absolute number of copiers.
-	if perProc > 1 {
-		numCopiers = perProc * numCopiers
+	if cfg.WriteConnections > 0 {
+		numCopiers = cfg.WriteConnections
 	}
 
 	// We want to leave some connections for non-copier usages, so in the event
@@ -192,7 +191,7 @@ func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err er
 	// preferences we'll scale down the number of copiers.
 	min = numCopiers
 	if max <= min {
-		log.Warn("msg", fmt.Sprintf("database can only handle %v connection; connector has %v procs", max, maxProcs))
+		log.Warn("msg", fmt.Sprintf("database can only handle %v connection; connector needs %v connections at minimum", max, min))
 		return 1, max, max / 2, nil
 	}
 
