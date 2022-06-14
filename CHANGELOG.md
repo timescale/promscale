@@ -18,6 +18,9 @@ We use the following categories for changes:
 ### Added
 - Network latency metric [#1431]
 
+### Changed
+- `db.num-writer-connections` now sets the absolute number of write connections for writing metrics. [#1430]
+
 ## [0.12.0] - 2022-06-21
 
 ### Added

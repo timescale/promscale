@@ -307,9 +307,8 @@ func buildRouter(pool *pgxpool.Pool) (*mux.Router, *pgclient.Client, error) {
 func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router, *pgclient.Client, error) {
 	api.InitMetrics()
 	conf := &pgclient.Config{
-		CacheConfig:             cache.DefaultConfig,
-		WriteConnectionsPerProc: 4,
-		MaxConnections:          -1,
+		CacheConfig:    cache.DefaultConfig,
+		MaxConnections: -1,
 	}
 
 	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
