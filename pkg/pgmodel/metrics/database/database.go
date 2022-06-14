@@ -152,10 +152,6 @@ func handleResults(results pgx.BatchResults, m []metricQueryWrap) {
 		val := new(int64)
 		err := results.QueryRow().Scan(&val)
 		if err != nil {
-			if metric.isHealthCheck {
-				dbHealthErrors.Inc()
-				updateMetric(metric.metric, 1)
-			}
 			log.Warn("msg", fmt.Sprintf("error evaluating database metric: %s", metric.metric), "err", err.Error())
 			return
 		}
