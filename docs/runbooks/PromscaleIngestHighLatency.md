@@ -9,9 +9,10 @@ Promscale data ingestion is taking more time than expected
 Ingestion performance will be poor
 
 ## Diagnosis
-1. Go to grafana dashboard about Promscale and check **Evictions** panel in **Cache** row. If you see high eviction rate, it means that Promscale caches are too small and you need to adjust it (go to [Small Promscale cache sizes](#small-promscale-cache-sizes) for mitigation steps)
-2. Run query `select datname, count(application_name) from pg_stat_activity where application_name like '%promscale%' group by datname;`. This will give you the total number of Postgres connections taken by Promscale per database. This should be roughly equal to the number of CPU cores on the database machine. Go to [Low Promscale writer connections](#low-promscale-writer-connections) for mitigation steps.
-3. Verify CPU and memory resource consumption of the timescale DB. Go to [Database is under high load](#database-is-under-high-load) for mitigation steps.
+1. Go to grafana dashboard about Promscale and check the **Network latency** panel in **Database** row. If latency is high, go to [High network latency](#high-network-latency).
+2. Go to grafana dashboard about Promscale and check **Evictions** panel in **Cache** row. If you see high eviction rate, it means that Promscale caches are too small and you need to adjust it (go to [Small Promscale cache sizes](#small-promscale-cache-sizes) for mitigation steps)
+3. Run query `select datname, count(application_name) from pg_stat_activity where application_name like '%promscale%' group by datname;`. This will give you the total number of Postgres connections taken by Promscale per database. This should be roughly equal to the number of CPU cores on the database machine. Go to [Low Promscale writer connections](#low-promscale-writer-connections) for mitigation steps.
+4. Verify CPU and memory resource consumption of the timescale DB. Go to [Database is under high load](#database-is-under-high-load) for mitigation steps.
 
 ## Mitigation
 

@@ -1,14 +1,10 @@
 package database
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -28,53 +24,40 @@ var (
 			ConstLabels: map[string]string{"type": "promscale_sql"},
 		},
 	)
-)
-
-func init() {
-	prometheus.MustRegister(dbHealthErrors, upMetric)
-}
-
-func InitHealthCheck(conn pgxconn.PgxConn) {
-	dbHealthCheck := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Namespace: util.PromNamespace,
-			Subsystem: "sql_database",
-			Name:      "health_check_total",
-			Help:      "Total number of database health checks performed.",
-		},
-	)
-	dbNetworkLatency := prometheus.NewGaugeFunc(
+	dbNetworkLatency = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace:   util.PromNamespace,
 			Subsystem:   "sql_database",
 			Name:        "network_latency_milliseconds",
 			Help:        "Network latency between Promscale and Database. A negative value indicates a failed health check.",
 			ConstLabels: map[string]string{"type": "promscale_sql"},
-		}, func() float64 {
-			// This function is called everytime Prometheus scrapes /metrics of Promscale.
-			// We use this to an advantage and do the health check as much as is expected by Prometheus.
-			val := 0
-			start := time.Now()
-			err := conn.QueryRow(context.Background(), "SELECT 1").Scan(&val)
-			latency := float64(time.Since(start).Milliseconds())
-			dbHealthCheck.Add(1) // Increment the dbHealthCheck.
-			if err != nil {
-				latency = -1
-				dbHealthErrors.Inc()
-				log.Error("msg", "health check failed", "err", err.Error())
-			}
-			return latency
 		},
 	)
-	prometheus.MustRegister(dbHealthCheck, dbNetworkLatency)
+)
+
+func init() {
+	prometheus.MustRegister(dbHealthErrors, upMetric, dbNetworkLatency)
 }
 
 type metricQueryWrap struct {
-	metric prometheus.Collector
-	query  string
+	metric        prometheus.Collector
+	query         string
+	isHealthCheck bool
 }
 
 var metrics = []metricQueryWrap{
+	{
+		metric: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "health_check_total",
+				Help:      "Total number of database health checks performed.",
+			},
+		),
+		query:         "SELECT 1",
+		isHealthCheck: true,
+	},
 	{
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
