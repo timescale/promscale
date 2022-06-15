@@ -16,6 +16,7 @@ Ingestion and querying operations will have frequent failures. This may also lea
 5. Go to Query section
 6. See the **Errors (HTTP)** graph. If you see high error rates, see [Invalid or corrupt query data](#invalid-or-corrupt-query-data) for mitigation
 7. Check Postgres logs to see if there are any errors. If found, see [Database is unhealthy](#database-is-unhealthy) and [Ingestion data is invalid or corrupt](#ingestion-data-is-invalid-or-corrupt) for mitigation
+8. Go to grafana dashboard about Promscale and check the **Network latency** panel in **Database** row. If latency is high, go to [High network latency](PromscaleIngestHighLatency.md#high-network-latency)
 
 ## Mitigation
 

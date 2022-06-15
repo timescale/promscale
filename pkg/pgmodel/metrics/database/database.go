@@ -113,8 +113,14 @@ func (e *metricsEngineImpl) Run() error {
 // Update blocks until all db metrics are updated. This can be useful in E2E test when we want to avoid concurrent behaviour.
 func (e *metricsEngineImpl) Update() error {
 	batch := e.conn.NewBatch()
-	for i := range e.metrics {
-		batch.Queue(e.metrics[i].query)
+	batchMetrics := []metricQueryWrap{}
+	for _, m := range e.metrics {
+		if m.isHealthCheck {
+			healthCheck(e.conn, m)
+			continue
+		}
+		batch.Queue(m.query)
+		batchMetrics = append(batchMetrics, m)
 	}
 
 	batchCtx, cancelBatch := context.WithTimeout(e.ctx, timeout)
@@ -129,8 +135,27 @@ func (e *metricsEngineImpl) Update() error {
 		log.Warn("msg", "context error while evaluating the database metrics batch", "err", batchCtx.Err().Error())
 		return err
 	}
-	handleResults(results, e.metrics)
+	handleResults(results, batchMetrics)
 	return results.Close()
+}
+
+func healthCheck(conn pgxconn.PgxConn, healthMetric metricQueryWrap) {
+	val := 0
+
+	start := time.Now()
+	err := conn.QueryRow(context.Background(), healthMetric.query).Scan(&val)
+	networkLatency := time.Since(start).Milliseconds()
+
+	updateMetric(healthMetric.metric, 1)
+	if err != nil {
+		dbHealthErrors.Inc()
+		log.Error("msg", "health check failed", "err", err.Error())
+		// Important to set to -ve, otherwise if the connection is lost, latency will keep
+		// showing last latency of successful connection, if we choose to not update during
+		// an error.
+		networkLatency = -1
+	}
+	dbNetworkLatency.Set(float64(networkLatency))
 }
 
 // getBackoff returns a conditional backoff duration that is an exponential increment.
@@ -152,7 +177,7 @@ func handleResults(results pgx.BatchResults, m []metricQueryWrap) {
 		val := new(int64)
 		err := results.QueryRow().Scan(&val)
 		if err != nil {
-			log.Warn("msg", fmt.Sprintf("error evaluating database metric: %s", metric.metric), "err", err.Error())
+			log.Warn("msg", fmt.Sprintf("error evaluating database metric with query: %s", metric.query), "err", err.Error())
 			return
 		}
 		var value int64
