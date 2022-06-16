@@ -137,48 +137,33 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	var (
-		group       run.Group
-		reloadRules func() error
+	telemetryEngine := initTelemetryEngine(client)
+	telemetryEngine.Start()
+	defer telemetryEngine.Stop()
+
+	rulesCtx, stopRuler := context.WithCancel(context.Background())
+	defer stopRuler()
+	manager, reloadRules, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg, telemetryEngine)
+	if err != nil {
+		return fmt.Errorf("error creating rules manager: %w", err)
+	}
+	cfg.APICfg.Rules = manager
+
+	var group run.Group
+	group.Add(
+		func() error {
+			// Reload the rules before starting the rules-manager to ensure all rules are healthy.
+			// Otherwise, we block the startup.
+			if err = reloadRules(); err != nil {
+				return fmt.Errorf("error reloading rules: %w", err)
+			}
+			log.Info("msg", "Started Rule-Manager")
+			return manager.Run()
+		}, func(error) {
+			log.Info("msg", "Stopping Rule-Manager")
+			stopRuler()
+		},
 	)
-	pendingTelemetry := map[string]string{
-		"rules_enabled":    "false", // Will be written in telemetry table as `promscale_rules_enabled: false`
-		"alerting_enabled": "false", // `promscale_alerting_enabled: false`
-	}
-	if cfg.RulesCfg.ContainsRules() {
-		pendingTelemetry["rules_enabled"] = "true"
-		if cfg.RulesCfg.ContainsAlertingConfig() {
-			pendingTelemetry["alerting_enabled"] = "true"
-		} else {
-			log.Debug("msg", "Alerting configuration not present in the given Prometheus configuration file. Alerting will not be initialized")
-		}
-
-		rulesCtx, stopRuler := context.WithCancel(context.Background())
-		defer stopRuler()
-
-		var manager *rules.Manager
-		manager, reloadRules, err = rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg)
-		if err != nil {
-			return fmt.Errorf("error creating rules manager: %w", err)
-		}
-		cfg.APICfg.Rules = manager
-
-		if err := reloadRules(); err != nil {
-			return err
-		}
-
-		group.Add(
-			func() error {
-				log.Info("msg", "Started Rule-Manager")
-				return manager.Run()
-			}, func(error) {
-				log.Info("msg", "Stopping Rule-Manager")
-				stopRuler()
-			},
-		)
-	} else {
-		log.Debug("msg", "Rules files not found in the given Prometheus configuration file. Both rule-manager and alerting will not be initialized")
-	}
 
 	jaegerQuery := query.New(client.QuerierConnection, &cfg.TracingCfg)
 
@@ -187,10 +172,6 @@ func Run(cfg *Config) error {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
 	}
-
-	telemetryEngine := initTelemetryEngine(client)
-	telemetryEngine.Start()
-	defer telemetryEngine.Stop()
 
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
 		srv := thanos.NewStorage(client.Queryable())
@@ -264,13 +245,6 @@ func Run(cfg *Config) error {
 		},
 	)
 
-	// Asynchronously update the telemetry information.
-	go func() {
-		for k, v := range pendingTelemetry {
-			telemetryEngine.Write(k, v)
-		}
-	}()
-
 	mux := http.NewServeMux()
 	mux.Handle("/", router)
 
@@ -304,7 +278,12 @@ func Run(cfg *Config) error {
 	group.Add(
 		func() error {
 			for {
-				switch <-c {
+				sig, open := <-c
+				if !open {
+					// Channel closed from error function. Let's shutdown.
+					return nil
+				}
+				switch sig {
 				case syscall.SIGINT:
 					return nil
 				case syscall.SIGHUP:

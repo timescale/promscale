@@ -33,6 +33,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/rules"
+	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -75,7 +76,7 @@ func TestAlerts(t *testing.T) {
 		rulesCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 
-		manager, _, err := rules.NewManager(rulesCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
+		manager, _, err := rules.NewManager(rulesCtx, prometheus.NewRegistry(), pgClient, rulesCfg, telemetry.NewNoopEngine())
 		require.NoError(t, err)
 
 		require.NotNil(t, rulesCfg.PrometheusConfig)
