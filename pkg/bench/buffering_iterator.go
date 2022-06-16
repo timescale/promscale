@@ -189,8 +189,10 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 
 	if bi.isInQueue {
 		next := q[0]
+		t1, _ := bi.At()
+		t2, _ := next.At()
 		if next != bi {
-			panic("expected the current bi to be next in rotate")
+			panic(fmt.Sprintf("expected the current bi to be next in rotate, %d, %d", t1, t2))
 		}
 		atomic.AddInt32(&enqueueInRotate, 1)
 		chunkFetchCh <- chunkRequest{next.chunkR, next.chunksMeta[next.chunkIndex+1], next.nextChunkCh}
@@ -233,8 +235,10 @@ func (bi *BufferingIterator) Next() bool {
 	if bi.chunkIterator != nil && bi.chunkIterator.Next() {
 		if bi.isInQueue {
 			next := q[0]
+			t1, _ := bi.At()
+			t2, _ := next.At()
 			if next != bi {
-				panic("expected the current bi to be next")
+				panic(fmt.Sprintf("expected the current bi to be next bi %d, next %d", t1, t2))
 			}
 			heap.Fix(&q, 0)
 		}
