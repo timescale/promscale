@@ -432,6 +432,24 @@ func dropTimescaleAndToolkitExtensionsInDB(dbname string) error {
 	return nil
 }
 
+// updateTimescaleDBInDatabase updates the timescaledb version in a named database
+func updateTimescaleDBInDatabase(database string) error {
+	ctx := context.Background()
+	db, err := pgx.Connect(ctx, PgConnectURL(database, Superuser))
+	if err != nil {
+		return fmt.Errorf("could not connect to %s db: %w", database, err)
+	}
+	defer db.Close(ctx)
+
+	_, err = db.Exec(context.Background(), "ALTER EXTENSION timescaledb UPDATE")
+
+	if err != nil {
+		return fmt.Errorf("unable to update timescaledb: %w", err)
+	}
+
+	return nil
+}
+
 func removeTimescaleAndToolkitExtensions(container testcontainers.Container) error {
 	err := dropTimescaleAndToolkitExtensionsInDB("template1")
 	if err != nil {
@@ -454,6 +472,50 @@ func removeTimescaleAndToolkitExtensions(container testcontainers.Container) err
 		return fmt.Errorf("docker exec error. exit code: %d", code)
 	}
 
+	return nil
+}
+
+// updateTimescaleDB updates the version of TimescaleDB installed in all databases in the target container
+func updateTimescaleDB() error {
+	// We don't know which databases have TimescaleDB installed. In order to
+	// determine that, we need to connect to a database. The timescale/timescaledb-ha
+	// docker image installs timescaledb into the template1 database, so that's
+	// a good place to start. We update timescaledb in that database.
+	err := updateTimescaleDBInDatabase("template1")
+	if err != nil {
+		return fmt.Errorf("error updating timescale extension in template1 db: %w", err)
+	}
+
+	ctx := context.Background()
+	db, err := pgx.Connect(ctx, PgConnectURL("template1", Superuser))
+	if err != nil {
+		return fmt.Errorf("could not connect to template1 db: %w", err)
+	}
+	defer db.Close(ctx)
+
+	// Note: We don't actually know which databases have timescaledb installed
+	// in them. Instead of spending time trying to find out, we assume that
+	// they all do. This is probably mostly correct.
+	rows, err := db.Query(ctx, "SELECT datname as name FROM pg_database;")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var database string
+		err = rows.Scan(&database)
+		if err != nil {
+			return err
+		}
+		if database == "template0" || database == "template1" {
+			continue
+		}
+		err := updateTimescaleDBInDatabase(database)
+		if err != nil {
+			return fmt.Errorf("error updating timescale extension in %s db: %w", database, err)
+		}
+	}
 	return nil
 }
 
@@ -591,6 +653,11 @@ func startPGInstance(
 	}
 	if !extensionState.UsesTimescaleDB() {
 		err = removeTimescaleAndToolkitExtensions(container)
+		if err != nil {
+			return nil, closer, err
+		}
+	} else {
+		err = updateTimescaleDB()
 		if err != nil {
 			return nil, closer, err
 		}
