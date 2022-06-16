@@ -22,6 +22,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/rules/adapters"
+	"github.com/timescale/promscale/pkg/telemetry"
 )
 
 type Manager struct {
@@ -29,10 +30,11 @@ type Manager struct {
 	rulesManager        *prom_rules.Manager
 	notifierManager     *notifier.Manager
 	discoveryManager    *discovery.Manager
+	telemetryEngine     telemetry.Engine
 	postRulesProcessing prom_rules.RuleGroupPostProcessFunc
 }
 
-func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*Manager, func() error, error) {
+func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config, t telemetry.Engine) (*Manager, func() error, error) {
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
@@ -66,6 +68,7 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		rulesManager:     rulesManager,
 		notifierManager:  notifierManager,
 		discoveryManager: discoveryManagerNotify,
+		telemetryEngine:  t,
 	}
 	return manager, manager.getReloader(cfg), nil
 }
@@ -76,7 +79,31 @@ func (m *Manager) getReloader(cfg *Config) func() error {
 		if err != nil {
 			return fmt.Errorf("error validating rules-config: %w", err)
 		}
-		return errors.WithMessage(m.ApplyConfig(cfg.PrometheusConfig), "error applying config")
+		if err = m.ApplyConfig(cfg.PrometheusConfig); err != nil {
+			return fmt.Errorf("error applying config: %w", err)
+		}
+		go m.performTelemetry(cfg) // Update the telemetry async after ensuring everything is fine in the rule files.
+		return nil
+	}
+}
+
+func (m *Manager) performTelemetry(cfg *Config) {
+	pendingTelemetry := map[string]string{
+		"rules_enabled":    "false", // Will be written in telemetry table as `promscale_rules_enabled: false`
+		"alerting_enabled": "false", // `promscale_alerting_enabled: false`
+	}
+	if cfg.ContainsRules() {
+		pendingTelemetry["rules_enabled"] = "true"
+		if cfg.ContainsAlertingConfig() {
+			pendingTelemetry["alerting_enabled"] = "true"
+		} else {
+			log.Debug("msg", "Alerting configuration not present in the given Prometheus configuration file. Alerting will not be initialized")
+		}
+	} else {
+		log.Debug("msg", "Rules files not found. Rules and alerting configuration will not be initialized")
+	}
+	for k, v := range pendingTelemetry {
+		m.telemetryEngine.Write(k, v)
 	}
 }
 

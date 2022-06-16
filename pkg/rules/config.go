@@ -51,6 +51,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 
 func Validate(cfg *Config) error {
 	if cfg.PrometheusConfigAddress == "" {
+		cfg.PrometheusConfig = &prometheus_config.DefaultConfig
 		return nil
 	}
 	promCfg, err := prometheus_config.LoadFile(cfg.PrometheusConfigAddress, false, true, log.GetLogger())

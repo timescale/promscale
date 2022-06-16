@@ -24,9 +24,11 @@ func TestValidate(t *testing.T) {
 		shouldError    bool
 	}{
 		{
-			name:           "no prometheus config",
-			config:         Config{},
-			expectedConfig: Config{},
+			name:   "no prometheus config",
+			config: Config{},
+			expectedConfig: Config{
+				PrometheusConfig: &prometheus_config.DefaultConfig,
+			},
 		},
 		{
 			name: "healthy config with no rules",
@@ -118,9 +120,6 @@ func TestValidate(t *testing.T) {
 		require.Equal(t, c.containsRules, c.config.ContainsRules(), c.name)
 
 		if c.config.PrometheusConfig != nil {
-			if c.expectedConfig.PrometheusConfig.RuleFiles == nil {
-				c.expectedConfig.PrometheusConfig.RuleFiles = []string{}
-			}
 			require.Equal(t, c.expectedConfig, c.config, c.name)
 		}
 	}
