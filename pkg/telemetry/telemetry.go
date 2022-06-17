@@ -22,6 +22,8 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
+var ErrInvalidMetric = fmt.Errorf("metric not a counter or gauge")
+
 // Engine for telemetry performs activities like inserting metadata of Promscale and Tobs (env vars with 'TOBS_TELEMETRY_')
 // into the _timescaledb_catalog.metadata table. It allows the caller to register Prometheus Counter & Gauge metrics
 // that will be monitored every hour and filled into _ps_catalog.promscale_instance_information table and then into
@@ -30,8 +32,10 @@ type Engine interface {
 	// RegisterMetric registers a Prometheus metric with a column name. This metric is
 	// monitored every telemetrySync and updated in the telemetry table.
 	RegisterMetric(columnName string, gaugeOrCounterMetric ...prometheus.Metric) error
-	// Write writes a telemetry information into the database instantly.
-	Write(key, value string)
+
+	// RegisterDynamicMetadata is a Prometheus metric that changes regularly. This is monitored
+	// every telemetrySync and updated in the telemetry table.
+	RegisterDynamicMetadata(columnName string, gauge prometheus.Metric) error
 	Start()
 	Stop()
 }
@@ -45,7 +49,8 @@ type engineImpl struct {
 	promqlEngine    *promql.Engine
 	promqlQueryable promql.Queryable
 
-	metrics sync.Map
+	metrics         sync.Map
+	dynamicMetadata sync.Map
 }
 
 func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Queryable) (Engine, error) {
@@ -76,7 +81,7 @@ func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Query
 		promqlQueryable: promqlQueryable,
 	}
 
-	if err := t.writeMetadata(); err != nil {
+	if err := t.writeStartupMetadata(); err != nil {
 		return NewNoopEngine(), fmt.Errorf("writing metadata: %w", err)
 	}
 	return t, nil
@@ -99,7 +104,7 @@ func isTelemetryOff(conn pgxconn.PgxConn) (bool, error) {
 }
 
 // writeMetadata writes Promscale and Tobs metadata.
-func (t *engineImpl) writeMetadata() error {
+func (t *engineImpl) writeStartupMetadata() error {
 	promscale := promscaleMetadata()
 	t.writeToTimescaleMetadataTable(promscale)
 
@@ -117,6 +122,9 @@ const (
 
 // writeToTimescaleMetadataTable syncs the metadata/stats with telemetry metadata table.
 func (t *engineImpl) writeToTimescaleMetadataTable(m Metadata) {
+	if len(m) == 0 {
+		return
+	}
 	// Try to update via Promscale extension.
 	if err := t.syncWithMetadataTable(metadataUpdateWithExtension, m); err != nil {
 		// Promscale extension not installed. Try to attempt to write directly as a rare attempt
@@ -125,8 +133,45 @@ func (t *engineImpl) writeToTimescaleMetadataTable(m Metadata) {
 	}
 }
 
-func (t *engineImpl) Write(key, value string) {
-	t.writeToTimescaleMetadataTable(map[string]string{key: value})
+func (t *engineImpl) RegisterDynamicMetadata(telemetryName string, gauge prometheus.Metric) error {
+	if !isGauge(gauge) {
+		return ErrInvalidMetric
+	}
+	t.dynamicMetadata.Store(telemetryName, gauge)
+	return nil
+}
+
+func (t *engineImpl) syncDynamicMetadata() error {
+	var (
+		err      error
+		val      float64
+		metadata = Metadata{}
+	)
+	t.dynamicMetadata.Range(func(key, value interface{}) bool {
+		columnName := key.(string)
+		metric := value.(prometheus.Metric)
+		val, err = util.ExtractMetricValue(metric)
+		if err != nil {
+			err = fmt.Errorf("extracting metric value of stat '%s': %w", columnName, err)
+			return false
+		}
+		var state string
+		switch val {
+		case 0:
+			state = "false"
+		case 1:
+			state = "true"
+		default:
+			err = fmt.Errorf("invalid state value '%f' for stat '%s'", val, columnName)
+		}
+		metadata[columnName] = state
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	t.writeToTimescaleMetadataTable(metadata)
+	return nil
 }
 
 func (t *engineImpl) syncWithMetadataTable(queryFormat string, m Metadata) error {
@@ -158,7 +203,10 @@ func (t *engineImpl) syncWithMetadataTable(queryFormat string, m Metadata) error
 
 func (t *engineImpl) Sync() error {
 	if err := t.syncWithInfoTable(); err != nil {
-		return err
+		return fmt.Errorf("sync info table: %w", err)
+	}
+	if err := t.syncDynamicMetadata(); err != nil {
+		return fmt.Errorf("sync dynamic metadata: %w", err)
 	}
 	t.housekeeping()
 	return nil
@@ -232,7 +280,7 @@ func (t *engineImpl) syncWithInfoTable() error {
 func (t *engineImpl) RegisterMetric(columnName string, gaugeOrCounterMetrics ...prometheus.Metric) error {
 	for _, metric := range gaugeOrCounterMetrics {
 		if !isCounterOrGauge(metric) {
-			return fmt.Errorf("metric not a counter or gauge: %v", metric)
+			return ErrInvalidMetric
 		}
 	}
 	t.metrics.Store(columnName, gaugeOrCounterMetrics)
@@ -246,6 +294,14 @@ func isCounterOrGauge(metric prometheus.Metric) bool {
 	default:
 		return false
 	}
+}
+
+func isGauge(metric prometheus.Metric) bool {
+	switch metric.(type) {
+	case prometheus.Gauge:
+		return true
+	}
+	return false
 }
 
 // syncInfoTable stats with promscale_instance_information table.
@@ -396,8 +452,8 @@ func convertIntToString(i int64) string {
 
 type Noop struct{}
 
-func NewNoopEngine() Engine                                    { return Noop{} }
-func (Noop) Start()                                            {}
-func (Noop) Stop()                                             {}
-func (Noop) Write(string, string)                              {}
-func (Noop) RegisterMetric(string, ...prometheus.Metric) error { return nil }
+func NewNoopEngine() Engine                                          { return Noop{} }
+func (Noop) Start()                                                  {}
+func (Noop) Stop()                                                   {}
+func (Noop) RegisterDynamicMetadata(string, prometheus.Metric) error { return nil }
+func (Noop) RegisterMetric(string, ...prometheus.Metric) error       { return nil }

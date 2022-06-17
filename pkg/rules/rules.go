@@ -23,18 +23,43 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/rules/adapters"
 	"github.com/timescale/promscale/pkg/telemetry"
+	"github.com/timescale/promscale/pkg/util"
 )
+
+var (
+	// These metrics are used to track telemetry by registering
+	// in telemetryEngine.RegisterDynamicMetadata()
+	rulesEnabled = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "rules",
+			Name:      "enabled",
+			Help:      "Promscale rules is enabled or not.",
+		},
+	)
+	alertingEnabled = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "alerting",
+			Name:      "enabled",
+			Help:      "Promscale alerting is enabled or not.",
+		},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(rulesEnabled, alertingEnabled)
+}
 
 type Manager struct {
 	ctx                 context.Context
 	rulesManager        *prom_rules.Manager
 	notifierManager     *notifier.Manager
 	discoveryManager    *discovery.Manager
-	telemetryEngine     telemetry.Engine
 	postRulesProcessing prom_rules.RuleGroupPostProcessFunc
 }
 
-func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config, t telemetry.Engine) (*Manager, func() error, error) {
+func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.Client, cfg *Config) (*Manager, func() error, error) {
 	discoveryManagerNotify := discovery.NewManager(ctx, log.GetLogger(), discovery.Name("notify"))
 
 	notifierManager := notifier.NewManager(&notifier.Options{
@@ -68,9 +93,18 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		rulesManager:     rulesManager,
 		notifierManager:  notifierManager,
 		discoveryManager: discoveryManagerNotify,
-		telemetryEngine:  t,
 	}
 	return manager, manager.getReloader(cfg), nil
+}
+
+func RegisterForTelemetry(t telemetry.Engine) error {
+	if err := t.RegisterDynamicMetadata("rules_enabled", rulesEnabled); err != nil {
+		return fmt.Errorf("register dynamic 'promscale_rules_enabled' metric for telemetry: %w", err)
+	}
+	if err := t.RegisterDynamicMetadata("alerting_enabled", alertingEnabled); err != nil {
+		return fmt.Errorf("register dynamic 'promscale_alerting_enabled' metric for telemetry: %w", err)
+	}
+	return nil
 }
 
 func (m *Manager) getReloader(cfg *Config) func() error {
@@ -82,29 +116,24 @@ func (m *Manager) getReloader(cfg *Config) func() error {
 		if err = m.ApplyConfig(cfg.PrometheusConfig); err != nil {
 			return fmt.Errorf("error applying config: %w", err)
 		}
-		go m.performTelemetry(cfg) // Update the telemetry async after ensuring everything is fine in the rule files.
+		m.updateTelemetry(cfg)
 		return nil
 	}
 }
 
-func (m *Manager) performTelemetry(cfg *Config) {
-	pendingTelemetry := map[string]string{
-		"rules_enabled":    "false", // Will be written in telemetry table as `promscale_rules_enabled: false`
-		"alerting_enabled": "false", // `promscale_alerting_enabled: false`
-	}
+func (m *Manager) updateTelemetry(cfg *Config) {
 	if cfg.ContainsRules() {
-		pendingTelemetry["rules_enabled"] = "true"
+		rulesEnabled.Set(1)
 		if cfg.ContainsAlertingConfig() {
-			pendingTelemetry["alerting_enabled"] = "true"
+			alertingEnabled.Set(1)
 		} else {
 			log.Debug("msg", "Alerting configuration not present in the given Prometheus configuration file. Alerting will not be initialized")
+			alertingEnabled.Set(0)
 		}
-	} else {
-		log.Debug("msg", "Rules files not found. Rules and alerting configuration will not be initialized")
+		return
 	}
-	for k, v := range pendingTelemetry {
-		m.telemetryEngine.Write(k, v)
-	}
+	log.Debug("msg", "Rules files not found. Rules and alerting configuration will not be initialized")
+	rulesEnabled.Set(0)
 }
 
 func (m *Manager) WithPostRulesProcess(f prom_rules.RuleGroupPostProcessFunc) {
