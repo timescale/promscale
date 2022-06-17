@@ -58,11 +58,12 @@ jobs:
         else
           branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
           possible_branch_tag=$(echo ${branch_name}-ts2)
-          master_branch_tag=$(echo master-ts2)
+          extension_version=$(cat EXTENSION_VERSION | tr -d '[:space:]')
+          stable_branch_tag=$(echo ${extension_version}-ts2)
           image_base="ghcr.io/timescale/dev_promscale_extension"
-          docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${master_branch_tag}-pg12)
-          docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${master_branch_tag}-pg13)
-          docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${master_branch_tag}-pg14)
+          docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${stable_branch_tag}-pg12)
+          docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${stable_branch_tag}-pg13)
+          docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${stable_branch_tag}-pg14)
         fi;
         echo "::set-output name=docker_image_12::${docker_image_12}"
         echo "::set-output name=docker_image_13::${docker_image_13}"
@@ -114,7 +115,7 @@ jobs:
 
     - name: Test ${{ matrix.test-setups.name }}
       env:
-        DOCKER_IMAGE: ${{  needs.pick_docker_image.outputs[ format('docker_image_{0}', matrix.test-setups.pg) ] }} }}
+        DOCKER_IMAGE: ${{  needs.pick_docker_image.outputs[ format('docker_image_{0}', matrix.test-setups.pg) ] }}
         TSDB: ${{ matrix.test-setups.tsdb }}
         MULTI: ${{ matrix.test-setups.multi }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
