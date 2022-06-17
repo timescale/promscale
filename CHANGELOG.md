@@ -13,22 +13,23 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [0.12.0] - 2022-06-21
 
 ### Added
 - `-enable-feature=promql-per-step-stats` feature for statistics in PromQL evaluation
 - Add `readinessProbe` in helm chart [#1266]
-- Telemetry for recording rules and alerting [#1424]
 - Set number of ingest copiers to the number of DB CPUs [#1387]
-- Telemetry for helm chart installations [#1429]
 - Ability to reload rules and alerting config [#1426]
+- Support arrays in trace attribute values [#1381]
+- Docs improvements 
 
 ### Fixed
 - Trace query returns empty result when queried with 
   - Tags from process table in Jaeger UI [#1385]
   - Tags that have a numeric value, like `http.status_code=200` [#1385]
   - Tags that involve status code [#1384]
-- List label values of allowed tenants only [#1427] 
+- List label values of allowed tenants only [#1427]
+- Race condition when stopping ingest [#1370]
 
 ## [0.11.0] - 2022-05-11
 
