@@ -23,7 +23,7 @@ var (
 )
 
 func doesSchemaMigrationTableExist(db *pgx.Conn) (exists bool, err error) {
-	const stmt = "SELECT count(*) FILTER (WHERE tablename = 'prom_schema_migrations') > 0 FROM pg_tables"
+	const stmt = "SELECT count(*) > 0 FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename = 'prom_schema_migrations'"
 	err = db.QueryRow(
 		context.Background(),
 		stmt,
