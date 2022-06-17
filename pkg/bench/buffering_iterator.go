@@ -232,13 +232,17 @@ func (bi *BufferingIterator) Next() bool {
 		return false
 	}
 
+	//get the time before the next
+	t1 := int64(0)
+	if bi.chunkIterator != nil {
+		t1, _ = bi.At()
+	}
 	if bi.chunkIterator != nil && bi.chunkIterator.Next() {
 		if bi.isInQueue {
 			next := q[0]
-			t1, _ := bi.At()
 			t2, _ := next.At()
 			if next != bi {
-				panic(fmt.Sprintf("expected the current bi to be next bi %d, next %d", t1, t2))
+				panic(fmt.Sprintf("expected the current bi to be next. BI %d, Next %d", t1, t2))
 			}
 			heap.Fix(&q, 0)
 		}
