@@ -137,13 +137,9 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	telemetryEngine := initTelemetryEngine(client)
-	telemetryEngine.Start()
-	defer telemetryEngine.Stop()
-
 	rulesCtx, stopRuler := context.WithCancel(context.Background())
 	defer stopRuler()
-	manager, reloadRules, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg, telemetryEngine)
+	manager, reloadRules, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg)
 	if err != nil {
 		return fmt.Errorf("error creating rules manager: %w", err)
 	}
@@ -172,6 +168,10 @@ func Run(cfg *Config) error {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
 	}
+
+	telemetryEngine := initTelemetryEngine(client)
+	telemetryEngine.Start()
+	defer telemetryEngine.Stop()
 
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
 		srv := thanos.NewStorage(client.Queryable())
@@ -320,6 +320,9 @@ func initTelemetryEngine(client *pgclient.Client) telemetry.Engine {
 	}
 	if err := trace.RegisterTelemetryMetrics(t); err != nil {
 		log.Error("msg", "error registering metrics for Jaeger-ingest telemetry", "err", err.Error())
+	}
+	if err := rules.RegisterForTelemetry(t); err != nil {
+		log.Error("msg", "error registering metrics for rules telemetry", "err", err.Error())
 	}
 	return t
 }

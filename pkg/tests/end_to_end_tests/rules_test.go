@@ -20,7 +20,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/rules"
-	"github.com/timescale/promscale/pkg/telemetry"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
@@ -68,7 +67,7 @@ func TestRecordingRulesEval(t *testing.T) {
 		ruleCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 
-		manager, reloadRules, err := rules.NewManager(ruleCtx, prometheus.NewRegistry(), pgClient, rulesCfg, telemetry.NewNoopEngine())
+		manager, reloadRules, err := rules.NewManager(ruleCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
 		require.NoError(t, err)
 
 		require.NotNil(t, rulesCfg.PrometheusConfig)
