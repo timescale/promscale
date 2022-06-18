@@ -208,6 +208,11 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 	bi.chunkIterator = bi.chunk.Iterator(bi.chunkIterator)
 	bi.chunkIndex++
 
+	//do this before enquing
+	if !bi.chunkIterator.Next() {
+		panic("First chunkIterator next call is false")
+	}
+
 	if bi.nextChunkExists() {
 		atomic.AddInt32(&needNextChunks, 1)
 		bi.enqueue()
@@ -224,7 +229,7 @@ func (bi *BufferingIterator) nextChunk() bool {
 	if !valid {
 		return false
 	}
-	return bi.chunkIterator.Next()
+	return true
 }
 
 func (bi *BufferingIterator) Next() bool {
