@@ -242,6 +242,10 @@ func (bi *BufferingIterator) Next() bool {
 		return false
 	}
 
+	//do this at every iteration. Try to do early so you don't
+	//have to fix the heap.
+	distributeRequests()
+
 	//get the time before the next
 	t1 := int64(0)
 	if bi.chunkIterator != nil {
@@ -258,8 +262,6 @@ func (bi *BufferingIterator) Next() bool {
 		}
 		return true
 	}
-
-	distributeRequests()
 
 	return bi.nextChunk()
 }
