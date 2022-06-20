@@ -59,6 +59,10 @@
     {
       "groupName": "docker-compose",
       "matchManagers": ["docker-compose"]
+    },
+    {
+      "groupName": "extension",
+      "matchPaths": ["EXTENSION_VERSION"]
     }
   ]
 }
