@@ -828,6 +828,39 @@ func TestPromQL(t *testing.T) {
 			},
 		},
 		{
+			name: "Regex metric name matcher RE2",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_RE,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "((?i)MeTrIc)_4",
+					},
+				},
+				StartTimestampMs: 30000,
+				EndTimestampMs:   1160000,
+			},
+		},
+		{
+			name: "Not regex metric name matcher RE2",
+			query: &prompb.Query{
+				Matchers: []*prompb.LabelMatcher{
+					{
+						Type:  prompb.LabelMatcher_NRE,
+						Name:  pgmodel.MetricNameLabelName,
+						Value: "((?i)mEtRiC)_4",
+					},
+					{
+						Type:  prompb.LabelMatcher_RE,
+						Name:  "instance",
+						Value: "(1|2)",
+					},
+				},
+				StartTimestampMs: 30000,
+				EndTimestampMs:   1160000,
+			},
+		},
+		{
 			name: "Metrics without foo label or value empty",
 			query: &prompb.Query{
 				Matchers: []*prompb.LabelMatcher{

@@ -30,6 +30,7 @@ We use the following categories for changes:
 
 ### Fixed
 - Querying traces using boolean tag values [#1457]
+- Fix RE2 regex support for label matching [#1441]
 
 ## [0.12.0] - 2022-06-21
 
