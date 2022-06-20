@@ -4,11 +4,11 @@
 *.sql @timescale/o11y-data-platform
 
 # Go deps
-go.mod @antekresic @paulfantom
-go.sum @antekresic @paulfantom
+go.mod @timescale/o11y-applications
+go.sum @timescale/o11y-applications
 
 # CI system and repository configuration
-.github/ @cevian @paulfantom
+.github/ @timescale/o11y-applications @timescale/o11y-services
 
 # Go packages
 /pkg/api @antekresic @Harkishen-Singh
@@ -19,7 +19,7 @@ go.sum @antekresic @paulfantom
 /pkg/tests/testdata/ @timescale/o11y-data-platform
 /pkg/tests/upgrade_tests/ @timescale/o11y-data-platform
 
-/docs/mixin @paulfantom @onprem
+/docs/mixin @timescale/o11y-services
 
 # helm and kubernetes related parts
-/deploy @cevian @paulfantom @onprem @JamesGuthrie
+/deploy @timescale/o11y-services @cevian @JamesGuthrie
