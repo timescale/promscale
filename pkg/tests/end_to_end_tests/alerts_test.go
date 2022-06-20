@@ -61,20 +61,17 @@ func TestAlerts(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rulesCfg := &rules.Config{
-			NotificationQueueCapacity: rules.DefaultNotificationQueueCapacity,
-			OutageTolerance:           rules.DefaultOutageTolerance,
-			ForGracePeriod:            rules.DefaultForGracePeriod,
-			ResendDelay:               time.Millisecond * 100,
-			PrometheusConfigAddress:   alertsConfigPath,
-		}
-		require.NoError(t, rules.Validate(rulesCfg))
+		rulesCfg := rules.DefaultConfig
+		rulesCfg.ResendDelay = time.Millisecond * 100
+		rulesCfg.PrometheusConfigAddress = alertsConfigPath
+
+		require.NoError(t, rules.Validate(&rulesCfg))
 		require.True(t, rulesCfg.ContainsRules())
 
 		rulesCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 
-		manager, _, err := rules.NewManager(rulesCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
+		manager, _, err := rules.NewManager(rulesCtx, prometheus.NewRegistry(), pgClient, &rulesCfg)
 		require.NoError(t, err)
 
 		require.NotNil(t, rulesCfg.PrometheusConfig)

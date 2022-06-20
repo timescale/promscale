@@ -1,0 +1,5 @@
+groups:
+  - name: g-one
+    rules:
+      - record: One
+        expr: up

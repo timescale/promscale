@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"time"
 
 	"github.com/oklog/run"
@@ -152,7 +153,17 @@ func (m *Manager) ApplyConfig(cfg *prometheus_config.Config) error {
 	if err := m.applyNotifierManagerConfig(cfg); err != nil {
 		return err
 	}
-	if err := m.rulesManager.Update(time.Duration(cfg.GlobalConfig.EvaluationInterval), cfg.RuleFiles, cfg.GlobalConfig.ExternalLabels, "", m.postRulesProcessing); err != nil {
+
+	// Get all rule files matching the configuration paths.
+	var files []string
+	for _, pat := range cfg.RuleFiles {
+		fs, err := filepath.Glob(pat)
+		if err != nil {
+			return fmt.Errorf("error retrieving rule files for %s: %w", pat, err)
+		}
+		files = append(files, fs...)
+	}
+	if err := m.rulesManager.Update(time.Duration(cfg.GlobalConfig.EvaluationInterval), files, cfg.GlobalConfig.ExternalLabels, "", m.postRulesProcessing); err != nil {
 		return fmt.Errorf("error updating rule-manager: %w", err)
 	}
 	return nil
