@@ -2271,6 +2271,22 @@ func TestPromQLQueryEndpoint(t *testing.T) {
 			query: `{__name__=~"metric_1"}`,
 		},
 		{
+			name:  "basic query, RE2 regex",
+			query: `{__name__=~"((?i)MeTrIc)_1"}`,
+		},
+		{
+			name:  "basic query, RE2 regex, match empty",
+			query: `{__name__=~"((?i).)*", instance="1"}`,
+		},
+		{
+			name:  "basic query, negative RE2 regex",
+			query: `{__name__!~"((?i).)*"}`,
+		},
+		{
+			name:  "basic query, negative RE2 regex, match empty",
+			query: `{__name__!~"((?i)mEtRiC)_4", instance="1"}`,
+		},
+		{
 			name:  "basic query, no metric name matchers",
 			query: `{instance="1", foo=""}`,
 		},

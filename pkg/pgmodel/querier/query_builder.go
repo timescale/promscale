@@ -6,17 +6,18 @@ package querier
 
 import (
 	"fmt"
-	"github.com/timescale/promscale/pkg/log"
 	"math"
 	"sort"
 	"time"
 
 	"github.com/blang/semver/v4"
+	"github.com/grafana/regexp"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
@@ -33,11 +34,22 @@ const (
 	subQueryREMatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
 	subQueryNRE           = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value !~ $%d)"
 	subQueryNREMatchEmpty = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and l.value ~ $%d)"
+
+	// RE2 regex matching sub-queries using custom regex matching function.
+	// TODO: we might want to reduce the complexity in the future by using re2_match function for all regex matching.
+	subQueryRE2            = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and _prom_ext.re2_match(l.value, $%d))"
+	subQueryRE2MatchEmpty  = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and not _prom_ext.re2_match(l.value, $%d))"
+	subQueryNRE2           = "labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and not _prom_ext.re2_match(l.value, $%d))"
+	subQueryNRE2MatchEmpty = "NOT labels && (SELECT COALESCE(array_agg(l.id), array[]::int[]) FROM _prom_catalog.label l WHERE l.key = $%d and _prom_ext.re2_match(l.value, $%d))"
 )
 
 var (
 	minTime = timestamp.FromTime(time.Unix(math.MinInt64/1000+62135596801, 0).UTC())
 	maxTime = timestamp.FromTime(time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC())
+
+	// Regex used to try to detect any non-POSIX regex features that should
+	// be treated as RE2 regexes.
+	re2Regex = regexp.MustCompile(`\(\?`)
 )
 
 func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
@@ -52,23 +64,20 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 
 		switch m.Type {
 		case labels.MatchEqual:
-			if m.Name == pgmodel.MetricNameLabelName {
+			switch m.Name {
+			case pgmodel.MetricNameLabelName:
 				cb.SetMetricName(m.Value)
-				continue
-			}
-			if m.Name == pgmodel.SchemaNameLabelName {
+			case pgmodel.SchemaNameLabelName:
 				cb.SetSchemaName(m.Value)
-				continue
-			}
-			if m.Name == pgmodel.ColumnNameLabelName {
+			case pgmodel.ColumnNameLabelName:
 				cb.SetColumnName(m.Value)
-				continue
+			default:
+				sq := subQueryEQ
+				if matchesEmpty {
+					sq = subQueryEQMatchEmpty
+				}
+				err = cb.addClause(sq, m.Name, m.Value)
 			}
-			sq := subQueryEQ
-			if matchesEmpty {
-				sq = subQueryEQMatchEmpty
-			}
-			err = cb.addClause(sq, m.Name, m.Value)
 		case labels.MatchNotEqual:
 			sq := subQueryNEQ
 			if matchesEmpty {
@@ -76,15 +85,31 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 			}
 			err = cb.addClause(sq, m.Name, m.Value)
 		case labels.MatchRegexp:
+			re2 := re2Regex.MatchString(m.Value)
 			sq := subQueryRE
-			if matchesEmpty {
+			switch {
+			case !re2 && !matchesEmpty:
+				sq = subQueryRE
+			case !re2 && matchesEmpty:
 				sq = subQueryREMatchEmpty
+			case re2 && matchesEmpty:
+				sq = subQueryRE2MatchEmpty
+			case re2 && !matchesEmpty:
+				sq = subQueryRE2
 			}
 			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
 		case labels.MatchNotRegexp:
+			re2 := re2Regex.MatchString(m.Value)
 			sq := subQueryNRE
-			if matchesEmpty {
+			switch {
+			case !re2 && !matchesEmpty:
+				sq = subQueryNRE
+			case !re2 && matchesEmpty:
 				sq = subQueryNREMatchEmpty
+			case re2 && matchesEmpty:
+				sq = subQueryNRE2MatchEmpty
+			case re2 && !matchesEmpty:
+				sq = subQueryNRE2
 			}
 			err = cb.addClause(sq, m.Name, anchorValue(m.Value))
 		}
