@@ -43,6 +43,9 @@ func (pq BufferingIteratorHeap) Less(i, j int) bool {
 	if pq[j].chunkIterator != nil {
 		tsj, _ = pq[j].At()
 	}
+	if tsi == tsj {
+		return pq[i].seriesID < pq[j].seriesID
+	}
 	return tsi < tsj
 }
 
@@ -111,6 +114,7 @@ func chunkFetchWorker(requests <-chan chunkRequest) {
 }
 
 type BufferingIterator struct {
+	seriesID      uint64
 	chunkR        tsdb.ChunkReader
 	chunksMeta    []chunks.Meta
 	chunkIndex    int
@@ -121,8 +125,9 @@ type BufferingIterator struct {
 	err           error
 }
 
-func NewBufferingIterator(chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *BufferingIterator {
+func NewBufferingIterator(seriesID uint64, chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *BufferingIterator {
 	bi := &BufferingIterator{
+		seriesID:    seriesID,
 		chunkR:      chunkR,
 		chunksMeta:  chunksMeta,
 		chunkIndex:  -1,
@@ -247,7 +252,7 @@ func (bi *BufferingIterator) Next() bool {
 			next := q[0]
 			t2, _ := next.At()
 			if next != bi {
-				panic(fmt.Sprintf("expected the current bi to be next. BI %d, Next %d", t1, t2))
+				panic(fmt.Sprintf("expected the current bi to be next. BI %d (%d), Next %d(%d)", t1, bi.seriesID, t2, next.seriesID))
 			}
 			heap.Fix(&q, 0)
 		}

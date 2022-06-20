@@ -53,7 +53,7 @@ func NewSeriesTimeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesI
 		chksCopy := make([]chunks.Meta, len(chks))
 		copy(chksCopy, chks)
 
-		it := NewBufferingIterator(chunkr, chksCopy)
+		it := NewBufferingIterator(seriesId, chunkr, chksCopy)
 		if !it.Next() { //initialize to first position
 			panic("can't get first item")
 		}
@@ -80,6 +80,9 @@ func (pq SeriesTimeHeap) Len() int { return len(pq) }
 func (pq SeriesTimeHeap) Less(i, j int) bool {
 	tsi, _ := pq[i].it.At()
 	tsj, _ := pq[j].it.At()
+	if tsi == tsj {
+		return pq[i].series_id < pq[j].series_id
+	}
 	return tsi < tsj
 }
 
