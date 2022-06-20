@@ -14,12 +14,12 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 )
 
-const (
-	DefaultNotificationQueueCapacity = 10000
-	DefaultOutageTolerance           = time.Hour
-	DefaultForGracePeriod            = time.Minute * 10
-	DefaultResendDelay               = time.Minute
-)
+var DefaultConfig = Config{
+	NotificationQueueCapacity: 10000,
+	OutageTolerance:           time.Hour,
+	ForGracePeriod:            time.Minute * 10,
+	ResendDelay:               time.Minute,
+}
 
 type Config struct {
 	NotificationQueueCapacity int
@@ -39,10 +39,10 @@ func (cfg *Config) ContainsAlertingConfig() bool {
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
-	fs.IntVar(&cfg.NotificationQueueCapacity, "metrics.alertmanager.notification-queue-capacity", DefaultNotificationQueueCapacity, "The capacity of the queue for pending Alertmanager notifications.")
-	fs.DurationVar(&cfg.OutageTolerance, "metrics.rules.alert.for-outage-tolerance", DefaultOutageTolerance, "Max time to tolerate Promscale outage for restoring \"for\" state of alert.")
-	fs.DurationVar(&cfg.ForGracePeriod, "metrics.rules.alert.for-grace-period", DefaultForGracePeriod, "Minimum duration between alert and restored \"for\" state. This is maintained only for alerts with configured \"for\" time greater than grace period.")
-	fs.DurationVar(&cfg.ResendDelay, "metrics.rules.alert.resend-delay", DefaultResendDelay, "Minimum amount of time to wait before resending an alert to Alertmanager.")
+	fs.IntVar(&cfg.NotificationQueueCapacity, "metrics.alertmanager.notification-queue-capacity", DefaultConfig.NotificationQueueCapacity, "The capacity of the queue for pending Alertmanager notifications.")
+	fs.DurationVar(&cfg.OutageTolerance, "metrics.rules.alert.for-outage-tolerance", DefaultConfig.OutageTolerance, "Max time to tolerate Promscale outage for restoring \"for\" state of alert.")
+	fs.DurationVar(&cfg.ForGracePeriod, "metrics.rules.alert.for-grace-period", DefaultConfig.ForGracePeriod, "Minimum duration between alert and restored \"for\" state. This is maintained only for alerts with configured \"for\" time greater than grace period.")
+	fs.DurationVar(&cfg.ResendDelay, "metrics.rules.alert.resend-delay", DefaultConfig.ResendDelay, "Minimum amount of time to wait before resending an alert to Alertmanager.")
 	fs.StringVar(&cfg.PrometheusConfigAddress, "metrics.rules.config-file", "", "Path to configuration file in Prometheus-format, containing `rule_files` and optional `alerting`, `global` fields. "+
 		"For more details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/. "+
 		"Note: If this is flag empty or `rule_files` is empty, Promscale rule-manager will not start. If `alertmanagers` is empty, alerting will not be initialized.")

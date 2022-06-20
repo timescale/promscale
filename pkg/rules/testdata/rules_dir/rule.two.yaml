@@ -1,0 +1,5 @@
+groups:
+  - name: g-two
+    rules:
+      - record: Two
+        expr: up

@@ -36,8 +36,8 @@ We use the following categories for changes:
 - Add `readinessProbe` in helm chart [#1266]
 - Set number of ingest copiers to the number of DB CPUs [#1387]
 - Ability to reload rules and alerting config [#1426]
-- Support arrays in trace attribute values [#1381]
-- Docs improvements 
+- Support arrays in trace attribute values [#1381] 
+- Support for glob in rule_files [#1443]
 
 ### Fixed
 - Trace query returns empty result when queried with 

@@ -53,20 +53,16 @@ func TestRecordingRulesEval(t *testing.T) {
 		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(ts))
 		require.NoError(t, err)
 
-		rulesCfg := &rules.Config{
-			NotificationQueueCapacity: rules.DefaultNotificationQueueCapacity,
-			OutageTolerance:           rules.DefaultOutageTolerance,
-			ForGracePeriod:            rules.DefaultForGracePeriod,
-			ResendDelay:               rules.DefaultResendDelay,
-			PrometheusConfigAddress:   EmptyRecordingRulesConfigPath, // Start with empty rules.
-		}
-		require.NoError(t, rules.Validate(rulesCfg))
+		rulesCfg := rules.DefaultConfig
+		rulesCfg.PrometheusConfigAddress = EmptyRecordingRulesConfigPath // Start with empty rules.
+
+		require.NoError(t, rules.Validate(&rulesCfg))
 		require.False(t, rulesCfg.ContainsRules())
 
 		ruleCtx, stopRuler := context.WithCancel(context.Background())
 		defer stopRuler()
 
-		manager, reloadRules, err := rules.NewManager(ruleCtx, prometheus.NewRegistry(), pgClient, rulesCfg)
+		manager, reloadRules, err := rules.NewManager(ruleCtx, prometheus.NewRegistry(), pgClient, &rulesCfg)
 		require.NoError(t, err)
 
 		require.NotNil(t, rulesCfg.PrometheusConfig)
