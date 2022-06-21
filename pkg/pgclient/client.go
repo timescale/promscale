@@ -33,37 +33,86 @@ type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
-	Connection        pgxconn.PgxConn
-	QuerierConnection pgxconn.PgxConn
-	ingestor          *ingestor.DBIngestor
-	querier           querier.Querier
-	promqlEngine      *promql.Engine
-	healthCheck       health.HealthCheckerFn
-	queryable         promql.Queryable
-	ConnectionStr     string
-	metricCache       cache.MetricCache
-	labelsCache       cache.LabelsCache
-	seriesCache       cache.SeriesCache
-	closePool         bool
-	sigClose          chan struct{}
-	haService         *ha.Service
+	readerConn   pgxconn.PgxConn
+	ingestor     *ingestor.DBIngestor
+	querier      querier.Querier
+	promqlEngine *promql.Engine
+	healthCheck  health.HealthCheckerFn
+	queryable    promql.Queryable
+	metricCache  cache.MetricCache
+	labelsCache  cache.LabelsCache
+	seriesCache  cache.SeriesCache
+	closePool    bool
+	connPools    []pgxconn.PgxConn
+	sigClose     chan struct{}
+	haService    *ha.Service
 }
 
 // NewClient creates a new PostgreSQL client
 func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
-	pgConfig, numCopiers, err := getPgConfig(cfg)
-	if err != nil {
-		return nil, err
+	var (
+		err               error
+		writerPoolSize    int
+		numCopiers        int
+		writerPool        *pgxpool.Pool
+		writerPgConfig    *pgxpool.Config
+		defaultReaderPool = 0.5
+	)
+	if !readOnly {
+		defaultReaderPool = 0.3 // Since defaultReaderPool + defaultWriterPool should be 0.8 or 80% of allowed database connections.
+		writerPoolSize, err = cfg.GetPoolSize("writer", 0.5, cfg.WriterPoolSize)
+		if err != nil {
+			return nil, fmt.Errorf("get writer pool size: %w", err)
+		}
+		numCopiers, err = cfg.GetNumCopiers()
+		if err != nil {
+			return nil, fmt.Errorf("get num copiers: %w", err)
+		}
+
+		if writerPoolSize >= numCopiers {
+			log.Warn("msg", "writer-pool size greater than number of copiers. Decreasing copiers to leave some connections for miscellaneous tasks")
+			numCopiers /= 2
+		}
+
+		writerPgConfig, err = cfg.getPgConfig(writerPoolSize)
+		if err != nil {
+			return nil, fmt.Errorf("get writer pg-config: %w", err)
+		}
+		writerPgConfig.AfterConnect = schemaLocker
+		writerPool, err = pgxpool.ConnectConfig(context.Background(), writerPgConfig)
+		if err != nil {
+			return nil, fmt.Errorf("err creating writer connection pool: %w", err)
+		}
 	}
 
-	pgConfig.AfterConnect = schemaLocker
-	connectionPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
+	readerPoolSize, err := cfg.GetPoolSize("reader", defaultReaderPool, cfg.ReaderPoolSize)
 	if err != nil {
-		log.Error("msg", "err creating connection pool for new client", "err", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("get reader pool size: %w", err)
+	}
+	readerPgConfig, err := cfg.getPgConfig(readerPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("get reader pg-config: %w", err)
 	}
 
-	client, err := NewClientWithPool(cfg, numCopiers, connectionPool, mt, readOnly)
+	statementCacheLog := "disabled"
+	if cfg.EnableStatementsCache {
+		statementCacheLog = "512" // Default pgx.
+	}
+	log.Info("msg", getRedactedConnStr(cfg.GetConnectionStr()))
+	log.Info("msg", "runtime",
+		"writer-pool.size", writerPoolSize,
+		"reader-pool.size", readerPoolSize,
+		"min-pool.connections", minPoolSize,
+		"num-copiers", numCopiers,
+		"statement-cache", statementCacheLog)
+
+	readerPgConfig.AfterConnect = schemaLocker
+	readerPool, err := pgxpool.ConnectConfig(context.Background(), readerPgConfig)
+	if err != nil {
+		return nil, fmt.Errorf("err creating reader connection pool: %w", err)
+	}
+
+	client, err := NewClientWithPool(cfg, numCopiers, writerPool, readerPool, mt, readOnly)
 	if err != nil {
 		return client, err
 	}
@@ -71,46 +120,24 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 	return client, err
 }
 
-func getPgConfig(cfg *Config) (*pgxpool.Config, int, error) {
-	minConnections, maxConnections, numCopiers, err := cfg.GetNumConnections()
-	if err != nil {
-		log.Error("msg", "configuring number of connections", "err", err.Error())
-		return nil, numCopiers, err
-	}
-	connectionStr := cfg.GetConnectionStr()
-	pgConfig, err := pgxpool.ParseConfig(connectionStr)
+func (cfg *Config) getPgConfig(poolSize int) (*pgxpool.Config, error) {
+	min := minPoolSize
+	max := poolSize
+	connStr := cfg.GetConnectionStr()
+
+	pgConfig, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
 		log.Error("msg", "configuring connection", "err", err.Error())
-		return nil, numCopiers, err
+		return nil, err
 	}
 
-	// Configure the number of connections and statement cache capacity.
-	pgConfig.MinConns = int32(minConnections)
-	pgConfig.MaxConns = int32(maxConnections)
+	pgConfig.MaxConns = int32(max)
+	pgConfig.MinConns = int32(min)
 
-	var statementCacheLog string
-	if cfg.EnableStatementsCache {
-		// Using the PGX default of 512 for statement cache capacity.
-		statementCacheCapacity := 512
-		pgConfig.AfterRelease = observeStatementCacheState
-		statementCacheEnabled.Set(1)
-		statementCacheCap.Set(float64(statementCacheCapacity))
-		statementCacheLog = fmt.Sprintf("%d statements", statementCacheCapacity)
-	} else {
-		log.Info("msg", "Statements cached disabled, using simple protocol for database connections.")
+	if !cfg.EnableStatementsCache {
 		pgConfig.ConnConfig.PreferSimpleProtocol = true
-		statementCacheEnabled.Set(0)
-		statementCacheCap.Set(0)
-		statementCacheLog = "disabled"
-
 	}
-	log.Info("msg", getRedactedConnStr(connectionStr),
-		"numCopiers", numCopiers,
-		"pool_max_conns", maxConnections,
-		"pool_min_conns", minConnections,
-		"statement_cache", statementCacheLog,
-	)
-	return pgConfig, numCopiers, nil
+	return pgConfig, nil
 }
 
 func getRedactedConnStr(s string) string {
@@ -130,8 +157,7 @@ func getRedactedConnStr(s string) string {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
-	dbConn := pgxconn.NewPgxConn(connPool)
+func NewClientWithPool(cfg *Config, numCopiers int, writerPool, readerPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -143,38 +169,49 @@ func NewClientWithPool(cfg *Config, numCopiers int, connPool *pgxpool.Pool, mt t
 		InvertedLabelsCacheSize: cfg.CacheConfig.InvertedLabelsCacheSize,
 	}
 
-	labelsReader := lreader.NewLabelsReader(dbConn, labelsCache, mt.ReadAuthorizer())
+	readerConnPool := pgxconn.NewPgxConn(readerPool)
+	connPools := []pgxconn.PgxConn{readerConnPool}
+	labelsReader := lreader.NewLabelsReader(readerConnPool, labelsCache, mt.ReadAuthorizer())
 	exemplarKeyPosCache := cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
 
-	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(connPool)
+	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(readerPool)
 	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
-	var dbIngestor *ingestor.DBIngestor
+	var (
+		dbIngestor *ingestor.DBIngestor
+	)
 	if !readOnly {
 		var err error
-		dbIngestor, err = ingestor.NewPgxIngestor(dbConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
+		writerConnPool := pgxconn.NewPgxConn(writerPool)
+		dbIngestor, err = ingestor.NewPgxIngestor(writerConnPool, metricsCache, seriesCache, exemplarKeyPosCache, &c)
 		if err != nil {
 			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err
 		}
+		connPools = append(connPools, writerConnPool)
 	}
 
 	client := &Client{
-		Connection:        dbConn,
-		QuerierConnection: dbQuerierConn,
-		ingestor:          dbIngestor,
-		querier:           dbQuerier,
-		healthCheck:       health.NewHealthChecker(dbConn),
-		queryable:         queryable,
-		metricCache:       metricsCache,
-		labelsCache:       labelsCache,
-		seriesCache:       seriesCache,
-		sigClose:          sigClose,
+		readerConn:  readerConnPool,
+		ingestor:    dbIngestor,
+		querier:     dbQuerier,
+		healthCheck: health.NewHealthChecker(readerConnPool),
+		queryable:   queryable,
+		metricCache: metricsCache,
+		labelsCache: labelsCache,
+		seriesCache: seriesCache,
+		connPools:   connPools,
+		sigClose:    sigClose,
 	}
 
 	InitClientMetrics(client)
 	return client, nil
+}
+
+// Connection returns a pgxconn that is internally a reader connection pool.
+func (c *Client) Connection() pgxconn.PgxConn {
+	return c.readerConn
 }
 
 func (c *Client) InitPromQLEngine(cfg *query.Config) error {
@@ -198,7 +235,9 @@ func (c *Client) Close() {
 	}
 	close(c.sigClose)
 	if c.closePool {
-		c.Connection.Close()
+		for i := range c.connPools {
+			c.connPools[i].Close()
+		}
 	}
 	if c.haService != nil {
 		c.haService.Close()
@@ -269,20 +308,4 @@ func (c *Client) HealthCheck() error {
 // with the same underlying Querier as the Client.
 func (c *Client) Queryable() promql.Queryable {
 	return c.queryable
-}
-
-func observeStatementCacheState(conn *pgx.Conn) bool {
-	// connections have been opened and are released already
-	// but the Client metrics have not been initialized yet
-	if statementCacheLen == nil {
-		return true
-	}
-	statementCache := conn.StatementCache()
-	if statementCache == nil {
-		return true
-	}
-
-	statementCacheSize := statementCache.Len()
-	statementCacheLen.Observe(float64(statementCacheSize))
-	return true
 }

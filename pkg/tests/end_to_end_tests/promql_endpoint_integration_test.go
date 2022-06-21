@@ -311,7 +311,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		MaxConnections: -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
+	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
 	if err != nil {
 		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient")
 	}
@@ -321,7 +321,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, nil, fmt.Errorf("init promql engine: %w", err)
 	}
 
-	jaegerQuery := jaegerquery.New(pgClient.QuerierConnection, &jaegerquery.DefaultConfig)
+	jaegerQuery := jaegerquery.New(pgClient.Connection(), &jaegerquery.DefaultConfig)
 
 	router, err := api.GenerateRouter(cfg, qryCfg, pgClient, jaegerQuery, nil)
 	if err != nil {
