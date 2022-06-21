@@ -1,6 +1,14 @@
+apiVersion: v2
 name: promscale
+description: Promscale Connector deployment
+
 version: 0.12.0
 appVersion: 0.12.0
-apiVersion: v2
+
 home: https://github.com/timescale/promscale
-description: Promscale Connector deployment
+sources:
+- https://github.com/timescale/promscale
+
+maintainers:
+- name: TimescaleDB
+  email: support@timescale.com
