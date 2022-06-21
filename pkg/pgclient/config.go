@@ -10,13 +10,11 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"runtime"
 	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/limits"
-	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/version"
 )
@@ -35,6 +33,8 @@ type Config struct {
 	IgnoreCompressedChunks bool
 	AsyncAcks              bool
 	WriteConnections       int
+	WriterPoolSize         int
+	ReaderPoolSize         int
 	MaxConnections         int
 	UsesHA                 bool
 	DbUri                  string
@@ -51,6 +51,8 @@ const (
 	defaultSSLMode           = "require"
 	defaultConnectionTime    = time.Minute
 	defaultDbStatementsCache = true
+	minPoolSize              = 2
+	defaultPoolSize          = -1
 )
 
 var (
@@ -74,10 +76,12 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.BoolVar(&cfg.IgnoreCompressedChunks, "metrics.ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
 		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
 		"However, setting this to true will save your resources that may be required during decompression. ")
-	fs.IntVar(&cfg.WriteConnections, "db.num-writer-connections", 0, "Number of database connections for writing metrics to database. "+
+	fs.IntVar(&cfg.WriteConnections, "db.connections.num-writers", 0, "Number of database connections for writing metrics to database. "+
 		"By default, this will be set based on the number of CPUs available to the DB Promscale is connected to.")
-	fs.IntVar(&cfg.MaxConnections, "db.connections-max", -1, "Maximum number of connections to the database that should be opened at once. "+
-		"It defaults to 80% of the maximum connections that the database can handle.")
+	fs.IntVar(&cfg.WriterPoolSize, "db.connections.writer-pool.size", defaultPoolSize, "Maximum size of the writer pool of database connections. This defaults to 50% of max_connections "+
+		"allowed by the database.")
+	fs.IntVar(&cfg.ReaderPoolSize, "db.connections.reader-pool.size", defaultPoolSize, "Maximum size of the reader pool of database connections. This defaults to 30% of max_connections "+
+		"allowed by the database.")
 	fs.StringVar(&cfg.DbUri, "db.uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. "+
 		"Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	fs.BoolVar(&cfg.EnableStatementsCache, "db.statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
@@ -135,70 +139,57 @@ func (cfg *Config) GetConnectionStr() string {
 	return cfg.DbUri
 }
 
-func (cfg *Config) GetNumConnections() (min int, max int, numCopiers int, err error) {
-	maxProcs := runtime.GOMAXPROCS(-1)
-	if cfg.WriteConnections < 0 {
-		return 0, 0, 0, fmt.Errorf("invalid number of writer connections %v, cannot be a negative number", cfg.WriteConnections)
+// GetPoolSize returns the max pool size based on the max_connections allowed by database and the defaultFraction.
+// Arg inputPoolSize is the pool size provided in the CLI flag.
+func (cfg *Config) GetPoolSize(poolName string, defaultFraction float64, inputPoolSize int) (int, error) {
+	if inputPoolSize != defaultPoolSize && inputPoolSize < minPoolSize {
+		return 0, fmt.Errorf("%s pool size canot be less than %d: received %d", poolName, minPoolSize, inputPoolSize)
 	}
 
+	maxConns, err := cfg.maxConn()
+	if err != nil {
+		return 0, fmt.Errorf("max connections: %w", err)
+	}
+	if inputPoolSize > maxConns {
+		return 0, fmt.Errorf("%s pool size canot be greater than the 'max_connections' allowed by the database", poolName)
+	}
+
+	// For the default case, we need to take up defaultFraction of allowed connections.
+	poolSize := float64(maxConns) * defaultFraction
+	if cfg.UsesHA {
+		poolSize /= 2
+	}
+	return int(poolSize), nil
+}
+
+func (cfg *Config) maxConn() (int, error) {
 	conn, err := pgx.Connect(context.Background(), cfg.GetConnectionStr())
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, err
+	}
+	var maxConns int
+	err = conn.QueryRow(context.Background(), "SELECT current_setting('max_connections')::int").Scan(&maxConns)
+	if err != nil {
+		return 0, fmt.Errorf("error getting 'max_connections': %w", err)
+	}
+	return maxConns, nil
+}
+
+func (cfg *Config) GetNumCopiers() (int, error) {
+	conn, err := pgx.Connect(context.Background(), cfg.GetConnectionStr())
+	if err != nil {
+		return 0, err
 	}
 	defer func() { _ = conn.Close(context.Background()) }()
 
-	max = cfg.MaxConnections
-	if max < 1 {
-		var maxStr string
-		row := conn.QueryRow(context.Background(), "SHOW max_connections")
-		err = row.Scan(&maxStr)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		max, err = strconv.Atoi(maxStr)
-		if err != nil {
-			log.Warn("err", err, "msg", "invalid value from postgres max_connections")
-			max = 100
-		}
-
-		//In HA setups
-		if cfg.UsesHA {
-			max = max / 2
-		}
-
-		if max <= 1 {
-			log.Warn("msg", "database can only handle 1 connection")
-			return 1, 1, 1, nil
-		}
-		// we try to only use 80% the database connections, capped at 100
-		max = int(0.8 * float32(max))
-		if max > 100 {
-			max = 100
-		}
-	}
-
+	numCopiers := 0
 	err = conn.QueryRow(context.Background(), "SELECT _prom_ext.num_cpus()").Scan(&numCopiers)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("error fetching number of CPUs from extension: %w", err)
+		return 0, fmt.Errorf("error fetching number of CPUs from extension: %w", err)
 	}
 
 	if cfg.WriteConnections > 0 {
 		numCopiers = cfg.WriteConnections
 	}
-
-	// We want to leave some connections for non-copier usages, so in the event
-	// there aren't enough connections available to satisfy our copier
-	// preferences we'll scale down the number of copiers.
-	min = numCopiers
-	if max <= min {
-		log.Warn("msg", fmt.Sprintf("database can only handle %v connection; connector needs %v connections at minimum", max, min))
-		return 1, max, max / 2, nil
-	}
-
-	// We try to leave one connection per-core for non-copier usages.
-	if numCopiers > max-maxProcs {
-		log.Warn("msg", fmt.Sprintf("had to reduce the number of copiers due to connection limits: wanted %v, reduced to %v", numCopiers, max-maxProcs))
-		numCopiers = max - maxProcs
-	}
-	return
+	return numCopiers, nil
 }

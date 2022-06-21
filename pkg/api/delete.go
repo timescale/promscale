@@ -71,7 +71,7 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 			if client == nil {
 				continue
 			}
-			pgDelete := deletePkg.PgDelete{Conn: client.Connection}
+			pgDelete := deletePkg.PgDelete{Conn: client.Connection()}
 			touchedMetrics, deletedSeriesIDs, rowsDeleted, err := pgDelete.DeleteSeries(matchers, start, end)
 			if err != nil {
 				respondErrorWithMessage(w, http.StatusInternalServerError, err, "deleting_series",
