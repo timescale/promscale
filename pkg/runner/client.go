@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/jackc/pgx/v4"
-
 	"github.com/grafana/regexp"
+	"github.com/jackc/pgx/v4"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/timescale/promscale/pkg/dataset"
 	"github.com/timescale/promscale/pkg/log"
@@ -28,7 +28,7 @@ var (
 	appVersion = pgmodel.VersionInfo{Version: version.Promscale, CommitHash: version.CommitHash}
 )
 
-func CreateClient(cfg *Config) (*pgclient.Client, error) {
+func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error) {
 	// The TimescaleDB migration has to happen before other connections
 	// are open, also it has to happen as the first command on a connection.
 	// Thus we cannot rely on the migration lock here. Instead we assume
@@ -174,7 +174,7 @@ func CreateClient(cfg *Config) (*pgclient.Client, error) {
 
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(&cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly)
+	client, err := pgclient.NewClient(r, &cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}

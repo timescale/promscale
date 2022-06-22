@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -35,7 +37,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -216,7 +218,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -401,7 +403,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -610,7 +612,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(&testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 

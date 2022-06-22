@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
@@ -33,7 +35,8 @@ type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 
 // Client sends Prometheus samples to TimescaleDB
 type Client struct {
-	readerConn   pgxconn.PgxConn
+	readerPool   pgxconn.PgxConn
+	writerPool   pgxconn.PgxConn
 	ingestor     *ingestor.DBIngestor
 	querier      querier.Querier
 	promqlEngine *promql.Engine
@@ -42,20 +45,17 @@ type Client struct {
 	metricCache  cache.MetricCache
 	labelsCache  cache.LabelsCache
 	seriesCache  cache.SeriesCache
-	closePool    bool
-	connPools    []pgxconn.PgxConn
 	sigClose     chan struct{}
 	haService    *ha.Service
 }
 
 // NewClient creates a new PostgreSQL client
-func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
+func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
 	var (
 		err               error
 		writerPoolSize    int
 		numCopiers        int
 		writerPool        *pgxpool.Pool
-		writerPgConfig    *pgxpool.Config
 		defaultReaderPool = 0.5
 	)
 	if !readOnly {
@@ -69,12 +69,12 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 			return nil, fmt.Errorf("get num copiers: %w", err)
 		}
 
-		if writerPoolSize >= numCopiers {
-			log.Warn("msg", "writer-pool size greater than number of copiers. Decreasing copiers to leave some connections for miscellaneous tasks")
+		if numCopiers >= writerPoolSize {
+			log.Warn("msg", "number of copiers greater than the writer-pool. Decreasing copiers to leave some connections for miscellaneous write tasks")
 			numCopiers /= 2
 		}
 
-		writerPgConfig, err = cfg.getPgConfig(writerPoolSize)
+		writerPgConfig, err := cfg.getPgConfig(writerPoolSize)
 		if err != nil {
 			return nil, fmt.Errorf("get writer pg-config: %w", err)
 		}
@@ -102,7 +102,7 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 	log.Info("msg", "runtime",
 		"writer-pool.size", writerPoolSize,
 		"reader-pool.size", readerPoolSize,
-		"min-pool.connections", minPoolSize,
+		"min-pool.connections", MinPoolSize,
 		"num-copiers", numCopiers,
 		"statement-cache", statementCacheLog)
 
@@ -112,22 +112,16 @@ func NewClient(cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOn
 		return nil, fmt.Errorf("err creating reader connection pool: %w", err)
 	}
 
-	client, err := NewClientWithPool(cfg, numCopiers, writerPool, readerPool, mt, readOnly)
-	if err != nil {
-		return client, err
-	}
-	client.closePool = true
-	return client, err
+	return NewClientWithPool(r, cfg, numCopiers, writerPool, readerPool, mt, readOnly)
 }
 
 func (cfg *Config) getPgConfig(poolSize int) (*pgxpool.Config, error) {
-	min := minPoolSize
+	min := MinPoolSize
 	max := poolSize
 	connStr := cfg.GetConnectionStr()
 
 	pgConfig, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
-		log.Error("msg", "configuring connection", "err", err.Error())
 		return nil, err
 	}
 
@@ -157,7 +151,7 @@ func getRedactedConnStr(s string) string {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(cfg *Config, numCopiers int, writerPool, readerPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
+func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, writerPool, readerPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -169,49 +163,45 @@ func NewClientWithPool(cfg *Config, numCopiers int, writerPool, readerPool *pgxp
 		InvertedLabelsCacheSize: cfg.CacheConfig.InvertedLabelsCacheSize,
 	}
 
-	readerConnPool := pgxconn.NewPgxConn(readerPool)
-	connPools := []pgxconn.PgxConn{readerConnPool}
-	labelsReader := lreader.NewLabelsReader(readerConnPool, labelsCache, mt.ReadAuthorizer())
+	var writerConn pgxconn.PgxConn
+	readerConn := pgxconn.NewQueryLoggingPgxConn(readerPool)
+
 	exemplarKeyPosCache := cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
 
-	dbQuerierConn := pgxconn.NewQueryLoggingPgxConn(readerPool)
-	dbQuerier := querier.NewQuerier(dbQuerierConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
+	labelsReader := lreader.NewLabelsReader(readerConn, labelsCache, mt.ReadAuthorizer())
+	dbQuerier := querier.NewQuerier(readerConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
-	var (
-		dbIngestor *ingestor.DBIngestor
-	)
+	var dbIngestor *ingestor.DBIngestor
 	if !readOnly {
 		var err error
-		writerConnPool := pgxconn.NewPgxConn(writerPool)
-		dbIngestor, err = ingestor.NewPgxIngestor(writerConnPool, metricsCache, seriesCache, exemplarKeyPosCache, &c)
+		writerConn = pgxconn.NewPgxConn(writerPool)
+		dbIngestor, err = ingestor.NewPgxIngestor(writerConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
 		if err != nil {
 			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err
 		}
-		connPools = append(connPools, writerConnPool)
 	}
 
 	client := &Client{
-		readerConn:  readerConnPool,
+		readerPool:  readerConn,
+		writerPool:  writerConn,
 		ingestor:    dbIngestor,
 		querier:     dbQuerier,
-		healthCheck: health.NewHealthChecker(readerConnPool),
+		healthCheck: health.NewHealthChecker(readerConn),
 		queryable:   queryable,
 		metricCache: metricsCache,
 		labelsCache: labelsCache,
 		seriesCache: seriesCache,
-		connPools:   connPools,
 		sigClose:    sigClose,
 	}
 
-	InitClientMetrics(client)
+	initMetrics(r, writerPool, readerPool)
 	return client, nil
 }
 
-// Connection returns a pgxconn that is internally a reader connection pool.
-func (c *Client) Connection() pgxconn.PgxConn {
-	return c.readerConn
+func (c *Client) ReadOnlyConnection() pgxconn.PgxConn {
+	return c.readerPool
 }
 
 func (c *Client) InitPromQLEngine(cfg *query.Config) error {
@@ -234,10 +224,11 @@ func (c *Client) Close() {
 		c.ingestor.Close()
 	}
 	close(c.sigClose)
-	if c.closePool {
-		for i := range c.connPools {
-			c.connPools[i].Close()
-		}
+	if c.writerPool != nil {
+		c.writerPool.Close()
+	}
+	if c.readerPool != nil {
+		c.readerPool.Close()
 	}
 	if c.haService != nil {
 		c.haService.Close()

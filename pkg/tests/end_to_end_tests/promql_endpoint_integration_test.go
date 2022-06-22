@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/regexp"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/timescale/promscale/pkg/api"
@@ -311,7 +312,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		MaxConnections: -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(conf, 1, pool, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
+	pgClient, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), conf, 1, pool, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
 	if err != nil {
 		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient")
 	}

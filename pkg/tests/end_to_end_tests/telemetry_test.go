@@ -359,7 +359,7 @@ func TestPromQLBasedTelemetry(t *testing.T) {
 		}
 		defer conn.Release()
 
-		reader, err := runner.CreateClient(&cfg)
+		reader, err := runner.CreateClient(prometheus.NewRegistry(), &cfg)
 		require.NoError(t, err)
 		defer reader.Close()
 
