@@ -11,9 +11,9 @@ case "${unameOut}" in
     *)          ISMAC=0;;
 esac
 
-TIMESCALE_IMAGE=${1:-"timescale/timescaledb:latest-pg14"}
-SCRIPT_DIR=$(cd $(dirname ${0}) && pwd)
-ROOT_DIR=$(dirname ${SCRIPT_DIR})
+TIMESCALE_IMAGE="${1:-"timescale/timescaledb:latest-pg14"}"
+SCRIPT_DIR="$(cd "$(dirname "${0}")" && pwd)"
+ROOT_DIR=$(dirname "${SCRIPT_DIR}")
 DB_URL="localhost:5432"
 CONNECTOR_URL="localhost:9201"
 PROM_URL="localhost:9090"
@@ -28,11 +28,12 @@ fi
 
 CONF=$(mktemp)
 
-chmod 777 $CONF
+chmod 777 "$CONF"
 
 echo "running tests against ${TIMESCALE_IMAGE}"
 
-echo "scrape_configs:
+cat << EOF > "$CONF"
+scrape_configs:
   - job_name: 'connector'
     scrape_interval: 5s
     static_configs:
@@ -44,17 +45,18 @@ remote_read:
 
 remote_write:
 - url: http://$CONNECTOR_URL_CONTAINER/write
-  remote_timeout: 1m" > $CONF
+  remote_timeout: 1m
+EOF
 
 cleanup() {
-    if [[ $PASSED -ne 6 ]]; then
+    if [[ "$PASSED" -ne 6 ]]; then
         docker logs e2e-tsdb || true
     fi
-    rm $CONF || true
+    rm "$CONF" || true
     docker stop e2e-prom || true
     docker stop e2e-tsdb || true
     if [ -n "$CONN_PID" ]; then
-        kill $CONN_PID
+        kill "$CONN_PID"
     fi
 }
 
@@ -135,7 +137,7 @@ curl -v \
     "${CONNECTOR_URL}/write"
 
 
-kill $CONN_PID
+kill "$CONN_PID"
 
 PROMSCALE_TELEMETRY_LOG_LEVEL=debug \
 PROMSCALE_DB_PASSWORD=test \
@@ -158,7 +160,7 @@ curl -f \
     --data "custom_metric{custom_label=\"custom_value_2\"} 5" \
     "${CONNECTOR_URL}/write" || exit 1
 
-kill $CONN_PID
+kill "$CONN_PID"
 
 PROMSCALE_TELEMETRY_LOG_LEVEL=debug \
 PROMSCALE_DB_PASSWORD=test \
@@ -187,8 +189,6 @@ compare_connector_and_prom() {
         ((PASSED+=1))
     fi
 }
-
-END_TIME=$(date +"%s")
 
 DATASET_START_TIME="2020-08-10T10:35:20Z"
 DATASET_END_TIME="2020-08-10T11:43:50Z"
@@ -224,7 +224,7 @@ echo "Passed: $PASSED"
 echo "Failed: $FAILED"
 
 
-if [[ $FAILED -eq 0 ]]; then
+if [[ "$FAILED" -eq 0 ]]; then
     exit 0
 else
     exit 1

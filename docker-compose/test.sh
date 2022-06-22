@@ -2,8 +2,8 @@
 
 set -euf -o pipefail
 
-SELF_DIR=$(cd $(dirname ${0}) && pwd)
-cd $SELF_DIR
+SELF_DIR="$(cd "$(dirname "${0}")" && pwd)"
+cd "$SELF_DIR"
 
 echo "running tests"
 

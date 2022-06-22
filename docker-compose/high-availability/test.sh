@@ -14,8 +14,8 @@
 
 set -euf -o pipefail
 
-SELF_DIR=$(cd $(dirname ${0}) && pwd)
-cd $SELF_DIR
+SELF_DIR="$(cd "$(dirname "${0}")" && pwd)"
+cd "$SELF_DIR"
 
 echo "running tests"
 
@@ -39,9 +39,9 @@ leader_name() {
 }
 
 is_leader() {
-    LEADER1=$(leader_name "promscale_deploy_ha-promscale-connector1-1")
-    LEADER2=$(leader_name "promscale_deploy_ha-promscale-connector2-1")
-    if [[ "$LEADER1" == $1 && "$LEADER2" == $1 ]]; then
+    LEADER1="$(leader_name "promscale_deploy_ha-promscale-connector1-1")"
+    LEADER2="$(leader_name "promscale_deploy_ha-promscale-connector2-1")"
+    if [[ "$LEADER1" == "$1" ]] && [[ "$LEADER2" == "$1" ]]; then
         true
     else
         false
@@ -73,6 +73,7 @@ wait_for() {
 wait_for_leader() {
     echo "waiting for $1 to be leader"
 
+    # shellcheck disable=SC2034
     for i in `seq 10` ; do
         if is_leader "$1"; then
           echo "$1 is leader"
