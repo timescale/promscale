@@ -58,6 +58,10 @@ generate-helm: deploy/helm-chart/templates/prometheus-rule.yaml
 deploy/helm-chart/templates/prometheus-rule.yaml:
 	./scripts/generate-helm-alerts.sh
 
+.PHONY: shellcheck
+shellcheck:
+	shellcheck -S warning -f gcc $(shell find . -type f -name "*.sh")
+
 MDOX_VALIDATE_CONFIG?=.mdox.validate.yaml
 .PHONY: docs
 docs:
