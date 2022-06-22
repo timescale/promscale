@@ -21,6 +21,9 @@ We use the following categories for changes:
 ### Changed
 - `db.num-writer-connections` now sets the absolute number of write connections for writing metrics. [#1430]
 
+### Fixed
+- Refine check for existence of `prom_schema_migrations` table [#1452]
+
 ## [0.12.0] - 2022-06-21
 
 ### Added

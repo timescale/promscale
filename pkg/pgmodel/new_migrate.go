@@ -23,12 +23,31 @@ var (
 )
 
 func doesSchemaMigrationTableExist(db *pgx.Conn) (exists bool, err error) {
-	const stmt = "SELECT count(*) FILTER (WHERE tablename = 'prom_schema_migrations') > 0 FROM pg_tables"
-	err = db.QueryRow(
-		context.Background(),
-		stmt,
-	).Scan(&exists)
-	return
+	// We expect there to be either 0 or 1 tables. If there are more then
+	// something really weird has happened, and we can't safely proceed.
+	const stmt = "SELECT schemaname FROM pg_catalog.pg_tables WHERE tablename = 'prom_schema_migrations'"
+	var schemas []string
+	rows, err := db.Query(context.Background(), stmt)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var schema string
+		err = rows.Scan(&schema)
+		if err != nil {
+			return false, err
+		}
+		schemas = append(schemas, schema)
+	}
+
+	switch len(schemas) {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
+	default:
+		return false, fmt.Errorf("`prom_schema_migrations` exists in multiple schemas: %s", schemas)
+	}
 }
 
 func removeOldExtensionIfExists(db *pgx.Conn) error {
