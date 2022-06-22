@@ -111,7 +111,7 @@ func Run(cfg *Config) error {
 	}
 
 	api.InitMetrics()
-	client, err := CreateClient(cfg)
+	client, err := CreateClient(prometheus.DefaultRegisterer, cfg)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", err.Error())
 		return startupError
@@ -127,10 +127,10 @@ func Run(cfg *Config) error {
 		return nil
 	}
 
-	if util.IsTimescaleDBInstalled(client.Connection()) {
+	if util.IsTimescaleDBInstalled(client.ReadOnlyConnection()) {
 		dbMetricsCtx, stopDBMetrics := context.WithCancel(context.Background())
 		defer stopDBMetrics()
-		engine := dbMetrics.NewEngine(dbMetricsCtx, client.Connection())
+		engine := dbMetrics.NewEngine(dbMetricsCtx, client.ReadOnlyConnection())
 		if err = engine.Run(); err != nil {
 			log.Error("msg", "error running database metrics", "err", err.Error())
 			return fmt.Errorf("error running database metrics: %w", err)
@@ -161,7 +161,7 @@ func Run(cfg *Config) error {
 		},
 	)
 
-	jaegerQuery := query.New(client.Connection(), &cfg.TracingCfg)
+	jaegerQuery := query.New(client.ReadOnlyConnection(), &cfg.TracingCfg)
 
 	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerQuery, reloadRules)
 	if err != nil {
@@ -307,7 +307,7 @@ func Run(cfg *Config) error {
 }
 
 func initTelemetryEngine(client *pgclient.Client) telemetry.Engine {
-	t, err := telemetry.NewEngine(client.Connection(), PromscaleID, client.Queryable())
+	t, err := telemetry.NewEngine(client.ReadOnlyConnection(), PromscaleID, client.Queryable())
 	if err != nil {
 		log.Debug("msg", "err creating telemetry engine", "err", err.Error())
 		return t

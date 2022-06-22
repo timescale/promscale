@@ -11,6 +11,8 @@ import (
 
 	"github.com/blang/semver/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel"
@@ -74,17 +76,19 @@ func TestMigrateLock(t *testing.T) {
 				SslMode:        "allow",
 				MaxConnections: -1,
 				CacheConfig:    cache.DefaultConfig,
+				WriterPoolSize: pgclient.MinPoolSize,
+				ReaderPoolSize: pgclient.MinPoolSize,
 			},
 		}
 		conn.Release()
-		reader, err := runner.CreateClient(&cfg)
+		reader, err := runner.CreateClient(prometheus.NewRegistry(), &cfg)
 		// reader on its own should start
 		if err != nil {
 			t.Fatal(err)
 		}
 		cfg2 := cfg
 		cfg2.Migrate = true
-		migrator, err := runner.CreateClient(&cfg2)
+		migrator, err := runner.CreateClient(prometheus.NewRegistry(), &cfg2)
 		// a regular migrator will just become a reader
 		if err != nil {
 			t.Fatal(err)
@@ -92,7 +96,7 @@ func TestMigrateLock(t *testing.T) {
 
 		cfg3 := cfg2
 		cfg3.StopAfterMigrate = true
-		_, err = runner.CreateClient(&cfg3)
+		_, err = runner.CreateClient(prometheus.NewRegistry(), &cfg3)
 		if err == nil {
 			t.Fatalf("migration should fail due to lock")
 		}
@@ -103,7 +107,7 @@ func TestMigrateLock(t *testing.T) {
 		reader.Close()
 		migrator.Close()
 
-		onlyMigrator, err := runner.CreateClient(&cfg3)
+		onlyMigrator, err := runner.CreateClient(prometheus.NewRegistry(), &cfg3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,14 +115,14 @@ func TestMigrateLock(t *testing.T) {
 			t.Fatal(onlyMigrator)
 		}
 
-		migrator, err = runner.CreateClient(&cfg2)
+		migrator, err = runner.CreateClient(prometheus.NewRegistry(), &cfg2)
 		// a regular migrator should still start
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer migrator.Close()
 
-		reader, err = runner.CreateClient(&cfg)
+		reader, err = runner.CreateClient(prometheus.NewRegistry(), &cfg)
 		// reader should still be able to start
 		if err != nil {
 			t.Fatal(err)
@@ -178,7 +182,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 		verifyExtensionExists(t, db, "promscale", false)
 
 		cfg.InstallExtensions = false
-		migrator, err := runner.CreateClient(&cfg)
+		migrator, err := runner.CreateClient(prometheus.NewRegistry(), &cfg)
 		if err == nil {
 			t.Fatal("expected an error as the promscale extension is required but was not installed")
 		}
@@ -189,7 +193,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 		verifyExtensionExists(t, db, "promscale", false)
 
 		cfg.InstallExtensions = true
-		migrator, err = runner.CreateClient(&cfg)
+		migrator, err = runner.CreateClient(prometheus.NewRegistry(), &cfg)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -51,7 +51,7 @@ const (
 	defaultSSLMode           = "require"
 	defaultConnectionTime    = time.Minute
 	defaultDbStatementsCache = true
-	minPoolSize              = 2
+	MinPoolSize              = 2
 	defaultPoolSize          = -1
 )
 
@@ -142,24 +142,30 @@ func (cfg *Config) GetConnectionStr() string {
 // GetPoolSize returns the max pool size based on the max_connections allowed by database and the defaultFraction.
 // Arg inputPoolSize is the pool size provided in the CLI flag.
 func (cfg *Config) GetPoolSize(poolName string, defaultFraction float64, inputPoolSize int) (int, error) {
-	if inputPoolSize != defaultPoolSize && inputPoolSize < minPoolSize {
-		return 0, fmt.Errorf("%s pool size canot be less than %d: received %d", poolName, minPoolSize, inputPoolSize)
-	}
-
 	maxConns, err := cfg.maxConn()
 	if err != nil {
 		return 0, fmt.Errorf("max connections: %w", err)
 	}
-	if inputPoolSize > maxConns {
-		return 0, fmt.Errorf("%s pool size canot be greater than the 'max_connections' allowed by the database", poolName)
+
+	if inputPoolSize == defaultPoolSize {
+		// For the default case, we need to take up defaultFraction of allowed connections.
+		poolSize := float64(maxConns) * defaultFraction
+		if cfg.UsesHA {
+			poolSize /= 2
+		}
+		return int(poolSize), nil
 	}
 
-	// For the default case, we need to take up defaultFraction of allowed connections.
-	poolSize := float64(maxConns) * defaultFraction
-	if cfg.UsesHA {
-		poolSize /= 2
+	// Custom pool size,
+	if inputPoolSize < MinPoolSize {
+		return 0, fmt.Errorf("%s pool size canot be less than %d: received %d", poolName, MinPoolSize, inputPoolSize)
+	} else if inputPoolSize > maxConns {
+		return 0, fmt.Errorf("%s pool size canot be greater than the 'max_connections' allowed by the database", poolName)
 	}
-	return int(poolSize), nil
+	if cfg.UsesHA {
+		inputPoolSize /= 2
+	}
+	return inputPoolSize, nil
 }
 
 func (cfg *Config) maxConn() (int, error) {
@@ -167,6 +173,8 @@ func (cfg *Config) maxConn() (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer func() { _ = conn.Close(context.Background()) }()
+
 	var maxConns int
 	err = conn.QueryRow(context.Background(), "SELECT current_setting('max_connections')::int").Scan(&maxConns)
 	if err != nil {
