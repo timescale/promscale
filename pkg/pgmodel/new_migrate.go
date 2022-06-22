@@ -141,7 +141,7 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 		return fmt.Errorf("failed to determine whether the prom_schema_migrations table existed: %w", err)
 	}
 	if schemaMigrationTableExists {
-		mig := NewMigrator(conn, migrations.MigrationFiles, tableOfContents)
+		mig := NewMigrator(conn, migrations.MigrationFiles, TableOfContents)
 		if err = mig.Migrate(appSemver); err != nil {
 			return fmt.Errorf("Error encountered during migration: %w", err)
 		}

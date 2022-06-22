@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	tableOfContents = map[string][]string{
+	TableOfContents = map[string][]string{
 		"idempotent": {
 			"base.sql",
 			"tag-operators.sql",
