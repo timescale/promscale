@@ -10,7 +10,7 @@
   "regexManagers": [
     {
       "fileMatch": ["^EXTENSION_VERSION$"],
-      "matchStrings": ["(?<currentValue>.*?)"],
+      "matchStrings": ["(?<currentValue>.*?)\\n"],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "timescale/promscale_extension"
     },
@@ -59,10 +59,6 @@
     {
       "groupName": "docker-compose",
       "matchManagers": ["docker-compose"]
-    },
-    {
-      "groupName": "extension",
-      "matchPaths": ["EXTENSION_VERSION"]
     }
   ]
 }
