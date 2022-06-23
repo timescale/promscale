@@ -35,26 +35,19 @@ func NewBufferingIteratorHeap() BufferingIteratorHeap {
 func (pq BufferingIteratorHeap) Len() int { return len(pq) }
 
 func (pq BufferingIteratorHeap) Less(i, j int) bool {
-	tsi := int64(-1)
-	tsj := int64(-1)
-	if pq[i].chunkIterator != nil {
-		tsi, _ = pq[i].At()
-	}
-	if pq[j].chunkIterator != nil {
-		tsj, _ = pq[j].At()
-	}
-	if tsi == tsj {
-		return pq[i].seriesID < pq[j].seriesID
-	}
-	return tsi < tsj
+	return pq[i].chunksMeta[pq[i].chunkIndex+1].MinTime < pq[j].chunksMeta[pq[j].chunkIndex+1].MinTime
 }
 
 func (pq *BufferingIteratorHeap) Swap(i, j int) {
 	(*pq)[i], (*pq)[j] = (*pq)[j], (*pq)[i]
+	(*pq)[i].queueIndex = i
+	(*pq)[j].queueIndex = j
 }
 
 func (pq *BufferingIteratorHeap) Push(x interface{}) {
+	n := len(*pq)
 	item := x.(*BufferingIterator)
+	item.queueIndex = n
 	*pq = append(*pq, item)
 }
 
@@ -63,6 +56,7 @@ func (pq *BufferingIteratorHeap) Pop() interface{} {
 	n := len(old)
 	item := old[n-1]
 	old[n-1] = nil // avoid memory leak
+	item.queueIndex = -1
 	*pq = old[0 : n-1]
 	return item
 }
@@ -120,7 +114,7 @@ type BufferingIterator struct {
 	chunkIndex    int
 	chunk         chunkenc.Chunk
 	nextChunkCh   chan chunkenc.Chunk
-	isInQueue     bool
+	queueIndex    int
 	chunkIterator chunkenc.Iterator
 	err           error
 }
@@ -168,17 +162,18 @@ func distributeRequests() {
 		}
 	}
 }
+func (bi *BufferingIterator) isInQueue() bool {
+	return bi.queueIndex >= 0
+}
 
 func (bi *BufferingIterator) enqueue() {
 	atomic.AddInt32(&enqueued, 1)
-	bi.isInQueue = true
 	heap.Push(&q, bi)
 }
 
 func (bi *BufferingIterator) dequeue() {
 	atomic.AddInt32(&dequeued, 1)
-	bi.isInQueue = false
-	heap.Pop(&q)
+	heap.Remove(&q, bi.queueIndex)
 }
 
 func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
@@ -192,15 +187,9 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 		pool.Put(bi.chunk)
 	}
 
-	if bi.isInQueue {
-		next := q[0]
-		t1, _ := bi.At()
-		t2, _ := next.At()
-		if next != bi {
-			panic(fmt.Sprintf("expected the current bi to be next in rotate, %d, %d", t1, t2))
-		}
+	if bi.isInQueue() {
 		atomic.AddInt32(&enqueueInRotate, 1)
-		chunkFetchCh <- chunkRequest{next.chunkR, next.chunksMeta[next.chunkIndex+1], next.nextChunkCh}
+		chunkFetchCh <- chunkRequest{bi.chunkR, bi.chunksMeta[bi.chunkIndex+1], bi.nextChunkCh}
 		bi.dequeue()
 	}
 	select {
@@ -246,20 +235,7 @@ func (bi *BufferingIterator) Next() bool {
 	//have to fix the heap.
 	distributeRequests()
 
-	//get the time before the next
-	t1 := int64(0)
-	if bi.chunkIterator != nil {
-		t1, _ = bi.At()
-	}
 	if bi.chunkIterator != nil && bi.chunkIterator.Next() {
-		if bi.isInQueue {
-			next := q[0]
-			t2, _ := next.At()
-			if next != bi {
-				panic(fmt.Sprintf("expected the current bi to be next. BI %d (%d), Next %d(%d)", t1, bi.seriesID, t2, next.seriesID))
-			}
-			heap.Fix(&q, 0)
-		}
 		return true
 	}
 
