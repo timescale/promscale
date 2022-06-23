@@ -61,19 +61,13 @@ func (pq *BufferingIteratorHeap) Pop() interface{} {
 	return item
 }
 
-type chunkRequest struct {
-	chunkR     tsdb.ChunkReader
-	chunkMeta  chunks.Meta
-	responseCh chan<- chunkenc.Chunk
-}
-
-var chunkFetchCh chan chunkRequest
+var chunkFetchCh chan *BufferingIterator
 var q BufferingIteratorHeap = NewBufferingIteratorHeap()
 
 //todo move out of init
 func init() {
 	chunkFetchWorkers := 10
-	chunkFetchCh = make(chan chunkRequest, chunkFetchWorkers)
+	chunkFetchCh = make(chan *BufferingIterator, chunkFetchWorkers)
 	//todo close channel && wg
 	for i := 0; i < chunkFetchWorkers; i++ {
 		go chunkFetchWorker(chunkFetchCh)
@@ -96,13 +90,13 @@ func fetchChunk(chunkR tsdb.ChunkReader, chunkMeta chunks.Meta) (chunkenc.Chunk,
 	return pool.Get(encoding, data)
 }
 
-func chunkFetchWorker(requests <-chan chunkRequest) {
+func chunkFetchWorker(requests <-chan *BufferingIterator) {
 	for request := range requests {
-		chk, err := fetchChunk(request.chunkR, request.chunkMeta)
+		chk, err := fetchChunk(request.chunkR, request.chunksMeta[request.chunkIndex+1])
 		if err != nil {
 			panic(err)
 		}
-		request.responseCh <- chk
+		request.nextChunkCh <- chk
 		atomic.AddInt32(&asyncFetchChunks, 1)
 	}
 }
@@ -155,7 +149,7 @@ func distributeRequests() {
 		}
 		next := q[0]
 		select {
-		case chunkFetchCh <- chunkRequest{next.chunkR, next.chunksMeta[next.chunkIndex+1], next.nextChunkCh}:
+		case chunkFetchCh <- next:
 			next.dequeue()
 		default:
 			return
@@ -189,7 +183,7 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 
 	if bi.isInQueue() {
 		atomic.AddInt32(&enqueueInRotate, 1)
-		chunkFetchCh <- chunkRequest{bi.chunkR, bi.chunksMeta[bi.chunkIndex+1], bi.nextChunkCh}
+		chunkFetchCh <- bi
 		bi.dequeue()
 	}
 	select {
