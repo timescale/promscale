@@ -105,6 +105,9 @@ func chunkFetchWorker() {
 		if err != nil {
 			panic(err)
 		}
+		if len(request.nextChunkCh) != 0 {
+			panic("next chan is full async")
+		}
 		request.nextChunkCh <- chk
 		atomic.AddInt32(&asyncFetchChunks, 1)
 	}
@@ -190,6 +193,9 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 		chk, err := fetchChunk(bi.chunkR, bi.chunksMeta[bi.chunkIndex+1])
 		if err != nil {
 			panic(err)
+		}
+		if len(bi.nextChunkCh) != 0 {
+			panic("next chan is full sync")
 		}
 		bi.nextChunkCh <- chk
 		atomic.AddInt32(&syncFetchChunks, 1)
