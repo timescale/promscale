@@ -3,6 +3,7 @@ package bench
 import (
 	"container/heap"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	"github.com/prometheus/prometheus/tsdb"
@@ -20,9 +21,9 @@ var needNextChunks int32 = 0
 var enqueued int32 = 0
 var dequeued int32 = 0
 var fetchChunks int32 = 0
-var enqueueInRotate int32 = 0
 var waitInRotate int32 = 0
 var asyncFetchChunks int32 = 0
+var syncFetchChunks int32 = 0
 
 type BufferingIteratorHeap []*BufferingIterator
 
@@ -61,16 +62,16 @@ func (pq *BufferingIteratorHeap) Pop() interface{} {
 	return item
 }
 
-var chunkFetchCh chan *BufferingIterator
+var qL = sync.Mutex{}
+var qC = sync.NewCond(&qL)
 var q BufferingIteratorHeap = NewBufferingIteratorHeap()
 
 //todo move out of init
 func init() {
 	chunkFetchWorkers := 10
-	chunkFetchCh = make(chan *BufferingIterator, chunkFetchWorkers)
 	//todo close channel && wg
 	for i := 0; i < chunkFetchWorkers; i++ {
-		go chunkFetchWorker(chunkFetchCh)
+		go chunkFetchWorker()
 	}
 }
 
@@ -90,8 +91,16 @@ func fetchChunk(chunkR tsdb.ChunkReader, chunkMeta chunks.Meta) (chunkenc.Chunk,
 	return pool.Get(encoding, data)
 }
 
-func chunkFetchWorker(requests <-chan *BufferingIterator) {
-	for request := range requests {
+func chunkFetchWorker() {
+	for {
+		qC.L.Lock()
+		for len(q) == 0 {
+			qC.Wait()
+		}
+		request := q[0]
+		request.dequeue()
+		qC.L.Unlock()
+
 		chk, err := fetchChunk(request.chunkR, request.chunksMeta[request.chunkIndex+1])
 		if err != nil {
 			panic(err)
@@ -123,7 +132,10 @@ func NewBufferingIterator(seriesID uint64, chunkR tsdb.ChunkReader, chunksMeta [
 	}
 	if bi.nextChunkExists() {
 		atomic.AddInt32(&needNextChunks, 1)
+
+		qC.L.Lock()
 		bi.enqueue()
+		qC.L.Unlock()
 	}
 	return bi
 }
@@ -142,20 +154,6 @@ func (bi *BufferingIterator) nextChunkExists() bool {
 	return len(bi.chunksMeta)-1 >= bi.chunkIndex+1
 }
 
-func distributeRequests() {
-	for {
-		if len(q) == 0 {
-			return
-		}
-		next := q[0]
-		select {
-		case chunkFetchCh <- next:
-			next.dequeue()
-		default:
-			return
-		}
-	}
-}
 func (bi *BufferingIterator) isInQueue() bool {
 	return bi.queueIndex >= 0
 }
@@ -163,6 +161,9 @@ func (bi *BufferingIterator) isInQueue() bool {
 func (bi *BufferingIterator) enqueue() {
 	atomic.AddInt32(&enqueued, 1)
 	heap.Push(&q, bi)
+	if len(q) == 1 {
+		qC.Broadcast()
+	}
 }
 
 func (bi *BufferingIterator) dequeue() {
@@ -182,9 +183,16 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 	}
 
 	if bi.isInQueue() {
-		atomic.AddInt32(&enqueueInRotate, 1)
-		chunkFetchCh <- bi
+		qC.L.Lock()
 		bi.dequeue()
+		qC.L.Unlock()
+
+		chk, err := fetchChunk(bi.chunkR, bi.chunksMeta[bi.chunkIndex+1])
+		if err != nil {
+			panic(err)
+		}
+		bi.nextChunkCh <- chk
+		atomic.AddInt32(&syncFetchChunks, 1)
 	}
 	select {
 	case bi.chunk = <-bi.nextChunkCh:
@@ -203,7 +211,10 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 
 	if bi.nextChunkExists() {
 		atomic.AddInt32(&needNextChunks, 1)
+
+		qC.L.Lock()
 		bi.enqueue()
+		qC.L.Unlock()
 	}
 	return true, nil
 }
@@ -224,10 +235,6 @@ func (bi *BufferingIterator) Next() bool {
 	if bi.err != nil {
 		return false
 	}
-
-	//do this at every iteration. Try to do early so you don't
-	//have to fix the heap.
-	distributeRequests()
 
 	if bi.chunkIterator != nil && bi.chunkIterator.Next() {
 		return true

@@ -61,8 +61,8 @@ func (qmi *qmInfo) run() {
 		enqueued := atomic.LoadInt32(&enqueued)
 		dequeued := atomic.LoadInt32(&dequeued)
 
-		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d[%d]\t %d %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsReal, timeLagSecondsRel,
-			needChunks-fetchChunks, enqueued-dequeued, atomic.LoadInt32(&enqueueInRotate), atomic.LoadInt32(&waitInRotate), fetchChunks-asyncFetchChunks, needNextChunks-enqueued, len(chunkFetchCh))
+		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d[%d]\t %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsReal, timeLagSecondsRel,
+			needChunks-fetchChunks, enqueued-dequeued, atomic.LoadInt32(&syncFetchChunks), atomic.LoadInt32(&waitInRotate), fetchChunks-asyncFetchChunks, needNextChunks-enqueued)
 
 		w.Flush()
 	}
