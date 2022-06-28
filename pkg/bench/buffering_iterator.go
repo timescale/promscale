@@ -185,8 +185,8 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 		pool.Put(bi.chunk)
 	}
 
+	qC.L.Lock()
 	if bi.isInQueue() {
-		qC.L.Lock()
 		bi.dequeue()
 		qC.L.Unlock()
 
@@ -199,7 +199,10 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 		}
 		bi.nextChunkCh <- chk
 		atomic.AddInt32(&syncFetchChunks, 1)
+	} else {
+		qC.L.Unlock()
 	}
+
 	select {
 	case bi.chunk = <-bi.nextChunkCh:
 	default:
