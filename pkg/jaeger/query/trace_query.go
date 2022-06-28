@@ -1,10 +1,12 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
+
 package query
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -241,12 +243,8 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 			default:
 				//TODO make sure this is optimized correctly
 				val := "\"" + v + "\""
-				if digitCheck.MatchString(v) {
-					// Do not add double quotes if value is numeric.
-					// This allows to query via tags that are like `http.status_code=200`
-					//
-					// Note: We can remove this block once the `->` operator becomes
-					// generic and respects integers, booleans, etc.
+				if _, err := strconv.ParseBool(v); err == nil || digitCheck.MatchString(v) {
+					// Do not add double quotes if value is boolean or numeric.
 					val = v
 				}
 				params = append(params, k, val)

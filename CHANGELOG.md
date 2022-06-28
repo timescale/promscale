@@ -13,6 +13,11 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## Unreleased
+
+### Fixed
+- Querying traces using boolean tag values [#1457]
+
 ## [0.12.0] - 2022-06-21
 
 ### Added

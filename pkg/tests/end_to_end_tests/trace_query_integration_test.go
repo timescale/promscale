@@ -73,6 +73,14 @@ var traceQueryCases = []traceQuery{
 		traceID: traceID1,
 		tag:     &tag{"error", "true"},
 	},
+	{
+		name:    "simple trace with boolean tag",
+		start:   timestamp.FromTime(testSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testSpanEndTime) * 1000,
+		service: service0,
+		traceID: traceID1,
+		tag:     &tag{"isExpired", "true"},
+	},
 }
 
 func TestCompareTraceQueryResponse(t *testing.T) {
