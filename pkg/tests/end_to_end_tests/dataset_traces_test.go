@@ -39,6 +39,7 @@ var (
 			"host.name":                  "hostname1",
 			"opencensus.exporterversion": "Jaeger-1.0.0",
 			"http.status_code":           200,
+			"isExpired":                  true,
 		},
 	)
 	spanEventAttributes = pcommon.NewMapFromRaw(map[string]interface{}{"span-event-attr": "span-event-attr-val"})
