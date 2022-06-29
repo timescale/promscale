@@ -14,8 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/timestamp"
 
-	"go.opentelemetry.io/collector/model/otlp"
-	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/jackc/pgtype"
@@ -49,7 +47,7 @@ var (
 )
 
 type Writer interface {
-	InsertTraces(ctx context.Context, traces pdata.Traces) error
+	InsertTraces(ctx context.Context, traces ptrace.Traces) error
 }
 
 type traceWriterImpl struct {
@@ -79,7 +77,7 @@ func RegisterTelemetryMetrics(t telemetry.Engine) error {
 	return nil
 }
 
-func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagBatch, links pdata.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
+func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagBatch, links ptrace.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
 	if spanID.Status != pgtype.Present {
 		return fmt.Errorf("spanID must be set")
 	}
@@ -101,7 +99,7 @@ func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagB
 	return nil
 }
 
-func (t *traceWriterImpl) addSpanEvents(eventRows *[][]interface{}, tagsBatch tagBatch, events pdata.SpanEventSlice, traceID pgtype.UUID, spanID pgtype.Int8) error {
+func (t *traceWriterImpl) addSpanEvents(eventRows *[][]interface{}, tagsBatch tagBatch, events ptrace.SpanEventSlice, traceID pgtype.UUID, spanID pgtype.Int8) error {
 	if spanID.Status != pgtype.Present {
 		return fmt.Errorf("spanID must be set")
 	}
@@ -116,7 +114,7 @@ func (t *traceWriterImpl) addSpanEvents(eventRows *[][]interface{}, tagsBatch ta
 	return nil
 }
 
-func getServiceName(rSpan pdata.ResourceSpans) string {
+func getServiceName(rSpan ptrace.ResourceSpans) string {
 	serviceName := missingServiceName
 	av, found := rSpan.Resource().Attributes().Get(serviceNameTagKey)
 	if found {
@@ -132,9 +130,9 @@ var (
 	traceLinkLabel  = prometheus.Labels{"type": "trace", "kind": "link"}
 )
 
-var tracesMarshaller = otlp.NewProtobufTracesMarshaler()
+var tracesMarshaller = ptrace.NewProtoMarshaler()
 
-func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces) error {
+func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces ptrace.Traces) error {
 	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
 	code := "500"
 	metrics.IngestorActiveWriteRequests.With(traceSpanLabel).Inc()
@@ -358,7 +356,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces pdata.Traces)
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
 
 	// since otel is making Protobufs internal this is our only chance to get the size of the message
-	tracesSizer, ok := tracesMarshaller.(pdata.TracesSizer)
+	tracesSizer, ok := tracesMarshaller.(ptrace.Sizer)
 	if ok {
 		size := tracesSizer.TracesSize(traces)
 		metrics.IngestorBytes.With(prometheus.Labels{"type": "trace"}).Add(float64(size))
@@ -440,7 +438,7 @@ func getSpanID(buf [8]byte) pgtype.Int8 {
 	}
 }
 
-func getEventTimeRange(events pdata.SpanEventSlice) (result pgtype.Tstzrange) {
+func getEventTimeRange(events ptrace.SpanEventSlice) (result pgtype.Tstzrange) {
 	if events.Len() == 0 {
 		result.Status = pgtype.Null
 		return result
@@ -470,7 +468,7 @@ func getEventTimeRange(events pdata.SpanEventSlice) (result pgtype.Tstzrange) {
 	return result
 }
 
-func getTraceStateValue(ts pdata.TraceState) (result pgtype.Text) {
+func getTraceStateValue(ts ptrace.TraceState) (result pgtype.Text) {
 	if string(ts) == "" {
 		result.Status = pgtype.Null
 	} else {
@@ -481,7 +479,7 @@ func getTraceStateValue(ts pdata.TraceState) (result pgtype.Text) {
 	return result
 }
 
-func getPGStatusCode(pk pdata.StatusCode) (string, error) {
+func getPGStatusCode(pk ptrace.StatusCode) (string, error) {
 	switch pk {
 	case ptrace.StatusCodeOk:
 		return "ok", nil

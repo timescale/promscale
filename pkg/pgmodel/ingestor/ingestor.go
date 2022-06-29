@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/atomic"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -79,7 +79,7 @@ type result struct {
 	err     error
 }
 
-func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces pdata.Traces) error {
+func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	if ingestor.closed.Load() {
 		return fmt.Errorf("ingestor is closed and can't ingest traces")
 	}

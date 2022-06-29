@@ -6,19 +6,18 @@ package query
 import (
 	"fmt"
 
-	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 var (
 	// Map of status codes to internal DB values.
-	statusCodeInternalValue = map[string]pdata.StatusCode{
+	statusCodeInternalValue = map[string]ptrace.StatusCode{
 		"ok":    ptrace.StatusCodeOk,
 		"error": ptrace.StatusCodeError,
 		"unset": ptrace.StatusCodeUnset,
 	}
 	// Map of span kinds to internal DB values.
-	spanKindInternalValue = map[string]pdata.SpanKind{
+	spanKindInternalValue = map[string]ptrace.SpanKind{
 		"client":      ptrace.SpanKindClient,
 		"server":      ptrace.SpanKindServer,
 		"internal":    ptrace.SpanKindInternal,
@@ -37,7 +36,7 @@ var (
 	}
 )
 
-func internalToStatusCode(s string) pdata.StatusCode {
+func internalToStatusCode(s string) ptrace.StatusCode {
 	v, ok := statusCodeInternalValue[s]
 	if !ok {
 		panic(fmt.Sprintf("status code %s does not have internal representation", s))
@@ -45,7 +44,7 @@ func internalToStatusCode(s string) pdata.StatusCode {
 	return v
 }
 
-func statusCodeToInternal(sc pdata.StatusCode) string {
+func statusCodeToInternal(sc ptrace.StatusCode) string {
 	for k, v := range statusCodeInternalValue {
 		if sc == v {
 			return k
@@ -54,7 +53,7 @@ func statusCodeToInternal(sc pdata.StatusCode) string {
 	panic(fmt.Sprintf("status code %s does not have internal representation", sc.String()))
 }
 
-func internalToSpanKind(s string) pdata.SpanKind {
+func internalToSpanKind(s string) ptrace.SpanKind {
 	v, ok := spanKindInternalValue[s]
 	if !ok {
 		panic(fmt.Sprintf("span kind %s does not have internal representation", s))

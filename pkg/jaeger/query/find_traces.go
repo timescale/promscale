@@ -12,7 +12,7 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 func findTraces(ctx context.Context, builder *Builder, conn pgxconn.PgxConn, q *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
@@ -27,7 +27,7 @@ func findTraces(ctx context.Context, builder *Builder, conn pgxconn.PgxConn, q *
 }
 
 func scanTraces(rows pgxconn.PgxRows) ([]*model.Trace, error) {
-	traces := pdata.NewTraces()
+	traces := ptrace.NewTraces()
 	for rows.Next() {
 		if rows.Err() != nil {
 			return nil, fmt.Errorf("trace row iterator: %w", rows.Err())

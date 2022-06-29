@@ -19,7 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
@@ -277,7 +277,7 @@ type mockInserter struct {
 	err    error
 }
 
-func (m *mockInserter) IngestTraces(_ context.Context, _ pdata.Traces) error {
+func (m *mockInserter) IngestTraces(_ context.Context, _ ptrace.Traces) error {
 	panic("not implemented") // TODO: Implement
 }
 
