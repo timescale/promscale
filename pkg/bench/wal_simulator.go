@@ -9,6 +9,7 @@ import (
 )
 
 type walSimulator struct {
+	conf       *BenchConfig
 	ch         chan []record.RefSample
 	wg         sync.WaitGroup
 	lastReport time.Time
@@ -16,10 +17,14 @@ type walSimulator struct {
 
 const reportEvery = time.Second * 10
 
-func NewWalSimulator(qmi *qmInfo) *walSimulator {
+func NewWalSimulator(qmi *qmInfo, conf *BenchConfig) *walSimulator {
+	if conf.FakeSendDuration > 0 {
+		fmt.Println("Warning: using fakeSendDuration -- not sending data to db")
+	}
 	sim := &walSimulator{
-		ch: make(chan []record.RefSample, WALSimulatorChannelSize),
-		wg: sync.WaitGroup{},
+		conf: conf,
+		ch:   make(chan []record.RefSample, WALSimulatorChannelSize),
+		wg:   sync.WaitGroup{},
 	}
 	sim.wg.Add(1)
 	go func() {
@@ -31,8 +36,12 @@ func NewWalSimulator(qmi *qmInfo) *walSimulator {
 
 func (ws *walSimulator) run(qmi *qmInfo) {
 	for samples := range ws.ch {
-		if ok := qmi.qm.Append(samples); !ok {
-			fmt.Println("qm append returned false")
+		if ws.conf.FakeSendDuration == 0 {
+			if ok := qmi.qm.Append(samples); !ok {
+				fmt.Println("qm append returned false")
+			}
+		} else {
+			time.Sleep(ws.conf.FakeSendDuration)
 		}
 		qmi.samplesWal.Incr(int64(len(samples)))
 	}

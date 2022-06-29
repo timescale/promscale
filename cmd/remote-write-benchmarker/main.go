@@ -34,6 +34,7 @@ func main() {
 		MetricMultiplier:        1,
 		RemoteWriteConfig:       config.DefaultRemoteWriteConfig,
 		RepeatedRuns:            1,
+		FakeSendDuration:        0,
 	}
 
 	//just for imports

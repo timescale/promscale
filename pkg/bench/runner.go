@@ -92,7 +92,7 @@ func Run(conf *BenchConfig) (err error) {
 	}
 	qmi.qm.Start()
 
-	ws := NewWalSimulator(qmi)
+	ws := NewWalSimulator(qmi, conf)
 	totalCount := 0
 	start := time.Time{}
 	for i := 0; i < conf.RepeatedRuns; i++ {

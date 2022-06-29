@@ -2,6 +2,7 @@ package bench
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/prometheus/prometheus/config"
 )
@@ -21,6 +22,7 @@ type BenchConfig struct {
 	SeriesMultiplier int
 	MetricMultiplier int
 	RepeatedRuns     int
+	FakeSendDuration time.Duration
 }
 
 func (t *BenchConfig) Validate() error {
