@@ -14,4 +14,10 @@ const (
 	LockID = 0x4D829C732AAFCEDE // Chosen randomly.
 
 	PromDataSeries = "prom_data_series"
+	PsTrace        = "_ps_trace"
+)
+
+var (
+	PromDataColumns     = []string{"time", "value", "series_id"}
+	PromExemplarColumns = []string{"time", "series_id", "exemplar_label_values", "value"}
 )

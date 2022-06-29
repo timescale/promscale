@@ -61,9 +61,9 @@ jobs:
           extension_version=$(cat EXTENSION_VERSION | tr -d '[:space:]')
           stable_branch_tag=$(echo ${extension_version}-ts2)
           image_base="ghcr.io/timescale/dev_promscale_extension"
-          docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${stable_branch_tag}-pg12)
-          docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${stable_branch_tag}-pg13)
-          docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${stable_branch_tag}-pg14)
+          docker_image_12=${image_base}:${stable_branch_tag}-pg12
+          docker_image_13=${image_base}:${stable_branch_tag}-pg13
+          docker_image_14=${image_base}:${stable_branch_tag}-pg14
         fi;
         echo "::set-output name=docker_image_12::${docker_image_12}"
         echo "::set-output name=docker_image_13::${docker_image_13}"

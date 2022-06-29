@@ -498,7 +498,7 @@ func TestHAMultipleChecksBetweenTicks(t *testing.T) {
 }
 
 func checkDbState(t testing.TB, db *pgxpool.Pool, output haTestOutput) bool {
-	row := db.QueryRow(context.Background(), "SELECT max(time), count(*) FROM metric")
+	row := db.QueryRow(context.Background(), "SELECT max(time), count(*) FROM prom_data.metric")
 	var maxTimeInDb time.Time
 	var rowsInDb int
 	if err := row.Scan(&maxTimeInDb, &rowsInDb); err != nil {
