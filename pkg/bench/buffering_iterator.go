@@ -68,7 +68,8 @@ var q BufferingIteratorHeap = NewBufferingIteratorHeap()
 
 //todo move out of init
 func init() {
-	chunkFetchWorkers := 10
+	//be careful about too many workers because of lock contention on heap
+	chunkFetchWorkers := 1
 	//todo close channel && wg
 	for i := 0; i < chunkFetchWorkers; i++ {
 		go chunkFetchWorker()
