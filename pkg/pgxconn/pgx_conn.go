@@ -70,6 +70,7 @@ type PgxConn interface {
 	NewBatch() PgxBatch
 	SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error)
 	Acquire(ctx context.Context) (*pgxpool.Conn, error)
+	BeginTx(ctx context.Context) (pgx.Tx, error)
 }
 
 type PgxRows interface {
@@ -204,6 +205,10 @@ func (p *connImpl) SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults,
 
 func (p *connImpl) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
 	return p.Conn.Acquire(ctx)
+}
+
+func (p *connImpl) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return p.Conn.BeginTx(ctx, pgx.TxOptions{})
 }
 
 // filters out indentation characters from the
