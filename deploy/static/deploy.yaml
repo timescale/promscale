@@ -8,11 +8,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.12.0
+    chart: promscale-0.12.1
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.12.0
+    app.kubernetes.io/version: 0.12.1
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 ---
@@ -24,11 +24,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.12.0
+    chart: promscale-0.12.1
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.12.0
+    app.kubernetes.io/version: 0.12.1
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 stringData:
@@ -45,11 +45,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.12.0
+    chart: promscale-0.12.1
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.12.0
+    app.kubernetes.io/version: 0.12.1
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 spec:
@@ -74,11 +74,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.12.0
+    chart: promscale-0.12.1
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.12.0
+    app.kubernetes.io/version: 0.12.1
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
 spec:
@@ -92,10 +92,10 @@ spec:
     metadata:
       labels:
         app: promscale
-        chart: promscale-0.12.0
+        chart: promscale-0.12.1
         release: promscale
         app.kubernetes.io/name: "promscale-connector"
-        app.kubernetes.io/version: 0.12.0
+        app.kubernetes.io/version: 0.12.1
         app.kubernetes.io/part-of: "promscale-connector"
         app.kubernetes.io/component: "connector"
       annotations: 
@@ -115,7 +115,7 @@ spec:
             - name: TOBS_TELEMETRY_INSTALLED_BY
               value: "promscale"
             - name: "TOBS_TELEMETRY_VERSION"
-              value: "0.12.0"
+              value: "0.12.1"
           envFrom:
           - secretRef:
               name: promscale
@@ -149,11 +149,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.12.0
+    chart: promscale-0.12.1
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: 0.12.0
+    app.kubernetes.io/version: 0.12.1
     app.kubernetes.io/part-of: "promscale-connector"
     app.kubernetes.io/component: "connector"
   annotations:
