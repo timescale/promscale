@@ -288,7 +288,7 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 			for i := range pos {
 				res := cache.NewLabelInfo(labelIDs[i], pos[i])
 				key := cache.NewLabelKey(info.metricName, names[i], values[i])
-				if !h.labelsCache.Put(cache.NewLabelKey(info.metricName, names[i], values[i]), cache.NewLabelInfo(labelIDs[i], pos[i])) {
+				if !h.labelsCache.Put(key, res) {
 					log.Warn("failed to add label ID to inverted cache")
 				}
 				_, ok := labelMap[key]

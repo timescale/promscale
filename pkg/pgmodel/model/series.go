@@ -27,10 +27,10 @@ func (s SeriesID) String() string {
 	return strconv.FormatInt(int64(s), 10)
 }
 
-//Epoch represents the series epoch
+// SeriesEpoch represents the series epoch
 type SeriesEpoch int64
 
-// Series stores a labels.Series in its canonical string representation
+// Series stores a Prometheus labels.Labels in its canonical string representation
 type Series struct {
 	//protects names, values, seriesID, epoch
 	//str and metricName are immutable and doesn't need a lock

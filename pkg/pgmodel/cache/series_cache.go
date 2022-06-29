@@ -24,10 +24,11 @@ import (
 //this seems like a good initial size for /active/ series. Takes about 32MB
 const DefaultSeriesCacheSize = 250000
 
-const GrowCheckDuration = time.Minute //check whether to grow the series cache this often
+const GrowCheckDuration = time.Minute // check whether to grow the series cache this often
 const GrowEvictionThreshold = 0.2     // grow when evictions more than 20% of cache size
 const GrowFactor = float64(2.0)       // multiply cache size by this factor when growing the cache
 
+// SeriesCache is a cache of model.Series entries.
 type SeriesCache interface {
 	Reset()
 	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
@@ -112,15 +113,13 @@ func (t *SeriesCacheImpl) Evictions() uint64 {
 	return t.cache.Evictions()
 }
 
-//ResetStoredLabels should be concurrency-safe
+// Reset should be concurrency-safe
 func (t *SeriesCacheImpl) Reset() {
 	t.cache.Reset()
 }
 
 // Get the canonical version of a series if one exists.
 // input: the string representation of a Labels as defined by generateKey()
-// This function should not be called directly, use labelProtosToLabels() or
-// LabelsFromSlice() instead.
 func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 	val, ok := t.cache.Get(str)
 	if !ok {
@@ -132,18 +131,31 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 // Try to set a series as the canonical Series for a given string
 // representation, returning the canonical version (which can be different in
 // the even of multiple goroutines setting labels concurrently).
-// This function should not be called directly, use labelProtosToLabels() or
-// LabelsFromSlice() instead.
 func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
 	//str not counted twice in size since the key and lset.str will point to same thing.
 	val, _ := t.cache.Insert(str, lset, lset.FinalSizeBytes())
 	return val.(*model.Series)
 }
 
-// Get a string representation for hashing and comparison
-// This representation is guaranteed to uniquely represent the underlying label
-// set, though need not human-readable, or indeed, valid utf-8
-func generateKey(labels []prompb.Label, builder *bytes.Buffer) (metricName string, error error) {
+// generateKey takes an array of Prometheus labels, and a byte buffer. It
+// stores a string representation (for hashing and comparison) of the labels
+// array in the byte buffer, and returns the metric name which it found in the
+// array of Prometheus labels.
+//
+// The string representation is guaranteed to uniquely represent the underlying
+// label set, though need not be human-readable, or indeed, valid utf-8.
+//
+// The `labels` parameter contains an array of (name, value) pairs.
+// The key which this function returns is the concatenation of sorted kv pairs
+// where each of the key and value is prefixed by the little-endian
+// representation of the two bytes of the uint16 length of the key/value string:
+//   <key1-len>key1<val1-len>val1<key2-len>key2<val2-len>val2
+//
+// This formatting ensures isomorphism, hence preventing collisions.
+// An example for how this transform works is as follows:
+// label1 = ("hell", "oworld"), label2 = ("hello", "world").
+// => "\x04\x00hell\x06\x00oworld\x05\x00hello\x05\x00world"
+func generateKey(labels []prompb.Label, keyBuffer *bytes.Buffer) (metricName string, error error) {
 	if len(labels) == 0 {
 		return "", nil
 	}
@@ -170,17 +182,13 @@ func generateKey(labels []prompb.Label, builder *bytes.Buffer) (metricName strin
 
 	// BigCache cannot handle cases where the key string has a size greater than
 	// 16bits, so we error on such keys here. Since we are restricted to a 16bit
-	// total length anyway, we only use 16bits to store the legth of each substring
+	// total length anyway, we only use 16bits to store the length of each substring
 	// in our string encoding
 	if expectedStrLen > math.MaxUint16 {
 		return metricName, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, math.MaxUint16)
 	}
 
-	// the string representation is
-	//   (<key-len>key <val-len> val)* (<key-len>key <val-len> val)?
-	// that is a series of the a sequence of key values pairs with each string
-	// prefixed with it's length as a little-endian uint16
-	builder.Grow(expectedStrLen)
+	keyBuffer.Grow(expectedStrLen)
 
 	lengthBuf := make([]byte, 2)
 	for i := range labels {
@@ -193,18 +201,18 @@ func generateKey(labels []prompb.Label, builder *bytes.Buffer) (metricName strin
 		// this cast is safe since we check that the combined length of all the
 		// strings fit within a uint16, each string's length must also fit
 		binary.LittleEndian.PutUint16(lengthBuf, uint16(len(key)))
-		builder.WriteByte(lengthBuf[0])
-		builder.WriteByte(lengthBuf[1])
-		builder.WriteString(key)
+		keyBuffer.WriteByte(lengthBuf[0])
+		keyBuffer.WriteByte(lengthBuf[1])
+		keyBuffer.WriteString(key)
 
 		val := l.Value
 
 		// this cast is safe since we check that the combined length of all the
 		// strings fit within a uint16, each string's length must also fit
 		binary.LittleEndian.PutUint16(lengthBuf, uint16(len(val)))
-		builder.WriteByte(lengthBuf[0])
-		builder.WriteByte(lengthBuf[1])
-		builder.WriteString(val)
+		keyBuffer.WriteByte(lengthBuf[0])
+		keyBuffer.WriteByte(lengthBuf[1])
+		keyBuffer.WriteString(val)
 	}
 
 	return metricName, nil
@@ -216,7 +224,7 @@ var keyPool = sync.Pool{
 	},
 }
 
-// GetSeriesFromLabels converts a labels.Labels to a canonical Labels object
+// GetSeriesFromLabels converts a labels.Labels to a canonical model.Series object
 func (t *SeriesCacheImpl) GetSeriesFromLabels(ls labels.Labels) (*model.Series, error) {
 	ll := make([]prompb.Label, len(ls))
 	for i := range ls {
@@ -242,7 +250,11 @@ func useByteAsStringNoCopy(b []byte, useAsStringFunc func(string)) {
 	useAsStringFunc(str)
 }
 
-// GetSeriesFromProtos converts a prompb.Label to a canonical Labels object
+// GetSeriesFromProtos returns a model.Series entry given a list of Prometheus
+// prompb.Label.
+// If the desired entry is not in the cache, a "placeholder" model.Series entry
+// is constructed and put into the cache. It is not populated with database IDs
+// until a later phase, see model.Series.SetSeriesID.
 func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, string, error) {
 	builder := keyPool.Get().(*bytes.Buffer)
 	builder.Reset()

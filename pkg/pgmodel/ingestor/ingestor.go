@@ -192,8 +192,8 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 		if len(ts.Labels) == 0 {
 			continue
 		}
-		// Normalize and canonicalize t.Labels.
-		// After this point t.Labels should never be used again.
+		// Normalize and canonicalize ts.Labels.
+		// After this point ts.Labels should never be used again.
 		series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
 		if err != nil {
 			return 0, err

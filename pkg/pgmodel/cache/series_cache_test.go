@@ -5,6 +5,9 @@
 package cache
 
 import (
+	"bytes"
+	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/prompb"
 	"math"
 	"strings"
 	"testing"
@@ -12,7 +15,7 @@ import (
 	promLabels "github.com/prometheus/prometheus/model/labels"
 )
 
-func TestBigLables(t *testing.T) {
+func TestBigLabels(t *testing.T) {
 	cache := NewSeriesCache(DefaultConfig, nil)
 	builder := strings.Builder{}
 	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
@@ -33,4 +36,19 @@ func TestBigLables(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error")
 	}
+}
+
+func TestGenerateKey(t *testing.T) {
+	var labels = []prompb.Label{
+		{Name: "__name__", Value: "test"},
+		{Name: "hell", Value: "oworld"},
+		{Name: "hello", Value: "world"},
+	}
+	var keyBuffer = new(bytes.Buffer)
+	var metricName, err = generateKey(labels, keyBuffer)
+
+	require.Nil(t, err)
+
+	require.Equal(t, "test", metricName)
+	require.Equal(t, []byte("\x08\x00__name__\x04\x00test\x04\x00hell\x06\x00oworld\x05\x00hello\x05\x00world"), keyBuffer.Bytes())
 }
