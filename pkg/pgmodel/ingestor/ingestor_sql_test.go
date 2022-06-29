@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v4"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -547,12 +549,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
-					Args: []interface{}{
-						"metric_0",
-						[]time.Time{time.Unix(0, 0)},
-						[]float64{0},
-						[]int64{1},
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"prom_data", "metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
 					},
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
@@ -591,6 +592,13 @@ func TestPGXInserterInsertData(t *testing.T) {
 						[]time.Time{time.Unix(0, 0), time.Unix(0, 0)},
 						[]float64{0, 0},
 						[]int64{1, 1},
+					},
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"prom_data", "metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
 					},
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
@@ -645,12 +653,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 
 				{
-					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
-					Args: []interface{}{
-						"metric_0",
-						[]time.Time{time.Unix(0, 0)},
-						[]float64{0},
-						[]int64{1},
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"prom_data", "metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
 					},
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
@@ -662,16 +669,27 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{[]byte{}}},
 					Err:     fmt.Errorf("epoch error"),
 				},
-
 				{
-					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
-					Args: []interface{}{
-						"metric_0",
-						[]time.Time{time.Unix(0, 0)},
-						[]float64{0},
-						[]int64{1},
+					// on epoch error we go for on conflict insert approach
+					Sql:     "SELECT _prom_catalog.create_ingest_temp_table($1, $2, $3)",
+					Args:    []interface{}{"metric_0", "prom_data", "s0_"},
+					Results: model.RowResults{{"s0_metric_0"}},
+					Err:     error(nil),
+				},
+				{
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"s0_metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
 					},
 					Results: model.RowResults{{int64(1)}},
+					Err:     error(nil),
+				},
+				// insert from temp table using on conflict
+				{
+					Sql:     "INSERT INTO prom_data.\"metric_0\"(time,value,series_id) SELECT time,value,series_id FROM \"s0_metric_0\" ON CONFLICT DO NOTHING",
+					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
 				{
@@ -707,41 +725,40 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 
 				{
-					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
-					Args: []interface{}{
-						"metric_0",
-						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
-						make([]float64, 5),
-						[]int64{1, 1, 1, 1, 1},
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"prom_data", "metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
 					},
 					Results: model.RowResults{{int64(1)}},
-					Err:     fmt.Errorf("some INSERT error"),
+					Err:     fmt.Errorf("some COPY error"),
 				},
 				{
-					// this is the entire batch insert
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
-					Results: model.RowResults{{[]byte{}}},
+					// on epoch error we go for on conflict insert approach
+					Sql:     "SELECT _prom_catalog.create_ingest_temp_table($1, $2, $3)",
+					Args:    []interface{}{"metric_0", "prom_data", "s0_"},
+					Results: model.RowResults{{"s0_metric_0"}},
 					Err:     error(nil),
 				},
-
+				// retry of insert of individual copy request
 				{
-					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
-					Args: []interface{}{
-						"metric_0",
-						[]time.Time{time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0), time.Unix(0, 0)},
-						make([]float64, 5),
-						[]int64{1, 1, 1, 1, 1},
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"s0_metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
 					},
 					Results: model.RowResults{{int64(1)}},
-					Err:     fmt.Errorf("some INSERT error"),
-				},
-				{
-					// this is the retry on individual copy requests
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
-					Results: model.RowResults{{[]byte{}}},
-					Err:     error(nil),
+					Err:     fmt.Errorf("some COPY error"),
 				},
 			},
 		},
@@ -790,16 +807,82 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
-					Sql: "SELECT _prom_catalog.insert_metric_row($1, $2::TIMESTAMPTZ[], $3::DOUBLE PRECISION[], $4::BIGINT[])",
-					Args: []interface{}{
-						"metric_0",
-						[]time.Time{time.Unix(0, 0)},
-						[]float64{0},
-						[]int64{1},
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"prom_data", "metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
 					},
 					Results: model.RowResults{{int64(1)}},
 					Err:     error(nil),
 				},
+				{
+					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(1)},
+					Results: model.RowResults{{[]byte{}}},
+					Err:     error(nil),
+				},
+			},
+		},
+		{
+			name: "On conflict error resolution",
+			rows: map[string][]model.Insertable{
+				"metric_0": {
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
+				},
+			},
+
+			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
+				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
+				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
+				{
+					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
+					Args:    []interface{}{"metric_0"},
+					Results: model.RowResults{{int64(1), "metric_0", false}},
+					Err:     error(nil),
+				},
+
+				{
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"prom_data", "metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
+					},
+					Results: model.RowResults{{int64(1)}},
+					Err: &pgconn.PgError{
+						Code: "23505", // unique key violation
+					},
+				},
+				// retry by creating temp table
+				{
+					Sql:     "SELECT _prom_catalog.create_ingest_temp_table($1, $2, $3)",
+					Args:    []interface{}{"metric_0", "prom_data", "s0_"},
+					Results: model.RowResults{{"s0_metric_0"}},
+					Err:     error(nil),
+				},
+				// copy into created temp table
+				{
+					Copy: &model.Copy{
+						Table: pgx.Identifier{"s0_metric_0"},
+						Data: [][]interface{}{
+							{time.Unix(0, 0), float64(0), int64(1)},
+							{time.Unix(0, 0), float64(0), int64(1)},
+						},
+					},
+					Results: model.RowResults{{int64(1)}},
+					Err:     error(nil),
+				},
+				// insert from temp table using on conflict
+				{
+					Sql:     "INSERT INTO prom_data.\"metric_0\"(time,value,series_id) SELECT time,value,series_id FROM \"s0_metric_0\" ON CONFLICT DO NOTHING",
+					Results: model.RowResults{{[]byte{}}},
+					Err:     error(nil),
+				},
+				// epoch check after insert from temp table
 				{
 					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}{int64(1)},
@@ -848,6 +931,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				expErr = nil
 			case c.name == "Can't find/create table in DB":
 				expErr = pgmodelErrs.ErrMissingTableName
+			case c.name == "On conflict error resolution":
+				expErr = nil
 			default:
 				for _, q := range c.sqlQueries {
 					if q.Err != nil {
