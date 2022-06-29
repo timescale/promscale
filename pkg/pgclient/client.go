@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
@@ -215,7 +215,7 @@ func (c *Client) Ingest(ctx context.Context, r *prompb.WriteRequest) (uint64, ui
 }
 
 // IngestTraces writes the traces object into the DB.
-func (c *Client) IngestTraces(ctx context.Context, tr pdata.Traces) error {
+func (c *Client) IngestTraces(ctx context.Context, tr ptrace.Traces) error {
 	return c.ingestor.IngestTraces(ctx, tr)
 }
 

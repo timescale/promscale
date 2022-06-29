@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
@@ -56,7 +55,7 @@ type spanDBResult struct {
 	linksTags             pgtype.JSONBArray
 }
 
-func ScanRow(row pgxconn.PgxRows, traces *pdata.Traces) error {
+func ScanRow(row pgxconn.PgxRows, traces *ptrace.Traces) error {
 	dbRes := spanDBResult{}
 
 	if err := row.Scan(
@@ -109,14 +108,14 @@ func ScanRow(row pgxconn.PgxRows, traces *pdata.Traces) error {
 
 func populateSpan(
 	// From span table.
-	resourceSpan pdata.ResourceSpans,
+	resourceSpan ptrace.ResourceSpans,
 	dbResult *spanDBResult) error {
 
 	attr, err := makeAttributes(dbResult.resourceTags)
 	if err != nil {
 		return fmt.Errorf("making resource tags: %w", err)
 	}
-	pdata.NewAttributeMapFromMap(attr).CopyTo(resourceSpan.Resource().Attributes())
+	pcommon.NewMapFromRaw(attr).CopyTo(resourceSpan.Resource().Attributes())
 
 	instrumentationLibSpan := resourceSpan.ScopeSpans().AppendEmpty()
 	if dbResult.instLibSchemaUrl != nil {
@@ -153,7 +152,7 @@ func populateSpan(
 	ref.SetParentSpanID(parentId)
 
 	if dbResult.traceState.Status == pgtype.Present {
-		ref.SetTraceState(pdata.TraceState(dbResult.traceState.String))
+		ref.SetTraceState(ptrace.TraceState(dbResult.traceState.String))
 	}
 
 	if dbResult.schemaUrl.Status == pgtype.Present {
@@ -166,8 +165,8 @@ func populateSpan(
 		ref.SetKind(internalToSpanKind(dbResult.kind.String))
 	}
 
-	ref.SetStartTimestamp(pdata.NewTimestampFromTime(dbResult.startTime))
-	ref.SetEndTimestamp(pdata.NewTimestampFromTime(dbResult.endTime))
+	ref.SetStartTimestamp(pcommon.NewTimestampFromTime(dbResult.startTime))
+	ref.SetEndTimestamp(pcommon.NewTimestampFromTime(dbResult.endTime))
 
 	ref.SetDroppedAttributesCount(uint32(dbResult.droppedTagsCounts))
 	ref.SetDroppedEventsCount(uint32(dbResult.droppedEventsCounts))
@@ -181,7 +180,7 @@ func populateSpan(
 	if err != nil {
 		return fmt.Errorf("making span tags: %w", err)
 	}
-	pdata.NewAttributeMapFromMap(attr).CopyTo(ref.Attributes())
+	pcommon.NewMapFromRaw(attr).CopyTo(ref.Attributes())
 
 	if dbResult.eventNames != nil {
 		if err := populateEvents(ref.Events(), dbResult); err != nil {
@@ -208,26 +207,26 @@ func setStatus(ref ptrace.Span, dbRes *spanDBResult) error {
 }
 
 func populateEvents(
-	spanEventSlice pdata.SpanEventSlice,
+	spanEventSlice ptrace.SpanEventSlice,
 	dbResult *spanDBResult) error {
 
 	n := len(*dbResult.eventNames)
 	for i := 0; i < n; i++ {
 		event := spanEventSlice.AppendEmpty()
 		event.SetName((*dbResult.eventNames)[i])
-		event.SetTimestamp(pdata.NewTimestampFromTime((*dbResult.eventTimes)[i]))
+		event.SetTimestamp(pcommon.NewTimestampFromTime((*dbResult.eventTimes)[i]))
 		event.SetDroppedAttributesCount(uint32((*dbResult.eventDroppedTagsCount)[i]))
 		attr, err := makeAttributes(dbResult.eventTags.Elements[i])
 		if err != nil {
 			return fmt.Errorf("making event tags: %w", err)
 		}
-		pdata.NewAttributeMapFromMap(attr).CopyTo(event.Attributes())
+		pcommon.NewMapFromRaw(attr).CopyTo(event.Attributes())
 	}
 	return nil
 }
 
 func populateLinks(
-	spanEventSlice pdata.SpanLinkSlice,
+	spanEventSlice ptrace.SpanLinkSlice,
 	dbResult *spanDBResult) error {
 
 	n := len(*dbResult.linksLinkedSpanIds)
@@ -240,40 +239,33 @@ func populateLinks(
 	for i := 0; i < n; i++ {
 		link := spanEventSlice.AppendEmpty()
 
-		link.SetTraceID(pdata.NewTraceID(linkedTraceIds[i]))
+		link.SetTraceID(pcommon.NewTraceID(linkedTraceIds[i]))
 
 		spanId := makeSpanId(&(*dbResult.linksLinkedSpanIds)[i])
 		link.SetSpanID(spanId)
 
 		if (*dbResult.linksTraceStates)[i] != nil {
 			traceState := *((*dbResult.linksTraceStates)[i])
-			link.SetTraceState(pdata.TraceState(traceState))
+			link.SetTraceState(ptrace.TraceState(traceState))
 		}
 		link.SetDroppedAttributesCount(uint32((*dbResult.linksDroppedTagsCount)[i]))
 		attr, err := makeAttributes(dbResult.linksTags.Elements[i])
 		if err != nil {
 			return fmt.Errorf("making link tags: %w", err)
 		}
-		pdata.NewAttributeMapFromMap(attr).CopyTo(link.Attributes())
+		pcommon.NewMapFromRaw(attr).CopyTo(link.Attributes())
 	}
 	return nil
 }
 
-// makeAttributes makes attribute map using tags.
-func makeAttributes(tagsJson pgtype.JSONB) (map[string]pcommon.Value, error) {
+// makeAttributes makes raw attribute map using tags.
+func makeAttributes(tagsJson pgtype.JSONB) (map[string]interface{}, error) {
 	var tags map[string]interface{}
 	if err := tagsJson.AssignTo(&tags); err != nil {
-		return nil, fmt.Errorf("tags assign to: %w", err)
+		return map[string]interface{}{}, fmt.Errorf("tags assign to: %w", err)
 	}
 	tags = sanitizeInt(tags)
-	otMap := pcommon.NewMapFromRaw(tags)
-	m := make(map[string]pcommon.Value, len(tags))
-	populateMap := func(k string, v pcommon.Value) bool {
-		m[k] = v
-		return true
-	}
-	otMap.Range(populateMap)
-	return m, nil
+	return tags, nil
 }
 
 // Hotfix of potential bug: Postgres returns tags as a JSONB map. In this format,
@@ -293,20 +285,20 @@ func isIntegral(val float64) bool {
 	return val == float64(int(val))
 }
 
-func makeTraceId(s pgtype.UUID) (pdata.TraceID, error) {
+func makeTraceId(s pgtype.UUID) (pcommon.TraceID, error) {
 	var bSlice [16]byte
 	if err := s.AssignTo(&bSlice); err != nil {
-		return pdata.TraceID{}, fmt.Errorf("trace id assign to: %w", err)
+		return pcommon.TraceID{}, fmt.Errorf("trace id assign to: %w", err)
 	}
-	return pdata.NewTraceID(bSlice), nil
+	return pcommon.NewTraceID(bSlice), nil
 }
 
-func makeSpanId(s *int64) pdata.SpanID {
+func makeSpanId(s *int64) pcommon.SpanID {
 	if s == nil {
 		// Send an empty Span ID.
-		return pdata.NewSpanID([8]byte{})
+		return pcommon.NewSpanID([8]byte{})
 	}
 
 	b8 := trace.Int64ToByteArray(*s)
-	return pdata.NewSpanID(b8)
+	return pcommon.NewSpanID(b8)
 }

@@ -19,7 +19,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/oklog/run"
-	"go.opentelemetry.io/collector/model/otlpgrpc"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -216,7 +216,7 @@ func Run(cfg *Config) error {
 		options = append(options, grpc.Creds(creds))
 	}
 	grpcServer := grpc.NewServer(options...)
-	otlpgrpc.RegisterTracesServer(grpcServer, api.NewTraceServer(client))
+	ptraceotlp.RegisterServer(grpcServer, api.NewTraceServer(client))
 	grpc_prometheus.Register(grpcServer)
 	grpc_prometheus.EnableHandlingTimeHistogram(
 		grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),

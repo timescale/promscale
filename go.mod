@@ -36,13 +36,12 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20220308163432-03831554a519
 	github.com/sergi/go-diff v1.2.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
-	github.com/stretchr/testify v1.7.3
+	github.com/stretchr/testify v1.7.4
 	github.com/testcontainers/testcontainers-go v0.13.0
 	github.com/thanos-io/thanos v0.26.0
 	github.com/walle/targz v0.0.0-20140417120357-57fe4206da5a
-	go.opentelemetry.io/collector/model v0.50.0
-	go.opentelemetry.io/collector/pdata v0.53.0
-	go.opentelemetry.io/collector/semconv v0.53.0
+	go.opentelemetry.io/collector/pdata v0.54.0
+	go.opentelemetry.io/collector/semconv v0.54.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.32.0
 	go.opentelemetry.io/otel v1.7.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.7.0

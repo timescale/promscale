@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
-	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	semconv "go.opentelemetry.io/collector/semconv/v1.6.1"
 )
@@ -207,7 +206,7 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 		for k, v := range q.Tags {
 			switch k {
 			case TagError:
-				var sc pdata.StatusCode
+				var sc ptrace.StatusCode
 				switch v {
 				case "true":
 					sc = ptrace.StatusCodeError
