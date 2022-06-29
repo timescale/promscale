@@ -2,6 +2,7 @@ package bench
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -21,6 +22,8 @@ const (
 
 	WALSimulatorChannelSize = 100000000
 )
+
+var rateControlSleeps int32 = 0
 
 func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *walSimulator, runNumber int) (time.Time, int, error) {
 	dm := NewDataModifier(conf)
@@ -43,6 +46,7 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *wa
 		if conf.RateControl {
 			wait := time.Until(model.Time(wallTs).Time())
 			if wait > 0 {
+				atomic.AddInt32(&rateControlSleeps, 1)
 				time.Sleep(wait)
 			}
 		}
