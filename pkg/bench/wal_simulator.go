@@ -36,12 +36,14 @@ func NewWalSimulator(qmi *qmInfo, conf *BenchConfig) *walSimulator {
 
 func (ws *walSimulator) run(qmi *qmInfo) {
 	for samples := range ws.ch {
-		if ws.conf.FakeSendDuration == 0 {
+		if ws.conf.FakeSendDuration < 0 {
 			if ok := qmi.qm.Append(samples); !ok {
 				fmt.Println("qm append returned false")
 			}
 		} else {
-			time.Sleep(ws.conf.FakeSendDuration)
+			if ws.conf.FakeSendDuration > 0 {
+				time.Sleep(ws.conf.FakeSendDuration)
+			}
 		}
 		qmi.samplesWal.Incr(int64(len(samples)))
 	}
