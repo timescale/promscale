@@ -159,9 +159,30 @@ func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (mod
 		return model.InvalidSeriesEpoch, err
 	}
 	if existingEpoch == model.InvalidSeriesEpoch || dbEpoch != existingEpoch {
-		p.scache.Reset()
+		start := time.Now()
+		staleSeriesIds, err := GetStaleSeriesIDs(p.conn)
+		if err != nil {
+			log.Error("msg", "error getting series ids. Switching to traditional way of clearing entire series-cache", "err", err.Error())
+			p.scache.Reset()
+			return dbEpoch, nil
+		}
+		log.Warn("msg", "epoch change noticed. Fetched stale series from db", "duration", time.Since(start))
+		start = time.Now()
+		removedCount := p.scache.ClearStaleSeries(staleSeriesIds)
+		log.Warn("msg", "cleaning up stale series", "count", removedCount, "duration", time.Since(start)) // Before merging in master, change the level to Debug.
 	}
 	return dbEpoch, nil
+}
+
+const getStaleSeriesIDsArraySQL = "SELECT ARRAY_AGG(id) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL"
+
+func GetStaleSeriesIDs(conn pgxconn.PgxConn) ([]int64, error) {
+	var staleSeriesIDs []int64
+	err := conn.QueryRow(context.Background(), getStaleSeriesIDsArraySQL).Scan(&staleSeriesIDs)
+	if err != nil {
+		return nil, fmt.Errorf("error getting stale series ids from db: %w", err)
+	}
+	return staleSeriesIDs, nil
 }
 
 func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {

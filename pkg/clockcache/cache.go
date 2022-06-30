@@ -44,6 +44,8 @@ type element struct {
 	used uint32
 	size uint64
 
+	removed bool
+
 	// pad Elements out to be cache aligned
 	_ [16]byte
 }
@@ -98,7 +100,7 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBy
 
 func (self *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool, inCache bool) {
 	elem, present := self.elements[key]
-	if present {
+	if present && !elem.removed {
 		// we'll count a double-insert as a hit. See the comment in get
 		if atomic.LoadUint32(&elem.used) != 0 {
 			atomic.StoreUint32(&elem.used, 1)
@@ -129,6 +131,21 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 
 	self.elements[key] = insertLocation
 	return insertLocation, true, true
+}
+
+// RemoveUsingValue removes the entry in the cache by seeing the value part of the cache.
+// It goes through the entire cache and fills the value of each entry of the cache
+// in the given 'match()'. If the 'match()' returns true, the entry is marked as removed.
+func (self *Cache) RemoveUsingValue(match func(cacheValue interface{}) bool) {
+	self.elementsLock.Lock()
+	defer self.elementsLock.Unlock()
+	for i := range self.storage {
+		if shouldRemove := match(self.storage[i].value); shouldRemove {
+			// No need for atomic as we already have a lock.
+			self.storage[i].removed = true
+			self.storage[i].used = 0 // Mark it ready to be evicted.
+		}
+	}
 }
 
 // Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
@@ -195,6 +212,18 @@ func (self *Cache) evict() (insertPtr *element) {
 	return
 }
 
+func (self *Cache) RemovedCount() int {
+	self.elementsLock.RLock()
+	defer self.elementsLock.RUnlock()
+	count := 0
+	for i := range self.storage {
+		if self.storage[i].removed {
+			count++
+		}
+	}
+	return count
+}
+
 // tries to get a batch of keys and store the corresponding values is valuesOut
 // returns the number of keys that were actually found.
 // NOTE: this function does _not_ preserve the order of keys; the first numFound
@@ -243,7 +272,7 @@ func (self *Cache) Get(key interface{}) (interface{}, bool) {
 func (self *Cache) get(key interface{}) (interface{}, bool) {
 	self.metrics.Inc(self.metrics.queriesTotal)
 	elem, present := self.elements[key]
-	if !present {
+	if !present || elem.removed {
 		return 0, false
 	}
 

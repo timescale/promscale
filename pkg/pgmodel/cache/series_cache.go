@@ -31,6 +31,7 @@ const GrowFactor = float64(2.0)       // multiply cache size by this factor when
 type SeriesCache interface {
 	Reset()
 	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
+	ClearStaleSeries(staleSeriesIds []int64) (removedCount int)
 	Len() int
 	Cap() int
 	Evictions() uint64
@@ -110,6 +111,10 @@ func (t *SeriesCacheImpl) Cap() int {
 
 func (t *SeriesCacheImpl) Evictions() uint64 {
 	return t.cache.Evictions()
+}
+
+func (t *SeriesCacheImpl) StaleSeries() int {
+	return t.cache.RemovedCount()
 }
 
 //ResetStoredLabels should be concurrency-safe
@@ -263,4 +268,29 @@ func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model
 	}
 
 	return series, metricName, nil
+}
+
+func (t *SeriesCacheImpl) ClearStaleSeries(staleSeriesIds []int64) (numRemoved int) {
+	if len(staleSeriesIds) == 0 {
+		return
+	}
+	staleSeriesIdsMap := intArrToMap(staleSeriesIds)
+	t.cache.RemoveUsingValue(func(cacheValue interface{}) bool {
+		value := cacheValue.(*model.Series)
+		id, _, _ := value.GetSeriesID()
+		if _, isStale := staleSeriesIdsMap[int64(id)]; isStale {
+			numRemoved++
+			return true
+		}
+		return false
+	})
+	return
+}
+
+func intArrToMap(a []int64) map[int64]struct{} {
+	b := make(map[int64]struct{})
+	for _, item := range a {
+		b[item] = struct{}{}
+	}
+	return b
 }

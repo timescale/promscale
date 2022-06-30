@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"unsafe"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteAndGetOnCache(t *testing.T) {
@@ -320,4 +322,44 @@ func TestElementCacheAligned(t *testing.T) {
 	if elementSize != 64 {
 		t.Errorf("unexpected element size: %d", elementSize)
 	}
+}
+
+func TestRemove(t *testing.T) {
+	cache := WithMax(32)
+	for i := 1; i <= 32; i++ {
+		cache.Insert(i, i, 32)
+	}
+
+	verifyElementsOtherThanN := func(N map[int]struct{}) {
+		for i := 1; i <= 32; i++ {
+			_, present := cache.Get(i)
+			if _, shouldBeAbsent := N[i]; shouldBeAbsent {
+				require.False(t, present, N)
+				continue
+			}
+			require.True(t, present)
+		}
+	}
+	removeIfValueIs := func(val int) {
+		cache.RemoveUsingValue(func(entryValue interface{}) bool {
+			return entryValue.(int) == val
+		})
+	}
+
+	removeIfValueIs(10)
+	verifyElementsOtherThanN(map[int]struct{}{10: {}})
+
+	removeIfValueIs(11)
+	verifyElementsOtherThanN(map[int]struct{}{10: {}, 11: {}})
+
+	removeIfValueIs(15)
+	verifyElementsOtherThanN(map[int]struct{}{10: {}, 11: {}, 15: {}})
+
+	cache.Insert(11, 11, 32)
+	_, present := cache.Get(11)
+	require.True(t, present)
+	verifyElementsOtherThanN(map[int]struct{}{10: {}, 15: {}})
+
+	removeIfValueIs(11)
+	verifyElementsOtherThanN(map[int]struct{}{10: {}, 11: {}, 15: {}})
 }
