@@ -37,20 +37,22 @@ func (qmi *qmInfo) run() {
 			fmt.Printf("Error Gathering metrics from registry")
 		}
 
-		timeLagSecondsReal := int64(0)
+		now := time.Now().Unix()
+		highestAppended := qmi.highestTs.Get()
+
+		timeLagSecondsSent := int64(0)
 		timeLagSecondsRel := int64(0)
+		timeLagSecondsAppended := now - int64(highestAppended)
+
 		for _, mf := range mfs {
 			if mf.GetName() == "prometheus_remote_storage_queue_highest_sent_timestamp_seconds" {
 				highestSent := mf.GetMetric()[0].GetGauge().GetValue()
-				now := time.Now().Unix()
 
-				highestAppended := qmi.highestTs.Get()
-
-				timeLagSecondsReal = now - int64(highestSent)
+				timeLagSecondsSent = now - int64(highestSent)
 				timeLagSecondsRel = int64(highestAppended) - int64(highestSent)
 
-				if timeLagSecondsReal > qmi.timeLagRealMax {
-					qmi.timeLagRealMax = timeLagSecondsReal
+				if timeLagSecondsSent > qmi.timeLagRealMax {
+					qmi.timeLagRealMax = timeLagSecondsSent
 				}
 			}
 		}
@@ -61,7 +63,7 @@ func (qmi *qmInfo) run() {
 		enqueued := atomic.LoadInt32(&enqueued)
 		dequeued := atomic.LoadInt32(&dequeued)
 
-		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d[%d]\t %d %d %d %d %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsReal, timeLagSecondsRel,
+		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d [%d, %d]\t %d %d %d %d %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsSent, timeLagSecondsAppended, timeLagSecondsRel,
 			needChunks-fetchChunks, enqueued-dequeued, atomic.LoadInt32(&syncFetchChunks), atomic.LoadInt32(&waitInRotate), fetchChunks-asyncFetchChunks, needNextChunks-enqueued, enqueued, dequeued, atomic.LoadInt32(&asyncFetchChunks), atomic.LoadInt32(&rateControlSleeps))
 
 		w.Flush()
