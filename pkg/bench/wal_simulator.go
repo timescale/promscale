@@ -18,7 +18,7 @@ type walSimulator struct {
 const reportEvery = time.Second * 10
 
 func NewWalSimulator(qmi *qmInfo, conf *BenchConfig) *walSimulator {
-	if conf.FakeSendDuration > 0 {
+	if conf.FakeSendDuration >= 0 {
 		fmt.Println("Warning: using fakeSendDuration -- not sending data to db")
 	}
 	sim := &walSimulator{
