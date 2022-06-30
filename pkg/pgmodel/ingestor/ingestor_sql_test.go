@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	metricID  int64  = 1
+	metricID  int32  = 1
 	tableName string = "table name"
 )
 
@@ -543,7 +543,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{int64(1), "metric_0", false}},
+					Results: model.RowResults{{int32(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 				{
@@ -580,7 +580,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{int64(1), "metric_0", false}},
+					Results: model.RowResults{{int32(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -640,7 +640,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{int64(1), "metric_0", false}},
+					Results: model.RowResults{{int32(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -702,7 +702,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{int64(1), "metric_0", false}},
+					Results: model.RowResults{{int32(1), "metric_0", false}},
 					Err:     error(nil),
 				},
 
@@ -785,7 +785,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"metric_0"},
-					Results: model.RowResults{{int64(1), "metric_0", true}},
+					Results: model.RowResults{{int32(1), "metric_0", true}},
 					Err:     error(nil),
 				},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},

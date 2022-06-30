@@ -97,7 +97,7 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 	return cb, err
 }
 
-func initLabelIdIndexForSamples(index map[int64]labels.Label, rows []sampleRow) {
+func initLabelIdIndexForSamples(index map[int32]labels.Label, rows []sampleRow) {
 	for i := range rows {
 		for _, id := range rows[i].labelIds {
 			//id==0 means there is no label for the key, so nothing to look up
@@ -111,7 +111,7 @@ func initLabelIdIndexForSamples(index map[int64]labels.Label, rows []sampleRow) 
 
 func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeSeries, error) {
 	results := make([]*prompb.TimeSeries, 0, len(rows))
-	labelIDMap := make(map[int64]labels.Label)
+	labelIDMap := make(map[int32]labels.Label)
 	initLabelIdIndexForSamples(labelIDMap, rows)
 
 	err := lr.LabelsForIdMap(labelIDMap)

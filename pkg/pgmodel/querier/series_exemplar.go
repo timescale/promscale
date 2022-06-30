@@ -24,7 +24,7 @@ const getExemplarLabelPositions = "SELECT * FROM _prom_catalog.get_exemplar_labe
 
 type exemplarSeriesRow struct {
 	metricName string
-	labelIds   []int64
+	labelIds   []int32
 	data       []exemplarRow
 }
 
@@ -46,7 +46,7 @@ func getExemplarSeriesRows(metricName string, in pgxconn.PgxRows) (rows []exempl
 		var (
 			err      error
 			row      exemplarRow
-			labelIds []int64
+			labelIds []int32
 		)
 		err = in.Scan(&labelIds, &row.time, &row.value, &row.labelValues)
 		if err != nil {
@@ -88,7 +88,7 @@ func prepareExemplarQueryResult(tools *queryTools, queryResult exemplarSeriesRow
 		metric   = queryResult.metricName
 		labelIds = queryResult.labelIds
 	)
-	index := make(map[int64]labels.Label)
+	index := make(map[int32]labels.Label)
 	initLabelIdIndexForExemplars(index, queryResult.labelIds)
 
 	labelsReader := tools.labelsReader
@@ -142,7 +142,7 @@ func getPositionIndex(tools *queryTools, posCache cache.PositionCache, metric st
 	return keyPosIndex, nil
 }
 
-func initLabelIdIndexForExemplars(index map[int64]labels.Label, labelIds []int64) {
+func initLabelIdIndexForExemplars(index map[int32]labels.Label, labelIds []int32) {
 	for _, labelId := range labelIds {
 		if labelId == 0 {
 			// no label to look-up for.

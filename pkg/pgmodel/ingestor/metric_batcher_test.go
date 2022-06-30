@@ -21,7 +21,7 @@ func TestMetricTableName(t *testing.T) {
 	testCases := []struct {
 		name        string
 		tableName   string
-		metricID    int64
+		metricID    int32
 		errExpected bool
 		sqlQueries  []model.SqlQuery
 	}{
@@ -33,7 +33,7 @@ func TestMetricTableName(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"t1"},
-					Results: model.RowResults{{int64(23), "res1", true}},
+					Results: model.RowResults{{int32(23), "res1", true}},
 				},
 			},
 		},
@@ -45,7 +45,7 @@ func TestMetricTableName(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 					Args:    []interface{}{"t1"},
-					Results: model.RowResults{{int64(24), "res2", true}},
+					Results: model.RowResults{{int32(24), "res2", true}},
 				},
 			},
 		},
@@ -105,12 +105,12 @@ func TestMetricTableName(t *testing.T) {
 func TestInitializeMetricBatcher(t *testing.T) {
 	metricName := "mock_metric"
 	metricTableName := "mock_metric_table_name"
-	metricID := int64(1)
+	metricID := int32(1)
 	sqlQueries := []model.SqlQuery{
 		{
 			Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
 			Args:    []interface{}{metricName},
-			Results: model.RowResults{{int64(1), metricTableName, true}},
+			Results: model.RowResults{{int32(1), metricTableName, true}},
 		},
 	}
 	mock := model.NewSqlRecorder(sqlQueries, t)

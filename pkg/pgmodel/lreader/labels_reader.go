@@ -31,7 +31,7 @@ type LabelsReader interface {
 	// LabelValues returns all the distinct values for a given label name.
 	LabelValues(labelName string) ([]string, error)
 	// LabelsForIdMap fills in the label.Label values in a map of label id => labels.Label.
-	LabelsForIdMap(idMap map[int64]labels.Label) (err error)
+	LabelsForIdMap(idMap map[int32]labels.Label) (err error)
 }
 
 func NewLabelsReader(conn pgxconn.PgxConn, labels cache.LabelsCache, mt tenancy.ReadAuthorizer) LabelsReader {
@@ -104,7 +104,7 @@ func (lr *labelsReader) LabelNames() ([]string, error) {
 }
 
 // LabelsForIdMap fills in the label.Label values in a map of label id => labels.Label.
-func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
+func (lr *labelsReader) LabelsForIdMap(idMap map[int32]labels.Label) error {
 	numIds := len(idMap)
 	ids := make([]interface{}, numIds) //type int64
 	lbs := make([]interface{}, numIds) //type labels.Label
@@ -129,7 +129,7 @@ func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
 			err        error
 		)
 
-		missingIds := make([]int64, numIds-numHits)
+		missingIds := make([]int32, numIds-numHits)
 		numFetches, err = lr.fetchMissingLabels(ids[numHits:], missingIds, lbs[numHits:])
 		if err != nil {
 			return err
@@ -141,7 +141,7 @@ func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
 
 	for i := range ids {
 		label := lbs[i].(labels.Label)
-		id := ids[i].(int64)
+		id := ids[i].(int32)
 		idMap[id] = label
 	}
 
@@ -151,9 +151,9 @@ func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
 // fetchMissingLabels imports the missing label IDs from the database into the
 // internal cache. It also modifies the newLabels slice to include the missing
 // values.
-func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int64, newLabels []interface{}) (numNewLabels int, err error) {
+func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int32, newLabels []interface{}) (numNewLabels int, err error) {
 	for i := range misses {
-		missedIds[i] = misses[i].(int64)
+		missedIds[i] = misses[i].(int32)
 	}
 	rows, err := lr.conn.Query(context.Background(), getLabelsSQL, missedIds)
 	if err != nil {
@@ -167,7 +167,7 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 	)
 
 	for rows.Next() {
-		var ids []int64
+		var ids []int32
 		err = rows.Scan(&ids, &keys, &vals)
 		if err != nil {
 			return 0, err

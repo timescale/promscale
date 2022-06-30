@@ -29,10 +29,10 @@ func TestPrepareExemplarQueryResult(t *testing.T) {
 	}
 	seriesRow := exemplarSeriesRow{
 		metricName: "test_metric_exemplar",
-		labelIds:   []int64{1, 3},
+		labelIds:   []int32{1, 3},
 		data:       exemplarRows,
 	}
-	lrCache := newMockLabelsReader([]int64{1, 3}, []labels.Label{{Name: "__name__", Value: "test_metric_exemplar"}, {Name: "instance", Value: "localhost:9100"}})
+	lrCache := newMockLabelsReader([]int32{1, 3}, []labels.Label{{Name: "__name__", Value: "test_metric_exemplar"}, {Name: "instance", Value: "localhost:9100"}})
 
 	conn := model.NewSqlRecorder([]model.SqlQuery{}, t)
 	exemplarCache := cache.NewExemplarLabelsPosCache(cache.Config{ExemplarKeyPosCacheSize: 3})
@@ -63,14 +63,14 @@ func getExemplarPosIndices() map[string]int {
 }
 
 type mockLabelsReader struct {
-	items map[int64]labels.Label
+	items map[int32]labels.Label
 }
 
-func newMockLabelsReader(keys []int64, lbls []labels.Label) mockLabelsReader {
+func newMockLabelsReader(keys []int32, lbls []labels.Label) mockLabelsReader {
 	if len(keys) != len(lbls) {
 		panic("keys length and labels length must be same")
 	}
-	items := make(map[int64]labels.Label)
+	items := make(map[int32]labels.Label)
 	l := len(keys)
 	for i := 0; i < l; i++ {
 		items[keys[i]] = lbls[i]
@@ -87,7 +87,7 @@ func (m mockLabelsReader) LabelValues(_ string) ([]string, error) {
 	return nil, nil
 }
 
-func (m mockLabelsReader) LabelsForIdMap(index map[int64]labels.Label) error {
+func (m mockLabelsReader) LabelsForIdMap(index map[int32]labels.Label) error {
 	for seriesId := range index {
 		if lbls, present := m.items[seriesId]; present {
 			index[seriesId] = lbls
@@ -97,6 +97,6 @@ func (m mockLabelsReader) LabelsForIdMap(index map[int64]labels.Label) error {
 }
 
 // LabelsForIds returns label names and values for the supplied IDs.
-func (m mockLabelsReader) LabelsForIds(ids []int64) (lls labels.Labels, err error) {
+func (m mockLabelsReader) LabelsForIds(ids []int32) (lls labels.Labels, err error) {
 	return nil, nil
 }

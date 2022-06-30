@@ -98,7 +98,7 @@ func (m mockLabelsReader) LabelValues(string) ([]string, error) {
 	return nil, nil
 }
 
-func (m mockLabelsReader) LabelsForIdMap(idMap map[int64]labels.Label) (err error) {
+func (m mockLabelsReader) LabelsForIdMap(idMap map[int32]labels.Label) (err error) {
 	return nil
 }
 

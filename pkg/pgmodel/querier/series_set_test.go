@@ -82,7 +82,7 @@ func (m *mockPgxRows) Scan(dest ...interface{}) error {
 		return fmt.Errorf("incorrect number of destinations to scan in the results")
 	}
 
-	ln, ok := dest[0].(*[]int64)
+	ln, ok := dest[0].(*[]int32)
 	if !ok {
 		panic("label names incorrect type, expected int64")
 	}
@@ -130,7 +130,7 @@ func generateArrayHeader(numDim, containsNull, elemOID, arrayLength uint32, addD
 }
 
 type seriesSetRow struct {
-	labels     []int64
+	labels     []int32
 	timestamps []pgtype.Timestamptz
 	values     []pgtype.Float8
 	schema     string
@@ -143,7 +143,7 @@ func TestPgxSeriesSet(t *testing.T) {
 	testCases := []struct {
 		name         string
 		input        [][]seriesSetRow
-		labels       []int64
+		labels       []int32
 		ts           []pgtype.Timestamptz
 		vs           []pgtype.Float8
 		metricSchema string
@@ -167,7 +167,7 @@ func TestPgxSeriesSet(t *testing.T) {
 			name: "timestamp/value count mismatch",
 			input: [][]seriesSetRow{{
 				genSeries(
-					[]int64{1},
+					[]int32{1},
 					[]pgtype.Timestamptz{},
 					[]pgtype.Float8{{Float: 1.0}},
 					"",
@@ -178,14 +178,14 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:     "happy path 1",
-			labels:   []int64{1},
+			labels:   []int32{1},
 			ts:       []pgtype.Timestamptz{{Time: time.Now()}},
 			vs:       []pgtype.Float8{{Float: 1}},
 			rowCount: 1,
 		},
 		{
 			name:   "happy path 2",
-			labels: []int64{2, 3},
+			labels: []int32{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Time: time.Unix(0, 500000)},
 				{Time: time.Unix(0, 6000000)},
@@ -198,7 +198,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check nulls (ts and vs negative values are encoded as null)",
-			labels: []int64{2, 3},
+			labels: []int32{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Status: pgtype.Null},
 				{Time: time.Unix(0, 0)},
@@ -213,7 +213,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check all nulls",
-			labels: []int64{2, 3},
+			labels: []int32{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Status: pgtype.Null},
 				{Time: time.Unix(0, 0)},
@@ -228,7 +228,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check infinity",
-			labels: []int64{2, 3},
+			labels: []int32{2, 3},
 			ts: []pgtype.Timestamptz{
 				{InfinityModifier: pgtype.NegativeInfinity},
 				{InfinityModifier: pgtype.Infinity},
@@ -241,7 +241,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check default metric schema",
-			labels: []int64{2, 3},
+			labels: []int32{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Time: time.Unix(0, 500000)},
 				{Time: time.Unix(0, 6000000)},
@@ -255,7 +255,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check custom metric schema",
-			labels: []int64{2, 3},
+			labels: []int32{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Time: time.Unix(0, 500000)},
 				{Time: time.Unix(0, 6000000)},
@@ -269,7 +269,7 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:   "check custom column name",
-			labels: []int64{2, 3},
+			labels: []int32{2, 3},
 			ts: []pgtype.Timestamptz{
 				{Time: time.Unix(0, 500000)},
 				{Time: time.Unix(0, 6000000)},
@@ -283,11 +283,11 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 	}
 
-	labelMapping := make(map[int64]struct {
+	labelMapping := make(map[int32]struct {
 		k string
 		v string
 	})
-	for i := int64(0); i < 4; i++ {
+	for i := int32(0); i < 4; i++ {
 		labelMapping[i] = struct {
 			k string
 			v string
@@ -302,7 +302,7 @@ func TestPgxSeriesSet(t *testing.T) {
 				if c.columnName == "" {
 					c.columnName = defaultColumnName
 				}
-				labels := make([]int64, len(c.labels))
+				labels := make([]int32, len(c.labels))
 				copy(labels, c.labels)
 				c.input = [][]seriesSetRow{{
 					genSeries(labels, c.ts, c.vs, c.metricSchema, c.columnName)}}
@@ -443,13 +443,13 @@ func TestPgxSeriesSet(t *testing.T) {
 }
 
 type mapQuerier struct {
-	mapping map[int64]struct {
+	mapping map[int32]struct {
 		k string
 		v string
 	}
 }
 
-func (m mapQuerier) LabelsForIdMap(idMap map[int64]labels.Label) (err error) {
+func (m mapQuerier) LabelsForIdMap(idMap map[int32]labels.Label) (err error) {
 	for id := range idMap {
 		kv, ok := m.mapping[id]
 		if !ok {
@@ -510,7 +510,7 @@ func toFloat8Array(values []pgtype.Float8) *pgtype.Float8Array {
 	}
 }
 
-func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema, column string) seriesSetRow {
+func genSeries(labels []int32, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema, column string) seriesSetRow {
 
 	for i := range ts {
 		if ts[i].Status == pgtype.Undefined {

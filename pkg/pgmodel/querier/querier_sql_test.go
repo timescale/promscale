@@ -133,7 +133,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
-					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int32(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -253,7 +253,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
-					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int32(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -266,13 +266,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{1}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{1}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:    []interface{}{[]int64{1}},
-					Results: model.RowResults{{[]int64{1}, []string{"__name__"}, []string{"foo"}}},
+					Args:    []interface{}{[]int32{1}},
+					Results: model.RowResults{{[]int32{1}, []string{"__name__"}, []string{"foo"}}},
 					Err:     error(nil),
 				},
 			},
@@ -296,7 +296,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
-					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
+					Results: model.RowResults{{int32(1), "prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -310,13 +310,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 						GROUP BY series_id
 						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
 					Args:    nil,
-					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:    []interface{}{[]int64{2}},
-					Results: model.RowResults{{[]int64{2}, []string{"__name__"}, []string{"bar"}}},
+					Args:    []interface{}{[]int32{2}},
+					Results: model.RowResults{{[]int32{2}, []string{"__name__"}, []string{"bar"}}},
 					Err:     error(nil),
 				},
 			},
@@ -343,7 +343,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "custom"},
-					Results: model.RowResults{{int64(1), "custom_schema", "custom", "bar"}},
+					Results: model.RowResults{{int32(1), "custom_schema", "custom", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -357,13 +357,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 						GROUP BY series_id
 						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
 					Args:    nil,
-					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:    []interface{}{[]int64{2}},
-					Results: model.RowResults{{[]int64{2}, []string{"__name__"}, []string{"bar"}}},
+					Args:    []interface{}{[]int32{2}},
+					Results: model.RowResults{{[]int32{2}, []string{"__name__"}, []string{"bar"}}},
 					Err:     error(nil),
 				},
 			},
@@ -391,7 +391,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
-					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
+					Results: model.RowResults{{int32(1), "prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -405,13 +405,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 						GROUP BY series_id
 						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
 					Args:    nil,
-					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:    []interface{}{[]int64{2}},
-					Results: model.RowResults{{[]int64{2}, []string{"__name__"}, []string{"bar"}}},
+					Args:    []interface{}{[]int32{2}},
+					Results: model.RowResults{{[]int32{2}, []string{"__name__"}, []string{"bar"}}},
 					Err:     error(nil),
 				},
 			},
@@ -451,13 +451,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
-					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int32(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "bar"},
-					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
+					Results: model.RowResults{{int32(1), "prom_data", "bar", "bar"}},
 					Err:     error(nil),
 				},
 				{
@@ -470,7 +470,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{3}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{3}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
@@ -483,14 +483,14 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{4}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{4}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:          []interface{}{[]int64{3, 4}},
+					Args:          []interface{}{[]int32{3, 4}},
 					ArgsUnordered: true,
-					Results:       model.RowResults{{[]int64{3, 4}, []string{"__name__", "__name__"}, []string{"foo", "bar"}}},
+					Results:       model.RowResults{{[]int32{3, 4}, []string{"__name__", "__name__"}, []string{"foo", "bar"}}},
 					Err:           error(nil),
 				},
 			},
@@ -510,7 +510,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "foo"},
-					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
+					Results: model.RowResults{{int32(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
@@ -555,7 +555,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
-					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
+					Results: model.RowResults{{int32(1), "prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -568,13 +568,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{7}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{7}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:    []interface{}{[]int64{7}},
-					Results: model.RowResults{{[]int64{7}, []string{"foo"}, []string{"bar"}}},
+					Args:    []interface{}{[]int32{7}},
+					Results: model.RowResults{{[]int32{7}, []string{"foo"}, []string{"bar"}}},
 					Err:     error(nil),
 				},
 			},
@@ -616,7 +616,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
-					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
+					Results: model.RowResults{{int32(1), "prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -629,14 +629,14 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{8, 9}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{8, 9}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:          []interface{}{[]int64{9, 8}},
+					Args:          []interface{}{[]int32{9, 8}},
 					ArgsUnordered: true,
-					Results:       model.RowResults{{[]int64{8, 9}, []string{"foo", "foo2"}, []string{"bar", "bar2"}}},
+					Results:       model.RowResults{{[]int32{8, 9}, []string{"foo", "foo2"}, []string{"bar", "bar2"}}},
 					Err:           error(nil),
 				},
 			},
@@ -677,7 +677,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
-					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
+					Results: model.RowResults{{int32(1), "prom_data", "metric", "metric"}},
 					Err:     error(nil),
 				},
 				{
@@ -690,13 +690,13 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{10}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]int32{10}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
-					Args:    []interface{}{[]int64{10}},
-					Results: model.RowResults{{[]int64{10}, []string{"foo2"}, []string{"bar2"}}},
+					Args:    []interface{}{[]int32{10}},
+					Results: model.RowResults{{[]int32{10}, []string{"foo2"}, []string{"bar2"}}},
 					Err:     error(nil),
 				},
 			},

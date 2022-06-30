@@ -26,7 +26,7 @@ const (
 type pgxSamplesSeriesSet struct {
 	rowIdx     int
 	rows       []sampleRow
-	labelIDMap map[int64]labels.Label
+	labelIDMap map[int32]labels.Label
 	err        error
 	querier    labelQuerier
 }
@@ -35,7 +35,7 @@ type pgxSamplesSeriesSet struct {
 var _ storage.SeriesSet = (*pgxSamplesSeriesSet)(nil)
 
 func buildSeriesSet(rows []sampleRow, querier labelQuerier) SeriesSet {
-	labelIDMap := make(map[int64]labels.Label)
+	labelIDMap := make(map[int32]labels.Label)
 	initLabelIdIndexForSamples(labelIDMap, rows)
 
 	err := querier.LabelsForIdMap(labelIDMap)
@@ -114,7 +114,7 @@ func (p *pgxSamplesSeriesSet) At() storage.Series {
 	return ps
 }
 
-func getLabelsFromLabelIds(labelIds []int64, index map[int64]labels.Label) (labels.Labels, error) {
+func getLabelsFromLabelIds(labelIds []int32, index map[int32]labels.Label) (labels.Labels, error) {
 	lls := make([]labels.Label, 0, len(labelIds))
 	for _, id := range labelIds {
 		if id == 0 {

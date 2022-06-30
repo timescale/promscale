@@ -67,5 +67,5 @@ func (e errorSeriesSet) Warnings() storage.Warnings { return nil }
 func (e errorSeriesSet) Close()                     {}
 
 type labelQuerier interface {
-	LabelsForIdMap(idMap map[int64]labels.Label) (err error)
+	LabelsForIdMap(idMap map[int32]labels.Label) (err error)
 }
