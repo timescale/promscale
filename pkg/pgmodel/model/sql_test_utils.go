@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/sergi/go-diff/diffmatchpatch"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -145,21 +145,21 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t'%s'\nexpected:\n\t'%s'\ndiff:\n\t%v", idx, sql, row.Sql, dmp.DiffPrettyText(diffs))
 	}
 
-	require.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
+	assert.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
 	for i := range row.Args {
 		switch row.Args[i].(type) {
 		case pgtype.TextEncoder:
 			ci := pgtype.NewConnInfo()
 			got, err := args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
-			require.NoError(r.t, err)
+			assert.NoError(r.t, err)
 			expected, err := row.Args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
-			require.NoError(r.t, err)
-			require.Equal(r.t, string(expected), string(got), "sql args aren't equal for query # %v: %v", idx, sql)
+			assert.NoError(r.t, err)
+			assert.Equal(r.t, string(expected), string(got), "sql args aren't equal for query # %v: %v", idx, sql)
 		default:
 			if !row.ArgsUnordered {
-				require.Equal(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
+				assert.Equal(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
 			} else {
-				require.ElementsMatch(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
+				assert.ElementsMatch(r.t, row.Args[i], args[i], "sql args aren't equal for query # %v: %v", idx, sql)
 			}
 		}
 	}
