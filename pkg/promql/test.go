@@ -34,7 +34,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/teststorage"
 	"github.com/prometheus/prometheus/util/testutil"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 )
 
@@ -62,7 +62,7 @@ type TestStorage struct {
 // that removes all associated files on closing.
 func NewTestStorage(t testutil.T) *TestStorage {
 	dir, err := ioutil.TempDir("", "test_storage")
-	require.NoError(t, err, "opening test dir failed")
+	assert.NoError(t, err, "opening test dir failed")
 
 	// Tests just load data for a series sequentially. Thus we
 	// need a long appendable window.
@@ -70,7 +70,7 @@ func NewTestStorage(t testutil.T) *TestStorage {
 	opts.MinBlockDuration = int64(24 * time.Hour / time.Millisecond)
 	opts.MaxBlockDuration = int64(24 * time.Hour / time.Millisecond)
 	db, err := tsdb.Open(dir, nil, nil, opts, nil)
-	require.NoError(t, err, "opening test storage failed")
+	assert.NoError(t, err, "opening test storage failed")
 
 	return &TestStorage{DB: db, dir: dir}
 }
@@ -671,7 +671,7 @@ func (t *Test) exec(tc testCommand) error {
 func (t *Test) clear() {
 	if t.storage != nil {
 		err := t.storage.Close()
-		require.NoError(t.T, err, "Unexpected error while closing test storage.")
+		assert.NoError(t.T, err, "Unexpected error while closing test storage.")
 	}
 	if t.cancelCtx != nil {
 		t.cancelCtx()
@@ -696,7 +696,7 @@ func (t *Test) clear() {
 // Close closes resources associated with the Test.
 func (t *Test) Close() {
 	t.cancelCtx()
-	require.NoError(t.T, t.Storage().Close())
+	assert.NoError(t.T, t.Storage().Close())
 }
 
 // samplesAlmostEqual returns true if the two sample lines only differ by a
@@ -795,7 +795,7 @@ func (ll *LazyLoader) parse(input string) error {
 func (ll *LazyLoader) clear() {
 	if ll.storage != nil {
 		err := ll.storage.Close()
-		require.NoError(ll.T, err, "Unexpected error while closing test storage.")
+		assert.NoError(ll.T, err, "Unexpected error while closing test storage.")
 	}
 	if ll.cancelCtx != nil {
 		ll.cancelCtx()
@@ -870,5 +870,5 @@ func (ll *LazyLoader) Storage() storage.Storage {
 func (ll *LazyLoader) Close() {
 	ll.cancelCtx()
 	err := ll.storage.Close()
-	require.NoError(ll.T, err, "Unexpected error while closing test storage.")
+	assert.NoError(ll.T, err, "Unexpected error while closing test storage.")
 }

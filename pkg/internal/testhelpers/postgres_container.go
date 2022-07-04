@@ -7,7 +7,6 @@ package testhelpers
 import (
 	"context"
 	"fmt"
-	"github.com/blang/semver/v4"
 	"io"
 	"os"
 	"regexp"
@@ -15,12 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blang/semver/v4"
+
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -154,27 +155,27 @@ func getRoleUser(role string) string {
 func setupRole(t testing.TB, dbName string, role string) {
 	user := getRoleUser(role)
 	dbOwner, err := pgx.Connect(context.Background(), PgConnectURL(dbName, Superuser))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	defer dbOwner.Close(context.Background())
 
 	_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere(NULL, $$ GRANT %s TO %s $$);", role, user))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func MakePromUserPromAdmin(t testing.TB, dbName string) {
 	db, err := pgx.Connect(context.Background(), PgConnectURL(dbName, Superuser))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	defer db.Close(context.Background())
 
 	_, err = db.Exec(context.Background(), fmt.Sprintf("CALL _prom_catalog.execute_everywhere('distributed_prom_user', $$ GRANT prom_admin TO %s $$);", promUser))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
 	user := getRoleUser(role)
 	setupRole(t, dbName, role)
 	pool, err := pgxpool.Connect(context.Background(), PgConnectURLUser(dbName, user))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	return pool
 }
 
@@ -195,7 +196,7 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	setupRole(t, DBName, role)
 
 	pgConfig, err := pgxpool.ParseConfig(PgConnectURLUser(DBName, user))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	pgConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(context.Background(), "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
