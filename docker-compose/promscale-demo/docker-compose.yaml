@@ -1,0 +1,154 @@
+version: '3.0'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb-ha:pg14-latest
+    ports:
+      - 5432:5432/tcp
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+
+  prometheus:
+    image: prom/prometheus:latest
+    depends_on:
+     - promscale
+    ports:
+      - 9090:9090/tcp
+    volumes:
+      - ${PWD}/../prometheus.yml:/etc/prometheus/prometheus.yml
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - 9093:9093/tcp
+
+  promscale:
+    image: timescale/promscale:latest
+    ports:
+      - 9201:9201/tcp
+      - 9202:9202/tcp
+    restart: on-failure
+    depends_on:
+      - timescaledb
+    volumes:
+      - ${PWD}/../promscale_prometheus.yml:/prometheus.yml
+      - ${PWD}/../rules.yml:/rules.yml
+      - ${PWD}/../alerts.yml:/alerts.yml
+    environment:
+      PROMSCALE_DB_URI: postgres://postgres:password@timescaledb:5432/postgres?sslmode=allow
+      PROMSCALE_TELEMETRY_TRACE_JAEGER_ENDPOINT: "http://collector:14268/api/traces"
+      PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
+      PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
+
+  collector:
+    platform: linux/amd64
+    image: "otel/opentelemetry-collector:0.43.0"
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ${PWD}/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    depends_on:
+      - promscale
+    ports:
+      - 14268:14268/tcp # jaeger http
+      - 4317:4317/tcp
+      - 4318:4318/tcp
+
+  jaeger:
+    image: jaegertracing/jaeger-query:1.33.0
+    environment:
+      SPAN_STORAGE_TYPE: grpc-plugin
+    command: [
+      "--grpc-storage.server=promscale:9202",
+    ]
+    ports:
+      - "16686:16686"
+
+  grafana:
+    image: grafana/grafana-oss:8.5.0
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - 3000:3000/tcp
+    restart: on-failure
+    volumes:
+      - ${PWD}/grafana.ini:/etc/grafana/grafana.ini
+      - ${PWD}/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ${PWD}/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ${PWD}/../../docs/mixin/dashboards:/etc/grafana/provisioning/dashboards/demo
+    depends_on:
+      - timescaledb
+      - jaeger
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter
+    ports:
+      - "9100:9100"
+
+  upper:
+    image: jamesgresql/opentelemetry-demo_upper:0.2
+    restart: on-failure
+    depends_on:
+      - collector
+    ports:
+      - 5054:5000/tcp
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+
+  lower:
+    image: jamesgresql/opentelemetry-demo_lower:0.2
+    restart: on-failure
+    depends_on:
+      - collector
+    ports:
+      - 5053:5000/tcp
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+
+  special:
+    image: jamesgresql/opentelemetry-demo_special:0.2
+    restart: on-failure
+    depends_on:
+      - collector
+    ports:
+      - 5052:5000/tcp
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+  
+  digit:
+    image: jamesgresql/opentelemetry-demo_digit:0.2
+    restart: on-failure
+    depends_on:
+      - collector
+    ports:
+      - 5051:5000/tcp
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+
+  generator:
+    image: jamesgresql/opentelemetry-demo_generator:0.2
+    restart: on-failure
+    depends_on:
+      - upper
+      - lower
+      - special
+      - digit
+    ports:
+      - 5050:5000/tcp
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+
+  load:
+    image: jamesgresql/opentelemetry-demo_load:0.2
+    restart: on-failure
+    depends_on:
+      - generator
+    deploy:
+      mode: replicated
+      replicas: 3
+
+volumes:
+  timescaledb-data:
+  grafana-data:

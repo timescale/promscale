@@ -1,0 +1,41 @@
+# config file version
+apiVersion: 1
+
+# list of datasources that should be deleted from the database
+deleteDatasources:
+  - name: Graphite
+    orgId: 1
+
+# list of datasources to insert/update depending
+# what's available in the database
+datasources:
+  - name: Promscale-metrics
+    type: prometheus
+    url: http://promscale:9201
+    editable: true
+    isDefault: false
+  
+  - name: Promscale-Tracing
+    type: jaeger
+    uid: a01e209e82a346dfbecd10bcb6143ee4
+    url: http://promscale:9201
+    editable: true
+    isDefault: false
+
+  - name: Promscale-SQL
+    type: postgres
+    uid: d7b6774ba1c1420aafd3b7ddfc9064c8
+    url: timescaledb:5432
+    database: postgres
+    user: postgres
+    editable: true
+    isDefault: true
+    secureJsonData:
+      password: password
+    jsonData:
+      sslmode: 'disable'
+      maxOpenConns: 10
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1400
+      timescaledb: true
