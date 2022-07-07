@@ -107,7 +107,7 @@ Complete user documentation is available at https://docs.timescale.com/promscale
 If you have any questions, please join the #promscale channel on
 [TimescaleDB Slack](https://slack.timescale.com/).
 
-## Promscale Repositories
+## Promscale Repositories
 
 This repository contains the source code of the Promscale Connector. Promscale also requires that the Promscale Extension
 which lives in [this repository](https://github.com/timescale/promscale_extension) is installed in the TimescaleDB/PostgreSQL
