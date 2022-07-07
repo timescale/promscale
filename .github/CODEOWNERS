@@ -22,4 +22,4 @@ go.sum @timescale/o11y-applications
 /docs/mixin @timescale/o11y-services
 
 # helm and kubernetes related parts
-/deploy @timescale/o11y-services @cevian @JamesGuthrie
+/deploy @timescale/o11y-services @cevian
