@@ -10,6 +10,8 @@ services:
     environment:
       POSTGRES_PASSWORD: password
       POSTGRES_USER: postgres
+      POSTGRES_DB: otel_demo
+      POSTGRES_HOST_AUTH_METHOD: trust
 
   prometheus:
     image: prom/prometheus:latest
@@ -38,17 +40,15 @@ services:
       - ${PWD}/../rules.yml:/rules.yml
       - ${PWD}/../alerts.yml:/alerts.yml
     environment:
-      PROMSCALE_DB_URI: postgres://postgres:password@timescaledb:5432/postgres?sslmode=allow
+      PROMSCALE_DB_URI: postgres://postgres:password@timescaledb:5432/otel_demo?sslmode=allow
       PROMSCALE_TELEMETRY_TRACE_JAEGER_ENDPOINT: "http://collector:14268/api/traces"
       PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
       PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
 
   collector:
     platform: linux/amd64
-    image: "otel/opentelemetry-collector:0.43.0"
+    image: "timescale/promscale-demo-collector"
     command: [ "--config=/etc/otel-collector-config.yaml" ]
-    volumes:
-      - ${PWD}/otel-collector-config.yaml:/etc/otel-collector-config.yaml
     depends_on:
       - promscale
     ports:
@@ -67,17 +67,12 @@ services:
       - "16686:16686"
 
   grafana:
-    image: grafana/grafana-oss:8.5.0
+    image: timescale/promscale-demo-grafana
     volumes:
       - grafana-data:/var/lib/grafana
     ports:
       - 3000:3000/tcp
     restart: on-failure
-    volumes:
-      - ${PWD}/grafana.ini:/etc/grafana/grafana.ini
-      - ${PWD}/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-      - ${PWD}/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
-      - ${PWD}/../../docs/mixin/dashboards:/etc/grafana/provisioning/dashboards/demo
     depends_on:
       - timescaledb
       - jaeger
@@ -88,7 +83,7 @@ services:
       - "9100:9100"
 
   upper:
-    image: jamesgresql/opentelemetry-demo_upper:0.2
+    image: timescale/promscale-demo-upper
     restart: on-failure
     depends_on:
       - collector
@@ -108,7 +103,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 
   special:
-    image: jamesgresql/opentelemetry-demo_special:0.2
+    image: timescale/promscale-demo-special
     restart: on-failure
     depends_on:
       - collector
@@ -118,7 +113,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
   
   digit:
-    image: jamesgresql/opentelemetry-demo_digit:0.2
+    image: timescale/promscale-demo-digit
     restart: on-failure
     depends_on:
       - collector
@@ -128,7 +123,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
 
   generator:
-    image: jamesgresql/opentelemetry-demo_generator:0.2
+    image: timescale/promscale-demo-generator
     restart: on-failure
     depends_on:
       - upper
@@ -141,7 +136,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
 
   load:
-    image: jamesgresql/opentelemetry-demo_load:0.2
+    image: timescale/promscale-demo-load
     restart: on-failure
     depends_on:
       - generator
