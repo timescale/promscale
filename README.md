@@ -65,7 +65,7 @@ the OpenTelemetry Collector.
 
 Promscale solves three main use cases for Jaeger and OpenTelemetry users:
 
-* **Easy-to-use durable and scalable storage backend for traces**<br/>
+* **Easy-to-use durable and scalable storage**<br/>
 Most users run Jaeger with the in memory or badger storage because the two options for a more durable storage
 (Elasticsearch and Cassandra) are difficult to set up and operate. Promscale uses a much simpler architecture
 based on PostgreSQL which many developers are comfortable with and scales to 100s of thousands of spans per
