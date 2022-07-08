@@ -60,7 +60,7 @@ using a PromQL and/or a PostgreSQL datasource.
 
 ## Promscale for Jaeger and OpenTelemetry
 
-Promscale can natively ingest OpenTelemetry traces and it can also ingest Jaeger and Zipkin traces via
+Promscale supports ingesting OpenTelemetry traces natively, and Jaeger and Zipkin traces via
 the OpenTelemetry Collector.
 
 Promscale solves three main use cases for Jaeger and OpenTelemetry users:
