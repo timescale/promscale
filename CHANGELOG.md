@@ -24,6 +24,11 @@ We use the following categories for changes:
 ### Fixed
 - Refine check for existence of `prom_schema_migrations` table [#1452]
 
+## [0.12.1] - 2022-06-29
+
+### Fixed
+- Querying traces using boolean tag values [#1457]
+
 ## [0.12.0] - 2022-06-21
 
 ### Added
