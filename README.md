@@ -26,7 +26,7 @@ and easy-to-manage architecture with just two components: the Promscale
 Connector and the Promscale Database.
 
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
-about the Promscale architecture and how it works.
+about Promscale's architecture and how it works.
 
 <img src="docs/assets/promscale-arch.png" alt="Promscale Architecture Diagram" width="800"/>
 
