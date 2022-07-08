@@ -15,14 +15,14 @@
 
 <img alt="Promscale" src="docs/assets/promscale-logo.png" width="600px">
 
-Promscale is a unified metric and trace storage backend for Prometheus,
+Promscale is a unified metric and trace observability backend for Prometheus,
 Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.
 
-Promscale serves as as robust and 100% PromQL-compliant Prometheus remote storage
+Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage
 and as a durable and scalable Jaeger storage backend.
 
-Unlike other storage backends for observability data, it has a very simple
-and easy to manage architecture with just two components: the Promscale
+Unlike other observability backends, it has a simple
+and easy-to-manage architecture with just two components: the Promscale
 Connector and the Promscale Database.
 
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
@@ -40,7 +40,7 @@ improve query performance by leveraging [metric downsampling](https://docs.times
 and [per-metric retention](https://docs.timescale.com/promscale/latest/manage-data/retention/#configure-data-retention-for-metrics) to 
 only keep the data you need for as long as you need it. 
 
-* **Single-pane-of-glass across all your Kubernetes clusters**
+* **Single-pane-of-glass across all your Kubernetes clusters**<br/>
 Use Promscale as a centralized storage for all your Prometheus instances
 so you can easily query data across all of them in Grafana and centralize
 [alert management](https://docs.timescale.com/promscale/latest/alert/) and
@@ -65,29 +65,31 @@ the OpenTelemetry Collector.
 
 Promscale solves three main use cases for Jaeger and OpenTelemetry users:
 
-* **Easy-to-use durable and scalable storage for traces**<br/>
+* **Easy-to-use durable and scalable storage backend for traces**<br/>
 Most users run Jaeger with the in memory or badger storage because the two options for a more durable storage
-(Elasticsearch and Cassandra) are very hard to set up and operate. Promscale uses a much simpler architecture
+(Elasticsearch and Cassandra) are difficult to set up and operate. Promscale uses a much simpler architecture
 based on PostgreSQL which many developers are comfortable with and scales to 100s of thousands of spans per
-second on a single PostgreSQL node.
+second on a single database node.
 
 * **Service performance analysis**<br/>
-Because Promcsale can store both metrics and traces, you can use the new 
+Because Promscale can store both metrics and traces, you can use the new 
 [Service Performance Management](https://www.jaegertracing.io/docs/1.36/spm/) feature in Jaeger with Promscale 
 as the only storage backend for the entire experience.
 Promscale also includes a fully customizable, out-of-the-box, and modern
 [Application Performance Management (APM) experience](https://docs.timescale.com/promscale/latest/visualize-data/apm-experience/)
-in Grafana using SQL queries on OpenTelemetry traces.
+in Grafana built using SQL queries on traces.
 
 * **Trace analysis**<br/>
 Jaeger searching capabilities are limited to filtering individual traces. This is helpful when troubleshooting problems once you know
 what you are looking for. With Promscale you can use SQL to interrogate your trace data in any way you want and discover issues
-that would take you a long time to figure out. 
+that would usally take you a long time to figure out by just looking at log lines, metric charts or individual traces. You can see some
+examples in [this blog post](https://www.timescale.com/blog/what-are-traces-and-how-sql-yes-sql-and-opentelemetry-can-help-us-get-more-value-out-of-traces-to-build-better-software/)
 
-**Key features:** native OTLP support, SQL queries, APM capabilities, data compression, data retention 
+**Key features:** native OTLP support, SQL queries, APM capabilities, data compression, data retention
 
-**Try it out** by installing our lightweight [opentelemetry-demo](https://github.com/timescale/opentelemetry-demo). Check
-[this blog post](https://www.timescale.com/blog/learn-opentelemetry-tracing-with-this-lightweight-microservices-demo/) for more details.
+**Try it out** by installing our lightweight [opentelemetry-demo](https://github.com/timescale/opentelemetry-demo) with a single
+command. Check [this blog post](https://www.timescale.com/blog/learn-opentelemetry-tracing-with-this-lightweight-microservices-demo/)
+for more details.
 
 To get started:
 1. [Install Promscale](https://docs.timescale.com/promscale/latest/installation/#install-promscale-with-instrumentation).
@@ -96,7 +98,7 @@ To get started:
 
 Also consider:
 
-4. [Configuring Grafana](https://docs.timescale.com/promscale/latest/visualize-data/grafana) to query and visualize traces from Promscale
+4. [Configure Grafana](https://docs.timescale.com/promscale/latest/visualize-data/grafana) to query and visualize traces from Promscale
 using a Jaeger and a PostgreSQL datasource.
 5. [Install the APM dashboards](https://docs.timescale.com/promscale/latest/visualize-data/apm-experience/) in Grafana.
 
@@ -109,18 +111,18 @@ If you have any questions, please join the #promscale channel on
 
 ## Promscale Repositories
 
-This repository contains the source code of the Promscale Connector. Promscale also requires that the Promscale Extension
+This repository contains the source code of the Promscale Connector. Promscale also requires that the Promscale extension
 which lives in [this repository](https://github.com/timescale/promscale_extension) is installed in the TimescaleDB/PostgreSQL
 database. The extension sets up and manages the database schemas and provides performance and SQL query experience improvements.
 
 This repository also contains the source code for **prom-migrator**. **Prom-migrator** is
 an **open-source**, **community-driven** and **free-to-use**, **universal prometheus
-data migration tool**, that migrates data from one storage system to another, leveraging Prometheus's
+data migration tool**, that migrates datag from one storage system to another, leveraging Prometheus's
 remote storage endpoints. For more information about prom-migrator, visit
 [prom-migrator's README](https://github.com/timescale/promscale/blob/master/migration-tool/cmd/prom-migrator/README.md).
 
 You may also want to check [tobs](https://github.com/timescale/tobs) which makes it very easy to deploy a complete
-observability stack built on Prometheus, OpenTelemetry and Promscale in Kubernetes via cli or helm.
+observability stack built on Prometheus, OpenTelemetry and Promscale in Kubernetes via helm.
 
 ## Contributing
 
