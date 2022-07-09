@@ -22,8 +22,8 @@ Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage
 and as a durable and scalable Jaeger storage backend.
 
 Unlike other observability backends, it has a simple and easy-to-manage architecture 
-with just two components: the Promscale Connector and the Promscale Database (PostgreSQL +
-TimescaleDB + Promscale extension).
+with just two components: the Promscale Connector and the Promscale Database (PostgreSQL with the
+TimescaleDB and Promscale extensions).
 
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
 about Promscale's architecture and how it works.
@@ -64,7 +64,7 @@ using a PromQL and/or a PostgreSQL datasource.
 
 ## Promscale for Jaeger and OpenTelemetry
 
-Promscale can natively ingest OpenTelemetry traces and it can also ingest Jaeger and Zipkin traces via
+Promscale supports ingesting OpenTelemetry traces natively, and Jaeger and Zipkin traces via
 the OpenTelemetry Collector.
 
 Promscale provides Jaeger and OpenTelemetry users with:
