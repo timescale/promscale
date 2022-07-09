@@ -15,6 +15,7 @@
 
 <img alt="Promscale" src="docs/assets/promscale-logo.png" width="600px">
 
+<<<<<<< HEAD
 **Promscale is a unified metric and trace observability backend for Prometheus,
 Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.**
 
@@ -53,6 +54,17 @@ data you need, reduce costs and accelerate performance.
 * **Out-of-the-box monitoring:** leverage the dashboard, alerting rules and runbooks built by the Promscale
 team to start monitoring Promscale since the first day following best practices from the team behind the
 product.
+=======
+Promscale is a unified metric and trace observability backend for Prometheus,
+Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.
+
+Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage
+and as a durable and scalable Jaeger storage backend.
+
+Unlike other observability backends, it has a simple and easy-to-manage architecture 
+with just two components: the Promscale Connector and the Promscale Database (PostgreSQL +
+TimescaleDB + Promscale extension).
+>>>>>>> 7245c54a (Improvements based on feedback)
 
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
 about Promscale's architecture and how it works.
