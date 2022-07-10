@@ -116,7 +116,7 @@ func (p *loggingPgxRows) Next() bool {
 	if !p.logged {
 		p.logged = true
 		res := p.Rows.Next()
-		logQueryStats(p.sqlQuery, p.startTime, p.args)()
+		logQueryStats(p.sqlQuery, p.startTime, p.args...)()
 		return res
 	}
 	return p.Rows.Next()
@@ -139,7 +139,7 @@ func logQueryStats(sql string, startTime time.Time, args ...interface{}) func() 
 		startTime = time.Now()
 	}
 	return func() {
-		log.Debug("msg", "SQL query timing", "query", filterIndentChars(sql), "args", fmt.Sprintf("%v", args...), "time", time.Since(startTime))
+		log.Debug("msg", "SQL query timing", "query", filterIndentChars(sql), "args", fmt.Sprintf("%v", args), "time", time.Since(startTime))
 	}
 }
 
