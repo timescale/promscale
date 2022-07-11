@@ -18,12 +18,41 @@
 Promscale is a unified metric and trace observability backend for Prometheus,
 Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.
 
-Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage
-and as a durable and scalable Jaeger storage backend.
+Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage and as a durable and scalable
+Jaeger storage backend.
 
 Unlike other observability backends, it has a simple and easy-to-manage architecture 
 with just two components: the Promscale Connector and the Promscale Database (PostgreSQL with the
 TimescaleDB and Promscale extensions).
+
+Key features:
+* **Prometheus metric storage:** support for remote write, remote read, PromQL, metric metadata and
+exemplars.
+* **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
+(OTLP). Jaeger and Zipkin traces are supported via the OpenTelemetry Collector.
+* **Grafana integration:** query and visualize your metrics and traces using the PromQL, SQL and Jaeger
+datasources.
+* **Jaeger integration:** visualize traces in Jaeger by configuring Promscale as a Jaeger's GRPC
+backend storage. Use Promscale as the storage backend for the metrics required by the
+[Service Performance Management UI](https://www.jaegertracing.io/docs/1.36/spm/). No need for a
+separate system.
+* **Durable and reliable storage:** built on top of the maturity of Postgres and TimescaleDB with 
+millions of instances worldwide. A trusted system that offers high availability, replication, 
+data integrity, data compression, backups, authentication, roles and permissions.
+* **PromQL Alerts:** full support for PromQL alerting rules reusing the Prometheus configuration that you
+already have.
+* **Multi-tenancy:** support for Prometheus multi-tenancy so you can restrict data access by tenant.
+* **Pick your query language:** PromQL for metrics and SQL for metrics and traces. With full SQL
+support together with TimescaleDB's advanced analytics functions, you can query and correlate metrics,
+traces, and business data to derive new insights.
+* **Flexible data management:** configurable default retention for metrics and traces as well as
+per-metric retention and APIs to delete metric series that are no longer needed.
+* **Downsampling:** increase the performance of long-term queries by downsampling metrics with PromQL recording
+rules and TimescaleDB continuous aggregates. Combine downsampling with per-metric retention to only keep the 
+data you need, reduce costs and accelerate performance.
+* **Out-of-the-box monitoring:** leverage the dashboard, alerting rules and runbooks built by the Promscale
+team to start monitoring Promscale since the first day following best practices from the team behind the
+product.
 
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
 about Promscale's architecture and how it works.
@@ -39,18 +68,20 @@ Use Promscale as a centralized storage for all your Prometheus instances
 so you can easily query data across all of them in Grafana and centralize
 [alert management](https://docs.timescale.com/promscale/latest/alert/) and
 [recording rules](https://docs.timescale.com/promscale/latest/downsample-data/recording/).
+Use [multi-tenancy](https://docs.timescale.com/promscale/latest/scale-ha/prometheus-multi-tenancy/)
+to control who has access to the data for a Kubernetes cluster.
 
 * **Efficient long-term trend analysis**<br/>
 Use Promscale as a durable long-term storage for Prometheus metrics with a proven and rock-solid 
 foundation based on PostgreSQL and TimescaleDB with millions of instances worldwide. With
 [metric downsampling](https://docs.timescale.com/promscale/latest/downsample-data/)
 and [per-metric retention](https://docs.timescale.com/promscale/latest/manage-data/retention/#configure-data-retention-for-metrics)
-you can keep just the data you need for your analysis for as long as you need which allows you
-to cut down the costs associated with using same retention for all data in Prometheus and
+you can keep just the data you need for your analysis for as long as you need. This allows you
+to cut down the costs associated with using the same retention for all data in Prometheus and
 dramatically improves query performance for long-term queries.
 
-**Key features**: 100% PromQL-compliant, high availability, multi-tenancy,
-PromQL alerting and recording rules, downsampling, per-metric retention.
+**Key features**: [100% PromQL-compliant](https://promlabs.com/promql-compliance-test-results/2021-10-14/promscale/),
+high availability, multi-tenancy, PromQL alerting and recording rules, downsampling, per-metric retention.
 
 If you are already familiar with PostgreSQL, then Promscale is a great choice for
 your Prometheus remote storage. You can scale to millions of series and hundreds
