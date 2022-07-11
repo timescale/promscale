@@ -18,4 +18,5 @@ type DBInserter interface {
 	// Returns the number of metrics ingested and any error encountered before finishing.
 	Ingest(context.Context, *prompb.WriteRequest) (uint64, uint64, error)
 	IngestTraces(context.Context, ptrace.Traces) error
+	Close()
 }

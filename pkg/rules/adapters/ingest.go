@@ -25,8 +25,12 @@ type ingestAdapter struct {
 }
 
 // NewIngestAdapter acts as an adapter to make Promscale's DBIngestor compatible with storage.Appendable
-func NewIngestAdapter(ingestor *ingestor.DBIngestor) *ingestAdapter {
-	return &ingestAdapter{ingestor}
+func NewIngestAdapter(inserter ingestor.DBInserter) (*ingestAdapter, error) {
+	dbIngestor, ok := inserter.(*ingestor.DBIngestor)
+	if !ok {
+		return nil, fmt.Errorf("unable to ingest: DBIngestor not found. Received %T", inserter)
+	}
+	return &ingestAdapter{dbIngestor}, nil
 }
 
 type appenderAdapter struct {

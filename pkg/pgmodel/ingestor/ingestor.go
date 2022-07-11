@@ -285,3 +285,13 @@ func (ingestor *DBIngestor) Close() {
 	ingestor.closed.Store(true)
 	ingestor.dispatcher.Close()
 }
+
+type ReadOnlyIngestor struct{}
+
+func (ReadOnlyIngestor) Ingest(context.Context, *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
+	return 0, 0, fmt.Errorf("ingesting metric data not allowed in read-only mode")
+}
+func (ReadOnlyIngestor) IngestTraces(context.Context, ptrace.Traces) error {
+	return fmt.Errorf("ingesting traces not allowed in read-only mode")
+}
+func (ReadOnlyIngestor) Close() {}
