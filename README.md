@@ -15,8 +15,8 @@
 
 <img alt="Promscale" src="docs/assets/promscale-logo.png" width="600px">
 
-Promscale is a unified metric and trace observability backend for Prometheus,
-Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.
+**Promscale is a unified metric and trace observability backend for Prometheus,
+Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.**
 
 Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage and as a durable and scalable
 Jaeger storage backend.
@@ -39,8 +39,8 @@ separate system.
 * **Durable and reliable storage:** built on top of the maturity of Postgres and TimescaleDB with 
 millions of instances worldwide. A trusted system that offers high availability, replication, 
 data integrity, data compression, backups, authentication, roles and permissions.
-* **PromQL Alerts:** full support for PromQL alerting rules reusing the Prometheus configuration that you
-already have.
+* **PromQL Alerts:** full support for PromQL alerting rules. You can reuse the Prometheus configuration
+that you already have.
 * **Multi-tenancy:** support for Prometheus multi-tenancy so you can restrict data access by tenant.
 * **Pick your query language:** PromQL for metrics and SQL for metrics and traces. With full SQL
 support together with TimescaleDB's advanced analytics functions, you can query and correlate metrics,
@@ -118,7 +118,8 @@ in Grafana built using SQL queries on traces.
 Jaeger searching capabilities are limited to filtering individual traces. This is helpful when troubleshooting problems once you know
 what you are looking for. With Promscale you can use SQL to interrogate your trace data in any way you want and discover issues
 that would usally take you a long time to figure out by just looking at log lines, metric charts or individual traces. You can see some
-examples in [this blog post](https://www.timescale.com/blog/what-are-traces-and-how-sql-yes-sql-and-opentelemetry-can-help-us-get-more-value-out-of-traces-to-build-better-software/)
+examples in [our documentation](https://docs.timescale.com/promscale/latest/query-data/query-traces/) and in
+[this blog post](https://www.timescale.com/blog/what-are-traces-and-how-sql-yes-sql-and-opentelemetry-can-help-us-get-more-value-out-of-traces-to-build-better-software/)
 
 **Key features:** native OTLP support, high availability, SQL queries, APM capabilities, data compression, data retention
 
