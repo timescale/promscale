@@ -54,45 +54,6 @@ data you need, reduce costs and accelerate performance.
 team to start monitoring Promscale since the first day following best practices from the team behind the
 product.
 
-Promscale is a unified metric and trace observability backend for Prometheus,
-Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.
-
-Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage and as a durable and scalable
-Jaeger storage backend.
-
-Unlike other observability backends, it has a simple and easy-to-manage architecture 
-with just two components: the Promscale Connector and the Promscale Database (PostgreSQL with the
-TimescaleDB and Promscale extensions).
-
-Key features:
-* **Prometheus metric storage:** support for remote write, remote read, PromQL, metric metadata and
-exemplars.
-* **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
-(OTLP). Jaeger and Zipkin traces are supported via the OpenTelemetry Collector.
-* **Grafana integration:** query and visualize your metrics and traces using the PromQL, SQL and Jaeger
-datasources.
-* **Jaeger integration:** visualize traces in Jaeger by configuring Promscale as a Jaeger's GRPC
-backend storage. Use Promscale as the storage backend for the metrics required by the
-[Service Performance Management UI](https://www.jaegertracing.io/docs/1.36/spm/). No need for a
-separate system.
-* **Durable and reliable storage:** built on top of the maturity of Postgres and TimescaleDB with 
-millions of instances worldwide. A trusted system that offers high availability, replication, 
-data integrity, data compression, backups, authentication, roles and permissions.
-* **PromQL Alerts:** full support for PromQL alerting rules reusing the Prometheus configuration that you
-already have.
-* **Multi-tenancy:** support for Prometheus multi-tenancy so you can restrict data access by tenant.
-* **Pick your query language:** PromQL for metrics and SQL for metrics and traces. With full SQL
-support together with TimescaleDB's advanced analytics functions, you can query and correlate metrics,
-traces, and business data to derive new insights.
-* **Flexible data management:** configurable default retention for metrics and traces as well as
-per-metric retention and APIs to delete metric series that are no longer needed.
-* **Downsampling:** increase the performance of long-term queries by downsampling metrics with PromQL recording
-rules and TimescaleDB continuous aggregates. Combine downsampling with per-metric retention to only keep the 
-data you need, reduce costs and accelerate performance.
-* **Out-of-the-box monitoring:** leverage the dashboard, alerting rules and runbooks built by the Promscale
-team to start monitoring Promscale since the first day following best practices from the team behind the
-product.
-
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
 about Promscale's architecture and how it works.
 
