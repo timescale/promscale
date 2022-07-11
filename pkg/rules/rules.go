@@ -74,8 +74,13 @@ func NewManager(ctx context.Context, r prometheus.Registerer, client *pgclient.C
 		return nil, nil, fmt.Errorf("parsing UI-URL: %w", err)
 	}
 
+	ingestAdapter, err := adapters.NewIngestAdapter(client.Inserter())
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating ingest adapter: %w", err)
+	}
+
 	rulesManager := prom_rules.NewManager(&prom_rules.ManagerOptions{
-		Appendable:      adapters.NewIngestAdapter(client.Ingestor()),
+		Appendable:      ingestAdapter,
 		Queryable:       adapters.NewQueryAdapter(client.Queryable()),
 		Context:         ctx,
 		ExternalURL:     parsedUrl,

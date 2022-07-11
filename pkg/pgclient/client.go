@@ -11,9 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"go.opentelemetry.io/collector/pdata/ptrace"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
@@ -29,6 +28,16 @@ import (
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
+const (
+	// defaultConnFraction is multipled with total connections to get
+	// the max conns for a pool.
+	defaultConnFraction = 0.5
+
+	// defaultReaderFraction is the fraction of connections that should be
+	// assigned to the reader pool, if Promscale is not in read-only mode.
+	defaultReaderFraction = 0.3
+)
+
 // LockFunc does connect validation function, useful for things such as acquiring locks
 // that should live the duration of the connection
 type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
@@ -37,7 +46,7 @@ type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 type Client struct {
 	readerPool   pgxconn.PgxConn
 	writerPool   pgxconn.PgxConn
-	ingestor     *ingestor.DBIngestor
+	ingestor     ingestor.DBInserter
 	querier      querier.Querier
 	promqlEngine *promql.Engine
 	healthCheck  health.HealthCheckerFn
@@ -45,6 +54,7 @@ type Client struct {
 	metricCache  cache.MetricCache
 	labelsCache  cache.LabelsCache
 	seriesCache  cache.SeriesCache
+	closePool    bool
 	sigClose     chan struct{}
 	haService    *ha.Service
 }
@@ -52,18 +62,22 @@ type Client struct {
 // NewClient creates a new PostgreSQL client
 func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
 	var (
-		err               error
-		writerPoolSize    int
-		numCopiers        int
-		writerPool        *pgxpool.Pool
-		defaultReaderPool = 0.5
+		err            error
+		writerPoolSize int
+		numCopiers     int
+		totalConns     int
+		writerPool     *pgxpool.Pool
+		readerFraction = defaultConnFraction
+		writerFraction = defaultConnFraction
 	)
 	if !readOnly {
-		defaultReaderPool = 0.3 // Since defaultReaderPool + defaultWriterPool should be 0.8 or 80% of allowed database connections.
-		writerPoolSize, err = cfg.GetPoolSize("writer", 0.5, cfg.WriterPoolSize)
+		readerFraction = defaultReaderFraction // Since readerFraction + writerFraction should be 0.8 or 80% of allowed database connections.
+		writerPoolSize, err = cfg.GetPoolSize("writer", writerFraction, cfg.WriterPoolSize)
 		if err != nil {
 			return nil, fmt.Errorf("get writer pool size: %w", err)
 		}
+		totalConns += writerPoolSize
+
 		numCopiers, err = cfg.GetNumCopiers()
 		if err != nil {
 			return nil, fmt.Errorf("get num copiers: %w", err)
@@ -85,10 +99,16 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		}
 	}
 
-	readerPoolSize, err := cfg.GetPoolSize("reader", defaultReaderPool, cfg.ReaderPoolSize)
+	readerPoolSize, err := cfg.GetPoolSize("reader", readerFraction, cfg.ReaderPoolSize)
 	if err != nil {
 		return nil, fmt.Errorf("get reader pool size: %w", err)
 	}
+	totalConns += readerPoolSize
+
+	if cfg.MaxConnections != defaultMaxConns && totalConns > cfg.MaxConnections {
+		return nil, fmt.Errorf("reader-pool (size=%d) + writer-pool (size=%d) more than db.connections-max (%d). Increase the db.connections-max or decrease the pool-sizes", readerPoolSize, writerPoolSize, cfg.MaxConnections)
+	}
+
 	readerPgConfig, err := cfg.getPgConfig(readerPoolSize)
 	if err != nil {
 		return nil, fmt.Errorf("get reader pg-config: %w", err)
@@ -111,8 +131,12 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	if err != nil {
 		return nil, fmt.Errorf("err creating reader connection pool: %w", err)
 	}
-
-	return NewClientWithPool(r, cfg, numCopiers, writerPool, readerPool, mt, readOnly)
+	client, err := NewClientWithPool(r, cfg, numCopiers, writerPool, readerPool, mt, readOnly)
+	if err != nil {
+		return client, err
+	}
+	client.closePool = true
+	return client, err
 }
 
 func (cfg *Config) getPgConfig(poolSize int) (*pgxpool.Config, error) {
@@ -172,7 +196,7 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	dbQuerier := querier.NewQuerier(readerConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
-	var dbIngestor *ingestor.DBIngestor
+	dbIngestor := ingestor.DBInserter(ingestor.ReadOnlyIngestor{})
 	if !readOnly {
 		var err error
 		writerConn = pgxconn.NewPgxConn(writerPool)
@@ -224,18 +248,20 @@ func (c *Client) Close() {
 		c.ingestor.Close()
 	}
 	close(c.sigClose)
-	if c.writerPool != nil {
-		c.writerPool.Close()
-	}
-	if c.readerPool != nil {
-		c.readerPool.Close()
+	if c.closePool {
+		if c.writerPool != nil {
+			c.writerPool.Close()
+		}
+		if c.readerPool != nil {
+			c.readerPool.Close()
+		}
 	}
 	if c.haService != nil {
 		c.haService.Close()
 	}
 }
 
-func (c *Client) Ingestor() *ingestor.DBIngestor {
+func (c *Client) Inserter() ingestor.DBInserter {
 	return c.ingestor
 }
 

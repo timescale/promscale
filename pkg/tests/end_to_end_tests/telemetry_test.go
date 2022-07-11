@@ -355,6 +355,8 @@ func TestPromQLBasedTelemetry(t *testing.T) {
 				SslMode:        "allow",
 				MaxConnections: -1,
 				CacheConfig:    cache.DefaultConfig,
+				WriterPoolSize: 2,
+				ReaderPoolSize: 2,
 			},
 		}
 		defer conn.Release()

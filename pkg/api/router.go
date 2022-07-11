@@ -32,7 +32,7 @@ import (
 func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, query *jaegerQuery.Query, reload func() error) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
-		service := ha.NewService(haClient.NewLeaseClient(client.Connection()))
+		service := ha.NewService(haClient.NewLeaseClient(client.ReadOnlyConnection()))
 		writePreprocessors = append(writePreprocessors, ha.NewFilter(service))
 	}
 	if apiConf.MultiTenancy != nil {
@@ -104,7 +104,7 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 	reloadHandler := timeHandler(metrics.HTTPRequestDuration, "/-/reload", Reload(reload, apiConf.AdminAPIEnabled))
 	router.Path("/-/reload").Methods(http.MethodPost).HandlerFunc(reloadHandler)
 
-	jaeger.ExtendQueryAPIs(router, client.Connection(), query)
+	jaeger.ExtendQueryAPIs(router, client.ReadOnlyConnection(), query)
 
 	debugProf := router.PathPrefix("/debug/pprof").Subrouter()
 	debugProf.Path("").Methods(http.MethodGet).HandlerFunc(pprof.Index)

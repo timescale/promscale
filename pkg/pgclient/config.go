@@ -53,6 +53,7 @@ const (
 	defaultDbStatementsCache = true
 	MinPoolSize              = 2
 	defaultPoolSize          = -1
+	defaultMaxConns          = -1
 )
 
 var (
@@ -82,6 +83,8 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 		"allowed by the database.")
 	fs.IntVar(&cfg.ReaderPoolSize, "db.connections.reader-pool.size", defaultPoolSize, "Maximum size of the reader pool of database connections. This defaults to 30% of max_connections "+
 		"allowed by the database.")
+	fs.IntVar(&cfg.MaxConnections, "db.connections-max", defaultMaxConns, "Maximum number of connections to the database that should be opened at once. "+
+		"It defaults to 80% of the maximum connections that the database can handle. ")
 	fs.StringVar(&cfg.DbUri, "db.uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. "+
 		"Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	fs.BoolVar(&cfg.EnableStatementsCache, "db.statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
@@ -184,6 +187,10 @@ func (cfg *Config) maxConn() (int, error) {
 }
 
 func (cfg *Config) GetNumCopiers() (int, error) {
+	if cfg.WriteConnections > 0 {
+		return cfg.WriteConnections, nil
+	}
+
 	conn, err := pgx.Connect(context.Background(), cfg.GetConnectionStr())
 	if err != nil {
 		return 0, err
@@ -196,8 +203,5 @@ func (cfg *Config) GetNumCopiers() (int, error) {
 		return 0, fmt.Errorf("error fetching number of CPUs from extension: %w", err)
 	}
 
-	if cfg.WriteConnections > 0 {
-		numCopiers = cfg.WriteConnections
-	}
 	return numCopiers, nil
 }
