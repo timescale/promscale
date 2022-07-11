@@ -356,8 +356,8 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	}
 	defer func() {
 		if tx != nil {
-			if err := tx.Rollback(ctx); err != nil {
-				log.Error(err)
+			if err := tx.Rollback(ctx); err != nil && err != pgx.ErrTxClosed {
+				log.Error("rollback err", err)
 			}
 		}
 	}()
