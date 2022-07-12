@@ -102,15 +102,18 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		jaegerQuery := jaegerquery.New(pgxconn.NewPgxConn(db), &jaegerquery.DefaultConfig)
 		promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db), jaegerQuery)
 
+		// Bind to the server port. This must be outside of the goroutine below
+		// to prevent the server bind and client connect from racing.
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+
 		go func() {
-			listener, err := net.Listen("tcp", ":9201")
-			require.NoError(t, err)
 			server := http.Server{Handler: router}
 			require.NoError(t, server.Serve(listener))
 		}()
 
 		// Create client for querying and comparing results.
-		promscaleClient := httpClient{"http://localhost:9201"}
+		promscaleClient := httpClient{"http://" + listener.Addr().String()}
 		jaegerResponse, err := loadJaegerQueryResponses()
 		require.NoError(t, err)
 
