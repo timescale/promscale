@@ -39,6 +39,12 @@ type SqlQuery struct {
 	ArgsUnordered bool
 	Results       RowResults
 	Err           error
+	Copy          *Copy
+}
+
+type Copy struct {
+	Table pgx.Identifier
+	Data  [][]interface{}
 }
 
 // RowResults represents a collection of a multi-column row result
@@ -57,6 +63,10 @@ func (r *SqlRecorder) Close() {
 
 func (r *SqlRecorder) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
 	return nil, nil
+}
+
+func (r *SqlRecorder) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return &MockTx{r}, nil
 }
 
 func (r *SqlRecorder) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
@@ -127,14 +137,10 @@ func (r *SqlRecorder) SendBatch(ctx context.Context, b pgxconn.PgxBatch) (pgx.Ba
 }
 
 func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, error) {
-	idx := r.nextQuery
-	if idx >= len(r.queries) {
-		r.t.Errorf("@ %d extra query: %s", idx, sql)
-		return nil, fmt.Errorf("extra query")
+	row, idx, err := r.next()
+	if err != nil {
+		return nil, err
 	}
-	row := r.queries[idx]
-	r.nextQuery += 1
-
 	space := regexp.MustCompile(`\s+`)
 	sql = space.ReplaceAllString(sql, " ")
 	row.Sql = space.ReplaceAllString(row.Sql, " ")
@@ -164,6 +170,39 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 		}
 	}
 	return row.Results, row.Err
+}
+
+func (r *SqlRecorder) checkCopyFrom(tableName pgx.Identifier, data pgx.CopyFromSource) (RowResults, error) {
+	query, idx, err := r.next()
+	if err != nil {
+		return nil, err
+	}
+	if query.Copy == nil {
+		return nil, fmt.Errorf("copy result not defined")
+	}
+	assert.Equal(r.t, query.Copy.Table.Sanitize(), tableName.Sanitize(), "#%v, copy table does not match: %v", idx, tableName.Sanitize())
+	for i := 0; data.Next(); i++ {
+		row, err := data.Values()
+		if err != nil {
+			return nil, fmt.Errorf("error getting copy row: %v", err)
+		}
+		expectedRow := query.Copy.Data[i]
+		for j := 0; j < len(expectedRow); j++ {
+			assert.Equal(r.t, expectedRow[j], row[j], "#%v, copy row columns don't match", idx)
+		}
+	}
+	return query.Results, query.Err
+}
+
+func (r *SqlRecorder) next() (SqlQuery, int, error) {
+	idx := r.nextQuery
+	if idx >= len(r.queries) {
+		r.t.Errorf("@ %d query not defined in tests", idx)
+		return SqlQuery{}, -1, fmt.Errorf("next query not defined in tests")
+	}
+	row := r.queries[idx]
+	r.nextQuery += 1
+	return row, idx, nil
 }
 
 type batchItem struct {
@@ -571,4 +610,73 @@ func (m *MockInserter) InsertTs(_ context.Context, data Data) (uint64, error) {
 
 func (m *MockInserter) InsertMetadata(_ context.Context, metadata []Metadata) (uint64, error) {
 	return uint64(len(metadata)), nil
+}
+
+type MockTx struct {
+	recorder *SqlRecorder
+}
+
+func (t *MockTx) Begin(ctx context.Context) (pgx.Tx, error) {
+	return nil, nil
+}
+
+func (t *MockTx) BeginFunc(ctx context.Context, f func(pgx.Tx) error) (err error) {
+	return nil
+}
+
+func (t *MockTx) Commit(ctx context.Context) error {
+	return nil
+}
+
+func (t *MockTx) Rollback(ctx context.Context) error {
+	return nil
+}
+
+func (t *MockTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	r := t.recorder
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	res, err := r.checkCopyFrom(tableName, rowSrc)
+	if err != nil {
+		return 0, err
+	}
+	return res[0][0].(int64), nil
+}
+
+func (t *MockTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
+	return nil
+}
+
+func (t *MockTx) LargeObjects() pgx.LargeObjects {
+	return pgx.LargeObjects{}
+}
+
+func (t *MockTx) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error) {
+	return nil, nil
+}
+func (t *MockTx) Exec(ctx context.Context, sql string, arguments ...interface{}) (commandTag pgconn.CommandTag, err error) {
+	r := t.recorder
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	_, err = r.checkQuery(sql, arguments...)
+	return pgconn.CommandTag{}, err
+}
+
+func (t *MockTx) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	return nil, nil
+}
+
+func (t *MockTx) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	r := t.recorder
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	rows, err := r.checkQuery(sql, args...)
+	return &MockRows{results: rows, err: err}
+}
+
+func (t *MockTx) QueryFunc(ctx context.Context, sql string, args []interface{}, scans []interface{}, f func(pgx.QueryFuncRow) error) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, nil
+}
+func (t *MockTx) Conn() *pgx.Conn {
+	return nil
 }

@@ -264,9 +264,9 @@ func (si *sampleIngestor) ingestSamples(ingest IngestFunc) {
 			counter := 0
 			for ts := range si.shards[shard] {
 				if counter == si.batchSize {
-					req = prompb.WriteRequest{Timeseries: make([]prompb.TimeSeries, si.batchSize)}
 					reqCh <- req
 					counter = 0
+					req = prompb.WriteRequest{Timeseries: make([]prompb.TimeSeries, si.batchSize)}
 				} else {
 					req.Timeseries[counter] = ts
 					counter++

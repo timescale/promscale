@@ -25,6 +25,10 @@ extraArgs: []
 # Environment variables that will be passed onto deployment pods
 extraEnv: []
 
+# Environment variables that will be passed onto deployment pods
+# Allows reference of secrets
+extraEnvFrom: []
+
 # OpenTelemetry ingest configuration
 openTelemetry:
   port: 9202

@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/telemetry"
@@ -389,12 +390,12 @@ func (t *traceWriterImpl) insertRows(ctx context.Context, table string, columns 
 		}
 	}()
 
-	tempTableNameRawString := "_trace_temp_" + table
-	tempTableName := pgx.Identifier{tempTableNameRawString}
-
-	if _, err = tx.Exec(ctx, "SELECT _ps_trace.ensure_trace_ingest_temp_table($1, $2)", tempTableNameRawString, table); err != nil {
+	var tempTableNameRawString string
+	row := tx.QueryRow(ctx, "SELECT _prom_catalog.create_ingest_temp_table($1, $2, $3)", table, schema.PsTrace, "")
+	if err = row.Scan(&tempTableNameRawString); err != nil {
 		return err
 	}
+	tempTableName := pgx.Identifier{tempTableNameRawString}
 
 	if _, err = tx.CopyFrom(ctx, tempTableName, columns, pgx.CopyFromRows(data)); err != nil {
 		return err
