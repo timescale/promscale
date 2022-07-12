@@ -59,7 +59,7 @@ The following subsections cover all CLI flags which promscale supports. You can 
 
 ### Database flags
 
-| Flag                            |   Type   |            Default             | Description                                                                                                                                                                    |
+| Flag                            | Type     | Default                        | Description                                                                                                                                                                    |
 |---------------------------------|:--------:|:------------------------------:|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | db.app                          |  string  |      promscale@{version}       | 'app' sets application_name in database connection string. This is helpful during debugging when looking at pg_stat_activity.                                                  |
 | db.connection-timeout           | duration |           60 seconds           | Timeout for establishing the connection between Promscale and TimescaleDB.                                                                                                     |
