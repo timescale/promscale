@@ -550,7 +550,7 @@
                   {
                     "targetBlank": true,
                     "title": "View trace details",
-                    "url": "/explore?left=%5B%22${__from}%22,%22${__to}%22,%22${DS_PROMSCALE_JAEGER}%22,%7B\"query\":\"${__value.raw}\"%7D%5D"
+                    "url": "/explore?orgId=1&left=%7B%22datasource%22:%22${DS_PROMSCALE_JAEGER}%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22query%22:%22${__value.raw}%22%7D%5D,%22range%22:%7B%22from%22:%22${__from}%22,%22to%22:%22${__to}%22%7D%7D"
                   }
                 ]
               }
