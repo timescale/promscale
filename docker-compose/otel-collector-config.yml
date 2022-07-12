@@ -1,8 +1,8 @@
 receivers:
-  jaeger:
+  otlp:
     protocols:
-      thrift_http:
-        endpoint: "0.0.0.0:14268"
+      grpc:
+      http:
 
 exporters:
   logging:
@@ -21,7 +21,7 @@ service:
 
   pipelines:
     traces:
-      receivers: [jaeger]
+      receivers: [otlp]
       exporters: [otlp, logging]
       processors: [batch]
 

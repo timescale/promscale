@@ -40,24 +40,27 @@ services:
       - ${PWD}/../rules.yml:/rules.yml
       - ${PWD}/../alerts.yml:/alerts.yml
     environment:
+      PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_URI: postgres://postgres:password@timescaledb:5432/otel_demo?sslmode=allow
-      PROMSCALE_TELEMETRY_TRACE_JAEGER_ENDPOINT: "http://collector:14268/api/traces"
+      PROMSCALE_TELEMETRY_TRACE_OTEL_ENDPOINT: "collector:4317"
       PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
       PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
+      TOBS_PROMSCALE_QUICK_START: "true"
 
   collector:
-    platform: linux/amd64
-    image: "timescale/promscale-demo-collector"
-    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    image: "otel/opentelemetry-collector:0.50.0"
+    command: [ "--config=/etc/otel-collector-config.yml" ]
     depends_on:
       - promscale
     ports:
       - 14268:14268/tcp # jaeger http
       - 4317:4317/tcp
       - 4318:4318/tcp
+    volumes:
+      - ${PWD}/../otel-collector-config.yml:/etc/otel-collector-config.yml
 
   jaeger:
-    image: jaegertracing/jaeger-query:1.33.0
+    image: jaegertracing/jaeger-query:1.35.0
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
     command: [
@@ -67,7 +70,7 @@ services:
       - "16686:16686"
 
   grafana:
-    image: timescale/promscale-demo-grafana
+    image: vineeth97/promscale-demo-grafana
     volumes:
       - grafana-data:/var/lib/grafana
     ports:
@@ -93,7 +96,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
 
   lower:
-    image: jamesgresql/opentelemetry-demo_lower:0.2
+    image: timescale/promscale-demo-lower
     restart: on-failure
     depends_on:
       - collector
