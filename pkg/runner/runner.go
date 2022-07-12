@@ -137,33 +137,40 @@ func Run(cfg *Config) error {
 		}
 	}
 
-	rulesCtx, stopRuler := context.WithCancel(context.Background())
-	defer stopRuler()
-	manager, reloadRules, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg)
-	if err != nil {
-		return fmt.Errorf("error creating rules manager: %w", err)
-	}
-	cfg.APICfg.Rules = manager
-
-	var group run.Group
-	group.Add(
-		func() error {
-			// Reload the rules before starting the rules-manager to ensure all rules are healthy.
-			// Otherwise, we block the startup.
-			if err = reloadRules(); err != nil {
-				return fmt.Errorf("error reloading rules: %w", err)
-			}
-			log.Info("msg", "Started Rule-Manager")
-			return manager.Run()
-		}, func(error) {
-			log.Info("msg", "Stopping Rule-Manager")
-			stopRuler()
-		},
+	var (
+		group         run.Group
+		rulesReloader func() error
 	)
+	if !cfg.APICfg.ReadOnly {
+		rulesCtx, stopRuler := context.WithCancel(context.Background())
+		defer stopRuler()
+		manager, reloadRules, err := rules.NewManager(rulesCtx, prometheus.DefaultRegisterer, client, &cfg.RulesCfg)
+		if err != nil {
+			log.Error("msg", "error creating rules manager", "err", err.Error())
+			return fmt.Errorf("error creating rules manager: %w", err)
+		}
+		cfg.APICfg.Rules = manager
+		rulesReloader = reloadRules
+
+		group.Add(
+			func() error {
+				// Reload the rules before starting the rules-manager to ensure all rules are healthy.
+				// Otherwise, we block the startup.
+				if err = reloadRules(); err != nil {
+					return fmt.Errorf("error reloading rules: %w", err)
+				}
+				log.Info("msg", "Started Rule-Manager")
+				return manager.Run()
+			}, func(error) {
+				log.Info("msg", "Stopping Rule-Manager")
+				stopRuler()
+			},
+		)
+	}
 
 	jaegerQuery := query.New(client.ReadOnlyConnection(), &cfg.TracingCfg)
 
-	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerQuery, reloadRules)
+	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerQuery, rulesReloader)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
@@ -287,7 +294,7 @@ func Run(cfg *Config) error {
 				case syscall.SIGINT:
 					return nil
 				case syscall.SIGHUP:
-					if err := reloadRules(); err != nil {
+					if err := rulesReloader(); err != nil {
 						log.Error("msg", "error reloading rules", "err", err.Error())
 						continue
 					}

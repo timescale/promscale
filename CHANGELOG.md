@@ -17,12 +17,14 @@ We use the following categories for changes:
 
 ### Added
 - Network latency metric [#1431]
+- Ability to configure reader-pool and writer-pool sizes [#1451]
 
 ### Changed
 - `db.num-writer-connections` now sets the absolute number of write connections for writing metrics. [#1430]
 
 ### Fixed
 - Refine check for existence of `prom_schema_migrations` table [#1452]
+- Do not run rules-manager in `-db.read-only` mode [#1451]
 
 ## [0.12.1] - 2022-06-29
 
