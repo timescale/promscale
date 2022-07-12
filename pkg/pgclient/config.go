@@ -150,20 +150,19 @@ func (cfg *Config) GetPoolSize(poolName string, defaultFraction float64, inputPo
 		return 0, fmt.Errorf("max connections: %w", err)
 	}
 
-	if inputPoolSize == defaultPoolSize {
+	switch {
+	case inputPoolSize == defaultPoolSize:
 		// For the default case, we need to take up defaultFraction of allowed connections.
 		poolSize := float64(maxConns) * defaultFraction
 		if cfg.UsesHA {
 			poolSize /= 2
 		}
 		return int(poolSize), nil
-	}
-
-	// Custom pool size,
-	if inputPoolSize < MinPoolSize {
+	case inputPoolSize < MinPoolSize:
 		return 0, fmt.Errorf("%s pool size canot be less than %d: received %d", poolName, MinPoolSize, inputPoolSize)
-	} else if inputPoolSize > maxConns {
+	case inputPoolSize > maxConns:
 		return 0, fmt.Errorf("%s pool size canot be greater than the 'max_connections' allowed by the database", poolName)
+	default:
 	}
 	if cfg.UsesHA {
 		inputPoolSize /= 2
