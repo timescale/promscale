@@ -237,7 +237,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		}
 		p.getMetricBatcher(metricName) <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
 	}
-	span.SetAttributes(attribute.String("num_rows", fmt.Sprintf("%d", numRows)))
+	span.SetAttributes(attribute.Int64("num_rows", int64(numRows)))
 	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
 	reportIncomingBatch(numRows)
 	reportOutgoing := func() {
