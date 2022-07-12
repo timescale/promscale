@@ -2,3 +2,6 @@
 exclusions:
   template-datasource-rule:
   panel-datasource-rule:
+  panel-title-description-rule:
+  panel-units-rule:
+
