@@ -202,7 +202,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 					SpanContext: req.spanCtx,
 				},
 			),
-			trace.WithAttributes(attribute.String("insertable_count", fmt.Sprintf("%d", len(req.data)))),
+			trace.WithAttributes(attribute.Int("insertable_count", len(req.data))),
 		)
 		buf.addReq(req)
 		addSpan.End()
