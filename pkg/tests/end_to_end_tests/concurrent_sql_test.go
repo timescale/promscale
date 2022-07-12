@@ -25,10 +25,10 @@ func testConcurrentMetricTable(t testing.TB, db *pgxpool.Pool, metricName string
 	var name *string
 	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&id, &name)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	if id == nil || name == nil || *name == "" {
-		t.Fatalf("NULL found")
+		t.Error("NULL found")
 	}
 	return *id
 }
@@ -37,10 +37,10 @@ func testConcurrentNewLabel(t testing.TB, db *pgxpool.Pool, labelName string) in
 	var id *int64
 	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.get_new_label_id($1, $1)", labelName).Scan(&id)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	if id == nil {
-		t.Fatalf("NULL found")
+		t.Error("NULL found")
 	}
 	return *id
 }
@@ -50,10 +50,10 @@ func testConcurrentCreateSeries(t testing.TB, db *pgxpool.Pool, index int, metri
 	err := db.QueryRow(context.Background(), "SELECT _prom_catalog.create_series((SELECT id FROM _prom_catalog.metric WHERE metric_name=$3), $1, array[(SELECT id FROM _prom_catalog.label WHERE key = '__name__' AND value=$3), $2::int])",
 		metricName, index, metricName).Scan(&id)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	if id == nil {
-		t.Fatalf("NULL found")
+		t.Error("NULL found")
 	}
 	return *id
 }
@@ -63,10 +63,10 @@ func testConcurrentGetSeries(t testing.TB, db *pgxpool.Pool, metricName string) 
 	err := db.QueryRow(context.Background(), "SELECT series_id FROM _prom_catalog.get_or_create_series_id_for_kv_array($1, array['__name__'], array[$1])",
 		metricName).Scan(&id)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	if id == nil {
-		t.Fatalf("NULL found")
+		t.Error("NULL found")
 	}
 	return *id
 }
@@ -76,10 +76,10 @@ func testConcurrentGOCMetricTable(t testing.TB, db *pgxpool.Pool, metricName str
 	var name *string
 	err := db.QueryRow(context.Background(), "SELECT id, table_name FROM _prom_catalog.get_or_create_metric_table_name($1)", metricName).Scan(&id, &name)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	if id == nil || name == nil {
-		t.Fatalf("NULL found")
+		t.Error("NULL found")
 	}
 	return *id
 }
@@ -144,7 +144,7 @@ func TestConcurrentSQL(t *testing.T) {
 				defer wg.Done()
 				_, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
 				if err != nil {
-					t.Fatal(err)
+					t.Error(err)
 				}
 			}()
 			metric := fmt.Sprintf("test1"+strings.Repeat("long_name_", 10)+"goc_metric_%d", i)
@@ -168,7 +168,7 @@ func TestConcurrentSQL(t *testing.T) {
 				defer wg.Done()
 				_, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()")
 				if err != nil {
-					t.Fatal(err)
+					t.Error(err)
 				}
 			}()
 			metric = fmt.Sprintf("test2"+strings.Repeat("long_name_", 10)+"goc_metric_%d", i)
@@ -224,12 +224,12 @@ func testConcurrentInsertSimple(t testing.TB, db *pgxpool.Pool, metric string) {
 
 	ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	defer ingestor.Close()
 	_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(metrics)))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 }
 
@@ -283,13 +283,13 @@ func testConcurrentInsertAdvanced(t testing.TB, db *pgxpool.Pool) {
 
 	ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
 	defer ingestor.Close()
 	_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(metrics)))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 }
 

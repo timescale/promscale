@@ -72,3 +72,4 @@ func (mockPgxConn) SendBatch(ctx context.Context, b pgxconn.PgxBatch) (pgx.Batch
 	return nil, nil
 }
 func (mockPgxConn) Acquire(ctx context.Context) (*pgxpool.Conn, error) { return nil, nil }
+func (mockPgxConn) BeginTx(ctx context.Context) (pgx.Tx, error)        { return nil, nil }
