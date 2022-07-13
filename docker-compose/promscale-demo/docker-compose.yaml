@@ -48,7 +48,7 @@ services:
       TOBS_PROMSCALE_QUICK_START: "true"
 
   collector:
-    image: "otel/opentelemetry-collector:0.50.0"
+    image: "otel/opentelemetry-collector:0.55.0"
     command: [ "--config=/etc/otel-collector-config.yml" ]
     depends_on:
       - promscale
@@ -60,7 +60,7 @@ services:
       - ${PWD}/../otel-collector-config.yml:/etc/otel-collector-config.yml
 
   jaeger:
-    image: jaegertracing/jaeger-query:1.35.0
+    image: jaegertracing/jaeger-query:1.36.0
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
     command: [
