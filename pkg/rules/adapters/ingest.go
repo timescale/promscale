@@ -21,21 +21,17 @@ import (
 var samplesIngested = metrics.IngestorItems.With(map[string]string{"type": "metric", "kind": "sample", "subsystem": "rules"})
 
 type ingestAdapter struct {
-	ingestor *ingestor.DBIngestor
+	inserter ingestor.DBInserter
 }
 
 // NewIngestAdapter acts as an adapter to make Promscale's DBIngestor compatible with storage.Appendable
-func NewIngestAdapter(inserter ingestor.DBInserter) (*ingestAdapter, error) {
-	dbIngestor, ok := inserter.(*ingestor.DBIngestor)
-	if !ok {
-		return nil, fmt.Errorf("unable to ingest: DBIngestor not found. Received %T", inserter)
-	}
-	return &ingestAdapter{dbIngestor}, nil
+func NewIngestAdapter(inserter ingestor.DBInserter) *ingestAdapter {
+	return &ingestAdapter{inserter}
 }
 
 type appenderAdapter struct {
 	data     map[string][]model.Insertable
-	ingestor *ingestor.DBIngestor
+	inserter ingestor.DBInserter
 	closed   bool
 }
 
@@ -52,7 +48,7 @@ type appenderAdapter struct {
 func (a ingestAdapter) Appender(_ context.Context) storage.Appender {
 	return &appenderAdapter{
 		data:     make(map[string][]model.Insertable),
-		ingestor: a.ingestor,
+		inserter: a.inserter,
 	}
 }
 
@@ -60,7 +56,11 @@ func (app *appenderAdapter) Append(_ storage.SeriesRef, l labels.Labels, t int64
 	if err := app.shouldAppend(); err != nil {
 		return 0, err
 	}
-	series, metricName, err := app.ingestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
+	dbIngestor, err := getIngestor(app.inserter)
+	if err != nil {
+		return 0, fmt.Errorf("get ingestor: %w", err)
+	}
+	series, metricName, err := dbIngestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
 	if err != nil {
 		return 0, fmt.Errorf("get series from protos: %w", err)
 	}
@@ -92,7 +92,11 @@ func (app *appenderAdapter) Commit() error {
 	//
 	// An error might occur while ingesting samples, so Prometheus will call the app.Rollback(). Do note that we cannot
 	// rollback the ingested series, rather only ingested samples since they were the last step that created the error.
-	numInsertablesIngested, err := app.ingestor.Dispatcher().InsertTs(context.Background(), model.Data{Rows: app.data, ReceivedTime: time.Now()})
+	dbIngestor, err := getIngestor(app.inserter)
+	if err != nil {
+		return fmt.Errorf("get ingestor: %w", err)
+	}
+	numInsertablesIngested, err := dbIngestor.Dispatcher().InsertTs(context.Background(), model.Data{Rows: app.data, ReceivedTime: time.Now()})
 	if err == nil {
 		samplesIngested.Add(float64(numInsertablesIngested))
 	}
@@ -109,6 +113,14 @@ func (app *appenderAdapter) shouldAppend() error {
 func (app *appenderAdapter) Rollback() error {
 	app.closed = true
 	app.data = map[string][]model.Insertable{}
-	app.ingestor = nil
+	app.inserter = nil
 	return nil
+}
+
+func getIngestor(inserter ingestor.DBInserter) (*ingestor.DBIngestor, error) {
+	dbIngestor, ok := inserter.(*ingestor.DBIngestor)
+	if !ok {
+		return nil, fmt.Errorf("unable to ingest: DBIngestor not found. Received %T", inserter)
+	}
+	return dbIngestor, nil
 }
