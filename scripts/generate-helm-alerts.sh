@@ -14,14 +14,7 @@ metadata:
   name: {{ include "promscale.fullname" . }}-rules
   namespace: {{ template "promscale.namespace" . }}
   labels:
-    app: {{ template "promscale.fullname" . }}
-    chart: {{ template "promscale.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
-    app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: {{ .Chart.AppVersion }}
-    app.kubernetes.io/part-of: "promscale-connector"
-    app.kubernetes.io/component: "connector"
+{{ include "promscale-helm.labels" . | indent 4 }}
 spec:
 {{\`
 $(cat "$alerts" | sed -e 's/^/  /')

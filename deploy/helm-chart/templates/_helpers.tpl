@@ -34,3 +34,20 @@ Allow the release namespace to be overridden
     {{- .Release.Namespace -}}
   {{- end -}}
 {{- end -}}
+
+{{/*
+Generate labels to be used
+*/}}
+{{- define "promscale.labels" -}}
+app: {{ include "promscale.fullname" . }}
+chart: {{ template "promscale.chart" . }}
+release: {{ .Release.Name }}
+heritage: {{ .Release.Service }}
+{{- end }}
+
+{{- define "promscale-helm.labels" -}}
+{{ include "promscale.labels" . }}
+app.kubernetes.io/name: {{ include "promscale.fullname" . | quote }}
+app.kubernetes.io/version: {{ .Chart.AppVersion }}
+app.kubernetes.io/component: "connector"
+{{- end }}
