@@ -53,6 +53,12 @@ data you need, reduce costs and accelerate performance.
 * **Out-of-the-box monitoring:** leverage the dashboard, alerting rules and runbooks built by the Promscale
 team to start monitoring Promscale since the first day following best practices from the team behind the
 product.
+* **Easy data migration:** use our [prom-migrator](https://github.com/timescale/promscale/blob/master/migration-tool/cmd/prom-migrator/README.md)
+tool to effortlessly migrate your existing Prometheus data to Promscale.
+* **Simplified deployment on K8s:** use [tobs](https://github.com/timescale/tobs) to deploy and manage a complete,
+pre-configured and production-ready observability stack for metrics and traces on a K8s cluster that includes
+Promscale, Prometheus, OpenTelemetry with auto-instrumentation, Grafana and plenty of out-of-the-box dashboards and alerts.
+
 
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
 about Promscale's architecture and how it works.
