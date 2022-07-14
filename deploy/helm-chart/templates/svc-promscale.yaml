@@ -1,24 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "promscale.fullname" . | trunc 53 }}-connector
-  namespace: {{ template "promscale.namespace" . }}
+  name: {{ include "promscale.fullname" . }}
+  namespace: {{ include "promscale.namespace" . }}
   labels:
-    app: {{ template "promscale.fullname" . }}
-    chart: {{ template "promscale.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
-    app.kubernetes.io/name: "promscale-connector"
-    app.kubernetes.io/version: {{ .Chart.AppVersion }}
-    app.kubernetes.io/part-of: "promscale-connector"
-    app.kubernetes.io/component: "connector"
+{{ include "promscale-helm.labels" . | indent 4 }}
   {{- if .Values.service.annotations }}
   annotations:
     {{- .Values.service.annotations | toYaml | nindent 4 }}
   {{- end }}
 spec:
   selector:
-    app: {{ template "promscale.fullname" . }}
+    app: {{ include "promscale.fullname" . }}
   type: {{ .Values.service.type }}
   ports:
   - name: metrics-port
