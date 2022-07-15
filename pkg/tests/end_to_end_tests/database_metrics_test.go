@@ -34,6 +34,10 @@ func TestDatabaseMetrics(t *testing.T) {
 		require.Equal(t, float64(0), numMaintenanceJobs)
 		chunksCreated := getMetricValue(t, "chunks_created")
 		require.Equal(t, float64(0), chunksCreated)
+		chunksCount := getMetricValue(t, "chunks_count")
+		require.Equal(t, float64(0), chunksCount)
+		chunksCompressedCount := getMetricValue(t, "chunks_compressed_count")
+		require.Equal(t, float64(0), chunksCompressedCount)
 
 		// Update the metrics.
 		require.NoError(t, dbMetrics.Update())
@@ -45,6 +49,10 @@ func TestDatabaseMetrics(t *testing.T) {
 		require.Equal(t, float64(2), numMaintenanceJobs)
 		chunksCreated = getMetricValue(t, "chunks_created")
 		require.Equal(t, float64(0), chunksCreated)
+		chunksCount = getMetricValue(t, "chunks_count")
+		require.Equal(t, float64(0), chunksCount)
+		chunksCompressedCount = getMetricValue(t, "chunks_compressed_count")
+		require.Equal(t, float64(0), chunksCompressedCount)
 
 		// Ingest some data and then see check the metrics to ensure proper updating.
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
@@ -57,7 +65,60 @@ func TestDatabaseMetrics(t *testing.T) {
 		require.NoError(t, dbMetrics.Update())
 
 		chunksCreated = getMetricValue(t, "chunks_created")
-		require.Equal(t, chunksCreated, float64(3))
+		require.Equal(t, float64(3), chunksCreated)
+		chunksCount = getMetricValue(t, "chunks_count")
+		require.Equal(t, float64(3), chunksCount)
+		chunksCompressedCount = getMetricValue(t, "chunks_compressed_count")
+		require.Equal(t, float64(0), chunksCompressedCount)
+	})
+}
+
+func TestDatabaseMetricsAfterCompression(t *testing.T) {
+	if !*useTimescaleDB {
+		t.Skip("test meaningless without TimescaleDB")
+	}
+	ts := generateSmallTimeseries()
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		require.NoError(t, err)
+		defer ingestor.Close()
+		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		require.NoError(t, err)
+		err = ingestor.CompleteMetricCreation(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		dbMetrics := database.NewEngine(ctx, pgxconn.NewPgxConn(db))
+
+		// Update the metrics.
+		require.NoError(t, dbMetrics.Update())
+		// Get metrics before compressing the firstMetric metric chunk.
+		compressionStatus := getMetricValue(t, "compression_status")
+		require.Equal(t, float64(1), compressionStatus)
+		numMaintenanceJobs := getMetricValue(t, "worker_maintenance_job")
+		require.Equal(t, float64(2), numMaintenanceJobs)
+		chunksCreated := getMetricValue(t, "chunks_created")
+		require.Equal(t, float64(2), chunksCreated)
+		chunksCount := getMetricValue(t, "chunks_count")
+		require.Equal(t, float64(2), chunksCount)
+		chunksCompressedCount := getMetricValue(t, "chunks_compressed_count")
+		require.Equal(t, float64(0), chunksCompressedCount)
+
+		_, err = db.Exec(context.Background(), `SELECT public.compress_chunk(i) from public.show_chunks('prom_data."firstMetric"') i;`)
+		require.NoError(t, err)
+
+		// Update the metrics after compression.
+		require.NoError(t, dbMetrics.Update())
+		chunksCreated = getMetricValue(t, "chunks_created")
+		require.Equal(t, float64(2), chunksCreated)
+		chunksCount = getMetricValue(t, "chunks_count")
+		require.Equal(t, float64(2), chunksCount)
+		chunksCompressedCount = getMetricValue(t, "chunks_compressed_count")
+		require.Equal(t, float64(1), chunksCompressedCount)
 	})
 }
 

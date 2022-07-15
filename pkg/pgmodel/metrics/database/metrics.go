@@ -67,7 +67,8 @@ var metrics = []metricQueryWrap{
 				Help:      "Total number of chunks in TimescaleDB currently.",
 			},
 		),
-		query: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false`,
+		// Compressed_chunk_id is null for both yet to be compressed and already compressed chunks.
+		query: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false and compressed_chunk_id is null`,
 	},
 	{
 		metric: prometheus.NewGauge(
@@ -78,7 +79,8 @@ var metrics = []metricQueryWrap{
 				Help:      "Total number of chunks created since creation of database.",
 			},
 		),
-		query: `select count(*)::bigint from _timescaledb_catalog.chunk`,
+		// Compressed_chunk_id is null for both yet to be compressed and already compressed chunks.
+		query: `select count(*)::bigint from _timescaledb_catalog.chunk where compressed_chunk_id is null`,
 	},
 	{
 		metric: prometheus.NewGauge(

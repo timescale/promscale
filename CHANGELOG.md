@@ -25,6 +25,7 @@ We use the following categories for changes:
 ### Fixed
 - Refine check for existence of `prom_schema_migrations` table [#1452]
 - Do not run rules-manager in `-db.read-only` mode [#1451]
+- Fix underlying metric(`promscale_sql_database_chunks_count`) which leads to false positive firing of PromscaleCompressionLow alert [#1494]
 
 ## [0.12.1] - 2022-06-29
 
