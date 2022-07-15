@@ -54,10 +54,12 @@ spec:
     app: promscale
   type: ClusterIP
   ports:
+  
   - name: metrics-port
     port: 9201
     targetPort: metrics-port
     protocol: TCP
+  
   - name: otel-port
     port: 9202
     targetPort: otel-port
@@ -70,6 +72,7 @@ metadata:
   name: promscale
   namespace: default
   labels:
+
     app: promscale
     chart: promscale-0.12.1
     release: promscale
@@ -98,8 +101,8 @@ spec:
       annotations:
         checksum/connection: ff05ff54cbc0eadd9ce97781ed753f30c19ece1aa39b35d2eb5a70ad656daf69
         checksum/config: a1171a41877cc559fe699480d7c9bc731055fde6ccbe0b47e5c9a279cfe38962
-        prometheus.io/path: /metrics
-        prometheus.io/port: "9201"
+        prometheus.io/port: '9201'
+        prometheus.io/path: '/metrics'
         prometheus.io/scrape: "true"
     spec:
       containers:
