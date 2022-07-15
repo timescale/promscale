@@ -12,9 +12,10 @@ High disk usage by Promscale database
 1. Open Grafana and navigate to Promscale dashboard
 2. Go to Database section and see `Compressesd chunks ratio`. If you see a ratio of < 10% then compression is not adequate in your system
 3. Open psql
-4. Check number of uncompressed chunks: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false and compressed_chunk_id=null;`
-5. Check number of maintenancec jobs: `select count(*) from timescaledb_information.jobs where proc_name = 'execute_maintenance_job'`
-6. Run the following debugging query:
+4. Check total number of chunks: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false and compressed_chunk_id is null;`
+5. Check total number of compressed chunks: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false and compressed_chunk_id is not null;`
+6. Check number of maintenancec jobs: `select count(*) from timescaledb_information.jobs where proc_name = 'execute_maintenance_job'`
+7. Run the following debugging query:
 
 ```postgresql
 SELECT 
