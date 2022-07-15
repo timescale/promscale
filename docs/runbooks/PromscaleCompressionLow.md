@@ -14,7 +14,7 @@ High disk usage by Promscale database
 3. Open psql
 4. Check total number of chunks: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false and compressed_chunk_id is null;`
 5. Check total number of compressed chunks: `select count(*)::bigint from _timescaledb_catalog.chunk where dropped=false and compressed_chunk_id is not null;`
-6. Check number of maintenancec jobs: `select count(*) from timescaledb_information.jobs where proc_name = 'execute_maintenance_job'`
+6. Check number of maintenance jobs: `select count(*) from timescaledb_information.jobs where proc_name = 'execute_maintenance_job'`
 7. Run the following debugging query:
 
 ```postgresql
