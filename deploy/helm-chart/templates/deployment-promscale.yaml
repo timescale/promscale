@@ -4,7 +4,10 @@ metadata:
   name: {{ include "promscale.fullname" . }}
   namespace: {{ template "promscale.namespace" . }}
   labels:
-{{ include "promscale-helm.labels" . | indent 4 }}
+{{ include "promscale-helm.labels" . | nindent 4 }}
+  {{- if .Values.annotations }}
+  annotations: {{ toYaml .Values.annotations | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
@@ -20,8 +23,13 @@ spec:
       annotations:
         checksum/connection: {{ printf "%s" .Values.connection | sha256sum }}
         checksum/config: {{ printf "%s" .Values.config | sha256sum }}
-        {{- if .Values.prometheus.annotations }}
-        {{- .Values.prometheus.annotations | toYaml | nindent 8 }}
+        prometheus.io/port: '9201'
+        prometheus.io/path: '/metrics'
+        prometheus.io/scrape: {{ not .Values.serviceMonitor.enabled | quote }}
+        {{- if .Values.podAnnotations }}
+        {{- range $key, $value := .Values.podAnnotations }}
+          {{ $key }}: {{ $value | quote }}
+        {{- end }}
         {{- end }}
     spec:
       containers:

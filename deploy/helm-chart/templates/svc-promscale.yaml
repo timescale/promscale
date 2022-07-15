@@ -1,3 +1,4 @@
+{{- if or .Values.service.prometheus.enabled .Values.service.openTelemetry.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -14,11 +15,16 @@ spec:
     app: {{ include "promscale.fullname" . }}
   type: {{ .Values.service.type }}
   ports:
+  {{ if .Values.service.prometheus.enabled }}
   - name: metrics-port
-    port: {{ .Values.prometheus.port }}
+    port: {{ .Values.service.prometheus.port }}
     targetPort: metrics-port
     protocol: TCP
+  {{- end }}
+  {{ if .Values.service.openTelemetry.enabled }}
   - name: otel-port
-    port: {{ .Values.openTelemetry.port }}
+    port: {{ .Values.service.openTelemetry.port }}
     targetPort: otel-port
     protocol: TCP
+  {{- end }}
+{{- end }}

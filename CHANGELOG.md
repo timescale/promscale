@@ -18,6 +18,10 @@ We use the following categories for changes:
 ### Added
 - Network latency metric [#1431]
 - Ability to configure reader-pool and writer-pool sizes [#1451]
+- Add ability to specify Deployment annotations and Pod annotations in helm charts [#1495]
+- Deprecate `openTelemetry` and `prometheus` top-level objects in helm chart in favour of `.service.openTelemetry` and `.service.prometheus` [#1495]
+- Allow disabling exposition of promscale port in Service object. [#1495]
+- Enable prometheus annotation based scraping only when ServiceMonitor is disabled. [#1495]
 
 ### Changed
 - `db.num-writer-connections` now sets the absolute number of write connections for writing metrics. [#1430]
