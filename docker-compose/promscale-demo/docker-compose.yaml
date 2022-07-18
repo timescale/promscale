@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_PASSWORD: password
       POSTGRES_USER: postgres
-      POSTGRES_DB: otel_demo
+      POSTGRES_DB: tsdb
       POSTGRES_HOST_AUTH_METHOD: trust
 
   prometheus:
@@ -40,12 +40,9 @@ services:
       - ${PWD}/../rules.yml:/rules.yml
       - ${PWD}/../alerts.yml:/alerts.yml
     environment:
-      PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
-      PROMSCALE_DB_URI: postgres://postgres:password@timescaledb:5432/otel_demo?sslmode=allow
-      PROMSCALE_TELEMETRY_TRACE_OTEL_ENDPOINT: "collector:4317"
-      PROMSCALE_TELEMETRY_TRACE_SAMPLING_RATIO: "0.1"
+      PROMSCALE_DB_URI: postgres://postgres:password@timescaledb:5432/tsdb?sslmode=allow
       PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
-      TOBS_PROMSCALE_QUICK_START: "true"
+      PROMSCALE_PKG: "docker-quick-start"
 
   collector:
     image: "otel/opentelemetry-collector:0.55.0"
@@ -143,9 +140,6 @@ services:
     restart: on-failure
     depends_on:
       - generator
-    deploy:
-      mode: replicated
-      replicas: 3
 
 volumes:
   timescaledb-data:

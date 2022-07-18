@@ -43,7 +43,6 @@ services:
     environment:
       PROMSCALE_METRICS_HIGH_AVAILABILITY: true
       PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
-      PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
 
   promscale-connector2:
@@ -61,7 +60,6 @@ services:
     environment:
       PROMSCALE_METRICS_HIGH_AVAILABILITY: true
       PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
-      PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
 
   node_exporter:

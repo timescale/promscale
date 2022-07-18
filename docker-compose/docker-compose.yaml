@@ -36,7 +36,6 @@ services:
       - ${PWD}/rules.yml:/rules.yml
       - ${PWD}/alerts.yml:/alerts.yml
     environment:
-      PROMSCALE_WEB_TELEMETRY_PATH: /metrics-text
       PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
       PROMSCALE_TRACING_OTLP_SERVER_ADDRESS: ":9202"
       PROMSCALE_TELEMETRY_TRACE_OTEL_ENDPOINT: "otel-collector:4317"
