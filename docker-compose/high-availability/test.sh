@@ -34,7 +34,7 @@ cleanup() {
 trap cleanup EXIT
 
 leader_name() {
-    LEADER=`docker exec $1 wget -O - localhost:9201/metrics-text 2>&1 | grep -i "promscale_ha_cluster_leader_info.*1$" | sed 's/^.*replica=\"\(.*\)\".*$/\1/'`
+    LEADER=`docker exec $1 wget -O - localhost:9201/metrics 2>&1 | grep -i "promscale_ha_cluster_leader_info.*1$" | sed 's/^.*replica=\"\(.*\)\".*$/\1/'`
     echo "$LEADER"
 }
 
@@ -60,7 +60,7 @@ wait_for() {
     echo "waiting for $1"
 
     for i in `seq 10` ; do
-        if [ ! -z "$(docker exec $1 wget -O - localhost:9201/metrics-text)" ] ; then
+        if [ ! -z "$(docker exec $1 wget -O - localhost:9201/metrics)" ] ; then
           echo "connector up"
           return 0
         fi
