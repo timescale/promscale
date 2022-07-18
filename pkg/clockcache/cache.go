@@ -44,7 +44,7 @@ type element struct {
 	used uint32
 	size uint64
 
-	// pad Elements out to be cache aligned
+	// pad Elements out to be cache-aligned, see BenchmarkCacheFalseSharing
 	_ [16]byte
 }
 
