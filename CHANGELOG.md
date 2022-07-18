@@ -22,6 +22,7 @@ We use the following categories for changes:
 - Deprecate `openTelemetry` and `prometheus` top-level objects in helm chart in favour of `.service.openTelemetry` and `.service.prometheus` [#1495]
 - Allow disabling exposition of promscale port in Service object. [#1495]
 - Enable prometheus annotation based scraping only when ServiceMonitor is disabled. [#1495]
+- `db.connections.writer-pool.synchronous-commit` controls whether synchronous_commit is enabled/disabled for writer database connections. [#1499]
 
 ### Changed
 - `db.num-writer-connections` now sets the absolute number of write connections for writing metrics. [#1430]

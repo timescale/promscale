@@ -92,7 +92,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		if err != nil {
 			return nil, fmt.Errorf("get writer pg-config: %w", err)
 		}
-		writerPgConfig.AfterConnect = schemaLocker
+		SetWriterPoolAfterConnect(writerPgConfig, schemaLocker, cfg.WriterSynchronousCommit)
 		writerPool, err = pgxpool.ConnectConfig(context.Background(), writerPgConfig)
 		if err != nil {
 			return nil, fmt.Errorf("err creating writer connection pool: %w", err)
@@ -137,6 +137,22 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	}
 	client.closePool = true
 	return client, err
+}
+
+func SetWriterPoolAfterConnect(writerPgConfig *pgxpool.Config, schemaLocker LockFunc, synchronousCommit bool) {
+	if !synchronousCommit {
+		// if synchronous_commit should be disabled, we use the AfterConnect hook so that we can set it to 'off'
+		// for the session before the connection is added to the pool for use
+		writerPgConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+			_, err := conn.Exec(ctx, "SET SESSION synchronous_commit to 'off'")
+			if err != nil {
+				return err
+			}
+			return schemaLocker(ctx, conn)
+		}
+	} else {
+		writerPgConfig.AfterConnect = schemaLocker
+	}
 }
 
 func (cfg *Config) getPgConfig(poolSize int) (*pgxpool.Config, error) {
