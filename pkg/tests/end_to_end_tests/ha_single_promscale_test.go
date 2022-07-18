@@ -122,7 +122,7 @@ func prepareWriterWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, ht
 	sCache := cache.NewSeriesCache(cache.DefaultConfig, sigClose)
 	dataParser := parser.NewParser()
 	dataParser.AddPreprocessor(ha.NewFilter(haService))
-	mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+	mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, model.MetricInfo](cache.DefaultMetricCacheSize)}
 
 	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), mCache, sCache, nil, &ingestor.Cfg{
 		InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize, NumCopiers: 2,

@@ -7,6 +7,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/prometheus/model/labels"
 	"reflect"
 	"testing"
 	"time"
@@ -722,7 +723,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error setting up mock cache: %s", err.Error())
 			}
-			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0), tenancy.NewNoopAuthorizer().ReadAuthorizer())}}
+			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax[int64, labels.Label](0), tenancy.NewNoopAuthorizer().ReadAuthorizer())}}
 
 			result, err := querier.RemoteReadQuerier(context.Background()).Query(c.query)
 

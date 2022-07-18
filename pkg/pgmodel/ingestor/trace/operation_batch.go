@@ -7,6 +7,7 @@ package trace
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/clockcache"
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
@@ -45,7 +46,7 @@ func (o operation) AddToDBBatch(batch pgxconn.PgxBatch) {
 	batch.Queue(insertOperationSQL, o.serviceName, o.spanName, o.spanKind)
 }
 
-func (o operation) ScanIDs(r pgx.BatchResults) (interface{}, error) {
+func (o operation) ScanIDs(r pgx.BatchResults) (pgtype.Int8, error) {
 	var id pgtype.Int8
 	err := r.QueryRow().Scan(&id)
 	return id, err
@@ -54,10 +55,10 @@ func (o operation) ScanIDs(r pgx.BatchResults) (interface{}, error) {
 //Operation batch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db
 type operationBatch struct {
-	b batcher
+	b batcher[operation, pgtype.Int8]
 }
 
-func newOperationBatch(cache cache) operationBatch {
+func newOperationBatch(cache *clockcache.Cache[operation, pgtype.Int8]) operationBatch {
 	return operationBatch{
 		b: newBatcher(cache),
 	}
@@ -72,9 +73,16 @@ func (o operationBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (er
 }
 func (o operationBatch) GetID(serviceName, spanName, spanKind string) (pgtype.Int8, error) {
 	op := operation{serviceName, spanName, spanKind}
-	id, err := o.b.GetID(op)
+	id, err := o.b.Get(op)
 	if err != nil {
-		return id, fmt.Errorf("error getting ID for operation %v: %w", op, err)
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for operation %v: %w", op, err)
+	}
+
+	if id.Status != pgtype.Present {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for operation %v: %s", op, "ID is null")
+	}
+	if id.Int == 0 {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for operation %v: %s", op, "ID is 0")
 	}
 
 	return id, nil

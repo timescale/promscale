@@ -38,13 +38,13 @@ type SeriesCache interface {
 }
 
 type SeriesCacheImpl struct {
-	cache        *clockcache.Cache
+	cache        *clockcache.Cache[string, *model.Series]
 	maxSizeBytes uint64
 }
 
 func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
 	cache := &SeriesCacheImpl{
-		clockcache.WithMetrics("series", "metric", config.SeriesCacheInitialSize),
+		clockcache.WithMetrics[string, *model.Series]("series", "metric", config.SeriesCacheInitialSize),
 		config.SeriesCacheMemoryMaxBytes,
 	}
 
@@ -125,7 +125,7 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 	if !ok {
 		return nil
 	}
-	return val.(*model.Series)
+	return val
 }
 
 // Try to set a series as the canonical Series for a given string
@@ -134,7 +134,7 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
 	//str not counted twice in size since the key and lset.str will point to same thing.
 	val, _ := t.cache.Insert(str, lset, lset.FinalSizeBytes())
-	return val.(*model.Series)
+	return val
 }
 
 // generateKey takes an array of Prometheus labels, and a byte buffer. It

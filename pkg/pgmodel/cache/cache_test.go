@@ -69,7 +69,7 @@ func TestMetricTableNameCache(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			cache := MetricNameCache{
-				Metrics: clockcache.WithMax(100),
+				Metrics: clockcache.WithMax[Key, model.MetricInfo](100),
 			}
 
 			mInfo, err := cache.Get(c.schema, c.metric, false)

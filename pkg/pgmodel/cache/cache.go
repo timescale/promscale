@@ -5,7 +5,7 @@
 package cache
 
 import (
-	"fmt"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
@@ -23,13 +23,13 @@ type LabelsCache interface {
 	// NOTE: this function does _not_ preserve the order of keys; the first numFound
 	//       keys will be the keys whose values are present, while the remainder
 	//       will be the keys not present in the cache
-	GetValues(keys []interface{}, valuesOut []interface{}) (numFound int)
+	GetValues(keys []int64, valuesOut []labels.Label) (numFound int)
 	// InsertBatch inserts a batch of keys with their corresponding values.
 	// This function will _overwrite_ the keys and values slices with their
 	// canonical versions.
 	// returns the number of elements inserted, is lower than len(keys) if insertion
 	// starved
-	InsertBatch(keys []interface{}, values []interface{}, sizes []uint64) (numInserted int)
+	InsertBatch(keys []int64, values []labels.Label, sizes []uint64) (numInserted int)
 	// Len returns the number of labels cached in the system.
 	Len() int
 	// Cap returns the capacity of the labels cache.
@@ -37,12 +37,12 @@ type LabelsCache interface {
 	Evictions() uint64
 }
 
-type key struct {
+type Key struct {
 	schema, metric string
 	isExemplar     bool
 }
 
-func (k key) len() int {
+func (k Key) len() int {
 	return len(k.schema) + len(k.metric)
 }
 
@@ -59,27 +59,19 @@ type MetricCache interface {
 
 // MetricNameCache stores and retrieves metric table names in an in-memory cache.
 type MetricNameCache struct {
-	Metrics *clockcache.Cache
+	Metrics *clockcache.Cache[Key, model.MetricInfo]
 }
 
 func NewMetricCache(config Config) *MetricNameCache {
-	return &MetricNameCache{Metrics: clockcache.WithMetrics("metric_name", "metric", config.MetricsCacheSize)}
+	return &MetricNameCache{Metrics: clockcache.WithMetrics[Key, model.MetricInfo]("metric_name", "metric", config.MetricsCacheSize)}
 }
 
 // Get fetches the table name for specified metric.
 func (m *MetricNameCache) Get(schema, metric string, isExemplar bool) (model.MetricInfo, error) {
-	var (
-		mInfo = model.MetricInfo{}
-		key   = key{schema, metric, isExemplar}
-	)
-	result, ok := m.Metrics.Get(key)
+	var key = Key{schema, metric, isExemplar}
+	mInfo, ok := m.Metrics.Get(key)
 	if !ok {
 		return mInfo, errors.ErrEntryNotFound
-	}
-
-	mInfo, ok = result.(model.MetricInfo)
-	if !ok {
-		return mInfo, fmt.Errorf("invalid cache value stored")
 	}
 
 	return mInfo, nil
@@ -87,13 +79,13 @@ func (m *MetricNameCache) Get(schema, metric string, isExemplar bool) (model.Met
 
 // Set stores metric info for specified metric with schema.
 func (m *MetricNameCache) Set(schema, metric string, val model.MetricInfo, isExemplar bool) error {
-	k := key{schema, metric, isExemplar}
+	k := Key{schema, metric, isExemplar}
 	//size includes an 8-byte overhead for each string
 	m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 
 	// If the schema inserted above was empty, also populate the cache with the real schema.
 	if schema == "" {
-		k = key{val.TableSchema, metric, isExemplar}
+		k = Key{val.TableSchema, metric, isExemplar}
 		//size includes an 8-byte overhead for each string
 		m.Metrics.Insert(k, val, uint64(k.len()+val.Len()+17))
 	}
@@ -113,6 +105,6 @@ func (m *MetricNameCache) Evictions() uint64 {
 	return m.Metrics.Evictions()
 }
 
-func NewLabelsCache(config Config) LabelsCache {
-	return clockcache.WithMetrics("label", "metric", config.LabelsCacheSize)
+func NewLabelsCache(config Config) *clockcache.Cache[int64, labels.Label] {
+	return clockcache.WithMetrics[int64, labels.Label]("label", "metric", config.LabelsCacheSize)
 }

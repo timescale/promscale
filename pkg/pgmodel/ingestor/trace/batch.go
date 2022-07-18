@@ -3,24 +3,12 @@ package trace
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/clockcache"
 	"sort"
 
-	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
-
-type cache interface {
-	// Get returns the cached value using a key. It also returns false
-	// if the value does not exist in cache.
-	Get(key interface{}) (interface{}, bool)
-	// Insert inserts a value in the cache using the supplied key. It also
-	// expect a size of the cached entry (including the key and the value).
-	// It returns the canonical value and a flag that indicates if the
-	// value already existed in cache.
-	Insert(key interface{}, value interface{}, size uint64) (interface{}, bool)
-}
 
 type sortable interface {
 	Before(sortable) bool
@@ -30,57 +18,60 @@ type cacheable interface {
 	SizeInCache() uint64
 }
 
-type batchItem interface {
+type batchItem[IDType comparable] interface {
 	sortable
 	cacheable
 	AddToDBBatch(pgxconn.PgxBatch)
-	ScanIDs(pgx.BatchResults) (interface{}, error)
+	ScanIDs(pgx.BatchResults) (IDType, error)
+	comparable
 }
 
-type sortableItems []batchItem
+type batchItems[K batchItem[V], V comparable] []K
 
-func (q sortableItems) Len() int {
+func (q batchItems[K, V]) Len() int {
 	return len(q)
 }
 
-func (q sortableItems) Less(i, j int) bool {
+func (q batchItems[K, V]) Less(i, j int) bool {
 	return q[i].Before(q[j])
 }
 
-func (q sortableItems) Swap(i, j int) {
+func (q batchItems[K, V]) Swap(i, j int) {
 	q[i], q[j] = q[j], q[i]
 }
 
-//batcher queues up items to send to the DB but it sorts before sending
-//this avoids deadlocks in the DB. It also avoids sending the same items repeatedly.
+// batcher queues up items to send to the DB, sorting them before sending to
+// avoid deadlocks in the DB. It also avoids sending the same items repeatedly.
 // batcher is not thread safe
-type batcher struct {
-	batch map[batchItem]interface{}
-	cache cache
+type batcher[K batchItem[V], V comparable] struct {
+	batch map[K]V
+	cache *clockcache.Cache[K, V]
 }
 
-func newBatcher(cache cache) batcher {
-	return batcher{
-		batch: make(map[batchItem]interface{}),
+func newBatcher[K batchItem[V], V comparable](cache *clockcache.Cache[K, V]) batcher[K, V] {
+	return batcher[K, V]{
+		batch: make(map[K]V),
 		cache: cache,
 	}
 }
 
 // Queue adds item to the batch to be sent or replaces an existing item
-func (b batcher) Queue(i batchItem) {
-	b.batch[i] = nil
+func (b batcher[K, V]) Queue(i K) {
+	var zero V
+	b.batch[i] = zero
 }
 
 // Number of items in the batch.
-func (b batcher) Len() int {
+func (b batcher[K, V]) Len() int {
 	return len(b.batch)
 }
 
 // SendBatch sends the batch over the DB connections and gets the ID results.
 // Caching is also checked for existance of IDs before sending to the DB to
 // avoid unnecessary IO.
-func (b batcher) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error) {
-	batch := make([]batchItem, len(b.batch))
+func (b batcher[K, V]) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error) {
+	batch := make([]K, len(b.batch))
+
 	i := 0
 	for q := range b.batch {
 		id, ok := b.cache.Get(q)
@@ -98,7 +89,7 @@ func (b batcher) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error
 
 	batch = batch[:i]
 
-	sort.Sort(sortableItems(batch))
+	sort.Sort(batchItems[K, V](batch))
 
 	dbBatch := conn.NewBatch()
 	for _, item := range batch {
@@ -129,31 +120,11 @@ func (b batcher) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error
 	return nil
 }
 
-// GetID returns the ID for a batched item in the pgtype.Int8 form.
-func (b batcher) GetID(i batchItem) (pgtype.Int8, error) {
-	entry, ok := b.batch[i]
-	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID from batch")
-	}
-
-	id, ok := entry.(pgtype.Int8)
-	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, errors.ErrInvalidCacheEntryType
-	}
-	if id.Status != pgtype.Present {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("ID is null")
-	}
-	if id.Int == 0 {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("ID is 0")
-	}
-	return id, nil
-}
-
 // Get returns the ID for the batch item in whatever the type was used.
-func (b batcher) Get(i batchItem) (interface{}, error) {
+func (b batcher[K, V]) Get(i K) (V, error) {
 	entry, ok := b.batch[i]
 	if !ok {
-		return nil, fmt.Errorf("error getting item from batch")
+		return entry, fmt.Errorf("error getting item from batch")
 	}
 
 	return entry, nil

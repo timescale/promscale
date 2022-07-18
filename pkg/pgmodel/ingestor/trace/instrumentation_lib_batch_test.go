@@ -7,16 +7,13 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 func TestInstrumentationLibraryBatch(t *testing.T) {
 	cache := newInstrumentationLibraryCache()
 	incache := instrumentationLibrary{"incache", "", pgtype.Int8{Int: 99, Status: pgtype.Present}}
-	invalid := instrumentationLibrary{"invalid", "", pgtype.Int8{Int: 10, Status: pgtype.Present}}
 	cache.Insert(incache, pgtype.Int8{Int: 1337, Status: pgtype.Present}, incache.SizeInCache())
-	cache.Insert(invalid, "foo", 0)
 
 	testCases := []struct {
 		name               string
@@ -88,7 +85,7 @@ func TestInstrumentationLibraryBatch(t *testing.T) {
 				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
 
 				id, err = batch.GetID("nonexistant", "", pgtype.Int8{})
-				require.EqualError(t, err, "error getting ID for instrumentation library {nonexistant  {0 0}}: error getting ID from batch")
+				require.EqualError(t, err, "error getting ID for instrumentation library {nonexistant  {0 0}}: error getting item from batch")
 				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
 
 				id, err = batch.GetID("zero", "", pgtype.Int8{Int: 1, Status: pgtype.Present})
@@ -129,15 +126,6 @@ func TestInstrumentationLibraryBatch(t *testing.T) {
 				},
 			},
 			expectedError: `strconv.ParseInt: parsing "wrong type": invalid syntax`,
-		},
-		{
-			name:               "cache error",
-			instLibs:           []instrumentationLibrary{{"invalid", "", pgtype.Int8{Int: 10, Status: pgtype.Present}}},
-			expectedBatchQueue: 1,
-			getIDCheck: func(t *testing.T, batch instrumentationLibraryBatch) {
-				_, err := batch.GetID(invalid.name, invalid.version, invalid.schemaURLID)
-				require.ErrorIs(t, err, errors.ErrInvalidCacheEntryType)
-			},
 		},
 	}
 

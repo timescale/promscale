@@ -110,8 +110,8 @@ func TestDroppedViewQuery(t *testing.T) {
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
 		defer readOnly.Close()
 
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, pgmodel.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
@@ -688,8 +688,8 @@ func TestSQLQuery(t *testing.T) {
 			t.Fatalf("Cannot run test, not an instance of testing.T")
 		}
 
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, pgmodel.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
@@ -1095,8 +1095,8 @@ func TestPromQL(t *testing.T) {
 			return
 		}
 
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, pgmodel.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
@@ -1296,8 +1296,8 @@ func TestPushdownDelta(t *testing.T) {
 			return
 		}
 
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, pgmodel.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
@@ -1371,8 +1371,8 @@ func TestPushdownVecSel(t *testing.T) {
 			return
 		}
 
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, pgmodel.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)

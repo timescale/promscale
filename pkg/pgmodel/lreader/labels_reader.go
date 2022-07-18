@@ -174,8 +174,8 @@ func (lr *labelsReader) LabelNames() ([]string, error) {
 // LabelsForIdMap fills in the label.Label values in a map of label id => labels.Label.
 func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
 	numIds := len(idMap)
-	ids := make([]interface{}, numIds) //type int64
-	lbs := make([]interface{}, numIds) //type labels.Label
+	ids := make([]int64, numIds)
+	lbs := make([]labels.Label, numIds)
 
 	//id=0 reserved for "no label for key" so this lookup would always fail. Should
 	//never have been passed in with the idMap to begin with.
@@ -208,8 +208,8 @@ func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
 	}
 
 	for i := range ids {
-		label := lbs[i].(labels.Label)
-		id := ids[i].(int64)
+		label := lbs[i]
+		id := ids[i]
 		idMap[id] = label
 	}
 
@@ -219,10 +219,8 @@ func (lr *labelsReader) LabelsForIdMap(idMap map[int64]labels.Label) error {
 // fetchMissingLabels imports the missing label IDs from the database into the
 // internal cache. It also modifies the newLabels slice to include the missing
 // values.
-func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int64, newLabels []interface{}) (numNewLabels int, err error) {
-	for i := range misses {
-		missedIds[i] = misses[i].(int64)
-	}
+func (lr *labelsReader) fetchMissingLabels(misses []int64, missedIds []int64, newLabels []labels.Label) (numNewLabels int, err error) {
+	copy(missedIds, misses)
 	rows, err := lr.conn.Query(context.Background(), getLabelsSQL, missedIds)
 	if err != nil {
 		return 0, err

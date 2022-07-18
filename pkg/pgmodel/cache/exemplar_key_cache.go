@@ -22,14 +22,14 @@ type PositionCache interface {
 }
 
 type ExemplarLabelsPosCache struct {
-	cache *clockcache.Cache
+	cache *clockcache.Cache[string, map[string]int]
 }
 
 // NewExemplarLabelsPosCache creates a cache of map[metric_name]LabelPositions where LabelPositions is
 // map[LabelName]LabelPosition. This means that the cache stores positions of each label's value per metric basis,
 // which is meant to preserve and reuse _prom_catalog.exemplar_label_position table's 'pos' column.
 func NewExemplarLabelsPosCache(config Config) PositionCache {
-	return &ExemplarLabelsPosCache{cache: clockcache.WithMetrics("exemplar_labels", "metric", config.ExemplarKeyPosCacheSize)}
+	return &ExemplarLabelsPosCache{cache: clockcache.WithMetrics[string, map[string]int]("exemplar_labels", "metric", config.ExemplarKeyPosCacheSize)}
 }
 
 func (pos *ExemplarLabelsPosCache) GetLabelPositions(metric string) (map[string]int, bool) {
@@ -37,7 +37,7 @@ func (pos *ExemplarLabelsPosCache) GetLabelPositions(metric string) (map[string]
 	if !exists {
 		return nil, false
 	}
-	return labelPos.(map[string]int), true
+	return labelPos, true
 }
 
 func (pos *ExemplarLabelsPosCache) SetOrUpdateLabelPositions(metric string, index map[string]int) {

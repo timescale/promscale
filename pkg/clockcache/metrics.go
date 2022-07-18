@@ -11,9 +11,9 @@ import (
 // WithMetrics attaches the default cache metrics like _enabled, _capacity, _size, _elements, _evictions_total and
 // the perf metrics like _query_hits, _queries, _query_latency by function.
 // The module must be either 'metric' or 'trace'.
-func WithMetrics(cacheName, module string, max uint64) *Cache {
-	cache := WithMax(max)
-	registerMetrics(cacheName, module, cache)
+func WithMetrics[K comparable, V any](cacheName, module string, max uint64) *Cache[K, V] {
+	cache := WithMax[K, V](max)
+	registerMetrics[K, V](cacheName, module, cache)
 	return cache
 }
 
@@ -70,7 +70,7 @@ func (pm *perfMetrics) Observe(method string, d time.Duration) {
 }
 
 // Note: the moduleType refers to which module the cache belongs. Valid options: ["metric", "trace"].
-func registerMetrics(cacheName, moduleType string, c *Cache) {
+func registerMetrics[K comparable, V any](cacheName, moduleType string, c *Cache[K, V]) {
 	if !(moduleType == "metric" || moduleType == "trace") {
 		panic("moduleType can only be either 'metric' or 'trace'")
 	}
