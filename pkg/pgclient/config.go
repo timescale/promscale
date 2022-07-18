@@ -21,39 +21,41 @@ import (
 
 // Config for the database.
 type Config struct {
-	CacheConfig            cache.Config
-	AppName                string
-	Host                   string
-	Port                   int
-	User                   string
-	Password               string
-	Database               string
-	SslMode                string
-	DbConnectionTimeout    time.Duration
-	IgnoreCompressedChunks bool
-	AsyncAcks              bool
-	WriteConnections       int
-	WriterPoolSize         int
-	ReaderPoolSize         int
-	MaxConnections         int
-	UsesHA                 bool
-	DbUri                  string
-	EnableStatementsCache  bool
+	CacheConfig             cache.Config
+	AppName                 string
+	Host                    string
+	Port                    int
+	User                    string
+	Password                string
+	Database                string
+	SslMode                 string
+	DbConnectionTimeout     time.Duration
+	IgnoreCompressedChunks  bool
+	AsyncAcks               bool
+	WriteConnections        int
+	WriterPoolSize          int
+	WriterSynchronousCommit bool
+	ReaderPoolSize          int
+	MaxConnections          int
+	UsesHA                  bool
+	DbUri                   string
+	EnableStatementsCache   bool
 }
 
 const (
-	defaultDBUri             = ""
-	defaultDBHost            = "localhost"
-	defaultDBPort            = 5432
-	defaultDBUser            = "postgres"
-	defaultDBName            = "timescale"
-	defaultDBPassword        = ""
-	defaultSSLMode           = "require"
-	defaultConnectionTime    = time.Minute
-	defaultDbStatementsCache = true
-	MinPoolSize              = 2
-	defaultPoolSize          = -1
-	defaultMaxConns          = -1
+	defaultDBUri                   = ""
+	defaultDBHost                  = "localhost"
+	defaultDBPort                  = 5432
+	defaultDBUser                  = "postgres"
+	defaultDBName                  = "timescale"
+	defaultDBPassword              = ""
+	defaultSSLMode                 = "require"
+	defaultConnectionTime          = time.Minute
+	defaultDbStatementsCache       = true
+	MinPoolSize                    = 2
+	defaultPoolSize                = -1
+	defaultMaxConns                = -1
+	defaultWriterSynchronousCommit = false
 )
 
 var (
@@ -81,6 +83,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 		"By default, this will be set based on the number of CPUs available to the DB Promscale is connected to.")
 	fs.IntVar(&cfg.WriterPoolSize, "db.connections.writer-pool.size", defaultPoolSize, "Maximum size of the writer pool of database connections. This defaults to 50% of max_connections "+
 		"allowed by the database.")
+	fs.BoolVar(&cfg.WriterSynchronousCommit, "db.connections.writer-pool.synchronous-commit", defaultWriterSynchronousCommit, "Enable/disable synchronous_commit on database connections in the writer pool.")
 	fs.IntVar(&cfg.ReaderPoolSize, "db.connections.reader-pool.size", defaultPoolSize, "Maximum size of the reader pool of database connections. This defaults to 30% of max_connections "+
 		"allowed by the database.")
 	fs.IntVar(&cfg.MaxConnections, "db.connections-max", defaultMaxConns, "Maximum number of connections to the database that should be opened at once. "+
