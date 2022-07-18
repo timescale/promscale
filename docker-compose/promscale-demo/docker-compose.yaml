@@ -3,6 +3,7 @@ version: '3.0'
 services:
   timescaledb:
     image: timescale/timescaledb-ha:pg14-latest
+    restart: on-failure
     ports:
       - 5432:5432/tcp
     volumes:
@@ -15,6 +16,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
+    restart: on-failure
     depends_on:
      - promscale
     ports:
@@ -24,15 +26,16 @@ services:
 
   alertmanager:
     image: prom/alertmanager:latest
+    restart: on-failure
     ports:
       - 9093:9093/tcp
 
   promscale:
     image: timescale/promscale:latest
+    restart: on-failure
     ports:
       - 9201:9201/tcp
       - 9202:9202/tcp
-    restart: on-failure
     depends_on:
       - timescaledb
     volumes:
@@ -46,6 +49,7 @@ services:
 
   collector:
     image: "otel/opentelemetry-collector:0.55.0"
+    restart: on-failure
     command: [ "--config=/etc/otel-collector-config.yml" ]
     depends_on:
       - promscale
@@ -58,27 +62,32 @@ services:
 
   jaeger:
     image: jaegertracing/jaeger-query:1.36.0
+    restart: on-failure
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
     command: [
       "--grpc-storage.server=promscale:9202",
     ]
+    depends_on:
+    - timescaledb
+    - promscale
     ports:
       - "16686:16686"
 
   grafana:
     image: vineeth97/promscale-demo-grafana
+    restart: on-failure
     volumes:
       - grafana-data:/var/lib/grafana
     ports:
       - 3000:3000/tcp
-    restart: on-failure
     depends_on:
       - timescaledb
       - jaeger
 
   node_exporter:
     image: quay.io/prometheus/node-exporter
+    restart: on-failure
     ports:
       - "9100:9100"
 
