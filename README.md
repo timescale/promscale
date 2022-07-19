@@ -25,7 +25,22 @@ Unlike other observability backends, it has a simple and easy-to-manage architec
 with just two components: the Promscale Connector and the Promscale Database (PostgreSQL with the
 TimescaleDB and Promscale extensions).
 
-Key features:
+## Quick Start
+
+**Try it out now** with our demo environment you can deploy on your laptop in five minutes with Docker.
+
+```bash
+git clone git@github.com:timescale/promscale.git
+cd promscale/docker-compose/
+docker compose up -d
+```
+Explore your metrics and traces in Grafana (http://localhost:3000, username: admin, password: admin) and
+Jaeger (http://localhost:16686).
+
+Check our short [demo guide](https://docs.timescale.com/promscale/latest/quick-start/) to learn more.
+
+## Key Features
+
 * **Prometheus metric storage:** support for remote write, remote read, PromQL, metric metadata and
 exemplars.
 * **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
@@ -59,6 +74,7 @@ tool to effortlessly migrate your existing Prometheus data to Promscale.
 pre-configured and production-ready observability stack for metrics and traces on a K8s cluster that includes
 Promscale, Prometheus, OpenTelemetry with auto-instrumentation, Grafana and plenty of out-of-the-box dashboards and alerts.
 
+## Architecture
 
 [Learn more](https://docs.timescale.com/promscale/latest/about-promscale/#promscale-schema-for-metric-data) 
 about Promscale's architecture and how it works.
