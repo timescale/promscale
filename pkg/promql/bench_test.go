@@ -16,6 +16,7 @@ package promql
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -26,7 +27,15 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
+func ignore() bool {
+	value := os.Getenv("PROMSCALE_BENCHMARK")
+	return value != ""
+}
+
 func BenchmarkRangeQuery(b *testing.B) {
+	if ignore() {
+		return
+	}
 	teststorage := NewTestStorage(b)
 	defer teststorage.Close()
 	opts := EngineOpts{
@@ -233,6 +242,9 @@ func BenchmarkRangeQuery(b *testing.B) {
 }
 
 func BenchmarkParser(b *testing.B) {
+	if ignore() {
+		return
+	}
 	cases := []string{
 		"a",
 		"metric",
