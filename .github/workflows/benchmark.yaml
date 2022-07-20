@@ -3,6 +3,7 @@ name: Benchmarks
 on:
   pull_request:
     branches: [ '**' ]
+    types: [opened, synchronize, reopened, labeled]
 
 env:
   PROMSCALE_LOGGING: false
@@ -10,7 +11,8 @@ env:
   golang-version: 1.18.4
 
 jobs:
-  benchmark_current:
+  benchmark:
+    if: contains( github.event.pull_request.labels.*.name, 'action:benchmarks')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout current branch
@@ -22,57 +24,27 @@ jobs:
           go-version: ${{ env.golang-version }}
         id: go
 
-      - name: Benchmark
-        run: go test -bench=. -run=^$ -benchmem -cpu=1 ./... | tee current.txt
+      - name: Benchmark current PR
+        run: go test -bench=. -run=^$ -benchmem -cpu=1,2 -count=10 -timeout=6h ./... | tee current.txt
 
-      - name: Upload result
+      - name: Upload results
         uses: actions/upload-artifact@v3
         with:
           name: current
           path: current.txt
 
-  benchmark_master:
-    runs-on: ubuntu-latest
-    steps:
       - name: Checkout master branch
         uses: actions/checkout@v3
         with:
           ref: 'master'
 
-      - name: Set up Go ${{ env.golang-version }}
-        uses: actions/setup-go@v3.2.1
-        with:
-          go-version: ${{ env.golang-version }}
-        id: go
+      - name: Benchmark Master
+        run: go test -bench=. -run=^$ -benchmem -cpu=1,2 -count=10 -timeout=6h ./... | tee master.txt
 
-      - name: Benchmark
-        run: go test -bench=. -run=^$ -benchmem -cpu=1 ./... | tee master.txt
-
-      - name: Upload result
-        uses: actions/upload-artifact@v3
-        with:
-          name: master
-          path: master.txt
-
-  compare_and_publish_results:
-    runs-on: ubuntu-latest
-    needs: [benchmark_current, benchmark_master]
-    steps:
-      - name: Set up Go ${{ env.golang-version }}
-        uses: actions/setup-go@v3.2.1
-        with:
-          go-version: ${{ env.golang-version }}
-        id: go
-
-      - name: Download result for benchmark_current
+      - name: Download results of "Benchmark current PR"
         uses: actions/download-artifact@v3
         with:
           name: current
-
-      - name: Download result for benchmark_master
-        uses: actions/download-artifact@v3
-        with:
-          name: master
 
       - name: Install benchstat
         run: go install -a golang.org/x/perf/cmd/benchstat@latest
@@ -80,7 +52,7 @@ jobs:
       - name: Compare
         id: compare
         run: |
-          OUTPUT=$(benchstat -delta-test=none master.txt current.txt)
+          OUTPUT=$(benchstat master.txt current.txt)
           echo "${OUTPUT}"
           OUTPUT="${OUTPUT//$'\n'/'%0A'}"
           OUTPUT="${OUTPUT//$'\r'/'%0D'}"
