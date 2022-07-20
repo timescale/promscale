@@ -30,7 +30,7 @@ TimescaleDB and Promscale extensions).
 **Try it out now** with our demo environment you can deploy on your laptop in five minutes with Docker.
 
 ```bash
-git clone git@github.com:timescale/promscale.git
+git clone https://github.com/timescale/promscale.git
 cd promscale/docker-compose/
 docker compose up -d
 ```
