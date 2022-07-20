@@ -13,7 +13,7 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## Unreleased
+## [0.13.0] - 2022-07-20
 
 ### Added
 - Network latency metric [#1431]
@@ -25,12 +25,12 @@ We use the following categories for changes:
 
 ### Changed
 - `db.num-writer-connections` now sets the absolute number of write connections for writing metrics. [#1430]
+- Remove flaky PromscaleCacheTooSmall alert  [#1498]
 
 ### Fixed
 - Refine check for existence of `prom_schema_migrations` table [#1452]
 - Do not run rules-manager in `-db.read-only` mode [#1451]
 - Fix underlying metric(`promscale_sql_database_chunks_count`) which leads to false positive firing of PromscaleCompressionLow alert [#1494]
-- Remove flaky PromscaleCacheTooSmall alert  [#1498]
 
 ## [0.12.1] - 2022-06-29
 
