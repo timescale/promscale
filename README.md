@@ -31,7 +31,7 @@ TimescaleDB and Promscale extensions).
 
 ```bash
 git clone https://github.com/timescale/promscale.git
-cd promscale/docker-compose/
+cd promscale/docker-compose/promscale-demo
 docker compose up -d
 ```
 Explore your metrics and traces in Grafana (http://localhost:3000, username: admin, password: admin) and
