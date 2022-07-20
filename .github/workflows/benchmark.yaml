@@ -2,7 +2,7 @@ name: Benchmarks
 
 on:
   pull_request:
-    branches: ['**']
+    branches: [ '**' ]
 
 env:
   PROMSCALE_LOGGING: false
@@ -54,7 +54,7 @@ jobs:
           name: master
           path: master.txt
 
-  compare_results:
+  compare_and_publish_results:
     runs-on: ubuntu-latest
     needs: [benchmark_current, benchmark_master]
     steps:
@@ -78,4 +78,23 @@ jobs:
         run: go install -a golang.org/x/perf/cmd/benchstat@latest
 
       - name: Compare
-        run: benchstat master.txt current.txt
+        id: compare
+        run: |
+          OUTPUT=$(benchstat -delta-test=none master.txt current.txt)
+          echo "${OUTPUT}"
+          OUTPUT="${OUTPUT//$'\n'/'%0A'}"
+          OUTPUT="${OUTPUT//$'\r'/'%0D'}"
+          echo "::set-output name=result::$OUTPUT"
+
+      - name: Publish results as comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          header: compare
+          message: |
+            @${{ github.event.pull_request.user.login }}
+            ## Benchmark Result for **${{ github.sha }}**
+            ### Master vs PR
+            ```
+            ${{ steps.compare.outputs.result }}
+            ```
