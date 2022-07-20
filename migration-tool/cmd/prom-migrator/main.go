@@ -35,7 +35,7 @@ const (
 	defaultStartTime       = "1970-01-01T00:00:00+00:00" // RFC3339 based time.Unix from 0 seconds.
 	defaultMaxReadDuration = time.Hour * 2
 	defaultLaIncrement     = time.Minute
-	version                = "0.0.4"
+	version                = "0.0.5"
 )
 
 // timeNowUnix returns the current Unix timestamp.
