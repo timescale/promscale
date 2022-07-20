@@ -28,13 +28,13 @@ import (
 )
 
 func ignore() bool {
-	value := os.Getenv("PROMSCALE_BENCHMARK")
+	value := os.Getenv("SKIP_PROMQL_BENCHMARKS")
 	return value != ""
 }
 
 func BenchmarkRangeQuery(b *testing.B) {
 	if ignore() {
-		return
+		b.Skip("skipping promql package benchmarks because we rely on upstream promql")
 	}
 	teststorage := NewTestStorage(b)
 	defer teststorage.Close()
@@ -243,7 +243,7 @@ func BenchmarkRangeQuery(b *testing.B) {
 
 func BenchmarkParser(b *testing.B) {
 	if ignore() {
-		return
+		b.Skip("skipping promql package benchmarks because we rely on upstream promql")
 	}
 	cases := []string{
 		"a",
