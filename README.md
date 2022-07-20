@@ -192,3 +192,6 @@ applies as in TimescaleDB; please sign the [Contributor License
 Agreement](https://cla-assistant.io/timescale/promscale)
 (CLA) if you're a new contributor.
 
+## Release
+
+Release checklist is available when creating new ["Release Checklist" issue](https://github.com/timescale/promscale/issues/new?template=release.md).
