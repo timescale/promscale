@@ -12,6 +12,7 @@
   - [ ] Update Promscale in `pkg/version/version.go` update. If required, update
     the values for PrevReleaseVersion, PgVersionNumRange and
     ExtVersionRangeString.
+    - [ ] Update `EXTENSION_VERSION` if there is a change in ExtVersionRangeString
   - [ ] If the release includes changes to prom-migrator, update the `version`
     variable at `migration-tool/cmd/prom-migrator/main.go`.
   - [ ] (optionally) Update `prom-migrator` version in `.goreleaser.yml` (2 places)
@@ -27,7 +28,7 @@
 ### Prepare git tag
   - [ ] Pull the branch were the PR was merged, it should be `master` for
     major/minor and `release-{version}` for patch releases. Triple check that
-    you have the right commit checked out. 
+    you have the right commit checked out.
   - [ ] tag commit: `git tag -a 0.1.0-alpha.1 -m "Release 0.1.0-alpha.1"`
   - [ ] push tag to main repo (not in fork!) `git push origin 0.1.0-alpha.1`
 
@@ -41,6 +42,7 @@ For major/minor releases:
 
  - [ ] Update Promscale and PrevReleaseVersion in `pkg/version/version.go` to the
    next devel version.
+ - [ ] If there is a hard dependency on promscale_extension version, make sure to modify [pkg/tests/upgrade_tests/upgrade_test.go#getDBImages](https://github.com/timescale/promscale/blob/master/pkg/tests/upgrade_tests/upgrade_test.go#L89-L92) as done in this [commit](https://github.com/timescale/promscale/pull/1516/commits/6e2434d51dfd3e91505049a2828add3266f3e0f8#diff-6343d0a8cf4936b8f948769738eef8b0624d15d13ccc0a53b457e4f5c53b14e6R90-R94) to return timescale image which has the required promscale_extension. Missing to do so will cause `TestUpgradeFromPrev` failure.
  - [ ] Commit: `git commit -a -m "Prepare for the next development cycle"`
  - [ ] Create PR & Merge when ready
  - [ ] Update Promscale docs to point to the latest release as done in this [PR](https://github.com/timescale/docs/pull/1075)
