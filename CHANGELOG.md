@@ -13,6 +13,14 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## Unreleased
+
+### Added
+
+### Changed
+
+### Fixed
+
 ## [0.13.0] - 2022-07-20
 
 ### Added
