@@ -5,16 +5,19 @@
 package end_to_end_tests
 
 import (
+	"context"
 	"fmt"
 	"testing"
+
+	"github.com/walle/targz"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tests/testsupport"
-	"github.com/walle/targz"
 )
 
 var prometheusDataGzip = "../testdata/prometheus-data.tar.gz"
@@ -72,5 +75,29 @@ func BenchmarkMetricIngest(b *testing.B) {
 		b.StartTimer()
 		sampleLoader.Run(metricsIngestor.Ingest)
 		b.StopTimer()
+	})
+}
+
+func BenchmarkNewSeriesIngestion(b *testing.B) {
+	seriesGen, err := testsupport.NewSeriesGenerator(10, 100, 4)
+	require.NoError(b, err)
+
+	ts := seriesGen.GetTimeseries()
+
+	withDB(b, "bench_e2e_new_series_ingest", func(db *pgxpool.Pool, t testing.TB) {
+		metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Cfg{
+			NumCopiers:              8,
+			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
+		})
+		require.NoError(b, err)
+		defer metricsIngestor.Close()
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		_, _, _ = metricsIngestor.Ingest(context.Background(), &prompb.WriteRequest{Timeseries: ts})
+
+		numSeries := 0
+		require.NoError(b, db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.series").Scan(&numSeries))
+		require.Equal(b, 1000, numSeries)
 	})
 }
