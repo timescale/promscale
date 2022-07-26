@@ -11,7 +11,7 @@ const (
 	// Public is where all timescaledb-functions are loaded
 	Public = "public"
 
-	LockID = 0x4D829C732AAFCEDE // Chosen randomly.
+	LockID = 5585198506344173278 // Chosen randomly.
 
 	PromDataSeries = "prom_data_series"
 	PsTrace        = "_ps_trace"
