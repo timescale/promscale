@@ -83,7 +83,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -134,7 +134,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: false,
               expr: 'count by (version, branch, instance) (promscale_build_info{%(buildInfoSelector)s})' % $._config.dashboards.promscale,
@@ -185,7 +185,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -260,7 +260,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'sum by (kind) (rate(promscale_ingest_items_total{%(ingestItemsTotalSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -275,7 +275,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           description: 'Database compression status. If at least one promecale connector reports compression being disabled, this panel should turn red.',
           fieldConfig: {
@@ -350,7 +350,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'min(promscale_sql_database_compression_status{%(sqlDatabaseCompressionStatusSelector)s})' % $._config.dashboards.promscale,
@@ -379,7 +379,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -454,7 +454,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'sum by (type) (rate(promscale_ingest_requests_total{%(ingestRequestsTotalSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -469,7 +469,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -544,7 +544,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'sum by (type) (rate(promscale_ingest_requests_total{%(ingestRequestsTotalErrorSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -559,7 +559,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -635,7 +635,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.5, rate(promscale_ingest_duration_seconds_bucket{%(ingestDurationSecondsBucketSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -646,7 +646,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.90, rate(promscale_ingest_duration_seconds_bucket{%(ingestDurationSecondsBucketSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -658,7 +658,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.90, rate(promscale_ingest_duration_seconds_bucket{%(ingestDurationSecondsBucketSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -674,7 +674,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -750,7 +750,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'rate(grpc_server_handled_total{%(grpcServerHandledTotalSelector)s}[$__rate_interval]) > 0' % $._config.dashboards.promscale,
@@ -765,7 +765,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -841,7 +841,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'rate(grpc_server_handled_total{%(grpcServerHandledTotalErrorSelector)s}[$__rate_interval])' % $._config.dashboards.promscale,
@@ -856,7 +856,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -932,7 +932,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.5, rate(grpc_server_handling_seconds_bucket{%(grpcServerHandlingSecondsBucketSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -943,7 +943,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.5, rate(grpc_server_handling_seconds_bucket{%(grpcServerHandlingSecondsBucketSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -955,7 +955,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.5, rate(grpc_server_handling_seconds_bucket{%(grpcServerHandlingSecondsBucketSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -989,7 +989,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -1064,7 +1064,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'sum by (type) (rate(promscale_query_requests_total{%(queryRequestsTotalSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1079,7 +1079,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -1154,7 +1154,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'sum by (type) (rate(promscale_query_requests_total{%(queryRequestsTotalErrorSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1169,7 +1169,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -1245,7 +1245,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.5, sum by (le, instance, job) (rate(promscale_query_duration_seconds_bucket{%(queryDurationSecondsBucketSelector)s}[$__rate_interval])))' % $._config.dashboards.promscale,
@@ -1256,7 +1256,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.90, sum by (le, instance, job) (rate(promscale_query_duration_seconds_bucket{%(queryDurationSecondsBucketSelector)s}[$__rate_interval])))' % $._config.dashboards.promscale,
@@ -1293,7 +1293,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -1367,7 +1367,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'max(promscale_sql_database_worker_maintenance_job_failed{%(sqlDatabaseWorkerMaintenanceJobFailedSelector)s})' % $._config.dashboards.promscale,
@@ -1382,7 +1382,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -1459,7 +1459,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'min by (job, instance) (promscale_sql_database_chunks_compressed_count{%(sqlDatabaseChunksCompressedCountSelector)s})\n/\nmax by (job, instance)(promscale_sql_database_chunks_count{%(sqlDatabaseChunksCompressedCountSelector)s})' % $._config.dashboards.promscale,
@@ -1474,7 +1474,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -1551,7 +1551,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: '1 - promscale_sql_database_health_check_errors_total{%(sqlDatabaseHealthCheckErrorsTotalSelector)s} / promscale_sql_database_health_check_total{%(sqlDatabaseHealthCheckTotalSelector)s}' % $._config.dashboards.promscale,
@@ -1566,7 +1566,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -1613,7 +1613,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'max(promscale_sql_database_worker_maintenance_job_start_timestamp_seconds{%(sqlDatabaseWorkerMaintenanceJobStartTimestampSecondsSelector)s}) * 1000' % $._config.dashboards.promscale,
@@ -1628,7 +1628,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -1704,7 +1704,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'histogram_quantile(0.5, rate(promscale_database_requests_duration_seconds_bucket{%(databaseRequestsDurationSecondsBucketQuerySelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1715,7 +1715,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'histogram_quantile(0.9, rate(promscale_database_requests_duration_seconds_bucket{%(databaseRequestsDurationSecondsBucketQuerySelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1727,7 +1727,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'histogram_quantile(0.95, rate(promscale_database_requests_duration_seconds_bucket{%(databaseRequestsDurationSecondsBucketQuerySelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1743,7 +1743,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -1819,7 +1819,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'histogram_quantile(0.5, rate(promscale_database_requests_duration_seconds_bucket{%(databaseRequestsDurationSecondsBucketNonQuerySelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1830,7 +1830,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'histogram_quantile(0.9, rate(promscale_database_requests_duration_seconds_bucket{%(databaseRequestsDurationSecondsBucketNonQuerySelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1842,7 +1842,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'histogram_quantile(0.95, rate(promscale_database_requests_duration_seconds_bucket{%(databaseRequestsDurationSecondsBucketNonQuerySelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -1858,7 +1858,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -1934,7 +1934,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               exemplar: true,
               expr: 'rate(promscale_database_requests_total{%(databaseRequestsTotalSelector)s}[$__rate_interval])' % $._config.dashboards.promscale,
@@ -1949,7 +1949,7 @@
         {
           datasource: {
             type: 'prometheus',
-            uid: '${DS_PROMETHEUS}',
+            uid: '$datasource',
           },
           fieldConfig: {
             defaults: {
@@ -2024,7 +2024,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               editorMode: 'code',
               expr: 'promscale_sql_database_network_latency_milliseconds{%(sqlDatabaseNetworkLatencyMillisecondsSelector)s}' % $._config.dashboards.promscale,
@@ -2053,7 +2053,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -2128,7 +2128,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'promscale_cache_query_hits_total{%(hitRatioMetricsSelector)s} / promscale_cache_queries_total{%(hitRatioMetricsSelector)s}' % $._config.dashboards.promscale,
@@ -2143,7 +2143,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -2218,7 +2218,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'promscale_cache_query_hits_total{%(hitRatioTracesSelector)s} / promscale_cache_queries_total{%(hitRatioTracesSelector)s}' % $._config.dashboards.promscale,
@@ -2233,7 +2233,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -2307,7 +2307,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'sum by (type, name) (rate(promscale_cache_evictions_total{%(cacheEvictionsTotalSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -2322,7 +2322,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -2398,7 +2398,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.5, rate(promscale_cache_query_latency_microseconds_bucket{%(cacheQueryLatencyMicrosecondsBucketMetricsSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -2409,7 +2409,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.90, rate(promscale_cache_query_latency_microseconds_bucket{%(cacheQueryLatencyMicrosecondsBucketMetricsSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -2425,7 +2425,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -2501,7 +2501,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.5, rate(promscale_cache_query_latency_microseconds_bucket{%(cacheQueryLatencyMicrosecondsBucketTracesSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -2512,7 +2512,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'histogram_quantile(0.90, rate(promscale_cache_query_latency_microseconds_bucket{%(cacheQueryLatencyMicrosecondsBucketTracesSelector)s}[$__rate_interval]))' % $._config.dashboards.promscale,
@@ -2528,7 +2528,7 @@
             {
               datasource: {
                 type: 'prometheus',
-                uid: '${DS_PROMETHEUS}',
+                uid: '$datasource',
               },
               fieldConfig: {
                 defaults: {
@@ -2603,7 +2603,7 @@
                 {
                   datasource: {
                     type: 'prometheus',
-                    uid: '${DS_PROMETHEUS}',
+                    uid: '$datasource',
                   },
                   exemplar: true,
                   expr: 'promscale_cache_elements{%(cacheOccupancySelector)s} / promscale_cache_capacity_elements{%(cacheOccupancySelector)s}' % $._config.dashboards.promscale,
@@ -2635,7 +2635,7 @@
             includeAll: false,
             label: 'Prometheus',
             multi: false,
-            name: 'DS_PROMETHEUS',
+            name: 'datasource',
             options: [],
             query: 'prometheus',
             refresh: 1,
@@ -2651,7 +2651,69 @@
             },
             datasource: {
               type: 'prometheus',
-              uid: '${DS_PROMETHEUS}',
+              uid: '$datasource',
+            },
+            definition: '',
+            hide: 0,
+            includeAll: true,
+            multi: true,
+            allValue: '.+',
+            name: 'job',
+            label: 'job',
+            options: [],
+            query: {
+              query: 'label_values(promscale_build_info{%(jobVariableSelector)s}, job)' % $._config.dashboards.promscale,
+              refId: 'Prometheus-job-Variable-Query',
+            },
+            refresh: 2,
+            regex: '',
+            skipUrlSync: false,
+            sort: 0,
+            tagValuesQuery: '',
+            tagsQuery: '',
+            type: 'query',
+            useTags: false,
+          },
+          {
+            current: {
+              selected: false,
+              text: '.+',
+              value: '.+',
+            },
+            datasource: {
+              type: 'prometheus',
+              uid: '$datasource',
+            },
+            definition: '',
+            hide: 0,
+            includeAll: true,
+            multi: true,
+            allValue: '.+',
+            name: 'instance',
+            label: 'instance',
+            options: [],
+            query: {
+              query: 'label_values(promscale_build_info{%(instanceVariableSelector)s}, instance)' % $._config.dashboards.promscale,
+              refId: 'Prometheus-instance-Variable-Query',
+            },
+            refresh: 2,
+            regex: '',
+            skipUrlSync: false,
+            sort: 0,
+            tagValuesQuery: '',
+            tagsQuery: '',
+            type: 'query',
+            useTags: false,
+          },
+          {
+            current: {
+              selected: false,
+              text: '.+',
+              value: '.+',
+            },
+            datasource: {
+              type: 'prometheus',
+              uid: '$datasource',
             },
             definition: '',
             hide: if $._config.dashboards.promscale.enableMultiCluster then 0 else 2,
@@ -2680,7 +2742,7 @@
             },
             datasource: {
               type: 'prometheus',
-              uid: '${DS_PROMETHEUS}',
+              uid: '$datasource',
             },
             definition: '',
             hide: 0,
@@ -2709,7 +2771,7 @@
             },
             datasource: {
               type: 'prometheus',
-              uid: '${DS_PROMETHEUS}',
+              uid: '$datasource',
             },
             definition: '',
             hide: 0,

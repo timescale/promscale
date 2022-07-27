@@ -3,12 +3,15 @@
   _config+:: {
     dashboards: {
       promscale: {
-        enableMultiCluster: false,
-        clusterVariableSelector: '',
-        namespaceVariableSelector: if self.enableMultiCluster then 'cluster="$cluster"' else '',
-        serviceVariableSelector: if self.enableMultiCluster then 'cluster="$cluster",namespace="$namespace"' else 'namespace="$namespace"',
+        jobVariableSelector: '',
+        instanceVariableSelector: '',
 
-        defaultSelector: if self.enableMultiCluster then 'cluster="$cluster",namespace="$namespace",service="$service"' else 'namespace="$namespace",service="$service"',
+        enableMultiCluster: false,
+        clusterVariableSelector: 'job=~"$job",instance=~"$instance"',
+        namespaceVariableSelector: if self.enableMultiCluster then 'job=~"$job",instance=~"$instance",cluster="$cluster"' else 'job=~"$job",instance=~"$instance"',
+        serviceVariableSelector: if self.enableMultiCluster then 'job=~"$job",instance=~"$instance",cluster="$cluster",namespace="$namespace"' else 'job=~"$job",instance=~"$instance",namespace="$namespace"',
+
+        defaultSelector: if self.enableMultiCluster then 'cluster="$cluster",job=~"$job",instance=~"$instance",namespace="$namespace",service="$service"' else 'job=~"$job",instance=~"$instance",namespace="$namespace",service="$service"',
 
         buildInfoSelector: self.defaultSelector,
         ingestItemsTotalSelector: self.defaultSelector,
