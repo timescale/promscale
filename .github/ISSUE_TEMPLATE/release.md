@@ -19,41 +19,36 @@
   - [ ] Run `./scripts/generate-deploy-script.sh`
   - [ ] Finalize CHANGELOG, adding release version and date
   - [ ] Commit: `git commit -a -m "Prepare for the 0.1.0-alpha.4 release"`
-  - Create PR:
-    - [ ] For major/minor releases the PR should target the master branch.
-    - [ ] For patch releases the PR should target the release branch it was
-      based of.
+  - Create a PR against the release branch
   - Wait for review and merge.
 
 ### Prepare git tag
-  - [ ] Pull the branch were the PR was merged, it should be `master` for
-    major/minor and `release-{version}` for patch releases. Triple check that
+  - [ ] Pull the release branch at which PR was merged. Triple check that
     you have the right commit checked out.
   - [ ] tag commit: `git tag -a 0.1.0-alpha.1 -m "Release 0.1.0-alpha.1"`
   - [ ] push tag to main repo (not in fork!) `git push origin 0.1.0-alpha.1`
 
 ### Create GitHub release notes
 
-[ ] The `goreleaser` GitHub Action will automatically create a new draft release with the generated binaries, docker images, and a changelog attached. When it is created contact PM to validate if release notes are correct and click green publish button.
+  - [ ] The `goreleaser` GitHub Action will automatically create a new draft release with the generated binaries, docker images, and a changelog attached. When it is created contact PM to validate if release notes are correct and click green publish button.
 
 ### Post-release
 
-For major/minor releases:
+- [ ] Create a PR against `master` branch with the following changes,
+   - [ ] Merge the release tag back to the master
+   ```
+   git fetch origin release
+   git checkout -b dev-cycle origin/master
+   git merge <latest_release_tag> # e.g. git merge 0.13.0
+   # Resolve any conflicts, ideally it shouldn't if the master is not diverged too much after the release branch creation.
+   ```
+   - [ ] Update `Promscale` and `PrevReleaseVersion` in `pkg/version/version.go` to the
+     next devel version.
+   - [ ] If there is a hard dependency on promscale_extension version, make sure to modify [pkg/tests/upgrade_tests/upgrade_test.go#getDBImages](https://github.com/timescale/promscale/blob/master/pkg/tests/upgrade_tests/upgrade_test.go#L89-L92) as done in this [commit](https://github.com/timescale/promscale/pull/1516/commits/6e2434d51dfd3e91505049a2828add3266f3e0f8#diff-6343d0a8cf4936b8f948769738eef8b0624d15d13ccc0a53b457e4f5c53b14e6R90-R94) to return timescale image which has the required promscale_extension. Missing to do so will cause `TestUpgradeFromPrev` failure.
+   - [ ] Commit: `git commit -a -m "Prepare for the next development cycle"`
+   - [ ] Create PR against the `master` branch
 
- - [ ] Update Promscale and PrevReleaseVersion in `pkg/version/version.go` to the
-   next devel version.
- - [ ] If there is a hard dependency on promscale_extension version, make sure to modify [pkg/tests/upgrade_tests/upgrade_test.go#getDBImages](https://github.com/timescale/promscale/blob/master/pkg/tests/upgrade_tests/upgrade_test.go#L89-L92) as done in this [commit](https://github.com/timescale/promscale/pull/1516/commits/6e2434d51dfd3e91505049a2828add3266f3e0f8#diff-6343d0a8cf4936b8f948769738eef8b0624d15d13ccc0a53b457e4f5c53b14e6R90-R94) to return timescale image which has the required promscale_extension. Missing to do so will cause `TestUpgradeFromPrev` failure.
- - [ ] Commit: `git commit -a -m "Prepare for the next development cycle"`
- - [ ] Create PR & Merge when ready
- - [ ] Update Promscale docs to point to the latest release as done in this [PR](https://github.com/timescale/docs/pull/1075)
-
-For patch releases:
-
- - [ ] Update Promscale docs to point to the latest release as done in this
-   [PR](https://github.com/timescale/docs/pull/1075).
- - [ ] Create a branch based on master.
- - [ ] Cherry-pick the commits related to the patch.
- - [ ] Merge back into master.
+- [ ] Update Promscale docs to point to the latest release tag as done in this [PR](https://github.com/timescale/docs/pull/1075)
 
 Take a breath. You're done releasing.
 
