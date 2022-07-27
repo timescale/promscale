@@ -106,7 +106,7 @@ spec:
         prometheus.io/scrape: "true"
     spec:
       containers:
-        - image: timescale/promscale
+        - image: timescale/promscale:0.13.0
           imagePullPolicy: IfNotPresent
           name: promscale
           args:
