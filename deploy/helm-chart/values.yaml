@@ -1,5 +1,10 @@
-image: timescale/promscale
-imagePullPolicy: IfNotPresent
+image:
+  repository: timescale/promscale
+  # The default will come from appVersion in Chart.yaml, if you wish to
+  # override that value then set the tag version here.
+  tag:
+  pullPolicy: IfNotPresent
+
 # number of connector pods to spawn
 replicaCount: 1
 
