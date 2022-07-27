@@ -33,8 +33,8 @@ spec:
         {{- end }}
     spec:
       containers:
-        - image: {{ .Values.image }}
-          imagePullPolicy: {{ .Values.imagePullPolicy }}
+        - image: {{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: promscale
           args:
           - "-config=/etc/promscale/config.yaml"

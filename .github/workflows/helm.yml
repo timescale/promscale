@@ -71,6 +71,7 @@ jobs:
           helm repo update
           helm install \
             --set replicaCount=1 \
+            --set image.tag=pg14.4-ts2.7.2-p0 \
             timescaledb timescale/timescaledb-single
           kubectl rollout status statefulset timescaledb
 
@@ -110,7 +111,7 @@ jobs:
         run: |
             mkdir -p chart_release
             helm package deploy/helm-chart -d chart_release/
-            helm plugin install https://github.com/hypnoglow/helm-s3.git          
+            helm plugin install https://github.com/hypnoglow/helm-s3.git
             helm repo add tscharts s3://charts.timescale.com
             helm s3 push chart_release/* tscharts --acl public-read --relative --dry-run
 
