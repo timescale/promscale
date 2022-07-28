@@ -224,10 +224,6 @@ func Run(cfg *Config) error {
 	}
 	grpcServer := grpc.NewServer(options...)
 	ptraceotlp.RegisterServer(grpcServer, api.NewTraceServer(client))
-	grpc_prometheus.Register(grpcServer)
-	grpc_prometheus.EnableHandlingTimeHistogram(
-		grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
-	)
 
 	queryPlugin := shared.StorageGRPCPlugin{
 		Impl: jaegerQuery,
@@ -236,6 +232,11 @@ func Run(cfg *Config) error {
 		log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
 		return err
 	}
+
+	grpc_prometheus.EnableHandlingTimeHistogram(
+		grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
+	)
+	grpc_prometheus.Register(grpcServer)
 
 	group.Add(
 		func() error {
