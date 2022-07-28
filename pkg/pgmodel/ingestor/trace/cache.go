@@ -6,7 +6,7 @@ const (
 	urlCacheSize       = 10000
 	operationCacheSize = 10000
 	instLibCacheSize   = 10000
-	tagCacheSize       = 10000
+	tagCacheSize       = 100000
 )
 
 func newSchemaCache() *clockcache.Cache {
