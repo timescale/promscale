@@ -103,6 +103,25 @@ service:
 # set your own limits
 resources: {}
 
+# set a custom readiness probe e.g. when basic auth is enabled
+# readinessProbe:
+#   httpGet: null
+#   exec:
+#     command:
+#     - sh
+#     - -c
+#     - |-
+#       status_code=$(wget --server-response "http://${PROMSCALE_WEB_AUTH_USERNAME}:${PROMSCALE_WEB_AUTH_PASSWORD}@localhost:9201/healthz" 2>&1 | awk '/^  HTTP/{print $2}');
+#       if [[ "${status_code}" == "200" ]]; then exit 0; else exit 1; fi
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: metrics-port
+    scheme: HTTP
+  failureThreshold: 3
+  timeoutSeconds: 15
+  periodSeconds: 15
+
 # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
 nodeSelector: {}
 
