@@ -125,13 +125,13 @@ spec:
             - containerPort: 9202
               name: otel-port
           readinessProbe:
+            failureThreshold: 3
             httpGet:
               path: /healthz
               port: metrics-port
               scheme: HTTP
-            failureThreshold: 3
-            timeoutSeconds: 15
             periodSeconds: 15
+            timeoutSeconds: 15
           volumeMounts:
             - name: configs
               mountPath: /etc/promscale/
