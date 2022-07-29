@@ -44,6 +44,9 @@ podAnnotations: {}
 # Use this option with caution
 connectionSecretName: ""
 
+# If set to false allows to upgrade the connection secret when a helm upgrade is performed
+preserveConnectionSecret: true
+
 # connection options to connect to a target db
 connection:
   # Database connection settings. If `uri` is not
