@@ -79,25 +79,65 @@ func BenchmarkMetricIngest(b *testing.B) {
 }
 
 func BenchmarkNewSeriesIngestion(b *testing.B) {
-	seriesGen, err := testsupport.NewSeriesGenerator(10, 100, 4)
-	require.NoError(b, err)
+	benchmarks := []struct {
+		name               string
+		numMetrics         int
+		numSeriesPerMetric int
+		numLabelsPerMetric int
+		batchSize          int
+	}{
+		{
+			name:               "small series",
+			numMetrics:         100,
+			numSeriesPerMetric: 10,
+			numLabelsPerMetric: 4,
+			batchSize:          100,
+		},
+		{
+			name:               "medium series",
+			numMetrics:         100,
+			numSeriesPerMetric: 100,
+			numLabelsPerMetric: 4,
+			batchSize:          1000,
+		},
+		{
+			name:               "large series",
+			numMetrics:         100,
+			numSeriesPerMetric: 500,
+			numLabelsPerMetric: 4,
+			batchSize:          10000,
+		},
+	}
 
-	ts := seriesGen.GetTimeseries()
+	for _, benchmark := range benchmarks {
+		benchName := fmt.Sprintf("%s metrics %d seriesPerMetric %d labels %d batchSize %d", benchmark.name, benchmark.numMetrics, benchmark.numSeriesPerMetric, benchmark.numLabelsPerMetric, benchmark.batchSize)
+		b.Run(benchName, func(b *testing.B) {
+			seriesGen, err := testsupport.NewSeriesGenerator(benchmark.numMetrics, benchmark.numSeriesPerMetric, benchmark.numLabelsPerMetric)
+			require.NoError(b, err)
 
-	withDB(b, "bench_e2e_new_series_ingest", func(db *pgxpool.Pool, t testing.TB) {
-		metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Cfg{
-			NumCopiers:              8,
-			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
+			ts := seriesGen.GetTimeseriesInBatch(benchmark.batchSize)
+
+			for i := 0; i < b.N; i++ {
+				withDB(b, "bench_e2e_new_series_ingest", func(db *pgxpool.Pool, t testing.TB) {
+					metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Cfg{
+						NumCopiers:              8,
+						InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
+					})
+					require.NoError(b, err)
+					defer metricsIngestor.Close()
+
+					b.ReportAllocs()
+					b.ResetTimer()
+					for _, t := range ts {
+						_, _, _ = metricsIngestor.Ingest(context.Background(), &prompb.WriteRequest{Timeseries: t})
+					}
+					b.StopTimer()
+
+					numSeries := 0
+					require.NoError(b, db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.series").Scan(&numSeries))
+					require.Equal(b, benchmark.numMetrics*benchmark.numSeriesPerMetric, numSeries)
+				})
+			}
 		})
-		require.NoError(b, err)
-		defer metricsIngestor.Close()
-
-		b.ResetTimer()
-		b.ReportAllocs()
-		_, _, _ = metricsIngestor.Ingest(context.Background(), &prompb.WriteRequest{Timeseries: ts})
-
-		numSeries := 0
-		require.NoError(b, db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.series").Scan(&numSeries))
-		require.Equal(b, 1000, numSeries)
-	})
+	}
 }

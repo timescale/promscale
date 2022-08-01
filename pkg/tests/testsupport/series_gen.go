@@ -59,8 +59,15 @@ func NewSeriesGenerator(numMetrics, numSeriesPerMetric, labels int) (*seriesGen,
 	return &seriesGen{ts}, nil
 }
 
-func (s *seriesGen) GetTimeseries() []prompb.TimeSeries {
-	return s.ts
+func (s *seriesGen) GetTimeseriesInBatch(batchSize int) [][]prompb.TimeSeries {
+	ts := s.ts
+	batches := make([][]prompb.TimeSeries, 0, (len(ts)+batchSize-1)/batchSize)
+
+	for batchSize < len(ts) {
+		ts, batches = ts[batchSize:], append(batches, ts[0:batchSize:batchSize])
+	}
+	batches = append(batches, ts)
+	return batches
 }
 
 func randomText(prefix string) string {
