@@ -13,6 +13,7 @@ ASSUME
     /\ MaxEpochs \in Nat
     /\ Delay \in 0..(MaxEpochs - 1)
     /\ Cardinality(BgWorkers) = 1
+    /\ Cardinality(Ingesters) > 0
     /\ BgWorkers \intersect Ingesters = {}
 
 SeriesId == 1..MaxSeries
@@ -31,6 +32,7 @@ Min(S) == CHOOSE x \in S : \A y \in S : x =< y
 
 (*--algorithm cache
 variables
+    now = 0;
     current_epoch = 0;
     delete_epoch = 0;
     series_metadata = [x \in SeriesId |-> NoEntry];
@@ -39,6 +41,7 @@ variables
 
 define
     TypeInvariant == 
+        /\ now \in Epoch
         /\ current_epoch \in Epoch
         /\ delete_epoch \in Epoch
         /\ series_metadata \in [SeriesId -> SeriesEntry]
@@ -57,19 +60,6 @@ define
     MarkedAndRipe == 
         {s \in MarkedSeries: (series_metadata[s].marked_at) + Delay < current_epoch }
 
-    (*
-     * Here we substitute a value, obtained by running DELETE ... RETURNING max(marked_at)
-     * and compute a semantically equivalent one to avoid the state space explosion.
-     * 
-     * The real delete_epoch is a maximum of marked_at of all deleted series,
-     * a minimum of marked_at of surviving series is an upper bound.
-     *)
-    DeleteEpoch == 
-        IF MarkedSeries # {} THEN 
-            Min({series_metadata[s].marked_at: s \in MarkedSeries})
-        ELSE 
-            Max({current_epoch - 1, 0})
-
 end define;
 
 process ingester \in Ingesters
@@ -81,8 +71,13 @@ begin
     IngesterBegin:
         either
             ReceiveInput:
-                with series \in SUBSET SeriesId \ {} do 
-                    new_series := series;
+                (*
+                * Technically multiple series could be ingested at once.
+                * This spec should achieve an equivalent behaviour by
+                * passing through this label multiple times in a row.
+                *)
+                with series \in SeriesId do 
+                    new_series := { series };
                 end with;
             CacheLookup:
                 new_references := new_series;
@@ -90,7 +85,7 @@ begin
                 cached_series[self] := cached_series[self] \union new_series;
             IngestTransaction:
                 \* this if is epoch_abort and should be extracted and named
-                if observed_epoch <= DeleteEpoch then 
+                if observed_epoch <= delete_epoch then 
                     \* TODO extract cache invalidation into its own process
                     (* 
                      * Should use SELECT FOR SHARE when fetching current_epoch,
@@ -118,23 +113,31 @@ end process;
 process bg_worker \in BgWorkers
 begin
     BgWorkerTxBegin:
-        while current_epoch < MaxEpochs do
+        while now < MaxEpochs do
+            (* When a backgroud worker starts a transaction, sometimes some time has passed. *)
+            with dt \in 0..1 do
+                now := now + dt;
+            end with;
             (* We assume background workers mutually exclude by grabbing a lock on the epoch table *)
             either
                 MarkWorker:
-                    current_epoch := current_epoch + 1;
-                    with stale_series \in SUBSET SeriesId \ {} do 
+                    current_epoch := Max({current_epoch, now});
+                    (*
+                    * Technically multiple series could be marked at once.
+                    * This spec is supposed to achieve this by entering 
+                    * this branch of either without advancing now.
+                    *)
+                    with stale_series \in SeriesId do 
                         series_metadata := 
-                            [x \in stale_series |-> EntryMarkedForDeletion(current_epoch)] @@ series_metadata;
+                            (stale_series :> EntryMarkedForDeletion(current_epoch)) @@ series_metadata;
                     end with;
             or
                 SweepWorker:
                     if MarkedAndRipe # {} then
-                        (* delete_epoch := Max({series_metadata[s].marked_at: s \in MarkedAndRipe}) *)
+                        delete_epoch := Max({series_metadata[s].marked_at: s \in MarkedAndRipe});
                         (* 
                         * DELETE should provoke a conflict with
-                        * get_or_create_series_id calls ressurect_series_id 
-                        * called by Ingester
+                        * get_or_create_series_id called by Ingester
                         *)
                         series_metadata := [x \in MarkedAndRipe |-> NoEntry] @@ series_metadata;
                         series_referenced_from_data := series_referenced_from_data \ MarkedAndRipe;
@@ -144,12 +147,13 @@ begin
 end process;        
 end algorithm; *)
     
-\* BEGIN TRANSLATION (chksum(pcal) = "b6209662" /\ chksum(tla) = "53422def")
-VARIABLES current_epoch, delete_epoch, series_metadata, 
+\* BEGIN TRANSLATION (chksum(pcal) = "701886c2" /\ chksum(tla) = "cda8acd0")
+VARIABLES now, current_epoch, delete_epoch, series_metadata, 
           series_referenced_from_data, cached_series, pc
 
 (* define statement *)
 TypeInvariant ==
+    /\ now \in Epoch
     /\ current_epoch \in Epoch
     /\ delete_epoch \in Epoch
     /\ series_metadata \in [SeriesId -> SeriesEntry]
@@ -168,28 +172,16 @@ MarkedSeries ==
 MarkedAndRipe ==
     {s \in MarkedSeries: (series_metadata[s].marked_at) + Delay < current_epoch }
 
-
-
-
-
-
-
-
-DeleteEpoch ==
-    IF MarkedSeries # {} THEN
-        Min({series_metadata[s].marked_at: s \in MarkedSeries})
-    ELSE
-        Max({current_epoch - 1, 0})
-
 VARIABLES new_series, new_references, observed_epoch
 
-vars == << current_epoch, delete_epoch, series_metadata, 
+vars == << now, current_epoch, delete_epoch, series_metadata, 
            series_referenced_from_data, cached_series, pc, new_series, 
            new_references, observed_epoch >>
 
 ProcSet == (Ingesters) \cup (BgWorkers)
 
 Init == (* Global variables *)
+        /\ now = 0
         /\ current_epoch = 0
         /\ delete_epoch = 0
         /\ series_metadata = [x \in SeriesId |-> NoEntry]
@@ -206,17 +198,17 @@ IngesterBegin(self) == /\ pc[self] = "IngesterBegin"
                        /\ \/ /\ pc' = [pc EXCEPT ![self] = "ReceiveInput"]
                           \/ /\ TRUE
                              /\ pc' = [pc EXCEPT ![self] = "Done"]
-                       /\ UNCHANGED << current_epoch, delete_epoch, 
+                       /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                        series_metadata, 
                                        series_referenced_from_data, 
                                        cached_series, new_series, 
                                        new_references, observed_epoch >>
 
 ReceiveInput(self) == /\ pc[self] = "ReceiveInput"
-                      /\ \E series \in SUBSET SeriesId \ {}:
-                           new_series' = [new_series EXCEPT ![self] = series]
+                      /\ \E series \in SeriesId:
+                           new_series' = [new_series EXCEPT ![self] = { series }]
                       /\ pc' = [pc EXCEPT ![self] = "CacheLookup"]
-                      /\ UNCHANGED << current_epoch, delete_epoch, 
+                      /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                       series_metadata, 
                                       series_referenced_from_data, 
                                       cached_series, new_references, 
@@ -227,15 +219,15 @@ CacheLookup(self) == /\ pc[self] = "CacheLookup"
                      /\ new_series' = [new_series EXCEPT ![self] = new_series[self] \ cached_series[self]]
                      /\ cached_series' = [cached_series EXCEPT ![self] = cached_series[self] \union new_series'[self]]
                      /\ pc' = [pc EXCEPT ![self] = "IngestTransaction"]
-                     /\ UNCHANGED << current_epoch, delete_epoch, 
+                     /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                      series_metadata, 
                                      series_referenced_from_data, 
                                      observed_epoch >>
 
 IngestTransaction(self) == /\ pc[self] = "IngestTransaction"
-                           /\ IF observed_epoch[self] <= DeleteEpoch
-                                 THEN /\ cached_series' = [cached_series EXCEPT ![self] = StoredSeries \ MarkedSeries]
-                                      /\ observed_epoch' = [observed_epoch EXCEPT ![self] = current_epoch]
+                           /\ IF observed_epoch[self] <= delete_epoch
+                                 THEN /\ observed_epoch' = [observed_epoch EXCEPT ![self] = current_epoch]
+                                      /\ cached_series' = [cached_series EXCEPT ![self] = StoredSeries \ MarkedSeries]
                                       /\ UNCHANGED << series_metadata, 
                                                       series_referenced_from_data >>
                                  ELSE /\ series_metadata' = [x \in new_series[self] |-> NewEntry] @@ series_metadata
@@ -243,17 +235,20 @@ IngestTransaction(self) == /\ pc[self] = "IngestTransaction"
                                       /\ UNCHANGED << cached_series, 
                                                       observed_epoch >>
                            /\ pc' = [pc EXCEPT ![self] = "IngesterBegin"]
-                           /\ UNCHANGED << current_epoch, delete_epoch, 
+                           /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                            new_series, new_references >>
 
 ingester(self) == IngesterBegin(self) \/ ReceiveInput(self)
                      \/ CacheLookup(self) \/ IngestTransaction(self)
 
 BgWorkerTxBegin(self) == /\ pc[self] = "BgWorkerTxBegin"
-                         /\ IF current_epoch < MaxEpochs
-                               THEN /\ \/ /\ pc' = [pc EXCEPT ![self] = "MarkWorker"]
+                         /\ IF now < MaxEpochs
+                               THEN /\ \E dt \in 0..1:
+                                         now' = now + dt
+                                    /\ \/ /\ pc' = [pc EXCEPT ![self] = "MarkWorker"]
                                        \/ /\ pc' = [pc EXCEPT ![self] = "SweepWorker"]
                                ELSE /\ pc' = [pc EXCEPT ![self] = "Done"]
+                                    /\ now' = now
                          /\ UNCHANGED << current_epoch, delete_epoch, 
                                          series_metadata, 
                                          series_referenced_from_data, 
@@ -261,24 +256,25 @@ BgWorkerTxBegin(self) == /\ pc[self] = "BgWorkerTxBegin"
                                          new_references, observed_epoch >>
 
 MarkWorker(self) == /\ pc[self] = "MarkWorker"
-                    /\ current_epoch' = current_epoch + 1
-                    /\ \E stale_series \in SUBSET SeriesId \ {}:
-                         series_metadata' = [x \in stale_series |-> EntryMarkedForDeletion(current_epoch')] @@ series_metadata
+                    /\ current_epoch' = Max({current_epoch, now})
+                    /\ \E stale_series \in SeriesId:
+                         series_metadata' = (stale_series :> EntryMarkedForDeletion(current_epoch')) @@ series_metadata
                     /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
-                    /\ UNCHANGED << delete_epoch, series_referenced_from_data, 
-                                    cached_series, new_series, new_references, 
-                                    observed_epoch >>
+                    /\ UNCHANGED << now, delete_epoch, 
+                                    series_referenced_from_data, cached_series, 
+                                    new_series, new_references, observed_epoch >>
 
 SweepWorker(self) == /\ pc[self] = "SweepWorker"
                      /\ IF MarkedAndRipe # {}
-                           THEN /\ series_metadata' = [x \in MarkedAndRipe |-> NoEntry] @@ series_metadata
+                           THEN /\ delete_epoch' = Max({series_metadata[s].marked_at: s \in MarkedAndRipe})
+                                /\ series_metadata' = [x \in MarkedAndRipe |-> NoEntry] @@ series_metadata
                                 /\ series_referenced_from_data' = series_referenced_from_data \ MarkedAndRipe
                            ELSE /\ TRUE
-                                /\ UNCHANGED << series_metadata, 
+                                /\ UNCHANGED << delete_epoch, series_metadata, 
                                                 series_referenced_from_data >>
                      /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
-                     /\ UNCHANGED << current_epoch, delete_epoch, 
-                                     cached_series, new_series, new_references, 
+                     /\ UNCHANGED << now, current_epoch, cached_series, 
+                                     new_series, new_references, 
                                      observed_epoch >>
 
 bg_worker(self) == BgWorkerTxBegin(self) \/ MarkWorker(self)
@@ -298,11 +294,17 @@ Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
 \* END TRANSLATION 
 
-(* If a series appears as new then at least sometimes it is stored *)
+(* 
+ * If a series appears as new then at least sometimes it is stored.
+ *
+ * This is a pretty weak liveness property, but this spec's main focus
+ * is safety. This property exists mainly to guard against a spec
+ * that doesn't insert any data and thus trivally satisifies safety.
+ *)
 NewSeriesAreStored == <>(
     \A i \in Ingesters: (
         \A s \in SeriesId: 
             s \in new_series[i] => series_metadata[s].stored = TRUE
     ))
 
-====
+====================================================================
