@@ -48,6 +48,9 @@ define
     ForeignKeySafety ==
         /\ \A sid \in series_referenced_from_data: series_metadata[sid].stored = TRUE
 
+    StoredSeries == 
+        {s \in DOMAIN series_metadata: series_metadata[s].stored = TRUE}
+
     MarkedSeries == 
         {s \in DOMAIN series_metadata: series_metadata[s].marked_at # NULL}
 
@@ -84,15 +87,18 @@ begin
             CacheLookup:
                 new_references := new_series;
                 new_series := new_series \ cached_series[self];
-            CacheUpdate:
                 cached_series[self] := cached_series[self] \union new_series;
             IngestTransaction:
                 \* this if is epoch_abort and should be extracted and named
                 if observed_epoch <= DeleteEpoch then 
                     \* TODO extract cache invalidation into its own process
-                    cached_series[self] := {};
-                    (* Should use SELECT FOR SHARE when fetching current_epoch *)
+                    (* 
+                     * Should use SELECT FOR SHARE when fetching current_epoch,
+                     * To ensure a concurrent Mark worker didn't make changes.
+                     *)
                     observed_epoch := current_epoch;
+                    (* SELECT id FROM _prom_catalog.series WHERE delete_at IS NOT NULL *)
+                    cached_series[self] := StoredSeries \ MarkedSeries;
                 else
                     (* 
                      * get_or_create_series_id calls ressurect_series_id 
@@ -104,7 +110,7 @@ begin
                 end if;
                 goto IngesterBegin;
         or
-            \* Stopped receiving data
+            (* Ingester is done *)
             skip;
         end either;
 end process;        
@@ -112,7 +118,7 @@ end process;
 process bg_worker \in BgWorkers
 begin
     BgWorkerTxBegin:
-        if current_epoch < MaxEpochs then
+        while current_epoch < MaxEpochs do
             (* We assume background workers mutually exclude by grabbing a lock on the epoch table *)
             either
                 MarkWorker:
@@ -120,7 +126,6 @@ begin
                     with stale_series \in SUBSET SeriesId \ {} do 
                         series_metadata := 
                             [x \in stale_series |-> EntryMarkedForDeletion(current_epoch)] @@ series_metadata;
-                        goto BgWorkerTxBegin;
                     end with;
             or
                 SweepWorker:
@@ -134,15 +139,12 @@ begin
                         series_metadata := [x \in MarkedAndRipe |-> NoEntry] @@ series_metadata;
                         series_referenced_from_data := series_referenced_from_data \ MarkedAndRipe;
                     end if;
-                    goto BgWorkerTxBegin;
-            or
-                skip;
             end either;
-        end if;
+        end while;
 end process;        
 end algorithm; *)
     
-\* BEGIN TRANSLATION (chksum(pcal) = "b5206a0e" /\ chksum(tla) = "5ea97ad8")
+\* BEGIN TRANSLATION (chksum(pcal) = "b6209662" /\ chksum(tla) = "53422def")
 VARIABLES current_epoch, delete_epoch, series_metadata, 
           series_referenced_from_data, cached_series, pc
 
@@ -156,6 +158,9 @@ TypeInvariant ==
 
 ForeignKeySafety ==
     /\ \A sid \in series_referenced_from_data: series_metadata[sid].stored = TRUE
+
+StoredSeries ==
+    {s \in DOMAIN series_metadata: series_metadata[s].stored = TRUE}
 
 MarkedSeries ==
     {s \in DOMAIN series_metadata: series_metadata[s].marked_at # NULL}
@@ -220,23 +225,16 @@ ReceiveInput(self) == /\ pc[self] = "ReceiveInput"
 CacheLookup(self) == /\ pc[self] = "CacheLookup"
                      /\ new_references' = [new_references EXCEPT ![self] = new_series[self]]
                      /\ new_series' = [new_series EXCEPT ![self] = new_series[self] \ cached_series[self]]
-                     /\ pc' = [pc EXCEPT ![self] = "CacheUpdate"]
-                     /\ UNCHANGED << current_epoch, delete_epoch, 
-                                     series_metadata, 
-                                     series_referenced_from_data, 
-                                     cached_series, observed_epoch >>
-
-CacheUpdate(self) == /\ pc[self] = "CacheUpdate"
-                     /\ cached_series' = [cached_series EXCEPT ![self] = cached_series[self] \union new_series[self]]
+                     /\ cached_series' = [cached_series EXCEPT ![self] = cached_series[self] \union new_series'[self]]
                      /\ pc' = [pc EXCEPT ![self] = "IngestTransaction"]
                      /\ UNCHANGED << current_epoch, delete_epoch, 
                                      series_metadata, 
-                                     series_referenced_from_data, new_series, 
-                                     new_references, observed_epoch >>
+                                     series_referenced_from_data, 
+                                     observed_epoch >>
 
 IngestTransaction(self) == /\ pc[self] = "IngestTransaction"
                            /\ IF observed_epoch[self] <= DeleteEpoch
-                                 THEN /\ cached_series' = [cached_series EXCEPT ![self] = {}]
+                                 THEN /\ cached_series' = [cached_series EXCEPT ![self] = StoredSeries \ MarkedSeries]
                                       /\ observed_epoch' = [observed_epoch EXCEPT ![self] = current_epoch]
                                       /\ UNCHANGED << series_metadata, 
                                                       series_referenced_from_data >>
@@ -249,15 +247,12 @@ IngestTransaction(self) == /\ pc[self] = "IngestTransaction"
                                            new_series, new_references >>
 
 ingester(self) == IngesterBegin(self) \/ ReceiveInput(self)
-                     \/ CacheLookup(self) \/ CacheUpdate(self)
-                     \/ IngestTransaction(self)
+                     \/ CacheLookup(self) \/ IngestTransaction(self)
 
 BgWorkerTxBegin(self) == /\ pc[self] = "BgWorkerTxBegin"
                          /\ IF current_epoch < MaxEpochs
                                THEN /\ \/ /\ pc' = [pc EXCEPT ![self] = "MarkWorker"]
                                        \/ /\ pc' = [pc EXCEPT ![self] = "SweepWorker"]
-                                       \/ /\ TRUE
-                                          /\ pc' = [pc EXCEPT ![self] = "Done"]
                                ELSE /\ pc' = [pc EXCEPT ![self] = "Done"]
                          /\ UNCHANGED << current_epoch, delete_epoch, 
                                          series_metadata, 
@@ -268,8 +263,8 @@ BgWorkerTxBegin(self) == /\ pc[self] = "BgWorkerTxBegin"
 MarkWorker(self) == /\ pc[self] = "MarkWorker"
                     /\ current_epoch' = current_epoch + 1
                     /\ \E stale_series \in SUBSET SeriesId \ {}:
-                         /\ series_metadata' = [x \in stale_series |-> EntryMarkedForDeletion(current_epoch')] @@ series_metadata
-                         /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
+                         series_metadata' = [x \in stale_series |-> EntryMarkedForDeletion(current_epoch')] @@ series_metadata
+                    /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
                     /\ UNCHANGED << delete_epoch, series_referenced_from_data, 
                                     cached_series, new_series, new_references, 
                                     observed_epoch >>
