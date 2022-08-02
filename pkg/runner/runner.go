@@ -168,7 +168,7 @@ func Run(cfg *Config) error {
 		)
 	}
 
-	jaegerQuery := query.New(client.ReadOnlyConnection(), &cfg.TracingCfg)
+	jaegerQuery := query.New(client.ReadOnlyConnection(), client.Inserter(), &cfg.TracingCfg)
 
 	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerQuery, rulesReloader)
 	if err != nil {

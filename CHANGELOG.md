@@ -16,6 +16,7 @@ We use the following categories for changes:
 ## Unreleased
 
 ### Added
+- Implement Jaeger gRPC remote storage writer interface [#1543]
 
 ### Changed
 
