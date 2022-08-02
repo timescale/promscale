@@ -59,11 +59,11 @@ define
     MarkedSeries == 
         {s \in DOMAIN series_metadata: series_metadata[s].marked_at # NULL}
 
-    MarkedAndRipe == 
-        {s \in MarkedSeries: (series_metadata[s].marked_at) + Delay < current_epoch }
+    MarkedAndRipe(e) == 
+        {s \in MarkedSeries: (series_metadata[s].marked_at) < e }
 
     NewDataAfterMarked ==
-        {s \in MarkedAndRipe: s \in series_referenced_from_data}
+        {s \in MarkedSeries: s \in series_referenced_from_data}
 
 end define;
 
@@ -139,6 +139,10 @@ process bg_worker \in BgWorkers
 variables
     candidates = {};
 begin
+    (* 
+     * Under Read Commited each statement might see slightly different state.
+     * It is modelled by confining each statement to its own label/action.
+     *)
     BgWorkerTxBegin:
         while now < MaxEpochs do
             (* When a backgroud worker starts a transaction, sometimes some time has passed. *)
@@ -148,7 +152,7 @@ begin
             (* 
              * In fact, drop_metric_chunks goes through these stages sequentially. So, this actually
              * adds a touch more concurrency. But we assume concurrent phases mutually exclude
-             * by grabbing a lock on the epoch table.
+             * by grabbing a lock.
              *)
             either
                 (* drop_metric_chunk_data *)
@@ -163,43 +167,43 @@ begin
                     end with;
             or
                 (* mark_series_to_be_dropped_as_unused *)
-                MarkUnused:
+                AdvanceEpoch:
                     current_epoch := Max({current_epoch, now});
+                    (* In this spec nothing else modifes current_epoch, so it's safe to not cache the value *)
+                MarkUnused:
                     with stale_series = {s \in StoredSeries: s \notin series_referenced_from_data} do 
                         series_metadata := 
                             [s \in stale_series |-> EntryMarkedForDeletion(current_epoch)] @@ series_metadata;
                     end with;
             or
                 (* delete_expired_series *)
-                DeleteExpired:
-                    if MarkedAndRipe # {} then
-                        (* 
-                         * Under Read Commited each statement might see slightly different state.
-                         * It is modelled by confining each statement to its own label/action.
-                         *)
-                        Delete:
-                            (*
-                             * This must be implemented as a single
-                             * DELETE ... RETURNING (id, marked_at) statment. Otherwise
-                             * delete_epoch might drift under Read Commited or it could
-                             * even stomp over a client-driven ressurect-UPDATE.
-                             * (Alternatively, rechecking WHERE conditions should work)
-                             *
-                             * DELETE should provoke a conflict with
-                             * get_or_create_series_id called by Ingester
-                             *)
-                            candidates := MarkedAndRipe \ NewDataAfterMarked;
-                            delete_epoch := Max({series_metadata[s].marked_at: s \in candidates} \union {delete_epoch});
-                            series_metadata := [x \in candidates |-> NoEntry] @@ series_metadata;
-                        Ressurect:
-                            series_metadata := [x \in (MarkedAndRipe \ candidates) |-> NewEntry] @@ series_metadata;
-                    end if;
+                PrepareDeleteTx:
+                    (* This requires an UPDATE lock on delete_epoch, and current_epoch *)
+                    delete_epoch := Max({current_epoch - Delay, delete_epoch});
+                    (* In this spec nothing else modifes delete_epoch, so it's safe to not cache the value *)
+                    (* First COMMIT *)
+                ActuallyDeleteTx:
+                    (*
+                     * DELETE ... RETURNING id statment. Otherwise
+                     * under Read Commited it could stomp over a client-driven
+                     * ressurect-UPDATE.
+                     * (Alternatively, rechecking WHERE conditions should work)
+                     *
+                     * DELETE should provoke a conflict with
+                     * get_or_create_series_id called by Ingester
+                     *)
+                    candidates := MarkedAndRipe(delete_epoch) \ NewDataAfterMarked; 
+                    series_metadata := [x \in candidates |-> NoEntry] @@ series_metadata;
+                Ressurect:
+                    series_metadata := 
+                        [x \in (MarkedAndRipe(delete_epoch) \ candidates) |-> NewEntry] @@ series_metadata;
+                    (* Second COMMIT *)
             end either;
         end while;
 end process;        
 end algorithm; *)
     
-\* BEGIN TRANSLATION (chksum(pcal) = "87f0d557" /\ chksum(tla) = "8325b132")
+\* BEGIN TRANSLATION (chksum(pcal) = "71dcf6a0" /\ chksum(tla) = "b5165707")
 VARIABLES now, current_epoch, delete_epoch, series_metadata, 
           series_referenced_from_data, cached_series, observed_epochs, pc
 
@@ -222,11 +226,11 @@ StoredSeries ==
 MarkedSeries ==
     {s \in DOMAIN series_metadata: series_metadata[s].marked_at # NULL}
 
-MarkedAndRipe ==
-    {s \in MarkedSeries: (series_metadata[s].marked_at) + Delay < current_epoch }
+MarkedAndRipe(e) ==
+    {s \in MarkedSeries: (series_metadata[s].marked_at) < e }
 
 NewDataAfterMarked ==
-    {s \in MarkedAndRipe: s \in series_referenced_from_data}
+    {s \in MarkedSeries: s \in series_referenced_from_data}
 
 VARIABLES fetched_epoch, fetched_series, new_series, new_references, 
           locally_observed_epoch, candidates
@@ -341,8 +345,8 @@ BgWorkerTxBegin(self) == /\ pc[self] = "BgWorkerTxBegin"
                                THEN /\ \E dt \in 0..1:
                                          now' = now + dt
                                     /\ \/ /\ pc' = [pc EXCEPT ![self] = "DropChunkData"]
-                                       \/ /\ pc' = [pc EXCEPT ![self] = "MarkUnused"]
-                                       \/ /\ pc' = [pc EXCEPT ![self] = "DeleteExpired"]
+                                       \/ /\ pc' = [pc EXCEPT ![self] = "AdvanceEpoch"]
+                                       \/ /\ pc' = [pc EXCEPT ![self] = "PrepareDeleteTx"]
                                ELSE /\ pc' = [pc EXCEPT ![self] = "Done"]
                                     /\ now' = now
                          /\ UNCHANGED << current_epoch, delete_epoch, 
@@ -364,42 +368,49 @@ DropChunkData(self) == /\ pc[self] = "DropChunkData"
                                        new_references, locally_observed_epoch, 
                                        candidates >>
 
+AdvanceEpoch(self) == /\ pc[self] = "AdvanceEpoch"
+                      /\ current_epoch' = Max({current_epoch, now})
+                      /\ pc' = [pc EXCEPT ![self] = "MarkUnused"]
+                      /\ UNCHANGED << now, delete_epoch, series_metadata, 
+                                      series_referenced_from_data, 
+                                      cached_series, observed_epochs, 
+                                      fetched_epoch, fetched_series, 
+                                      new_series, new_references, 
+                                      locally_observed_epoch, candidates >>
+
 MarkUnused(self) == /\ pc[self] = "MarkUnused"
-                    /\ current_epoch' = Max({current_epoch, now})
                     /\ LET stale_series == {s \in StoredSeries: s \notin series_referenced_from_data} IN
-                         series_metadata' = [s \in stale_series |-> EntryMarkedForDeletion(current_epoch')] @@ series_metadata
+                         series_metadata' = [s \in stale_series |-> EntryMarkedForDeletion(current_epoch)] @@ series_metadata
                     /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
-                    /\ UNCHANGED << now, delete_epoch, 
+                    /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                     series_referenced_from_data, cached_series, 
                                     observed_epochs, fetched_epoch, 
                                     fetched_series, new_series, new_references, 
                                     locally_observed_epoch, candidates >>
 
-DeleteExpired(self) == /\ pc[self] = "DeleteExpired"
-                       /\ IF MarkedAndRipe # {}
-                             THEN /\ pc' = [pc EXCEPT ![self] = "Delete"]
-                             ELSE /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
-                       /\ UNCHANGED << now, current_epoch, delete_epoch, 
-                                       series_metadata, 
-                                       series_referenced_from_data, 
-                                       cached_series, observed_epochs, 
-                                       fetched_epoch, fetched_series, 
-                                       new_series, new_references, 
-                                       locally_observed_epoch, candidates >>
+PrepareDeleteTx(self) == /\ pc[self] = "PrepareDeleteTx"
+                         /\ delete_epoch' = Max({current_epoch - Delay, delete_epoch})
+                         /\ pc' = [pc EXCEPT ![self] = "ActuallyDeleteTx"]
+                         /\ UNCHANGED << now, current_epoch, series_metadata, 
+                                         series_referenced_from_data, 
+                                         cached_series, observed_epochs, 
+                                         fetched_epoch, fetched_series, 
+                                         new_series, new_references, 
+                                         locally_observed_epoch, candidates >>
 
-Delete(self) == /\ pc[self] = "Delete"
-                /\ candidates' = [candidates EXCEPT ![self] = MarkedAndRipe \ NewDataAfterMarked]
-                /\ delete_epoch' = Max({series_metadata[s].marked_at: s \in candidates'[self]} \union {delete_epoch})
-                /\ series_metadata' = [x \in candidates'[self] |-> NoEntry] @@ series_metadata
-                /\ pc' = [pc EXCEPT ![self] = "Ressurect"]
-                /\ UNCHANGED << now, current_epoch, 
-                                series_referenced_from_data, cached_series, 
-                                observed_epochs, fetched_epoch, fetched_series, 
-                                new_series, new_references, 
-                                locally_observed_epoch >>
+ActuallyDeleteTx(self) == /\ pc[self] = "ActuallyDeleteTx"
+                          /\ candidates' = [candidates EXCEPT ![self] = MarkedAndRipe(delete_epoch) \ NewDataAfterMarked]
+                          /\ series_metadata' = [x \in candidates'[self] |-> NoEntry] @@ series_metadata
+                          /\ pc' = [pc EXCEPT ![self] = "Ressurect"]
+                          /\ UNCHANGED << now, current_epoch, delete_epoch, 
+                                          series_referenced_from_data, 
+                                          cached_series, observed_epochs, 
+                                          fetched_epoch, fetched_series, 
+                                          new_series, new_references, 
+                                          locally_observed_epoch >>
 
 Ressurect(self) == /\ pc[self] = "Ressurect"
-                   /\ series_metadata' = [x \in (MarkedAndRipe \ candidates[self]) |-> NewEntry] @@ series_metadata
+                   /\ series_metadata' = [x \in (MarkedAndRipe(delete_epoch) \ candidates[self]) |-> NewEntry] @@ series_metadata
                    /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
                    /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                    series_referenced_from_data, cached_series, 
@@ -408,8 +419,9 @@ Ressurect(self) == /\ pc[self] = "Ressurect"
                                    locally_observed_epoch, candidates >>
 
 bg_worker(self) == BgWorkerTxBegin(self) \/ DropChunkData(self)
-                      \/ MarkUnused(self) \/ DeleteExpired(self)
-                      \/ Delete(self) \/ Ressurect(self)
+                      \/ AdvanceEpoch(self) \/ MarkUnused(self)
+                      \/ PrepareDeleteTx(self) \/ ActuallyDeleteTx(self)
+                      \/ Ressurect(self)
 
 (* Allow infinite stuttering to prevent deadlock on termination. *)
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
