@@ -23,7 +23,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/timescale/promscale/pkg/api"
-	jaegerquery "github.com/timescale/promscale/pkg/jaeger/query"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/query"
@@ -322,9 +321,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, nil, fmt.Errorf("init promql engine: %w", err)
 	}
 
-	jaegerQuery := jaegerquery.New(pgClient.ReadOnlyConnection(), &jaegerquery.DefaultConfig)
-
-	router, err := api.GenerateRouter(cfg, qryCfg, pgClient, jaegerQuery, nil)
+	router, err := api.GenerateRouter(cfg, qryCfg, pgClient, nil, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}

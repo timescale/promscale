@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package query
+package store
 
 import (
 	"context"
@@ -22,29 +22,29 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-type Query struct {
+type Store struct {
 	conn     pgxconn.PgxConn
 	inserter ingestor.DBInserter
 	builder  *Builder
 }
 
-func New(conn pgxconn.PgxConn, inserter ingestor.DBInserter, cfg *Config) *Query {
-	return &Query{conn, inserter, NewBuilder(cfg)}
+func New(conn pgxconn.PgxConn, inserter ingestor.DBInserter, cfg *Config) *Store {
+	return &Store{conn, inserter, NewBuilder(cfg)}
 }
 
-func (p *Query) SpanReader() spanstore.Reader {
+func (p *Store) SpanReader() spanstore.Reader {
 	return p
 }
 
-func (p *Query) DependencyReader() dependencystore.Reader {
+func (p *Store) DependencyReader() dependencystore.Reader {
 	return p
 }
 
-func (p *Query) SpanWriter() spanstore.Writer {
+func (p *Store) SpanWriter() spanstore.Writer {
 	return p
 }
 
-func (p *Query) WriteSpan(ctx context.Context, span *model.Span) error {
+func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
 	batches := []*model.Batch{
 		{
 			Spans: []*model.Span{span},
@@ -57,7 +57,7 @@ func (p *Query) WriteSpan(ctx context.Context, span *model.Span) error {
 	return p.inserter.IngestTraces(ctx, traces)
 }
 
-func (p *Query) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
+func (p *Store) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {
@@ -73,7 +73,7 @@ func (p *Query) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Tra
 	return res, nil
 }
 
-func (p *Query) GetServices(ctx context.Context) ([]string, error) {
+func (p *Store) GetServices(ctx context.Context) ([]string, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {
@@ -88,7 +88,7 @@ func (p *Query) GetServices(ctx context.Context) ([]string, error) {
 	return res, nil
 }
 
-func (p *Query) GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
+func (p *Store) GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {
@@ -103,7 +103,7 @@ func (p *Query) GetOperations(ctx context.Context, query spanstore.OperationQuer
 	return res, nil
 }
 
-func (p *Query) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
+func (p *Store) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {
@@ -119,7 +119,7 @@ func (p *Query) FindTraces(ctx context.Context, query *spanstore.TraceQueryParam
 	return res, nil
 }
 
-func (p *Query) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
+func (p *Store) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryParameters) ([]model.TraceID, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {
@@ -135,7 +135,7 @@ func (p *Query) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryPar
 	return res, nil
 }
 
-func (p *Query) GetDependencies(ctx context.Context, endTs time.Time, lookback time.Duration) ([]model.DependencyLink, error) {
+func (p *Store) GetDependencies(ctx context.Context, endTs time.Time, lookback time.Duration) ([]model.DependencyLink, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {

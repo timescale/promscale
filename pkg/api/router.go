@@ -21,7 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/ha"
 	haClient "github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/jaeger"
-	jaegerQuery "github.com/timescale/promscale/pkg/jaeger/query"
+	jaegerStore "github.com/timescale/promscale/pkg/jaeger/store"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
@@ -29,7 +29,7 @@ import (
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
-func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, query *jaegerQuery.Query, reload func() error) (*mux.Router, error) {
+func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, store *jaegerStore.Store, reload func() error) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.ReadOnlyConnection()))
@@ -104,7 +104,9 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 	reloadHandler := timeHandler(metrics.HTTPRequestDuration, "/-/reload", Reload(reload, apiConf.AdminAPIEnabled))
 	router.Path("/-/reload").Methods(http.MethodPost).HandlerFunc(reloadHandler)
 
-	jaeger.ExtendQueryAPIs(router, client.ReadOnlyConnection(), query)
+	if store != nil {
+		jaeger.ExtendQueryAPIs(router, client.ReadOnlyConnection(), store)
+	}
 
 	debugProf := router.PathPrefix("/debug/pprof").Subrouter()
 	debugProf.Path("").Methods(http.MethodGet).HandlerFunc(pprof.Index)
