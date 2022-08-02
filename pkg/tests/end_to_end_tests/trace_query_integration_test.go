@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	promscaleJaeger "github.com/timescale/promscale/pkg/jaeger"
-	jaegerquery "github.com/timescale/promscale/pkg/jaeger/query"
+	jaegerstore "github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -99,8 +99,8 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		// Start Promscale's HTTP endpoint for Jaeger query.
 		router, _, err := buildRouter(db)
 		require.NoError(t, err)
-		jaegerQuery := jaegerquery.New(pgxconn.NewPgxConn(db), &jaegerquery.DefaultConfig)
-		promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db), jaegerQuery)
+		jaegerStore := jaegerstore.New(pgxconn.NewPgxConn(db), ingestor, &jaegerstore.DefaultConfig)
+		promscaleJaeger.ExtendQueryAPIs(router, pgxconn.NewPgxConn(db), jaegerStore)
 
 		// Bind to the server port. This must be outside of the goroutine below
 		// to prevent the server bind and client connect from racing.

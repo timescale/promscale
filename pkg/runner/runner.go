@@ -31,7 +31,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/timescale/promscale/pkg/api"
-	"github.com/timescale/promscale/pkg/jaeger/query"
+	jaegerStore "github.com/timescale/promscale/pkg/jaeger/store"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
@@ -168,9 +168,9 @@ func Run(cfg *Config) error {
 		)
 	}
 
-	jaegerQuery := query.New(client.ReadOnlyConnection(), client.Inserter(), &cfg.TracingCfg)
+	jaegerStore := jaegerStore.New(client.ReadOnlyConnection(), client.Inserter(), &cfg.TracingCfg)
 
-	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerQuery, rulesReloader)
+	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerStore, rulesReloader)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)
@@ -226,7 +226,7 @@ func Run(cfg *Config) error {
 	ptraceotlp.RegisterServer(grpcServer, api.NewTraceServer(client))
 
 	queryPlugin := shared.StorageGRPCPlugin{
-		Impl: jaegerQuery,
+		Impl: jaegerStore,
 	}
 	if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
 		log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
@@ -323,7 +323,7 @@ func initTelemetryEngine(client *pgclient.Client) telemetry.Engine {
 	if err := api.RegisterTelemetryMetrics(t); err != nil {
 		log.Error("msg", "error registering metrics for API telemetry", "err", err.Error())
 	}
-	if err := query.RegisterTelemetryMetrics(t); err != nil {
+	if err := jaegerStore.RegisterTelemetryMetrics(t); err != nil {
 		log.Error("msg", "error registering metrics for Jaeger-query telemetry", "err", err.Error())
 	}
 	if err := trace.RegisterTelemetryMetrics(t); err != nil {

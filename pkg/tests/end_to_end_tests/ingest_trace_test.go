@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/jaeger/query"
+	"github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -74,7 +74,7 @@ func TestQueryTraces(t *testing.T) {
 		err = ingestor.IngestTraces(context.Background(), traces)
 		require.NoError(t, err)
 
-		q := query.New(pgxconn.NewQueryLoggingPgxConn(db), &query.DefaultConfig)
+		q := store.New(pgxconn.NewQueryLoggingPgxConn(db), ingestor, &store.DefaultConfig)
 
 		getOperationsTest(t, q)
 		findTraceTest(t, q)
@@ -82,7 +82,7 @@ func TestQueryTraces(t *testing.T) {
 	})
 }
 
-func getOperationsTest(t testing.TB, q *query.Query) {
+func getOperationsTest(t testing.TB, q *store.Store) {
 	request := spanstore.OperationQueryParameters{
 		ServiceName: "service-name-0",
 	}
@@ -114,7 +114,7 @@ func getOperationsTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(ops))
 }
 
-func findTraceTest(t testing.TB, q *query.Query) {
+func findTraceTest(t testing.TB, q *store.Store) {
 	// TODO: refactor this to table driven test.
 	request := &spanstore.TraceQueryParameters{
 		ServiceName: "service-name-0",
@@ -449,7 +449,7 @@ func findTraceTest(t testing.TB, q *query.Query) {
 	require.Equal(t, 1, len(traces))
 }
 
-func getDependenciesTest(t testing.TB, q *query.Query) {
+func getDependenciesTest(t testing.TB, q *store.Store) {
 	deps, err := q.GetDependencies(context.Background(), testSpanEndTime, 2*testSpanEndTime.Sub(testSpanStartTime))
 	require.NoError(t, err)
 	require.Equal(t, 1, len(deps))
