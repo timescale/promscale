@@ -14,18 +14,22 @@ import (
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 
+	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
+
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type Query struct {
-	conn    pgxconn.PgxConn
-	builder *Builder
+	conn     pgxconn.PgxConn
+	inserter ingestor.DBInserter
+	builder  *Builder
 }
 
-func New(conn pgxconn.PgxConn, cfg *Config) *Query {
-	return &Query{conn, NewBuilder(cfg)}
+func New(conn pgxconn.PgxConn, inserter ingestor.DBInserter, cfg *Config) *Query {
+	return &Query{conn, inserter, NewBuilder(cfg)}
 }
 
 func (p *Query) SpanReader() spanstore.Reader {
@@ -37,7 +41,20 @@ func (p *Query) DependencyReader() dependencystore.Reader {
 }
 
 func (p *Query) SpanWriter() spanstore.Writer {
-	panic("Use Promscale + OTEL-collector to ingest traces")
+	return p
+}
+
+func (p *Query) WriteSpan(ctx context.Context, span *model.Span) error {
+	batches := []*model.Batch{
+		{
+			Spans: []*model.Span{span},
+		},
+	}
+	traces, err := jaegertranslator.ProtoToTraces(batches)
+	if err != nil {
+		return err
+	}
+	return p.inserter.IngestTraces(ctx, traces)
 }
 
 func (p *Query) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
