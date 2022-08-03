@@ -48,7 +48,7 @@ services:
       PROMSCALE_PKG: "docker-quick-start"
 
   collector:
-    image: "otel/opentelemetry-collector:0.55.0"
+    image: "otel/opentelemetry-collector:0.56.0"
     restart: on-failure
     command: [ "--config=/etc/otel-collector-config.yml" ]
     depends_on:
@@ -61,7 +61,7 @@ services:
       - ${PWD}/../otel-collector-config.yml:/etc/otel-collector-config.yml
 
   jaeger:
-    image: jaegertracing/jaeger-query:1.36.0
+    image: jaegertracing/jaeger-query:1.37.0
     restart: on-failure
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
