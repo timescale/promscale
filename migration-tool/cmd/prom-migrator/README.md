@@ -58,7 +58,7 @@ Key:
 3. Prometheus tsdb (TODO)
 4. Thanos (read, write)
 5. Cortex (only blocks storage, chunks storage in later versions) (read, write)
-6. VictoriaMetrics (read, write, not sure about backfill)
+6. VictoriaMetrics (write, not sure about backfill)
 7. M3DB (read, write, not sure about backfill)
 8. Others (any remote storage systems with remote read (for reading) and write (for writing) endpoints)
 
