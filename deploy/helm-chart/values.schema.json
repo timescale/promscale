@@ -1,0 +1,598 @@
+{
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "$id": "http://example.com/example.json",
+    "type": "object",
+    "default": {},
+    "title": "Root Schema",
+    "required": [
+        "affinity",
+        "annotations",
+        "config",
+        "connection",
+        "connectionSecretName",
+        "extraArgs",
+        "extraEnv",
+        "extraEnvFrom",
+        "image",
+        "namespaceOverride",
+        "nodeSelector",
+        "podAnnotations",
+        "readinessProbe",
+        "replicaCount",
+        "resources",
+        "service",
+        "serviceMonitor",
+        "tolerations",
+        "upgradeStrategy"
+    ],
+    "properties": {
+        "affinity": {
+            "additionalProperties": false,
+            "type": "object",
+            "default": {},
+            "title": "The affinity Schema",
+            "required": [],
+            "properties": {},
+            "examples": [
+                {}
+            ]
+        },
+        "annotations": {
+            "type": "object",
+            "default": {},
+            "title": "The annotations Schema",
+            "required": [],
+            "properties": {},
+            "examples": [
+                {}
+            ]
+        },
+        "config": {
+            "type": "object",
+            "default": {},
+            "title": "The config Schema",
+            "required": [
+                "startup.dataset.config"
+            ],
+            "properties": {
+                "startup.dataset.config": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The startup.dataset.config Schema",
+                    "examples": [
+                        "metrics:\n  compress_data: true\n  default_retention_period: 90d\ntraces:\n  default_retention_period: 30d\n"
+                    ]
+                }
+            },
+            "examples": [
+                {
+                    "startup.dataset.config": "metrics:\n  compress_data: true\n  default_retention_period: 90d\ntraces:\n  default_retention_period: 30d\n"
+                }
+            ]
+        },
+        "connection": {
+            "type": "object",
+            "default": {},
+            "title": "The connection Schema",
+            "required": [
+                "dbName",
+                "host",
+                "password",
+                "port",
+                "sslMode",
+                "uri",
+                "user"
+            ],
+            "properties": {
+                "dbName": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The dbName Schema",
+                    "examples": [
+                        "tsdb"
+                    ]
+                },
+                "host": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The host Schema",
+                    "examples": [
+                        "timescaledb.{{ .Release.Namespace }}.svc.cluster.local"
+                    ]
+                },
+                "password": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The password Schema",
+                    "examples": [
+                        ""
+                    ]
+                },
+                "port": {
+                    "type": "integer",
+                    "default": 0,
+                    "title": "The port Schema",
+                    "examples": [
+                        5432
+                    ]
+                },
+                "sslMode": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The sslMode Schema",
+                    "examples": [
+                        "require"
+                    ]
+                },
+                "uri": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The uri Schema",
+                    "examples": [
+                        ""
+                    ]
+                },
+                "user": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The user Schema",
+                    "examples": [
+                        ""
+                    ]
+                }
+            },
+            "examples": [
+                {
+                    "dbName": "tsdb",
+                    "host": "timescaledb.{{ .Release.Namespace }}.svc.cluster.local",
+                    "password": "",
+                    "port": 5432,
+                    "sslMode": "require",
+                    "uri": "",
+                    "user": ""
+                }
+            ]
+        },
+        "connectionSecretName": {
+            "type": "string",
+            "default": "",
+            "title": "The connectionSecretName Schema",
+            "examples": [
+                ""
+            ]
+        },
+        "extraArgs": {
+            "type": "array",
+            "default": [],
+            "title": "The extraArgs Schema",
+            "items": {},
+            "examples": [
+                []
+            ]
+        },
+        "extraEnv": {
+            "type": "array",
+            "default": [],
+            "title": "The extraEnv Schema",
+            "items": {},
+            "examples": [
+                []
+            ]
+        },
+        "extraEnvFrom": {
+            "type": "array",
+            "default": [],
+            "title": "The extraEnvFrom Schema",
+            "items": {},
+            "examples": [
+                []
+            ]
+        },
+        "image": {
+            "type": "object",
+            "default": {},
+            "title": "The image Schema",
+            "required": [
+                "pullPolicy",
+                "repository",
+                "tag"
+            ],
+            "properties": {
+                "pullPolicy": {
+                    "type": "string",
+                    "pattern": "^(Always|Never|IfNotPresent)$",
+                    "default": "",
+                    "title": "The pullPolicy Schema",
+                    "examples": [
+                        "IfNotPresent"
+                    ]
+                },
+                "repository": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The repository Schema",
+                    "examples": [
+                        "timescale/promscale"
+                    ]
+                },
+                "tag": {
+                    "type": "string",
+                    "default": "{{ .Chart.AppVersion }}",
+                    "title": "The tag Schema",
+                    "examples": [
+                        "{{ .Chart.AppVersion }}"
+                    ]
+                }
+            },
+            "examples": [
+                {
+                    "pullPolicy": "IfNotPresent",
+                    "repository": "timescale/promscale",
+                    "tag": "{{ .Chart.AppVersion }}"
+                }
+            ]
+        },
+        "namespaceOverride": {
+            "type": "string",
+            "default": "",
+            "title": "The namespaceOverride Schema",
+            "examples": [
+                ""
+            ]
+        },
+        "nodeSelector": {
+            "type": "object",
+            "default": {},
+            "title": "The nodeSelector Schema",
+            "required": [],
+            "properties": {},
+            "examples": [
+                {}
+            ]
+        },
+        "podAnnotations": {
+            "type": "object",
+            "default": {},
+            "title": "The podAnnotations Schema",
+            "required": [],
+            "properties": {},
+            "examples": [
+                {}
+            ]
+        },
+        "readinessProbe": {
+            "type": "object",
+            "default": {},
+            "title": "The readinessProbe Schema",
+            "required": [
+                "failureThreshold",
+                "httpGet",
+                "periodSeconds",
+                "timeoutSeconds"
+            ],
+            "properties": {
+                "failureThreshold": {
+                    "type": "integer",
+                    "default": 0,
+                    "title": "The failureThreshold Schema",
+                    "examples": [
+                        3
+                    ]
+                },
+                "httpGet": {
+                    "type": "object",
+                    "default": {},
+                    "title": "The httpGet Schema",
+                    "required": [
+                        "path",
+                        "port",
+                        "scheme"
+                    ],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "default": "",
+                            "title": "The path Schema",
+                            "examples": [
+                                "/healthz"
+                            ]
+                        },
+                        "port": {
+                            "type": "string",
+                            "default": "",
+                            "title": "The port Schema",
+                            "examples": [
+                                "metrics-port"
+                            ]
+                        },
+                        "scheme": {
+                            "type": "string",
+                            "default": "",
+                            "title": "The scheme Schema",
+                            "examples": [
+                                "HTTP"
+                            ]
+                        }
+                    },
+                    "examples": [
+                        {
+                            "path": "/healthz",
+                            "port": "metrics-port",
+                            "scheme": "HTTP"
+                        }
+                    ]
+                },
+                "periodSeconds": {
+                    "type": "integer",
+                    "default": 0,
+                    "title": "The periodSeconds Schema",
+                    "examples": [
+                        15
+                    ]
+                },
+                "timeoutSeconds": {
+                    "type": "integer",
+                    "default": 0,
+                    "title": "The timeoutSeconds Schema",
+                    "examples": [
+                        15
+                    ]
+                }
+            },
+            "examples": [
+                {
+                    "failureThreshold": 3,
+                    "httpGet": {
+                        "path": "/healthz",
+                        "port": "metrics-port",
+                        "scheme": "HTTP"
+                    },
+                    "periodSeconds": 15,
+                    "timeoutSeconds": 15
+                }
+            ]
+        },
+        "replicaCount": {
+            "type": "integer",
+            "default": 0,
+            "title": "The replicaCount Schema",
+            "examples": [
+                1
+            ]
+        },
+        "resources": {
+            "additionalProperties": false,
+            "type": "object",
+            "default": {},
+            "title": "The resources Schema",
+            "required": [],
+            "properties": {
+                "limits": {
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "type": "object"
+                },
+                "requests": {
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "type": "object"
+                }
+            },
+            "examples": [
+                {}
+            ]
+        },
+        "service": {
+            "type": "object",
+            "default": {},
+            "title": "The service Schema",
+            "required": [
+                "annotations",
+                "openTelemetry",
+                "prometheus",
+                "type"
+            ],
+            "properties": {
+                "annotations": {
+                    "type": "object",
+                    "default": {},
+                    "title": "The annotations Schema",
+                    "required": [],
+                    "properties": {},
+                    "examples": [
+                        {}
+                    ]
+                },
+                "openTelemetry": {
+                    "type": "object",
+                    "default": {},
+                    "title": "The openTelemetry Schema",
+                    "required": [
+                        "enabled",
+                        "port"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "The enabled Schema",
+                            "examples": [
+                                true
+                            ]
+                        },
+                        "port": {
+                            "type": "integer",
+                            "default": 0,
+                            "title": "The port Schema",
+                            "examples": [
+                                9202
+                            ]
+                        }
+                    },
+                    "examples": [
+                        {
+                            "enabled": true,
+                            "port": 9202
+                        }
+                    ]
+                },
+                "prometheus": {
+                    "type": "object",
+                    "default": {},
+                    "title": "The prometheus Schema",
+                    "required": [
+                        "enabled",
+                        "port"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "The enabled Schema",
+                            "examples": [
+                                true
+                            ]
+                        },
+                        "port": {
+                            "type": "integer",
+                            "default": 0,
+                            "title": "The port Schema",
+                            "examples": [
+                                9201
+                            ]
+                        }
+                    },
+                    "examples": [
+                        {
+                            "enabled": true,
+                            "port": 9201
+                        }
+                    ]
+                },
+                "type": {
+                    "type": "string",
+                    "default": "",
+                    "title": "The type Schema",
+                    "examples": [
+                        "ClusterIP"
+                    ]
+                }
+            },
+            "examples": [
+                {
+                    "annotations": {},
+                    "openTelemetry": {
+                        "enabled": true,
+                        "port": 9202
+                    },
+                    "prometheus": {
+                        "enabled": true,
+                        "port": 9201
+                    },
+                    "type": "ClusterIP"
+                }
+            ]
+        },
+        "serviceMonitor": {
+            "type": "object",
+            "default": {},
+            "title": "The serviceMonitor Schema",
+            "required": [
+                "enabled"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "title": "The enabled Schema",
+                    "examples": [
+                        false
+                    ]
+                }
+            },
+            "examples": [
+                {
+                    "enabled": false
+                }
+            ]
+        },
+        "tolerations": {
+            "type": "array",
+            "default": [],
+            "title": "The tolerations Schema",
+            "items": {},
+            "examples": [
+                []
+            ]
+        },
+        "upgradeStrategy": {
+            "type": "string",
+            "default": "",
+            "title": "The upgradeStrategy Schema",
+            "examples": [
+                "Recreate"
+            ]
+        }
+    },
+    "examples": [
+        {
+            "affinity": {},
+            "annotations": {},
+            "config": {
+                "startup.dataset.config": "metrics:\n  compress_data: true\n  default_retention_period: 90d\ntraces:\n  default_retention_period: 30d\n"
+            },
+            "connection": {
+                "dbName": "tsdb",
+                "host": "timescaledb.{{ .Release.Namespace }}.svc.cluster.local",
+                "password": "",
+                "port": 5432,
+                "sslMode": "require",
+                "uri": "",
+                "user": ""
+            },
+            "connectionSecretName": "",
+            "extraArgs": [],
+            "extraEnv": [],
+            "extraEnvFrom": [],
+            "image": {
+                "pullPolicy": "IfNotPresent",
+                "repository": "timescale/promscale",
+                "tag": "{{ .Chart.AppVersion }}"
+            },
+            "namespaceOverride": "",
+            "nodeSelector": {},
+            "podAnnotations": {},
+            "readinessProbe": {
+                "failureThreshold": 3,
+                "httpGet": {
+                    "path": "/healthz",
+                    "port": "metrics-port",
+                    "scheme": "HTTP"
+                },
+                "periodSeconds": 15,
+                "timeoutSeconds": 15
+            },
+            "replicaCount": 1,
+            "resources": {},
+            "service": {
+                "annotations": {},
+                "openTelemetry": {
+                    "enabled": true,
+                    "port": 9202
+                },
+                "prometheus": {
+                    "enabled": true,
+                    "port": 9201
+                },
+                "type": "ClusterIP"
+            },
+            "serviceMonitor": {
+                "enabled": false
+            },
+            "tolerations": [],
+            "upgradeStrategy": "Recreate"
+        }
+    ]
+}

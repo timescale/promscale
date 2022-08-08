@@ -33,7 +33,7 @@ spec:
         {{- end }}
     spec:
       containers:
-        - image: {{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}
+        - image: {{ .Values.image.repository }}:{{ tpl .Values.image.tag . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: promscale
           args:
