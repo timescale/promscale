@@ -17,6 +17,8 @@ We use the following categories for changes:
 
 ### Added
 
+- Helm chart now ships a JSON Schema for imposing a structure of the values.yaml file [#1551]
+
 ### Changed
 
 ### Fixed
