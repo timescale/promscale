@@ -81,6 +81,22 @@ var traceQueryCases = []traceQuery{
 		traceID: traceID1,
 		tag:     &tag{"isExpired", "true"},
 	},
+	{
+		name:    "get trace by event name",
+		start:   timestamp.FromTime(testSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testSpanEndTime) * 1000,
+		service: service0,
+		traceID: traceID1,
+		tag:     &tag{"event", "event-with-attr"},
+	},
+	{
+		name:    "get trace by event attribute",
+		start:   timestamp.FromTime(testSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testSpanEndTime) * 1000,
+		service: service0,
+		traceID: traceID1,
+		tag:     &tag{"span-event-attr", "span-event-attr-val"},
+	},
 }
 
 func TestCompareTraceQueryResponse(t *testing.T) {
