@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -31,7 +32,8 @@ type Config struct {
 	SslMode                 string
 	DbConnectionTimeout     time.Duration
 	IgnoreCompressedChunks  bool
-	AsyncAcks               bool
+	MetricsAsyncAcks        bool
+	TracesAsyncAcks         bool
 	WriteConnections        int
 	WriterPoolSize          int
 	WriterSynchronousCommit bool
@@ -40,6 +42,9 @@ type Config struct {
 	UsesHA                  bool
 	DbUri                   string
 	EnableStatementsCache   bool
+	TracesBatchTimeout      time.Duration
+	TracesMaxBatchSize      int
+	TracesBatchWorkers      int
 }
 
 const (
@@ -79,7 +84,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.BoolVar(&cfg.IgnoreCompressedChunks, "metrics.ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
 		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
 		"However, setting this to true will save your resources that may be required during decompression. ")
-	fs.IntVar(&cfg.WriteConnections, "db.connections.num-writers", 0, "Number of database connections for writing metrics to database. "+
+	fs.IntVar(&cfg.WriteConnections, "db.connections.num-writers", 0, "Number of database connections for writing metrics/traces to database. "+
 		"By default, this will be set based on the number of CPUs available to the DB Promscale is connected to.")
 	fs.IntVar(&cfg.WriterPoolSize, "db.connections.writer-pool.size", defaultPoolSize, "Maximum size of the writer pool of database connections. This defaults to 50% of max_connections "+
 		"allowed by the database.")
@@ -92,7 +97,11 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 		"Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	fs.BoolVar(&cfg.EnableStatementsCache, "db.statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
 		"Disable if using PgBouncer")
-	fs.BoolVar(&cfg.AsyncAcks, "metrics.async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
+	fs.BoolVar(&cfg.MetricsAsyncAcks, "metrics.async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
+	fs.BoolVar(&cfg.TracesAsyncAcks, "tracing.async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of traces data in the database. This increases throughput at the cost of a small chance of data loss.")
+	fs.IntVar(&cfg.TracesMaxBatchSize, "tracing.max-batch-size", trace.DefaultBatchSize, "Maximum size of trace batch that is written to DB")
+	fs.DurationVar(&cfg.TracesBatchTimeout, "tracing.batch-timeout", trace.DefaultBatchTimeout, "Timeout after new trace batch is created")
+	fs.IntVar(&cfg.TracesBatchWorkers, "tracing.batch-workers", trace.DefaultBatchWorkers, "Number of workers responsible for creating trace batches. Defaults to number of CPUs.")
 	return cfg
 }
 

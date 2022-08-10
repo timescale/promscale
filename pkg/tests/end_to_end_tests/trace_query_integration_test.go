@@ -24,6 +24,7 @@ import (
 	jaegerstore "github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/testdata"
 )
 
 type traceQuery struct {
@@ -44,63 +45,63 @@ type traceQuery struct {
 var traceQueryCases = []traceQuery{
 	{
 		name:    "simple trace",
-		start:   timestamp.FromTime(testSpanStartTime) * 1000,
-		end:     timestamp.FromTime(testSpanEndTime) * 1000,
-		service: service0,
-		traceID: traceID1,
+		start:   timestamp.FromTime(testdata.TestSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testdata.TestSpanEndTime) * 1000,
+		service: testdata.Service0,
+		traceID: testdata.TraceID1,
 	},
 	{
 		name:    "simple trace with numeric tag",
-		start:   timestamp.FromTime(testSpanStartTime) * 1000,
-		end:     timestamp.FromTime(testSpanEndTime) * 1000,
-		service: service0,
-		traceID: traceID1,
+		start:   timestamp.FromTime(testdata.TestSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testdata.TestSpanEndTime) * 1000,
+		service: testdata.Service0,
+		traceID: testdata.TraceID1,
 		tag:     &tag{"http.status_code", "200"},
 	},
 	{
 		name:    "simple trace with resource tag",
-		start:   timestamp.FromTime(testSpanStartTime) * 1000,
-		end:     timestamp.FromTime(testSpanEndTime) * 1000,
-		service: service0,
-		traceID: traceID1,
+		start:   timestamp.FromTime(testdata.TestSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testdata.TestSpanEndTime) * 1000,
+		service: testdata.Service0,
+		traceID: testdata.TraceID1,
 		tag:     &tag{"resource-attr", "resource-attr-val-0"},
 	},
 	{
 		name:    "simple trace with error tag",
-		start:   timestamp.FromTime(testSpanStartTime) * 1000,
-		end:     timestamp.FromTime(testSpanEndTime) * 1000,
-		service: service0,
-		traceID: traceID1,
+		start:   timestamp.FromTime(testdata.TestSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testdata.TestSpanEndTime) * 1000,
+		service: testdata.Service0,
+		traceID: testdata.TraceID1,
 		tag:     &tag{"error", "true"},
 	},
 	{
 		name:    "simple trace with boolean tag",
-		start:   timestamp.FromTime(testSpanStartTime) * 1000,
-		end:     timestamp.FromTime(testSpanEndTime) * 1000,
-		service: service0,
-		traceID: traceID1,
+		start:   timestamp.FromTime(testdata.TestSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testdata.TestSpanEndTime) * 1000,
+		service: testdata.Service0,
+		traceID: testdata.TraceID1,
 		tag:     &tag{"isExpired", "true"},
 	},
 	{
 		name:    "get trace by event name",
-		start:   timestamp.FromTime(testSpanStartTime) * 1000,
-		end:     timestamp.FromTime(testSpanEndTime) * 1000,
-		service: service0,
-		traceID: traceID1,
+		start:   timestamp.FromTime(testdata.TestSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testdata.TestSpanEndTime) * 1000,
+		service: testdata.Service0,
+		traceID: testdata.TraceID1,
 		tag:     &tag{"event", "event-with-attr"},
 	},
 	{
 		name:    "get trace by event attribute",
-		start:   timestamp.FromTime(testSpanStartTime) * 1000,
-		end:     timestamp.FromTime(testSpanEndTime) * 1000,
-		service: service0,
-		traceID: traceID1,
+		start:   timestamp.FromTime(testdata.TestSpanStartTime) * 1000,
+		end:     timestamp.FromTime(testdata.TestSpanEndTime) * 1000,
+		service: testdata.Service0,
+		traceID: testdata.TraceID1,
 		tag:     &tag{"span-event-attr", "span-event-attr-val"},
 	},
 }
 
 func TestCompareTraceQueryResponse(t *testing.T) {
-	sampleTraces := generateTestTrace()
+	sampleTraces := testdata.GenerateTestTrace()
 	e2eDb := *testDatabase + "_e2e"
 
 	withDB(t, e2eDb, func(db *pgxpool.Pool, t testing.TB) {
@@ -109,7 +110,7 @@ func TestCompareTraceQueryResponse(t *testing.T) {
 		defer ingestor.Close()
 
 		// Ingest traces into Promscale.
-		err = ingestor.IngestTraces(context.Background(), copyTraces(sampleTraces))
+		err = ingestor.IngestTraces(context.Background(), testdata.CopyTraces(sampleTraces))
 		require.NoError(t, err)
 
 		// Start Promscale's HTTP endpoint for Jaeger query.
@@ -310,7 +311,7 @@ func getOperations(t testing.TB, c httpClient, service string) []string {
 }
 
 func getTrace(t testing.TB, c httpClient, traceId [16]byte) jaegerJSONModel.Trace {
-	r, err := do(fmt.Sprintf(singleTraceEndpoint, c.url, getTraceId(traceId)))
+	r, err := do(fmt.Sprintf(singleTraceEndpoint, c.url, testdata.GetTraceId(traceId)))
 	require.NoError(t, err)
 
 	trace := convertToTrace(r.Data.([]interface{})[0])

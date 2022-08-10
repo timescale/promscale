@@ -17,6 +17,7 @@ We use the following categories for changes:
 
 ### Added
 - Implement Jaeger gRPC remote storage writer interface [#1543]
+- Batching for traces to improve ingest performance along with CLI flags for better control [#1554]
 - Helm chart now ships a JSON Schema for imposing a structure of the values.yaml file [#1551]
 
 ### Changed

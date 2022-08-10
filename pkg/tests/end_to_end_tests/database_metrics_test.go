@@ -11,6 +11,7 @@ import (
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics/database"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/testdata"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -59,7 +60,7 @@ func TestDatabaseMetrics(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		require.NoError(t, ingestor.IngestTraces(context.Background(), generateTestTrace()))
+		require.NoError(t, ingestor.IngestTraces(context.Background(), testdata.GenerateTestTrace()))
 
 		// Update the metrics again.
 		require.NoError(t, dbMetrics.Update())

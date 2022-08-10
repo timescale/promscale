@@ -44,6 +44,10 @@ func (p *Store) SpanWriter() spanstore.Writer {
 	return p
 }
 
+func (p *Store) StreamingSpanWriter() spanstore.Writer {
+	return p
+}
+
 func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
 	batches := []*model.Batch{
 		{
@@ -55,6 +59,13 @@ func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
 		return err
 	}
 	return p.inserter.IngestTraces(ctx, traces)
+}
+
+// Close performs graceful shutdown of SpanWriter on Jaeger collector shutdown.
+// In our case we have nothing to do
+// Noop impl avoid getting GRPC error message when Jaeger collector shuts down.
+func (p *Store) Close() error {
+	return nil
 }
 
 func (p *Store) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {

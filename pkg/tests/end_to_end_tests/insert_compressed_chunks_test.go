@@ -87,6 +87,7 @@ func TestInsertInCompressedChunks(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingstr.Cfg{
 			IgnoreCompressedChunks:  true,
 			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
+			NumCopiers:              2,
 		})
 		require.NoError(t, err)
 		defer ingestor.Close()

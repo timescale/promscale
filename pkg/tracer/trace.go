@@ -25,6 +25,8 @@ const (
 	defaultTracerName = "github.com/timescale/promscale"
 )
 
+var defaultTracer = otel.Tracer(defaultTracerName)
+
 // Config represents a tracing configuration used upon initialization.
 type Config struct {
 	OtelCollectorEndpoint    string
@@ -52,7 +54,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 }
 
 func Default() trace.Tracer {
-	return otel.Tracer(defaultTracerName)
+	return defaultTracer
 }
 
 func InitProvider(cfg *Config) (*tracesdk.TracerProvider, error) {

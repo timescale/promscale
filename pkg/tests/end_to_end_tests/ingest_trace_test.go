@@ -15,6 +15,7 @@ import (
 	"github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/testdata"
 )
 
 func TestIngestTraces(t *testing.T) {
@@ -22,7 +23,7 @@ func TestIngestTraces(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		traces := generateTestTrace()
+		traces := testdata.GenerateTestTrace()
 		err = ingestor.IngestTraces(context.Background(), traces)
 		require.NoError(t, err)
 	})
@@ -33,7 +34,7 @@ func TestIngestBrokenTraces(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		traces := generateBrokenTestTraces()
+		traces := testdata.GenerateBrokenTestTraces()
 		err = ingestor.IngestTraces(context.Background(), traces)
 		require.NoError(t, err)
 	})
@@ -44,7 +45,7 @@ func TestIngestTracesMultiTraces(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		traces := generateTestTraceManyRS()
+		traces := testdata.GenerateTestTraceManyRS()
 		for traceIndex := 0; traceIndex < len(traces); traceIndex++ {
 			err = ingestor.IngestTraces(context.Background(), traces[traceIndex])
 		}
@@ -57,7 +58,7 @@ func TestIngestTracesFromDataset(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		traces := generateSmallTraces(t)
+		traces := testdata.LoadSmallTraces(t)
 		for i := range traces {
 			err = ingestor.IngestTraces(context.Background(), traces[i])
 			require.NoError(t, err)
@@ -70,7 +71,7 @@ func TestQueryTraces(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		traces := generateTestTrace()
+		traces := testdata.GenerateTestTrace()
 		err = ingestor.IngestTraces(context.Background(), traces)
 		require.NoError(t, err)
 
@@ -221,7 +222,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
+				StartTimeMin: testdata.TestSpanStartTime,
 			},
 			expectedResponseCount: 1,
 		},
@@ -233,7 +234,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime.Add(time.Second),
+				StartTimeMin: testdata.TestSpanStartTime.Add(time.Second),
 			},
 			expectedResponseCount: 0,
 		},
@@ -245,8 +246,8 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
 			},
 			expectedResponseCount: 1,
 		},
@@ -258,8 +259,8 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime.Add(-time.Second),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime.Add(-time.Second),
 			},
 			expectedResponseCount: 0,
 		},
@@ -271,9 +272,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -285,9 +286,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"error": "true",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -299,9 +300,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"error": "true",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 0,
 		},
@@ -313,9 +314,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"error": "false",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -327,9 +328,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"error": "",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -341,9 +342,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span.kind": "client",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -355,9 +356,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span.kind": "client",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 0,
 		},
@@ -369,9 +370,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"w3c.tracestate": "span-trace-state1",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -383,9 +384,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"w3c.tracestate": "span-trace-state1",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 0,
 		},
@@ -397,9 +398,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"hostname": "hostname1",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -411,9 +412,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"hostname": "hostname1",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 0,
 		},
@@ -425,9 +426,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"jaeger.version": "1.0.0",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -439,9 +440,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"jaeger.version": "1.0.0",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 0,
 		},
@@ -453,9 +454,9 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime) + (1 * time.Millisecond),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime) + (1 * time.Millisecond),
 			},
 			expectedResponseCount: 0,
 		},
@@ -467,10 +468,10 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
-				DurationMax:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
+				DurationMax:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
 			expectedResponseCount: 1,
 		},
@@ -482,10 +483,10 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
-				DurationMax:  testSpanEndTime.Sub(testSpanStartTime) - time.Millisecond,
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
+				DurationMax:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime) - time.Millisecond,
 			},
 			expectedResponseCount: 0,
 		},
@@ -497,10 +498,10 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				Tags: map[string]string{
 					"span-attr": "span-attr-val",
 				},
-				StartTimeMin: testSpanStartTime,
-				StartTimeMax: testSpanStartTime,
-				DurationMin:  testSpanEndTime.Sub(testSpanStartTime),
-				DurationMax:  testSpanEndTime.Sub(testSpanStartTime),
+				StartTimeMin: testdata.TestSpanStartTime,
+				StartTimeMax: testdata.TestSpanStartTime,
+				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
+				DurationMax:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 				NumTraces:    2,
 			},
 			expectedResponseCount: 1,
@@ -516,7 +517,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 }
 
 func getDependenciesTest(t testing.TB, q *store.Store) {
-	deps, err := q.GetDependencies(context.Background(), testSpanEndTime, 2*testSpanEndTime.Sub(testSpanStartTime))
+	deps, err := q.GetDependencies(context.Background(), testdata.TestSpanEndTime, 2*testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime))
 	require.NoError(t, err)
 	require.Equal(t, 1, len(deps))
 	require.Equal(t, "service-name-0", deps[0].Parent)

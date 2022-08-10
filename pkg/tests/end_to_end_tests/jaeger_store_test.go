@@ -12,6 +12,7 @@ import (
 	jaegerstore "github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/testdata"
 )
 
 // Similar to TestQueryTraces, but uses Jaeger span ingestion interface.
@@ -23,7 +24,7 @@ func TestJaegerSpanIngestion(t *testing.T) {
 
 		jaegerStore := jaegerstore.New(pgxconn.NewQueryLoggingPgxConn(db), ingestor, &store.DefaultConfig)
 
-		batch, err := jaegertranslator.ProtoFromTraces(generateTestTrace())
+		batch, err := jaegertranslator.ProtoFromTraces(testdata.GenerateTestTrace())
 		require.NoError(t, err)
 		for _, b := range batch {
 			for _, s := range b.Spans {

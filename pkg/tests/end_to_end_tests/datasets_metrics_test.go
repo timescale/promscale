@@ -22,8 +22,6 @@ const (
 
 	samplesStartTime = 1597055698698
 	samplesEndTime   = 1597059548699
-
-	tracesEntryCount = 5932 // All entries in the traces-dataset.sz file.
 )
 
 var (
