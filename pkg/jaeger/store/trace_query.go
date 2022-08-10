@@ -85,12 +85,13 @@ const (
 		trace_sub.trace_id, start_time_max - $%[1]d::interval as time_low, start_time_max + $%[1]d::interval as time_high
 	FROM (
 		SELECT
-			trace_id,
+			s.trace_id,
 			max(start_time) as start_time_max
 		FROM _ps_trace.span s
+		LEFT JOIN _ps_trace.event e ON(s.trace_id = e.trace_id AND s.span_id = e.span_id)
 		WHERE
 			%[2]s
-		GROUP BY trace_id
+		GROUP BY s.trace_id
 	) as trace_sub
 	ORDER BY trace_sub.start_time_max DESC
 	`
@@ -117,6 +118,7 @@ const (
 	TagJaegerVersion = "jaeger.version"
 	TagSpanKind      = "span.kind"
 	TagW3CTraceState = "w3c.tracestate"
+	TagEventName     = "event"
 )
 
 var digitCheck = regexp.MustCompile(`^\d*\.?\d+$`) // Ints or Floats.
@@ -239,6 +241,10 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 				params = append(params, v)
 				qual := fmt.Sprintf(`s.trace_state = $%d`, len(params))
 				clauses = append(clauses, qual)
+			case TagEventName:
+				params = append(params, v)
+				qual := fmt.Sprintf(`e.name = $%d`, len(params))
+				clauses = append(clauses, qual)
 			default:
 				//TODO make sure this is optimized correctly
 				val := "\"" + v + "\""
@@ -249,8 +255,9 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 				params = append(params, k, val)
 				// Note: We do not need to check resource tags in above cases, since they
 				// come from Jaeger conversion that are specific to span_tags.
+				// Tags are spread into _ps_trace.span and _ps_trace.event tables.
 				qual := fmt.Sprintf(
-					`(_ps_trace.tag_map_denormalize(s.span_tags)->$%[1]d = $%[2]d OR _ps_trace.tag_map_denormalize(s.resource_tags)->$%[1]d = $%[2]d)`,
+					`(_ps_trace.tag_map_denormalize(s.span_tags)->$%[1]d = $%[2]d OR _ps_trace.tag_map_denormalize(s.resource_tags)->$%[1]d = $%[2]d OR _ps_trace.tag_map_denormalize(e.tags)->$%[1]d = $%[2]d)`,
 					len(params)-1, len(params))
 				clauses = append(clauses, qual)
 			}

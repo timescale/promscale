@@ -144,6 +144,65 @@ func findTraceTest(t testing.TB, q *store.Store) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(traces))
 
+	// Query Event by name.
+	request = &spanstore.TraceQueryParameters{
+		Tags: map[string]string{
+			"event": "event",
+		},
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	// Query Event by tag, service and operation.
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"span-event-attr": "span-event-attr-val",
+		},
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	// Query Event by name, service and operation.
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"event": "event-with-attr",
+		},
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(traces))
+
+	// Query Event by name, non existent tag, service and operation.
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"event":           "event-with-attr",
+			"span-event-attr": "not-exist",
+		},
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
+	// Query non existent Event by name, service and operation.
+	request = &spanstore.TraceQueryParameters{
+		ServiceName:   "service-name-0",
+		OperationName: "operationA",
+		Tags: map[string]string{
+			"event": "not-exists",
+		},
+	}
+	traces, err = q.FindTraces(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(traces))
+
 	request = &spanstore.TraceQueryParameters{
 		ServiceName:   "service-name-0",
 		OperationName: "operationA",

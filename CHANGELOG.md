@@ -17,12 +17,12 @@ We use the following categories for changes:
 
 ### Added
 - Implement Jaeger gRPC remote storage writer interface [#1543]
-
 - Helm chart now ships a JSON Schema for imposing a structure of the values.yaml file [#1551]
 
 ### Changed
 
 ### Fixed
+- Make Jaeger Event queryable using name and tags [#1553]
 
 ## [0.13.0] - 2022-07-20
 

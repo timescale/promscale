@@ -5,7 +5,7 @@
 // +build gen_response
 
 // Below line generates the Jaeger API responses.
-//go:generate go test . -run TestGenerateJaegerAPIResponses
+//go:generate go test . -run TestGenerateJaegerAPIResponses -tags gen_response
 
 package end_to_end_tests
 
