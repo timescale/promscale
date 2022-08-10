@@ -226,7 +226,8 @@ func Run(cfg *Config) error {
 	ptraceotlp.RegisterServer(grpcServer, api.NewTraceServer(client))
 
 	queryPlugin := shared.StorageGRPCPlugin{
-		Impl: jaegerStore,
+		Impl:       jaegerStore,
+		StreamImpl: jaegerStore,
 	}
 	if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
 		log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)

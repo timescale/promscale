@@ -474,6 +474,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Cfg{
 			DisableEpochSync:        true,
 			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
+			NumCopiers:              2,
 		})
 		if err != nil {
 			t.Fatal(err)

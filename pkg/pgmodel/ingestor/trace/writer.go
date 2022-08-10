@@ -49,6 +49,7 @@ var (
 
 type Writer interface {
 	InsertTraces(ctx context.Context, traces ptrace.Traces) error
+	Close()
 }
 
 type traceWriterImpl struct {
@@ -139,8 +140,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces ptrace.Traces
 	metrics.IngestorActiveWriteRequests.With(traceSpanLabel).Inc()
 	metrics.IngestorItemsReceived.With(traceSpanLabel).Add(float64(traces.SpanCount()))
 	defer func() {
-		metrics.IngestorRequests.With(prometheus.Labels{"type": "trace", "code": code}).Inc()
-		metrics.IngestorDuration.With(prometheus.Labels{"type": "trace", "code": ""}).Observe(time.Since(startIngest).Seconds())
+		metrics.IngestorDuration.With(prometheus.Labels{"type": "trace", "code": code}).Observe(time.Since(startIngest).Seconds())
 		metrics.IngestorActiveWriteRequests.With(traceSpanLabel).Dec()
 	}()
 
@@ -406,6 +406,8 @@ func (t *traceWriterImpl) insertRows(ctx context.Context, table string, columns 
 	}
 	return tx.Commit(ctx)
 }
+
+func (t *traceWriterImpl) Close() {}
 
 func ByteArrayToInt64(buf [8]byte) int64 {
 	return int64(binary.BigEndian.Uint64(buf[:]))

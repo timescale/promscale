@@ -24,11 +24,15 @@ import (
 )
 
 type Cfg struct {
-	AsyncAcks               bool
+	MetricsAsyncAcks        bool
+	TracesAsyncAcks         bool
 	NumCopiers              int
 	DisableEpochSync        bool
 	IgnoreCompressedChunks  bool
 	InvertedLabelsCacheSize uint64
+	TracesBatchTimeout      time.Duration
+	TracesMaxBatchSize      int
+	TracesBatchWorkers      int
 }
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
@@ -46,10 +50,17 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 	if err != nil {
 		return nil, err
 	}
+
+	batcherConfg := trace.BatcherConfig{
+		MaxBatchSize: cfg.TracesMaxBatchSize,
+		BatchTimeout: cfg.TracesBatchTimeout,
+		Writers:      cfg.NumCopiers,
+	}
+	traceWriter := trace.NewWriter(conn)
 	return &DBIngestor{
 		sCache:     sCache,
 		dispatcher: dispatcher,
-		tWriter:    trace.NewWriter(conn),
+		tWriter:    trace.NewDispatcher(traceWriter, cfg.TracesAsyncAcks, batcherConfg),
 		closed:     atomic.NewBool(false),
 	}, nil
 }
@@ -58,7 +69,7 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 // with an empty config, a new default size metrics cache and a non-ha-aware data parser
 func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error) {
 	if cfg == nil {
-		cfg = &Cfg{InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize}
+		cfg = &Cfg{InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize, NumCopiers: 2}
 	}
 	cacheConfig := cache.DefaultConfig
 	c := cache.NewMetricCache(cacheConfig)
@@ -83,6 +94,8 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces ptrace.Trac
 	if ingestor.closed.Load() {
 		return fmt.Errorf("ingestor is closed and can't ingest traces")
 	}
+	_, span := tracer.Default().Start(ctx, "ingest-traces")
+	defer span.End()
 	return ingestor.tWriter.InsertTraces(ctx, traces)
 }
 
@@ -282,6 +295,7 @@ func (ingestor *DBIngestor) Close() {
 	if ingestor.closed.Load() {
 		return
 	}
+	ingestor.tWriter.Close()
 	ingestor.closed.Store(true)
 	ingestor.dispatcher.Close()
 }

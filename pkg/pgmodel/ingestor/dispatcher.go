@@ -95,7 +95,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		invertedLabelsCache:    labelsCache,
 		exemplarKeyPosCache:    eCache,
 		completeMetricCreation: make(chan struct{}, 1),
-		asyncAcks:              cfg.AsyncAcks,
+		asyncAcks:              cfg.MetricsAsyncAcks,
 		copierReadRequestCh:    copierReadRequestCh,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),

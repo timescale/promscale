@@ -1,8 +1,4 @@
-// This file and its contents are licensed under the Apache License 2.0.
-// Please see the included NOTICE for copyright information and
-// LICENSE for a copy of the license.
-
-package end_to_end_tests
+package testdata
 
 import (
 	"encoding/gob"
@@ -19,19 +15,21 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
+const TracesEntryCount = 5932 // All entries in the traces-dataset.sz file.
+
 var (
-	traceID1               = [16]byte{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
-	traceID2               = [16]byte{'0', '2', '3', '4', '0', '6', '7', '8', '9', '0', '0', '2', '3', '4', '0', '6'}
-	testSpanStartTime      = time.Date(2020, 2, 11, 20, 26, 12, 321000, time.UTC)
-	testSpanStartTimestamp = pcommon.NewTimestampFromTime(testSpanStartTime)
+	TraceID1               = [16]byte{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
+	TraceID2               = [16]byte{'0', '2', '3', '4', '0', '6', '7', '8', '9', '0', '0', '2', '3', '4', '0', '6'}
+	TestSpanStartTime      = time.Date(2020, 2, 11, 20, 26, 12, 321000, time.UTC)
+	TestSpanStartTimestamp = pcommon.NewTimestampFromTime(TestSpanStartTime)
 
-	testSpanEventTime      = time.Date(2020, 2, 11, 20, 26, 13, 123000, time.UTC)
-	testSpanEventTimestamp = pcommon.NewTimestampFromTime(testSpanEventTime)
+	TestSpanEventTime      = time.Date(2020, 2, 11, 20, 26, 13, 123000, time.UTC)
+	TestSpanEventTimestamp = pcommon.NewTimestampFromTime(TestSpanEventTime)
 
-	testSpanEndTime      = time.Date(2020, 2, 11, 20, 26, 13, 789000, time.UTC)
-	testSpanEndTimestamp = pcommon.NewTimestampFromTime(testSpanEndTime)
+	TestSpanEndTime      = time.Date(2020, 2, 11, 20, 26, 13, 789000, time.UTC)
+	TestSpanEndTimestamp = pcommon.NewTimestampFromTime(TestSpanEndTime)
 
-	service0 = "service-name-0"
+	Service0 = "service-name-0"
 
 	spanAttributes = pcommon.NewMapFromRaw(
 		map[string]interface{}{
@@ -46,14 +44,14 @@ var (
 	spanLinkAttributes  = pcommon.NewMapFromRaw(map[string]interface{}{"span-link-attr": "span-link-attr-val"})
 )
 
-func getTraceId(bSlice [16]byte) string {
+func GetTraceId(bSlice [16]byte) string {
 	return hex.EncodeToString(bSlice[:])
 }
 
 // generateBrokenTestTraces switches start and end times for every span to check if
 // we handle this broken situation correctly and reverse the times while ingesting.
-func generateBrokenTestTraces() ptrace.Traces {
-	data := generateTestTrace()
+func GenerateBrokenTestTraces() ptrace.Traces {
+	data := GenerateTestTrace()
 	startTime := data.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).StartTimestamp()
 	endTime := data.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).EndTimestamp()
 
@@ -62,7 +60,7 @@ func generateBrokenTestTraces() ptrace.Traces {
 	return data
 }
 
-func generateTestTrace() ptrace.Traces {
+func GenerateTestTrace() ptrace.Traces {
 	rand.Seed(1)
 	spanCount := 4
 	td := ptrace.NewTraces()
@@ -90,8 +88,8 @@ func generateTestTrace() ptrace.Traces {
 	return td
 }
 
-func generateTestTraceManyRS() []ptrace.Traces {
-	traces := make([]ptrace.Traces, 5)
+func GenerateTestTraces(count int) []ptrace.Traces {
+	traces := make([]ptrace.Traces, count)
 	for traceIndex := 0; traceIndex < len(traces); traceIndex++ {
 		spanCount := 5
 		td := ptrace.NewTraces()
@@ -112,6 +110,10 @@ func generateTestTraceManyRS() []ptrace.Traces {
 		traces[traceIndex] = td
 	}
 	return traces
+}
+
+func GenerateTestTraceManyRS() []ptrace.Traces {
+	return GenerateTestTraces(100)
 }
 
 func initInstLib(dest ptrace.ScopeSpans, index int) {
@@ -149,28 +151,31 @@ func initSpanLinkAttributes(dest pcommon.Map) {
 }
 
 func generateRandSpanID() (result [8]byte) {
-	rand.Read(result[:])
+	_, err := rand.Read(result[:]) //#nosec
+	if err != nil {
+		panic("failed trying to generate random spanID")
+	}
 	return result
 }
 
 func fillSpanOne(span ptrace.Span) {
-	span.SetTraceID(pcommon.NewTraceID(traceID1))
+	span.SetTraceID(pcommon.NewTraceID(TraceID1))
 	span.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
 	span.SetName("operationA")
-	span.SetStartTimestamp(testSpanStartTimestamp)
-	span.SetEndTimestamp(testSpanEndTimestamp)
+	span.SetStartTimestamp(TestSpanStartTimestamp)
+	span.SetEndTimestamp(TestSpanEndTimestamp)
 	span.SetDroppedAttributesCount(1)
 	span.SetTraceState("span-trace-state1")
 	span.SetKind(ptrace.SpanKindClient)
 	initSpanAttributes(span.Attributes())
 	evs := span.Events()
 	ev0 := evs.AppendEmpty()
-	ev0.SetTimestamp(testSpanEventTimestamp)
+	ev0.SetTimestamp(TestSpanEventTimestamp)
 	ev0.SetName("event-with-attr")
 	initSpanEventAttributes(ev0.Attributes())
 	ev0.SetDroppedAttributesCount(2)
 	ev1 := evs.AppendEmpty()
-	ev1.SetTimestamp(testSpanEventTimestamp)
+	ev1.SetTimestamp(TestSpanEventTimestamp)
 	ev1.SetName("event")
 	ev1.SetDroppedAttributesCount(2)
 	span.SetDroppedEventsCount(1)
@@ -180,11 +185,11 @@ func fillSpanOne(span ptrace.Span) {
 }
 
 func fillSpanTwo(span ptrace.Span, spanID pcommon.SpanID) {
-	span.SetTraceID(pcommon.NewTraceID(traceID2))
+	span.SetTraceID(pcommon.NewTraceID(TraceID2))
 	span.SetSpanID(spanID)
 	span.SetName("operationB")
-	span.SetStartTimestamp(testSpanStartTimestamp)
-	span.SetEndTimestamp(testSpanEndTimestamp)
+	span.SetStartTimestamp(TestSpanStartTimestamp)
+	span.SetEndTimestamp(TestSpanEndTimestamp)
 	span.SetTraceState("span-trace-state2")
 	initSpanAttributes(span.Attributes())
 	link0 := span.Links().AppendEmpty()
@@ -202,23 +207,23 @@ func fillSpanTwo(span ptrace.Span, spanID pcommon.SpanID) {
 }
 
 func fillSpanThree(span ptrace.Span, parentSpanID pcommon.SpanID) {
-	span.SetTraceID(pcommon.NewTraceID(traceID2))
+	span.SetTraceID(pcommon.NewTraceID(TraceID2))
 	span.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
 	span.SetParentSpanID(parentSpanID)
 	span.SetName("operationC")
-	span.SetStartTimestamp(testSpanStartTimestamp)
-	span.SetEndTimestamp(testSpanEndTimestamp)
+	span.SetStartTimestamp(TestSpanStartTimestamp)
+	span.SetEndTimestamp(TestSpanEndTimestamp)
 }
 
 // deep copy the traces since we mutate them.
-func copyTraces(traces ptrace.Traces) ptrace.Traces {
+func CopyTraces(traces ptrace.Traces) ptrace.Traces {
 	return traces.Clone()
 }
 
 func readTraces(t testing.TB, count int) []ptrace.Traces {
 	// Clamp to max.
-	if count > tracesEntryCount {
-		count = tracesEntryCount
+	if count > TracesEntryCount {
+		count = TracesEntryCount
 	}
 
 	// Dataset was generated from traces which where generated by the
@@ -228,15 +233,21 @@ func readTraces(t testing.TB, count int) []ptrace.Traces {
 	// Data is serialized from OTEL model ptrace.Traces structs
 	// using a protobuf marshaller, encoded into byte slices using gob
 	// std lib encoder and compressed using snappy in streaming format.
+	// since file is hosted on another repo to fetch it run
+	// `make pkg/tests/testdata/traces-dataset.sz``
 	f, err := os.Open("../testdata/traces-dataset.sz")
 	if err != nil {
 		if os.IsNotExist(err) {
-			t.Skip("missing tracing dataset file, skipping test...\n to fetch the file try running `git lfs checkout`")
+			t.Skip("missing tracing dataset file, skipping test...\n to fetch the file try running `make pkg/tests/testdata/traces-dataset.sz`")
 		}
 		panic(err)
 	}
 
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Logf("error closing traces test file: %v", err)
+		}
+	}()
 	gReader := gob.NewDecoder(snappy.NewReader(f))
 
 	var (
@@ -267,10 +278,14 @@ func readTraces(t testing.TB, count int) []ptrace.Traces {
 	return result
 }
 
-func generateAllTraces(t testing.TB) []ptrace.Traces {
-	return readTraces(t, tracesEntryCount)
+func LoadAllTraces(t testing.TB) []ptrace.Traces {
+	return readTraces(t, TracesEntryCount)
 }
 
-func generateSmallTraces(t testing.TB) []ptrace.Traces {
+func LoadTraces(t testing.TB, count int) []ptrace.Traces {
+	return readTraces(t, count)
+}
+
+func LoadSmallTraces(t testing.TB) []ptrace.Traces {
 	return readTraces(t, 20)
 }

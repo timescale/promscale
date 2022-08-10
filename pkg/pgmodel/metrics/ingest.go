@@ -175,6 +175,30 @@ var (
 		},
 		[]string{"type", "kind"},
 	)
+	IngestorBatchFlushTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "batch_flush_total",
+			Help:      "Number of batch flushes by reason (size or timeout).",
+		}, []string{"type", "reason"},
+	)
+	IngestorPendingBatches = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "pending_batches",
+			Help:      "Number of batches waiting to be written",
+		}, []string{"type"},
+	)
+	IngestorRequestsQueued = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "requests_queued",
+			Help:      "Number of active user requests in queue.",
+		}, []string{"type", "queue_idx"},
+	)
 )
 
 func init() {
@@ -198,6 +222,9 @@ func init() {
 		IngestorItemsReceived,
 		IngestorRequests,
 		InsertBatchSize,
+		IngestorBatchFlushTotal,
+		IngestorPendingBatches,
+		IngestorRequestsQueued,
 	)
 }
 
