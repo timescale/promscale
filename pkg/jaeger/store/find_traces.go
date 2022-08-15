@@ -16,7 +16,15 @@ import (
 )
 
 func findTraces(ctx context.Context, builder *Builder, conn pgxconn.PgxConn, q *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
-	query, params := builder.findTracesQuery(q)
+	tInfo, err := FindTagInfo(ctx, q, conn)
+	if err != nil {
+		return nil, fmt.Errorf("querying trace tags error: %w", err)
+	}
+	if tInfo == nil {
+		//tags cannot be matched
+		return []*model.Trace{}, nil
+	}
+	query, params := builder.findTracesQuery(q, tInfo)
 	rows, err := conn.Query(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("querying traces error: %w query:\n%s", err, query)

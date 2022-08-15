@@ -163,6 +163,10 @@ func (p *Store) GetDependencies(ctx context.Context, endTs time.Time, lookback t
 	return res, nil
 }
 
+func (p *Store) GetBuilder() *Builder {
+	return p.builder
+}
+
 func logError(err error) error {
 	if err != nil {
 		log.Error("msg", "Error in jaeger query GRPC response", "err", err)
