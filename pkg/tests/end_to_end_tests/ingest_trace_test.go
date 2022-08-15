@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/spyzhov/ajson"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
@@ -79,7 +80,63 @@ func TestQueryTraces(t *testing.T) {
 		getOperationsTest(t, q)
 		findTraceTest(t, q)
 		getDependenciesTest(t, q)
+		findTracePlanTest(t, q, db)
 	})
+}
+
+func findTracePlanTest(t testing.TB, q *store.Store, db *pgxpool.Pool) {
+	c, err := db.Acquire(context.Background())
+	require.NoError(t, err)
+	defer c.Release()
+
+	request := &spanstore.TraceQueryParameters{
+		Tags: map[string]string{
+			"span-attr": "span-attr-val",
+		},
+		NumTraces: 2,
+	}
+	tInfo, err := store.FindTagInfo(context.Background(), request, pgxconn.NewPgxConn(db))
+	require.NoError(t, err)
+	qry, params := q.GetBuilder().BuildTraceIDSubquery(request, tInfo)
+
+	//testing that specific query plans are /possible/ not executed due to planner statistics
+	_, err = c.Exec(context.Background(), "SET enable_seqscan=0")
+	require.NoError(t, err)
+	_, err = c.Exec(context.Background(), "SET enable_indexscan=0")
+	require.NoError(t, err)
+	res := ""
+	err = c.QueryRow(context.Background(), "EXPLAIN(ANALYZE, VERBOSE, FORMAT JSON) "+qry, params...).Scan(&res)
+	require.NoError(t, err)
+
+	//span tags use index
+	match, err := ajson.JSONPath([]byte(res), `$..Plans[?(@."Index Cond" =~ '\\(s.span_tags\\)::jsonb @> ANY \\(.*\\)')]`)
+	require.NoError(t, err)
+	require.NotEmpty(t, match)
+
+	//qry event tags now
+	request = &spanstore.TraceQueryParameters{
+		Tags: map[string]string{
+			"span-event-attr": "span-event-attr-val",
+		},
+		NumTraces: 2,
+	}
+	tInfo, err = store.FindTagInfo(context.Background(), request, pgxconn.NewPgxConn(db))
+	require.NoError(t, err)
+	qry, params = q.GetBuilder().BuildTraceIDSubquery(request, tInfo)
+	err = c.QueryRow(context.Background(), "EXPLAIN(ANALYZE, VERBOSE, FORMAT JSON) "+qry, params...).Scan(&res)
+	require.NoError(t, err)
+
+	//event tags use index
+	match, err = ajson.JSONPath([]byte(res), `$..Plans[?(@."Index Cond" =~ '\\(e.tags\\)::jsonb @> ANY \\(.*\\)')]`)
+	require.NoError(t, err)
+	require.NotEmpty(t, match)
+
+	/*rows, err := c.Query(context.Background(), "EXPLAIN (ANALYZE, VERBOSE) "+qry, params...)
+	require.NoError(t, err)
+	for rows.Next() {
+		rows.Scan(&res)
+		fmt.Println(res)
+	}*/
 }
 
 func getOperationsTest(t testing.TB, q *store.Store) {
@@ -164,6 +221,18 @@ func findTraceTest(t testing.TB, q *store.Store) {
 			request: &spanstore.TraceQueryParameters{
 				Tags: map[string]string{
 					"event": "event",
+				},
+			},
+			expectedResponseCount: 1,
+		},
+		{
+			name: "find by both span and event attr",
+			request: &spanstore.TraceQueryParameters{
+				ServiceName:   "service-name-0",
+				OperationName: "operationA",
+				Tags: map[string]string{
+					"span-event-attr": "span-event-attr-val",
+					"span-attr":       "span-attr-val",
 				},
 			},
 			expectedResponseCount: 1,

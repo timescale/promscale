@@ -6,16 +6,12 @@ package store
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/grafana/regexp"
 	"github.com/jackc/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
-	"go.opentelemetry.io/collector/pdata/ptrace"
-	semconv "go.opentelemetry.io/collector/semconv/v1.6.1"
 )
 
 const (
@@ -88,9 +84,9 @@ const (
 			s.trace_id,
 			max(start_time) as start_time_max
 		FROM _ps_trace.span s
-		LEFT JOIN _ps_trace.event e ON(s.trace_id = e.trace_id AND s.span_id = e.span_id)
+		%[2]s
 		WHERE
-			%[2]s
+			%[3]s
 		GROUP BY s.trace_id
 	) as trace_sub
 	ORDER BY trace_sub.start_time_max DESC
@@ -120,8 +116,6 @@ const (
 	TagW3CTraceState = "w3c.tracestate"
 	TagEventName     = "event"
 )
-
-var digitCheck = regexp.MustCompile(`^\d*\.?\d+$`) // Ints or Floats.
 
 type Builder struct {
 	cfg *Config
@@ -155,15 +149,15 @@ func (b *Builder) buildCompleteTraceQuery(traceIDClause string, timeLowRef strin
 	)
 }
 
-func (b *Builder) findTracesQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
-	subquery, params := b.buildTraceIDSubquery(q)
+func (b *Builder) findTracesQuery(q *spanstore.TraceQueryParameters, tInfo *tagsInfo) (string, []interface{}) {
+	subquery, params := b.BuildTraceIDSubquery(q, tInfo)
 	traceIDClause := "s.trace_id = trace_ids.trace_id"
 	completeTraceSQL := b.buildCompleteTraceQuery(traceIDClause, "trace_ids.time_low", "trace_ids.time_high")
 	return fmt.Sprintf(findTraceSQLFormat, subquery, completeTraceSQL), params
 }
 
-func (b *Builder) findTraceIDsQuery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
-	return b.buildTraceIDSubquery(q)
+func (b *Builder) findTraceIDsQuery(q *spanstore.TraceQueryParameters, tInfo *tagsInfo) (string, []interface{}) {
+	return b.BuildTraceIDSubquery(q, tInfo)
 }
 
 func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, error) {
@@ -183,11 +177,8 @@ func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, e
 	return b.buildCompleteTraceQuery(traceIDClause, "", ""), params, nil
 }
 
-func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (string, []interface{}) {
-	clauses := make([]string, 0, 15)
-	params := make([]interface{}, 0, 15)
-
-	operation_clauses := make([]string, 0, 2)
+func (b *Builder) buildOperationSubquery(q *spanstore.TraceQueryParameters, tInfo *tagsInfo, params []interface{}) (string, []interface{}) {
+	operationClauses := tInfo.operationClauses
 	if len(q.ServiceName) > 0 {
 		params = append(params, q.ServiceName)
 		qual := fmt.Sprintf(`
@@ -198,94 +189,92 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 			AND key_id = 1
 			AND _prom_ext.jsonb_digest(value) = _prom_ext.jsonb_digest(to_jsonb($%d::text))
 		)`, len(params))
-		operation_clauses = append(operation_clauses, qual)
+		operationClauses = append(operationClauses, qual)
 	}
 	if len(q.OperationName) > 0 {
 		params = append(params, q.OperationName)
 		qual := fmt.Sprintf(`span_name = $%d`, len(params))
-		operation_clauses = append(operation_clauses, qual)
+		operationClauses = append(operationClauses, qual)
 	}
 
-	if len(q.Tags) > 0 {
-		for k, v := range q.Tags {
-			switch k {
-			case TagError:
-				var sc ptrace.StatusCode
-				switch v {
-				case "true":
-					sc = ptrace.StatusCodeError
-				case "false":
-					sc = ptrace.StatusCodeUnset
-				default:
-					// Ignore tag if we don't match boolean.
-					continue
-				}
-				params = append(params, statusCodeToInternal(sc))
-				qual := fmt.Sprintf(`s.status_code = $%d`, len(params))
-				clauses = append(clauses, qual)
-			case TagHostname:
-				// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/a13030ca6208fa7d4477f0805f3b95e271f32b24/pkg/translator/jaeger/jaegerproto_to_traces.go#L109
-				params = append(params, semconv.AttributeHostName, "\""+v+"\"")
-				qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
-				clauses = append(clauses, qual)
-			case TagJaegerVersion:
-				// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/a13030ca6208fa7d4477f0805f3b95e271f32b24/pkg/translator/jaeger/jaegerproto_to_traces.go#L119
-				params = append(params, "opencensus.exporterversion", "\"Jaeger-"+v+"\"")
-				qual := fmt.Sprintf(`_ps_trace.tag_map_denormalize(s.span_tags)->$%d = $%d`, len(params)-1, len(params))
-				clauses = append(clauses, qual)
-			case TagSpanKind:
-				params = append(params, jSpanKindToInternal(v))
-				qual := fmt.Sprintf("span_kind = $%d", len(params))
-				operation_clauses = append(operation_clauses, qual)
-			case TagW3CTraceState:
-				params = append(params, v)
-				qual := fmt.Sprintf(`s.trace_state = $%d`, len(params))
-				clauses = append(clauses, qual)
-			case TagEventName:
-				params = append(params, v)
-				qual := fmt.Sprintf(`e.name = $%d`, len(params))
-				clauses = append(clauses, qual)
-			default:
-				//TODO make sure this is optimized correctly
-				val := "\"" + v + "\""
-				if _, err := strconv.ParseBool(v); err == nil || digitCheck.MatchString(v) {
-					// Do not add double quotes if value is boolean or numeric.
-					val = v
-				}
-				params = append(params, k, val)
-				// Note: We do not need to check resource tags in above cases, since they
-				// come from Jaeger conversion that are specific to span_tags.
-				// Tags are spread into _ps_trace.span and _ps_trace.event tables.
-				qual := fmt.Sprintf(
-					`(_ps_trace.tag_map_denormalize(s.span_tags)->$%[1]d = $%[2]d OR _ps_trace.tag_map_denormalize(s.resource_tags)->$%[1]d = $%[2]d OR _ps_trace.tag_map_denormalize(e.tags)->$%[1]d = $%[2]d)`,
-					len(params)-1, len(params))
-				clauses = append(clauses, qual)
-			}
-		}
-	}
-
-	if len(operation_clauses) > 0 {
-		qual := fmt.Sprintf(`
-		   s.operation_id IN (
+	if len(operationClauses) > 0 {
+		subquery := fmt.Sprintf(`
 			   SELECT
 			     id
-			   FROM _ps_trace.operation
+			   FROM _ps_trace.operation op
 			   WHERE
 			      %s
+		`, strings.Join(operationClauses, " AND "))
+		return subquery, params
+	}
+	return "", params
+}
+
+func (b *Builder) buildTagClauses(tInfo *tagsInfo, params []interface{}) (string, []interface{}, bool) {
+	clauses := make([]string, 0, len(tInfo.generalTags))
+	hasEventTags := false
+	for _, tag := range tInfo.generalTags {
+		tagClauses := make([]string, 0, 3)
+		params = append(params, tag.jsonbPairArray)
+		if tag.isSpan {
+			tagClauses = append(tagClauses, fmt.Sprintf("(s.span_tags @> ANY($%d::jsonb[]))", len(params)))
+		}
+		if tag.isResource {
+			tagClauses = append(tagClauses, fmt.Sprintf("(s.resource_tags @> ANY($%d::jsonb[]))", len(params)))
+		}
+		if tag.isEvent {
+			hasEventTags = true
+			tagClauses = append(tagClauses, fmt.Sprintf("(e.tags @> ANY($%d::jsonb[]))", len(params)))
+		}
+		clauses = append(clauses, "("+strings.Join(tagClauses, " OR ")+")")
+	}
+	return "(" + strings.Join(clauses, " AND ") + ")", params, hasEventTags
+
+}
+
+func (b *Builder) BuildTraceIDSubquery(q *spanstore.TraceQueryParameters, tInfo *tagsInfo) (string, []interface{}) {
+	clauses := make([]string, 0, 15)
+	params := tInfo.params
+
+	clauses = append(clauses, tInfo.spanClauses...)
+	clauses = append(clauses, tInfo.eventClauses...)
+	needEventTable := len(tInfo.eventClauses) > 0
+
+	operationSubquery, params := b.buildOperationSubquery(q, tInfo, params)
+	if len(operationSubquery) > 0 {
+		qual := fmt.Sprintf(`
+		   s.operation_id IN (
+			      %s
 		   )
-		`, strings.Join(operation_clauses, " AND "))
+		`, operationSubquery)
 		clauses = append(clauses, qual)
 	}
 
+	if len(tInfo.generalTags) > 0 {
+		var tagClause string
+		var tagNeedsEventTable bool
+		tagClause, params, tagNeedsEventTable = b.buildTagClauses(tInfo, params)
+		clauses = append(clauses, tagClause)
+		needEventTable = needEventTable || tagNeedsEventTable
+	}
 	//todo check the inclusive semantics here
 	var defaultTime time.Time
 	if q.StartTimeMin != defaultTime {
 		params = append(params, q.StartTimeMin)
 		clauses = append(clauses, fmt.Sprintf(`s.start_time >= $%d`, len(params)))
+
+		if needEventTable {
+			params = append(params, q.StartTimeMin.Add(-b.cfg.MaxTraceDuration))
+			clauses = append(clauses, fmt.Sprintf(`e.time >= $%d`, len(params)))
+		}
 	}
 	if q.StartTimeMax != defaultTime {
 		params = append(params, q.StartTimeMax)
 		clauses = append(clauses, fmt.Sprintf(`s.start_time <= $%d`, len(params)))
+		if needEventTable {
+			params = append(params, q.StartTimeMax.Add(b.cfg.MaxTraceDuration))
+			clauses = append(clauses, fmt.Sprintf(`e.time <= $%d`, len(params)))
+		}
 	}
 
 	var defaultDuration time.Duration
@@ -315,10 +304,15 @@ func (b *Builder) buildTraceIDSubquery(q *spanstore.TraceQueryParameters) (strin
 	} else {
 		clauseString = "TRUE"
 	}
+
+	eventJoin := ""
+	if needEventTable {
+		eventJoin = "INNER JOIN _ps_trace.event e ON(s.trace_id = e.trace_id AND s.span_id = e.span_id)"
+	}
 	params = append(params, b.cfg.MaxTraceDuration)
 	//Note: the parameter number for b.cfg.MaxTraceDuration is used in two places ($%[1]d in subqueryFormat)
 	//to both add and subtract from start_time_max.
-	query := fmt.Sprintf(subqueryFormat, len(params), clauseString)
+	query := fmt.Sprintf(subqueryFormat, len(params), eventJoin, clauseString)
 
 	if q.NumTraces != 0 {
 		query += fmt.Sprintf(" LIMIT %d", q.NumTraces)
