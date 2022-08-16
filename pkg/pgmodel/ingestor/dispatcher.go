@@ -38,6 +38,7 @@ type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
 	scache                 cache.SeriesCache
+	invertedLabelsCache    *cache.InvertedLabelsCache
 	exemplarKeyPosCache    cache.PositionCache
 	batchers               sync.Map
 	completeMetricCreation chan struct{}
@@ -76,7 +77,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 	}
 
 	labelArrayOID := model.GetCustomTypeOID(model.LabelArray)
-	labelsCache, err := cache.NewInvertedLablesCache(cfg.InvertedLabelsCacheSize)
+	labelsCache, err := cache.NewInvertedLabelsCache(cfg.InvertedLabelsCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +92,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		conn:                   conn,
 		metricTableNames:       mCache,
 		scache:                 scache,
+		invertedLabelsCache:    labelsCache,
 		exemplarKeyPosCache:    eCache,
 		completeMetricCreation: make(chan struct{}, 1),
 		asyncAcks:              cfg.AsyncAcks,
@@ -156,10 +158,14 @@ func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (mod
 	if err != nil {
 		// Trash the cache just in case an epoch change occurred, seems safer
 		p.scache.Reset()
+		// Also trash the inverted labels cache, which can also be invalidated when the series cache is
+		p.invertedLabelsCache.Reset()
 		return model.InvalidSeriesEpoch, err
 	}
 	if existingEpoch == model.InvalidSeriesEpoch || dbEpoch != existingEpoch {
 		p.scache.Reset()
+		// If the series cache needs to be invalidated, so does the inverted labels cache
+		p.invertedLabelsCache.Reset()
 	}
 	return dbEpoch, nil
 }

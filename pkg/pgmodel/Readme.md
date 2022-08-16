@@ -15,7 +15,7 @@ TODO (@ante do you want to write this?)
 
 ## Write Path
 
-A `WriteRequest` is made out of a `[]TimeSeries` each of which contains a set of lables, each a `{string, string}`, and a set of samples, each a `{Timestamp, Value}`. Logically, the write path deals with this write request multiple stages. In Go notation, this can be thought of as follows
+A `WriteRequest` is made out of a `[]TimeSeries` each of which contains a set of labels, each a `{string, string}`, and a set of samples, each a `{Timestamp, Value}`. Logically, the write path deals with this write request multiple stages. In Go notation, this can be thought of as follows
 
 ```go
 type WriteRequest = []TimeSeries
