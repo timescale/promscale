@@ -78,6 +78,7 @@ spec:
           configMap:
             name: {{ include "promscale.fullname" . }}
       serviceAccountName: {{ include "promscale.fullname" . }}
+      automountServiceAccountToken: false
       {{- with .Values.nodeSelector }}
       nodeSelector:
       {{ toYaml . | indent 2 }}
