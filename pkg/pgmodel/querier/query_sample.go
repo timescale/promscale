@@ -73,13 +73,14 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 // successfully applied, the new top node is returned together with the metric
 // rows. For more information about top nodes, see `engine.populateSeries`.
 func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]sampleRow, parser.Node, error) {
-	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata)
+	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata, metadata.timeFilter.column)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	rows, err := tools.conn.Query(context.Background(), sqlQuery, values...)
 	if err != nil {
+		retrySuccess := false
 		if e, ok := err.(*pgconn.PgError); ok {
 			switch e.Code {
 			case pgerrcode.UndefinedTable:
@@ -89,11 +90,23 @@ func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]samp
 			case pgerrcode.UndefinedColumn:
 				// If we are getting undefined column error, it means the column we are trying to query
 				// does not exist in the metric table so we return empty results.
-				// Empty result is more consistent and in-line with PromQL assumption of a missing series based on matchers.
-				return nil, nil, nil
+				// This can happen when a downsampled Promscale cagg is queried without a __column__ label. Hence, let's try
+				// one more time, but considering 'avg' as column, in case its present.
+				sqlQuery, values, topNode, tsSeries, err = buildSingleMetricSamplesQuery(metadata, tools.defaultCaggsColumn)
+				if err != nil {
+					return nil, nil, err
+				}
+				rows, err = tools.conn.Query(context.Background(), sqlQuery, values...)
+				if err != nil {
+					// Reply with an empty result.
+					return nil, nil, nil
+				}
+				retrySuccess = true
 			}
 		}
-		return nil, nil, err
+		if !retrySuccess {
+			return nil, nil, err
+		}
 	}
 	defer rows.Close()
 

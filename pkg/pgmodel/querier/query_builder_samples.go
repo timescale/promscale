@@ -103,7 +103,7 @@ const (
 
 // buildSingleMetricSamplesQuery builds a SQL query which fetches the data for
 // one metric.
-func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{}, parser.Node, TimestampSeries, error) {
+func buildSingleMetricSamplesQuery(metadata *evalMetadata, withColumn string) (string, []interface{}, parser.Node, TimestampSeries, error) {
 	// The basic structure of the SQL query which this function produces is:
 	//		SELECT
 	//		  series.labels
@@ -222,7 +222,7 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		strings.Join(selectorClauses, ", "),
 		strings.Join(selectors, ", "),
 		orderByClause,
-		pgx.Identifier{filter.column}.Sanitize(),
+		pgx.Identifier{withColumn}.Sanitize(),
 	)
 
 	return finalSQL, values, node, qf.tsSeries, nil

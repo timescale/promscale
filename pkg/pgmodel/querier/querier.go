@@ -29,17 +29,18 @@ func NewQuerier(
 	labelsReader lreader.LabelsReader,
 	exemplarCache cache.PositionCache,
 	rAuth tenancy.ReadAuthorizer,
+	defaultCaggsColumn string,
 ) Querier {
-	querier := &pgxQuerier{
+	return &pgxQuerier{
 		tools: &queryTools{
-			conn:             conn,
-			labelsReader:     labelsReader,
-			metricTableNames: metricCache,
-			exemplarPosCache: exemplarCache,
-			rAuth:            rAuth,
+			conn:               conn,
+			labelsReader:       labelsReader,
+			metricTableNames:   metricCache,
+			exemplarPosCache:   exemplarCache,
+			rAuth:              rAuth,
+			defaultCaggsColumn: defaultCaggsColumn,
 		},
 	}
-	return querier
 }
 
 func (q *pgxQuerier) RemoteReadQuerier() RemoteReadQuerier {

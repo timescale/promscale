@@ -15,11 +15,12 @@ import (
 )
 
 type queryTools struct {
-	conn             pgxconn.PgxConn
-	metricTableNames cache.MetricCache
-	exemplarPosCache cache.PositionCache
-	labelsReader     lreader.LabelsReader
-	rAuth            tenancy.ReadAuthorizer
+	conn               pgxconn.PgxConn
+	metricTableNames   cache.MetricCache
+	exemplarPosCache   cache.PositionCache
+	labelsReader       lreader.LabelsReader
+	rAuth              tenancy.ReadAuthorizer
+	defaultCaggsColumn string
 }
 
 // getMetricTableName gets the table name for a specific metric from internal

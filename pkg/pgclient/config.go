@@ -40,6 +40,7 @@ type Config struct {
 	UsesHA                  bool
 	DbUri                   string
 	EnableStatementsCache   bool
+	DefaultCaggsColumn      string
 }
 
 const (
@@ -93,6 +94,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.BoolVar(&cfg.EnableStatementsCache, "db.statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
 		"Disable if using PgBouncer")
 	fs.BoolVar(&cfg.AsyncAcks, "metrics.async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
+	fs.StringVar(&cfg.DefaultCaggsColumn, "metrics.promql.default-caggs-column", "avg", "Default column to consider while querying CAgg metrics in absence of __column__ label in PromQL query.")
 	return cfg
 }
 
