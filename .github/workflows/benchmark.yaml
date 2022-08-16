@@ -6,7 +6,6 @@ on:
     types: [opened, synchronize, reopened, labeled]
 
 env:
-  PROMSCALE_LOGGING: false
   SKIP_PROMQL_BENCHMARKS: true
   golang-version: 1.18.4
 
@@ -25,7 +24,7 @@ jobs:
         id: go
 
       - name: Benchmark current PR
-        run: go test -bench=. -run=^$ -benchmem -cpu=1 -count=10 -timeout=6h ./... | tee current.txt
+        run: go test -bench=. -run=^$ -benchmem -cpu=1 -count=10 -timeout=6h ./... -log-level error | tee current.txt
 
       - name: Upload results
         uses: actions/upload-artifact@v3
@@ -39,7 +38,7 @@ jobs:
           ref: 'master'
 
       - name: Benchmark Master
-        run: go test -bench=. -run=^$ -benchmem -cpu=1 -count=10 -timeout=6h ./... | tee master.txt
+        run: go test -bench=. -run=^$ -benchmem -cpu=1 -count=10 -timeout=6h ./... -log-level error | tee master.txt
 
       - name: Download results of "Benchmark current PR"
         uses: actions/download-artifact@v3

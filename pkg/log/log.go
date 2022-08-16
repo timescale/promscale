@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -44,24 +43,10 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	return cfg
 }
 
-func shouldLog() bool {
-	value := os.Getenv("PROMSCALE_LOGGING")
-	enabled, err := strconv.ParseBool(value)
-	if err != nil {
-		// If we cannot parse, then assume to continue logging.
-		return true
-	}
-	return enabled
-}
-
 // InitDefault is used to start the logger with sane defaults before we can configure it.
 // It's useful in instances where we want to log stuff before the configuration
 // has been successfully parsed. Calling Init function later on overrides this.
 func InitDefault() {
-	if !shouldLog() {
-		logger = log.NewNopLogger()
-		return
-	}
 	l := level.NewFilter(
 		log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
 		level.AllowInfo(),
@@ -72,10 +57,6 @@ func InitDefault() {
 // Init starts logging given the configuration. By default, it uses logfmt format
 // and minimum logging level.
 func Init(cfg Config) error {
-	if !shouldLog() {
-		logger = log.NewNopLogger()
-		return nil
-	}
 	var l log.Logger
 	switch cfg.Format {
 	case "logfmt", "":
