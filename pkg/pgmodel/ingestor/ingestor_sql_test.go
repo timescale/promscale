@@ -276,7 +276,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
-			lCache, _ := cache.NewInvertedLablesCache(10)
+			lCache, _ := cache.NewInvertedLabelsCache(10)
 			sw := NewSeriesWriter(mock, 0, lCache)
 
 			lsi := make([]model.Insertable, 0)
@@ -394,6 +394,21 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{Sql: "COMMIT;"},
 		{Sql: "BEGIN;"},
 		{
+			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
+			Args: []interface{}{
+				"metric_1",
+				tableName,
+				[]string{"__name__", "name_1", "name_1"},
+				[]string{"metric_1", "value_1", "value_2"},
+			},
+			Results: model.RowResults{
+				{[]int32{1, 2, 2}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_1"}, []string{"metric_1", "value_1", "value_2"}},
+			},
+			Err: error(nil),
+		},
+		{Sql: "COMMIT;"},
+		{Sql: "BEGIN;"},
+		{
 			Sql: seriesInsertSQL,
 			Args: []interface{}{
 				metricID,
@@ -419,11 +434,12 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	mock := model.NewSqlRecorder(sqlQueries, t)
 	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
-	lcache, _ := cache.NewInvertedLablesCache(10)
+	lcache, _ := cache.NewInvertedLabelsCache(10)
 	sw := NewSeriesWriter(mock, 0, lcache)
 	inserter := pgxDispatcher{
-		conn:   mock,
-		scache: scache,
+		conn:                mock,
+		scache:              scache,
+		invertedLabelsCache: lcache,
 	}
 
 	makeSamples := func(series []labels.Labels) []model.Insertable {
@@ -460,7 +476,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		}
 	}
 
-	// refreshing during the same epoch givesthe same IDs without checking the DB
+	// refreshing during the same epoch gives the same IDs without checking the DB
 	_, err = inserter.refreshSeriesEpoch(1)
 	require.NoError(t, err)
 

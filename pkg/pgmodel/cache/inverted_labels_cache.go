@@ -42,7 +42,7 @@ type InvertedLabelsCache struct {
 }
 
 // Cache is thread-safe
-func NewInvertedLablesCache(size uint64) (*InvertedLabelsCache, error) {
+func NewInvertedLabelsCache(size uint64) (*InvertedLabelsCache, error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("labels cache size must be > 0")
 	}
@@ -61,4 +61,8 @@ func (c *InvertedLabelsCache) GetLabelsId(key LabelKey) (LabelInfo, bool) {
 func (c *InvertedLabelsCache) Put(key LabelKey, val LabelInfo) bool {
 	_, added := c.cache.Insert(key, val, uint64(key.len())+uint64(val.len())+17)
 	return added
+}
+
+func (c *InvertedLabelsCache) Reset() {
+	c.cache.Reset()
 }

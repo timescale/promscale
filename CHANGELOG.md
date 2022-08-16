@@ -23,6 +23,7 @@ We use the following categories for changes:
 
 ### Fixed
 - Make Jaeger Event queryable using name and tags [#1553]
+- Reset inverted labels cache on epoch change [#1561]
 
 ## [0.13.0] - 2022-07-20
 
