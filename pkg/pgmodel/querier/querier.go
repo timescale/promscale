@@ -29,6 +29,7 @@ func NewQuerier(
 	labelsReader lreader.LabelsReader,
 	exemplarCache cache.PositionCache,
 	rAuth tenancy.ReadAuthorizer,
+	defaultCaggsSchema string,
 	defaultCaggsColumn string,
 ) Querier {
 	return &pgxQuerier{
@@ -39,6 +40,7 @@ func NewQuerier(
 			exemplarPosCache:   exemplarCache,
 			rAuth:              rAuth,
 			defaultCaggsColumn: defaultCaggsColumn,
+			defaultCaggsSchema: defaultCaggsSchema,
 		},
 	}
 }

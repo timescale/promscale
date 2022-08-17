@@ -204,7 +204,7 @@ func TestExemplarQueryingAPI(t *testing.T) {
 			pgxconn.NewPgxConn(db),
 			cache.NewMetricCache(cache.DefaultConfig),
 			labelsReader,
-			cache.NewExemplarLabelsPosCache(cache.DefaultConfig), nil)
+			cache.NewExemplarLabelsPosCache(cache.DefaultConfig), nil, "public", "avg")
 		queryable := query.NewQueryable(r, labelsReader)
 
 		// Query all exemplars corresponding to metric_2 histogram.

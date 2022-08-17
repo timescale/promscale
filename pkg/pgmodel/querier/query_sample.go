@@ -73,7 +73,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 // successfully applied, the new top node is returned together with the metric
 // rows. For more information about top nodes, see `engine.populateSeries`.
 func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]sampleRow, parser.Node, error) {
-	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata, metadata.timeFilter.column)
+	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata, metadata.timeFilter.schema, metadata.timeFilter.column)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -92,7 +92,7 @@ func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]samp
 				// does not exist in the metric table so we return empty results.
 				// This can happen when a downsampled Promscale cagg is queried without a __column__ label. Hence, let's try
 				// one more time, but considering 'avg' as column, in case its present.
-				sqlQuery, values, topNode, tsSeries, err = buildSingleMetricSamplesQuery(metadata, tools.defaultCaggsColumn)
+				sqlQuery, values, topNode, tsSeries, err = buildSingleMetricSamplesQuery(metadata, tools.defaultCaggsSchema, tools.defaultCaggsColumn)
 				if err != nil {
 					return nil, nil, err
 				}

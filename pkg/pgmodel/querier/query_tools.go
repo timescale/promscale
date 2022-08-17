@@ -21,6 +21,7 @@ type queryTools struct {
 	labelsReader       lreader.LabelsReader
 	rAuth              tenancy.ReadAuthorizer
 	defaultCaggsColumn string
+	defaultCaggsSchema string
 }
 
 // getMetricTableName gets the table name for a specific metric from internal

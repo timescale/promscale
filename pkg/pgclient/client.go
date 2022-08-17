@@ -209,7 +209,7 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	exemplarKeyPosCache := cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
 
 	labelsReader := lreader.NewLabelsReader(readerConn, labelsCache, mt.ReadAuthorizer())
-	dbQuerier := querier.NewQuerier(readerConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer(), cfg.DefaultCaggsColumn)
+	dbQuerier := querier.NewQuerier(readerConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer(), cfg.DefaultCaggsSchema, cfg.DefaultCaggsColumn)
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	dbIngestor := ingestor.DBInserter(ingestor.ReadOnlyIngestor{})

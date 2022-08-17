@@ -160,42 +160,15 @@ func TestContinuousAggDownsampling(t *testing.T) {
 	}
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ts := []prompb.TimeSeries{
-			{
-				// This series will be deleted along with it's label once the samples
-				// have been deleted from raw metric and cagg.
-				Labels: []prompb.Label{
-					{Name: pgmodel.MetricNameLabelName, Value: "metric_2"},
-					{Name: "name1", Value: "value1"},
-				},
-				Samples: []prompb.Sample{
-					//this will be dropped (notice the - 1000)
-					{Timestamp: startTime - 1000, Value: 0.1},
-				},
-			},
-		}
-
-		// Ingest test dataset.
-		ingestQueryTestDataset(db, t, append(generateLargeTimeseries(), ts...))
-
-		if _, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()"); err != nil {
-			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
-		}
-		if _, err := db.Exec(context.Background(), "CREATE SCHEMA cagg_schema"); err != nil {
-			t.Fatalf("unexpected error while creating view schema: %s", err)
-		}
-		if _, err := db.Exec(context.Background(),
-			`CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
+		ingestCaggsData(t, db,
+			`
+CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, value, max, min, avg)
 WITH (timescaledb.continuous) AS
   SELECT public.time_bucket('1hour', time), series_id, max(value) as value, max(value) as max, min(value) as min, avg(value) as avg
     FROM prom_data.metric_2
-    GROUP BY public.time_bucket('1hour', time), series_id`); err != nil {
-			t.Fatalf("unexpected error while creating metric view: %s", err)
-
-		}
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')"); err != nil {
-			t.Fatalf("unexpected error while registering metric view: %s", err)
-		}
+    GROUP BY public.time_bucket('1hour', time), series_id
+`,
+		)
 
 		// Getting a read-only connection to ensure read path is idempotent.
 		readOnly := testhelpers.GetReadOnlyConnection(t, *testDatabase)
@@ -212,7 +185,7 @@ WITH (timescaledb.continuous) AS
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
+		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, "irrelevant_schema", "irrelevant_column")
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, nil)
 		if err != nil {
@@ -328,6 +301,40 @@ WITH (timescaledb.continuous) AS
 			t.Errorf("unexpected series count: got %v, wanted 1", count)
 		}
 	})
+}
+
+func ingestCaggsData(t testing.TB, db *pgxpool.Pool, caggsQuery string) {
+	ts := []prompb.TimeSeries{
+		{
+			// This series will be deleted along with it's label once the samples
+			// have been deleted from raw metric and cagg.
+			Labels: []prompb.Label{
+				{Name: pgmodel.MetricNameLabelName, Value: "metric_2"},
+				{Name: "name1", Value: "value1"},
+			},
+			Samples: []prompb.Sample{
+				//this will be dropped (notice the - 1000)
+				{Timestamp: startTime, Value: 0.1},
+			},
+		},
+	}
+
+	// Ingest test dataset.
+	ingestQueryTestDataset(db, t, append(generateLargeTimeseries(), ts...))
+
+	if _, err := db.Exec(context.Background(), "CALL _prom_catalog.finalize_metric_creation()"); err != nil {
+		t.Fatalf("unexpected error while ingesting test dataset: %s", err)
+	}
+	if _, err := db.Exec(context.Background(), "CREATE SCHEMA cagg_schema"); err != nil {
+		t.Fatalf("unexpected error while creating view schema: %s", err)
+	}
+	if _, err := db.Exec(context.Background(), caggsQuery); err != nil {
+		t.Fatalf("unexpected error while creating metric view: %s", err)
+
+	}
+	if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')"); err != nil {
+		t.Fatalf("unexpected error while registering metric view: %s", err)
+	}
 }
 
 func TestContinuousAggDataRetention(t *testing.T) {
@@ -485,5 +492,57 @@ WITH (timescaledb.continuous) AS
 		_, err = db.Exec(context.Background(), "SELECT prom_api.reset_metric_retention_period('public', 'tw_1hour')")
 		require.NoError(t, err)
 		verifyRetentionPeriodWithSchema(t, db, "public", "tw_1hour", time.Hour*24*90)
+	})
+}
+
+func TestContinuousAggWithDefaultColumn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	if !*useTimescaleDB {
+		t.Skip("continuous aggregates need TimescaleDB support")
+	}
+	if *useMultinode {
+		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
+	}
+
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		ingestCaggsData(t, db,
+			`
+CREATE MATERIALIZED VIEW cagg_schema.cagg( time, series_id, max, min, avg)
+WITH (timescaledb.continuous) AS
+  SELECT public.time_bucket('1hour', time), series_id, max(value) as max, min(value) as min, avg(value) as avg
+    FROM prom_data.metric_2
+    GROUP BY public.time_bucket('1hour', time), series_id
+`,
+		)
+
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax(100)
+		dbConn := pgxconn.NewPgxConn(db)
+		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
+
+		execQuery := func(defaultSchema, defaultColumn, q string) promql.Vector {
+			r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, defaultSchema, defaultColumn)
+			queryable := query.NewQueryable(r, labelsReader)
+			queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, nil)
+			require.NoError(t, err)
+			qry, err := queryEngine.NewInstantQuery(queryable, nil, q, model.Time(startTime).Time())
+			require.NoError(t, err)
+			result := qry.Exec(context.Background())
+
+			vector, err := result.Vector()
+			require.NoError(t, err)
+			return vector
+		}
+
+		// Test with default-schema & default-column being non-existent.
+		vector := execQuery("non_existent", "non_existent", "cagg")
+		require.Equal(t, 0, len(vector))
+
+		// Test with expected default-schema & default-column.
+		vector = execQuery("cagg_schema", "avg", "cagg")
+		require.NotEqual(t, 0, len(vector))
+
 	})
 }
