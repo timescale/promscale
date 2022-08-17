@@ -140,6 +140,7 @@ spec:
           configMap:
             name: promscale
       serviceAccountName: promscale
+      automountServiceAccountToken: false
 ---
 # Source: promscale/templates/config.yaml
 apiVersion: v1
