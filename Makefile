@@ -53,12 +53,6 @@ go-lint:
 generate:
 	go generate ./...
 
-.PHONY: generate-helm
-generate-helm: deploy/helm-chart/templates/prometheus-rule.yaml
-
-deploy/helm-chart/templates/prometheus-rule.yaml:
-	./scripts/generate-helm-alerts.sh
-
 .PHONY: shellcheck
 shellcheck:
 	shellcheck -S warning -f gcc $(shell find . -type f -name "*.sh")

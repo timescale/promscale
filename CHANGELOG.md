@@ -21,6 +21,8 @@ We use the following categories for changes:
 
 ### Changed
 
+- Helm chart code was migrated to https://github.com/timescale/helm-charts [#1562]
+
 ### Fixed
 - Make Jaeger Event queryable using name and tags [#1553]
 
@@ -57,11 +59,11 @@ We use the following categories for changes:
 - Add `readinessProbe` in helm chart [#1266]
 - Set number of ingest copiers to the number of DB CPUs [#1387]
 - Ability to reload rules and alerting config [#1426]
-- Support arrays in trace attribute values [#1381] 
+- Support arrays in trace attribute values [#1381]
 - Support for glob in rule_files [#1443]
 
 ### Fixed
-- Trace query returns empty result when queried with 
+- Trace query returns empty result when queried with
   - Tags from process table in Jaeger UI [#1385]
   - Tags that have a numeric value, like `http.status_code=200` [#1385]
   - Tags that involve status code [#1384]
