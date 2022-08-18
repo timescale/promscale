@@ -77,22 +77,23 @@ variables
     fetched_series = {};
 begin
     (* 
-     * Under Read Commited each statement might see slightly different state.
-     * It is modelled by confining each statement to its own label/action.
+     * Under Read Committed each statement might see slightly different state.
+     * This is modelled by confining each statement to its own label/action.
      *)
     SelectEpoch:
         (* 
-         * Should use SELECT FOR SHARE when fetching epochs,
-         * to observe them at the exact same moment.
+         * No need to use SELECT FOR SHARE as current_epoch and delete_epoch
+         * are in the same row in the epoch table (and epoch table only has
+         * one row).
          *)
         fetched_cur_epoch := current_epoch;
         fetched_del_epoch := delete_epoch;
     SelectMarked:
-        (* SELECT id FROM _prom_catalog.series WHERE delete_at IS NOT NULL *)
+        (* SELECT id FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL *)
         fetched_series := MarkedSeries;
     ScrubCache:
         (* This needs to be under an RW mutex *)
-        with i \in Ingesters do 
+        with i \in Ingesters do
             if observed_epochs[i] <= fetched_del_epoch then
                 (* 
                  * Observed epoch is too far behind: some items in 
@@ -122,30 +123,50 @@ begin
                  * This spec should achieve an equivalent behaviour by
                  * passing through IngesterBegin multiple times in a row.
                  *)
-                with series \in SeriesId do 
+                with series \in SeriesId do
+                    (*
+                     * Note: It is slightly confusing that we're constructing
+                     * the cache with a series_id here. In reality, we don't
+                     * have a series_id yet, but this is a simplification.
+                     * What we want to model is that there is a separation
+                     * between series data, and series metadata.
+                     *)
                     new_series := { series };
                 end with;
             CacheLookupTransaction:
-                (* The cache RW mutex must be held during this transaction *)
+                (* The cache RW mutex must be held during this transaction
+                 * because:
+                 * - we can't advance locally_observed_epoch after we read
+                     new_series from the cache
+                 * - we can't update the cache without first getting the ids
+                     from the database
+                 *)
                 new_references := new_series;
                 new_series := new_series \ cached_series[self];
-                (* 
-                 * get_or_create_series_id calls ressurect_series_id 
+                (*
+                 * get_or_create_series_id calls resurrect_series_id
                  * which, in turn, uses UPDATE and will cause a transaction
                  * conflict with a simultaneous deletion attempt.
                  *)
                 series_metadata := [x \in new_series |-> NewEntry] @@ series_metadata;
                 (*
                  * The previous line is actually a DB transaction that could
-                 * be rolled back. We don't hadle it here for the sake of not
-                 * bloating this spec even more. It shuold be entirely safe to
+                 * be rolled back. We don't handle it here for the sake of not
+                 * bloating this spec even more. It should be entirely safe to
                  * wipe the cache clean if a rollback happens.
                  *)
                 cached_series[self] := cached_series[self] \union new_series;
                 locally_observed_epoch := observed_epochs[self];
             IngestTransaction:
                 (* this if is epoch_abort *)
-                if locally_observed_epoch <= delete_epoch then 
+                if locally_observed_epoch <= delete_epoch then
+                    (*
+                     * Note: in the actual implementation we will effectively
+                     * call ScrubCache, and retry ingesting the data.
+                     * For simplicity we do not explicitly do so here, but we
+                     * know that due to interleaving, ScrubCache can be
+                     * executed directly after this aborts.
+                     *)
                     skip;
                 else
                     series_referenced_from_data := series_referenced_from_data \union new_references;
@@ -167,12 +188,12 @@ variables
     locally_observed_epoch = 0; 
 begin
     (* 
-     * Under Read Commited each statement might see slightly different state.
-     * It is modelled by confining each statement to its own label/action.
+     * Under Read Committed each statement might see slightly different state.
+     * This is modelled by confining each statement to its own label/action.
      *)
     BgWorkerTxBegin:
         while now < MaxEpochs do
-            (* When a backgroud worker starts a transaction, sometimes some time has passed. *)
+            (* When a background worker starts a transaction, sometimes some time has passed. *)
             with dt \in 0..1 do
                 now := now + dt;
             end with;
@@ -226,9 +247,9 @@ begin
                     (* First COMMIT *)
                 ActuallyDeleteTx:
                     (*
-                     * DELETE ... RETURNING id statment. Otherwise
-                     * under Read Commited it could stomp over a client-driven
-                     * ressurect-UPDATE.
+                     * DELETE ... RETURNING id statement. Otherwise
+                     * under Read Committed it could stomp over a client-driven
+                     * resurrect-UPDATE.
                      * (Alternatively, rechecking WHERE conditions should work)
                      *
                      * DELETE should provoke a conflict with
@@ -236,8 +257,8 @@ begin
                      *)
                     candidates := MarkedAndRipe(locally_observed_epoch) \ NewDataAfterMarked; 
                     series_metadata := [x \in candidates |-> NoEntry] @@ series_metadata;
-                Ressurect:
-                    series_metadata := 
+                Resurrect:
+                    series_metadata :=
                         [x \in (MarkedAndRipe(locally_observed_epoch) \ candidates) |-> NewEntry] @@ series_metadata;
                     (* Second COMMIT *)
             end either;
@@ -245,8 +266,8 @@ begin
 end process;        
 end algorithm; *)
     
-\* BEGIN TRANSLATION (chksum(pcal) = "b930fce0" /\ chksum(tla) = "a88ad055")
-\* Process variable locally_observed_epoch of process ingester at line 115 col 5 changed to locally_observed_epoch_
+\* BEGIN TRANSLATION (chksum(pcal) = "43b593fc" /\ chksum(tla) = "795199f4")
+\* Process variable locally_observed_epoch of process ingester at line 116 col 5 changed to locally_observed_epoch_
 VARIABLES now, current_epoch, delete_epoch, series_metadata, 
           series_referenced_from_data, cached_series, observed_epochs, pc
 
@@ -488,7 +509,7 @@ PrepareDeleteTx(self) == /\ pc[self] = "PrepareDeleteTx"
 ActuallyDeleteTx(self) == /\ pc[self] = "ActuallyDeleteTx"
                           /\ candidates' = [candidates EXCEPT ![self] = MarkedAndRipe(locally_observed_epoch[self]) \ NewDataAfterMarked]
                           /\ series_metadata' = [x \in candidates'[self] |-> NoEntry] @@ series_metadata
-                          /\ pc' = [pc EXCEPT ![self] = "Ressurect"]
+                          /\ pc' = [pc EXCEPT ![self] = "Resurrect"]
                           /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                           series_referenced_from_data, 
                                           cached_series, observed_epochs, 
@@ -498,7 +519,7 @@ ActuallyDeleteTx(self) == /\ pc[self] = "ActuallyDeleteTx"
                                           locally_observed_epoch_, 
                                           locally_observed_epoch >>
 
-Ressurect(self) == /\ pc[self] = "Ressurect"
+Resurrect(self) == /\ pc[self] = "Resurrect"
                    /\ series_metadata' = [x \in (MarkedAndRipe(locally_observed_epoch[self]) \ candidates[self]) |-> NewEntry] @@ series_metadata
                    /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
                    /\ UNCHANGED << now, current_epoch, delete_epoch, 
@@ -512,7 +533,7 @@ Ressurect(self) == /\ pc[self] = "Ressurect"
 bg_worker(self) == BgWorkerTxBegin(self) \/ DropChunkData(self)
                       \/ MarkUnused(self) \/ AdvanceEpoch(self)
                       \/ PrepareDeleteTx(self) \/ ActuallyDeleteTx(self)
-                      \/ Ressurect(self)
+                      \/ Resurrect(self)
 
 (* Allow infinite stuttering to prevent deadlock on termination. *)
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
