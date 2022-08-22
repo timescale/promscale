@@ -26,6 +26,7 @@ We use the following categories for changes:
 ### Fixed
 - Make Jaeger Event queryable using name and tags [#1553]
 - Reset inverted labels cache on epoch change [#1561]
+- Error `column "exemplar_label_values" does not exist (SQLSTATE 42703)` on ingesting exemplars [#1574]
 
 ## [0.13.0] - 2022-07-20
 
