@@ -13,8 +13,8 @@ ASSUME
     /\ MaxSeries \in Nat 
     /\ MaxEpochs \in Nat
     /\ Delay \in 0..(MaxEpochs - 1)
-    /\ Cardinality(BgWorkers) > 0
-    /\ Cardinality(Ingesters) > 0
+    /\ BgWorkers # {}
+    /\ Ingesters # {}
     /\ Cardinality(CacheRefreshWorkers) = 1
     /\ BgWorkers \intersect Ingesters = {}
     /\ BgWorkers \intersect CacheRefreshWorkers = {}
@@ -76,11 +76,11 @@ variables
     fetched_del_epoch = 0;
     fetched_series = {};
 begin
-    (* 
+    (*
      * Under Read Committed each statement might see slightly different state.
      * This is modelled by confining each statement to its own label/action.
      *)
-    SelectEpoch:
+    SelectEpochAndMarked:
         (* 
          * No need to use SELECT FOR SHARE as current_epoch and delete_epoch
          * are in the same row in the epoch table (and epoch table only has
@@ -88,7 +88,6 @@ begin
          *)
         fetched_cur_epoch := current_epoch;
         fetched_del_epoch := delete_epoch;
-    SelectMarked:
         (* SELECT id FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL *)
         fetched_series := MarkedSeries;
     ScrubCache:
@@ -185,7 +184,7 @@ variables
      * Could be either current or delete epoch, depending on the branch.
      * Used only as a local cache and re-initializaed on every iteration.
      *)
-    locally_observed_epoch = 0; 
+    locally_observed_epoch = 0;
 begin
     (* 
      * Under Read Committed each statement might see slightly different state.
@@ -266,8 +265,8 @@ begin
 end process;        
 end algorithm; *)
     
-\* BEGIN TRANSLATION (chksum(pcal) = "43b593fc" /\ chksum(tla) = "795199f4")
-\* Process variable locally_observed_epoch of process ingester at line 116 col 5 changed to locally_observed_epoch_
+\* BEGIN TRANSLATION (chksum(pcal) = "8f7e2c4e" /\ chksum(tla) = "b44f685b")
+\* Process variable locally_observed_epoch of process ingester at line 115 col 5 changed to locally_observed_epoch_
 VARIABLES now, current_epoch, delete_epoch, series_metadata, 
           series_referenced_from_data, cached_series, observed_epochs, pc
 
@@ -327,33 +326,23 @@ Init == (* Global variables *)
         (* Process bg_worker *)
         /\ candidates = [self \in BgWorkers |-> {}]
         /\ locally_observed_epoch = [self \in BgWorkers |-> 0]
-        /\ pc = [self \in ProcSet |-> CASE self \in CacheRefreshWorkers -> "SelectEpoch"
+        /\ pc = [self \in ProcSet |-> CASE self \in CacheRefreshWorkers -> "SelectEpochAndMarked"
                                         [] self \in Ingesters -> "IngesterBegin"
                                         [] self \in BgWorkers -> "BgWorkerTxBegin"]
 
-SelectEpoch(self) == /\ pc[self] = "SelectEpoch"
-                     /\ fetched_cur_epoch' = [fetched_cur_epoch EXCEPT ![self] = current_epoch]
-                     /\ fetched_del_epoch' = [fetched_del_epoch EXCEPT ![self] = delete_epoch]
-                     /\ pc' = [pc EXCEPT ![self] = "SelectMarked"]
-                     /\ UNCHANGED << now, current_epoch, delete_epoch, 
-                                     series_metadata, 
-                                     series_referenced_from_data, 
-                                     cached_series, observed_epochs, 
-                                     fetched_series, new_series, 
-                                     new_references, locally_observed_epoch_, 
-                                     candidates, locally_observed_epoch >>
-
-SelectMarked(self) == /\ pc[self] = "SelectMarked"
-                      /\ fetched_series' = [fetched_series EXCEPT ![self] = MarkedSeries]
-                      /\ pc' = [pc EXCEPT ![self] = "ScrubCache"]
-                      /\ UNCHANGED << now, current_epoch, delete_epoch, 
-                                      series_metadata, 
-                                      series_referenced_from_data, 
-                                      cached_series, observed_epochs, 
-                                      fetched_cur_epoch, fetched_del_epoch, 
-                                      new_series, new_references, 
-                                      locally_observed_epoch_, candidates, 
-                                      locally_observed_epoch >>
+SelectEpochAndMarked(self) == /\ pc[self] = "SelectEpochAndMarked"
+                              /\ fetched_cur_epoch' = [fetched_cur_epoch EXCEPT ![self] = current_epoch]
+                              /\ fetched_del_epoch' = [fetched_del_epoch EXCEPT ![self] = delete_epoch]
+                              /\ fetched_series' = [fetched_series EXCEPT ![self] = MarkedSeries]
+                              /\ pc' = [pc EXCEPT ![self] = "ScrubCache"]
+                              /\ UNCHANGED << now, current_epoch, delete_epoch, 
+                                              series_metadata, 
+                                              series_referenced_from_data, 
+                                              cached_series, observed_epochs, 
+                                              new_series, new_references, 
+                                              locally_observed_epoch_, 
+                                              candidates, 
+                                              locally_observed_epoch >>
 
 ScrubCache(self) == /\ pc[self] = "ScrubCache"
                     /\ \E i \in Ingesters:
@@ -370,7 +359,7 @@ ScrubCache(self) == /\ pc[self] = "ScrubCache"
                                     locally_observed_epoch_, candidates, 
                                     locally_observed_epoch >>
 
-cache_refresh_worker(self) == SelectEpoch(self) \/ SelectMarked(self)
+cache_refresh_worker(self) == SelectEpochAndMarked(self)
                                  \/ ScrubCache(self)
 
 IngesterBegin(self) == /\ pc[self] = "IngesterBegin"
