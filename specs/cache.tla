@@ -142,6 +142,8 @@ begin
                  *)
                 new_references := new_series;
                 new_series := new_series \ cached_series[self];
+                locally_observed_epoch := observed_epochs[self];
+             CreateSeries:
                 (*
                  * get_or_create_series_id calls resurrect_series_id
                  * which, in turn, uses UPDATE and will cause a transaction
@@ -155,7 +157,6 @@ begin
                  * wipe the cache clean if a rollback happens.
                  *)
                 cached_series[self] := cached_series[self] \union new_series;
-                locally_observed_epoch := observed_epochs[self];
             IngestTransaction:
                 (* this if is epoch_abort *)
                 if locally_observed_epoch <= delete_epoch then
@@ -265,7 +266,7 @@ begin
 end process;        
 end algorithm; *)
     
-\* BEGIN TRANSLATION (chksum(pcal) = "8f7e2c4e" /\ chksum(tla) = "b44f685b")
+\* BEGIN TRANSLATION (chksum(pcal) = "6bd9e418" /\ chksum(tla) = "45295ab8")
 \* Process variable locally_observed_epoch of process ingester at line 115 col 5 changed to locally_observed_epoch_
 VARIABLES now, current_epoch, delete_epoch, series_metadata, 
           series_referenced_from_data, cached_series, observed_epochs, pc
@@ -391,18 +392,28 @@ ReceiveInput(self) == /\ pc[self] = "ReceiveInput"
 CacheLookupTransaction(self) == /\ pc[self] = "CacheLookupTransaction"
                                 /\ new_references' = [new_references EXCEPT ![self] = new_series[self]]
                                 /\ new_series' = [new_series EXCEPT ![self] = new_series[self] \ cached_series[self]]
-                                /\ series_metadata' = [x \in new_series'[self] |-> NewEntry] @@ series_metadata
-                                /\ cached_series' = [cached_series EXCEPT ![self] = cached_series[self] \union new_series'[self]]
                                 /\ locally_observed_epoch_' = [locally_observed_epoch_ EXCEPT ![self] = observed_epochs[self]]
-                                /\ pc' = [pc EXCEPT ![self] = "IngestTransaction"]
+                                /\ pc' = [pc EXCEPT ![self] = "CreateSeries"]
                                 /\ UNCHANGED << now, current_epoch, 
-                                                delete_epoch, 
+                                                delete_epoch, series_metadata, 
                                                 series_referenced_from_data, 
-                                                observed_epochs, 
+                                                cached_series, observed_epochs, 
                                                 fetched_cur_epoch, 
                                                 fetched_del_epoch, 
                                                 fetched_series, candidates, 
                                                 locally_observed_epoch >>
+
+CreateSeries(self) == /\ pc[self] = "CreateSeries"
+                      /\ series_metadata' = [x \in new_series[self] |-> NewEntry] @@ series_metadata
+                      /\ cached_series' = [cached_series EXCEPT ![self] = cached_series[self] \union new_series[self]]
+                      /\ pc' = [pc EXCEPT ![self] = "IngestTransaction"]
+                      /\ UNCHANGED << now, current_epoch, delete_epoch, 
+                                      series_referenced_from_data, 
+                                      observed_epochs, fetched_cur_epoch, 
+                                      fetched_del_epoch, fetched_series, 
+                                      new_series, new_references, 
+                                      locally_observed_epoch_, candidates, 
+                                      locally_observed_epoch >>
 
 IngestTransaction(self) == /\ pc[self] = "IngestTransaction"
                            /\ IF locally_observed_epoch_[self] <= delete_epoch
@@ -419,7 +430,7 @@ IngestTransaction(self) == /\ pc[self] = "IngestTransaction"
                                            locally_observed_epoch >>
 
 ingester(self) == IngesterBegin(self) \/ ReceiveInput(self)
-                     \/ CacheLookupTransaction(self)
+                     \/ CacheLookupTransaction(self) \/ CreateSeries(self)
                      \/ IngestTransaction(self)
 
 BgWorkerTxBegin(self) == /\ pc[self] = "BgWorkerTxBegin"
