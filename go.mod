@@ -18,11 +18,11 @@ require (
 	github.com/grafana/regexp v0.0.0-20220304095617-2e8d9baf4ac2
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/go-hclog v1.2.1
-	github.com/jackc/pgconn v1.11.0
+	github.com/jackc/pgconn v1.13.0
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
-	github.com/jackc/pgproto3/v2 v2.3.0
-	github.com/jackc/pgtype v1.11.0
-	github.com/jackc/pgx/v4 v4.15.0
+	github.com/jackc/pgproto3/v2 v2.3.1
+	github.com/jackc/pgtype v1.12.0
+	github.com/jackc/pgx/v4 v4.17.0
 	github.com/jaegertracing/jaeger v1.36.0
 	github.com/oklog/run v1.1.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.56.0
@@ -178,7 +178,7 @@ require (
 	go.opentelemetry.io/proto/otlp v0.16.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
-	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
+	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
 	golang.org/x/net v0.0.0-20220520000938-2e3eb7b945c2 // indirect
