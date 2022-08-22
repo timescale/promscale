@@ -45,11 +45,14 @@ var (
 
 var exemplarTS_1 = []prompb.TimeSeries{ // Like what Prometheus sends.
 	{
-		Labels:  []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_1}, {Name: "job", Value: "generator"}},
-		Samples: []prompb.Sample{{Timestamp: 0, Value: 0}},
+		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_1}, {Name: "job", Value: "generator"}},
+		Samples:   []prompb.Sample{{Timestamp: 0, Value: 0}},
+		Exemplars: []prompb.Exemplar{rawExemplar[0]},
 	},
 	{
+		// Use duplicate data to ensure temporary tables for samples do not conflict with the temporary tables of exemplars declared in copier.
 		Labels:    []prompb.Label{{Name: model.MetricNameLabelName, Value: metric_1}, {Name: "job", Value: "generator"}},
+		Samples:   []prompb.Sample{{Timestamp: 0, Value: 0}},
 		Exemplars: []prompb.Exemplar{rawExemplar[0]},
 	},
 	{
@@ -129,12 +132,13 @@ func TestExemplarIngestion(t *testing.T) {
 
 		insertablesIngested, metadataIngested, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(exemplarTS_1))
 		require.NoError(t, err)
-		require.Equal(t, 8, int(insertablesIngested))
+		require.Equal(t, 10, int(insertablesIngested))
 		require.Equal(t, 0, int(metadataIngested))
 
 		// Check inserted samples tables.
 		rows, err := db.Query(context.Background(), "SELECT metric_name FROM _prom_catalog.exemplar")
 		require.NoError(t, err)
+		defer rows.Close()
 		var ingestedMetrics []string
 		for rows.Next() {
 			var metricName string
@@ -147,7 +151,7 @@ func TestExemplarIngestion(t *testing.T) {
 
 		// Check num inserted exemplar_key_position.
 		var count int
-		err = db.QueryRow(context.Background(), "SELECT count(pos) FROM _prom_catalog.exemplar_label_key_position").
+		err = db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.exemplar_label_key_position").
 			Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 4, count)
@@ -160,6 +164,7 @@ func TestExemplarIngestion(t *testing.T) {
 		}
 		rows, err = db.Query(context.Background(), "SELECT extract(epoch FROM time), exemplar_label_values, value FROM prom_data_exemplar."+metric_2+" ORDER BY time DESC")
 		require.NoError(t, err)
+		defer rows.Close()
 		i := 0
 		for rows.Next() {
 			var (

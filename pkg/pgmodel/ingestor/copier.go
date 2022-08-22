@@ -428,7 +428,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 			rows := sampleRows
 			if isExemplar {
 				columns = schema.PromExemplarColumns
-				tempTablePrefix = fmt.Sprintf("s%d_", r)
+				tempTablePrefix = fmt.Sprintf("e%d_", r)
 				rows = exemplarRows
 			}
 			table := pgx.Identifier{schemaName, tableName}
@@ -464,7 +464,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 			}
 		}
 		if hasExemplars {
-			numRowsPerInsert = append(numRowsPerInsert, numSamples)
+			numRowsPerInsert = append(numRowsPerInsert, numExemplars)
 			if err = copyFromFunc(req.info.TableName, schema.PromDataExemplar, true); err != nil {
 				return err, lowestMinTime
 			}
